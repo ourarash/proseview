@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <title>Manuscript Dashboard</title>
+    <script id="proseview-bootstrap">
+        (function() {
+            const storedKey = 'proseview-theme';
+            let theme = 'light';
+            try {
+                const stored = localStorage.getItem(storedKey);
+                if (stored === 'light' || stored === 'dark' || stored === 'docsify' || stored === 'hopscotch') {
+                    theme = stored;
+                } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
+                }
+            } catch (err) {
+                theme = 'light';
+            }
+            document.documentElement.dataset.theme = theme;
+        })();
+        (function() {
+            const storedKey = 'proseview-font';
+            const allowed = ['reader', 'literary', 'sans', 'mono'];
+            let font = 'reader';
+            try {
+                const stored = localStorage.getItem(storedKey);
+                if (allowed.indexOf(stored) >= 0) font = stored;
+            } catch (err) {
+                font = 'reader';
+            }
+            document.documentElement.dataset.font = font;
+        })();
+        (function() {
+            try {
+                if (localStorage.getItem('proseview-sidebar') === 'closed') {
+                    document.documentElement.dataset.sidebar = 'closed';
+                }
+            } catch (err) {
+                // Ignore storage errors and keep the default open state.
+            }
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.css" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10/lib/addon-fit.min.js" crossorigin="anonymous"></script>
+    <style id="proseview-app-css">
+{{ app_css | safe }}
+    </style>
+</head>
+<body>
+    <nav id="repoSidebar" class="repo-sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Files</span>
+            <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar">&times;</button>
+        </div>
+        <div id="sidebarTree" class="repo-tree sidebar-tree"></div>
+        <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+    </nav>
+
+    <header class="top-banner">
+        <div class="banner-stat"><span class="label">Total Words</span><span class="value">{{ total_words_text }} / {{ target_words_text }}</span></div>
+        <div class="banner-stat banner-progress"><span class="label">Goal Progress: {{ percent_target_text }}%</span><div class="range-bar" style="margin-top:8px;"><div class="target-zone" style="background:var(--banner-progress-fill); width:{{ percent_target_width }}%;"></div></div></div>
+        <div class="banner-stat"><span class="label">Scenes</span><span class="value">{{ scene_count }}</span></div>
+        <div class="banner-stat banner-finish"><span class="label">Est. Finish</span><span class="value">{{ days_to_finish }} days</span></div>
+        {{ goals_banner_html | safe }}
+    </header>
+
+    <div class="app-toolbar">
+        <nav class="tab-nav">
+            <button class="active" data-tab="overview" onclick="showTab('overview')">Overview</button>
+            <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
+            <button data-tab="notes" onclick="showTab('notes')">Notes</button>
+        </nav>
+        <div class="toolbar-actions">
+            <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser">&#9776; Files</button>
+            <div id="fontMenu" class="font-menu">
+                <button id="fontToggle" class="theme-toggle" type="button" onclick="toggleFontMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick reading font">
+                    <span class="theme-toggle-kicker">Font</span>
+                    <span id="fontToggleLabel" class="theme-toggle-label">Reader</span>
+                    <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
+                </button>
+                <ul id="fontMenuList" class="font-menu-list" role="listbox" aria-label="Reading font">
+                    <li class="font-menu-item" role="option" data-font-value="reader" onmouseenter="previewFont('reader')" onclick="selectFont('reader')">Reader</li>
+                    <li class="font-menu-item" role="option" data-font-value="literary" onmouseenter="previewFont('literary')" onclick="selectFont('literary')">Literary</li>
+                    <li class="font-menu-item" role="option" data-font-value="inter" onmouseenter="previewFont('inter')" onclick="selectFont('inter')">Inter</li>
+                    <li class="font-menu-item" role="option" data-font-value="georgia" onmouseenter="previewFont('georgia')" onclick="selectFont('georgia')">Georgia</li>
+                    <li class="font-menu-item" role="option" data-font-value="baskerville" onmouseenter="previewFont('baskerville')" onclick="selectFont('baskerville')">Baskerville</li>
+                    <li class="font-menu-item" role="option" data-font-value="sans" onmouseenter="previewFont('sans')" onclick="selectFont('sans')">Sans</li>
+                    <li class="font-menu-item" role="option" data-font-value="mono" onmouseenter="previewFont('mono')" onclick="selectFont('mono')">Mono</li>
+                </ul>
+            </div>
+            <div id="themeMenu" class="theme-menu">
+                <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
+                    <span class="theme-toggle-kicker">Theme</span>
+                    <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
+                    <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
+                </button>
+                <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
+                    <li class="theme-menu-item" role="option" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
+                    <li class="theme-menu-item" role="option" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
+                    <li class="theme-menu-item" role="option" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
+                    <li class="theme-menu-item" role="option" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-overview" class="tab-panel active">
+        {{ goals_card_wrapper | safe }}
+        {{ recent_changes_card | safe }}
+
+        <div class="dashboard-grid">
+            <div class="card"><div class="card-header"><span class="card-title">Editorial Alerts</span></div>
+                <div class="scroll-panel">
+                    {{ alerts_html | safe }}
+                </div>
+            </div>
+            <div class="card"><div class="card-header"><span class="card-title">Book-Wide Lexical Health</span></div>
+                <div class="health-section"><div>Local Variety (MATTR): <strong>{{ lexical_mattr_text }}</strong></div><div class="range-bar"><div class="target-zone" style="left:{{ lexical_mattr_zone_left }}%; width:{{ lexical_mattr_zone_width }}%;"></div><div class="current-marker" style="left:{{ lexical_mattr_marker_left }}%;"></div></div></div>
+                <div class="health-section"><div>Whole-Scene Variety (MTLD): <strong>{{ lexical_mtld_text }}</strong></div><div class="range-bar"><div class="target-zone" style="left:{{ lexical_mtld_zone_left }}%; width:{{ lexical_mtld_zone_width }}%;"></div><div class="current-marker" style="left:{{ lexical_mtld_marker_left }}%;"></div></div></div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card"><div class="card-header"><span class="card-title">Character Presence Timeline</span></div><div class="chart-frame"><canvas id="presenceChart"></canvas></div></div>
+            <div class="card"><div class="card-header"><span class="card-title">Rhythm &amp; Pacing (Sentence length variety)</span></div>
+                <div class="section-note">
+                    Measures the "pulse" of your prose.
+                    <br>&bull; <b>Static (0-4):</b> Monotonous drone.
+                    <br>&bull; <b>Rhythmic (5-12):</b> Healthy pulse. <b>Your current target.</b>
+                    <br>&bull; <b>Dynamic (13+):</b> High contrast/tension.
+                </div>
+                <div class="chart-frame"><canvas id="rhythmChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card"><div class="card-header"><span class="card-title">Setting Stickiness (Words per Location)</span></div><div class="chart-frame"><canvas id="locationChart"></canvas></div></div>
+            <div class="card"><div class="card-header"><span class="card-title">Character Co-Occurrence</span></div><div class="chart-frame"><canvas id="coOccurChart"></canvas></div></div>
+        </div>
+
+        <div class="stats-layout">
+            <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scene Deep Dive</span>
+                <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
+                    <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
+                </select></div>
+                <table id="sceneTable"><thead><tr><th onclick="sortTable(0)">Scene</th><th onclick="sortTable(1)">Chapter</th><th onclick="sortTable(2)">Words</th><th onclick="sortTable(3)">Variety</th><th onclick="sortTable(4)">Flavor</th><th onclick="sortTable(5)">Top Repeat</th><th onclick="sortTable(6)">Dlg%</th><th onclick="sortTable(7)">Sent</th></tr></thead><tbody>
+                    {{ table_body | safe }}
+                </tbody></table></div>
+            <div class="sticky-sidebar"><div class="card"><div class="card-header"><span class="card-title">Lexical Health Map</span></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart"></canvas></div></div></div>
+        </div>
+    </div>
+
+    <div id="tab-todos" class="tab-panel">
+        <div id="todosTabContent"></div>
+    </div>
+
+    <div id="tab-notes" class="tab-panel">
+        <div class="notes-toolbar">
+            <select id="notesTagFilter" class="notes-filter" onchange="filterNotes()">
+                <option value="all">All Tags</option>
+                <option value="note">Note</option>
+                <option value="continuity">Continuity</option>
+                <option value="character">Character</option>
+                <option value="theme">Theme</option>
+                <option value="question">Question</option>
+            </select>
+        </div>
+        <div id="notesTabContent"></div>
+    </div>
+
+    <div id="file-preview-panel">
+        <div class="file-preview-header">
+            <button class="back-btn" onclick="closeFilePreview()">&#8592; Overview</button>
+            <div style="min-width:0; flex:1;">
+                <div id="filePreviewTitle" class="repo-preview-path"></div>
+                <div id="filePreviewMeta" class="repo-preview-sub"></div>
+            </div>
+            <div class="file-preview-controls">
+                <select id="filePreviewFontSelect" class="font-select-inline" onchange="selectFont(this.value)" title="Reading font">
+                    <option value="reader">Reader</option>
+                    <option value="literary">Literary</option>
+                    <option value="inter">Inter</option>
+                    <option value="georgia">Georgia</option>
+                    <option value="baskerville">Baskerville</option>
+                    <option value="sans">Sans</option>
+                    <option value="mono">Mono</option>
+                </select>
+                <select id="filePreviewThemeSelect" class="font-select-inline" onchange="selectTheme(this.value)" title="Color theme">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="docsify">Docsify</option>
+                    <option value="hopscotch">Hopscotch</option>
+                </select>
+                <a id="filePreviewEditorBtn" class="editor-btn" href="#" target="_blank" style="flex-shrink:0;" title=""></a>
+                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
+            </div>
+        </div>
+        <div id="filePreviewBody" class="modal-body repo-preview-body" style="padding:0 0 60px 0;"></div>
+    </div>
+
+    <footer class="deep-link-help">
+        Deep-link URLs: <code>#/tab/&lt;name&gt;</code>, <code>#/scene/&lt;path&gt;</code>, <code>#/file/&lt;path&gt;</code>. Paths are URL-encoded. Copy the address bar to share the current view.
+    </footer>
+
+    <div id="sceneModal" class="modal"><div class="modal-content"><div class="modal-header"><div class="modal-header-inner"><h3 id="modalTitle" style="margin:0; font-size:18px;"></h3><div class="modal-header-controls"><span id="modalHeaderExtras"><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Size</span><input id="modalFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)" style="width:80px;"></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Font</span><select class="font-select-inline" id="modalFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Theme</span><select class="font-select-inline" id="modalThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option></select></div><button id="modalLineNumbersBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleLineNumbers()" title="Show source line numbers" style="cursor:pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">#</button><a id="modalEditorBtn" class="editor-btn editor-btn-modal" target="_blank" title="Open in {{ editor_label }}">&#x2197;</a><button id="modalRefreshBtn" type="button" class="editor-btn editor-btn-modal" onclick="refreshContent()" title="Refresh scene from disk" style="cursor:pointer;">&#x21BB;</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;"><button type="button" class="editor-btn editor-btn-modal" id="agentMenuSceneBtn" onclick="toggleAgentMenu('scene')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuScene" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openSceneInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openSceneInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openSceneInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn editor-btn-modal" onclick="openShellTerminal()" style="cursor:pointer;">$ Shell</button><button id="sceneEditBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleSceneEdit()" style="cursor:pointer;">&#x270F; Edit</button></span><button id="modalSidebarBtn" class="modal-focus-btn" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" title="Toggle sidebar (B)">&#9776;</button><button id="modalFocusBtn" class="modal-focus-btn" onclick="toggleFocusMode()" title="Focus mode (F)">&#x25BE;</button><button class="nav-btn" onclick="navigateScene(-1)">&#x2190;</button><button class="nav-btn" onclick="navigateScene(1)">&#x2192;</button><span class="modal-close" onclick="closeSceneModal()">&times;</span></div></div></div>
+        <div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+
+    <div id="pmInsertAffordance" class="pm-insert-affordance" hidden title="Insert annotation">+</div>
+    <div id="pmAnnotationPopover" class="pm-annotation-popover" hidden>
+        <div class="pm-annotation-popover-header">
+            <select id="pmAnnotationTag" class="pm-annotation-tag-select">
+                <option value="TODO">TODO</option>
+                <option value="NOTE">Note</option>
+                <option value="continuity">Continuity</option>
+                <option value="character">Character</option>
+                <option value="theme">Theme</option>
+                <option value="question">Question</option>
+            </select>
+        </div>
+        <textarea id="pmAnnotationText" class="pm-annotation-text" rows="3" placeholder="Annotation text..."></textarea>
+        <div class="pm-annotation-popover-btns">
+            <button type="button" class="pm-annotation-save" onclick="saveAnnotationPopover()">Save</button>
+            <button type="button" class="pm-annotation-delete" onclick="deleteAnnotationNode()">Delete</button>
+            <button type="button" class="pm-annotation-cancel" onclick="closeAnnotationPopover()">Cancel</button>
+        </div>
+    </div>
+
+    <div id="terminalPanel" class="terminal-panel dock-bottom" hidden>
+        <div id="terminalResizeHandle" class="terminal-resize-handle"></div>
+        <div class="terminal-inner">
+            <div class="terminal-header">
+                <div id="terminalTabs" class="terminal-tabs"></div>
+                <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
+                <div class="terminal-header-spacer"></div>
+                <div class="terminal-shortcuts">
+                    <button class="terminal-header-btn" id="termSelBtn" onmousedown="terminalInsertSel(event)" title="Paste selected text" disabled>+ sel</button>
+                    <button class="terminal-header-btn" id="termFileBtn" onclick="terminalInsertFile()" title="Paste @filename" disabled>+ @file</button>
+                    <button class="terminal-header-btn" id="termPolishBtn" onclick="terminalPolishFile()" title="Paste a polish-this-file prompt" disabled>+ polish</button>
+                    <div class="term-presets-wrap">
+                        <button class="terminal-header-btn" id="termPresetsBtn" onclick="terminalTogglePresets()" title="Preset prompts" disabled>Presets &#x25BE;</button>
+                        <div id="termPresetsMenu" class="term-presets-menu" style="display:none"></div>
+                    </div>
+                    <div class="term-presets-wrap">
+                        <button class="terminal-header-btn" id="termSkillsBtn" onclick="terminalToggleSkills()" title="Snippet skills" disabled>&#x2728; Skills &#x25BE;</button>
+                        <div id="termSkillsMenu" class="term-presets-menu" style="display:none"></div>
+                    </div>
+                    <span class="terminal-shortcuts-sep"></span>
+                </div>
+                <div class="terminal-font-control" title="Terminal font size">
+                    <span class="terminal-font-control-label">Aa</span>
+                    <input id="terminalFontSize" type="range" min="10" max="22" value="13" step="1" oninput="updateTerminalFontSize(this.value)">
+                </div>
+                <button class="terminal-header-btn" id="terminalDockBtn" onclick="toggleTerminalDock()" title="Dock to right / bottom">&#x21E5;</button>
+                <button class="terminal-header-btn" id="terminalClearBtn" onclick="clearTerminal()" title="Clear active tab">Clear</button>
+                <button class="terminal-header-btn terminal-close-btn" onclick="closeTerminal()" title="Close all tabs">&times;</button>
+            </div>
+            <div id="terminalMounts" class="terminal-mounts"></div>
+        </div>
+    </div>
+
+    <script id="proseview-data">
+        let contents = {{ contents_json | safe }};
+        const bios = {{ bios_json | safe }};
+        let meta = {{ meta_json | safe }};
+        const paths = {{ paths_json | safe }};
+        let highlightsByPath = {{ highlights_json | safe }};
+        const editorScheme = {{ editor_scheme_json | safe }};
+        const editorUrlTemplate = {{ editor_url_template_json | safe }};
+        const editorLabel = {{ editor_label_json | safe }};
+        const repoTree = {{ repo_tree_json | safe }};
+        const sidebarTree = {{ sidebar_tree_json | safe }};
+        const repoPreviewMax = {{ repo_preview_max }};
+        const repoFileByPath = {};
+        (function indexRepo(nodes) {
+            if (!nodes) return;
+            for (const node of nodes) {
+                if (node.is_file) repoFileByPath[node.path] = node;
+                else indexRepo(node.children);
+            }
+        })(repoTree);
+
+        const PASS_ORDER = {{ pass_order_json | safe }};
+        const SKILLS = {{ skills_json | safe }};
+        const presenceChartData = {{ presence_chart_json | safe }};
+        const rhythmChartData = {{ rhythm_chart_json | safe }};
+        const locationChartData = {{ location_chart_json | safe }};
+        const coOccurChartData = {{ cooccur_chart_json | safe }};
+        const lexicalScatterChartData = {{ scatter_chart_json | safe }};
+    </script>
+    <script id="proseview-app">
+{{ app_js | safe }}
+    </script>
+    <script type="module">
+        import { Schema } from 'https://esm.sh/prosemirror-model@1';
+        import { schema as mdSchema, MarkdownParser, MarkdownSerializer,
+                 defaultMarkdownParser, defaultMarkdownSerializer } from 'https://esm.sh/prosemirror-markdown@1';
+        import { EditorState, Plugin, PluginKey } from 'https://esm.sh/prosemirror-state@1';
+        import { EditorView, Decoration, DecorationSet } from 'https://esm.sh/prosemirror-view@1';
+        import { history, undo, redo } from 'https://esm.sh/prosemirror-history@1';
+        import { keymap } from 'https://esm.sh/prosemirror-keymap@1';
+        import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1';
+
+        const annotationSpec = {
+            attrs: { raw: { default: '' } },
+            inline: false, group: 'block',
+            atom: true, selectable: false,
+            parseDOM: [],
+            toDOM(node) {
+                const preview = node.attrs.raw
+                    .replace(/^<!--\s*/, '').replace(/\s*-->$/, '').slice(0, 60);
+                return ['div', { class: 'pm-annotation', contenteditable: 'false' }, preview];
+            }
+        };
+
+        const mySchema = new Schema({
+            nodes: mdSchema.spec.nodes.addBefore('paragraph', 'annotation', annotationSpec),
+            marks: mdSchema.spec.marks
+        });
+
+        const hlPluginKey = new PluginKey('highlights');
+
+        function buildHlPlugin() {
+            return new Plugin({
+                key: hlPluginKey,
+                state: {
+                    init() { return DecorationSet.empty; },
+                    apply(tr, set) {
+                        const next = tr.getMeta(hlPluginKey);
+                        if (next !== undefined) return next;
+                        return set.map(tr.mapping, tr.doc);
+                    }
+                },
+                props: {
+                    decorations(state) { return hlPluginKey.getState(state); }
+                }
+            });
+        }
+
+        window._PM = {
+            Schema, EditorState, EditorView, Plugin, PluginKey,
+            Decoration, DecorationSet,
+            mySchema, mdSchema,
+            MarkdownParser, MarkdownSerializer,
+            defaultMarkdownParser, defaultMarkdownSerializer,
+            history, undo, redo, keymap, baseKeymap, toggleMark,
+            hlPluginKey, buildHlPlugin
+        };
+
+        // If the scene view is already open, re-render so it uses ProseMirror.
+        if (document.documentElement.dataset.view === 'scene' && typeof render === 'function') {
+            render();
+        }
+    </script>
+</body>
+</html>

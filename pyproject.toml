@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proseview"
+version = "0.1.0"
+description = "A local dashboard and AI harness for Markdown-first novel repositories."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Ari Saif" }]
+requires-python = ">=3.11"
+keywords = ["writing", "novel", "markdown", "dashboard", "lexical-analysis", "prose"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = [
+    "Jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+]
+
+[project.urls]
+Homepage = "https://github.com/ourarash/prosview"
+Source = "https://github.com/ourarash/prosview"
+Issues = "https://github.com/ourarash/prosview/issues"
+
+[project.scripts]
+proseview = "proseview.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["proseview*"]
+exclude = ["tests*", "fixtures*"]
+
+[tool.setuptools.package-data]
+proseview = [
+    "templates/*.j2",
+    "templates/assets/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

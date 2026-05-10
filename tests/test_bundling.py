@@ -278,3 +278,27 @@ def test_pm_annotation_styling_renders_as_compact_marker():
     assert ".pm-annotation-text" in css
     # Different visual treatment for TODOs (pending action) vs NOTEs.
     assert ".pm-annotation-todo" in css
+
+
+def test_html_block_parser_rule_uses_node_form_not_block():
+    """The annotation node is an atom and markdown-it emits a single
+    ``html_block`` token (no open/close pair). Older prosemirror-markdown
+    versions only treat ``block:`` as no-close for a hardcoded set of
+    types, so ``block: 'annotation'`` registered ``html_block_open`` /
+    ``html_block_close`` handlers that never matched and the parser
+    threw "Token type `html_block` not supported".
+
+    Use ``node: 'annotation'`` instead so a single-token handler is
+    registered. This test locks the spec form in.
+    """
+    bundle = _load_app_js()
+    # Find the html_block spec block.
+    match = re.search(r"html_block:\s*\{[^}]+\}", bundle)
+    assert match, "html_block parser spec missing"
+    spec = match.group(0)
+    assert "node: 'annotation'" in spec, "html_block must use node: form for atom rendering"
+    assert "block: 'annotation'" not in spec, "block: form requires paired tokens; use node:"
+    # html_inline must be ignored, not mapped to annotation (which is block-level).
+    inline_match = re.search(r"html_inline:\s*\{[^}]+\}", bundle)
+    assert inline_match, "html_inline rule missing (parser would error on inline HTML)"
+    assert "ignore: true" in inline_match.group(0)

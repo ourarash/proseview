@@ -7,14 +7,25 @@
 
             var markdown = (contents[p] || '').trim();
 
+            // Annotation is an atom node, and markdown-it emits a single
+            // html_block token (not an open/close pair), so we use the
+            // ``node:`` spec form rather than ``block:`` -- otherwise older
+            // prosemirror-markdown registers html_block_open / _close
+            // handlers that never match and the parser throws
+            // "Token type `html_block` not supported".
+            //
+            // ``html_inline`` (raw HTML inside a paragraph) is dropped
+            // silently because the annotation node is block-level; nothing
+            // in this app produces inline HTML on purpose.
             var parser = new PM.MarkdownParser(
                 PM.mySchema,
                 PM.defaultMarkdownParser.tokenizer,
                 Object.assign({}, PM.defaultMarkdownParser.tokens, {
                     html_block: {
-                        block: 'annotation',
+                        node: 'annotation',
                         getAttrs: function(tok) { return { raw: tok.content.trim() }; }
-                    }
+                    },
+                    html_inline: { ignore: true }
                 })
             );
 

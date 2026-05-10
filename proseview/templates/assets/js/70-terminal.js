@@ -812,9 +812,11 @@
         const NOTE_TAGS = ['note', 'continuity', 'character', 'theme', 'question'];
 
         function todoEntryHtml(t, absPath) {
+            const tagChip = '<span class="note-tag-chip note-tag-todo">todo</span>';
             if (t.source === 'frontmatter') {
                 return '<div class="todo-entry">' +
                     '<div class="todo-entry-display">' +
+                    tagChip +
                     '<span class="todo-entry-text">' + escHtml(t.text) + '</span>' +
                     '</div></div>';
             }
@@ -822,6 +824,7 @@
             const actionBtns = '<div class="note-entry-actions"><button class="todo-edit-btn" type="button">Edit</button><button class="todo-delete-btn" type="button">Delete</button></div>';
             return '<div class="todo-entry" data-abs-path="' + attrEscape(absPath) + '" data-todo-text="' + attrEscape(t.text) + '">' +
                 '<div class="todo-entry-display">' +
+                tagChip +
                 lineLabel +
                 '<span class="todo-entry-text">' + escHtml(t.text) + '</span>' +
                 actionBtns +
@@ -838,10 +841,12 @@
             const tagOptions = NOTE_TAGS.map(function(t) {
                 return '<option value="' + t + '"' + (t === n.tag ? ' selected' : '') + '>' + t + '</option>';
             }).join('');
+            const lineLabel = n.line ? '<span class="todo-line">L' + n.line + '</span>' : '';
             const actionBtns = '<div class="note-entry-actions"><button class="note-edit-btn" type="button">Edit</button><button class="note-delete-btn" type="button">Delete</button></div>';
             return '<div class="note-entry" data-abs-path="' + attrEscape(absPath) + '" data-note-text="' + attrEscape(n.text) + '" data-note-tag="' + attrEscape(n.tag) + '">' +
                 '<div class="note-entry-display">' +
                 '<span class="note-tag-chip note-tag-' + escHtml(n.tag) + '">' + escHtml(n.tag) + '</span>' +
+                lineLabel +
                 '<span class="note-entry-text">' + escHtml(n.text) + '</span>' +
                 actionBtns +
                 '</div>' +
@@ -957,11 +962,17 @@
         // scenes.py) to a DOM element under the live ProseMirror view.
         // paragraph_blocks() splits on blank lines and filters out
         // headings; we apply the same filter to the rendered DOM so the
-        // index lines up. ProseMirror renders top-level nodes as direct
-        // children of .ProseMirror: <p>, <div class="pm-annotation">,
-        // blockquote, ul/ol, pre, etc. The legacy .prose-para[data-para-idx]
-        // wrapper is gone (the static render path was retired) but we
-        // still check for it as a defensive fallback.
+        // index lines up.
+        //
+        // Subtle point: the line-number gutter plugin emits a
+        // Decoration.widget(offset+1) for every top-level node. For
+        // paragraphs (non-atom) the widget renders INSIDE the <p>, so
+        // it doesn't appear as a sibling. For annotation atoms the
+        // widget can't render inside the atom, so ProseMirror places it
+        // as a top-level sibling immediately after the annotation. That
+        // shifted every index past the first annotation by one and made
+        // task-jump arrows for any TODO/Note after a previous annotation
+        // land on a .pm-line-jump <a> instead of the annotation itself.
         function _findParaTarget(paraIdx) {
             if (!Number.isFinite(paraIdx) || paraIdx < 0) return null;
             var host = document.getElementById('sceneProseHost');
@@ -971,7 +982,9 @@
             var blocks = [];
             for (var i = 0; i < root.children.length; i++) {
                 var el = root.children[i];
-                if (!/^H[1-6]$/i.test(el.tagName)) blocks.push(el);
+                if (/^H[1-6]$/i.test(el.tagName)) continue;
+                if (el.classList && el.classList.contains('ProseMirror-widget')) continue;
+                blocks.push(el);
             }
             return blocks[paraIdx] || null;
         }

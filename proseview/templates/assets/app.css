@@ -790,6 +790,7 @@
             flex-shrink: 0; white-space: nowrap;
         }
         .note-tag-note     { background: #e5e7eb; color: #4b5563; }
+        .note-tag-todo     { background: #fef3c7; color: #92400e; }
         .note-tag-continuity { background: #dbeafe; color: #1d4ed8; }
         .note-tag-character  { background: #dcfce7; color: #15803d; }
         .note-tag-theme      { background: #f3e8ff; color: #7c3aed; }

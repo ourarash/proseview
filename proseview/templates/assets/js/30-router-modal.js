@@ -288,13 +288,10 @@
                     const jumpBtn = task.para >= 0
                         ? '<button class="task-jump-btn" type="button" data-para-idx="' + task.para + '" title="Scroll to paragraph">&#x2193;</button>'
                         : '';
-                    const chip = task.type === 'todo'
-                        ? '<span class="task-type-chip task-type-todo">TODO</span>'
-                        : '<span class="task-type-chip task-type-note">Note</span>';
                     const entry = task.type === 'todo'
                         ? todoEntryHtml(task.item, m.abs_path)
                         : noteEntryHtml(task.item, m.abs_path);
-                    return '<div class="task-row">' + chip + jumpBtn + entry + '</div>';
+                    return '<div class="task-row">' + jumpBtn + entry + '</div>';
                 }).join('');
                 tasksHtml = '<div class="scene-tasks-section">' +
                     '<div class="scene-tasks-header"><span class="scene-tasks-label">Tasks</span>' +

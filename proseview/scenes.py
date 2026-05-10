@@ -95,12 +95,16 @@ class ChapterSummary:
     short_paragraph_pct: float
 
 
-def scan_todos(fm: dict, txt: str) -> list:
+def scan_todos(fm: dict, txt: str, txt_line_offset: int = 0) -> list:
     """Return TODO items from frontmatter todos: list and inline <!-- TODO: --> comments.
 
-    Each item: {text, line (1-based in txt, None for frontmatter), paragraph_index, source}.
-    paragraph_index matches the paragraph_blocks(txt) index used by the highlights renderer.
-    Frontmatter todos use paragraph_index -1 (no line anchor).
+    Each item: {text, line, paragraph_index, source}.
+
+    ``line`` is 1-based and **file-relative** when ``txt_line_offset`` is
+    supplied (the count of source-file lines stripped before ``txt``:
+    frontmatter, leading H1, blanks). It is ``None`` for frontmatter
+    todos, which have no line anchor. ``paragraph_index`` matches the
+    ``paragraph_blocks(txt)`` index. Frontmatter todos use -1.
     """
     todos: list = []
 
@@ -128,7 +132,7 @@ def scan_todos(fm: dict, txt: str) -> list:
         todo_text = ' '.join(match.group(1).split())
         if not todo_text:
             continue
-        line = txt[:match.start()].count('\n') + 1
+        line = txt[:match.start()].count('\n') + 1 + txt_line_offset
         para_idx = max(0, len(paras) - 1) if paras else 0
         for i, offset in enumerate(para_offsets):
             para_end = offset + len(paras[i])
@@ -144,11 +148,13 @@ def scan_todos(fm: dict, txt: str) -> list:
     return todos
 
 
-def scan_notes(fm: dict, txt: str) -> list:
+def scan_notes(fm: dict, txt: str, txt_line_offset: int = 0) -> list:
     """Return NOTE items from inline <!-- NOTE[tag]: --> comments.
 
-    Each item: {text, tag, line (1-based in txt), paragraph_index, source}.
-    paragraph_index matches the paragraph_blocks(txt) index used by the highlights renderer.
+    Each item: {text, tag, line, paragraph_index, source}. ``line`` is
+    file-relative when ``txt_line_offset`` is supplied; see
+    :func:`scan_todos` for details. ``paragraph_index`` matches the
+    ``paragraph_blocks(txt)`` index used by the highlights renderer.
     """
     notes: list = []
 
@@ -167,7 +173,7 @@ def scan_notes(fm: dict, txt: str) -> list:
         note_text = ' '.join(match.group(2).split())
         if not note_text:
             continue
-        line = txt[:match.start()].count('\n') + 1
+        line = txt[:match.start()].count('\n') + 1 + txt_line_offset
         para_idx = max(0, len(paras) - 1) if paras else 0
         for i, offset in enumerate(para_offsets):
             para_end = offset + len(paras[i])
@@ -299,7 +305,7 @@ def collect_scene_stats(
             float(st["crutch_per_1k"]), float(st["sensory_density"]),
             float(st["energy_score"]), float(st["repetition_score"]),
             st["repetition_examples"], st["top_dialogue"], flavor,
-            loc, fm, scan_todos(fm, txt), scan_notes(fm, txt), txt_line_offset,
+            loc, fm, scan_todos(fm, txt, txt_line_offset), scan_notes(fm, txt, txt_line_offset), txt_line_offset,
         ))
     return scenes
 

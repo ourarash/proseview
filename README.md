@@ -234,14 +234,25 @@ This is alpha. Things that are working and things that are coming:
 
 - ✅ Live server, live reload, ProseMirror editor, highlights, TODOs,
   notes, deep links, in-browser terminal, agent menu.
-- 🚧 Vendoring CDN dependencies (currently pulled from jsDelivr / esm.sh).
-- 🚧 Modularizing the front-end JavaScript.
-- 🚧 Diff-confirm for AI-suggested edits.
+- ✅ Vendored front-end dependencies. chart.js, marked, xterm and
+  friends ship with the package and load from `/vendor/`. ProseMirror
+  modules are pinned to specific versions on esm.sh.
+- ✅ Modularized front-end. The JS lives in nine topical files under
+  `templates/assets/js/`, concatenated at render time.
+- ✅ `proseview init` writes a starter `.proseview.yaml` so a fresh
+  novel repo gets a working configuration with one command.
+- ✅ Persisted UI prefs. Your highlight-pass toggles and theme choices
+  survive scene navigation and reloads.
+- 🚧 Diff-confirm for AI-suggested edits (selection runs in a terminal
+  today; nothing applies edits without your approval, but the diff UX
+  is still terminal-only).
 - 🚧 Repo-wide search.
 - 🚧 Configurable agent list (Codex / Claude / Gemini are presets today).
 - 🚧 Continuity surfacing (warn when a scene contradicts a known fact).
+- 🚧 Frontmatter editor (status, where, todos) inside the scene viewer
+  so you don't need to drop into your text editor for routine fields.
 
-See `plans/` for the full punch list.
+See [plans/roadmap.md](plans/roadmap.md) for the full punch list.
 
 ## 🧪 Development
 

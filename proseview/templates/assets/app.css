@@ -72,9 +72,6 @@
             --hl-sensory-bg: #e0f2fe;
             --hl-sensory-text: #0369a1;
             --hl-sensory-border: #0ea5e9;
-            --hl-adverb-bg: #fdf2f7;
-            --hl-adverb-text: #9d174d;
-            --hl-adverb-border: #db2777;
             --hl-lyrical-bg: #fdf4ff;
             --hl-lyrical-text: #701a75;
             --hl-lyrical-border: #a21caf;
@@ -159,9 +156,6 @@
             --hl-sensory-bg: #102a3b;
             --hl-sensory-text: #7dd3fc;
             --hl-sensory-border: #38bdf8;
-            --hl-adverb-bg: #3d1830;
-            --hl-adverb-text: #f9a8d4;
-            --hl-adverb-border: #f472b6;
             --hl-lyrical-bg: #32123b;
             --hl-lyrical-text: #e9d5ff;
             --hl-lyrical-border: #c084fc;
@@ -246,9 +240,6 @@
             --hl-sensory-bg: #102838;
             --hl-sensory-text: #89ddff;
             --hl-sensory-border: #6eceff;
-            --hl-adverb-bg: #3a1a30;
-            --hl-adverb-text: #f9a8d4;
-            --hl-adverb-border: #c792ea;
             --hl-lyrical-bg: #2d1a38;
             --hl-lyrical-text: #e9d5ff;
             --hl-lyrical-border: #c792ea;
@@ -333,9 +324,6 @@
             --hl-sensory-bg: #203c3a;
             --hl-sensory-text: #89ddd5;
             --hl-sensory-border: #149b93;
-            --hl-adverb-bg: #4b2338;
-            --hl-adverb-text: #f5b0ca;
-            --hl-adverb-border: #c85e7c;
             --hl-lyrical-bg: #3d2348;
             --hl-lyrical-text: #efc4ff;
             --hl-lyrical-border: #c85e7c;
@@ -467,7 +455,6 @@
         .hl-passive { background-color: var(--hl-passive-bg); color: var(--hl-passive-text); border-bottom: 2px solid var(--hl-passive-border); }
         .hl-crutch { background-color: var(--hl-crutch-bg); color: var(--hl-crutch-text); border-bottom: 2px solid var(--hl-crutch-border); font-style: italic; }
         .hl-sensory { background-color: var(--hl-sensory-bg); color: var(--hl-sensory-text); border-bottom: 2px solid var(--hl-sensory-border); font-weight: 600; }
-        .hl-adverb { background-color: var(--hl-adverb-bg); color: var(--hl-adverb-text); border-bottom: 2px solid var(--hl-adverb-border); }
         .hl-lyrical { background-color: var(--hl-lyrical-bg); color: var(--hl-lyrical-text); border-bottom: 2px solid var(--hl-lyrical-border); font-style: italic; }
         .hl-hyperbole { background-color: var(--hl-hyperbole-bg); color: var(--hl-hyperbole-text); border-bottom: 2px solid var(--hl-hyperbole-border); font-weight: 800; }
         .hl-comedy { background-color: var(--hl-comedy-bg); color: var(--hl-comedy-text); border: 1px solid var(--hl-comedy-border); border-radius: 3px; padding: 0 2px; }

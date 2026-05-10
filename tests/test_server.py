@@ -13,21 +13,30 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from proseview.config import Config  # noqa: E402
-from proseview.generator import build_dashboard  # noqa: E402
-from proseview.server import _extract_script_vars, save_scene_content, _FileConflictError  # noqa: E402
+from proseview.generator import build_scene_data  # noqa: E402
+from proseview.scenes import collect_scene_stats  # noqa: E402
+from proseview.server import save_scene_content, _FileConflictError  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
 SCENE = FIXTURE / "manuscript" / "ch01" / "01-opening.md"
 
 
-def test_extract_script_vars_decodes_json_parse_payloads():
-    html = build_dashboard(FIXTURE, Config.load(FIXTURE))
+def test_build_scene_data_returns_data_json_payload():
+    """``/data.json`` calls ``build_scene_data`` directly. The returned dict
+    must contain the three keys the client refresh consumes, keyed by the
+    same display paths the template embeds.
+    """
+    cfg = Config.load(FIXTURE)
+    scenes = collect_scene_stats(FIXTURE, cfg)
+    data = build_scene_data(scenes, FIXTURE, cfg)
 
-    data = _extract_script_vars(html, ("contents", "meta", "highlightsByPath"))
-
+    assert set(data) == {"contents", "meta", "highlightsByPath"}
     assert "ch01/01-opening.md" in data["contents"]
     assert data["meta"]["ch01/01-opening.md"]["words"] > 0
     assert data["highlightsByPath"]["ch01/01-opening.md"]["paragraphs"]
+    # Meta dict carries the live mtime so save-then-refresh sees the new value.
+    assert "mtime" in data["meta"]["ch01/01-opening.md"]
+    assert "abs_path" in data["meta"]["ch01/01-opening.md"]
 
 
 # ── save_scene_content tests ─────────────────────────────────────────────────

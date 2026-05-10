@@ -920,8 +920,8 @@
         document.addEventListener('click', function(e) {
             const jb = e.target.closest('.task-jump-btn');
             if (jb) {
-                const paraIdx = jb.dataset.paraIdx;
-                const target = document.getElementById('modalBody').querySelector('.prose-para[data-para-idx="' + paraIdx + '"]');
+                const paraIdx = parseInt(jb.dataset.paraIdx, 10);
+                const target = _findParaTarget(paraIdx);
                 if (target) {
                     target.scrollIntoView({behavior: 'smooth', block: 'center'});
                     target.classList.add('para-flash');
@@ -930,6 +930,27 @@
                 return;
             }
         });
+
+        // Resolve a paragraph index (counted by paragraph_blocks() in
+        // scenes.py) to a DOM element under the live ProseMirror view.
+        // ProseMirror renders top-level nodes as direct children of the
+        // .ProseMirror root: <p>, <div class="pm-annotation">, blockquote,
+        // ul/ol, pre, etc. paragraph_blocks() filters out headings, so
+        // we apply the same filter here. The legacy .prose-para[data-para-idx]
+        // wrapper is gone since the static render path was retired.
+        function _findParaTarget(paraIdx) {
+            if (!Number.isFinite(paraIdx) || paraIdx < 0) return null;
+            const host = document.getElementById('sceneProseHost');
+            if (!host) return null;
+            const root = host.querySelector('.ProseMirror');
+            if (!root) return null;
+            const blocks = [];
+            for (let i = 0; i < root.children.length; i++) {
+                const el = root.children[i];
+                if (!/^H[1-6]$/i.test(el.tagName)) blocks.push(el);
+            }
+            return blocks[paraIdx] || null;
+        }
 
         function closeAllPopovers() {
             document.querySelectorAll('.note-popover.is-open, .todo-popover.is-open').forEach(function(p) { p.classList.remove('is-open'); });

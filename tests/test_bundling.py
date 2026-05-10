@@ -280,6 +280,26 @@ def test_pm_annotation_styling_renders_as_compact_marker():
     assert ".pm-annotation-todo" in css
 
 
+def test_task_jump_button_resolves_against_prosemirror_dom():
+    """The Tasks panel inside a scene shows a downward arrow next to each
+    TODO/note that scrolls the prose to the matching paragraph. Before
+    the spinoff, scenes were rendered with ``<div class="prose-para"
+    data-para-idx="N">`` wrappers and the click handler used those.
+    Once ProseMirror became the only renderer those wrappers were
+    gone, so the arrows silently no-op'd. This test locks in a query
+    that walks the live ProseMirror DOM.
+    """
+    bundle = _load_app_js()
+    # The new resolver function exists.
+    assert "function _findParaTarget(paraIdx)" in bundle
+    # It walks the live ProseMirror tree, not the legacy wrapper class.
+    assert "host.querySelector('.ProseMirror')" in bundle
+    assert ".prose-para[data-para-idx=" not in bundle, \
+        "Stale .prose-para query (the wrapper is no longer rendered)"
+    # Headings are filtered so the index lines up with paragraph_blocks().
+    assert "/^H[1-6]$/i.test(el.tagName)" in bundle
+
+
 def test_html_block_parser_rule_uses_node_form_not_block():
     """The annotation node is an atom and markdown-it emits a single
     ``html_block`` token (no open/close pair). Older prosemirror-markdown

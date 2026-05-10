@@ -920,33 +920,51 @@
         document.addEventListener('click', function(e) {
             const jb = e.target.closest('.task-jump-btn');
             if (jb) {
+                e.preventDefault();
                 const paraIdx = parseInt(jb.dataset.paraIdx, 10);
-                const target = _findParaTarget(paraIdx);
-                if (target) {
-                    target.scrollIntoView({behavior: 'smooth', block: 'center'});
-                    target.classList.add('para-flash');
-                    setTimeout(function() { target.classList.remove('para-flash'); }, 1400);
-                }
+                _scrollToPara(paraIdx);
                 return;
             }
         });
 
+        // Try several strategies to locate the paragraph in the live DOM
+        // and scroll/flash it. Falls back to retries because ProseMirror
+        // may finish mounting after the click fires (the user can click
+        // immediately after a refresh).
+        function _scrollToPara(paraIdx, attempt) {
+            attempt = attempt || 0;
+            var target = _findParaTarget(paraIdx);
+            if (!target && attempt < 4) {
+                setTimeout(function() { _scrollToPara(paraIdx, attempt + 1); }, 80);
+                return;
+            }
+            if (!target) {
+                console.warn('[proseview] task-jump: no DOM target for paragraph', paraIdx);
+                return;
+            }
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            target.classList.add('para-flash');
+            setTimeout(function() { target.classList.remove('para-flash'); }, 1400);
+        }
+
         // Resolve a paragraph index (counted by paragraph_blocks() in
         // scenes.py) to a DOM element under the live ProseMirror view.
-        // ProseMirror renders top-level nodes as direct children of the
-        // .ProseMirror root: <p>, <div class="pm-annotation">, blockquote,
-        // ul/ol, pre, etc. paragraph_blocks() filters out headings, so
-        // we apply the same filter here. The legacy .prose-para[data-para-idx]
-        // wrapper is gone since the static render path was retired.
+        // paragraph_blocks() splits on blank lines and filters out
+        // headings; we apply the same filter to the rendered DOM so the
+        // index lines up. ProseMirror renders top-level nodes as direct
+        // children of .ProseMirror: <p>, <div class="pm-annotation">,
+        // blockquote, ul/ol, pre, etc. The legacy .prose-para[data-para-idx]
+        // wrapper is gone (the static render path was retired) but we
+        // still check for it as a defensive fallback.
         function _findParaTarget(paraIdx) {
             if (!Number.isFinite(paraIdx) || paraIdx < 0) return null;
-            const host = document.getElementById('sceneProseHost');
+            var host = document.getElementById('sceneProseHost');
             if (!host) return null;
-            const root = host.querySelector('.ProseMirror');
+            var root = host.querySelector('.ProseMirror');
             if (!root) return null;
-            const blocks = [];
-            for (let i = 0; i < root.children.length; i++) {
-                const el = root.children[i];
+            var blocks = [];
+            for (var i = 0; i < root.children.length; i++) {
+                var el = root.children[i];
                 if (!/^H[1-6]$/i.test(el.tagName)) blocks.push(el);
             }
             return blocks[paraIdx] || null;

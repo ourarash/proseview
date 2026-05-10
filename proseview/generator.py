@@ -56,6 +56,22 @@ def _load_asset(relative_path: str) -> str:
     return (TEMPLATE_DIR / relative_path).read_text(encoding="utf-8")
 
 
+def _load_app_js() -> str:
+    """Concatenate ``templates/assets/js/*.js`` in lexical order.
+
+    The front-end is split into topical files for readability but emitted
+    as one ``<script>`` block so the runtime is identical to the legacy
+    single-file form (no module boundaries, all top-level functions
+    hoisted into the same scope). Each file is fetched via ``_load_asset``
+    so ``_load_asset.cache_clear()`` invalidates them all at once.
+    """
+    js_dir = TEMPLATE_DIR / "assets" / "js"
+    if not js_dir.is_dir():
+        return _load_asset("assets/app.js")
+    rel_paths = sorted(p.relative_to(TEMPLATE_DIR).as_posix() for p in js_dir.glob("*.js"))
+    return "\n".join(_load_asset(rel) for rel in rel_paths)
+
+
 def _render_template(name: str, **context: object) -> str:
     return _template_env().get_template(name).render(**context)
 
@@ -222,6 +238,78 @@ def build_dashboard(
     )
 
 
+def build_scene_data(
+    scenes: list[SceneStats],
+    root: Path,
+    cfg: Config,
+    tree_nodes: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Build the JSON payload consumed by ``/data.json`` and embedded in the
+    initial HTML.
+
+    Returns a dict with three keys:
+
+    - ``contents``: ``{display_path: prose_text}`` for the embedded ProseMirror
+      editor and the highlight overlays.
+    - ``meta``: ``{display_path: scene_meta_dict}`` for the scene header,
+      stats grid, todos, notes, and related docs.
+    - ``highlightsByPath``: ``{display_path: {paragraphs, highlights}}`` for
+      the nine highlight passes.
+
+    The data shape is identical to what the template embeds for first paint,
+    so a client can hot-refresh the open scene by fetching ``/data.json``
+    without a full page reload.
+    """
+    if tree_nodes is None:
+        tree_nodes = build_tree(root, cfg)
+
+    manuscript_prefix = cfg.manuscript_subdir + "/"
+
+    def clean_path(path: Path) -> str:
+        text = str(path)
+        return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
+
+    contents = {clean_path(s.path): s.text for s in scenes}
+    highlights = {
+        clean_path(s.path): compute_scene_highlights(s.text, repeat_terms=s.repetition_examples)
+        for s in scenes
+    }
+    meta = {
+        clean_path(scene.path): {
+            "repeats": scene.repetition_examples,
+            "avg_sent": scene.avg_sentence_words,
+            "dlg_pct": scene.dialogue_pct,
+            "first_person": scene.first_person_per_1k,
+            "italics": scene.italics_per_1k,
+            "questions": scene.questions_per_1k,
+            "para_words": scene.avg_paragraph_words,
+            "signals": revision_signal(scene, cfg).split(". "),
+            "read_min": scene.reading_minutes,
+            "words": scene.words,
+            "passive": scene.passive_per_1k,
+            "crutch": scene.crutch_per_1k,
+            "sensory": scene.sensory_density,
+            "energy": scene.energy_score,
+            "top_dlg": scene.top_dialogue_words,
+            "abs_path": str((root / scene.path).resolve()),
+            "fm": scene.frontmatter,
+            "filters": (
+                sum(len(re.findall(rf"\b{verb}\b", scene.text, re.IGNORECASE)) for verb in FILTER_VERBS)
+                * 1000 / scene.words
+                if scene.words else 0
+            ),
+            "related_docs": find_related(scene, cfg, tree_nodes),
+            "todos": scene.todos,
+            "notes": scene.notes,
+            "txt_line_offset": scene.txt_line_offset,
+            "mtime": (root / scene.path).stat().st_mtime,
+        }
+        for scene in scenes
+    }
+
+    return {"contents": contents, "meta": meta, "highlightsByPath": highlights}
+
+
 def render_html_report(
     scenes: list[SceneStats],
     display_scenes: list[SceneStats],
@@ -262,15 +350,11 @@ def render_html_report(
         text = str(path)
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
+    scene_data = build_scene_data(scenes, root, cfg, tree_nodes)
+    scene_content_map = scene_data["contents"]
+    highlights_map = scene_data["highlightsByPath"]
+    scene_meta_map = scene_data["meta"]
     ordered_paths = [clean_path(s.path) for s in display_scenes]
-    scene_content_map = {clean_path(s.path): s.text for s in scenes}
-    highlights_map = {
-        clean_path(s.path): compute_scene_highlights(
-            s.text,
-            repeat_terms=s.repetition_examples,
-        )
-        for s in scenes
-    }
 
     char_dir = root / cfg.characters_dir
     char_bio_map: dict[str, str] = {}
@@ -323,41 +407,6 @@ def render_html_report(
             for second in present[i + 1:]:
                 co_occur[tuple(sorted((first, second)))] += 1
     top_pairs = sorted(co_occur.items(), key=lambda item: item[1], reverse=True)[:15]
-
-    scene_meta_map = {
-        clean_path(scene.path): {
-            "repeats": scene.repetition_examples,
-            "avg_sent": scene.avg_sentence_words,
-            "dlg_pct": scene.dialogue_pct,
-            "first_person": scene.first_person_per_1k,
-            "italics": scene.italics_per_1k,
-            "questions": scene.questions_per_1k,
-            "para_words": scene.avg_paragraph_words,
-            "signals": revision_signal(scene, cfg).split(". "),
-            "read_min": scene.reading_minutes,
-            "words": scene.words,
-            "passive": scene.passive_per_1k,
-            "crutch": scene.crutch_per_1k,
-            "sensory": scene.sensory_density,
-            "energy": scene.energy_score,
-            "top_dlg": scene.top_dialogue_words,
-            "abs_path": str((root / scene.path).resolve()),
-            "fm": scene.frontmatter,
-            "filters": (
-                sum(len(re.findall(rf"\b{verb}\b", scene.text, re.IGNORECASE)) for verb in FILTER_VERBS)
-                * 1000
-                / scene.words
-                if scene.words
-                else 0
-            ),
-            "related_docs": find_related(scene, cfg, tree_nodes),
-            "todos": scene.todos,
-            "notes": scene.notes,
-            "txt_line_offset": scene.txt_line_offset,
-            "mtime": (root / scene.path).stat().st_mtime,
-        }
-        for scene in scenes
-    }
 
     flagged = sort_scenes(
         [scene for scene in scenes if scene_is_outlier(scene, cfg)],
@@ -450,7 +499,7 @@ def render_html_report(
 
     context = {
         "app_css": _load_asset("assets/app.css"),
-        "app_js": _load_asset("assets/app.js"),
+        "app_js": _load_app_js(),
         "total_words_text": f"{total_words:,}",
         "target_words_text": f"{target_words:,}",
         "percent_target_text": f"{percent_target:.1f}",

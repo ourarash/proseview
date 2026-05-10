@@ -4,7 +4,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP_JS = Path(__file__).resolve().parents[1] / "proseview" / "templates" / "assets" / "app.js"
+JS_DIR = Path(__file__).resolve().parents[1] / "proseview" / "templates" / "assets" / "js"
+
+
+def _read_app_js() -> str:
+    """Concatenate the topical JS files in the same order generator.py does."""
+    return "\n".join(p.read_text(encoding="utf-8") for p in sorted(JS_DIR.glob("*.js")))
+
+
+class _AppJs:
+    """Adapter so existing tests can keep using ``APP_JS.read_text(...)``."""
+    @staticmethod
+    def read_text(encoding: str = "utf-8") -> str:
+        return _read_app_js()
+
+
+APP_JS = _AppJs()
 
 
 def _function_body(source: str, name: str) -> str:

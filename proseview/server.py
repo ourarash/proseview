@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import fcntl
-import ast
 import json
 import os
 import queue
@@ -25,7 +24,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable
+from typing import Callable
 
 try:
     import pty
@@ -35,61 +34,15 @@ except ImportError:
     _PTY_AVAILABLE = False
 
 from .config import Config
-from .generator import TEMPLATE_DIR, _load_asset, build_dashboard
+from .generator import TEMPLATE_DIR, _load_asset, build_dashboard, build_scene_data
 from .lexical import paragraph_blocks
 from .repo import _file_node as _repo_file_node
-from .scenes import extract_scene_text, split_frontmatter
+from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
 from .watch import watch as _watch
 from urllib.parse import urlparse, parse_qs
 import time as _time
 
 DEFAULT_PORT = 7842
-
-
-def _extract_script_vars(html: str, names: tuple[str, ...]) -> dict[str, Any]:
-    """Extract JSON variable values from the embedded proseview-data script block."""
-    result: dict[str, Any] = {}
-    decoder = json.JSONDecoder()
-    for name in names:
-        json_start = -1
-        for kw in ("let ", "const ", "var "):
-            marker = f"{kw}{name} = "
-            pos = html.find(marker)
-            if pos >= 0:
-                json_start = pos + len(marker)
-                break
-        if json_start < 0:
-            continue
-        expr = html[json_start:].lstrip()
-        if expr.startswith("JSON.parse("):
-            quote_start = expr.find("'")
-            if quote_start < 0:
-                continue
-            quote_end = quote_start + 1
-            escaped = False
-            while quote_end < len(expr):
-                ch = expr[quote_end]
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == "'":
-                    break
-                quote_end += 1
-            else:
-                continue
-            try:
-                json_text = ast.literal_eval(expr[quote_start:quote_end + 1])
-                result[name] = json.loads(json_text)
-            except (SyntaxError, ValueError, json.JSONDecodeError):
-                pass
-            continue
-        try:
-            value, _ = decoder.raw_decode(expr)
-            result[name] = value
-        except json.JSONDecodeError:
-            pass
-    return result
 
 
 # ── Scene editor ─────────────────────────────────────────────────────────────
@@ -631,8 +584,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/data.json":
             try:
-                html = self.get_html()
-                data = _extract_script_vars(html, ("contents", "meta", "highlightsByPath"))
+                root = Path(self.repo_root)
+                cfg = Config.load(root)
+                scenes = collect_scene_stats(root, cfg)
+                data = build_scene_data(scenes, root, cfg)
                 body = json.dumps(data).encode("utf-8")
             except Exception as exc:
                 self.send_response(500)

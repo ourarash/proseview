@@ -1,0 +1,225 @@
+"""Regression tests for the post-refactor surface.
+
+Covers the items landed in the spinoff hardening pass (5/6/7/8/9):
+
+- The dashboard renders one ProseMirror surface; the static ``marked.parse``
+  fallback is gone (item 3 of the plan, retested here).
+- Scene/file viewers are routed inline views, driven by ``data-view``,
+  not overlay modals (item 2 retest).
+- The Pensive/Action/Balanced emoji label is replaced with Tone
+  (Talky/Mixed/Internal) — item 5.
+- The dead ``.hl-adverb`` CSS is gone — item 6.
+- The front-end is split across ``templates/assets/js/`` and concatenated
+  by the generator — item 8.
+- ``build_scene_data`` is the single source for ``/data.json``; the
+  HTML-scraping ``_extract_script_vars`` helper is removed — item 7.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from proseview.config import Config  # noqa: E402
+from proseview.generator import _load_app_js, build_dashboard, build_scene_data  # noqa: E402
+from proseview.scenes import collect_scene_stats  # noqa: E402
+
+FIXTURE = REPO_ROOT / "fixtures" / "demo-repo"
+TEMPLATES = REPO_ROOT / "proseview" / "templates"
+JS_DIR = TEMPLATES / "assets" / "js"
+APP_CSS = TEMPLATES / "assets" / "app.css"
+
+
+# ── Item 8: JS bundle layout ─────────────────────────────────────────────────
+
+def test_js_directory_replaces_monolithic_app_js():
+    """The 3,300-line ``app.js`` was split into topical files; the old
+    monolith should no longer ship.
+    """
+    assert not (TEMPLATES / "assets" / "app.js").exists(), \
+        "Legacy monolithic app.js should be removed"
+    assert JS_DIR.is_dir()
+    files = sorted(JS_DIR.glob("*.js"))
+    assert len(files) >= 3, "Expected at least three topical JS files"
+    # Sortable filenames so concatenation order is stable across platforms.
+    for f in files:
+        assert re.match(r"\d{2}-[a-z0-9-]+\.js$", f.name), \
+            f"Unexpected JS file name: {f.name!r}"
+
+
+def test_load_app_js_concatenates_in_lexical_order():
+    """``_load_app_js`` is the single point that defines bundling order."""
+    bundle = _load_app_js()
+    assert bundle, "Bundle should not be empty"
+    # First file's first non-blank declaration must appear at the start.
+    first_file = sorted(JS_DIR.glob("*.js"))[0]
+    first_text = first_file.read_text(encoding="utf-8")
+    first_decl = next(
+        (line.strip() for line in first_text.splitlines() if line.strip()),
+        "",
+    )
+    if first_decl:
+        # The bundle starts with the first file's content, possibly with a
+        # leading newline from the join separator.
+        head = bundle.lstrip("\n").splitlines()[0].strip()
+        assert head == first_decl
+
+
+def test_dashboard_inlines_concatenated_bundle():
+    """Markers from multiple split files must end up in the rendered HTML
+    so a single ``<script>`` tag carries the whole front-end.
+    """
+    html = build_dashboard(FIXTURE, Config.load(FIXTURE))
+    # From 00-state.js
+    assert "const VALID_TABS = ['overview', 'todos', 'notes'];" in html
+    # From 30-router-modal.js
+    assert "function openSceneModal(p)" in html
+    # From 70-terminal.js
+    assert "function spawnTerminal" in html or "function _initSessionXterm" in html
+    # From 80-sidebar-init.js
+    assert "function previewRepoFile(path)" in html
+
+
+# ── Item 7: build_scene_data is the data source ──────────────────────────────
+
+def test_extract_script_vars_helper_is_gone():
+    """The HTML-scraping fallback is removed; the data flow is direct."""
+    from proseview import server  # noqa: WPS433
+    assert not hasattr(server, "_extract_script_vars"), \
+        "Server should no longer ship HTML-scraping fallback for /data.json"
+
+
+def test_build_scene_data_matches_template_embed():
+    """The dict returned by ``build_scene_data`` must be the same payload
+    the template embeds for first paint, so client refresh is consistent.
+    """
+    cfg = Config.load(FIXTURE)
+    scenes = collect_scene_stats(FIXTURE, cfg)
+    data = build_scene_data(scenes, FIXTURE, cfg)
+    html = build_dashboard(FIXTURE, cfg)
+
+    for path in data["contents"]:
+        # Each scene's display path must appear in the embedded JSON.
+        assert path in html, f"path {path!r} missing from rendered HTML"
+    # Every meta entry must carry the fields the client refresh and
+    # scene-stats grid rely on.
+    for path, m in data["meta"].items():
+        for required in ("words", "energy", "dlg_pct", "abs_path", "mtime"):
+            assert required in m, f"{path}: missing meta key {required!r}"
+
+
+# ── Item 5: tone label replaces Pensive / Action / Balanced ──────────────────
+
+def test_tone_label_replaces_pensive_emoji():
+    bundle = _load_app_js()
+    assert "Pensive" not in bundle, "Old Pensive label should be gone"
+    assert "Action ⚡" not in bundle
+    assert "Balanced ⚖️" not in bundle
+    # Replacement vocabulary documents what the metric actually measures.
+    assert "Talky" in bundle
+    assert "Internal" in bundle
+    assert "Mixed" in bundle
+    # Stat-grid label is now Tone, not Energy.
+    assert ">Tone</span>" in bundle
+
+
+# ── Item 6: dead CSS removed ─────────────────────────────────────────────────
+
+def test_hl_adverb_dead_css_removed():
+    css = APP_CSS.read_text(encoding="utf-8")
+    assert "hl-adverb" not in css, ".hl-adverb has no matching highlight pass; CSS should be gone"
+
+
+def test_flavor_column_is_actually_populated():
+    """The plan flagged Flavor as possibly broken; verify it isn't.
+    Each scene with prose should have a non-empty flavor_words tuple.
+    """
+    cfg = Config.load(FIXTURE)
+    scenes = collect_scene_stats(FIXTURE, cfg)
+    populated = [s for s in scenes if s.flavor_words]
+    assert populated, "Expected at least one scene with flavor_words"
+
+
+# ── Item 2 (retest): scene viewer is a routed view, not a modal ──────────────
+
+def test_scene_view_uses_data_view_routing():
+    """The scene viewer is shown by setting ``data-view='scene'`` on the
+    document element, not by toggling ``display`` on the modal node.
+    """
+    bundle = _load_app_js()
+    css = APP_CSS.read_text(encoding="utf-8")
+
+    assert 'document.documentElement.dataset.view = \'scene\'' in bundle
+    # Closing the scene clears the view.
+    assert "delete document.documentElement.dataset.view" in bundle
+    # No more direct display:block toggles on #sceneModal.
+    assert "document.getElementById('sceneModal').style.display" not in bundle
+    # CSS gates visibility on the data attribute and hides dashboard chrome.
+    assert "[data-view=\"scene\"] .modal { display: block; }" in css
+    assert "[data-view=\"scene\"] .tab-panel" in css
+
+
+# ── Item 9 supplemental: bundle is syntactically valid (when Node is present) ─
+
+def test_bundle_passes_node_syntax_check_when_available():
+    node = shutil.which("node")
+    if node is None:
+        return  # skip silently in CI environments without node
+    bundle = _load_app_js()
+    proc = subprocess.run(
+        [node, "--check", "-"],
+        input=bundle,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        msg = proc.stderr.strip().splitlines()[:10]
+        raise AssertionError("Bundle failed Node syntax check:\n" + "\n".join(msg))
+
+
+# ── Item 4 (config decoupling): characters_path / skills_path ────────────────
+
+def test_config_keys_for_characters_and_skills_paths(tmp_path: Path):
+    """A ``.proseview.yaml`` that names different folders should override
+    the defaults so the tool works on any novel-repo layout.
+    """
+    yaml = tmp_path / ".proseview.yaml"
+    yaml.write_text(
+        "characters_path: people/who\n"
+        "skills_path: prompts\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(tmp_path)
+    assert cfg.characters_path == "people/who"
+    assert cfg.characters_dir == "people/who"
+    assert cfg.skills_path == "prompts"
+    assert cfg.skills_dir == "prompts"
+
+
+def test_config_defaults_match_legacy_layout():
+    """Out of the box, paths default to the layout the original book repo
+    used so nothing breaks for existing users.
+    """
+    cfg = Config()
+    assert cfg.characters_path == "story-bible/characters"
+    assert cfg.skills_path == "skills"
+
+
+def test_data_json_contract_round_trips_through_json():
+    """Whatever ``build_scene_data`` returns must be JSON-serializable as-is,
+    since the server hands it straight to ``json.dumps``.
+    """
+    cfg = Config.load(FIXTURE)
+    scenes = collect_scene_stats(FIXTURE, cfg)
+    data = build_scene_data(scenes, FIXTURE, cfg)
+    # If this raises, the dict has non-JSON values that the server cannot send.
+    json.dumps(data)

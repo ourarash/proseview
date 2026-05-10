@@ -76,3 +76,41 @@ def test_main_rejects_non_positive_interval(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cli, "serve", lambda *a, **k: None)
     with pytest.raises(SystemExit):
         cli.main(["--root", str(tmp_path), "--interval", "0"])
+
+
+# ── ``proseview init`` subcommand ────────────────────────────────────────────
+
+
+def test_init_writes_starter_config(tmp_path: Path, capsys):
+    rc = cli.main(["init", "--root", str(tmp_path)])
+    assert rc == 0
+    config_path = tmp_path / ".proseview.yaml"
+    assert config_path.exists()
+    body = config_path.read_text(encoding="utf-8")
+    # Spot-check that the well-known keys ship in the starter file.
+    for key in ("manuscript_path", "characters_path", "skills_path",
+                "target_words", "mattr_band", "editor", "repo_tab"):
+        assert key in body, f"starter config missing key {key!r}"
+    out = capsys.readouterr().out
+    assert ".proseview.yaml" in out
+
+
+def test_init_refuses_to_overwrite_without_force(tmp_path: Path, capsys):
+    config_path = tmp_path / ".proseview.yaml"
+    config_path.write_text("# existing user config\n", encoding="utf-8")
+
+    rc = cli.main(["init", "--root", str(tmp_path)])
+    assert rc == 1
+    # The user's content was preserved.
+    assert config_path.read_text(encoding="utf-8") == "# existing user config\n"
+    err = capsys.readouterr().err
+    assert "refusing to overwrite" in err
+
+
+def test_init_force_overwrites(tmp_path: Path):
+    config_path = tmp_path / ".proseview.yaml"
+    config_path.write_text("# stale\n", encoding="utf-8")
+
+    rc = cli.main(["init", "--root", str(tmp_path), "--force"])
+    assert rc == 0
+    assert "manuscript_path" in config_path.read_text(encoding="utf-8")

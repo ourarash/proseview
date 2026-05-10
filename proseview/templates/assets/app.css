@@ -846,12 +846,19 @@
             padding: 1px 5px; font-size: 11px; cursor: pointer; color: var(--text-muted);
         }
         .task-jump-btn:hover { border-color: var(--primary); color: var(--primary); }
-        /* Para flash on jump */
+        /* Para flash on jump. Two animated properties so the flash is
+           obvious even on a small annotation atom (where a faint
+           background tint blends into the marker's own surface color):
+           a brief outline ring plus a stronger fill that fades. */
         @keyframes para-flash-kf {
-            0%   { background: rgba(99,102,241,0.18); }
-            100% { background: transparent; }
+            0%   { background-color: rgba(99,102,241,0.32);
+                   box-shadow: 0 0 0 4px rgba(99,102,241,0.45); }
+            70%  { background-color: rgba(99,102,241,0.18);
+                   box-shadow: 0 0 0 3px rgba(99,102,241,0.20); }
+            100% { background-color: transparent;
+                   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
         }
-        .para-flash { animation: para-flash-kf 1.4s ease-out; border-radius: 4px; }
+        .para-flash { animation: para-flash-kf 1.6s ease-out; border-radius: 4px; }
         /* ── In-browser terminal panel ─────────────────────────────────────── */
         html { --terminal-h: 52vh; --terminal-w: 50vw; }
         .terminal-panel {

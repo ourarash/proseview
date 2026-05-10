@@ -942,9 +942,15 @@
                 console.warn('[proseview] task-jump: no DOM target for paragraph', paraIdx);
                 return;
             }
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // ``block: 'start'`` aligns the target to the top of the
+            // scroll container (modulo CSS scroll-padding-top). This makes
+            // the jump visually unambiguous even when two TODO/Note
+            // markers sit a few pixels apart in adjacent paragraphs --
+            // ``block: 'center'`` produced nearly identical scroll
+            // positions for those, so the second click looked like a no-op.
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
             target.classList.add('para-flash');
-            setTimeout(function() { target.classList.remove('para-flash'); }, 1400);
+            setTimeout(function() { target.classList.remove('para-flash'); }, 1600);
         }
 
         // Resolve a paragraph index (counted by paragraph_blocks() in

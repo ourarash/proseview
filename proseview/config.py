@@ -224,99 +224,25 @@ def _coerce_repo_tab(v: Any) -> RepoTabConfig:
     return RepoTabConfig(folders=folders, preview_max_bytes=preview_max_bytes)
 
 
-def _parse_scalar(v: str) -> Any:
-    v = v.strip()
-    if v == "" or v.lower() == "null" or v == "~":
-        return None
-    low = v.lower()
-    if low in {"true", "yes"}:
-        return True
-    if low in {"false", "no"}:
-        return False
-    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-        return v[1:-1]
-    try:
-        return int(v)
-    except ValueError:
-        pass
-    try:
-        return float(v)
-    except ValueError:
-        pass
-    return v
-
-
-def _parse_inline_list(v: str) -> list[Any]:
-    inner = v[1:-1].strip()
-    if not inner:
-        return []
-    parts, depth, buf = [], 0, ""
-    for ch in inner:
-        if ch in "[{":
-            depth += 1
-        elif ch in "]}":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append(buf)
-            buf = ""
-        else:
-            buf += ch
-    parts.append(buf)
-    return [_parse_scalar(p) for p in parts]
-
-
-def _parse_value(v: str) -> Any:
-    if v.startswith("[") and v.endswith("]"):
-        return _parse_inline_list(v)
-    return _parse_scalar(v)
-
-
 def _parse_yaml(text: str) -> dict[str, Any]:
-    """Parse the v1 ``.proseview.yaml`` shape: top-level scalars, inline arrays,
-    bulleted block lists, and a single level of nested mapping under ``editor``.
+    """Parse ``.proseview.yaml`` text using PyYAML's safe loader.
 
-    Not a general YAML parser. If more sophistication is needed later we can
-    swap in PyYAML behind the same signature.
+    Returns an empty dict for empty input. Raises :class:`ConfigError`
+    if the file isn't a top-level mapping or if PyYAML rejects the
+    syntax.
     """
-    root: dict[str, Any] = {}
-    mapping_stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-    pending_list: tuple[int, dict[str, Any], str] | None = None
+    import yaml
 
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        indent = len(line) - len(line.lstrip(" "))
-        content = line.lstrip()
-
-        while len(mapping_stack) > 1 and mapping_stack[-1][0] >= indent:
-            mapping_stack.pop()
-        if pending_list and pending_list[0] >= indent and not content.startswith("- "):
-            pending_list = None
-
-        if content.startswith("- "):
-            if not pending_list:
-                raise ConfigError(
-                    f"unexpected list item at top level: {line!r}"
-                )
-            _, container, key = pending_list
-            if not isinstance(container.get(key), list):
-                container[key] = []
-            container[key].append(_parse_scalar(content[2:]))
-            continue
-
-        if ":" not in content:
-            raise ConfigError(f"unrecognized config line: {line!r}")
-        key, value = content.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-
-        parent_indent, parent = mapping_stack[-1]
-        if not value:
-            parent[key] = {}
-            mapping_stack.append((indent, parent[key]))
-            pending_list = (indent, parent, key)
-        else:
-            parent[key] = _parse_value(value)
-            pending_list = None
-    return root
+    if not text.strip():
+        return {}
+    try:
+        loaded = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"invalid YAML: {exc}") from exc
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        raise ConfigError(
+            f"top-level YAML must be a mapping, got {type(loaded).__name__}"
+        )
+    return loaded

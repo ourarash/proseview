@@ -41,12 +41,12 @@
             }
         })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" crossorigin="anonymous"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.css" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10/lib/addon-fit.min.js" crossorigin="anonymous"></script>
+    <script src="/vendor/chart.js"></script>
+    <script src="/vendor/chartjs-plugin-annotation.js"></script>
+    <script src="/vendor/marked.js"></script>
+    <link rel="stylesheet" href="/vendor/xterm.css">
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit.js"></script>
     <style id="proseview-app-css">
 {{ app_css | safe }}
     </style>
@@ -296,14 +296,19 @@
 {{ app_js | safe }}
     </script>
     <script type="module">
-        import { Schema } from 'https://esm.sh/prosemirror-model@1';
+        // ProseMirror modules are pulled from esm.sh at fixed versions
+        // so a major upstream release can't silently break the editor.
+        // Vendoring the ESM graph would require a build step (each
+        // package has transitive deps); pinning is the lightweight
+        // alternative.
+        import { Schema } from 'https://esm.sh/prosemirror-model@1.25.4';
         import { schema as mdSchema, MarkdownParser, MarkdownSerializer,
-                 defaultMarkdownParser, defaultMarkdownSerializer } from 'https://esm.sh/prosemirror-markdown@1';
-        import { EditorState, Plugin, PluginKey } from 'https://esm.sh/prosemirror-state@1';
-        import { EditorView, Decoration, DecorationSet } from 'https://esm.sh/prosemirror-view@1';
-        import { history, undo, redo } from 'https://esm.sh/prosemirror-history@1';
-        import { keymap } from 'https://esm.sh/prosemirror-keymap@1';
-        import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1';
+                 defaultMarkdownParser, defaultMarkdownSerializer } from 'https://esm.sh/prosemirror-markdown@1.13.4';
+        import { EditorState, Plugin, PluginKey } from 'https://esm.sh/prosemirror-state@1.4.4';
+        import { EditorView, Decoration, DecorationSet } from 'https://esm.sh/prosemirror-view@1.41.8';
+        import { history, undo, redo } from 'https://esm.sh/prosemirror-history@1.5.0';
+        import { keymap } from 'https://esm.sh/prosemirror-keymap@1.2.3';
+        import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1.7.1';
 
         // Enable HTML so block-level <!-- TODO/NOTE --> comments are emitted
         // as html_block tokens, which the parser rule in 40-prose-editor.js

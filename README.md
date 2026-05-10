@@ -94,6 +94,12 @@ status: draft
 where: A bar in the West Village
 when: Friday night, late
 pov: Nima
+characters: [Nima, Mira]
+goal: Nima needs to get the question on the table
+conflict: He's afraid she already has someone
+outcome: She agrees to dinner; he leaves rattled
+todos:
+  - Tighten the opening paragraph
 ---
 
 # Opening
@@ -101,8 +107,51 @@ pov: Nima
 The bar was loud and the music was bad...
 ```
 
-Status, location, POV, characters, and TODOs in the frontmatter all show
-up in the dashboard.
+Every field is optional. Proseview reads what's there and falls back
+gracefully on what isn't.
+
+### 📝 Frontmatter contract
+
+These are the keys proseview recognizes. Any other keys are passed
+through and ignored. Every field is optional.
+
+#### Identity
+
+- `title` (string) header of the scene viewer; defaults to a Title-Case
+  version of the filename stem.
+- `chapter` (string) "Chapter" column in the scene table and the
+  chapter rows of charts; defaults to the chapter folder name.
+- `status` (string) color-coded status badge. Conventional values:
+  `draft`, `revision`, `done`. Anything else renders as a generic chip;
+  missing means `unknown`.
+
+#### Scene context
+
+- `where` (string) "Where" row in the scene card. Also feeds the
+  **Setting Stickiness** chart (Words per Location).
+- `location` (string) synonym for `where` (older convention).
+- `when` (string) "When" row in the scene card. Free-form.
+- `pov` (string) "POV" row in the scene card. Free-form.
+- `characters` (list of strings) "Characters" row in the scene card;
+  each name is clickable to open the bio if
+  `<characters_path>/<name>.md` exists. Also feeds the **Character
+  Presence** and **Co-occurrence** charts.
+
+#### Arc
+
+- `goal` (string) "Goal" row in the arc panel.
+- `conflict` (string) "Conflict" row in the arc panel.
+- `outcome` (string) "Outcome" row in the arc panel.
+
+#### Tasks
+
+- `todos` (list of strings) each entry shows up as a frontmatter-level
+  TODO in the Tasks panel. Inline `<!-- TODO: ... -->` comments inside
+  the prose are picked up too and get a line anchor.
+
+A scene with no frontmatter still renders, just with `Unknown` /
+`Not defined` placeholders in the scene card and the file's stem as
+its title.
 
 ## ⚙️ Configuration
 

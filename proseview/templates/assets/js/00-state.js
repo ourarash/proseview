@@ -39,6 +39,7 @@ let currentTab = 'overview';
         const MODAL_FONT_SIZE_MIN = 12;
         const MODAL_FONT_SIZE_MAX = 36;
         const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';
+        const HIGHLIGHTS_STORAGE_KEY = 'proseview-highlights';
         const FONT_ORDER = ['reader', 'literary', 'inter', 'georgia', 'baskerville', 'sans', 'mono'];
         const FONT_LABELS = { reader: 'Reader', literary: 'Literary', inter: 'Inter', georgia: 'Georgia', baskerville: 'Baskerville', sans: 'Sans', mono: 'Mono' };
         const chartRefs = {};

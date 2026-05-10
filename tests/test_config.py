@@ -36,22 +36,26 @@ def test_defaults_when_file_missing(tmp_path: Path):
 
 
 def test_roundtrip_full_config(tmp_path: Path):
+    import textwrap
+
     (tmp_path / ".proseview.yaml").write_text(
-        """
-        manuscript_path: book/
-        target_words: 90000
-        daily_target: 750
-        mattr_band: [0.70, 0.80]
-        mtld_band: [100, 140]
-        chapter_pattern: "part*"
-        characters:
-          - Alpha
-          - Bravo
-        locations:
-          - Riverfront
-        editor:
-          scheme: cursor
-        """.strip(),
+        textwrap.dedent(
+            """\
+            manuscript_path: book/
+            target_words: 90000
+            daily_target: 750
+            mattr_band: [0.70, 0.80]
+            mtld_band: [100, 140]
+            chapter_pattern: "part*"
+            characters:
+              - Alpha
+              - Bravo
+            locations:
+              - Riverfront
+            editor:
+              scheme: cursor
+            """
+        ),
         encoding="utf-8",
     )
     cfg = Config.load(tmp_path)

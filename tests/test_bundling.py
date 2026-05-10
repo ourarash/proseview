@@ -214,6 +214,54 @@ def test_config_defaults_match_legacy_layout():
     assert cfg.skills_path == "skills"
 
 
+def test_vendor_directory_ships_pinned_assets():
+    """The dashboard loads chart.js / marked / xterm from /vendor/ so
+    it works offline and can't break on a jsDelivr major bump. The
+    files must be present in the package.
+    """
+    vendor = REPO_ROOT / "proseview" / "templates" / "vendor"
+    assert vendor.is_dir()
+    expected = {
+        "chart.js", "chartjs-plugin-annotation.js", "marked.js",
+        "xterm.css", "xterm.js", "xterm-addon-fit.js",
+    }
+    present = {p.name for p in vendor.iterdir() if p.is_file()}
+    missing = expected - present
+    assert not missing, f"vendor directory missing files: {missing}"
+
+
+def test_template_loads_vendored_assets_from_local_paths():
+    """No more jsDelivr URLs in the rendered HTML for the non-ESM
+    deps; they all come from /vendor/.
+    """
+    html = build_dashboard(FIXTURE, Config.load(FIXTURE))
+    # All vendored assets are loaded relative to /vendor/.
+    for filename in ("chart.js", "marked.js", "xterm.css", "xterm.js",
+                     "xterm-addon-fit.js", "chartjs-plugin-annotation.js"):
+        assert "/vendor/" + filename in html, f"vendor path missing: {filename}"
+    assert "cdn.jsdelivr.net" not in html, \
+        "jsDelivr URLs should be vendored locally"
+
+
+def test_prosemirror_imports_pin_specific_versions():
+    """ESM imports for ProseMirror must specify a non-floating version
+    so a major bump on esm.sh can't break the editor.
+    """
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    pm_packages = [
+        "prosemirror-model", "prosemirror-markdown", "prosemirror-state",
+        "prosemirror-view", "prosemirror-history", "prosemirror-keymap",
+        "prosemirror-commands",
+    ]
+    for pkg in pm_packages:
+        # Match `https://esm.sh/<pkg>@<major>.<minor>.<patch>` (no
+        # bare `@1` style).
+        assert re.search(
+            r"https://esm\.sh/" + re.escape(pkg) + r"@\d+\.\d+\.\d+",
+            template,
+        ), f"{pkg} must be pinned to a full version"
+
+
 def test_data_json_contract_round_trips_through_json():
     """Whatever ``build_scene_data`` returns must be JSON-serializable as-is,
     since the server hands it straight to ``json.dumps``.

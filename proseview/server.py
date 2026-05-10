@@ -489,6 +489,51 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # Static MIME map for the small set of vendored asset extensions.
+    _VENDOR_MIME: dict[str, str] = {
+        ".js": "application/javascript; charset=utf-8",
+        ".mjs": "application/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".map": "application/json; charset=utf-8",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+    }
+
+    def _handle_vendor(self) -> None:
+        """Serve files under ``proseview/templates/vendor/`` at ``/vendor/*``.
+
+        Lets the dashboard load chart.js, marked, xterm, etc. from the
+        same origin instead of jsDelivr, so the page works offline and
+        major upstream bumps can't break the dashboard mid-session.
+        """
+        rel = urlparse(self.path).path[len("/vendor/"):]
+        if not rel or "/" in rel or ".." in rel:
+            self.send_response(404)
+            self.end_headers()
+            return
+        vendor_root = (TEMPLATE_DIR / "vendor").resolve()
+        target = (vendor_root / rel).resolve()
+        if not target.is_relative_to(vendor_root) or not target.is_file():
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            data = target.read_bytes()
+        except OSError:
+            self.send_response(500)
+            self.end_headers()
+            return
+        ext = target.suffix.lower()
+        mime = self._VENDOR_MIME.get(ext, "application/octet-stream")
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        # Vendored bytes are immutable per file (filename includes
+        # version semantics or is generic; reload busts via path).
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle_repo_file(self) -> None:
         """Return a fresh single-file node so the client can refresh a preview
         without reloading the whole page (which would tear down terminal
@@ -637,6 +682,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(css)))
             self.end_headers()
             self.wfile.write(css)
+            return
+        if self.path.startswith("/vendor/"):
+            self._handle_vendor()
             return
         if self.path not in ("/", "/index.html"):
             self.send_response(404)

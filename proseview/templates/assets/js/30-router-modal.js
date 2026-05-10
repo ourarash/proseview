@@ -92,10 +92,39 @@
             return lineVal > 1 ? base + ':' + lineVal : base;
         }
 
+        // Highlight toggles persist across scenes and across reloads.
+        // The user's pick of "show passive voice" is a global preference,
+        // not a per-scene state, so resetting on every open felt fiddly.
+        function _loadHighlightPrefs() {
+            var defaults = {};
+            PASS_ORDER.forEach(function(p) { defaults[p] = false; });
+            try {
+                var raw = localStorage.getItem(HIGHLIGHTS_STORAGE_KEY);
+                if (!raw) return defaults;
+                var saved = JSON.parse(raw);
+                if (!saved || typeof saved !== 'object') return defaults;
+                PASS_ORDER.forEach(function(p) {
+                    if (typeof saved[p] === 'boolean') defaults[p] = saved[p];
+                });
+            } catch (err) {
+                // Ignore storage / JSON errors and fall back to defaults.
+            }
+            return defaults;
+        }
+
+        function _saveHighlightPrefs() {
+            try {
+                localStorage.setItem(HIGHLIGHTS_STORAGE_KEY, JSON.stringify(hls));
+            } catch (err) {
+                // localStorage is full / disabled; the current-session
+                // toggles still work, just not across reloads.
+            }
+        }
+
         function openSceneModal(p) {
             saveActiveScrollPosition();
             curIdx = paths.indexOf(p);
-            Object.keys(hls).forEach(k => hls[k] = false);
+            hls = _loadHighlightPrefs();
             updateModal();
             document.documentElement.dataset.view = 'scene';
             routeToHash('/scene/' + encodeURIComponent(p), true);
@@ -187,10 +216,19 @@
             document.querySelector('.modal-content').scrollTop = 0;
         }
 
-        function addTag(a, id, txt) { const t = document.createElement('div'); t.className = 'alert-tag'; t.id = 'tag-'+id; t.innerText = txt; t.onclick = () => toggleHighlight(id); a.appendChild(t); }
+        function addTag(a, id, txt) {
+            const t = document.createElement('div');
+            t.className = 'alert-tag';
+            t.id = 'tag-' + id;
+            t.innerText = txt;
+            if (hls[id]) t.classList.add('alert-tag-active');
+            t.onclick = () => toggleHighlight(id);
+            a.appendChild(t);
+        }
         function toggleHighlight(id) {
             hls[id] = !hls[id];
             document.getElementById('tag-'+id).classList.toggle('alert-tag-active', hls[id]);
+            _saveHighlightPrefs();
             syncAllBtn();
             if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
         }
@@ -198,6 +236,7 @@
         function toggleAllHighlights() {
             const anyOn = PASS_ORDER.some(k => hls[k]);
             PASS_ORDER.forEach(k => { hls[k] = !anyOn; const el = document.getElementById('tag-'+k); if (el) el.classList.toggle('alert-tag-active', hls[k]); });
+            _saveHighlightPrefs();
             syncAllBtn();
             if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
         }

@@ -21,6 +21,17 @@
 
         function writeScrollTop(container, top) {
             if (!container) return;
+            // Use 'instant' behavior so route restoration bypasses
+            // scroll-behavior:smooth on .modal-content. Without this,
+            // a refresh visibly animates from 0 to the saved position.
+            if (typeof container.scrollTo === 'function') {
+                try {
+                    container.scrollTo({ top: top, left: 0, behavior: 'instant' });
+                    return;
+                } catch (err) {
+                    // 'instant' rejected by older browsers; fall through.
+                }
+            }
             if (container === window) window.scrollTo(0, top);
             else container.scrollTop = top;
         }

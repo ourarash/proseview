@@ -223,3 +223,58 @@ def test_data_json_contract_round_trips_through_json():
     data = build_scene_data(scenes, FIXTURE, cfg)
     # If this raises, the dict has non-JSON values that the server cannot send.
     json.dumps(data)
+
+
+# ── Scroll restoration: refresh must not animate from top ────────────────────
+
+def test_write_scroll_top_uses_instant_behavior():
+    """``writeScrollTop`` is called from route restoration. CSS sets
+    ``scroll-behavior: smooth`` on .modal-content for in-page jumps; the
+    restoration path must override it with ``behavior: 'instant'`` so a
+    page refresh does not visibly animate from the top to the saved
+    position.
+    """
+    bundle = _load_app_js()
+    body = re.search(
+        r"function writeScrollTop\([^)]*\)\s*\{(.+?)\n        \}",
+        bundle, re.DOTALL,
+    )
+    assert body, "writeScrollTop function not found"
+    fn = body.group(1)
+    assert "behavior: 'instant'" in fn, \
+        "writeScrollTop must request instant scrolling to bypass smooth CSS"
+
+
+# ── Annotation rendering: HTML comments become marker nodes ──────────────────
+
+def test_template_enables_html_in_markdown_tokenizer():
+    """``<!-- TODO/NOTE -->`` blocks reach the annotation parser rule only
+    if markdown-it's html option is on. The default tokenizer is loaded
+    with html:false; the bootstrap script must flip it.
+    """
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    assert "defaultMarkdownParser.tokenizer.set({ html: true })" in template, \
+        "Template must enable html on the markdown-it tokenizer so html_block tokens are emitted"
+
+
+def test_template_renders_annotations_as_icon_markers():
+    """The annotation node's toDOM emits an icon + text marker, not a
+    raw text dump of the comment.
+    """
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    assert "pm-annotation-icon" in template
+    assert "pm-annotation-text" in template
+    assert "📝" in template, "TODO marker should use the pencil glyph"
+    assert "📌" in template, "NOTE marker should use the pin glyph"
+    # The toDOM should branch on TODO vs NOTE so the right icon/colour fires.
+    assert "/^TODO\\s*:" in template
+    assert "/^NOTE(?:\\[(\\w+)\\])?" in template
+
+
+def test_pm_annotation_styling_renders_as_compact_marker():
+    css = APP_CSS.read_text(encoding="utf-8")
+    assert ".pm-annotation {" in css
+    assert ".pm-annotation-icon" in css
+    assert ".pm-annotation-text" in css
+    # Different visual treatment for TODOs (pending action) vs NOTEs.
+    assert ".pm-annotation-todo" in css

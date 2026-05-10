@@ -305,15 +305,43 @@
         import { keymap } from 'https://esm.sh/prosemirror-keymap@1';
         import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1';
 
+        // Enable HTML so block-level <!-- TODO/NOTE --> comments are emitted
+        // as html_block tokens, which the parser rule in 40-prose-editor.js
+        // maps to annotation nodes. The default tokenizer has html:false,
+        // which would otherwise pass these through as plain text and the
+        // user would see the raw <!-- ... --> in the prose.
+        defaultMarkdownParser.tokenizer.set({ html: true });
+
         const annotationSpec = {
             attrs: { raw: { default: '' } },
             inline: false, group: 'block',
             atom: true, selectable: false,
             parseDOM: [],
             toDOM(node) {
-                const preview = node.attrs.raw
-                    .replace(/^<!--\s*/, '').replace(/\s*-->$/, '').slice(0, 60);
-                return ['div', { class: 'pm-annotation', contenteditable: 'false' }, preview];
+                const raw = String(node.attrs.raw || '');
+                const inner = raw.replace(/^<!--\s*/, '').replace(/\s*-->$/, '').trim();
+                const todoMatch = /^TODO\s*:\s*(.*)$/i.exec(inner);
+                const noteMatch = /^NOTE(?:\[(\w+)\])?\s*:\s*(.*)$/i.exec(inner);
+                let kind = 'note';
+                let tag = 'note';
+                let body = inner;
+                if (todoMatch) {
+                    kind = 'todo';
+                    tag = 'todo';
+                    body = todoMatch[1];
+                } else if (noteMatch) {
+                    kind = 'note';
+                    tag = (noteMatch[1] || 'note').toLowerCase();
+                    body = noteMatch[2];
+                }
+                const icon = kind === 'todo' ? '📝' : '📌';
+                return ['div', {
+                    class: 'pm-annotation pm-annotation-' + kind,
+                    contenteditable: 'false',
+                    'data-tag': tag,
+                    title: body,
+                }, ['span', { class: 'pm-annotation-icon' }, icon],
+                   ['span', { class: 'pm-annotation-text' }, body]];
             }
         };
 

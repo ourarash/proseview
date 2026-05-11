@@ -1,9 +1,8 @@
 """Filesystem polling for ``proseview --watch``.
 
-The watcher polls the content roots called out in the implementation plan:
-``manuscript/``, ``plans/``, ``continuity/``, ``outline/``,
-``story-bible/``, plus ``.proseview.yaml``. It compares recursive path
-snapshots and invokes a callback after a short debounce window.
+The watcher polls the visible repo tree, excluding VCS metadata and common
+cache/build output. It compares recursive path snapshots and invokes a
+callback after a short debounce window.
 
 Example:
     >>> from pathlib import Path
@@ -22,17 +21,54 @@ from .config import Config
 
 DEFAULT_INTERVAL = 2.0
 DEFAULT_DEBOUNCE = 0.5
-_EXTRA_WATCH_DIRS: tuple[str, ...] = ("plans", "continuity", "outline", "story-bible")
 _CONFIG_KEY = ".proseview.yaml"
+_IGNORED_DIR_NAMES: frozenset[str] = frozenset({
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    ".proseview",
+    "__pycache__",
+    "dist",
+    "build",
+    "node_modules",
+})
 
 Snapshot = dict[str, tuple[str, int | None, int | None]]
 
 
-def _iter_watched_roots(root: Path, cfg: Config) -> tuple[Path, ...]:
-    """Return content directories that should trigger a refresh."""
-    dirs = [root / cfg.manuscript_subdir]
-    dirs.extend(root / name for name in _EXTRA_WATCH_DIRS)
-    return tuple(dirs)
+def _is_ignored(path: Path, root: Path) -> bool:
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return True
+    return any(part in _IGNORED_DIR_NAMES for part in rel.parts)
+
+
+def _iter_visible_paths(root: Path) -> tuple[Path, ...]:
+    """Return repo paths while pruning ignored directories before descent."""
+    result: list[Path] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            children = sorted(current.iterdir(), key=lambda p: p.as_posix())
+        except OSError:
+            continue
+        for child in children:
+            if _is_ignored(child, root):
+                continue
+            result.append(child)
+            try:
+                is_dir = child.is_dir()
+            except OSError:
+                continue
+            if is_dir and not child.is_symlink():
+                stack.append(child)
+    return tuple(result)
 
 
 def snapshot_paths(root: Path, cfg: Config) -> Snapshot:
@@ -52,23 +88,15 @@ def snapshot_paths(root: Path, cfg: Config) -> Snapshot:
     else:
         snapshot[_CONFIG_KEY] = ("missing", None, None)
 
-    for watched_root in _iter_watched_roots(root, cfg):
-        rel_root = watched_root.relative_to(root).as_posix()
-        if watched_root.exists() and watched_root.is_dir():
-            root_stat = watched_root.stat()
-            snapshot[rel_root] = ("dir", root_stat.st_mtime_ns, None)
-        else:
-            snapshot[rel_root] = ("missing", None, None)
+    for path in _iter_visible_paths(root):
+        try:
+            stat = path.stat()
+        except OSError:
             continue
-        for path in sorted(watched_root.rglob("*")):
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            rel = path.relative_to(root).as_posix()
-            kind = "dir" if path.is_dir() else "file"
-            size = None if path.is_dir() else stat.st_size
-            snapshot[rel] = (kind, stat.st_mtime_ns, size)
+        rel = path.relative_to(root).as_posix()
+        kind = "dir" if path.is_dir() else "file"
+        size = None if path.is_dir() else stat.st_size
+        snapshot[rel] = (kind, stat.st_mtime_ns, size)
     return snapshot
 
 

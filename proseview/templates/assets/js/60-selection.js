@@ -488,7 +488,14 @@
             if (indicator) { indicator.hidden = !visible; }
         }
 
-        function reloadOrDefer() {
+        function pathListContains(pathsList, path) {
+            if (!pathsList || !pathsList.length || !path) return true;
+            return pathsList.some(function(changed) {
+                return changed === path || changed.endsWith('/' + path);
+            });
+        }
+
+        function reloadOrDefer(changedPaths) {
             // Always do a partial refresh instead of location.reload() —
             // a full reload jolts the viewport (jump to top, then
             // scroll-restore back) and tears down the live editor. This
@@ -496,7 +503,7 @@
             // refreshContent() is a no-op for the open modal while
             // _pmEditMode is true so the editor stays mounted.
             if (_pendingSelfReloads > 0) _pendingSelfReloads--;
-            refreshContent();
+            refreshContent(changedPaths || null);
         }
 
         function scheduleContentRefresh(delay) {
@@ -517,7 +524,19 @@
             }, delay);
         }
 
-        function refreshContent() {
+        function refreshContent(changedPaths) {
+            var view = document.documentElement.dataset.view || '';
+            if (view === 'file') {
+                var titleEl = document.getElementById('filePreviewTitle');
+                var filePath = titleEl ? titleEl.textContent.trim() : '';
+                if (pathListContains(changedPaths, filePath) && typeof refreshFilePreview === 'function') {
+                    refreshFilePreview({ silent: true, changedPaths: changedPaths || null });
+                }
+                return;
+            }
+            if (view !== 'scene' || curIdx < 0 || _pmEditMode) return;
+            var scenePath = paths[curIdx];
+            if (!pathListContains(changedPaths, scenePath)) return;
             if (_refreshInFlight) {
                 _refreshQueued = true;
                 _pendingReload = true;
@@ -530,20 +549,15 @@
             }
             _refreshInFlight = true;
             var refreshSucceeded = false;
-            fetch('/data.json').then(function(r) {
+            fetch('/scene-data?path=' + encodeURIComponent(scenePath), { cache: 'no-store' }).then(function(r) {
                 if (!r.ok) throw new Error('Refresh failed: ' + r.status);
                 return r.json();
             }).then(function(data) {
-                if (data.contents) contents = data.contents;
-                if (data.meta) meta = data.meta;
-                if (data.highlightsByPath) highlightsByPath = data.highlightsByPath;
+                if (data.contents && data.contents[scenePath] !== undefined) contents[scenePath] = data.contents[scenePath];
+                if (data.meta && data.meta[scenePath]) meta[scenePath] = data.meta[scenePath];
+                if (data.highlightsByPath && data.highlightsByPath[scenePath]) highlightsByPath[scenePath] = data.highlightsByPath[scenePath];
                 refreshSucceeded = true;
-                // re-render scene view if open, but never while we're in
-                // edit mode -- that would tear down the live ProseMirror
-                // view and drop the user's cursor mid-edit.
-                if (document.documentElement.dataset.view === 'scene' && curIdx >= 0 && !_pmEditMode) {
-                    updateModal();
-                }
+                updateModal();
             }).catch(function() {
                 _pendingReload = true;
                 setPendingIndicator(true);
@@ -595,8 +609,13 @@
             const es = new EventSource('/events');
             es.onmessage = function(e) {
                 if (!e.data) return;
-                if (e.data === 'reload' || e.data === 'reload:content') {
-                    reloadOrDefer();
+                var payload = null;
+                if (e.data.charAt(0) === '{') {
+                    try { payload = JSON.parse(e.data); } catch(err) { payload = null; }
+                }
+                if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
+                    e.data === 'reload' || e.data === 'reload:content') {
+                    reloadOrDefer(payload && Array.isArray(payload.paths) ? payload.paths : null);
                 } else if (e.data === 'reload:css') {
                     hotSwapCss();
                 } else if (e.data === 'reload:html' || e.data === 'reload:js') {
@@ -608,4 +627,3 @@
                 setTimeout(connectSSE, 3000);
             };
         })();
-

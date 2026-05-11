@@ -77,6 +77,10 @@
         </nav>
         <div class="toolbar-actions">
             <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser">&#9776; Files</button>
+            <div id="searchMenu" class="search-menu">
+                <input id="searchBox" class="search-box" type="text" placeholder="Search scenes, todos, notes… ⌘K" autocomplete="off" spellcheck="false" aria-label="Search the repo">
+                <div id="searchResults" class="search-results" role="listbox" aria-label="Search results" hidden></div>
+            </div>
             <div id="fontMenu" class="font-menu">
                 <button id="fontToggle" class="theme-toggle" type="button" onclick="toggleFontMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick reading font">
                     <span class="theme-toggle-kicker">Font</span>

@@ -13,9 +13,12 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import textwrap
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from .server import DEFAULT_PORT, serve
 
@@ -104,6 +107,58 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite an existing .proseview.yaml.",
     )
 
+    propose_p = sub.add_parser(
+        "propose", help="Create an AI proposal in a running proseview server.",
+        description="Create an AI proposal in a running proseview server.",
+    )
+    propose_p.add_argument("--root", type=Path, default=Path.cwd())
+    propose_p.add_argument("--file", required=True, help="Repo-relative manuscript file.")
+    propose_p.add_argument("--quote", default="", help="Exact passage to highlight.")
+    propose_p.add_argument("--start", type=int, default=None, help="Optional start offset in scene text.")
+    propose_p.add_argument("--end", type=int, default=None, help="Optional end offset in scene text.")
+    propose_p.add_argument("--start-line", type=int, default=None, help="Optional raw Markdown start line.")
+    propose_p.add_argument("--start-col", type=int, default=None, help="Optional raw Markdown start column.")
+    propose_p.add_argument("--end-line", type=int, default=None, help="Optional raw Markdown end line.")
+    propose_p.add_argument("--end-col", type=int, default=None, help="Optional raw Markdown end column.")
+    propose_p.add_argument("--message", required=True, help="Issue summary for the proposal.")
+    propose_p.add_argument(
+        "--option", action="append", required=True,
+        help="Replacement option. Pass multiple times for multiple choices.",
+    )
+    propose_p.add_argument("--client-id", default=None, help="Optional Proseview browser client id.")
+
+    proposal_p = sub.add_parser(
+        "proposal", help="Focus, update, apply, or skip an existing AI proposal.",
+        description="Focus, update, apply, or skip an existing AI proposal.",
+    )
+    proposal_sub = proposal_p.add_subparsers(dest="proposal_cmd", required=True)
+    status_p = proposal_sub.add_parser("status")
+    status_p.add_argument("id", nargs="?")
+    status_p.add_argument("--root", type=Path, default=Path.cwd())
+    for name in ("focus", "skip"):
+        p = proposal_sub.add_parser(name)
+        p.add_argument("id")
+        p.add_argument("--root", type=Path, default=Path.cwd())
+        p.add_argument("--client-id", default=None)
+    apply_p = proposal_sub.add_parser("apply")
+    apply_p.add_argument("id")
+    apply_p.add_argument("--root", type=Path, default=Path.cwd())
+    apply_p.add_argument("--option", type=int, default=1)
+    apply_p.add_argument("--client-id", default=None)
+    update_p = proposal_sub.add_parser("update")
+    update_p.add_argument("id")
+    update_p.add_argument("--root", type=Path, default=Path.cwd())
+    update_p.add_argument("--quote", default=None)
+    update_p.add_argument("--start", type=int, default=None)
+    update_p.add_argument("--end", type=int, default=None)
+    update_p.add_argument("--start-line", type=int, default=None)
+    update_p.add_argument("--start-col", type=int, default=None)
+    update_p.add_argument("--end-line", type=int, default=None)
+    update_p.add_argument("--end-col", type=int, default=None)
+    update_p.add_argument("--message", default=None)
+    update_p.add_argument("--option", action="append")
+    update_p.add_argument("--client-id", default=None)
+
     # Top-level flags so ``proseview --root X`` (no subcommand) keeps
     # working as a synonym for ``proseview serve --root X``.
     _add_serve_args(parser)
@@ -139,6 +194,126 @@ def init_repo(root: Path, *, force: bool = False) -> int:
     return 0
 
 
+def _find_runtime_file(root: Path) -> Path | None:
+    cur = root.resolve()
+    for candidate in [cur, *cur.parents]:
+        path = candidate / ".proseview" / "server.json"
+        if path.exists():
+            return path
+    return None
+
+
+def _server_url(root: Path) -> str:
+    runtime = _find_runtime_file(root)
+    if not runtime:
+        raise SystemExit("No running proseview server found. Start `proseview serve` first.")
+    try:
+        data = json.loads(runtime.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise SystemExit(f"Could not read {runtime}: {exc}") from exc
+    url = str(data.get("url") or "").rstrip("/")
+    if not url:
+        raise SystemExit(f"{runtime} does not contain a server url")
+    return url
+
+
+def _request_json(root: Path, method: str, path: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8") if method != "GET" else None
+    req = Request(
+        _server_url(root) + path,
+        data=body,
+        method=method,
+        headers={"Content-Type": "application/json"} if body is not None else {},
+    )
+    try:
+        with urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Proseview server returned {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise SystemExit(f"Could not reach proseview server: {exc.reason}") from exc
+
+
+def create_proposal(args: argparse.Namespace) -> int:
+    payload = {
+        "file": args.file,
+        "quote": args.quote,
+        "message": args.message,
+        "options": args.option,
+        "client_id": args.client_id,
+        "created_by": "codex",
+    }
+    if args.start is not None or args.end is not None:
+        if args.start is None or args.end is None:
+            raise SystemExit("--start and --end must be provided together")
+        payload["range"] = {"start": args.start, "end": args.end}
+    line_col = [args.start_line, args.start_col, args.end_line, args.end_col]
+    if any(v is not None for v in line_col):
+        if any(v is None for v in line_col):
+            raise SystemExit("--start-line, --start-col, --end-line, and --end-col must be provided together")
+        payload["range"] = {
+            "start_line": args.start_line,
+            "start_col": args.start_col,
+            "end_line": args.end_line,
+            "end_col": args.end_col,
+        }
+    data = _request_json(args.root, "POST", "/ai/proposals", payload)
+    if not data.get("ok"):
+        sys.stderr.write(f"proposal failed: {data.get('error', 'unknown error')}\n")
+        return 1
+    prop = data["proposal"]
+    sys.stdout.write(f"proposal {prop['id']} created for {prop['file']}\n")
+    return 0
+
+
+def proposal_action(args: argparse.Namespace) -> int:
+    cmd = args.proposal_cmd
+    payload: dict[str, object] = {}
+    if cmd == "status":
+        path = f"/ai/proposals/{args.id}" if args.id else "/ai/proposals"
+        data = _request_json(args.root, "GET", path, {})
+        if not data.get("ok"):
+            sys.stderr.write(f"proposal status failed: {data.get('error', 'unknown error')}\n")
+            return 1
+        sys.stdout.write(json.dumps(data, indent=2) + "\n")
+        return 0
+    if getattr(args, "client_id", None):
+        payload["client_id"] = args.client_id
+    if cmd == "update":
+        if args.quote is not None:
+            payload["quote"] = args.quote
+        if args.start is not None or args.end is not None:
+            if args.start is None or args.end is None:
+                raise SystemExit("--start and --end must be provided together")
+            payload["range"] = {"start": args.start, "end": args.end}
+        line_col = [args.start_line, args.start_col, args.end_line, args.end_col]
+        if any(v is not None for v in line_col):
+            if any(v is None for v in line_col):
+                raise SystemExit("--start-line, --start-col, --end-line, and --end-col must be provided together")
+            payload["range"] = {
+                "start_line": args.start_line,
+                "start_col": args.start_col,
+                "end_line": args.end_line,
+                "end_col": args.end_col,
+            }
+        if args.message is not None:
+            payload["message"] = args.message
+        if args.option:
+            payload["options"] = args.option
+        data = _request_json(args.root, "PATCH", f"/ai/proposals/{args.id}", payload)
+    else:
+        if cmd == "apply":
+            payload["option_index"] = args.option
+        data = _request_json(args.root, "POST", f"/ai/proposals/{args.id}/{cmd}", payload)
+    if not data.get("ok"):
+        sys.stderr.write(f"proposal {cmd} failed: {data.get('error', 'unknown error')}\n")
+        return 1
+    prop = data["proposal"]
+    sys.stdout.write(f"proposal {prop['id']} {cmd} queued\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -146,6 +321,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "init":
         return init_repo(args.root, force=args.force)
+    if args.cmd == "propose":
+        return create_proposal(args)
+    if args.cmd == "proposal":
+        return proposal_action(args)
 
     # Default: serve.
     if args.interval <= 0:

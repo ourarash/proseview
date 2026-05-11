@@ -13,6 +13,7 @@ import fcntl
 import json
 import os
 import queue
+import re
 import select
 import signal
 import struct
@@ -24,7 +25,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from time import perf_counter
-from typing import Callable
+from typing import Callable, Any
 
 try:
     import pty
@@ -43,6 +44,263 @@ from urllib.parse import urlparse, parse_qs
 import time as _time
 
 DEFAULT_PORT = 7842
+
+
+# ── AI proposal bridge ───────────────────────────────────────────────────────
+
+_ai_proposals: dict[str, dict[str, Any]] = {}
+_ai_clients: dict[str, dict[str, Any]] = {}
+_ai_lock = threading.Lock()
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _runtime_file(root: Path) -> Path:
+    return root / ".proseview" / "server.json"
+
+
+def _write_runtime_file(root: Path, port: int) -> None:
+    path = _runtime_file(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "url": f"http://localhost:{port}",
+        "repo_root": str(root.resolve()),
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _remove_runtime_file(root: Path, port: int) -> None:
+    path = _runtime_file(root)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if data.get("url") != f"http://localhost:{port}":
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _normalize_ai_scene_file(repo_root: str, value: str) -> str:
+    rel = str(value or "").strip().replace("\\", "/")
+    if not rel:
+        raise ValueError("missing file")
+    if rel.startswith("/") or ".." in Path(rel).parts:
+        raise PermissionError("file must be a safe repo-relative manuscript path")
+    root = Path(repo_root).resolve()
+    cfg = Config.load(root)
+    manuscript = cfg.manuscript_subdir.rstrip("/")
+    if rel.startswith(manuscript + "/"):
+        scene_rel = rel[len(manuscript) + 1:]
+    else:
+        scene_rel = rel
+    target = (root / manuscript / scene_rel).resolve()
+    manuscript_root = (root / manuscript).resolve()
+    if not target.is_relative_to(manuscript_root):
+        raise PermissionError("file outside manuscript directory")
+    if not target.is_file():
+        raise FileNotFoundError(f"scene not found: {scene_rel}")
+    return scene_rel
+
+
+def _proposal_payload(prop: dict[str, Any], action: str) -> dict[str, Any]:
+    return {"type": "ai:proposal", "action": action, "proposal": prop}
+
+
+def _coerce_options(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("options must be a non-empty list")
+    options: list[dict[str, str]] = []
+    for i, item in enumerate(value, start=1):
+        if isinstance(item, str):
+            text = item.strip()
+            label = f"Option {i}"
+        elif isinstance(item, dict):
+            text = str(item.get("text", "")).strip()
+            label = str(item.get("label") or f"Option {i}").strip()
+        else:
+            raise ValueError("each option must be a string or object")
+        if not text:
+            raise ValueError("proposal options cannot be empty")
+        options.append({"label": label, "text": text})
+    return options
+
+
+def _proposal_editor_text(markdown: str) -> str:
+    text = _HTML_COMMENT_RE.sub("", markdown)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"(?<!\w)(\*\*|__)(.+?)\1(?!\w)", r"\2", text)
+    text = re.sub(r"(?<!\w)(\*|_)(.+?)\1(?!\w)", r"\2", text)
+    return text
+
+
+def _comment_spans(text: str) -> list[tuple[int, int]]:
+    return [(m.start(), m.end()) for m in _HTML_COMMENT_RE.finditer(text)]
+
+
+def _spans_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
+    return a_start < b_end and b_start < a_end
+
+
+def _reject_annotation_overlap(start: int, end: int, comment_spans: list[tuple[int, int]]) -> None:
+    for c_start, c_end in comment_spans:
+        if _spans_overlap(start, end, c_start, c_end):
+            raise ValueError("target crosses NOTE/TODO annotations; target visible prose only")
+
+
+def _editor_text_with_raw_map(markdown: str) -> tuple[str, list[int]]:
+    text: list[str] = []
+    raw_map: list[int] = []
+    comment_ranges = _comment_spans(markdown)
+    comment_idx = 0
+    i = 0
+    while i < len(markdown):
+        if comment_idx < len(comment_ranges) and i == comment_ranges[comment_idx][0]:
+            i = comment_ranges[comment_idx][1]
+            comment_idx += 1
+            continue
+        text.append(markdown[i])
+        raw_map.append(i)
+        i += 1
+    return _proposal_editor_text("".join(text)), raw_map
+
+
+def _normalized_text_map(text: str) -> tuple[str, list[int]]:
+    normalized: list[str] = []
+    offsets: list[int] = []
+    in_space = False
+    for i, ch in enumerate(text):
+        if ch.isspace():
+            if not in_space:
+                normalized.append(" ")
+                offsets.append(i)
+                in_space = True
+            continue
+        normalized.append(ch)
+        offsets.append(i)
+        in_space = False
+    start = 0
+    end = len(normalized)
+    while start < end and normalized[start].isspace():
+        start += 1
+    while end > start and normalized[end - 1].isspace():
+        end -= 1
+    return "".join(normalized[start:end]), offsets[start:end]
+
+
+def _extract_scene_text_with_offset(text: str) -> tuple[str, int]:
+    lines = text.splitlines(keepends=True)
+    start = 0
+    offset = 0
+    while start < len(lines) and not lines[start].strip():
+        offset += len(lines[start])
+        start += 1
+    if start < len(lines) and lines[start].lstrip().startswith("# "):
+        offset += len(lines[start])
+        start += 1
+    while start < len(lines) and not lines[start].strip():
+        offset += len(lines[start])
+        start += 1
+    return "".join(lines[start:]), offset
+
+
+def _resolve_quote_in_editor_text(editor_text: str, quote: str) -> tuple[int, int, str]:
+    normalized_editor, offset_map = _normalized_text_map(editor_text)
+    normalized_quote, _ = _normalized_text_map(_proposal_editor_text(quote))
+    if not normalized_quote:
+        raise ValueError("proposal requires quote or range")
+    start = normalized_editor.find(normalized_quote)
+    if start < 0:
+        raise ValueError("quote not found in scene after editor normalization")
+    if normalized_editor.find(normalized_quote, start + len(normalized_quote)) >= 0:
+        raise ValueError("quote is ambiguous; use a longer quote")
+    end = start + len(normalized_quote)
+    if not offset_map or end - 1 >= len(offset_map):
+        raise ValueError("quote could not be mapped to editor text")
+    from_pos = offset_map[start]
+    to_pos = offset_map[end - 1] + 1
+    return from_pos, to_pos, editor_text[from_pos:to_pos]
+
+
+def _line_col_to_offset(text: str, line: int, col: int) -> int:
+    if line < 1 or col < 1:
+        raise ValueError("line and column numbers are 1-based")
+    lines = text.splitlines(keepends=True)
+    if line > len(lines):
+        raise ValueError(f"line {line} is outside file")
+    line_text = lines[line - 1]
+    line_no_newline = line_text.rstrip("\r\n")
+    if col > len(line_no_newline) + 1:
+        raise ValueError(f"column {col} is outside line {line}")
+    return sum(len(x) for x in lines[:line - 1]) + col - 1
+
+
+def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]) -> dict[str, Any]:
+    root = Path(repo_root).resolve()
+    cfg = Config.load(root)
+    scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+    raw = scene_path.read_text(encoding="utf-8")
+    start = _line_col_to_offset(raw, int(loc["start_line"]), int(loc["start_col"]))
+    end = _line_col_to_offset(raw, int(loc["end_line"]), int(loc["end_col"]))
+    if end <= start:
+        raise ValueError("end line/column must be after start line/column")
+    _fm, body = split_frontmatter(raw)
+    scene_text, scene_offset = _extract_scene_text_with_offset(body)
+    body_start = raw.find(body)
+    if body_start < 0:
+        raise ValueError("could not locate scene body")
+    rel_start = start - body_start - scene_offset
+    rel_end = end - body_start - scene_offset
+    if rel_start < 0 or rel_end > len(scene_text):
+        raise ValueError("line/column range must target visible scene prose")
+    _reject_annotation_overlap(rel_start, rel_end, _comment_spans(scene_text))
+    target_markdown = scene_text[rel_start:rel_end]
+    resolved_quote = _proposal_editor_text(target_markdown).strip()
+    if not resolved_quote:
+        raise ValueError("line/column range has no visible prose")
+    editor_before = _proposal_editor_text(scene_text[:rel_start])
+    start_editor = len(editor_before)
+    return {
+        "range": {"start": start_editor, "end": start_editor + len(resolved_quote)},
+        "resolved_quote": resolved_quote,
+        "source_range": {
+            "start_line": int(loc["start_line"]),
+            "start_col": int(loc["start_col"]),
+            "end_line": int(loc["end_line"]),
+            "end_col": int(loc["end_col"]),
+        },
+    }
+
+
+def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: Any) -> dict[str, Any]:
+    if isinstance(range_value, dict) and {"start_line", "start_col", "end_line", "end_col"}.issubset(range_value):
+        return _resolve_line_col_target(repo_root, scene_rel, range_value)
+    if isinstance(range_value, dict):
+        start = int(range_value.get("start"))
+        end = int(range_value.get("end"))
+        if start < 0 or end <= start:
+            raise ValueError("range must have start >= 0 and end > start")
+        return {"range": {"start": start, "end": end}}
+
+    root = Path(repo_root).resolve()
+    cfg = Config.load(root)
+    scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+    raw = scene_path.read_text(encoding="utf-8")
+    _fm, body = split_frontmatter(raw)
+    if _HTML_COMMENT_RE.search(quote):
+        raise ValueError("quote includes NOTE/TODO annotations; target visible prose only")
+    scene_text = extract_scene_text(body)
+    editor_text, raw_map = _editor_text_with_raw_map(scene_text)
+    start, end, resolved_quote = _resolve_quote_in_editor_text(editor_text, quote)
+    if raw_map and start < len(raw_map) and end - 1 < len(raw_map):
+        _reject_annotation_overlap(raw_map[start], raw_map[end - 1] + 1, _comment_spans(scene_text))
+    return {
+        "range": {"start": start, "end": end},
+        "resolved_quote": resolved_quote,
+    }
 
 
 # ── Scene editor ─────────────────────────────────────────────────────────────
@@ -476,6 +734,7 @@ class _Handler(BaseHTTPRequestHandler):
     invalidate: Callable[[], None]
     subscribe: Callable[[], "queue.Queue[str]"]
     unsubscribe: Callable[["queue.Queue[str]"], None]
+    publish_event: Callable[[dict[str, Any]], None]
     repo_root: str
 
     def log_message(self, fmt: str, *args: object) -> None:
@@ -557,6 +816,93 @@ class _Handler(BaseHTTPRequestHandler):
             preview_max = cfg.repo_tab.preview_max_bytes
             node = _repo_file_node(target, root, preview_max)
             self._send_json({"ok": True, "node": node})
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 500)
+
+    def _handle_ai_client(self, body: dict[str, Any]) -> None:
+        client_id = str(body.get("client_id") or "").strip()
+        if not client_id:
+            self._send_json({"ok": False, "error": "missing client_id"}, 400)
+            return
+        with _ai_lock:
+            _ai_clients[client_id] = {
+                "client_id": client_id,
+                "active_scene": body.get("active_scene") or None,
+                "last_seen": datetime.now().isoformat(timespec="seconds"),
+            }
+        self._send_json({"ok": True, "client_id": client_id})
+
+    def _handle_ai_proposal_update(self, proposal_id: str, body: dict[str, Any]) -> None:
+        try:
+            with _ai_lock:
+                prop = _ai_proposals.get(proposal_id)
+                if not prop:
+                    self._send_json({"ok": False, "error": "proposal not found"}, 404)
+                    return
+                for key in ("client_id", "message", "quote", "status", "error"):
+                    if key in body:
+                        prop[key] = body[key]
+                if body.get("client_id"):
+                    prop.pop("needs_target", None)
+                if "range" in body:
+                    resolved = _resolve_ai_target(
+                        self.repo_root,
+                        str(prop["file"]),
+                        str(body.get("quote", prop.get("quote", ""))),
+                        body["range"],
+                    )
+                    prop.update(resolved)
+                    prop.pop("error", None)
+                elif "quote" in body:
+                    resolved = _resolve_ai_target(
+                        self.repo_root,
+                        str(prop["file"]),
+                        str(body["quote"]),
+                        None,
+                    )
+                    prop.update(resolved)
+                    prop.pop("error", None)
+                if "selected_option" in body:
+                    prop["selected_option"] = body["selected_option"]
+                if "options" in body:
+                    prop["options"] = _coerce_options(body["options"])
+                prop["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                event = _proposal_payload(dict(prop), "updated")
+            self.publish_event(event)
+            self._send_json({"ok": True, "proposal": event["proposal"]})
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 500)
+
+    def _handle_ai_proposal_action(self, proposal_id: str, action: str, body: dict[str, Any]) -> None:
+        try:
+            with _ai_lock:
+                prop = _ai_proposals.get(proposal_id)
+                if not prop:
+                    self._send_json({"ok": False, "error": "proposal not found"}, 404)
+                    return
+                if body.get("client_id"):
+                    prop["client_id"] = str(body["client_id"])
+                if action == "focus":
+                    prop["status"] = "focused"
+                elif action == "skip":
+                    prop["status"] = "skipped"
+                elif action == "apply":
+                    if prop.get("needs_target") and not prop.get("client_id"):
+                        self._send_json({"ok": False, "error": "proposal needs a target browser tab"}, 409)
+                        return
+                    option_index = int(body.get("option_index", body.get("option", 1))) - 1
+                    if option_index < 0 or option_index >= len(prop.get("options", [])):
+                        self._send_json({"ok": False, "error": "option index out of range"}, 400)
+                        return
+                    prop["selected_option"] = option_index
+                    prop["status"] = "apply_requested"
+                else:
+                    self._send_json({"ok": False, "error": "unknown proposal action"}, 400)
+                    return
+                prop["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                event = _proposal_payload(dict(prop), action)
+            self.publish_event(event)
+            self._send_json({"ok": True, "proposal": event["proposal"]})
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, 500)
 
@@ -644,6 +990,21 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+        if self.path == "/ai/proposals":
+            with _ai_lock:
+                proposals = [dict(p) for p in _ai_proposals.values()]
+            self._send_json({"ok": True, "proposals": proposals})
+            return
+        if self.path.startswith("/ai/proposals/"):
+            proposal_id = urlparse(self.path).path.rstrip("/").split("/")[-1]
+            with _ai_lock:
+                prop = _ai_proposals.get(proposal_id)
+                if not prop:
+                    self._send_json({"ok": False, "error": "proposal not found"}, 404)
+                    return
+                data = dict(prop)
+            self._send_json({"ok": True, "proposal": data})
             return
         if self.path.startswith("/scene-data"):
             try:
@@ -738,6 +1099,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html)
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except Exception as exc:
+            self._send_json({"ok": False, "error": f"Bad JSON: {exc}"}, 400)
+            return
+        path = urlparse(self.path).path
+        if path.startswith("/ai/proposals/"):
+            proposal_id = path.rstrip("/").split("/")[-1]
+            self._handle_ai_proposal_update(proposal_id, body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -745,7 +1121,61 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send_json({"ok": False, "error": f"Bad JSON: {exc}"}, 400)
             return
-        if self.path == "/insert-todo":
+        path = urlparse(self.path).path
+        if path in ("/ai/clients/register", "/ai/clients/heartbeat"):
+            self._handle_ai_client(body)
+        elif path == "/ai/proposals":
+            try:
+                scene_rel = _normalize_ai_scene_file(self.repo_root, body.get("file", ""))
+                prop_id = uuid.uuid4().hex[:10]
+                now = datetime.now().isoformat(timespec="seconds")
+                prop = {
+                    "id": prop_id,
+                    "client_id": body.get("client_id") or None,
+                    "file": scene_rel,
+                    "quote": str(body.get("quote") or ""),
+                    "range": body.get("range") or None,
+                    "message": str(body.get("message") or "").strip(),
+                    "options": _coerce_options(body.get("options")),
+                    "status": "created",
+                    "created_by": str(body.get("created_by") or "codex"),
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                if not prop["quote"] and not prop["range"]:
+                    self._send_json({"ok": False, "error": "proposal requires quote or range"}, 400)
+                    return
+                prop.update(_resolve_ai_target(self.repo_root, scene_rel, prop["quote"], prop["range"]))
+                with _ai_lock:
+                    if not prop["client_id"]:
+                        matching = [
+                            c for c in _ai_clients.values()
+                            if c.get("active_scene") == scene_rel
+                        ]
+                        if len(matching) == 1:
+                            prop["client_id"] = matching[0]["client_id"]
+                        elif len(matching) > 1:
+                            prop["needs_target"] = True
+                            prop["status"] = "needs_target"
+                        elif _ai_clients:
+                            latest = max(_ai_clients.values(), key=lambda c: c.get("last_seen", ""))
+                            prop["client_id"] = latest["client_id"]
+                    _ai_proposals[prop_id] = prop
+                    event = _proposal_payload(dict(prop), "created")
+                self.publish_event(event)
+                self._send_json({"ok": True, "proposal": prop})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+        elif path.startswith("/ai/proposals/"):
+            parts = path.strip("/").split("/")
+            if len(parts) == 3 and parts[0] == "ai" and parts[1] == "proposals":
+                self._handle_ai_proposal_update(parts[2], body)
+            elif len(parts) == 4 and parts[0] == "ai" and parts[1] == "proposals":
+                self._handle_ai_proposal_action(parts[2], parts[3], body)
+            else:
+                self.send_response(404)
+                self.end_headers()
+        elif self.path == "/insert-todo":
             try:
                 insert_todo(
                     body["abs_path"],
@@ -891,6 +1321,7 @@ def _make_handler(
     invalidate: Callable[[], None],
     subscribe: Callable[[], "queue.Queue[str]"],
     unsubscribe: Callable[["queue.Queue[str]"], None],
+    publish_event: Callable[[dict[str, Any]], None],
     repo_root: str,
 ) -> type:
     class BoundHandler(_Handler):
@@ -899,6 +1330,7 @@ def _make_handler(
     BoundHandler.invalidate = staticmethod(invalidate)  # type: ignore[method-assign]
     BoundHandler.subscribe = staticmethod(subscribe)  # type: ignore[method-assign]
     BoundHandler.unsubscribe = staticmethod(unsubscribe)  # type: ignore[method-assign]
+    BoundHandler.publish_event = staticmethod(publish_event)  # type: ignore[method-assign]
     BoundHandler.repo_root = repo_root  # type: ignore[method-assign]
     return BoundHandler
 
@@ -948,6 +1380,15 @@ def serve(
             msg = json.dumps({"type": "reload", "paths": list(changed_paths)})
         else:
             msg = "reload" if kind == "content" else f"reload:{kind}"
+        with _sse_lock:
+            for q in list(_sse_clients):
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    pass
+
+    def publish_event(payload: dict[str, Any]) -> None:
+        msg = json.dumps(payload)
         with _sse_lock:
             for q in list(_sse_clients):
                 try:
@@ -1030,7 +1471,14 @@ def serve(
     asset_watcher = threading.Thread(target=_watch_assets, daemon=True)
     asset_watcher.start()
 
-    handler_cls = _make_handler(get_html, invalidate, subscribe, unsubscribe, str(root.resolve()))
+    handler_cls = _make_handler(
+        get_html,
+        invalidate,
+        subscribe,
+        unsubscribe,
+        publish_event,
+        str(root.resolve()),
+    )
 
     class _Server(ThreadingHTTPServer):
         def handle_error(self, request: object, client_address: object) -> None:
@@ -1045,6 +1493,7 @@ def serve(
     url = f"http://localhost:{port}"
     print(f"proseview serving at {url}")
     print("Press Ctrl-C to stop.")
+    _write_runtime_file(root, port)
 
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
@@ -1055,3 +1504,4 @@ def serve(
         pass
     finally:
         httpd.shutdown()
+        _remove_runtime_file(root, port)

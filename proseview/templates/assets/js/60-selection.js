@@ -613,7 +613,9 @@
                 if (e.data.charAt(0) === '{') {
                     try { payload = JSON.parse(e.data); } catch(err) { payload = null; }
                 }
-                if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
+                if (payload && payload.type === 'ai:proposal' && typeof handleAiProposalEvent === 'function') {
+                    handleAiProposalEvent(payload);
+                } else if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
                     e.data === 'reload' || e.data === 'reload:content') {
                     reloadOrDefer(payload && Array.isArray(payload.paths) ? payload.paths : null);
                 } else if (e.data === 'reload:css') {

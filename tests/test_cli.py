@@ -72,6 +72,67 @@ def test_main_strips_serve_subcommand(tmp_path: Path, monkeypatch):
     assert captured == {"port": 8123}
 
 
+def test_parse_propose_command():
+    args = cli.parse_args([
+        "propose",
+        "--file", "manuscript/ch01/01-opening.md",
+        "--quote", "old line",
+        "--start", "5",
+        "--end", "13",
+        "--message", "Issue",
+        "--option", "New line A",
+        "--option", "New line B",
+    ])
+    assert args.cmd == "propose"
+    assert args.file == "manuscript/ch01/01-opening.md"
+    assert args.start == 5
+    assert args.end == 13
+    assert args.option == ["New line A", "New line B"]
+
+
+def test_parse_proposal_apply_command():
+    args = cli.parse_args(["proposal", "apply", "abc123", "--option", "2"])
+    assert args.cmd == "proposal"
+    assert args.proposal_cmd == "apply"
+    assert args.id == "abc123"
+    assert args.option == 2
+
+
+def test_parse_proposal_status_command():
+    args = cli.parse_args(["proposal", "status", "abc123"])
+    assert args.cmd == "proposal"
+    assert args.proposal_cmd == "status"
+    assert args.id == "abc123"
+
+
+def test_parse_proposal_update_accepts_offsets():
+    args = cli.parse_args([
+        "proposal", "update", "abc123",
+        "--start", "10",
+        "--end", "20",
+    ])
+    assert args.proposal_cmd == "update"
+    assert args.start == 10
+    assert args.end == 20
+
+
+def test_parse_propose_accepts_line_columns():
+    args = cli.parse_args([
+        "propose",
+        "--file", "manuscript/ch01/01-opening.md",
+        "--start-line", "7",
+        "--start-col", "1",
+        "--end-line", "8",
+        "--end-col", "12",
+        "--message", "Issue",
+        "--option", "Replacement",
+    ])
+    assert args.start_line == 7
+    assert args.start_col == 1
+    assert args.end_line == 8
+    assert args.end_col == 12
+
+
 def test_main_rejects_non_positive_interval(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cli, "serve", lambda *a, **k: None)
     with pytest.raises(SystemExit):

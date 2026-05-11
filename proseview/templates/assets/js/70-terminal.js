@@ -1230,13 +1230,15 @@
         // Re-fetch the currently previewed file from disk and re-render only
         // the file preview body, leaving terminal sessions and other UI state
         // untouched.
-        function refreshFilePreview() {
+        function refreshFilePreview(options) {
+            options = options || {};
             var titleEl = document.getElementById('filePreviewTitle');
             var path = titleEl ? titleEl.textContent.trim() : '';
             if (!path) return;
+            if (options.changedPaths && !pathListContains(options.changedPaths, path)) return;
             var btn = document.getElementById('filePreviewRefreshBtn');
             var prevHTML = btn ? btn.innerHTML : '';
-            if (btn) { btn.disabled = true; btn.innerHTML = '\u2026'; }
+            if (btn && !options.silent) { btn.disabled = true; btn.innerHTML = '\u2026'; }
             fetch('/repo-file?path=' + encodeURIComponent(path), { cache: 'no-store' })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
@@ -1246,9 +1248,10 @@
                     repoFileByPath[path] = data.node;
                     previewRepoFile(path);
                 })
-                .catch(function(err) { alert('Could not refresh file: ' + err); })
+                .catch(function(err) {
+                    if (!options.silent) alert('Could not refresh file: ' + err);
+                })
                 .finally(function() {
-                    if (btn) { btn.disabled = false; btn.innerHTML = prevHTML || '\u21BB'; }
+                    if (btn && !options.silent) { btn.disabled = false; btn.innerHTML = prevHTML || '\u21BB'; }
                 });
         }
-

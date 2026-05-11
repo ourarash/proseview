@@ -645,6 +645,41 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path.startswith("/scene-data"):
+            try:
+                qs = parse_qs(urlparse(self.path).query)
+                rel = (qs.get("path") or [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                root = Path(self.repo_root)
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                if not scene_path.is_relative_to(manuscript_root):
+                    self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
+                    return
+                scenes = collect_scene_stats(root, cfg)
+                data = build_scene_data(scenes, root, cfg)
+                if rel not in data["contents"]:
+                    self._send_json({"ok": False, "error": "scene not found"}, 404)
+                    return
+                body = json.dumps({
+                    "contents": {rel: data["contents"][rel]},
+                    "meta": {rel: data["meta"][rel]},
+                    "highlightsByPath": {rel: data["highlightsByPath"][rel]},
+                }).encode("utf-8")
+            except Exception as exc:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(exc).encode())
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/repo-file"):
             self._handle_repo_file()
             return
@@ -894,7 +929,7 @@ def serve(
                 print(f"[{stamp}] regenerated dashboard in {elapsed:.2f}s")
             return _cache[0]
 
-    def invalidate(kind: str = "content") -> None:
+    def invalidate(kind: str = "content", changed_paths: tuple[str, ...] = ()) -> None:
         """Invalidate the cached HTML and notify SSE clients.
 
         ``kind`` controls the SSE message:
@@ -909,7 +944,10 @@ def serve(
         """
         with lock:
             _stale[0] = True
-        msg = "reload" if kind == "content" else f"reload:{kind}"
+        if kind == "content" and changed_paths:
+            msg = json.dumps({"type": "reload", "paths": list(changed_paths)})
+        else:
+            msg = "reload" if kind == "content" else f"reload:{kind}"
         with _sse_lock:
             for q in list(_sse_clients):
                 try:
@@ -930,8 +968,8 @@ def serve(
             except ValueError:
                 pass
 
-    def on_change(_changed: tuple[str, ...]) -> None:
-        invalidate("content")
+    def on_change(changed: tuple[str, ...]) -> None:
+        invalidate("content", changed)
 
     cfg = Config.load(root)
     watcher = threading.Thread(

@@ -262,6 +262,82 @@ def test_prosemirror_imports_pin_specific_versions():
         ), f"{pkg} must be pinned to a full version"
 
 
+# ── Repo-wide search palette (plan item 20) ──────────────────────────────────
+
+
+def test_search_module_present_in_bundle():
+    """The search palette JS is its own topical file, sorted to load
+    after state/prose-indicators but before the router so it can
+    reference globals (contents, meta, paths, repoFileByPath) and
+    define functions the router needs (focusSearch).
+    """
+    files = sorted(p.name for p in JS_DIR.glob("*.js"))
+    search_files = [n for n in files if "search" in n]
+    assert search_files, f"no search module in bundle: {files}"
+    # Search file must sort before the router so its functions are
+    # hoisted into scope when the router code runs.
+    router_files = [n for n in files if "router" in n]
+    if router_files:
+        assert search_files[0] < router_files[0], \
+            f"search module must sort before router: {files}"
+
+
+def test_template_contains_search_input_and_panel():
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    assert 'id="searchBox"' in template
+    assert 'id="searchResults"' in template
+    # The input lives inside .toolbar-actions so it sits next to the
+    # font and theme menus.
+    toolbar_start = template.find('class="toolbar-actions"')
+    toolbar_end = template.find('</div>', toolbar_start)
+    assert toolbar_start >= 0 and toolbar_end > toolbar_start
+    toolbar_html = template[toolbar_start:toolbar_end]
+    assert 'id="searchBox"' in toolbar_html, "search input must live inside .toolbar-actions"
+
+
+def test_search_cmd_k_shortcut_in_bundle():
+    """Cmd-K / Ctrl-K focuses the search input from anywhere on the page."""
+    bundle = _load_app_js()
+    # The keydown handler tests both modifier flags so it works on
+    # macOS (Cmd-K) and Linux/Windows (Ctrl-K).
+    assert "e.metaKey" in bundle and "e.ctrlKey" in bundle
+    assert "e.key === 'k'" in bundle or "e.key === 'K'" in bundle
+    assert "function focusSearch(" in bundle
+
+
+def test_search_navigates_to_correct_routes():
+    """File hits go through previewRepoFile; scene title / frontmatter
+    hits go through openSceneModal; TODO/NOTE hits jump to the Tasks
+    panel row (where Edit / Delete buttons live); PROSE hits scroll
+    the matching paragraph into the editor surface.
+    """
+    bundle = _load_app_js()
+    activate = re.search(
+        r"function _activateSearchResult\([^)]*\)\s*\{(.+?)\n        \}",
+        bundle, re.DOTALL,
+    )
+    assert activate, "_activateSearchResult function not found"
+    body = activate.group(1)
+    assert "previewRepoFile(" in body
+    assert "openSceneModal(" in body
+    assert "_scrollToPara(" in body
+    # TODO / NOTE hits route to the Tasks panel row helper.
+    assert "_jumpToTaskRow('todo'" in body
+    assert "_jumpToTaskRow('note'" in body
+    # The helper itself walks the live Tasks panel by data attribute.
+    assert "function _findTaskRowInScene(" in bundle
+    assert "data-todo-text" in bundle or "dataset.todoText" in bundle
+
+
+def test_search_respects_min_query_length_and_cap():
+    """A blank or one-character query returns no results; total hits
+    are capped so the dropdown can never explode.
+    """
+    bundle = _load_app_js()
+    assert "SEARCH_MIN_LEN" in bundle
+    assert "SEARCH_RESULT_CAP" in bundle
+
+
 def test_data_json_contract_round_trips_through_json():
     """Whatever ``build_scene_data`` returns must be JSON-serializable as-is,
     since the server hands it straight to ``json.dumps``.

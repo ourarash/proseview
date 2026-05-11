@@ -35,6 +35,7 @@
             var plugins = [
                 PM.buildHlPlugin(),
                 lnPlugin,
+                (typeof buildAiProposalPlugin === 'function' ? buildAiProposalPlugin(PM) : null),
                 PM.history(),
                 PM.keymap(Object.assign({}, PM.baseKeymap, {
                     'Mod-z': PM.undo,
@@ -44,7 +45,7 @@
                     'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
                     'Mod-s': function() { saveSceneEdit(); return true; }
                 }))
-            ];
+            ].filter(Boolean);
 
             var state = PM.EditorState.create({ doc: doc, plugins: plugins });
             _pmView = new PM.EditorView(host, {
@@ -89,6 +90,9 @@
             } catch (e) {}
             _applyLineNumbersClass();
             _applyEditingProseClass();
+            if (typeof aiMaybeRefocusActiveProposal === 'function') {
+                setTimeout(function() { aiMaybeRefocusActiveProposal(p); }, 0);
+            }
         }
 
         function updatePMHighlightDecorations() {
@@ -224,4 +228,3 @@
             var p = paths[curIdx];
             mountProseView(p);
         }
-

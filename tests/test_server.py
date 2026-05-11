@@ -15,7 +15,12 @@ if str(REPO_ROOT) not in sys.path:
 from proseview.config import Config  # noqa: E402
 from proseview.generator import build_scene_data  # noqa: E402
 from proseview.scenes import collect_scene_stats  # noqa: E402
-from proseview.server import save_scene_content, _FileConflictError  # noqa: E402
+from proseview.server import (  # noqa: E402
+    save_scene_content,
+    _FileConflictError,
+    _normalize_ai_scene_file,
+    _resolve_ai_target,
+)
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
 SCENE = FIXTURE / "manuscript" / "ch01" / "01-opening.md"
@@ -37,6 +42,95 @@ def test_build_scene_data_returns_data_json_payload():
     # Meta dict carries the live mtime so save-then-refresh sees the new value.
     assert "mtime" in data["meta"]["ch01/01-opening.md"]
     assert "abs_path" in data["meta"]["ch01/01-opening.md"]
+
+
+# ── AI proposal bridge helpers ──────────────────────────────────────────────
+
+
+def test_ai_scene_file_normalization_accepts_repo_relative_manuscript_path():
+    rel = _normalize_ai_scene_file(str(FIXTURE), "manuscript/ch01/01-opening.md")
+    assert rel == "ch01/01-opening.md"
+
+
+def test_ai_scene_file_normalization_accepts_scene_relative_path():
+    rel = _normalize_ai_scene_file(str(FIXTURE), "ch01/01-opening.md")
+    assert rel == "ch01/01-opening.md"
+
+
+def test_ai_scene_file_normalization_rejects_path_traversal():
+    with pytest.raises(PermissionError):
+        _normalize_ai_scene_file(str(FIXTURE), "../outside.md")
+
+
+def test_ai_target_resolution_finds_markdown_quote():
+    resolved = _resolve_ai_target(
+        str(FIXTURE),
+        "ch01/01-opening.md",
+        "The loft smelled of cold coffee",
+        None,
+    )
+    assert resolved["range"]["start"] >= 0
+    assert resolved["range"]["end"] > resolved["range"]["start"]
+    assert "The loft smelled" in resolved["resolved_quote"]
+
+
+def test_ai_target_resolution_rejects_missing_quote():
+    with pytest.raises(ValueError, match="quote not found"):
+        _resolve_ai_target(str(FIXTURE), "ch01/01-opening.md", "not in this scene", None)
+
+
+def test_ai_target_resolution_rejects_comment_blocks_in_quote(tmp_path: Path):
+    scene = tmp_path / "manuscript" / "ch01" / "x.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text(
+        "---\ntitle: X\n---\n\n# X\n\n"
+        "The partition is doing work it was never designed to do.\n\n"
+        "<!-- NOTE: Should be revised -->\n\n"
+        "Bad.\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="annotations"):
+        _resolve_ai_target(
+            str(tmp_path),
+            "ch01/x.md",
+            "The partition is doing work it was never designed to do.\n\n"
+            "<!-- NOTE: Should be revised -->\n\n"
+            "Bad.",
+            None,
+        )
+
+
+def test_ai_target_resolution_accepts_line_columns_for_visible_prose(tmp_path: Path):
+    scene = tmp_path / "manuscript" / "ch01" / "x.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text(
+        "---\ntitle: X\n---\n\n# X\n\nFirst visible line.\nSecond visible line.\n",
+        encoding="utf-8",
+    )
+    resolved = _resolve_ai_target(
+        str(tmp_path),
+        "ch01/x.md",
+        "",
+        {"start_line": 7, "start_col": 1, "end_line": 8, "end_col": 21},
+    )
+    assert resolved["resolved_quote"] == "First visible line.\nSecond visible line."
+    assert resolved["source_range"]["start_line"] == 7
+
+
+def test_ai_target_resolution_rejects_line_columns_crossing_annotations(tmp_path: Path):
+    scene = tmp_path / "manuscript" / "ch01" / "x.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text(
+        "---\ntitle: X\n---\n\n# X\n\nBefore.\n<!-- TODO: revise -->\nAfter.\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="annotations"):
+        _resolve_ai_target(
+            str(tmp_path),
+            "ch01/x.md",
+            "",
+            {"start_line": 7, "start_col": 1, "end_line": 9, "end_col": 7},
+        )
 
 
 # ── save_scene_content tests ─────────────────────────────────────────────────

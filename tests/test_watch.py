@@ -60,3 +60,25 @@ def test_wait_for_change_debounces_before_returning(tmp_path: Path):
     assert "manuscript/ch01/01-opening.md" in changed
     assert "plans/notes.md" in changed
     assert current["manuscript/ch01/01-opening.md"] != baseline["manuscript/ch01/01-opening.md"]
+
+
+def test_snapshot_tracks_visible_repo_files_outside_legacy_roots(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    note = docs / "note.md"
+    note.write_text("draft", encoding="utf-8")
+
+    snapshot = snapshot_paths(tmp_path, Config())
+
+    assert "docs/note.md" in snapshot
+
+
+def test_snapshot_ignores_internal_cache_dirs(tmp_path: Path):
+    cache = tmp_path / ".proseview"
+    cache.mkdir()
+    generated = cache / "history-cache.json"
+    generated.write_text("{}", encoding="utf-8")
+
+    snapshot = snapshot_paths(tmp_path, Config())
+
+    assert ".proseview/history-cache.json" not in snapshot

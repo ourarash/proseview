@@ -226,35 +226,27 @@ is currently documented only in
 that contract into the proseview README so a new user knows what the
 dashboard reads.
 
-### 15. Repo identity and release plumbing
+### 15. Repo identity and release plumbing (implemented)
 
-- Pick the package name (`proseview` is fine), license (MIT is the obvious
-  default), Python version floor.
-- Move `requirements.txt` into `pyproject.toml`.
-- Add `python -m proseview` and `proseview` console-script entry points.
-- Add CI: `pytest`, `ruff`, the Playwright smoke test from item 9.
-- Pre-fill a CONTRIBUTING.md with a one-paragraph "what proseview is" so the
-  README does not have to do everything.
+Package identity, MIT license, Python version floor, `pyproject.toml`,
+`python -m proseview`, the `proseview` console-script entry point, and
+CONTRIBUTING.md now exist. Remaining CI hardening belongs with item 9.
 
 ## P3. Features that would actually help
 
 These are bigger than fixes and should land after the spinoff. They are
 sorted by how much they help the writer or the AI loop.
 
-### 16. Inline AI assist on selection
+### 16. Terminal-driven inline AI proposal bridge
 
-The selection pill UI is already there
-([app.js around line 1539](../proseview/templates/assets/app.js)). Wire a real skill
-runner into it. Selecting a paragraph and clicking `Polish register` should
-send the paragraph plus the corresponding `SKILL.md` to a configured agent
-(Codex, Claude, or Gemini), stream the suggestion back, and show a diff
-inline. Current state is a button that opens a terminal in the right cwd,
-which is closer to "open VSCode" than to "do the thing."
+The selection pill UI and embedded terminal are already there. The next AI
+step should let Codex run in the terminal, analyze a scene, and send structured
+proposals back to Proseview. Proseview highlights the relevant markdown range,
+shows replacement options, and applies accepted edits through the existing
+ProseMirror save path.
 
-This makes the dashboard the first surface where the writer reads, notices a
-problem, and fixes it without context-switching, which is the original
-Phase 3 promise from
-[phase-3-implementation-plan.md](phase-3-implementation-plan.md).
+Detailed plan:
+[inline-ai-proposal-bridge.md](inline-ai-proposal-bridge.md).
 
 ### 17. Diff-confirm for any AI write
 
@@ -283,7 +275,7 @@ gone, the prose fills the page, the highlights and selection pills still
 work." That is the single feature most likely to make the writer open
 proseview every morning.
 
-### 20. Search
+### 20. Search (implemented)
 
 A repo-wide search box that hits prose, frontmatter, todos, and notes, with
 the same routing as the rest of the app, would replace another reason to

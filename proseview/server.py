@@ -238,6 +238,53 @@ def _line_col_to_offset(text: str, line: int, col: int) -> int:
     return sum(len(x) for x in lines[:line - 1]) + col - 1
 
 
+_BLANK_LINE_SEPARATOR_RE = re.compile(r"\n\s*\n+")
+
+
+def _scene_to_editor_offset(scene_text: str, target: int) -> int:
+    """Convert a position in ``scene_text`` to the offset the browser will
+    compute in its flat-text view of the doc.
+
+    The browser's ``aiDocTextMap`` inserts a single ``\\n`` between block-level
+    nodes, while ``scene_text`` separates paragraphs with blank lines
+    (``\\n\\s*\\n+``). Without this conversion the server's range offsets drift
+    by one char per preceding paragraph break, which silently mis-aligns the
+    fallback path when the browser cannot match ``resolved_quote`` (e.g. after
+    a proposal has been applied).
+    """
+    if target <= 0:
+        return 0
+    if target > len(scene_text):
+        target = len(scene_text)
+    pos = 0
+    editor_pos = 0
+    first_block = True
+    while pos < target:
+        m = _BLANK_LINE_SEPARATOR_RE.search(scene_text, pos)
+        if m:
+            sep_start = m.start()
+            sep_end = m.end()
+        else:
+            sep_start = len(scene_text)
+            sep_end = len(scene_text)
+        block_end = min(sep_start, target)
+        block = scene_text[pos:block_end]
+        if block.strip():
+            if not first_block:
+                editor_pos += 1
+            editor_pos += len(_proposal_editor_text(block))
+            first_block = False
+        if block_end == target:
+            return editor_pos
+        if target < sep_end:
+            return editor_pos
+        pos = sep_end
+        if pos == target and not first_block:
+            editor_pos += 1
+            return editor_pos
+    return editor_pos
+
+
 def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
@@ -261,8 +308,7 @@ def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]
     resolved_quote = _proposal_editor_text(target_markdown).strip()
     if not resolved_quote:
         raise ValueError("line/column range has no visible prose")
-    editor_before = _proposal_editor_text(scene_text[:rel_start])
-    start_editor = len(editor_before)
+    start_editor = _scene_to_editor_offset(scene_text, rel_start)
     return {
         "range": {"start": start_editor, "end": start_editor + len(resolved_quote)},
         "resolved_quote": resolved_quote,
@@ -297,8 +343,10 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
     start, end, resolved_quote = _resolve_quote_in_editor_text(editor_text, quote)
     if raw_map and start < len(raw_map) and end - 1 < len(raw_map):
         _reject_annotation_overlap(raw_map[start], raw_map[end - 1] + 1, _comment_spans(scene_text))
+    scene_start = raw_map[start] if raw_map and start < len(raw_map) else start
+    browser_start = _scene_to_editor_offset(scene_text, scene_start)
     return {
-        "range": {"start": start, "end": end},
+        "range": {"start": browser_start, "end": browser_start + len(resolved_quote)},
         "resolved_quote": resolved_quote,
     }
 

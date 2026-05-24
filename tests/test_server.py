@@ -117,6 +117,61 @@ def test_ai_target_resolution_accepts_line_columns_for_visible_prose(tmp_path: P
     assert resolved["source_range"]["start_line"] == 7
 
 
+def test_ai_target_line_col_range_matches_browser_flat_text_frame(tmp_path: Path):
+    """Server range offsets must agree with the browser's ``aiDocTextMap``.
+
+    The browser inserts a single ``\\n`` between block-level nodes, while
+    ``scene_text`` uses blank-line separators. If the server returns offsets
+    computed against the blank-line form, the browser's fallback path drifts
+    by one char per preceding paragraph break and a subsequent apply replaces
+    the wrong span (leaving leftover text at the tail of the target paragraph).
+    """
+    scene = tmp_path / "manuscript" / "ch01" / "x.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text(
+        "---\ntitle: X\n---\n\n# X\n\n"
+        "Paragraph one.\n\n"
+        "Paragraph two.\n\n"
+        "Paragraph three.\n\n"
+        "Target paragraph here.\n",
+        encoding="utf-8",
+    )
+    # Line 13 of raw file = "Target paragraph here." (22 chars).
+    resolved = _resolve_ai_target(
+        str(tmp_path),
+        "ch01/x.md",
+        "",
+        {"start_line": 13, "start_col": 1, "end_line": 13, "end_col": 23},
+    )
+    assert resolved["resolved_quote"] == "Target paragraph here."
+    # Three paragraphs precede the target. In the browser's flat text they
+    # contribute: 14 + 1 + 14 + 1 + 16 + 1 = 47 chars before the target.
+    assert resolved["range"]["start"] == 47
+    assert resolved["range"]["end"] == 47 + len("Target paragraph here.")
+
+
+def test_ai_target_quote_range_matches_browser_flat_text_frame(tmp_path: Path):
+    """Quote-based proposals must also return browser-frame offsets."""
+    scene = tmp_path / "manuscript" / "ch01" / "x.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text(
+        "---\ntitle: X\n---\n\n# X\n\n"
+        "Paragraph one.\n\n"
+        "Paragraph two.\n\n"
+        "Target paragraph here.\n",
+        encoding="utf-8",
+    )
+    resolved = _resolve_ai_target(
+        str(tmp_path),
+        "ch01/x.md",
+        "Target paragraph here.",
+        None,
+    )
+    # Two paragraphs precede the target: 14 + 1 + 14 + 1 = 30.
+    assert resolved["range"]["start"] == 30
+    assert resolved["range"]["end"] == 30 + len("Target paragraph here.")
+
+
 def test_ai_target_resolution_rejects_line_columns_crossing_annotations(tmp_path: Path):
     scene = tmp_path / "manuscript" / "ch01" / "x.md"
     scene.parent.mkdir(parents=True)

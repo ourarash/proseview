@@ -4,6 +4,9 @@
         var _aiProposalRange = null;
         var _aiProposalPluginKey = null;
         var _aiSelectedOptionIndex = 0;
+        // After an Accept the panel transitions to a confirmation view with an
+        // Undo button. Holds the snapshot needed to revert the replacement.
+        var _aiAppliedProposal = null;
 
         function aiClientId() {
             if (_aiClientId) return _aiClientId;
@@ -156,6 +159,17 @@
                 : [];
             var set = PM.DecorationSet.create(_pmView.state.doc, decos);
             _pmView.dispatch(_pmView.state.tr.setMeta(_aiProposalPluginKey, set));
+            if (!range) aiForceClearProposalHighlightDom();
+        }
+
+        function aiForceClearProposalHighlightDom() {
+            try {
+                document.querySelectorAll('.pm-ai-proposal-highlight, [data-ai-proposal="active"]').forEach(function(el) {
+                    el.classList.remove('pm-ai-proposal-highlight');
+                    if (el.getAttribute('data-ai-proposal') === 'active') el.removeAttribute('data-ai-proposal');
+                    if (el.getAttribute('style')) el.removeAttribute('style');
+                });
+            } catch (e) {}
         }
 
         function aiMaybeRefocusActiveProposal(scenePath) {
@@ -409,6 +423,7 @@
         function aiClearProposal() {
             _aiActiveProposal = null;
             _aiProposalRange = null;
+            _aiAppliedProposal = null;
             aiSetProposalHighlight(null);
             var panel = document.getElementById('aiProposalPanel');
             if (panel) panel.hidden = true;
@@ -454,15 +469,8 @@
             aiRenderPanel(proposal, range, null, needsClaim);
         }
 
-        function aiApplyProposal(proposal, optionIndex) {
-            if (!_pmView || !_aiProposalRange) return;
-            var opt = (proposal.options || [])[optionIndex];
-            if (!opt) return;
-            if (!_pmEditMode && typeof toggleSceneEdit === 'function') {
-                toggleSceneEdit();
-            }
-            var PM = window._PM;
-            var parser = new PM.MarkdownParser(
+        function aiBuildMarkdownParser(PM) {
+            return new PM.MarkdownParser(
                 PM.mySchema,
                 PM.defaultMarkdownParser.tokenizer,
                 Object.assign({}, PM.defaultMarkdownParser.tokens, {
@@ -473,31 +481,57 @@
                     html_inline: { ignore: true }
                 })
             );
-            var parsed = parser.parse(String(opt.text || '').trim());
+        }
+
+        function aiReplaceRangeWithMarkdown(applyRange, markdownText) {
+            var PM = window._PM;
+            var parser = aiBuildMarkdownParser(PM);
+            var parsed = parser.parse(String(markdownText || ''));
             var tr;
-            var selectionPos = _aiProposalRange.from;
+            var newRange;
             if (parsed.childCount === 1 && parsed.firstChild && parsed.firstChild.type.name === 'paragraph') {
                 tr = _pmView.state.tr.replaceWith(
-                    _aiProposalRange.from,
-                    _aiProposalRange.to,
+                    applyRange.from,
+                    applyRange.to,
                     parsed.firstChild.content
                 );
-                selectionPos = _aiProposalRange.from + parsed.firstChild.content.size;
+                newRange = {from: applyRange.from, to: applyRange.from + parsed.firstChild.content.size};
             } else {
-                var blockRange = aiTopLevelRange(_aiProposalRange);
+                var blockRange = aiTopLevelRange(applyRange);
                 tr = _pmView.state.tr.replaceWith(
                     blockRange.from,
                     blockRange.to,
                     parsed.content
                 );
-                selectionPos = blockRange.from + parsed.content.size;
+                newRange = {from: blockRange.from, to: blockRange.from + parsed.content.size};
             }
-            tr = tr.setSelection(PM.TextSelection.near(tr.doc.resolve(Math.min(tr.doc.content.size, selectionPos)), 1));
+            var safeSelectionPos = Math.max(0, Math.min(tr.doc.content.size, newRange.to));
+            try {
+                tr = tr.setSelection(PM.TextSelection.create(tr.doc, safeSelectionPos, safeSelectionPos));
+            } catch (e) {
+                tr = tr.setSelection(PM.TextSelection.near(tr.doc.resolve(safeSelectionPos), 1));
+            }
             if (_aiProposalPluginKey) {
                 tr = tr.setMeta(_aiProposalPluginKey, PM.DecorationSet.empty);
             }
             _pmView.dispatch(tr);
+            return newRange;
+        }
+
+        function aiApplyProposal(proposal, optionIndex) {
+            if (!_pmView || !_aiProposalRange) return;
+            var opt = (proposal.options || [])[optionIndex];
+            if (!opt) return;
+            var applyRange = {from: _aiProposalRange.from, to: _aiProposalRange.to};
+            var originalText = _pmView.state.doc.textBetween(applyRange.from, applyRange.to, '\n');
+            var hadDirtyBeforeApply = !!_pmDirty;
             aiSetProposalHighlight(null);
+            aiClearNativeSelection();
+            if (!_pmEditMode && typeof toggleSceneEdit === 'function') {
+                toggleSceneEdit();
+            }
+            var newRange = aiReplaceRangeWithMarkdown(applyRange, String(opt.text || '').trim());
+            aiForceClearProposalHighlightDom();
             aiClearNativeSelection();
             setTimeout(aiClearNativeSelection, 0);
             setTimeout(aiClearNativeSelection, 80);
@@ -507,7 +541,122 @@
                 status: 'accepted',
                 selected_option: optionIndex
             });
-            aiClearProposal();
+            _aiAppliedProposal = {
+                proposal: proposal,
+                optionIndex: optionIndex,
+                originalText: originalText,
+                originalRange: applyRange,
+                newRange: newRange,
+                hadDirtyBeforeApply: hadDirtyBeforeApply
+            };
+            _aiProposalRange = newRange;
+            aiScrollRangeIntoView(newRange);
+            aiSetProposalHighlight(newRange);
+            aiRenderAppliedPanel();
+        }
+
+        function aiFinishApplied(save) {
+            if (!_aiAppliedProposal) return;
+            var applied = _aiAppliedProposal;
+            _aiAppliedProposal = null;
+            _aiActiveProposal = null;
+            _aiProposalRange = null;
+            aiSetProposalHighlight(null);
+            var panel = document.getElementById('aiProposalPanel');
+            if (panel) panel.hidden = true;
+            if (save && !applied.hadDirtyBeforeApply && typeof saveSceneEdit === 'function') {
+                setTimeout(function() {
+                    if (_pmEditMode && _pmDirty) saveSceneEdit();
+                }, 0);
+            }
+        }
+
+        function aiUndoApply() {
+            if (!_pmView || !_aiAppliedProposal) return;
+            var applied = _aiAppliedProposal;
+            var revertRange = applied.newRange;
+            var restoredRange = aiReplaceRangeWithMarkdown(revertRange, applied.originalText);
+            aiForceClearProposalHighlightDom();
+            aiClearNativeSelection();
+            if (!applied.hadDirtyBeforeApply) {
+                setPmDirty(false);
+            }
+            // Undo is purely local. Don't PATCH the server back to 'focused'
+            // here — that would echo through SSE and re-trigger aiFocusProposal,
+            // causing the panel to flicker. The server's 'accepted' status is
+            // fine as a record of what the user did.
+            _aiAppliedProposal = null;
+            _aiActiveProposal = applied.proposal;
+            _aiProposalRange = restoredRange;
+            aiScrollRangeIntoView(restoredRange);
+            aiSetProposalHighlight(restoredRange);
+            aiRenderPanel(applied.proposal, restoredRange, null, false);
+        }
+
+        function aiRenderAppliedPanel() {
+            if (!_aiAppliedProposal || !_pmView) return;
+            var applied = _aiAppliedProposal;
+            var newText = '';
+            try {
+                newText = _pmView.state.doc.textBetween(applied.newRange.from, applied.newRange.to, '\n');
+            } catch (e) {
+                newText = (applied.proposal.options[applied.optionIndex] || {}).text || '';
+            }
+            var panel = aiPanel();
+            panel.hidden = false;
+            panel.innerHTML = '';
+
+            var title = document.createElement('div');
+            title.className = 'ai-proposal-title';
+            title.textContent = 'Applied';
+            panel.appendChild(title);
+
+            var lineLabel = aiLineLabel(applied.proposal, applied.newRange);
+            if (lineLabel) {
+                var loc = document.createElement('div');
+                loc.className = 'ai-proposal-location';
+                loc.textContent = lineLabel;
+                panel.appendChild(loc);
+            }
+
+            var newWrap = document.createElement('div');
+            newWrap.className = 'ai-proposal-section';
+            var newLabel = document.createElement('div');
+            newLabel.className = 'ai-proposal-label';
+            newLabel.textContent = 'NEW';
+            var newBox = document.createElement('div');
+            newBox.className = 'ai-proposal-original';
+            newBox.textContent = newText;
+            newWrap.appendChild(newLabel);
+            newWrap.appendChild(newBox);
+            panel.appendChild(newWrap);
+
+            var prevWrap = document.createElement('div');
+            prevWrap.className = 'ai-proposal-section';
+            var prevLabel = document.createElement('div');
+            prevLabel.className = 'ai-proposal-label';
+            prevLabel.textContent = 'PREVIOUS';
+            var prevBox = document.createElement('div');
+            prevBox.className = 'ai-proposal-original';
+            prevBox.textContent = applied.originalText;
+            prevWrap.appendChild(prevLabel);
+            prevWrap.appendChild(prevBox);
+            panel.appendChild(prevWrap);
+
+            var actions = document.createElement('div');
+            actions.className = 'ai-proposal-actions';
+            var undo = document.createElement('button');
+            undo.className = 'ai-proposal-primary';
+            undo.type = 'button';
+            undo.textContent = 'Undo';
+            undo.onclick = aiUndoApply;
+            var done = document.createElement('button');
+            done.type = 'button';
+            done.textContent = 'Done';
+            done.onclick = function() { aiFinishApplied(true); };
+            actions.appendChild(undo);
+            actions.appendChild(done);
+            panel.appendChild(actions);
         }
 
         function handleAiProposalEvent(payload) {
@@ -518,7 +667,11 @@
                 if (_aiActiveProposal && _aiActiveProposal.id === proposal.id) aiClearProposal();
                 return;
             }
-            if (proposal.status === 'skipped') {
+            if (proposal.status === 'skipped' || proposal.status === 'accepted') {
+                // Local accept already opened the applied/undo panel for this
+                // proposal; don't tear it down when our own PATCH round-trips
+                // back as an SSE event.
+                if (_aiAppliedProposal && _aiAppliedProposal.proposal.id === proposal.id) return;
                 if (_aiActiveProposal && _aiActiveProposal.id === proposal.id) aiClearProposal();
                 return;
             }

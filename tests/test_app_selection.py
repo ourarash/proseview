@@ -59,18 +59,22 @@ def test_ai_proposal_bridge_keeps_apply_in_browser_editor():
     assert "function aiLineLabel(proposal, range)" in source
     assert "function aiTopLevelRange(range)" in source
     assert "function aiClearNativeSelection()" in source
+    assert "function aiForceClearProposalHighlightDom()" in source
     assert "function aiScrollRangeIntoView(range)" in source
     assert "clearSceneSelectionMemory" in source
     assert "clearPinnedSelectionHighlight" in source
     assert "data-ai-proposal" in source
     assert "background-color: rgba(14, 165, 233, 0.38)" in source
     assert "function aiApplyProposal(proposal, optionIndex)" in source
+    assert "var applyRange = {from: _aiProposalRange.from, to: _aiProposalRange.to}" in source
     assert "new PM.MarkdownParser" in source
     assert "parsed.firstChild.content" in source
     assert "var blockRange = aiTopLevelRange" in source
     assert "parsed.content" in source
+    assert "PM.TextSelection.create(tr.doc, safeSelectionPos, safeSelectionPos)" in source
     assert "PM.TextSelection.near" in source
     assert "tr.setMeta(_aiProposalPluginKey, PM.DecorationSet.empty)" in source
+    assert "aiForceClearProposalHighlightDom();" in source
     assert "setTimeout(aiClearNativeSelection, 0)" in source
     assert "setTimeout(aiClearNativeSelection, 80)" in source
     assert "setPmDirty(true)" in source
@@ -78,3 +82,10 @@ def test_ai_proposal_bridge_keeps_apply_in_browser_editor():
     assert "Refine in terminal" in source
     assert "/ai/proposals/" in source
     assert "proseview-ai-client-id" in source
+    # After the apply, the browser PATCHes status='accepted' which the server
+    # broadcasts back as an 'updated' SSE event. handleAiProposalEvent must
+    # treat 'accepted' as terminal and clear the proposal locally, otherwise
+    # the just-applied proposal is re-focused against a doc that no longer
+    # contains the original quote and the fallback highlight lands at stale
+    # coordinates.
+    assert "proposal.status === 'skipped' || proposal.status === 'accepted'" in source

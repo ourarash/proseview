@@ -400,6 +400,8 @@ def test_pm_annotation_styling_renders_as_compact_marker():
     assert ".pm-annotation {" in css
     assert ".pm-annotation-icon" in css
     assert ".pm-annotation-text" in css
+    assert "font: inherit;" in css
+    assert ".pm-annotation .pm-annotation-text" in css
     # Different visual treatment for TODOs (pending action) vs NOTEs.
     assert ".pm-annotation-todo" in css
 

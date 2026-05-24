@@ -1220,6 +1220,9 @@
         /* ── ProseMirror scene editor ──────────────────────────────────── */
         #sceneProseHost .ProseMirror {
             outline: none;
+            position: relative;
+            white-space: pre-wrap;
+            word-wrap: break-word;
             font-family: inherit;
             font-size: inherit;
             line-height: 1.8;
@@ -1233,16 +1236,15 @@
         }
         #sceneProseHost .ProseMirror p { margin: 0 0 1.1em; }
         #sceneProseHost .ProseMirror-focused { outline: none; }
-        /* TODO/NOTE marker rendered inside ProseMirror. The icon stays
-           visible at all times; the body text shows next to it as muted
-           secondary copy so the marker reads more like an annotation
-           badge than a full paragraph. Hover/focus expands wrap so long
-           notes are fully readable. */
+        /* TODO/NOTE marker rendered inside ProseMirror. The marker inherits
+           the scene typography so the modal font-size slider affects TODO
+           text the same way it affects surrounding prose. Hover/focus expands
+           wrap so long notes are fully readable. */
         .pm-annotation {
             display: flex;
             align-items: baseline;
             gap: 6px;
-            font-size: 12px;
+            font: inherit;
             color: var(--text-muted);
             background: var(--surface-muted);
             border-left: 3px solid var(--warning);
@@ -1251,16 +1253,16 @@
             margin: 6px 0;
             user-select: none;
             cursor: pointer;
-            line-height: 1.4;
+            line-height: inherit;
         }
         .pm-annotation-todo { border-left-color: var(--primary); }
         .pm-annotation-icon {
             flex: 0 0 auto;
-            font-size: 13px;
+            font-size: 0.9em;
             line-height: 1;
             opacity: 0.85;
         }
-        .pm-annotation-text {
+        .pm-annotation .pm-annotation-text {
             flex: 1 1 auto;
             min-width: 0;
             white-space: nowrap;

@@ -307,12 +307,12 @@
         // alternative.
         import { Schema } from 'https://esm.sh/prosemirror-model@1.25.4';
         import { schema as mdSchema, MarkdownParser, MarkdownSerializer,
-                 defaultMarkdownParser, defaultMarkdownSerializer } from 'https://esm.sh/prosemirror-markdown@1.13.4';
-        import { EditorState, Plugin, PluginKey, TextSelection } from 'https://esm.sh/prosemirror-state@1.4.4';
-        import { EditorView, Decoration, DecorationSet } from 'https://esm.sh/prosemirror-view@1.41.8';
-        import { history, undo, redo } from 'https://esm.sh/prosemirror-history@1.5.0';
-        import { keymap } from 'https://esm.sh/prosemirror-keymap@1.2.3';
-        import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1.7.1';
+                 defaultMarkdownParser, defaultMarkdownSerializer } from 'https://esm.sh/prosemirror-markdown@1.13.4?deps=prosemirror-model@1.25.4';
+        import { EditorState, Plugin, PluginKey, TextSelection } from 'https://esm.sh/prosemirror-state@1.4.4?deps=prosemirror-model@1.25.4,prosemirror-transform@1.10.4';
+        import { EditorView, Decoration, DecorationSet } from 'https://esm.sh/prosemirror-view@1.41.8?deps=prosemirror-model@1.25.4,prosemirror-state@1.4.4,prosemirror-transform@1.10.4';
+        import { history, undo, redo } from 'https://esm.sh/prosemirror-history@1.5.0?deps=prosemirror-model@1.25.4,prosemirror-state@1.4.4,prosemirror-transform@1.10.4';
+        import { keymap } from 'https://esm.sh/prosemirror-keymap@1.2.3?deps=prosemirror-model@1.25.4,prosemirror-state@1.4.4,prosemirror-transform@1.10.4';
+        import { baseKeymap, toggleMark } from 'https://esm.sh/prosemirror-commands@1.7.1?deps=prosemirror-model@1.25.4,prosemirror-state@1.4.4,prosemirror-transform@1.10.4';
 
         // Enable HTML so block-level <!-- TODO/NOTE --> comments are emitted
         // as html_block tokens, which the parser rule in 40-prose-editor.js

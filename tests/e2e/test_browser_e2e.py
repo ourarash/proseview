@@ -203,6 +203,14 @@ def save_scene(page: Page) -> None:
     page.keyboard.press("ControlOrMeta+s")
 
 
+def wait_for_discuss_answer(page: Page, text: str = "Fake answer") -> None:
+    page.wait_for_function(
+        "needle => document.querySelector('#discussLog').innerText.includes(needle)",
+        arg=text,
+        timeout=10_000,
+    )
+
+
 def select_prose(page: Page, needle: str) -> str:
     """Select *needle* in the rendered prose and raise the selection pill.
 
@@ -241,6 +249,194 @@ def select_prose(page: Page, needle: str) -> str:
     )
     page.wait_for_selector("#selectionPill", state="visible")
     return selected
+
+
+def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    selected = select_prose(page, "ledger")
+    assert selected == "ledger"
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert SCENE_REL in page.locator("#discussContext").inner_text()
+    assert "Selected text: ledger" in page.locator("#discussSelectionChip").inner_text()
+
+    page.fill("#discussInput", "Explain this scene")
+    page.evaluate("sendDiscussQuestion(); sendDiscussQuestion()")
+    wait_for_discuss_answer(page, "<script>hostile()</script>")
+    panel_text = page.locator("#discussPanel").inner_text()
+    assert "What Codex is doing" in panel_text
+    assert "Read context" in panel_text
+    assert "commandExecution" in panel_text
+    assert "PRIVATE RAW REASONING" not in panel_text
+    assert "<script>hostile()</script>" in panel_text
+    assert page.locator("#discussLog script").count() == 0
+    link = page.locator("#discussLog a", has_text="link")
+    assert link.get_attribute("href") == "https://example.test"
+    assert page.locator("#discussLog a", has_text="unsafe").count() == 0
+    assert page.locator(".discuss-message.user").count() == 1
+
+    page.evaluate("_discussEventSource.close(); setDiscussConnection('Reconnecting', ''); connectDiscussEvents()")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Reconnecting')")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')", timeout=15_000)
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => !document.querySelector('#discussContext').innerText.includes(previous)", arg=SCENE_REL)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.press("body", "Escape")
+    page.wait_for_selector("#discussPanel", state="hidden")
+    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
+
+
+def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, server: ProseviewServer):
+    page.goto(f"{server.base_url}#/file/plans/book-plan.md", wait_until="load")
+    page.wait_for_function("() => !!window._PM")
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    page.click("#file-preview-panel .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
+
+    page.click("button:text-is('+ Context')")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    page.check("#discussPickerTree input[value='plans']")
+    page.click("button:text-is('Attach selected')")
+    assert "plans" in page.locator("#discussContext").inner_text()
+
+    page.fill("#discussInput", "REQUEST_APPROVAL")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector(".discuss-approval button", state="visible")
+    assert page.evaluate("document.activeElement === document.querySelector('.discuss-approval button')")
+    page.keyboard.press("Enter")
+    wait_for_discuss_answer(page, "Approval resolved")
+    assert "resolved" in page.locator(".discuss-approval").inner_text().lower()
+
+    page.fill("#discussInput", "REQUEST_APPROVAL again")
+    page.press("#discussInput", "Enter")
+    page.locator(".discuss-approval button", has_text="Decline").wait_for(state="visible")
+    page.locator(".discuss-approval button", has_text="Decline").click()
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('Approval resolved: decline')")
+
+    page.click("#discussPanel .utility-tab:text-is('Terminal')")
+    page.wait_for_selector("#terminalPanel", state="visible")
+    page.wait_for_function("() => document.getElementById('terminalPanel').classList.contains('dock-right')")
+    page.wait_for_selector(".terminal-tab-mount .xterm", timeout=20_000)
+    page.click(".terminal-tab-mount .xterm-screen")
+    _wait_until(lambda: any(ch in _terminal_text(page) for ch in ("$", "%", "#")), timeout=25)
+    run_in_terminal(page, "echo discuss-terminal-alive", "discuss-terminal-alive")
+    page.click("#terminalPanel button:text-is('Discuss')")
+    page.wait_for_selector("#discussPanel", state="visible")
+    assert "Approval resolved" in page.locator("#discussLog").inner_text()
+    page.click("#discussPanel .utility-tab:text-is('Terminal')")
+    assert "discuss-terminal-alive" in _terminal_text(page)
+
+
+def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: ProseviewServer):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_scene(page, server)
+    button = page.locator("#sceneModal .discuss-open-btn")
+    button.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    box = page.locator("#discussPanel").bounding_box()
+    assert box and box["x"] + box["width"] <= 1401
+
+    page.select_option("#modalThemeSelect", "dark")
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.evaluate("document.body.style.zoom = '2'")
+    page.wait_for_timeout(100)
+    box = page.locator("#discussPanel").bounding_box()
+    assert box and box["x"] >= 0 and box["width"] <= 1024
+    assert page.locator("#discussInput").is_visible()
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+
+    page.evaluate("document.body.style.zoom = '1'")
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(100)
+    phone_box = page.locator("#discussPanel").bounding_box()
+    assert phone_box and phone_box["x"] == 0 and phone_box["width"] <= 390
+
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#discussPanel", state="hidden")
+    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
+
+
+def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussStop", state="visible")
+
+    page.fill("#discussInput", "Continue after the stopped turn")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('question queued')")
+
+    page.reload(wait_until="load")
+    page.wait_for_function("() => !!window._PM")
+    page.wait_for_selector("#sceneModal", state="visible")
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user').length === 2")
+    page.wait_for_selector("#discussStop", state="visible")
+    page.click("#discussStop")
+    wait_for_discuss_answer(page, "Fake answer")
+    assert page.locator(".discuss-message.user").count() == 2
+    page.wait_for_selector("#discussStop", state="hidden")
+
+
+def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explicit(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "FORGET_THREAD_AFTER_TURN")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+
+    page.reload(wait_until="load")
+    page.wait_for_function("() => !!window._PM")
+    page.wait_for_selector("#sceneModal", state="visible")
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    panel_text = page.locator("#discussPanel").inner_text()
+    assert "next question will start a new conversation" in panel_text.lower()
+    assert "thread not found" not in panel_text.lower()
+
+    page.fill("#discussInput", "Continue after refresh")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.assistant').length === 2")
+    page.wait_for_function("() => !document.getElementById('discussNewConversation').disabled")
+    assert page.locator("#discussConnection").inner_text().startswith("Live")
+
+    new_button = page.locator("#discussNewConversation")
+    new_button.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    assert page.evaluate("document.activeElement === document.getElementById('discussNewConversationCancel')")
+    assert "remains in your Codex history" in page.locator("#discussNewConversationDialog").inner_text()
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.wait_for_selector("#discussPanel", state="visible")
+    assert page.evaluate("document.activeElement === document.getElementById('discussNewConversation')")
+
+    page.keyboard.press("Enter")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.wait_for_function("() => document.querySelectorAll('#discussLog .discuss-message').length === 0")
+    assert "Ask about what you are reading" in page.locator("#discussLog").inner_text()
+    assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
+
+    page.fill("#discussInput", "A fresh browser conversation")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.user').length === 1 && "
+        "document.querySelector('#discussLog').innerText.includes('Fake answer')"
+    )
+    assert page.locator(".discuss-message.user").count() == 1
 
 
 def open_selection_menu(page: Page, needle: str) -> None:
@@ -1182,19 +1378,59 @@ def test_scene_agent_menu_launches_the_agent(page: Page, server: ProseviewServer
     assert any(s["type"] == agent for s in sessions)
 
 
+def _terminal_flat(page: Page) -> str:
+    """Terminal text with runs of whitespace collapsed.
+
+    xterm hard-wraps at the column width and each visual row is its own DOM
+    node, so a long prompt is split across lines. Collapsing whitespace lets a
+    test match the prompt as the user wrote it.
+    """
+    return " ".join(_terminal_text(page).split())
+
+
 def test_running_a_selection_in_codex_sends_the_passage(page: Page, server: ProseviewServer):
-    """The selected prose is typed into the agent's PTY, not passed as argv."""
+    """The whole prompt reaches the agent's stdin, not just the instruction.
+
+    The selection menu composes ``Run <instruction> on "<selection>" in @<path>``
+    and types it into the PTY -- it is never passed as argv. All three parts
+    matter: an agent that receives the instruction but loses the passage or the
+    file reference is being handed a task it cannot do.
+    """
+    quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
-    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    open_selection_menu(page, quote)
 
     page.click("#selectionCodexBtn")
     page.fill("#selectionCodexInstruction", "Tighten this passage")
     page.click("#selectionCodexRun")
 
     page.wait_for_selector("#terminalPanel", state="visible")
-    _wait_until(lambda: f"{AGENT_MARKER} codex" in _terminal_text(page), timeout=25)
-    _wait_until(lambda: "Tighten this passage" in _terminal_text(page), timeout=25,
+    _wait_until(lambda: f"{AGENT_MARKER} codex" in _terminal_text(page), timeout=25,
+                message="Run in Codex did not launch the agent")
+    _wait_until(lambda: "Tighten this passage" in _terminal_flat(page), timeout=25,
                 message="instruction never reached the agent process")
+
+    delivered = _terminal_flat(page)
+    assert quote in delivered, "the selected passage was dropped from the prompt"
+    assert f"@{SCENE_REL}" in delivered, "the scene reference was dropped from the prompt"
+    # The stub echoes stdin, so seeing it prefixed proves it arrived as input.
+    assert f"STDIN:Run Tighten this passage on" in delivered
+
+
+def test_running_a_selection_without_an_instruction_still_sends_the_passage(
+    page: Page, server: ProseviewServer
+):
+    """With no instruction the menu falls back to a review prompt."""
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+
+    page.click("#selectionCodexBtn")
+    page.click("#selectionCodexRun")
+
+    page.wait_for_selector("#terminalPanel", state="visible")
+    _wait_until(lambda: f'STDIN:Review "{quote}"' in _terminal_flat(page), timeout=25,
+                message="the no-instruction fallback prompt never reached the agent")
 
 
 def test_auto_approve_launches_codex_with_full_auto(page: Page, server: ProseviewServer):

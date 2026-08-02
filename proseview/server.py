@@ -524,6 +524,20 @@ class TerminalSession:
                 pass
 
 
+def _default_shell() -> str:
+    """Pick a shell when ``$SHELL`` is unset.
+
+    ``$SHELL`` is absent in plenty of real contexts -- systemd units, Docker
+    images, CI runners, launchd jobs. Hardcoding ``/bin/zsh`` meant every
+    terminal and agent launch failed outright on images that don't ship it,
+    which is most Linux ones. Fall back to whatever is actually present.
+    """
+    for candidate in ("/bin/zsh", "/bin/bash", "/bin/sh"):
+        if os.path.exists(candidate):
+            return candidate
+    return "/bin/sh"
+
+
 def spawn_terminal(
     command: list[str],
     cwd: str | None = None,
@@ -542,7 +556,7 @@ def spawn_terminal(
     env["NO_UPDATE_NOTIFIER"] = "1"
     # Wrap in a login shell so the user's PATH (nvm, npm globals, pyenv, etc.) is loaded.
     # `exec` replaces the shell with the command so no shell prompt appears.
-    shell = env.get("SHELL", "/bin/zsh")
+    shell = env.get("SHELL") or _default_shell()
     shell_name = os.path.basename(shell)
     if not command:
         # Plain interactive login shell (used by the "$ Shell" button)

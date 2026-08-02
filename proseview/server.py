@@ -35,6 +35,8 @@ except ImportError:
     _PTY_AVAILABLE = False
 
 from .config import Config
+from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
+from .discuss import ContextError, DiscussManager
 from .generator import TEMPLATE_DIR, _load_asset, build_dashboard, build_scene_data
 from .lexical import paragraph_blocks
 from .repo import _file_node as _repo_file_node
@@ -798,6 +800,8 @@ class _Handler(BaseHTTPRequestHandler):
     unsubscribe: Callable[["queue.Queue[str]"], None]
     publish_event: Callable[[dict[str, Any]], None]
     repo_root: str
+    discuss_manager: DiscussManager
+    discuss_session_token: str
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -809,6 +813,101 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_json_limited(self, limit: int = 3 * 1024 * 1024) -> dict[str, Any]:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ContextError("invalid Content-Length") from exc
+        if length <= 0 or length > limit:
+            raise ContextError(f"request body must be between 1 and {limit} bytes")
+        try:
+            body = json.loads(self.rfile.read(length))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ContextError(f"invalid JSON body: {exc}") from exc
+        if not isinstance(body, dict):
+            raise ContextError("JSON body must be an object")
+        return body
+
+    @staticmethod
+    def _is_loopback_authority(value: str) -> bool:
+        try:
+            parsed = urlparse(value if "://" in value else f"http://{value}")
+        except ValueError:
+            return False
+        return (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+
+    def _authorize_discuss_mutation(self) -> bool:
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin", "")
+        if not self._is_loopback_authority(host) or (origin and not self._is_loopback_authority(origin)):
+            self._send_json({"ok": False, "error": "Discuss is available only from this local Prosview page"}, 403)
+            return False
+        if self.headers.get("X-Proseview-Session", "") != self.discuss_session_token:
+            self._send_json({"ok": False, "error": "invalid page session"}, 403)
+            return False
+        return True
+
+    def _send_discuss_error(self, exc: Exception) -> None:
+        message = str(exc) or exc.__class__.__name__
+        if isinstance(exc, CodexAuthError):
+            status = 401
+        elif isinstance(exc, (CodexUnavailableError, CodexProtocolError)):
+            status = 503
+        elif isinstance(exc, ContextError):
+            status = 409 if any(word in message.lower() for word in ("stale", "already", "not active", "busy")) else 400
+            if "queue is full" in message.lower():
+                status = 429
+            elif "conversation not found" in message.lower():
+                status = 404
+        else:
+            status = 500
+        self._send_json({"ok": False, "error": message}, status)
+
+    def _handle_discuss_events(self, conversation_id: str) -> None:
+        raw_last = self.headers.get("Last-Event-ID")
+        try:
+            last_id = int(raw_last) if raw_last not in (None, "") else None
+            if last_id is not None and last_id < 0:
+                raise ValueError
+        except ValueError:
+            self._send_json({"ok": False, "error": "Last-Event-ID must be an integer"}, 400)
+            return
+        try:
+            snapshot, replay, subscriber = self.discuss_manager.subscribe(conversation_id, last_id)
+        except Exception as exc:
+            self._send_discuss_error(exc)
+            return
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
+            def write_event(event_type: str, data: dict[str, Any], event_id: int | None = None) -> None:
+                if event_id is not None:
+                    self.wfile.write(f"id: {event_id}\n".encode("utf-8"))
+                self.wfile.write(f"event: {event_type}\n".encode("utf-8"))
+                self.wfile.write(("data: " + json.dumps(data, separators=(",", ":")) + "\n\n").encode("utf-8"))
+
+            if snapshot is not None:
+                write_event("snapshot", snapshot, snapshot.get("event_cursor"))
+            for event in replay:
+                write_event(event.type, event.data, event.id)
+            self.wfile.flush()
+            while True:
+                try:
+                    event = subscriber.get(timeout=15)
+                    write_event(event.type, event.data, event.id)
+                except queue.Empty:
+                    self.wfile.write(b": heartbeat\n\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.discuss_manager.unsubscribe(conversation_id, subscriber)
 
     # Static MIME map for the small set of vendored asset extensions.
     _VENDOR_MIME: dict[str, str] = {
@@ -969,6 +1068,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(exc)}, 500)
 
     def do_GET(self) -> None:  # noqa: N802
+        discuss_path = urlparse(self.path).path
+        discuss_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/(snapshot|events)", discuss_path)
+        if discuss_match:
+            conversation_id, action = discuss_match.groups()
+            if action == "events":
+                self._handle_discuss_events(conversation_id)
+            else:
+                try:
+                    self._send_json({"ok": True, "snapshot": self.discuss_manager.get_snapshot(conversation_id)})
+                except Exception as exc:
+                    self._send_discuss_error(exc)
+            return
         if self.path.startswith("/terminal-output/"):
             # Allow query string (e.g. /terminal-output/<id>?...).
             tid = urlparse(self.path).path.split("/")[-1]
@@ -1177,6 +1288,48 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        if path.startswith("/api/discuss/"):
+            if not self._authorize_discuss_mutation():
+                return
+            try:
+                body = self._read_json_limited()
+                if path == "/api/discuss/conversations/open":
+                    snapshot = self.discuss_manager.open({"kind": body.get("kind"), "path": body.get("path")})
+                    self._send_json({"ok": True, "conversation_id": snapshot["conversation_id"], "snapshot": snapshot})
+                    return
+                question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)
+                new_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/new", path)
+                stop_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/turns/([^/]+)/stop", path)
+                approval_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/approvals/([^/]+)", path)
+                if question_match:
+                    result = self.discuss_manager.submit(
+                        question_match.group(1),
+                        client_request_id=body.get("client_request_id", ""),
+                        question=body.get("question", ""),
+                        selection=body.get("selection", ""),
+                        attachments=body.get("attachments") or [],
+                    )
+                    self._send_json({"ok": True, **result}, 202)
+                    return
+                if new_match:
+                    snapshot = self.discuss_manager.new_conversation(new_match.group(1))
+                    self._send_json({"ok": True, "snapshot": snapshot})
+                    return
+                if stop_match:
+                    result = self.discuss_manager.stop(stop_match.group(1), stop_match.group(2))
+                    self._send_json({"ok": True, **result})
+                    return
+                if approval_match:
+                    result = self.discuss_manager.approve(
+                        approval_match.group(1), approval_match.group(2), str(body.get("decision") or ""), body
+                    )
+                    self._send_json({"ok": True, "approval": result})
+                    return
+                self._send_json({"ok": False, "error": "Discuss endpoint not found"}, 404)
+            except Exception as exc:
+                self._send_discuss_error(exc)
+            return
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length))
@@ -1385,6 +1538,8 @@ def _make_handler(
     unsubscribe: Callable[["queue.Queue[str]"], None],
     publish_event: Callable[[dict[str, Any]], None],
     repo_root: str,
+    discuss_manager: DiscussManager,
+    discuss_session_token: str,
 ) -> type:
     class BoundHandler(_Handler):
         pass
@@ -1394,6 +1549,8 @@ def _make_handler(
     BoundHandler.unsubscribe = staticmethod(unsubscribe)  # type: ignore[method-assign]
     BoundHandler.publish_event = staticmethod(publish_event)  # type: ignore[method-assign]
     BoundHandler.repo_root = repo_root  # type: ignore[method-assign]
+    BoundHandler.discuss_manager = discuss_manager  # type: ignore[method-assign]
+    BoundHandler.discuss_session_token = discuss_session_token  # type: ignore[method-assign]
     return BoundHandler
 
 
@@ -1409,13 +1566,15 @@ def serve(
     _stale = [True]
     _sse_clients: list[queue.Queue[str]] = []
     _sse_lock = threading.Lock()
+    discuss_manager = DiscussManager(root)
+    discuss_session_token = uuid.uuid4().hex
 
     def get_html() -> str:
         with lock:
             if _stale[0] or not _cache:
                 started = perf_counter()
                 cfg = Config.load(root)
-                html = build_dashboard(root, cfg)
+                html = build_dashboard(root, cfg, discuss_session_token=discuss_session_token)
                 _cache[:] = [html]
                 _stale[0] = False
                 elapsed = perf_counter() - started
@@ -1540,6 +1699,8 @@ def serve(
         unsubscribe,
         publish_event,
         str(root.resolve()),
+        discuss_manager,
+        discuss_session_token,
     )
 
     class _Server(ThreadingHTTPServer):
@@ -1566,4 +1727,5 @@ def serve(
         pass
     finally:
         httpd.shutdown()
+        discuss_manager.close()
         _remove_runtime_file(root, port)

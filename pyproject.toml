@@ -34,6 +34,13 @@ dependencies = [
 dev = [
     "pytest>=7",
 ]
+# Browser end-to-end tier. Opt-in: `pip install -e ".[e2e]" && playwright install chromium`.
+# The HTTP end-to-end tier under tests/e2e/ needs none of this -- it is stdlib only.
+e2e = [
+    "pytest>=7",
+    "playwright>=1.44",
+    "pytest-playwright>=0.5",
+]
 
 [project.urls]
 Homepage = "https://github.com/ourarash/prosview"
@@ -57,3 +64,10 @@ proseview = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The browser tier needs Playwright plus a Chromium download, so it is excluded
+# from the default run. Opt in with `pytest -m e2e_browser` (or `-m ""` for all).
+addopts = "-m 'not e2e_browser'"
+markers = [
+    "e2e_browser: end-to-end test driving a real browser via Playwright",
+    "allow_js_errors(*substrings): tolerate matching console/page errors in a browser test",
+]

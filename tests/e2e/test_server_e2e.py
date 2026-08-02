@@ -1,0 +1,510 @@
+"""End-to-end tests against a running Proseview server.
+
+Every test here talks to a real ``python -m proseview`` subprocess over HTTP and
+asserts on observable effects -- bytes on disk, SSE frames, PTY output -- rather
+than on status codes alone. See ``conftest.py`` for the harness.
+
+No browser is involved; the browser-only surface lives in ``test_browser_e2e.py``.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import time
+from pathlib import Path
+
+import pytest
+
+from .conftest import (
+    AGENT_MARKER,
+    ANNOTATED_SCENE_REL,
+    LARGE_SCENE_REL,
+    SCENE_REL,
+    ProseviewServer,
+)
+
+POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="PTY terminals are POSIX-only")
+
+
+def _frontmatter(text: str) -> str:
+    """The leading ``---`` block, or a clear failure if the save dropped it."""
+    match = re.match(r"^---\n.*?\n---\n", text, re.DOTALL)
+    assert match, f"scene file has no frontmatter block; starts with {text[:80]!r}"
+    return match.group(0)
+
+
+def _line_col(text: str, index: int) -> tuple[int, int]:
+    """Line and column for *index*, both 1-based.
+
+    Matches ``server._line_col_to_offset``, which rejects anything below 1.
+    """
+    line = text.count("\n", 0, index) + 1
+    line_start = text.rfind("\n", 0, index) + 1
+    return line, index - line_start + 1
+
+
+# ── boot and discovery ──────────────────────────────────────────────────────
+
+
+def test_dashboard_renders_every_fixture_scene(shared_server: ProseviewServer):
+    resp = shared_server.get("/")
+    assert resp.status == 200
+    html = resp.text
+    # Titles come from frontmatter, so their presence proves the scene pipeline
+    # ran end to end, not merely that a template rendered.
+    assert "Opening Ledger" in html
+    assert "Long Haul" in html
+    assert "Annotated Ledger" in html
+
+
+def test_runtime_file_advertises_this_server(shared_server: ProseviewServer):
+    """``proseview propose`` finds the server through this file."""
+    payload = json.loads((shared_server.root / ".proseview" / "server.json").read_text())
+    assert payload["url"] == shared_server.base_url
+    assert Path(payload["repo_root"]).resolve() == shared_server.root.resolve()
+
+
+# ── data endpoints ──────────────────────────────────────────────────────────
+
+
+def test_data_json_carries_contents_meta_and_highlights(shared_server: ProseviewServer):
+    data = shared_server.get_json("/data.json")
+    assert set(data) == {"contents", "meta", "highlightsByPath"}
+
+    meta = data["meta"][SCENE_REL]
+    assert meta["words"] > 0
+    assert meta["mtime"] > 0
+    assert Path(meta["abs_path"]).is_file()
+    assert data["highlightsByPath"][SCENE_REL]["paragraphs"]
+
+
+def test_scene_data_returns_only_the_requested_scene(shared_server: ProseviewServer):
+    data = shared_server.get_json(f"/scene-data?path={SCENE_REL}")
+    assert list(data["contents"]) == [SCENE_REL]
+    assert data["contents"][SCENE_REL] == shared_server.get_json("/data.json")["contents"][SCENE_REL]
+
+
+def test_scene_data_rejects_paths_outside_the_manuscript(shared_server: ProseviewServer):
+    resp = shared_server.get("/scene-data?path=../../../etc/passwd")
+    assert resp.status == 403
+    assert resp.json()["ok"] is False
+
+
+def test_large_scene_is_analysed(shared_server: ProseviewServer):
+    """A ~10k-word scene still produces sane analytics.
+
+    Guards against silent truncation or a quadratic blow-up in the lexical
+    passes, which the small committed fixture would never surface.
+    """
+    started = time.monotonic()
+    data = shared_server.get_json("/data.json")
+    elapsed = time.monotonic() - started
+
+    meta = data["meta"][LARGE_SCENE_REL]
+    assert meta["words"] > 9_000
+    assert meta["read_min"] > 0
+    assert data["highlightsByPath"][LARGE_SCENE_REL]["paragraphs"]
+    assert elapsed < 30, f"/data.json took {elapsed:.1f}s over a 10k-word scene"
+
+
+# ── saving ──────────────────────────────────────────────────────────────────
+
+
+def test_save_scene_writes_body_and_preserves_frontmatter(server: ProseviewServer):
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+    body = server.get_json("/data.json")["contents"][SCENE_REL]
+
+    resp = server.save_scene(body.replace("cold coffee", "burnt coffee"))
+    assert resp.status == 200
+    payload = resp.json()
+    assert payload["ok"] is True
+
+    after = path.read_text(encoding="utf-8")
+    assert "burnt coffee" in after
+    # The header (frontmatter + title) is reconstructed by the server, not sent
+    # by the client, so a regression there would silently eat metadata.
+    assert _frontmatter(after) == _frontmatter(before)
+    assert "# Opening Ledger" in after
+    # The returned mtime is the client's next conflict baseline.
+    assert payload["mtime"] == pytest.approx(path.stat().st_mtime, abs=0.01)
+
+
+def test_save_scene_with_stale_mtime_conflicts_and_changes_nothing(server: ProseviewServer):
+    path = server.scene_path()
+    body = server.get_json("/data.json")["contents"][SCENE_REL]
+    stale_mtime = server.scene_meta()["mtime"]
+
+    assert server.save_scene(body + "\nFirst writer wins.\n").status == 200
+    after_first = path.read_text(encoding="utf-8")
+
+    # Second writer opened the file before the first save landed.
+    resp = server.save_scene(body + "\nSecond writer clobbers.\n", mtime=stale_mtime)
+    assert resp.status == 409
+    assert resp.json() == {"conflict": True}
+    assert path.read_text(encoding="utf-8") == after_first
+    assert "Second writer clobbers." not in after_first
+
+
+def test_save_scene_refuses_paths_outside_the_manuscript(server: ProseviewServer):
+    outside = server.root / "plans" / "book-plan.md"
+    before = outside.read_text(encoding="utf-8")
+    resp = server.post_json("/save-scene", {
+        "abs_path": str(outside),
+        "content": "overwritten",
+        "open_mtime": outside.stat().st_mtime,
+    })
+    assert resp.status == 500
+    assert outside.read_text(encoding="utf-8") == before
+
+
+# ── TODOs and notes ─────────────────────────────────────────────────────────
+
+
+def test_todo_lifecycle_round_trips_the_file(server: ProseviewServer):
+    path = server.scene_path()
+    original = path.read_text(encoding="utf-8")
+    meta = server.scene_meta()
+
+    assert server.post_json("/insert-todo", {
+        "abs_path": meta["abs_path"],
+        "selection_text": "It is sticking again",
+        "txt_line_offset": meta["txt_line_offset"],
+        "todo_text": "Sharpen Lowe's entrance",
+    }).json() == {"ok": True}
+
+    with_todo = path.read_text(encoding="utf-8")
+    assert "<!-- TODO: Sharpen Lowe's entrance -->" in with_todo
+    # It must land above the paragraph holding the selection, not at the top.
+    todo_line = with_todo.index("<!-- TODO:")
+    assert with_todo.index("It is sticking again") > todo_line
+    assert with_todo.index("The loft smelled") < todo_line
+
+    assert server.post_json("/edit-todo", {
+        "abs_path": meta["abs_path"],
+        "old_todo_text": "Sharpen Lowe's entrance",
+        "new_todo_text": "Cut Lowe's entrance entirely",
+    }).json() == {"ok": True}
+    assert "<!-- TODO: Cut Lowe's entrance entirely -->" in path.read_text(encoding="utf-8")
+
+    assert server.post_json("/delete-todo", {
+        "abs_path": meta["abs_path"],
+        "todo_text": "Cut Lowe's entrance entirely",
+    }).json() == {"ok": True}
+    assert "<!-- TODO:" not in path.read_text(encoding="utf-8")
+
+
+def test_note_lifecycle_preserves_its_tag(server: ProseviewServer):
+    path = server.scene_path()
+    meta = server.scene_meta()
+
+    assert server.post_json("/add-note", {
+        "abs_path": meta["abs_path"],
+        "selection_text": "It is not the safe",
+        "txt_line_offset": meta["txt_line_offset"],
+        "note_text": "Safe brand must match chapter three",
+        "tag": "continuity",
+    }).json() == {"ok": True}
+    assert "<!-- NOTE[continuity]: Safe brand must match chapter three -->" in path.read_text(encoding="utf-8")
+
+    assert server.post_json("/edit-note", {
+        "abs_path": meta["abs_path"],
+        "old_note_text": "Safe brand must match chapter three",
+        "old_tag": "continuity",
+        "new_note_text": "Safe brand is established in chapter three",
+        "new_tag": "question",
+    }).json() == {"ok": True}
+    assert "<!-- NOTE[question]: Safe brand is established in chapter three -->" in path.read_text(encoding="utf-8")
+
+    assert server.post_json("/delete-note", {
+        "abs_path": meta["abs_path"],
+        "note_text": "Safe brand is established in chapter three",
+        "tag": "question",
+    }).json() == {"ok": True}
+    assert "<!-- NOTE[" not in path.read_text(encoding="utf-8")
+
+
+def test_annotations_surface_in_scene_metadata(shared_server: ProseviewServer):
+    """The seeded annotated scene's inline comments reach the Tasks/Notes data."""
+    meta = shared_server.get_json("/data.json")["meta"][ANNOTATED_SCENE_REL]
+    todo_text = json.dumps(meta["todos"])
+    note_text = json.dumps(meta["notes"])
+    assert "Tighten this opening beat" in todo_text
+    assert "Patel should not know about the safe yet" in note_text
+
+
+# ── AI proposal bridge (through the real CLI) ───────────────────────────────
+
+
+QUOTE = "the slow algebra of yesterday's receipts"
+
+
+def test_cli_propose_resolves_a_quote_to_an_editor_range(server: ProseviewServer):
+    proc = server.cli(
+        "propose", "--root", str(server.root),
+        "--file", SCENE_REL,
+        "--quote", QUOTE,
+        "--message", "Too ornate for a cold open",
+        "--option", "the arithmetic of yesterday's receipts",
+    )
+    assert "created for" in proc.stdout
+
+    proposals = server.get_json("/ai/proposals")["proposals"]
+    assert len(proposals) == 1
+    prop = proposals[0]
+    assert prop["file"] == SCENE_REL
+    assert prop["status"] == "created"
+    assert prop["resolved_quote"] == QUOTE
+    assert prop["range"]["end"] - prop["range"]["start"] == len(QUOTE)
+    assert prop["options"][0]["text"] == "the arithmetic of yesterday's receipts"
+
+
+def test_quote_and_line_col_targeting_resolve_identically(server: ProseviewServer):
+    """The two targeting paths must agree.
+
+    ``--quote`` searches the flattened editor text; ``--start-line/--start-col``
+    walks raw Markdown offsets through ``_scene_to_editor_offset``. They are
+    independent implementations of the same mapping, so cross-checking them
+    catches the off-by-one class of bug without reimplementing either here.
+    """
+    raw = server.scene_path().read_text(encoding="utf-8")
+    start = raw.index(QUOTE)
+    start_line, start_col = _line_col(raw, start)
+    end_line, end_col = _line_col(raw, start + len(QUOTE))
+
+    server.cli(
+        "propose", "--root", str(server.root), "--file", SCENE_REL,
+        "--quote", QUOTE, "--message", "by quote", "--option", "a plainer phrase",
+    )
+    server.cli(
+        "propose", "--root", str(server.root), "--file", SCENE_REL,
+        "--start-line", str(start_line), "--start-col", str(start_col),
+        "--end-line", str(end_line), "--end-col", str(end_col),
+        "--message", "by line/col", "--option", "a plainer phrase",
+    )
+
+    by_message = {p["message"]: p for p in server.get_json("/ai/proposals")["proposals"]}
+    assert by_message["by quote"]["range"] == by_message["by line/col"]["range"]
+    assert by_message["by quote"]["resolved_quote"] == by_message["by line/col"]["resolved_quote"]
+
+
+def test_propose_rejects_a_quote_that_spans_an_annotation(server: ProseviewServer):
+    """Annotations are atoms in the editor; a range crossing one cannot be applied."""
+    proc = server.cli(
+        "propose", "--root", str(server.root),
+        "--file", ANNOTATED_SCENE_REL,
+        "--quote", "<!-- TODO: Tighten this opening beat -->",
+        "--message", "should be refused", "--option", "nothing",
+        check=False,
+    )
+    assert proc.returncode != 0 or "failed" in proc.stdout + proc.stderr
+    assert server.get_json("/ai/proposals")["proposals"] == []
+
+
+def test_apply_requests_the_edit_and_publishes_it_over_sse(server: ProseviewServer):
+    """Applying is a *request*, not a write.
+
+    The server marks the proposal ``apply_requested`` and broadcasts it; the
+    browser performs the edit in ProseMirror and saves. Asserting a file change
+    here would encode the wrong contract -- that assertion belongs in the
+    browser tier.
+    """
+    server.cli(
+        "propose", "--root", str(server.root), "--file", SCENE_REL,
+        "--quote", QUOTE, "--message", "Too ornate",
+        "--option", "the arithmetic of yesterday's receipts",
+    )
+    prop_id = server.get_json("/ai/proposals")["proposals"][0]["id"]
+    before = server.scene_path().read_text(encoding="utf-8")
+
+    with server.sse() as events:
+        server.cli("proposal", "apply", prop_id, "--root", str(server.root))
+        frame = events.wait_for(lambda f: "apply" in f and prop_id in f)
+
+    payload = json.loads(frame)
+    assert payload["proposal"]["status"] == "apply_requested"
+    assert payload["proposal"]["selected_option"] == 0
+    assert server.get_json(f"/ai/proposals/{prop_id}")["proposal"]["status"] == "apply_requested"
+    assert server.scene_path().read_text(encoding="utf-8") == before
+
+
+def test_proposal_can_be_skipped(server: ProseviewServer):
+    server.cli(
+        "propose", "--root", str(server.root), "--file", SCENE_REL,
+        "--quote", QUOTE, "--message", "Never mind", "--option", "leave it alone",
+    )
+    prop_id = server.get_json("/ai/proposals")["proposals"][0]["id"]
+    server.cli("proposal", "skip", prop_id, "--root", str(server.root))
+    assert server.get_json(f"/ai/proposals/{prop_id}")["proposal"]["status"] == "skipped"
+
+
+# ── live reload ─────────────────────────────────────────────────────────────
+
+
+def test_editing_a_scene_on_disk_pushes_a_reload_event(server: ProseviewServer):
+    with server.sse() as events:
+        assert events.next(timeout=5) == "connected"
+        path = server.scene_path()
+        path.write_text(path.read_text(encoding="utf-8") + "\nA line typed in vim.\n", encoding="utf-8")
+
+        frame = events.wait_for(lambda f: "reload" in f, timeout=15)
+
+    # Content changes carry the changed paths so the client can re-render a
+    # single scene instead of reloading the whole page.
+    if frame.startswith("{"):
+        payload = json.loads(frame)
+        assert payload["type"] == "reload"
+        assert any(SCENE_REL.split("/")[-1] in p for p in payload["paths"])
+    else:
+        assert frame == "reload"
+
+
+# ── terminal and agents ─────────────────────────────────────────────────────
+
+
+def _terminal_text(server: ProseviewServer, tid: str, needle: str, timeout: float = 15.0) -> str:
+    """Accumulate PTY output until *needle* appears.
+
+    Frames are base64-encoded chunks of raw terminal bytes, so a marker can be
+    split across frames -- always match against the accumulation.
+    """
+    seen = ""
+    with server.sse(f"/terminal-output/{tid}") as stream:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            frame = stream.next(timeout=max(0.1, deadline - time.monotonic()))
+            if frame in ("connected", "__exit__"):
+                if frame == "__exit__":
+                    break
+                continue
+            try:
+                seen += base64.b64decode(frame).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+            if needle in seen:
+                return seen
+    raise AssertionError(f"{needle!r} never appeared in terminal output; saw {seen!r}")
+
+
+@POSIX_ONLY
+def test_terminal_streams_output_from_a_spawned_command(server: ProseviewServer):
+    resp = server.post_json("/terminal-spawn", {
+        "command": ["echo", "proseview-e2e-marker"],
+        "type": "shell", "label": "Shell 1", "rows": 24, "cols": 80,
+    })
+    assert resp.status == 200
+    assert "proseview-e2e-marker" in _terminal_text(
+        server, resp.json()["id"], "proseview-e2e-marker"
+    )
+
+
+@POSIX_ONLY
+def test_terminal_session_is_listed_while_alive_and_killable(server: ProseviewServer):
+    """``/terminal-list`` reports only live sessions, so the command has to
+    outlive the request -- ``echo`` would already be reaped."""
+    tid = server.post_json("/terminal-spawn", {
+        "command": ["sh", "-c", "echo proseview-ready; cat"],
+        "type": "shell", "label": "Shell 1",
+    }).json()["id"]
+    _terminal_text(server, tid, "proseview-ready")
+
+    sessions = server.get_json("/terminal-list")["sessions"]
+    assert any(s["id"] == tid and s["label"] == "Shell 1" and s["alive"] for s in sessions)
+
+    assert server.post_json("/terminal-kill", {"id": tid}).json() == {"ok": True}
+    assert all(s["id"] != tid for s in server.get_json("/terminal-list")["sessions"])
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("agent", ["codex", "claude", "gemini"])
+def test_agent_launch_runs_the_real_binary_from_path(server: ProseviewServer, agent: str):
+    """The agent handoff is a plain terminal spawn of the agent's own command.
+
+    A stub on PATH stands in for the real tool, so this proves the spawn reaches
+    an executable and is tagged with the right session type -- the part
+    Proseview owns.
+    """
+    resp = server.post_json("/terminal-spawn", {
+        "command": [agent], "type": agent, "label": f"{agent.title()} 1",
+    })
+    assert resp.status == 200
+    tid = resp.json()["id"]
+
+    assert f"{AGENT_MARKER} {agent}" in _terminal_text(server, tid, f"{AGENT_MARKER} {agent}")
+    assert any(s["type"] == agent for s in server.get_json("/terminal-list")["sessions"])
+
+
+@POSIX_ONLY
+def test_codex_auto_approve_passes_the_full_auto_flag(server: ProseviewServer):
+    """Auto-approve is expressed purely as argv, so the stub can echo it back."""
+    tid = server.post_json("/terminal-spawn", {
+        "command": ["codex", "--full-auto"], "type": "codex",
+    }).json()["id"]
+    assert "argv:--full-auto" in _terminal_text(server, tid, "argv:--full-auto")
+
+
+@POSIX_ONLY
+def test_selection_and_instruction_reach_the_agent_process(server: ProseviewServer):
+    """The prompt is delivered as keystrokes, not as a spawn argument.
+
+    ``/terminal-input`` is the only channel carrying the selected passage to the
+    agent, so a regression there would silently strip the user's context while
+    still appearing to launch the agent correctly.
+    """
+    tid = server.post_json("/terminal-spawn", {"command": ["codex"], "type": "codex"}).json()["id"]
+    _terminal_text(server, tid, AGENT_MARKER)
+
+    prompt = "Tighten this passage: the slow algebra of yesterday's receipts\n"
+    assert server.post_json("/terminal-input", {
+        "id": tid,
+        "data": base64.b64encode(prompt.encode()).decode(),
+    }).json() == {"ok": True}
+
+    assert "STDIN:Tighten this passage" in _terminal_text(server, tid, "STDIN:Tighten this passage")
+
+
+@POSIX_ONLY
+def test_terminal_sessions_outlive_a_page_reload(server: ProseviewServer):
+    """``/terminal-list`` is what lets a reloaded page reattach instead of
+    losing every running agent."""
+    tid = server.post_json("/terminal-spawn", {"command": ["codex"], "type": "codex"}).json()["id"]
+    _terminal_text(server, tid, AGENT_MARKER)
+
+    # A reload re-fetches the page; the PTY must be untouched by it.
+    assert server.get("/").status == 200
+    session = next(s for s in server.get_json("/terminal-list")["sessions"] if s["id"] == tid)
+    assert session["alive"] is True
+    assert session["command"] == ["codex"]
+
+    # Scrollback replays to the reattaching client.
+    assert AGENT_MARKER in _terminal_text(server, tid, AGENT_MARKER)
+
+
+# ── static assets and rejections ────────────────────────────────────────────
+
+
+def test_stylesheet_and_vendored_assets_are_served(shared_server: ProseviewServer):
+    css = shared_server.get("/app.css")
+    assert css.status == 200 and b"{" in css.body
+
+    xterm = shared_server.get("/vendor/xterm.js")
+    assert xterm.status == 200 and len(xterm.body) > 1000
+
+
+def test_repo_file_returns_a_preview_node(shared_server: ProseviewServer):
+    payload = shared_server.get_json("/repo-file?path=plans/book-plan.md")
+    assert payload["ok"] is True
+    assert payload["node"]["is_text"] is True
+    assert payload["node"]["body"].strip()
+
+
+def test_repo_file_rejects_traversal_outside_the_repo(shared_server: ProseviewServer):
+    resp = shared_server.get("/repo-file?path=../../../../etc/passwd")
+    assert resp.status == 403
+
+
+def test_unknown_paths_404(shared_server: ProseviewServer):
+    assert shared_server.get("/definitely-not-a-route").status == 404

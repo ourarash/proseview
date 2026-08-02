@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Prosview Code"
+  short_description: "Run staged code and architecture review"
+  default_prompt: "Use $review-prosview-code to run independent specification and engineering-quality audits of this Prosview implementation."

@@ -128,6 +128,44 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
     assert "Explain the ledger" in prompt
     assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
 
+
+def test_discuss_http_can_remove_default_document_context(server: ProseviewServer, fake_home: Path):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    )
+    conversation_id = opened.json()["conversation_id"]
+    question = "HTTP OMIT CURRENT DOCUMENT SENTINEL"
+
+    response = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "without-current-document",
+            "question": question,
+            "include_current_document": False,
+            "attachments": [{"kind": "file", "path": "plans/book-plan.md"}],
+        },
+        headers=headers,
+    )
+    assert response.status == 202
+    _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any(m["role"] == "assistant" for m in value["messages"]),
+    )
+
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    prompt = next(
+        record["params"]["input"][0]["text"]
+        for record in reversed(records)
+        if question in json.dumps(record)
+    )
+    assert "Opening Ledger" not in prompt
+    assert "book-plan.md" in prompt
+    assert question in prompt
+
     resumed = server.post_json(
         "/api/discuss/conversations/open",
         {"kind": "scene", "path": SCENE_REL},

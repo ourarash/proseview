@@ -144,6 +144,28 @@ def test_manager_serializes_one_document_and_filters_raw_reasoning(tmp_path: Pat
     manager.close()
 
 
+def test_manager_omits_current_document_when_user_removes_it(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    manager.submit(
+        cid,
+        client_request_id="without-current",
+        question="Use only my question",
+        include_current_document=False,
+    )
+    _wait_for(lambda: bool(clients[0].prompts))
+
+    assert "First document." not in clients[0].prompts[0]
+    assert "Use only my question" in clients[0].prompts[0]
+    manager.close()
+
+
 def test_manager_runs_different_documents_concurrently_and_is_idempotent(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []

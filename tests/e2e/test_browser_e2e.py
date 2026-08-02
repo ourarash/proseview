@@ -289,6 +289,58 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
 
 
+def test_discuss_current_file_is_default_removable_context(
+    page: Page,
+    server: ProseviewServer,
+    fake_home: Path,
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    context_button = page.locator("#discussContextButton")
+    assert context_button.get_attribute("aria-label") == "Add files and more"
+    assert "+ Context" not in page.locator("#discussComposerArea").inner_text()
+    page.locator("#discussInput").press("@")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    assert page.locator("#discussContextOptions").get_attribute("role") == "listbox"
+    assert not page.locator("#discussContextPicker").evaluate("node => node.matches(':modal')")
+    assert context_button.get_attribute("aria-expanded") == "true"
+    page.locator("#discussInput").press("Escape")
+    page.wait_for_selector("#discussContextPicker", state="hidden")
+    assert context_button.get_attribute("aria-expanded") == "false"
+    assert page.locator("#discussPanel").is_visible()
+
+    page.fill("#discussInput", "Compare ")
+    page.locator("#discussInput").press_sequentially("@book")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    assert "plans/book-plan.md" in page.locator("#discussContextOptions").inner_text()
+    page.locator("#discussInput").press("Enter")
+    page.wait_for_selector("#discussContextPicker", state="hidden")
+    assert page.locator("#discussInput").input_value() == "Compare "
+    assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
+    current_chip = page.locator("#discussContext .discuss-chip-current")
+    assert SCENE_REL in current_chip.inner_text()
+
+    current_chip.get_by_role("button", name=f"Remove current document {SCENE_REL}").click()
+    assert SCENE_REL not in page.locator("#discussContext").inner_text()
+
+    question = "Compare BROWSER OMIT CURRENT DOCUMENT SENTINEL"
+    page.fill("#discussInput", question)
+    page.locator("#discussSend").click()
+    wait_for_discuss_answer(page, "<script>hostile()</script>")
+
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    prompt = next(
+        record["params"]["input"][0]["text"]
+        for record in reversed(records)
+        if question in json.dumps(record)
+    )
+    assert "Opening Ledger" not in prompt
+    assert "book-plan.md" in prompt
+    assert question in prompt
+
+
 def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, server: ProseviewServer):
     page.goto(f"{server.base_url}#/file/plans/book-plan.md", wait_until="load")
     page.wait_for_function("() => !!window._PM")
@@ -297,10 +349,10 @@ def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, s
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
 
-    page.click("button:text-is('+ Context')")
+    page.get_by_role("button", name="Add files and more").click()
     page.wait_for_selector("#discussContextPicker", state="visible")
-    page.check("#discussPickerTree input[value='plans']")
-    page.click("button:text-is('Attach selected')")
+    page.locator("#discussInput").press_sequentially("plans")
+    page.locator("#discussContextOptions [data-path='plans']").click()
     assert "plans" in page.locator("#discussContext").inner_text()
 
     page.fill("#discussInput", "REQUEST_APPROVAL")

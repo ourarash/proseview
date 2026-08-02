@@ -272,7 +272,7 @@
                 <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
                 <div class="discuss-composer-actions">
                     <div class="discuss-composer-action-group">
-                        <button type="button" class="discuss-secondary" onclick="openDiscussContextPicker()">+ Context</button>
+                        <button id="discussContextButton" type="button" class="discuss-context-button" onclick="openDiscussContextPicker()" aria-label="Add files and more" aria-haspopup="dialog" aria-expanded="false" title="Add files and more (@)"><span aria-hidden="true">+</span></button>
                         <button id="discussNewConversation" type="button" class="discuss-secondary" onclick="openNewDiscussConversationDialog()">New conversation</button>
                     </div>
                     <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>

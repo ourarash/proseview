@@ -5,6 +5,7 @@
         var _discussEventSource = null;
         var _discussAttachments = [];
         var _discussSelection = '';
+        var _discussIncludeCurrentDocument = true;
         var _discussReturnFocus = null;
         var _discussRefreshTimer = null;
         var _discussLastApproval = '';
@@ -61,6 +62,7 @@
             _discussReturnFocus = trigger || document.activeElement;
             _discussSelection = captureDiscussSelection();
             _discussAttachments = [];
+            _discussIncludeCurrentDocument = true;
             var panel = document.getElementById('discussPanel');
             panel.hidden = false;
             document.body.classList.add('discuss-open');
@@ -358,7 +360,19 @@
         function renderDiscussContext() {
             var context = document.getElementById('discussContext'); context.replaceChildren();
             var doc = discussDocument();
-            if (doc) context.appendChild(elementWith('discuss-chip', doc.path));
+            if (doc && _discussIncludeCurrentDocument) {
+                var current = elementWith('discuss-chip discuss-chip-current', doc.path);
+                current.title = 'Current document';
+                var removeCurrent = document.createElement('button');
+                removeCurrent.type = 'button'; removeCurrent.textContent = '×';
+                removeCurrent.setAttribute('aria-label', 'Remove current document ' + doc.path);
+                removeCurrent.onclick = function() {
+                    _discussIncludeCurrentDocument = false;
+                    renderDiscussContext();
+                    document.getElementById('discussAnnouncement').textContent = 'Current document removed from context';
+                };
+                current.appendChild(removeCurrent); context.appendChild(current);
+            }
             _discussAttachments.forEach(function(attachment, index) {
                 var chip = elementWith('discuss-chip', attachment.path);
                 var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Remove ' + attachment.path);
@@ -370,6 +384,7 @@
         }
 
         function openDiscussContextPicker() {
+            document.getElementById('discussContextButton').setAttribute('aria-expanded', 'true');
             var tree = document.getElementById('discussPickerTree'); tree.replaceChildren();
             function visit(nodes, depth) {
                 (nodes || []).forEach(function(node) {
@@ -412,6 +427,7 @@
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';
                     _discussAttachments = [];
+                    _discussIncludeCurrentDocument = true;
                     renderDiscussContext();
                     renderDiscussSnapshot();
                     dialog.close('confirmed');
@@ -446,7 +462,11 @@
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             button.disabled = true;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
-                client_request_id: requestId, question: question, selection: _discussSelection, attachments: _discussAttachments
+                client_request_id: requestId,
+                question: question,
+                selection: _discussSelection,
+                attachments: _discussAttachments,
+                include_current_document: _discussIncludeCurrentDocument
             }).then(function() {
                 input.value = ''; _discussSelection = ''; renderDiscussContext(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = 'Question queued';
@@ -461,6 +481,10 @@
 
         document.getElementById('discussInput').addEventListener('keydown', function(event) {
             if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
+            else if (event.key === '@' && !event.isComposing && !this.value) { event.preventDefault(); openDiscussContextPicker(); }
+        });
+        document.getElementById('discussContextPicker').addEventListener('close', function() {
+            document.getElementById('discussContextButton').setAttribute('aria-expanded', 'false');
         });
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Escape') {

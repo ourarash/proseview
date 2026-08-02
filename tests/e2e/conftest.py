@@ -232,7 +232,7 @@ def _write_agent_stubs(bin_dir: Path) -> Path:
     the session down before the browser finished typing the prompt.
     """
     bin_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("codex", "claude", "gemini"):
+    for name in ("claude", "gemini"):
         script = bin_dir / name
         script.write_text(
             "#!/bin/sh\n"
@@ -243,6 +243,115 @@ def _write_agent_stubs(bin_dir: Path) -> Path:
             encoding="utf-8",
         )
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    codex = bin_dir / "codex"
+    codex.write_text(
+        """#!/usr/bin/env python3
+import json, os, pathlib, sys
+
+if len(sys.argv) >= 3 and sys.argv[1:3] == ['app-server', 'generate-json-schema']:
+    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1]) / 'v2'
+    out.mkdir(parents=True, exist_ok=True)
+    schemas = {
+        'ThreadStartParams.json': '{}',
+        'ThreadReadParams.json': '{"includeTurns":true}',
+        'TurnStartParams.json': '{"summary":true,"readableRoots":true}',
+        'TurnInterruptParams.json': '{}',
+        'CommandExecutionRequestApproval.json': '{}',
+        'CommandExecutionRequestApprovalResponse.json': '{"enum":["accept","acceptForSession","decline","cancel"]}',
+        'FileChangeRequestApprovalResponse.json': '{"enum":["accept","acceptForSession","decline","cancel"]}',
+        'PermissionsRequestApprovalResponse.json': '{"permissions":true}',
+    }
+    for name, body in schemas.items():
+        (out / name).write_text(body, encoding='utf-8')
+    raise SystemExit(0)
+
+if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
+    print('PROSEVIEW_FAKE_AGENT codex argv:' + ' '.join(sys.argv[1:]), flush=True)
+    for line in sys.stdin:
+        print('STDIN:' + line.rstrip('\\n'), flush=True)
+    raise SystemExit(0)
+
+threads = {}
+next_thread = 0
+next_turn = 0
+pending = {}
+record = pathlib.Path(os.environ['HOME']) / 'fake-codex-received.jsonl'
+
+def emit(value):
+    print(json.dumps(value, separators=(',', ':')), flush=True)
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get('method')
+    request_id = message.get('id')
+    params = message.get('params') or {}
+    if method == 'initialize':
+        emit({'id': request_id, 'result': {'userAgent': 'proseview-fake-codex/1', 'codexHome': '/isolated', 'platformFamily': 'unix', 'platformOs': 'test'}})
+    elif method == 'initialized':
+        continue
+    elif method == 'account/read':
+        emit({'id': request_id, 'result': {'account': {'type': 'apiKey'}, 'requiresOpenaiAuth': True}})
+    elif method == 'thread/read':
+        thread = threads.get(params.get('threadId'))
+        if thread is None:
+            emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found'}})
+        else:
+            emit({'id': request_id, 'result': {'thread': thread}})
+    elif method == 'thread/start':
+        next_thread += 1
+        thread_id = f'thread-{next_thread}'
+        threads[thread_id] = {'id': thread_id, 'turns': []}
+        emit({'id': request_id, 'result': {'thread': threads[thread_id]}})
+    elif method == 'turn/start':
+        next_turn += 1
+        turn_id = f'turn-{next_turn}'
+        thread_id = params['threadId']
+        prompt = params['input'][0]['text']
+        if thread_id not in threads:
+            emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found: ' + thread_id}})
+            continue
+        record.parent.mkdir(parents=True, exist_ok=True)
+        with record.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps({'threadId': thread_id, 'turnId': turn_id, 'params': params}) + '\\n')
+        turn = {'id': turn_id, 'status': 'inProgress', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': prompt}]}]}
+        threads.setdefault(thread_id, {'id': thread_id, 'turns': []})['turns'].append(turn)
+        emit({'id': request_id, 'result': {'turn': {'id': turn_id, 'status': 'inProgress'}}})
+        if 'CRASH_PROCESS' in prompt:
+            os._exit(7)
+        emit({'method': 'turn/started', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'inProgress'}}})
+        emit({'method': 'item/reasoning/textDelta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'delta': 'PRIVATE RAW REASONING'}})
+        emit({'method': 'item/reasoning/summaryTextDelta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'delta': 'Reviewing the attached document'}})
+        emit({'method': 'turn/plan/updated', 'params': {'threadId': thread_id, 'turnId': turn_id, 'plan': [{'step': 'Read context', 'status': 'completed'}, {'step': 'Answer question', 'status': 'inProgress'}]}})
+        emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'tool-' + turn_id, 'type': 'commandExecution', 'command': 'printf inspect', 'cwd': os.getcwd(), 'status': 'inProgress'}}})
+        if 'HOLD_FOR_STOP' in prompt:
+            continue
+        if 'REQUEST_APPROVAL' in prompt:
+            approval_id = 9000 + next_turn
+            pending[approval_id] = (thread_id, turn_id, turn)
+            emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'command': 'printf approved', 'cwd': os.getcwd(), 'reason': 'Test approval', 'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
+            continue
+        answer = 'Fake answer for ' + turn_id + ': **safe** [link](https://example.test) [unsafe](javascript:alert(1)) <script>hostile()</script>'
+        emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
+        emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
+        turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})
+        emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
+        if 'FORGET_THREAD_AFTER_TURN' in prompt:
+            threads.pop(thread_id, None)
+    elif method == 'turn/interrupt':
+        emit({'id': request_id, 'result': {}})
+        emit({'method': 'turn/completed', 'params': {'threadId': params['threadId'], 'turn': {'id': params['turnId'], 'status': 'interrupted'}}})
+    elif request_id in pending and ('result' in message or 'error' in message):
+        thread_id, turn_id, turn = pending.pop(request_id)
+        decision = (message.get('result') or {}).get('decision', 'decline')
+        answer = 'Approval resolved: ' + decision
+        emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
+        turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})
+        emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
+""",
+        encoding="utf-8",
+    )
+    codex.chmod(codex.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return bin_dir
 
 
@@ -273,19 +382,38 @@ class SseStream:
     def __init__(self, resp: Any) -> None:
         self._resp = resp
         self._queue: queue.Queue[str | None] = queue.Queue()
+        self._event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
         self._thread = threading.Thread(target=self._pump, daemon=True)
         self._thread.start()
 
     def _pump(self) -> None:
+        event_type = "message"
+        event_id: int | None = None
+        event_data: list[str] = []
         try:
             for raw in self._resp:
                 line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
                 if line.startswith("data: "):
-                    self._queue.put(line[len("data: "):])
+                    data = line[len("data: "):]
+                    event_data.append(data)
+                    self._queue.put(data)
+                elif line.startswith("event: "):
+                    event_type = line[len("event: "):]
+                elif line.startswith("id: "):
+                    try:
+                        event_id = int(line[len("id: "):])
+                    except ValueError:
+                        event_id = None
+                elif not line and event_data:
+                    self._event_queue.put({"id": event_id, "type": event_type, "data": "\n".join(event_data)})
+                    event_type = "message"
+                    event_id = None
+                    event_data = []
         except Exception:  # connection closed underneath us -- expected on teardown
             pass
         finally:
             self._queue.put(None)
+            self._event_queue.put(None)
 
     def next(self, timeout: float = 5.0) -> str:
         try:
@@ -310,6 +438,15 @@ class SseStream:
             if predicate(frame):
                 return frame
         raise AssertionError(f"no matching SSE frame within {timeout}s; saw {seen!r}")
+
+    def next_event(self, timeout: float = 5.0) -> dict[str, Any]:
+        try:
+            event = self._event_queue.get(timeout=timeout)
+        except queue.Empty:
+            raise AssertionError(f"no complete SSE event within {timeout}s") from None
+        if event is None:
+            raise AssertionError("SSE stream closed")
+        return event
 
     def close(self) -> None:
         """Tear the stream down without waiting for the server.
@@ -360,12 +497,14 @@ class ProseviewServer:
     def get_json(self, path: str, timeout: float = 30.0) -> Any:
         return self.get(path, timeout=timeout).json()
 
-    def post_json(self, path: str, payload: dict, timeout: float = 30.0) -> Response:
+    def post_json(self, path: str, payload: dict, timeout: float = 30.0, headers: dict[str, str] | None = None) -> Response:
+        request_headers = {"Content-Type": "application/json"}
+        request_headers.update(headers or {})
         req = urllib.request.Request(
             self.url(path),
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=request_headers,
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -374,8 +513,9 @@ class ProseviewServer:
             return Response(exc.code, exc.read(), dict(exc.headers or {}))
 
     @contextmanager
-    def sse(self, path: str = "/events") -> Iterator[SseStream]:
-        resp = urllib.request.urlopen(self.url(path), timeout=30)
+    def sse(self, path: str = "/events", headers: dict[str, str] | None = None) -> Iterator[SseStream]:
+        request = urllib.request.Request(self.url(path), headers=headers or {})
+        resp = urllib.request.urlopen(request, timeout=30)
         stream = SseStream(resp)
         try:
             yield stream

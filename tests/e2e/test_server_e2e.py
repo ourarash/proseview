@@ -29,6 +29,26 @@ from .conftest import (
 POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="PTY terminals are POSIX-only")
 
 
+def _discuss_token(server: ProseviewServer) -> str:
+    match = re.search(r"const discussSessionToken = \"([a-f0-9]+)\";", server.get("/").text)
+    assert match, "page session token was not embedded"
+    return match.group(1)
+
+
+def _discuss_headers(server: ProseviewServer) -> dict[str, str]:
+    return {"X-Proseview-Session": _discuss_token(server), "Origin": server.base_url}
+
+
+def _wait_discuss(server: ProseviewServer, conversation_id: str, predicate, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        snapshot = server.get_json(f"/api/discuss/conversations/{conversation_id}/snapshot")["snapshot"]
+        if predicate(snapshot):
+            return snapshot
+        time.sleep(0.03)
+    raise AssertionError("Discuss snapshot did not reach expected state")
+
+
 def _frontmatter(text: str) -> str:
     """The leading ``---`` block, or a clear failure if the save dropped it."""
     match = re.match(r"^---\n.*?\n---\n", text, re.DOTALL)
@@ -65,6 +85,312 @@ def test_runtime_file_advertises_this_server(shared_server: ProseviewServer):
     payload = json.loads((shared_server.root / ".proseview" / "server.json").read_text())
     assert payload["url"] == shared_server.base_url
     assert Path(payload["repo_root"]).resolve() == shared_server.root.resolve()
+
+
+def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: ProseviewServer, fake_home: Path):
+    headers = _discuss_headers(server)
+    denied = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+    )
+    assert denied.status == 403
+
+    opened = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    )
+    assert opened.status == 200
+    conversation_id = opened.json()["conversation_id"]
+    payload = {
+        "client_request_id": "http-one",
+        "question": "Explain the ledger",
+        "selection": "selection sentinel",
+        "attachments": [{"kind": "file", "path": "plans/book-plan.md"}],
+    }
+    first = server.post_json(f"/api/discuss/conversations/{conversation_id}/questions", payload, headers=headers)
+    duplicate = server.post_json(f"/api/discuss/conversations/{conversation_id}/questions", payload, headers=headers)
+    assert first.status == duplicate.status == 202
+    assert first.json()["client_request_id"] == duplicate.json()["client_request_id"]
+
+    snapshot = _wait_discuss(server, conversation_id, lambda value: any(m["role"] == "assistant" for m in value["messages"]))
+    serialized = json.dumps(snapshot)
+    assert "Fake answer" in serialized
+    assert "Reviewing the attached document" in serialized
+    assert "PRIVATE RAW REASONING" not in serialized
+    assert len([m for m in snapshot["messages"] if m["role"] == "user"]) == 1
+
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    prompt = records[-1]["params"]["input"][0]["text"]
+    assert "Opening Ledger" in prompt
+    assert "selection sentinel" in prompt
+    assert "book-plan.md" in prompt
+    assert "Explain the ledger" in prompt
+    assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+
+    resumed = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()
+    assert resumed["conversation_id"] == conversation_id
+    assert any(message["role"] == "assistant" for message in resumed["snapshot"]["messages"])
+
+
+def test_discuss_http_approval_and_event_stream(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()
+    conversation_id = opened["conversation_id"]
+
+    with server.sse(f"/api/discuss/conversations/{conversation_id}/events") as stream:
+        submitted = server.post_json(
+            f"/api/discuss/conversations/{conversation_id}/questions",
+            {"client_request_id": "approval-one", "question": "REQUEST_APPROVAL", "attachments": []},
+            headers=headers,
+        )
+        assert submitted.status == 202
+        frame = stream.wait_for(lambda value: "Test approval" in value)
+        approval = json.loads(frame)
+        assert approval["kind"] == "command"
+        resolved = server.post_json(
+            f"/api/discuss/conversations/{conversation_id}/approvals/{approval['request_id']}",
+            {"decision": "decline"},
+            headers=headers,
+        )
+        assert resolved.status == 200
+        assert resolved.json()["approval"]["decision"] == "decline"
+
+    snapshot = _wait_discuss(server, conversation_id, lambda value: any("Approval resolved" in m["text"] for m in value["messages"]))
+    assert snapshot["approvals"][0]["status"] == "resolved"
+    stale = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/approvals/{approval['request_id']}",
+        {"decision": "decline"},
+        headers=headers,
+    )
+    assert stale.status == 409
+
+
+def test_discuss_stop_preserves_and_runs_queued_question(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "hold", "question": "HOLD_FOR_STOP"},
+        headers=headers,
+    )
+    active = _wait_discuss(server, conversation_id, lambda value: bool(value["active_turn_id"]))
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "after", "question": "Answer after stop"},
+        headers=headers,
+    )
+    stopped = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/turns/{active['active_turn_id']}/stop",
+        {},
+        headers=headers,
+    )
+    assert stopped.status == 200
+    snapshot = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any("Fake answer" in message["text"] for message in value["messages"]),
+    )
+    assert len([message for message in snapshot["messages"] if message["role"] == "user"]) == 2
+
+
+def test_discuss_sse_replays_strictly_after_last_event_id(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    path = f"/api/discuss/conversations/{conversation_id}/events"
+    with server.sse(path) as stream:
+        first = stream.next_event()
+        assert first["id"] is not None
+        server.post_json(
+            f"/api/discuss/conversations/{conversation_id}/questions",
+            {"client_request_id": "replay", "question": "Replay this"},
+            headers=headers,
+        )
+        completed = None
+        while completed is None:
+            event = stream.next_event()
+            if event["type"] == "turn.completed":
+                completed = event
+        assert completed["id"] > first["id"]
+
+    with server.sse(path, headers={"Last-Event-ID": str(first["id"])}) as replay:
+        next_event = replay.next_event()
+        assert next_event["id"] == first["id"] + 1
+        assert next_event["type"] != "snapshot"
+
+
+def test_discuss_queue_overflow_and_context_validation(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "active", "question": "HOLD_FOR_STOP"},
+        headers=headers,
+    )
+    _wait_discuss(server, conversation_id, lambda value: bool(value["active_turn_id"]))
+    for index in range(10):
+        response = server.post_json(
+            f"/api/discuss/conversations/{conversation_id}/questions",
+            {"client_request_id": f"queued-{index}", "question": f"Queued {index}"},
+            headers=headers,
+        )
+        assert response.status == 202
+    overflow = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "overflow", "question": "Too many"},
+        headers=headers,
+    )
+    assert overflow.status == 429
+
+    invalid = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "file", "path": "../outside.md"},
+        headers=headers,
+    )
+    assert invalid.status == 400
+    malformed = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "bad-attachments", "question": "Bad", "attachments": {"path": "plans"}},
+        headers=headers,
+    )
+    assert malformed.status == 400
+
+
+def test_discuss_process_failure_is_honest_and_restarts_on_next_action(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "crash", "question": "CRASH_PROCESS"},
+        headers=headers,
+    )
+    failed = _wait_discuss(server, conversation_id, lambda value: value["connection"] == "Unavailable")
+    assert "exited" in failed["unavailable_reason"].lower() or "closed" in failed["unavailable_reason"].lower()
+
+    restarted = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "restart", "question": "Continue after failure"},
+        headers=headers,
+    )
+    assert restarted.status == 202
+    recovered = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: value["connection"] == "Live" and any("Fake answer" in message["text"] for message in value["messages"]),
+    )
+    assert recovered["connection"] == "Live"
+
+
+def test_discuss_refresh_recovers_a_missing_thread_and_can_start_new_conversation(
+    server: ProseviewServer,
+    fake_home: Path,
+):
+    headers = _discuss_headers(server)
+    document = {"kind": "scene", "path": SCENE_REL}
+    opened = server.post_json("/api/discuss/conversations/open", document, headers=headers).json()
+    conversation_id = opened["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "forget", "question": "FORGET_THREAD_AFTER_TURN"},
+        headers=headers,
+    )
+    _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any("Fake answer" in message["text"] for message in value["messages"]),
+    )
+
+    refreshed = server.post_json("/api/discuss/conversations/open", document, headers=headers).json()["snapshot"]
+    assert refreshed["connection"] == "Live"
+    assert any("next question will start a new conversation" in notice["message"].lower() for notice in refreshed["notices"])
+
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "after-refresh", "question": "Continue after refresh"},
+        headers=headers,
+    )
+    recovered = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: value["active_turn_id"] is None
+        and len([message for message in value["messages"] if message["role"] == "assistant"]) == 2,
+    )
+    assert recovered["connection"] == "Live"
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert records[-2]["threadId"] != records[-1]["threadId"]
+
+    reset = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/new",
+        {},
+        headers=headers,
+    )
+    assert reset.status == 200
+    assert reset.json()["snapshot"]["messages"] == []
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "after-reset", "question": "A deliberately fresh conversation"},
+        headers=headers,
+    )
+    fresh = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any("Fake answer" in message["text"] for message in value["messages"]),
+    )
+    assert len([message for message in fresh["messages"] if message["role"] == "user"]) == 1
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert records[-2]["threadId"] != records[-1]["threadId"]
+
+
+def test_discuss_new_conversation_refuses_to_discard_active_work(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "busy-reset", "question": "HOLD_FOR_STOP"},
+        headers=headers,
+    )
+    active = _wait_discuss(server, conversation_id, lambda value: bool(value["active_turn_id"]))
+
+    refused = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/new",
+        {},
+        headers=headers,
+    )
+    assert refused.status == 409
+    assert "busy" in refused.json()["error"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/turns/{active['active_turn_id']}/stop",
+        {},
+        headers=headers,
+    )
 
 
 # ── data endpoints ──────────────────────────────────────────────────────────

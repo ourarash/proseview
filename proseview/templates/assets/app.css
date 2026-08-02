@@ -1107,6 +1107,8 @@
         .discuss-composer-area { border-top: 1px solid var(--border); padding: 9px 11px 11px; background: var(--surface-card); }
         .discuss-composer-actions, .discuss-send-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
         .discuss-composer-action-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        .discuss-context-button { width: 30px; height: 30px; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: 50%; background: transparent; color: var(--text-main); font: inherit; font-size: 21px; line-height: 1; cursor: pointer; }
+        .discuss-context-button:hover, .discuss-context-button[aria-expanded="true"] { border-color: var(--border); background: var(--surface-muted); }
         #discussInput { width: 100%; min-height: 70px; max-height: 180px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--surface-card); color: var(--text-main); font: inherit; line-height: 1.4; }
         #discussHint { color: var(--text-muted); font-size: 10px; }
         #discussSend { border: 0; border-radius: 7px; padding: 7px 14px; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }

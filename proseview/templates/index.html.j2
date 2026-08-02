@@ -21,7 +21,12 @@
         })();
         (function() {
             const storedKey = 'proseview-font';
-            const allowed = ['reader', 'literary', 'sans', 'mono'];
+            // Must stay in step with FONT_ORDER in 00-state.js and the
+            // #modalFontSelect options below. This runs before any other
+            // script so the font is set before first paint, so it cannot read
+            // FONT_ORDER directly -- a value missing here is silently rejected
+            // on load and the reader's choice resets to 'reader'.
+            const allowed = ['reader', 'literary', 'inter', 'georgia', 'baskerville', 'sans', 'mono'];
             let font = 'reader';
             try {
                 const stored = localStorage.getItem(storedKey);
@@ -215,25 +220,6 @@
         <div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
 
     <div id="pmInsertAffordance" class="pm-insert-affordance" hidden title="Insert annotation">+</div>
-    <div id="pmAnnotationPopover" class="pm-annotation-popover" hidden>
-        <div class="pm-annotation-popover-header">
-            <select id="pmAnnotationTag" class="pm-annotation-tag-select">
-                <option value="TODO">TODO</option>
-                <option value="NOTE">Note</option>
-                <option value="continuity">Continuity</option>
-                <option value="character">Character</option>
-                <option value="theme">Theme</option>
-                <option value="question">Question</option>
-            </select>
-        </div>
-        <textarea id="pmAnnotationText" class="pm-annotation-text" rows="3" placeholder="Annotation text..."></textarea>
-        <div class="pm-annotation-popover-btns">
-            <button type="button" class="pm-annotation-save" onclick="saveAnnotationPopover()">Save</button>
-            <button type="button" class="pm-annotation-delete" onclick="deleteAnnotationNode()">Delete</button>
-            <button type="button" class="pm-annotation-cancel" onclick="closeAnnotationPopover()">Cancel</button>
-        </div>
-    </div>
-
     <div id="terminalPanel" class="terminal-panel dock-bottom" hidden>
         <div id="terminalResizeHandle" class="terminal-resize-handle"></div>
         <div class="terminal-inner">
@@ -354,6 +340,196 @@
             }
         };
 
+        function parseAnnotationRawForView(raw) {
+            const text = String(raw || '');
+            let m = text.match(/^<!--\s*TODO:\s*([\s\S]*?)\s*-->$/);
+            if (m) return { kind: 'todo', tag: 'TODO', body: m[1], icon: '📝' };
+            m = text.match(/^<!--\s*NOTE\[(\w+)\]:\s*([\s\S]*?)\s*-->$/);
+            if (m) return { kind: 'note', tag: m[1], body: m[2], icon: '📌' };
+            m = text.match(/^<!--\s*NOTE:\s*([\s\S]*?)\s*-->$/);
+            if (m) return { kind: 'note', tag: 'NOTE', body: m[1], icon: '📌' };
+            return {
+                kind: 'todo',
+                tag: 'TODO',
+                body: text.replace(/^<!--\s*/, '').replace(/\s*-->$/, ''),
+                icon: '📝'
+            };
+        }
+
+        function buildAnnotationRawFromView(tag, text) {
+            if (tag === 'TODO') return '<!-- TODO: ' + text + ' -->';
+            if (tag === 'NOTE') return '<!-- NOTE: ' + text + ' -->';
+            return '<!-- NOTE[' + tag + ']: ' + text + ' -->';
+        }
+
+        class AnnotationNodeView {
+            constructor(node, view, getPos) {
+                this.node = node;
+                this.view = view;
+                this.getPos = getPos;
+                this.editing = false;
+                this.autoSave = false;
+                this.dom = document.createElement('div');
+                this.dom.contentEditable = 'false';
+                this.dom._annotationStartEdit = this.startEdit.bind(this);
+                this.renderRead();
+            }
+            parsed() {
+                return parseAnnotationRawForView(this.node.attrs.raw);
+            }
+            setBaseClass(parsed) {
+                this.dom.className = 'pm-annotation pm-annotation-' + parsed.kind + (this.editing ? ' pm-annotation-editing' : '');
+                this.dom.dataset.tag = parsed.tag.toLowerCase();
+                this.dom.title = this.editing ? '' : parsed.body;
+            }
+            renderRead() {
+                const parsed = this.parsed();
+                this.editing = false;
+                this.setBaseClass(parsed);
+                this.dom.replaceChildren();
+                const icon = document.createElement('span');
+                icon.className = 'pm-annotation-icon';
+                icon.textContent = parsed.icon;
+                const text = document.createElement('span');
+                text.className = 'pm-annotation-text';
+                text.textContent = parsed.body;
+                this.dom.append(icon, text);
+                this.dom.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.startEdit(!window._pmEditMode);
+                };
+            }
+            renderEdit() {
+                const parsed = this.parsed();
+                this.setBaseClass(parsed);
+                this.dom.replaceChildren();
+                this.dom.onclick = null;
+
+                const icon = document.createElement('span');
+                icon.className = 'pm-annotation-icon';
+                icon.textContent = parsed.icon;
+
+                const form = document.createElement('div');
+                form.className = 'pm-annotation-edit-body';
+
+                const editable = document.createElement('div');
+                editable.className = 'pm-annotation-text pm-annotation-edit-text';
+                editable.contentEditable = 'plaintext-only';
+                editable.role = 'textbox';
+                editable.ariaMultiLine = 'true';
+                editable.dataset.placeholder = parsed.kind === 'todo' ? 'TODO text' : 'Note text';
+                editable.textContent = parsed.body;
+                editable.onkeydown = (event) => {
+                    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.save(editable.innerText);
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        cancel.click();
+                    }
+                };
+
+                const actions = document.createElement('div');
+                actions.className = 'pm-annotation-edit-actions';
+
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'pm-annotation-cancel';
+                cancel.textContent = 'Cancel';
+                cancel.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const shouldExitEdit = this.autoSave && !window._pmDirty && typeof window.cancelSceneEdit === 'function';
+                    this.autoSave = false;
+                    this.renderRead();
+                    if (shouldExitEdit) window.cancelSceneEdit();
+                };
+
+                const resolve = document.createElement('button');
+                resolve.type = 'button';
+                resolve.className = 'pm-annotation-delete';
+                resolve.textContent = parsed.kind === 'todo' ? 'Resolve' : 'Delete';
+                resolve.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.deleteNode();
+                };
+
+                const save = document.createElement('button');
+                save.type = 'button';
+                save.className = 'pm-annotation-save';
+                save.textContent = 'Save';
+                save.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.save(editable.innerText);
+                };
+
+                actions.append(cancel, resolve, save);
+                form.append(editable, actions);
+                this.dom.append(icon, form);
+
+                setTimeout(() => {
+                    try { editable.focus({ preventScroll: true }); }
+                    catch (err) { editable.focus(); }
+                    var sel = window.getSelection && window.getSelection();
+                    if (sel) {
+                        var range = document.createRange();
+                        range.selectNodeContents(editable);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                }, 0);
+            }
+            startEdit(autoSave) {
+                const scrollEl = document.querySelector('#sceneModal .modal-content');
+                const scrollTop = scrollEl ? scrollEl.scrollTop : null;
+                if (!window._pmEditMode && typeof window.toggleSceneEdit === 'function') {
+                    window.toggleSceneEdit();
+                }
+                if (scrollEl && scrollTop !== null) scrollEl.scrollTop = scrollTop;
+                this.autoSave = !!autoSave;
+                this.editing = true;
+                this.renderEdit();
+            }
+            save(text) {
+                const parsed = this.parsed();
+                const raw = buildAnnotationRawFromView(parsed.tag, String(text || '').trim());
+                const pos = this.getPos();
+                const shouldAutoSave = this.autoSave;
+                this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null, { raw }));
+                this.editing = false;
+                this.autoSave = false;
+                this.renderRead();
+                if (shouldAutoSave && typeof window.saveSceneEdit === 'function') window.saveSceneEdit();
+            }
+            deleteNode() {
+                const pos = this.getPos();
+                const shouldAutoSave = this.autoSave;
+                this.view.dispatch(this.view.state.tr.delete(pos, pos + this.node.nodeSize));
+                this.autoSave = false;
+                if (shouldAutoSave && typeof window.saveSceneEdit === 'function') window.saveSceneEdit();
+            }
+            update(node) {
+                if (node.type !== this.node.type) return false;
+                this.node = node;
+                if (!this.editing) this.renderRead();
+                return true;
+            }
+            stopEvent() { return true; }
+            ignoreMutation() { return true; }
+            destroy() {
+                delete this.dom._annotationStartEdit;
+            }
+        }
+
+        function createAnnotationNodeView(node, view, getPos) {
+            return new AnnotationNodeView(node, view, getPos);
+        }
+
         const mySchema = new Schema({
             nodes: mdSchema.spec.nodes.addBefore('paragraph', 'annotation', annotationSpec),
             marks: mdSchema.spec.marks
@@ -385,7 +561,7 @@
             MarkdownParser, MarkdownSerializer,
             defaultMarkdownParser, defaultMarkdownSerializer,
             history, undo, redo, keymap, baseKeymap, toggleMark,
-            hlPluginKey, buildHlPlugin
+            hlPluginKey, buildHlPlugin, createAnnotationNodeView
         };
 
         // If the scene view is already open, re-render so it uses ProseMirror.

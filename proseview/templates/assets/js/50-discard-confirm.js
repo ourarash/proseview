@@ -126,65 +126,28 @@
             _pmAffordancePos = -1;
         }
 
-        function openAnnotationPopover(nodePos, node) {
+        function openAnnotationPopover(nodePos, node, options) {
             if (!_pmView) return;
-            _pmAnnotationPos = nodePos;
-            var parsed = parseAnnotationRaw(node.attrs.raw);
-            var tagSel = document.getElementById('pmAnnotationTag');
-            var textArea = document.getElementById('pmAnnotationText');
-            if (tagSel) tagSel.value = parsed.tag;
-            if (textArea) textArea.value = parsed.text;
-
-            var popover = document.getElementById('pmAnnotationPopover');
-            if (!popover) return;
-
-            try {
-                var domRef = _pmView.domAtPos(nodePos + 1);
-                var el = domRef.node;
-                if (el.nodeType !== 1) el = el.parentElement;
-                el = el.closest('.pm-annotation') || el;
-                var rect = el.getBoundingClientRect();
-                popover.style.top = Math.min(rect.bottom + 4, window.innerHeight - 200) + 'px';
-                popover.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
-            } catch(err) {
-                popover.style.top = '200px';
-                popover.style.left = '200px';
+            var dom = _pmView.nodeDOM(nodePos);
+            if (dom && dom._annotationStartEdit) {
+                dom._annotationStartEdit(!!(options && options.autoSave));
             }
-
-            popover.hidden = false;
-            if (textArea) { textArea.focus(); textArea.select(); }
         }
 
         function closeAnnotationPopover() {
-            var popover = document.getElementById('pmAnnotationPopover');
-            if (popover) popover.hidden = true;
             _pmAnnotationPos = -1;
+            _pmAnnotationAutoSave = false;
         }
 
         function saveAnnotationPopover() {
-            if (_pmAnnotationPos < 0 || !_pmView) return;
-            var tag = (document.getElementById('pmAnnotationTag') || {}).value || 'TODO';
-            var text = ((document.getElementById('pmAnnotationText') || {}).value || '').trim();
-            var raw = buildAnnotationRaw(tag, text);
-            var tr = _pmView.state.tr.setNodeMarkup(_pmAnnotationPos, null, { raw: raw });
-            _pmView.dispatch(tr);
-            closeAnnotationPopover();
+            return;
         }
 
         function deleteAnnotationNode() {
-            if (_pmAnnotationPos < 0 || !_pmView) return;
-            var node = _pmView.state.doc.nodeAt(_pmAnnotationPos);
-            if (!node) return;
-            var tr = _pmView.state.tr.delete(_pmAnnotationPos, _pmAnnotationPos + node.nodeSize);
-            _pmView.dispatch(tr);
-            closeAnnotationPopover();
+            return;
         }
 
         window.onclick = e => {
-            var popover = document.getElementById('pmAnnotationPopover');
-            if (popover && !popover.hidden && !popover.contains(e.target)) {
-                closeAnnotationPopover();
-            }
         };
         function applyIssueFilter() {
             const f = document.getElementById('issueFilter').value;
@@ -197,4 +160,3 @@
                 r.style.display = show ? '' : 'none';
             });
         }
-

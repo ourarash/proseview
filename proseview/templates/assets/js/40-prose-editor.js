@@ -67,11 +67,8 @@
                         setPmDirty(true);
                     }
                 },
-                handleClickOn: function(view, pos, node, nodePos, event, direct) {
-                    if (node.type.name === 'annotation' && direct && _pmEditMode) {
-                        setTimeout(function() { openAnnotationPopover(nodePos, node); }, 0);
-                    }
-                    return false;
+                nodeViews: {
+                    annotation: PM.createAnnotationNodeView
                 }
             });
 

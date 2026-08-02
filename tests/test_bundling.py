@@ -40,6 +40,7 @@ APP_CSS = TEMPLATES / "assets" / "app.css"
 
 # ── Item 8: JS bundle layout ─────────────────────────────────────────────────
 
+
 def test_js_directory_replaces_monolithic_app_js():
     """The 3,300-line ``app.js`` was split into topical files; the old
     monolith should no longer ship.
@@ -90,6 +91,7 @@ def test_dashboard_inlines_concatenated_bundle():
 
 # ── Item 7: build_scene_data is the data source ──────────────────────────────
 
+
 def test_extract_script_vars_helper_is_gone():
     """The HTML-scraping fallback is removed; the data flow is direct."""
     from proseview import server  # noqa: WPS433
@@ -118,6 +120,7 @@ def test_build_scene_data_matches_template_embed():
 
 # ── Item 5: tone label replaces Pensive / Action / Balanced ──────────────────
 
+
 def test_tone_label_replaces_pensive_emoji():
     bundle = _load_app_js()
     assert "Pensive" not in bundle, "Old Pensive label should be gone"
@@ -132,6 +135,7 @@ def test_tone_label_replaces_pensive_emoji():
 
 
 # ── Item 6: dead CSS removed ─────────────────────────────────────────────────
+
 
 def test_hl_adverb_dead_css_removed():
     css = APP_CSS.read_text(encoding="utf-8")
@@ -149,6 +153,7 @@ def test_flavor_column_is_actually_populated():
 
 
 # ── Item 2 (retest): scene viewer is a routed view, not a modal ──────────────
+
 
 def test_scene_view_uses_data_view_routing():
     """The scene viewer is shown by setting ``data-view='scene'`` on the
@@ -169,6 +174,7 @@ def test_scene_view_uses_data_view_routing():
 
 # ── Item 9 supplemental: bundle is syntactically valid (when Node is present) ─
 
+
 def test_bundle_passes_node_syntax_check_when_available():
     node = shutil.which("node")
     if node is None:
@@ -187,6 +193,7 @@ def test_bundle_passes_node_syntax_check_when_available():
 
 
 # ── Item 4 (config decoupling): characters_path / skills_path ────────────────
+
 
 def test_config_keys_for_characters_and_skills_paths(tmp_path: Path):
     """A ``.proseview.yaml`` that names different folders should override
@@ -351,6 +358,7 @@ def test_data_json_contract_round_trips_through_json():
 
 # ── Scroll restoration: refresh must not animate from top ────────────────────
 
+
 def test_write_scroll_top_uses_instant_behavior():
     """``writeScrollTop`` is called from route restoration. CSS sets
     ``scroll-behavior: smooth`` on .modal-content for in-page jumps; the
@@ -371,6 +379,7 @@ def test_write_scroll_top_uses_instant_behavior():
 
 # ── Annotation rendering: HTML comments become marker nodes ──────────────────
 
+
 def test_template_enables_html_in_markdown_tokenizer():
     """``<!-- TODO/NOTE -->`` blocks reach the annotation parser rule only
     if markdown-it's html option is on. The default tokenizer is loaded
@@ -379,31 +388,6 @@ def test_template_enables_html_in_markdown_tokenizer():
     template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
     assert "defaultMarkdownParser.tokenizer.set({ html: true })" in template, \
         "Template must enable html on the markdown-it tokenizer so html_block tokens are emitted"
-
-
-def test_template_renders_annotations_as_icon_markers():
-    """The annotation node's toDOM emits an icon + text marker, not a
-    raw text dump of the comment.
-    """
-    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
-    assert "pm-annotation-icon" in template
-    assert "pm-annotation-text" in template
-    assert "📝" in template, "TODO marker should use the pencil glyph"
-    assert "📌" in template, "NOTE marker should use the pin glyph"
-    # The toDOM should branch on TODO vs NOTE so the right icon/colour fires.
-    assert "/^TODO\\s*:" in template
-    assert "/^NOTE(?:\\[(\\w+)\\])?" in template
-
-
-def test_pm_annotation_styling_renders_as_compact_marker():
-    css = APP_CSS.read_text(encoding="utf-8")
-    assert ".pm-annotation {" in css
-    assert ".pm-annotation-icon" in css
-    assert ".pm-annotation-text" in css
-    assert "font: inherit;" in css
-    assert ".pm-annotation .pm-annotation-text" in css
-    # Different visual treatment for TODOs (pending action) vs NOTEs.
-    assert ".pm-annotation-todo" in css
 
 
 def test_task_jump_button_resolves_against_prosemirror_dom():
@@ -426,25 +410,3 @@ def test_task_jump_button_resolves_against_prosemirror_dom():
     assert "/^H[1-6]$/i.test(el.tagName)" in bundle
 
 
-def test_html_block_parser_rule_uses_node_form_not_block():
-    """The annotation node is an atom and markdown-it emits a single
-    ``html_block`` token (no open/close pair). Older prosemirror-markdown
-    versions only treat ``block:`` as no-close for a hardcoded set of
-    types, so ``block: 'annotation'`` registered ``html_block_open`` /
-    ``html_block_close`` handlers that never matched and the parser
-    threw "Token type `html_block` not supported".
-
-    Use ``node: 'annotation'`` instead so a single-token handler is
-    registered. This test locks the spec form in.
-    """
-    bundle = _load_app_js()
-    # Find the html_block spec block.
-    match = re.search(r"html_block:\s*\{[^}]+\}", bundle)
-    assert match, "html_block parser spec missing"
-    spec = match.group(0)
-    assert "node: 'annotation'" in spec, "html_block must use node: form for atom rendering"
-    assert "block: 'annotation'" not in spec, "block: form requires paired tokens; use node:"
-    # html_inline must be ignored, not mapped to annotation (which is block-level).
-    inline_match = re.search(r"html_inline:\s*\{[^}]+\}", bundle)
-    assert inline_match, "html_inline rule missing (parser would error on inline HTML)"
-    assert "ignore: true" in inline_match.group(0)

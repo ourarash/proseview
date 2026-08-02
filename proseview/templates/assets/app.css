@@ -1160,7 +1160,7 @@
         #sceneModal .modal-content.modal-focus #modalAlerts { display: none; }
         #sceneModal .modal-content.modal-focus .scene-tasks-section { display: none; }
 
-        /* ── ProseMirror annotation affordance + popover ───────────────── */
+        /* ── ProseMirror annotation affordance + inline editor ─────────── */
         .pm-insert-affordance {
             position: fixed;
             width: 22px; height: 22px;
@@ -1174,30 +1174,6 @@
         }
         .pm-insert-affordance:hover { background: var(--surface-soft); color: var(--primary); border-color: var(--primary); }
 
-        .pm-annotation-popover {
-            position: fixed;
-            z-index: 1300;
-            background: var(--surface-card);
-            border: 1px solid var(--border-strong);
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            padding: 10px 12px 10px;
-            width: 280px;
-        }
-        .pm-annotation-popover-header { margin-bottom: 6px; }
-        .pm-annotation-tag-select {
-            width: 100%; padding: 4px 6px; font-size: 12px;
-            border: 1px solid var(--border); border-radius: 4px;
-            background: var(--surface-field); color: var(--text-main);
-        }
-        .pm-annotation-text {
-            width: 100%; box-sizing: border-box;
-            border: 1px solid var(--border); border-radius: 4px;
-            padding: 6px; font-size: 13px; font-family: inherit;
-            background: var(--surface-field); color: var(--text-main);
-            resize: vertical; margin-top: 6px;
-        }
-        .pm-annotation-popover-btns { display: flex; gap: 6px; margin-top: 8px; }
         .pm-annotation-save {
             background: var(--primary); color: #fff;
             border: none; border-radius: 4px; padding: 4px 14px;
@@ -1213,7 +1189,7 @@
         .pm-annotation-cancel {
             background: none; border: 1px solid var(--border);
             color: var(--text-muted); border-radius: 4px; padding: 4px 10px;
-            cursor: pointer; font-size: 12px; margin-left: auto;
+            cursor: pointer; font-size: 12px;
         }
         .pm-annotation-cancel:hover { border-color: var(--text-muted); }
 
@@ -1238,8 +1214,8 @@
         #sceneProseHost .ProseMirror-focused { outline: none; }
         /* TODO/NOTE marker rendered inside ProseMirror. The marker inherits
            the scene typography so the modal font-size slider affects TODO
-           text the same way it affects surrounding prose. Hover/focus expands
-           wrap so long notes are fully readable. */
+           text the same way it affects surrounding prose, and long TODOs
+           wrap in place instead of hiding behind hover-only truncation. */
         .pm-annotation {
             display: flex;
             align-items: baseline;
@@ -1256,25 +1232,45 @@
             line-height: inherit;
         }
         .pm-annotation-todo { border-left-color: var(--primary); }
+        .pm-annotation-editing {
+            cursor: default;
+            align-items: flex-start;
+            padding-bottom: 8px;
+        }
         .pm-annotation-icon {
             flex: 0 0 auto;
             font-size: 0.9em;
             line-height: 1;
             opacity: 0.85;
+            margin-top: 0.25em;
         }
         .pm-annotation .pm-annotation-text {
             flex: 1 1 auto;
             min-width: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .pm-annotation:hover .pm-annotation-text,
-        .pm-annotation:focus .pm-annotation-text,
-        .ProseMirror-selectednode .pm-annotation .pm-annotation-text {
-            white-space: normal;
+            white-space: pre-wrap;
             overflow: visible;
             text-overflow: clip;
+            overflow-wrap: anywhere;
+        }
+        .pm-annotation-edit-body {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .pm-annotation-edit-text {
+            cursor: text;
+            color: var(--text-reading);
+            outline: none;
+        }
+        .pm-annotation-edit-text:empty::before {
+            content: attr(data-placeholder);
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+        .pm-annotation-edit-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            justify-content: flex-end;
         }
         .ProseMirror-selectednode .pm-annotation {
             outline: 2px solid var(--primary);

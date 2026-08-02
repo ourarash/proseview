@@ -21,9 +21,48 @@ Run the tests:
 pytest
 ```
 
-The suite is fast (~2 seconds) and runs against the synthetic novel
-in `fixtures/demo-repo`. New behavior should land with a test there or
-in `tests/`.
+The default run covers the unit suite plus the HTTP end-to-end tier, and
+takes roughly 15 seconds against the synthetic novel in
+`fixtures/demo-repo`. New behavior should land with a test there or in
+`tests/`.
+
+### The three tiers
+
+| Tier | Location | What it does |
+| --- | --- | --- |
+| Unit | `tests/test_*.py` | Analytics, scene parsing, config, history. No I/O beyond the fixture repo. |
+| HTTP end-to-end | `tests/e2e/test_server_e2e.py` | Boots a real `python -m proseview` subprocess and drives it over HTTP. Asserts bytes on disk, SSE frames, and PTY output. Stdlib only. |
+| Browser end-to-end | `tests/e2e/test_browser_e2e.py` | Drives the real UI in Chromium via Playwright. Opt-in. |
+
+Both end-to-end tiers work on a throwaway copy of `fixtures/demo-repo`,
+enriched at runtime with a `skills/` tree, a scene carrying inline
+annotations, and a generated ~10k-word scene. The committed fixture is
+never modified.
+
+### Running the browser tier
+
+```bash
+pip install -e ".[e2e]"
+python -m playwright install chromium
+pytest -m e2e_browser
+```
+
+It is excluded from the default run (via `addopts` in `pyproject.toml`)
+so `pytest` stays quick and contributors don't need a browser. Use
+`pytest -m ""` to run everything.
+
+ProseMirror is imported from esm.sh at pinned versions. Those modules are
+vendored into `tests/e2e/_esm_cache/` (~500K, committed) and served to the
+browser from disk, so the tier runs offline and doesn't break when esm.sh
+does. Set `PROSEVIEW_ESM_OFFLINE=1` to turn a cache miss into a failure
+instead of a silent refetch — worth doing in CI. After changing the pinned
+versions in `templates/index.html.j2`, delete that directory and run the
+tier once with network access to repopulate it.
+
+Agents are covered without Codex, Claude, or Gemini installed: the harness
+puts stub executables of those names on `PATH` that announce themselves and
+echo whatever is typed at them, which is enough to prove the spawn and the
+selection handoff both work.
 
 To exercise the live dashboard while you work:
 

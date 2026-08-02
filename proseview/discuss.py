@@ -134,6 +134,7 @@ class ContextBuilder:
         *,
         selection: str = "",
         attachments: list[dict[str, Any]] | None = None,
+        include_current_document: bool = True,
     ) -> ContextBundle:
         question = str(question or "").strip()
         if not question:
@@ -141,10 +142,12 @@ class ContextBuilder:
         if len(question.encode("utf-8")) > self.max_question_bytes:
             raise ContextError(f"question exceeds {self.max_question_bytes} bytes")
         selection = str(selection or "")
+        if not isinstance(include_current_document, bool):
+            raise ContextError("include_current_document must be a boolean")
 
         if attachments is not None and not isinstance(attachments, list):
             raise ContextError("attachments must be a list")
-        paths: list[Path] = [self._document_target(document)]
+        paths: list[Path] = [self._document_target(document)] if include_current_document else []
         for attachment in attachments or []:
             if not isinstance(attachment, dict):
                 raise ContextError("each attachment must be an object")
@@ -615,6 +618,7 @@ class DiscussManager:
         question: str,
         selection: str = "",
         attachments: list[dict[str, Any]] | None = None,
+        include_current_document: bool = True,
     ) -> dict[str, Any]:
         conversation = self._get(conversation_id)
         request_id = str(client_request_id or "").strip()
@@ -625,6 +629,7 @@ class DiscussManager:
             question,
             selection=selection,
             attachments=attachments,
+            include_current_document=include_current_document,
         )
         result = {"accepted": True, "client_request_id": request_id, "status": "queued"}
         with conversation.lock:

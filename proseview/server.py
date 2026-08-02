@@ -1309,6 +1309,7 @@ class _Handler(BaseHTTPRequestHandler):
                         question=body.get("question", ""),
                         selection=body.get("selection", ""),
                         attachments=body.get("attachments") or [],
+                        include_current_document=body.get("include_current_document", True),
                     )
                     self._send_json({"ok": True, **result}, 202)
                     return

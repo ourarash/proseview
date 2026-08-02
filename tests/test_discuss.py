@@ -48,6 +48,38 @@ def test_context_builder_includes_document_selection_and_sorted_attachments(tmp_
     assert bundle.prompt.index("plans/arc.md") < bundle.prompt.index("plans/notes.txt")
 
 
+def test_context_builder_can_omit_default_document_and_attach_it_explicitly(tmp_path: Path):
+    root = _repo(tmp_path)
+    builder = ContextBuilder(root)
+
+    omitted = builder.build(
+        {"kind": "scene", "path": "ch01/opening.md"},
+        "Answer without the current document",
+        include_current_document=False,
+        attachments=[{"kind": "file", "path": "plans/arc.md"}],
+    )
+    assert [item.path for item in omitted.items] == ["plans/arc.md"]
+    assert "The first line." not in omitted.prompt
+
+    reattached = builder.build(
+        {"kind": "scene", "path": "ch01/opening.md"},
+        "Use it again",
+        include_current_document=False,
+        attachments=[{"kind": "file", "path": "manuscript/ch01/opening.md"}],
+    )
+    assert [item.path for item in reattached.items] == ["manuscript/ch01/opening.md"]
+
+
+def test_context_builder_rejects_non_boolean_current_document_flag(tmp_path: Path):
+    root = _repo(tmp_path)
+    with pytest.raises(ContextError, match="include_current_document must be a boolean"):
+        ContextBuilder(root).build(
+            {"kind": "scene", "path": "ch01/opening.md"},
+            "Question",
+            include_current_document="false",  # type: ignore[arg-type]
+        )
+
+
 @pytest.mark.parametrize("path", ["../secret.md", "/tmp/secret.md"])
 def test_context_builder_rejects_paths_outside_repository(tmp_path: Path, path: str):
     root = _repo(tmp_path)

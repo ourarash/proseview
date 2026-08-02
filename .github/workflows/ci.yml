@@ -27,3 +27,23 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run pytest
         run: pytest -q
+
+  # The browser end-to-end tier is opt-in locally (`pytest -m e2e_browser`).
+  # Uncomment to gate it on every PR. It adds ~1 minute plus a Chromium
+  # download; PROSEVIEW_ESM_OFFLINE=1 makes a stale esm cache fail loudly
+  # rather than silently refetching from the network.
+  #
+  # browser-e2e:
+  #   name: browser end-to-end
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.12"
+  #         cache: pip
+  #     - run: pip install -e ".[e2e]"
+  #     - run: python -m playwright install --with-deps chromium
+  #     - run: pytest -m e2e_browser -q
+  #       env:
+  #         PROSEVIEW_ESM_OFFLINE: "1"

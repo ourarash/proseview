@@ -206,7 +206,7 @@
                     <option value="hopscotch">Hopscotch</option>
                 </select>
                 <a id="filePreviewEditorBtn" class="editor-btn" href="#" target="_blank" style="flex-shrink:0;" title=""></a>
-                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
+                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="openDiscuss(this)" style="flex-shrink:0; cursor:pointer;">Discuss</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
             </div>
         </div>
         <div id="filePreviewBody" class="modal-body repo-preview-body" style="padding:0 0 60px 0;"></div>
@@ -216,7 +216,7 @@
         Deep-link URLs: <code>#/tab/&lt;name&gt;</code>, <code>#/scene/&lt;path&gt;</code>, <code>#/file/&lt;path&gt;</code>. Paths are URL-encoded. Copy the address bar to share the current view.
     </footer>
 
-    <div id="sceneModal" class="modal"><div class="modal-content"><div class="modal-header"><div class="modal-header-inner"><h3 id="modalTitle" style="margin:0; font-size:18px;"></h3><div class="modal-header-controls"><span id="modalHeaderExtras"><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Size</span><input id="modalFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)" style="width:80px;"></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Font</span><select class="font-select-inline" id="modalFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Theme</span><select class="font-select-inline" id="modalThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option></select></div><button id="modalLineNumbersBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleLineNumbers()" title="Show source line numbers" style="cursor:pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">#</button><a id="modalEditorBtn" class="editor-btn editor-btn-modal" target="_blank" title="Open in {{ editor_label }}">&#x2197;</a><button id="modalRefreshBtn" type="button" class="editor-btn editor-btn-modal" onclick="refreshContent()" title="Refresh scene from disk" style="cursor:pointer;">&#x21BB;</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;"><button type="button" class="editor-btn editor-btn-modal" id="agentMenuSceneBtn" onclick="toggleAgentMenu('scene')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuScene" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openSceneInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openSceneInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openSceneInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn editor-btn-modal" onclick="openShellTerminal()" style="cursor:pointer;">$ Shell</button><button id="sceneEditBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleSceneEdit()" style="cursor:pointer;">&#x270F; Edit</button></span><button id="modalSidebarBtn" class="modal-focus-btn" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" title="Toggle sidebar (B)">&#9776;</button><button id="modalFocusBtn" class="modal-focus-btn" onclick="toggleFocusMode()" title="Focus mode (F)">&#x25BE;</button><button class="nav-btn" onclick="navigateScene(-1)">&#x2190;</button><button class="nav-btn" onclick="navigateScene(1)">&#x2192;</button><span class="modal-close" onclick="closeSceneModal()">&times;</span></div></div></div>
+    <div id="sceneModal" class="modal"><div class="modal-content"><div class="modal-header"><div class="modal-header-inner"><h3 id="modalTitle" style="margin:0; font-size:18px;"></h3><div class="modal-header-controls"><span id="modalHeaderExtras"><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Size</span><input id="modalFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)" style="width:80px;"></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Font</span><select class="font-select-inline" id="modalFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></div><div class="modal-font-control"><span style="font-size:10px; color:var(--text-muted);">Theme</span><select class="font-select-inline" id="modalThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option></select></div><button id="modalLineNumbersBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleLineNumbers()" title="Show source line numbers" style="cursor:pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">#</button><a id="modalEditorBtn" class="editor-btn editor-btn-modal" target="_blank" title="Open in {{ editor_label }}">&#x2197;</a><button id="modalRefreshBtn" type="button" class="editor-btn editor-btn-modal" onclick="refreshContent()" title="Refresh scene from disk" style="cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn editor-btn-modal discuss-open-btn" onclick="openDiscuss(this)" style="cursor:pointer;">Discuss</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;"><button type="button" class="editor-btn editor-btn-modal" id="agentMenuSceneBtn" onclick="toggleAgentMenu('scene')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuScene" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openSceneInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openSceneInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openSceneInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn editor-btn-modal" onclick="openShellTerminal()" style="cursor:pointer;">$ Shell</button><button id="sceneEditBtn" type="button" class="editor-btn editor-btn-modal" onclick="toggleSceneEdit()" style="cursor:pointer;">&#x270F; Edit</button></span><button id="modalSidebarBtn" class="modal-focus-btn" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" title="Toggle sidebar (B)">&#9776;</button><button id="modalFocusBtn" class="modal-focus-btn" onclick="toggleFocusMode()" title="Focus mode (F)">&#x25BE;</button><button class="nav-btn" onclick="navigateScene(-1)">&#x2190;</button><button class="nav-btn" onclick="navigateScene(1)">&#x2192;</button><span class="modal-close" onclick="closeSceneModal()">&times;</span></div></div></div>
         <div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
 
     <div id="pmInsertAffordance" class="pm-insert-affordance" hidden title="Insert annotation">+</div>
@@ -225,6 +225,7 @@
         <div class="terminal-inner">
             <div class="terminal-header">
                 <div id="terminalTabs" class="terminal-tabs"></div>
+                <div class="utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="openDiscuss(this)">Discuss</button><button type="button" class="utility-tab active" role="tab" aria-selected="true">Terminal</button></div>
                 <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
                 <div class="terminal-header-spacer"></div>
                 <div class="terminal-shortcuts">
@@ -253,6 +254,53 @@
         </div>
     </div>
 
+    <aside id="discussPanel" class="discuss-panel" aria-labelledby="discussTitle" hidden>
+        <div id="discussResizeHandle" class="discuss-resize-handle" aria-hidden="true"></div>
+        <div class="discuss-shell">
+            <header class="discuss-header">
+                <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
+                    <button type="button" class="utility-tab active" role="tab" aria-selected="true">Discuss</button>
+                    <button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
+                </div>
+                <div class="discuss-heading"><h2 id="discussTitle">Discuss with Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
+                <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Discuss">&times;</button>
+            </header>
+            <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
+            <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
+            <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
+            <div id="discussComposerArea" class="discuss-composer-area">
+                <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
+                <div class="discuss-composer-actions">
+                    <div class="discuss-composer-action-group">
+                        <button type="button" class="discuss-secondary" onclick="openDiscussContextPicker()">+ Context</button>
+                        <button id="discussNewConversation" type="button" class="discuss-secondary" onclick="openNewDiscussConversationDialog()">New conversation</button>
+                    </div>
+                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
+                </div>
+                <label class="sr-only" for="discussInput">Ask Codex about this document</label>
+                <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…"></textarea>
+                <div class="discuss-send-row"><span id="discussHint">Enter to send · Shift+Enter for newline</span><button id="discussSend" type="button" onclick="sendDiscussQuestion()">Send</button></div>
+                <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
+            </div>
+        </div>
+    </aside>
+    <dialog id="discussContextPicker" class="discuss-context-picker" aria-labelledby="discussPickerTitle">
+        <form method="dialog">
+            <div class="discuss-picker-header"><h2 id="discussPickerTitle">Attach repository context</h2><button value="cancel" aria-label="Close context picker">&times;</button></div>
+            <p>Select files or folders. Prosview validates every resolved path before sending it.</p>
+            <div id="discussPickerTree" class="discuss-picker-tree"></div>
+            <div class="discuss-picker-actions"><button value="cancel">Cancel</button><button value="default" onclick="applyDiscussContext(event)">Attach selected</button></div>
+        </form>
+    </dialog>
+    <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription">
+        <form method="dialog">
+            <div class="discuss-picker-header"><h2 id="discussNewConversationTitle">Start a new conversation?</h2></div>
+            <p id="discussNewConversationDescription">This clears the conversation shown for this document in Prosview. The previous conversation remains in your Codex history.</p>
+            <p id="discussNewConversationError" class="discuss-error" role="alert" hidden></p>
+            <div class="discuss-picker-actions"><button id="discussNewConversationCancel" value="cancel" autofocus>Keep conversation</button><button id="discussNewConversationConfirm" value="default" onclick="confirmNewDiscussConversation(event)">Start new conversation</button></div>
+        </form>
+    </dialog>
+
     <script id="proseview-data">
         let contents = {{ contents_json | safe }};
         const bios = {{ bios_json | safe }};
@@ -265,6 +313,7 @@
         const repoTree = {{ repo_tree_json | safe }};
         const sidebarTree = {{ sidebar_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
+        const discussSessionToken = {{ discuss_session_token_json | safe }};
         const repoFileByPath = {};
         (function indexRepo(nodes) {
             if (!nodes) return;

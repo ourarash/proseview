@@ -372,6 +372,7 @@
             panel.classList.toggle('dock-bottom', _termDock === 'bottom');
             panel.classList.toggle('dock-right', _termDock === 'right');
             var rightOpen = (_termDock === 'right') && !panel.hidden;
+            if (rightOpen && typeof hideDiscussForTerminal === 'function') hideDiscussForTerminal();
             document.body.classList.toggle('terminal-right-open', rightOpen);
             // Refit every session — orientation change resizes both axes.
             _termSessions.forEach(function(s) {
@@ -418,7 +419,7 @@
                     html.style.setProperty('--terminal-h', newH + 'px');
                 } else {
                     var newW = Math.max(320, Math.min(window.innerWidth - 200, startSize + (startCoord - e.clientX)));
-                    html.style.setProperty('--terminal-w', newW + 'px');
+                    html.style.setProperty('--utility-dock-w', newW + 'px');
                 }
             });
             document.addEventListener('mouseup', function() {
@@ -1225,6 +1226,7 @@
             document.documentElement.dataset.view = 'file';
             restoreActiveScrollPosition();
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
+            if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
         }
 
         function closeFilePreview() {

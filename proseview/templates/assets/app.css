@@ -953,7 +953,7 @@
         }
         .para-flash { animation: para-flash-kf 1.6s ease-out; border-radius: 4px; }
         /* ── In-browser terminal panel ─────────────────────────────────────── */
-        html { --terminal-h: 52vh; --terminal-w: 50vw; }
+        html { --terminal-h: 52vh; --utility-dock-w: clamp(360px, 36vw, 620px); }
         .terminal-panel {
             position: fixed;
             background: #0d1117;
@@ -969,13 +969,13 @@
         }
         .terminal-panel.dock-right {
             top: 0; right: 0; bottom: 0;
-            width: var(--terminal-w); min-width: 320px;
+            width: var(--utility-dock-w); min-width: 320px;
             flex-direction: row;
             border-left: 2px solid #30363d;
             box-shadow: -4px 0 24px rgba(0,0,0,0.4);
         }
         /* Body shifts left when terminal is right-docked */
-        body.terminal-right-open { margin-right: var(--terminal-w); }
+        body.terminal-right-open { margin-right: var(--utility-dock-w); }
         .terminal-panel[hidden] { display: none; }
         .terminal-header {
             display: flex; align-items: center; gap: 10px;
@@ -1054,6 +1054,104 @@
         .terminal-tab-mount .xterm { flex: 1; min-height: 0; }
         .terminal-tab-mount .xterm-viewport { overflow-y: scroll; }
         .terminal-tab-mount .xterm-screen { height: 100% !important; }
+        /* ── Discuss / shared right utility dock ─────────────────────────── */
+        body.discuss-open { margin-right: var(--utility-dock-w); }
+        .discuss-panel {
+            position: fixed; inset: 0 0 0 auto; width: var(--utility-dock-w);
+            z-index: 2200; display: flex; color: var(--text-main);
+            background: var(--surface-card); border-left: 1px solid var(--border);
+            box-shadow: -10px 0 32px rgba(15, 23, 42, 0.16);
+        }
+        .discuss-panel[hidden] { display: none; }
+        .discuss-resize-handle { width: 5px; cursor: ew-resize; flex: 0 0 auto; background: transparent; }
+        .discuss-resize-handle:hover, .discuss-resize-handle.is-dragging { background: var(--primary); }
+        .discuss-shell { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+        .discuss-header { padding: 10px 12px 9px; border-bottom: 1px solid var(--border); background: var(--surface-card); display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; }
+        .utility-tabs { display: flex; gap: 3px; grid-column: 1 / 2; }
+        .utility-tab { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
+        .utility-tab.active { background: var(--surface-muted); color: var(--primary); font-weight: 700; }
+        .terminal-utility-tabs { flex-shrink: 0; }
+        .terminal-header .utility-tab { color: #8b949e; }
+        .terminal-header .utility-tab.active { background: #1f242c; color: #58a6ff; }
+        .discuss-heading { min-width: 0; }
+        .discuss-heading h2 { font-size: 15px; margin: 0 0 2px; }
+        .discuss-connection { color: var(--text-muted); font-size: 11px; }
+        .discuss-connection[data-state="Live"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #22a06b; }
+        .discuss-close { grid-column: 2; grid-row: 1 / 3; align-self: center; border: 0; background: transparent; color: var(--text-muted); font-size: 24px; cursor: pointer; border-radius: 5px; }
+        .discuss-close:hover { color: var(--text-main); background: var(--surface-muted); }
+        .discuss-context { min-height: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 7px 12px; border-bottom: 1px solid var(--border); }
+        .discuss-chip, .discuss-selection-chip { max-width: 100%; color: var(--text-muted); background: var(--surface-muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .discuss-chip button { margin-left: 5px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+        .discuss-log { flex: 1; overflow: auto; padding: 14px 14px 28px; scroll-behavior: smooth; }
+        .discuss-empty { max-width: 320px; margin: 15vh auto 0; text-align: center; color: var(--text-muted); }
+        .discuss-empty strong { display: block; color: var(--text-main); margin-bottom: 6px; }
+        .discuss-message { margin: 0 0 16px; }
+        .discuss-message.user { margin-left: 15%; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 12px 12px 3px 12px; padding: 9px 11px; }
+        .discuss-message.assistant { padding: 2px 2px 4px; line-height: 1.55; }
+        .discuss-message-label { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+        .discuss-message p { margin: 0 0 8px; }
+        .discuss-message pre { overflow: auto; padding: 9px; background: var(--surface-muted); border-radius: 6px; }
+        .discuss-message a { color: var(--primary); }
+        .discuss-progress, .discuss-plan, .discuss-activity, .discuss-approval, .discuss-error, .discuss-queue { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; margin: 0 0 10px; font-size: 12px; }
+        .discuss-progress summary, .discuss-plan summary, .discuss-activity summary { cursor: pointer; color: var(--text-muted); font-weight: 700; }
+        .discuss-plan ol { margin: 8px 0 0; padding-left: 20px; }
+        .discuss-plan li.completed { text-decoration: line-through; color: var(--text-muted); }
+        .discuss-approval { border-color: #d29922; background: color-mix(in srgb, #d29922 8%, var(--surface-card)); }
+        .discuss-approval h3 { margin: 0 0 6px; font-size: 13px; }
+        .discuss-approval code { display: block; overflow-wrap: anywhere; margin: 6px 0; }
+        .discuss-approval-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+        .discuss-approval-actions button, .discuss-secondary { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-card); color: var(--text-main); padding: 5px 8px; cursor: pointer; }
+        .discuss-approval-actions button:first-child { border-color: var(--primary); color: var(--primary); }
+        .discuss-error { border-color: #d73a49; color: #b42318; }
+        .discuss-new-activity { position: absolute; right: 18px; bottom: 150px; z-index: 2; border: 1px solid var(--primary); border-radius: 999px; background: var(--surface-card); color: var(--primary); padding: 6px 10px; cursor: pointer; }
+        .discuss-composer-area { border-top: 1px solid var(--border); padding: 9px 11px 11px; background: var(--surface-card); }
+        .discuss-composer-actions, .discuss-send-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .discuss-composer-action-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        #discussInput { width: 100%; min-height: 70px; max-height: 180px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--surface-card); color: var(--text-main); font: inherit; line-height: 1.4; }
+        #discussHint { color: var(--text-muted); font-size: 10px; }
+        #discussSend { border: 0; border-radius: 7px; padding: 7px 14px; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }
+        #discussSend:disabled { opacity: .55; cursor: wait; }
+        .discuss-context-picker { width: min(620px, calc(100vw - 28px)); max-height: 80vh; color: var(--text-main); background: var(--surface-card); border: 1px solid var(--border); border-radius: 10px; }
+        .discuss-context-picker::backdrop { background: rgba(15,23,42,.48); }
+        .discuss-picker-header, .discuss-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .discuss-picker-header h2 { margin: 0; font-size: 17px; }
+        .discuss-picker-tree { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 7px; padding: 8px; margin: 10px 0; }
+        .discuss-picker-tree label { display: block; padding: 3px 2px; }
+        .discuss-picker-actions { justify-content: flex-end; }
+        .discuss-picker-actions button { padding: 6px 10px; }
+        .discuss-confirm-dialog { max-width: 470px; }
+        .discuss-confirm-dialog .discuss-error { margin-top: 10px; }
+        .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+        :where(.discuss-panel, .discuss-context-picker) button:focus-visible, #discussInput:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 2px; }
+        @media (max-width: 1120px) {
+            body.discuss-open, body.terminal-right-open { margin-right: 0; width: auto; }
+            .discuss-panel, .terminal-panel.dock-right { width: min(var(--utility-dock-w), 50vw); }
+        }
+        @media (min-width: 1121px) {
+            html:not([data-sidebar="closed"]) body.discuss-open,
+            html:not([data-sidebar="closed"]) body.terminal-right-open {
+                width: calc(100vw - var(--sidebar-w) - var(--utility-dock-w));
+            }
+            html[data-sidebar="closed"] body.discuss-open,
+            html[data-sidebar="closed"] body.terminal-right-open {
+                width: calc(100vw - var(--utility-dock-w));
+            }
+            body.discuss-open .modal-header-inner,
+            body.terminal-right-open .modal-header-inner { flex-wrap: wrap; align-items: flex-start; }
+            body.discuss-open .modal-header-controls,
+            body.terminal-right-open .modal-header-controls {
+                flex: 1 1 100%; max-width: 100%; flex-wrap: wrap; justify-content: flex-end;
+            }
+        }
+        @media (max-width: 640px) {
+            .discuss-panel, .terminal-panel.dock-right { width: 100vw; }
+            .discuss-resize-handle { display: none; }
+            .discuss-header { padding-top: max(10px, env(safe-area-inset-top)); }
+            #discussHint { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .discuss-log { scroll-behavior: auto; }
+        }
         /* Skills dropdowns */
         .skills-dropdown {
             position: absolute; bottom: calc(100% + 6px);

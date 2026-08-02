@@ -134,6 +134,7 @@
                 el.classList.toggle('active', el.dataset.scenePath === p);
             });
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
+            if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
         }
 
         function openRelatedDoc(path) {
@@ -362,6 +363,7 @@
             if (p) {
                 routeToHash('/scene/' + encodeURIComponent(p), true);
                 restoreActiveScrollPosition();
+                if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             }
         }
         function closeSceneModal() {
@@ -378,6 +380,7 @@
             delete document.documentElement.dataset.view;
             routeToHash('/tab/' + currentTab, true);
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
+            if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             restoreActiveScrollPosition();
         }
 
@@ -413,4 +416,3 @@
                 setSidebarOpen(document.documentElement.dataset.sidebar === 'closed');
             }
         });
-

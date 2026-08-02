@@ -45,8 +45,9 @@ files stay where they are.
   bar to share or revisit a view. Back / forward work.
 - 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
   Literary, Inter, Georgia, Baskerville, Sans, Mono.
-- 🧪 **Tested.** 100+ unit tests covering the analytics engine, scene
-  parsing, save guards, history, and refresh behavior.
+- 🧪 **Tested.** 190+ tests: unit coverage of the analytics engine, scene
+  parsing, save guards, history, and refresh behavior, plus end-to-end
+  tiers that boot the real server and drive the real UI in a browser.
 
 ## 🚀 Quick start
 
@@ -261,8 +262,24 @@ pip install -e ".[dev]"
 pytest
 ```
 
-The test suite is fast (~2s) and runs against a synthetic
-`fixtures/demo-repo`.
+That runs the unit suite plus an HTTP end-to-end tier that boots a real
+`proseview` subprocess and drives every endpoint — saves and the conflict
+guard, TODOs and notes, the AI proposal bridge through the actual CLI, live
+reload over SSE, and PTY terminals — asserting on bytes written to disk.
+~15 seconds, no extra dependencies.
+
+A browser tier drives the real UI in Chromium (editor round-trip fidelity,
+the selection menu, highlight passes, deep links, agents, terminals, and
+applying an AI proposal end to end). It's opt-in:
+
+```bash
+pip install -e ".[e2e]"
+python -m playwright install chromium
+pytest -m e2e_browser
+```
+
+Both tiers work on a throwaway copy of `fixtures/demo-repo`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## 📜 License
 

@@ -881,7 +881,7 @@
                 const name = path.split('/').pop() || path;
                 html += '<div class="notes-scene-group">' +
                     '<div class="notes-scene-header">' +
-                    '<button class="notes-scene-link" type="button" onclick="openSceneModal(' + JSON.stringify(path) + ')">' + escHtml(name) + '</button>' +
+                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
                     '</div>';
                 notes.forEach(function(n) {
                     html += '<div class="notes-row">' + noteEntryHtml(n, abs_path) + '</div>';
@@ -912,7 +912,7 @@
                 const name = path.split('/').pop() || path;
                 html += '<div class="notes-scene-group">' +
                     '<div class="notes-scene-header">' +
-                    '<button class="notes-scene-link" type="button" onclick="openSceneModal(' + JSON.stringify(path) + ')">' + escHtml(name) + '</button>' +
+                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
                     '</div>';
                 todos.forEach(function(t) {
                     html += '<div class="notes-row">' + todoEntryHtml(t, abs_path) + '</div>';
@@ -923,6 +923,13 @@
         }
 
         document.addEventListener('click', function(e) {
+            const sceneLink = e.target.closest('.notes-scene-link[data-scene-path]');
+            if (sceneLink) {
+                e.preventDefault();
+                openSceneModal(sceneLink.dataset.scenePath);
+                return;
+            }
+
             const jb = e.target.closest('.task-jump-btn');
             if (jb) {
                 e.preventDefault();

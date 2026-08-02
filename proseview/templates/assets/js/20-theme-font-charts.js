@@ -58,14 +58,6 @@
             plugins.tooltip.borderWidth = 1;
         }
 
-        function applyCommonChartTheme(chart, palette) {
-            const options = chart.options || {};
-            const plugins = options.plugins || (options.plugins = {});
-            applyTooltipTheme(plugins, palette);
-            if (plugins.legend) applyLegendTheme(plugins.legend, palette);
-            if (options.scales) Object.values(options.scales).forEach(scale => applyAxisTheme(scale, palette));
-        }
-
         function applyThemeToConfig(id, cfg, palette) {
             const opts = cfg.options || {};
             const plugins = opts.plugins || (opts.plugins = {});
@@ -111,64 +103,15 @@
 
         function applyThemeToChart(chart) {
             if (!chart) return;
-            const palette = getThemePalette();
-            const id = chart.canvas.id;
-            applyCommonChartTheme(chart, palette);
-
-            if (id === 'presenceChart') {
-                const colors = [palette.primary, palette.secondary, palette.success, palette.warning,
-                                palette.danger, palette.pink, palette.cyan, palette.neutral];
-                chart.data.datasets.forEach((dataset, index) => {
-                    const color = colors[index % colors.length];
-                    dataset.borderColor = color;
-                    dataset.backgroundColor = color;
-                    dataset.pointBackgroundColor = color;
-                    dataset.pointBorderColor = color;
-                });
-            } else if (id === 'rhythmChart') {
-                const rhythmDataset = chart.data.datasets[0];
-                if (rhythmDataset) {
-                    rhythmDataset.borderColor = palette.secondary;
-                    rhythmDataset.backgroundColor = palette.secondary;
-                    rhythmDataset.pointBackgroundColor = palette.secondary;
-                    rhythmDataset.pointBorderColor = palette.secondary;
-                }
-                const annotations = (((chart.options || {}).plugins || {}).annotation || {}).annotations || {};
-                if (annotations.staticZone) {
-                    annotations.staticZone.backgroundColor = palette.zoneDanger;
-                    annotations.staticZone.borderColor = 'transparent';
-                }
-                if (annotations.rhythmicZone) {
-                    annotations.rhythmicZone.backgroundColor = palette.zoneSuccess;
-                    annotations.rhythmicZone.borderColor = 'transparent';
-                }
-                if (annotations.dynamicZone) {
-                    annotations.dynamicZone.backgroundColor = palette.zoneSecondary;
-                    annotations.dynamicZone.borderColor = 'transparent';
-                }
-            } else if (id === 'locationChart') {
-                const locationDataset = chart.data.datasets[0];
-                if (locationDataset) {
-                    locationDataset.backgroundColor = [
-                        palette.primary, palette.success, palette.warning, palette.danger,
-                        palette.secondary, palette.pink, palette.cyan, palette.neutral
-                    ];
-                    locationDataset.borderColor = cssVar('--surface-card');
-                    locationDataset.borderWidth = 2;
-                }
-            } else if (id === 'coOccurChart') {
-                const coOccurDataset = chart.data.datasets[0];
-                if (coOccurDataset) coOccurDataset.backgroundColor = palette.secondary;
-            } else if (id === 'lexicalScatterChart') {
-                const scatterDataset = chart.data.datasets[0];
-                if (scatterDataset) scatterDataset.backgroundColor = palette.primary;
-                const annotations = (((chart.options || {}).plugins || {}).annotation || {}).annotations || {};
-                if (annotations.target) {
-                    annotations.target.backgroundColor = palette.targetFill;
-                    annotations.target.borderColor = palette.targetBorder;
-                }
-            }
-
+            // Theme the *raw* config, never `chart.options`.
+            //
+            // `chart.options` is Chart.js's resolved-options proxy. Reading a
+            // nested object off it and assigning it straight back - which is
+            // what `plugins.tooltip = plugins.tooltip || {}` does - stores the
+            // proxy inside itself, and the setter then recurses until the
+            // stack overflows. `chart.config` is the plain user config the
+            // chart was built from, so the same edits are safe there.
+            applyThemeToConfig(chart.canvas.id, chart.config, getThemePalette());
             chart.update('none');
         }
 

@@ -166,3 +166,4 @@
         var _pmAffordancePos = -1;
         var _pmAffordanceTimer = null;
         var _pmAnnotationPos = -1;
+        var _pmAnnotationAutoSave = false;

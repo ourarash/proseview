@@ -36,6 +36,11 @@ files stay where they are.
   Claude, or Gemini in one click. An in-browser terminal hosts the
   conversation; the agent can see the file, the selection, and your
   repo. Your tools, your prompts.
+- 💬 **Discuss with Codex.** Open a document-aware conversation beside
+  any scene or supported repository text file. Prosview sends the current
+  document automatically and only adds selections, files, or folders you
+  explicitly attach. Safe progress summaries, plans, tool activity, approval
+  requests, and streamed answers stay visible while you read.
 - 🧰 **In-browser terminal.** xterm.js wired to a real PTY. Run `codex`,
   `claude`, or any shell command without leaving the dashboard. Tabs
   persist across page reloads.
@@ -45,7 +50,7 @@ files stay where they are.
   bar to share or revisit a view. Back / forward work.
 - 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
   Literary, Inter, Georgia, Baskerville, Sans, Mono.
-- 🧪 **Tested.** 190+ tests: unit coverage of the analytics engine, scene
+- 🧪 **Tested.** 260+ tests: unit coverage of the analytics engine, scene
   parsing, save guards, history, and refresh behavior, plus end-to-end
   tiers that boot the real server and drive the real UI in a browser.
 
@@ -213,7 +218,7 @@ Editorial Alerts with a one-line revision signal.
 
 ## 🤝 Working with AI
 
-Three places where AI shows up, all opt-in:
+Four places where AI shows up, all opt-in:
 
 1. **Selection menu.** Highlight any text in a scene. The pill that
    appears includes `Add TODO`, `Add Note`, and (if the corresponding
@@ -224,7 +229,21 @@ Three places where AI shows up, all opt-in:
    Codex, Claude, or Gemini scoped to that file. The conversation runs
    in the in-browser terminal so you can keep reading the prose
    underneath while the agent works.
-3. **TODOs as Markdown.** Every TODO and Note is a plain
+3. **Discuss.** Choose `Discuss` in a scene or text-file header to use the
+   shared right utility dock. Prosview starts the local `codex app-server`
+   lazily, uses your existing Codex login and configured model, and keeps full
+   history in Codex's normal storage. Prosview persists only a hashed
+   document-to-thread mapping in your user state directory. Raw reasoning is
+   discarded; only Codex-authored progress summaries reach the browser. Tool
+   and file actions remain subject to visible, user-reviewed approvals. If a
+   stored Codex thread disappears, Prosview starts a replacement on the next
+   question instead of leaving the document stuck. Use `New conversation` to
+   intentionally clear the document's current discussion; the prior thread
+   remains available in Codex history. The visible document is attached by
+   default for each question; remove its context chip to omit it, or use the
+   compact add-context control (keyboard shortcut `@`) to attach repository
+   files and folders explicitly.
+4. **TODOs as Markdown.** Every TODO and Note is a plain
    `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
    scene file. Your AI assistant can see them through the file, your
    repo can track them through git, and you can grep them.
@@ -234,7 +253,8 @@ Three places where AI shows up, all opt-in:
 This is alpha. Things that are working and things that are coming:
 
 - ✅ Live server, live reload, ProseMirror editor, highlights, TODOs,
-  notes, deep links, in-browser terminal, agent menu.
+  notes, deep links, in-browser terminal, agent menu, and document-aware
+  Discuss conversations with Codex.
 - ✅ Vendored front-end dependencies. chart.js, marked, xterm and
   friends ship with the package and load from `/vendor/`. ProseMirror
   modules are pinned to specific versions on esm.sh.
@@ -266,11 +286,14 @@ That runs the unit suite plus an HTTP end-to-end tier that boots a real
 `proseview` subprocess and drives every endpoint — saves and the conflict
 guard, TODOs and notes, the AI proposal bridge through the actual CLI, live
 reload over SSE, and PTY terminals — asserting on bytes written to disk.
+Discuss integration tests use a deterministic fake app-server and isolated
+home/state directories; they never contact Codex, the network, or your profile.
 ~15 seconds, no extra dependencies.
 
 A browser tier drives the real UI in Chromium (editor round-trip fidelity,
-the selection menu, highlight passes, deep links, agents, terminals, and
-applying an AI proposal end to end). It's opt-in:
+the selection menu, highlight passes, deep links, agents, terminals, Discuss
+streaming/approvals/shared-dock behavior, and applying an AI proposal end to
+end). It's opt-in:
 
 ```bash
 pip install -e ".[e2e]"

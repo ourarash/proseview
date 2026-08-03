@@ -34,7 +34,8 @@ dependencies = [
 dev = [
     "pytest>=7",
 ]
-# Browser end-to-end tier. Opt-in: `pip install -e ".[e2e]" && playwright install chromium`.
+# Browser end-to-end tier. Required in CI, opt-in locally:
+# `pip install -e ".[e2e]" && playwright install chromium`.
 # The HTTP end-to-end tier under tests/e2e/ needs none of this -- it is stdlib only.
 e2e = [
     "pytest>=7",

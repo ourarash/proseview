@@ -32,7 +32,7 @@ takes roughly 15 seconds against the synthetic novel in
 | --- | --- | --- |
 | Unit | `tests/test_*.py` | Analytics, scene parsing, config, history. No I/O beyond the fixture repo. |
 | HTTP end-to-end | `tests/e2e/test_server_e2e.py` | Boots a real `python -m proseview` subprocess and drives it over HTTP. Asserts bytes on disk, SSE frames, and PTY output. Stdlib only. |
-| Browser end-to-end | `tests/e2e/test_browser_e2e.py` | Drives the real UI in Chromium via Playwright. Opt-in. |
+| Browser end-to-end | `tests/e2e/test_browser_e2e.py` | Drives the real UI in Chromium via Playwright. Required in CI; opt-in locally. |
 
 Both end-to-end tiers work on a throwaway copy of `fixtures/demo-repo`,
 enriched at runtime with a `skills/` tree, a scene carrying inline
@@ -47,9 +47,9 @@ python -m playwright install chromium
 pytest -m e2e_browser
 ```
 
-It is excluded from the default run (via `addopts` in `pyproject.toml`)
-so `pytest` stays quick and contributors don't need a browser. Use
-`pytest -m ""` to run everything.
+It is excluded from the default local run (via `addopts` in `pyproject.toml`)
+so `pytest` stays quick and contributors don't need a browser. CI runs it as a
+required job. Use `pytest -m ""` to run everything locally.
 
 ProseMirror is imported from esm.sh at pinned versions. Those modules are
 vendored into `tests/e2e/_esm_cache/` (~500K, committed) and served to the
@@ -112,8 +112,8 @@ make sure it's named so it sorts where you want it in the bundle.
 1. **Open an issue first** for anything bigger than a typo or a small
    bug fix, so we can agree on shape before you write code.
 2. **Keep PRs focused.** One logical change per PR.
-3. **Tests pass.** `pytest` is required to be green. CI will block
-   anything red.
+3. **Tests pass.** Default pytest and the required browser E2E job must be
+   green. CI will block anything red.
 4. **No new dependencies** without discussion. The current footprint
    is tiny on purpose.
 5. **Match the existing voice** in user-facing strings, comments, and

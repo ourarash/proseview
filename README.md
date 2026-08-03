@@ -48,6 +48,10 @@ files stay where they are.
   picks up the change over Server-Sent Events. No manual refresh.
 - 🔗 **Deep links.** Every scene and file has a URL. Copy the address
   bar to share or revisit a view. Back / forward work.
+- 🔎 **Repository search.** Press Mod-K or choose Search from any dashboard,
+  scene, or file view. File paths come from one repository-wide inventory;
+  opening a result loads its preview lazily and reopening Search preserves the
+  current query.
 - 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
   Literary, Inter, Georgia, Baskerville, Sans, Mono.
 - 🧪 **Tested.** 260+ tests: unit coverage of the analytics engine, scene
@@ -267,7 +271,6 @@ This is alpha. Things that are working and things that are coming:
 - 🚧 Diff-confirm for AI-suggested edits (selection runs in a terminal
   today; nothing applies edits without your approval, but the diff UX
   is still terminal-only).
-- 🚧 Repo-wide search.
 - 🚧 Configurable agent list (Codex / Claude / Gemini are presets today).
 - 🚧 Continuity surfacing (warn when a scene contradicts a known fact).
 - 🚧 Frontmatter editor (status, where, todos) inside the scene viewer

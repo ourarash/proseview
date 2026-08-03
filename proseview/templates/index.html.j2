@@ -269,29 +269,25 @@
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
             <div id="discussComposerArea" class="discuss-composer-area">
+                <div id="discussContextPicker" class="discuss-context-menu" hidden>
+                    <div class="discuss-context-menu-header"><strong>Files and folders</strong><span>Type to search</span></div>
+                    <div id="discussContextOptions" class="discuss-context-options" role="listbox" aria-label="Repository context suggestions"></div>
+                </div>
                 <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
                 <div class="discuss-composer-actions">
                     <div class="discuss-composer-action-group">
-                        <button id="discussContextButton" type="button" class="discuss-context-button" onclick="openDiscussContextPicker()" aria-label="Add files and more" aria-haspopup="dialog" aria-expanded="false" title="Add files and more (@)"><span aria-hidden="true">+</span></button>
+                        <button id="discussContextButton" type="button" class="discuss-context-button" onclick="openDiscussContextPicker()" aria-label="Add files and more" aria-haspopup="listbox" aria-expanded="false" title="Add files and more (@)"><span aria-hidden="true">+</span></button>
                         <button id="discussNewConversation" type="button" class="discuss-secondary" onclick="openNewDiscussConversationDialog()">New conversation</button>
                     </div>
                     <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
                 </div>
                 <label class="sr-only" for="discussInput">Ask Codex about this document</label>
-                <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…"></textarea>
+                <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
                 <div class="discuss-send-row"><span id="discussHint">Enter to send · Shift+Enter for newline</span><button id="discussSend" type="button" onclick="sendDiscussQuestion()">Send</button></div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
             </div>
         </div>
     </aside>
-    <dialog id="discussContextPicker" class="discuss-context-picker" aria-labelledby="discussPickerTitle">
-        <form method="dialog">
-            <div class="discuss-picker-header"><h2 id="discussPickerTitle">Attach repository context</h2><button value="cancel" aria-label="Close context picker">&times;</button></div>
-            <p>Select files or folders. Prosview validates every resolved path before sending it.</p>
-            <div id="discussPickerTree" class="discuss-picker-tree"></div>
-            <div class="discuss-picker-actions"><button value="cancel">Cancel</button><button value="default" onclick="applyDiscussContext(event)">Attach selected</button></div>
-        </form>
-    </dialog>
     <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription">
         <form method="dialog">
             <div class="discuss-picker-header"><h2 id="discussNewConversationTitle">Start a new conversation?</h2></div>

@@ -27,7 +27,7 @@ from .highlights import PASS_NAMES, compute_scene_highlights
 from .history import HistoryRow, load_history, working_copy_delta
 from .lexical import FILTER_VERBS, calculate_lexical_stats
 from .related import find_related
-from .repo import build_context_tree, build_sidebar_tree, build_tree, recent_changes
+from .repo import build_repository_tree, build_sidebar_tree, build_tree, recent_changes
 from .scenes import (
     BaselineStats,
     SceneStats,
@@ -224,7 +224,7 @@ def build_dashboard(
     goals = compute_goals(history, cfg, delta) if history or delta.words_added_today else None
     tree_nodes = build_tree(root, cfg)
     sidebar_nodes = build_sidebar_tree(root, cfg)
-    context_nodes = build_context_tree(root)
+    repository_nodes = build_repository_tree(root, cfg)
     recent_entries, recent_git = recent_changes(root, cfg)
     return render_html_report(
         scenes,
@@ -235,7 +235,7 @@ def build_dashboard(
         goals=goals,
         tree_nodes=tree_nodes,
         sidebar_nodes=sidebar_nodes,
-        context_nodes=context_nodes,
+        repository_nodes=repository_nodes,
         recent_entries=recent_entries,
         recent_git=recent_git,
         discuss_session_token=discuss_session_token,
@@ -324,7 +324,7 @@ def render_html_report(
     goals: Goals | None = None,
     tree_nodes: list[dict[str, object]] | None = None,
     sidebar_nodes: list[dict[str, object]] | None = None,
-    context_nodes: list[dict[str, object]] | None = None,
+    repository_nodes: list[dict[str, object]] | None = None,
     recent_entries: list[dict[str, object]] | None = None,
     recent_git: bool | None = None,
     discuss_session_token: str = "",
@@ -336,8 +336,8 @@ def render_html_report(
         tree_nodes = build_tree(root, cfg)
     if sidebar_nodes is None:
         sidebar_nodes = build_sidebar_tree(root, cfg)
-    if context_nodes is None:
-        context_nodes = build_context_tree(root)
+    if repository_nodes is None:
+        repository_nodes = build_repository_tree(root, cfg)
     if recent_entries is None:
         recent_entries, recent_git = recent_changes(root, cfg)
     elif recent_git is None:
@@ -538,7 +538,7 @@ def render_html_report(
         "editor_label_json": json.dumps(editor_label),
         "repo_tree_json": _js_json(tree_nodes),
         "sidebar_tree_json": _js_json(sidebar_nodes),
-        "context_tree_json": _js_json(context_nodes),
+        "repository_tree_json": _js_json(repository_nodes),
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),

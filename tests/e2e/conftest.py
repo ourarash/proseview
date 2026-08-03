@@ -220,6 +220,15 @@ def _build_repo(dest: Path) -> Path:
         "def check_continuity(scene):\n    return bool(scene)\n",
         encoding="utf-8",
     )
+    (scripts / "hostile-preview.md").write_text(
+        "# Safe heading\n\n"
+        "<img src=x onerror=\"window.__previewPwned = true\">\n\n"
+        "[Unsafe link](javascript:window.__previewPwned=true)\n",
+        encoding="utf-8",
+    )
+    private = dest / ".private"
+    private.mkdir(exist_ok=True)
+    (private / "token.txt").write_text("fixture secret\n", encoding="utf-8")
     return dest
 
 

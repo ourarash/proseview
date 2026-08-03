@@ -39,7 +39,7 @@ from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailab
 from .discuss import ContextError, DiscussManager
 from .generator import TEMPLATE_DIR, _load_asset, build_dashboard, build_scene_data
 from .lexical import paragraph_blocks
-from .repo import _file_node as _repo_file_node
+from .repo import _file_node as _repo_file_node, resolve_visible_repository_path
 from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
 from .watch import watch as _watch
 from urllib.parse import urlparse, parse_qs
@@ -966,9 +966,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "missing path"}, 400)
                 return
             root = Path(self.repo_root).resolve()
-            target = (root / rel).resolve()
-            if not target.is_relative_to(root):
-                self._send_json({"ok": False, "error": "path outside repo"}, 403)
+            try:
+                target = resolve_visible_repository_path(root, rel)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 403)
                 return
             if not target.is_file():
                 self._send_json({"ok": False, "error": "not a file"}, 404)

@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import Config
-from .repo import CONTEXT_FILE_MAX_BYTES, CONTEXT_SKIP_DIRS, is_context_text_file
+from .repo import (
+    CONTEXT_FILE_MAX_BYTES,
+    CONTEXT_SKIP_DIRS,
+    is_context_text_file,
+    resolve_visible_repository_path,
+)
 
 
 QUESTION_MAX = 32 * 1024
@@ -68,16 +73,10 @@ class ContextBuilder:
         self.max_total_bytes = max_total_bytes
 
     def _relative_target(self, value: str) -> Path:
-        raw = str(value or "").strip().replace("\\", "/")
-        if not raw:
-            raise ContextError("missing repository-relative path")
-        rel = Path(raw)
-        if rel.is_absolute() or ".." in rel.parts:
-            raise ContextError("path must be a safe repository-relative path")
-        target = (self.root / rel).resolve()
-        if not target.is_relative_to(self.root):
-            raise ContextError("path resolves outside the repository")
-        return target
+        try:
+            return resolve_visible_repository_path(self.root, value)
+        except ValueError as exc:
+            raise ContextError(str(exc)) from exc
 
     def _document_target(self, document: dict[str, Any]) -> Path:
         kind = str(document.get("kind") or "")

@@ -865,9 +865,22 @@ def test_repo_file_returns_a_preview_node(shared_server: ProseviewServer):
     assert payload["node"]["body"].strip()
 
 
+def test_repo_file_previews_utf8_source_outside_configured_folders(shared_server: ProseviewServer):
+    payload = shared_server.get_json("/repo-file?path=scripts/check_continuity.py")
+    assert payload["ok"] is True
+    assert payload["node"]["is_text"] is True
+    assert "def check_continuity" in payload["node"]["body"]
+
+
 def test_repo_file_rejects_traversal_outside_the_repo(shared_server: ProseviewServer):
     resp = shared_server.get("/repo-file?path=../../../../etc/passwd")
     assert resp.status == 403
+
+
+def test_repo_file_rejects_hidden_internal_paths(shared_server: ProseviewServer):
+    resp = shared_server.get("/repo-file?path=.private/token.txt")
+    assert resp.status == 403
+    assert b"fixture secret" not in resp.body
 
 
 def test_unknown_paths_404(shared_server: ProseviewServer):

@@ -214,6 +214,12 @@ def _build_repo(dest: Path) -> Path:
     _seed_skills(dest)
     _seed_annotated_scene(dest)
     _seed_large_scene(dest)
+    scripts = dest / "scripts"
+    scripts.mkdir(exist_ok=True)
+    (scripts / "check_continuity.py").write_text(
+        "def check_continuity(scene):\n    return bool(scene)\n",
+        encoding="utf-8",
+    )
     return dest
 
 

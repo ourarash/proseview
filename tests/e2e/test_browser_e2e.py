@@ -312,13 +312,18 @@ def test_discuss_current_file_is_default_removable_context(
     assert page.locator("#discussPanel").is_visible()
 
     page.fill("#discussInput", "Compare ")
-    page.locator("#discussInput").press_sequentially("@book")
+    page.locator("#discussInput").press_sequentially("@02-walk")
     page.wait_for_selector("#discussContextPicker", state="visible")
-    assert "plans/book-plan.md" in page.locator("#discussContextOptions").inner_text()
+    assert "manuscript/ch01/02-walk.md" in page.locator("#discussContextOptions").inner_text()
     page.locator("#discussInput").press("Enter")
     page.wait_for_selector("#discussContextPicker", state="hidden")
     assert page.locator("#discussInput").input_value() == "Compare "
-    assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
+    assert "manuscript/ch01/02-walk.md" in page.locator("#discussContext").inner_text()
+    page.locator("#discussInput").press_sequentially("@check_continuity")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    assert "scripts/check_continuity.py" in page.locator("#discussContextOptions").inner_text()
+    page.locator("#discussInput").press("Enter")
+    assert "scripts/check_continuity.py" in page.locator("#discussContext").inner_text()
     current_chip = page.locator("#discussContext .discuss-chip-current")
     assert SCENE_REL in current_chip.inner_text()
 
@@ -337,7 +342,8 @@ def test_discuss_current_file_is_default_removable_context(
         if question in json.dumps(record)
     )
     assert "Opening Ledger" not in prompt
-    assert "book-plan.md" in prompt
+    assert "manuscript/ch01/02-walk.md" in prompt
+    assert "def check_continuity" in prompt
     assert question in prompt
 
 
@@ -402,12 +408,26 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     assert box and box["x"] >= 0 and box["width"] <= 1024
     assert page.locator("#discussInput").is_visible()
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+    page.locator("#discussInput").press("@")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    menu_box = page.locator("#discussContextPicker").bounding_box()
+    assert menu_box
+    assert menu_box["x"] >= 0 and menu_box["x"] + menu_box["width"] <= 1024
+    assert menu_box["y"] >= 0 and menu_box["y"] + menu_box["height"] <= 768
+    page.locator("#discussInput").press("Escape")
+    assert page.locator("#discussPanel").is_visible()
 
     page.evaluate("document.body.style.zoom = '1'")
     page.set_viewport_size({"width": 390, "height": 844})
     page.wait_for_timeout(100)
     phone_box = page.locator("#discussPanel").bounding_box()
     assert phone_box and phone_box["x"] == 0 and phone_box["width"] <= 390
+    page.fill("#discussInput", "")
+    page.get_by_role("button", name="Add files and more").click()
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    phone_menu_box = page.locator("#discussContextPicker").bounding_box()
+    assert phone_menu_box and phone_menu_box["x"] >= 0 and phone_menu_box["x"] + phone_menu_box["width"] <= 390
+    page.locator("#discussInput").press("Escape")
 
     page.keyboard.press("Escape")
     page.wait_for_selector("#discussPanel", state="hidden")

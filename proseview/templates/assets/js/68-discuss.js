@@ -9,6 +9,7 @@
         var _discussContextChoices = [];
         var _discussContextActiveIndex = 0;
         var _discussMentionRange = null;
+        var _discussContextCandidateCache = null;
         var _discussReturnFocus = null;
         var _discussRefreshTimer = null;
         var _discussLastApproval = '';
@@ -398,6 +399,7 @@
         }
 
         function discussContextCandidates() {
+            if (_discussContextCandidateCache) return _discussContextCandidateCache;
             var candidates = [];
             function visit(nodes) {
                 (nodes || []).forEach(function(node) {
@@ -409,13 +411,26 @@
                     if (!node.is_file) visit(node.children);
                 });
             }
-            visit(repoTree);
-            return candidates;
+            visit(contextTree);
+            _discussContextCandidateCache = candidates;
+            return _discussContextCandidateCache;
         }
 
         function setDiscussContextExpanded(expanded) {
             document.getElementById('discussContextButton').setAttribute('aria-expanded', String(expanded));
             document.getElementById('discussInput').setAttribute('aria-expanded', String(expanded));
+        }
+
+        function positionDiscussContextPicker() {
+            var picker = document.getElementById('discussContextPicker');
+            if (!picker || picker.hidden) return;
+            var composer = document.getElementById('discussComposerArea');
+            var options = document.getElementById('discussContextOptions');
+            var zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+            var availableRenderedHeight = Math.max(96, composer.getBoundingClientRect().top - 8);
+            var maxLogicalHeight = Math.min(330, availableRenderedHeight / zoom);
+            picker.style.maxHeight = maxLogicalHeight + 'px';
+            options.style.maxHeight = Math.max(70, maxLogicalHeight - 42) + 'px';
         }
 
         function closeDiscussContextPicker() {
@@ -456,6 +471,7 @@
                 options.appendChild(option);
             });
             var picker = document.getElementById('discussContextPicker'); picker.hidden = false;
+            positionDiscussContextPicker();
             setDiscussContextExpanded(true);
             updateDiscussContextActiveOption();
         }
@@ -591,6 +607,8 @@
             if (picker.hidden || picker.contains(event.target) || event.target === document.getElementById('discussContextButton') || event.target === document.getElementById('discussInput')) return;
             closeDiscussContextPicker();
         });
+        window.addEventListener('resize', positionDiscussContextPicker);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', positionDiscussContextPicker);
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Escape') {
                 var picker = document.getElementById('discussContextPicker');

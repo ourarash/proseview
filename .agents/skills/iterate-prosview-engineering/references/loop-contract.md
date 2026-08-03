@@ -66,6 +66,20 @@ Maintain fresh proof separately from implementation claims:
   boundary.
 - No “should pass,” implementer report, or partial suite proves completion.
 
+For material stateful capabilities, append a discovered journey ledger:
+
+| Capability/claim | Starting state | Invocation | Intermediate transitions | Outcome | Recovery/next action | Boundary case | Fresh proof |
+|---|---|---|---|---|---|---|---|
+
+- Derive rows from the current capability and route/state inventory; do not
+  hardcode product features in this contract.
+- Do not merge disconnected component or surface tests into evidence for a
+  continuous user journey.
+- Challenge universal, collection-wide, persistence, safety, and accessibility
+  claims using current configuration/fixture boundaries.
+- An uncovered material state or transition is an evidence gap, not a pass;
+  it blocks completion unless the objective explicitly makes it out of scope.
+
 ## 4. Issue ledger
 
 | ID | Stage/lane | Severity | Root cause | Scenario/proof | Decision | Acceptance check | Status | Cycle |
@@ -131,6 +145,9 @@ All conditions must pass:
   `Incomplete`/`Blocked` handoff, or the user may explicitly amend the objective
   before the affected lanes and gate are reevaluated; acceptance alone cannot
   turn `Not verified` into `Pass`.
+- Every material stateful capability has complete journey-ledger evidence,
+  including visible operability and dynamically derived boundary cases for
+  broad claims.
 - The cumulative diff is focused, contains no secret/cache/generated accident,
   preserves unrelated work, and keeps public/persistent contracts and docs
   consistent.

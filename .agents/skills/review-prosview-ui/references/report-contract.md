@@ -149,6 +149,10 @@ End every report with these items and an evidence note after each checkbox. Use
       harness capabilities were discovered rather than assumed from the skill.
 - [ ] Every required Prosview workflow was exercised or explicitly listed as
       unverified.
+- [ ] A discovered capability-by-state matrix proves complete material tasks;
+      disconnected surface checks were not combined as journey evidence.
+- [ ] Universal, collection-wide, persistence, safety, and accessibility
+      claims were challenged with dynamically derived boundary cases.
 - [ ] The baseline E2E command, result, environment, and failure classification
       were reported.
 - [ ] For a full audit, the 1400x1000, 1024x768, and 200% zoom passes were
@@ -159,6 +163,8 @@ End every report with these items and an evidence note after each checkbox. Use
       were attempted and exclusions are trace-justified.
 - [ ] Console errors, failed requests, focus behavior, and isolated file effects
       were observed where applicable.
+- [ ] Interactive success was based on visible operability and completed user
+      outcomes, not DOM presence, programmatic focus, or event dispatch alone.
 - [ ] Findings are evidence-labeled, reproducible, deduplicated, and calibrated
       by user impact.
 - [ ] Every recommendation has an observable acceptance check and stays within

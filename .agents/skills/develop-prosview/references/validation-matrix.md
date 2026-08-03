@@ -21,6 +21,14 @@ A source-text assertion cannot replace a live proof when the contract depends
 on runtime JavaScript, browser semantics, process lifecycle, installed package
 data, or durable file effects.
 
+For stateful UI capabilities, build an acceptance-specific state-transition
+matrix from discovered routes, panels, modes, and entry points. A live proof
+must start in the relevant state and complete the user task through its
+intermediate transitions and recovery/next action. Do not combine isolated
+tests that start from different states. Claims implying universal reach or a
+whole collection require a boundary fixture derived from current
+configuration, not a hardcoded feature example from this reference.
+
 ## Surface-to-evidence selection
 
 | Discovered behavior | Minimum focused proof | Escalate when |
@@ -72,6 +80,9 @@ Before changing production behavior in response to a failure:
 - Mocks isolate a boundary but do not become the subject of the test.
 - Browser checks fail on unexpected page/console/network errors and use
   user-meaningful locators when the current harness supports them.
+- Browser assertions verify that focused/activated controls are visible,
+  operable, and lead to the intended user outcome; internal focus or event
+  state alone is insufficient.
 - Failure, empty, boundary, conflict, cancellation, and cleanup paths match the
   activated risk lanes.
 

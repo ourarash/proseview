@@ -116,6 +116,20 @@ def test_context_builder_rejects_symlink_escape_and_binary(tmp_path: Path):
         )
 
 
+def test_context_builder_rejects_direct_hidden_and_internal_attachments(tmp_path: Path):
+    root = _repo(tmp_path)
+    hidden = root / ".private"
+    hidden.mkdir()
+    (hidden / "token.txt").write_text("secret", encoding="utf-8")
+
+    with pytest.raises(ContextError, match="safe visible repository"):
+        ContextBuilder(root).build(
+            {"kind": "file", "path": "plans/arc.md"},
+            "Question",
+            attachments=[{"kind": "file", "path": ".private/token.txt"}],
+        )
+
+
 def test_context_builder_enforces_total_limit_without_truncating(tmp_path: Path):
     root = _repo(tmp_path)
     (root / "plans" / "large.txt").write_text("x" * 100, encoding="utf-8")

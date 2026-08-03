@@ -13,12 +13,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from proseview.config import Config, RepoTabConfig  # noqa: E402
-from proseview.repo import build_context_tree, build_tree  # noqa: E402
+from proseview.repo import (  # noqa: E402
+    build_context_tree,
+    build_repository_tree,
+    build_tree,
+    resolve_visible_repository_path,
+)
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
 
@@ -193,3 +200,40 @@ def test_context_tree_includes_attachable_files_across_the_repository(tmp_path: 
     assert scene is not None
     assert "body" not in scene
     assert "abs_path" not in scene
+
+
+def test_repository_tree_is_canonical_across_navigation_and_context_boundaries(tmp_path: Path):
+    (tmp_path / "manuscript" / "ch01").mkdir(parents=True)
+    (tmp_path / "manuscript" / "ch01" / "scene.md").write_text("scene", encoding="utf-8")
+    (tmp_path / "outside-preview").mkdir()
+    (tmp_path / "outside-preview" / "tool.py").write_text("print('tool')\n", encoding="utf-8")
+    (tmp_path / "outside-preview" / "cover.png").write_bytes(b"\x89PNG\x00")
+
+    tree = build_repository_tree(tmp_path, Config())
+
+    scene = _find_descendant(tree, "manuscript/ch01/scene.md")
+    tool = _find_descendant(tree, "outside-preview/tool.py")
+    binary = _find_descendant(tree, "outside-preview/cover.png")
+    assert scene and scene["is_scene"] is True and scene["scene_path"] == "ch01/scene.md"
+    assert tool and tool["attachable"] is True and tool["previewable"] is True
+    assert binary and binary["attachable"] is False and binary["previewable"] is False
+    assert "body" not in tool and "abs_path" not in tool
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [".private/token.txt", "docs/.private/token.txt", ".git/config", "/tmp/secret.txt", "../secret.txt"],
+)
+def test_visible_repository_path_rejects_internal_or_non_relative_paths(tmp_path: Path, relative: str):
+    with pytest.raises(ValueError, match="safe visible repository"):
+        resolve_visible_repository_path(tmp_path, relative)
+
+
+def test_visible_repository_path_rejects_symlinks_even_when_the_target_is_contained(tmp_path: Path):
+    target = tmp_path / "target.md"
+    target.write_text("target", encoding="utf-8")
+    link = tmp_path / "link.md"
+    link.symlink_to(target)
+
+    with pytest.raises(ValueError, match="safe visible repository"):
+        resolve_visible_repository_path(tmp_path, "link.md")

@@ -33,6 +33,22 @@ CONTEXT_SKIP_DIRS: frozenset[str] = frozenset({
 })
 
 
+def _read_utf8_text(path: Path, max_bytes: int) -> str | None:
+    """Read a bounded UTF-8 text file, rejecting binary-looking content."""
+    try:
+        if path.stat().st_size > max_bytes:
+            return None
+        payload = path.read_bytes()
+    except OSError:
+        return None
+    if b"\x00" in payload:
+        return None
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 def is_context_text_file(path: Path, max_file_bytes: int = CONTEXT_FILE_MAX_BYTES) -> bool:
     """Return whether *path* is attachable UTF-8 repository context.
 
@@ -41,19 +57,7 @@ def is_context_text_file(path: Path, max_file_bytes: int = CONTEXT_FILE_MAX_BYTE
     agent context too. Binary, malformed, and oversized files stay outside the
     browser inventory and are rejected again at the API boundary.
     """
-    try:
-        if not path.is_file() or path.stat().st_size > max_file_bytes:
-            return False
-        payload = path.read_bytes()
-    except OSError:
-        return False
-    if b"\x00" in payload:
-        return False
-    try:
-        payload.decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    return True
+    return path.is_file() and _read_utf8_text(path, max_file_bytes) is not None
 
 
 def _iso_mtime(path: Path) -> str:
@@ -69,18 +73,39 @@ def _is_hidden(name: str) -> bool:
     return name.startswith(".")
 
 
+def resolve_visible_repository_path(root: Path, value: str) -> Path:
+    """Resolve a path shared by repository-facing browser capabilities."""
+    resolved_root = root.resolve()
+    raw = str(value or "").strip().replace("\\", "/")
+    relative = Path(raw)
+    if (
+        not raw
+        or relative.is_absolute()
+        or ".." in relative.parts
+        or any(part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in relative.parts)
+    ):
+        raise ValueError("path must be a safe visible repository-relative path")
+
+    candidate = resolved_root
+    has_symlink = False
+    for part in relative.parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            has_symlink = True
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(resolved_root):
+        raise ValueError("path resolves outside the repository")
+    if has_symlink:
+        raise ValueError("symlinks are not a safe visible repository path")
+    return resolved
+
+
 def _file_node(path: Path, root: Path, preview_max: int) -> dict[str, Any]:
     rel = path.relative_to(root).as_posix()
     size = path.stat().st_size
-    suffix = path.suffix.lower()
-    is_text = suffix in TEXT_SUFFIXES
     too_large = size > preview_max
-    body: str | None = None
-    if is_text and not too_large:
-        try:
-            body = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            body = None
+    body = _read_utf8_text(path, preview_max)
+    is_text = body is not None or (too_large and path.suffix.lower() in TEXT_SUFFIXES)
     return {
         "name": path.name,
         "path": rel,
@@ -341,8 +366,13 @@ def build_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
     return nodes
 
 
-def _context_file_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, Any] | None:
-    """Return attachable-file metadata without embedding user content."""
+def _repository_file_node(
+    path: Path,
+    root: Path,
+    cfg: Config,
+    context_max_bytes: int,
+) -> dict[str, Any] | None:
+    """Return capability metadata for one contained repository file."""
     try:
         resolved = path.resolve()
         if path.is_symlink() or not resolved.is_relative_to(root) or not resolved.is_file():
@@ -350,20 +380,34 @@ def _context_file_node(path: Path, root: Path, max_file_bytes: int) -> dict[str,
         size = resolved.stat().st_size
     except OSError:
         return None
-    if size > max_file_bytes or not is_context_text_file(resolved, max_file_bytes):
-        return None
+    inspection_limit = max(cfg.repo_tab.preview_max_bytes, context_max_bytes)
+    text = _read_utf8_text(resolved, inspection_limit)
+    rel = path.relative_to(root).as_posix()
+    manuscript_prefix = cfg.manuscript_subdir.rstrip("/") + "/"
+    is_scene = rel.startswith(manuscript_prefix) and path.suffix.lower() in {".md", ".markdown"}
     return {
         "name": path.name,
-        "path": path.relative_to(root).as_posix(),
+        "path": rel,
         "is_file": True,
-        "is_text": True,
-        "too_large": False,
+        "is_scene": is_scene,
+        "scene_path": rel[len(manuscript_prefix):] if is_scene else None,
+        "is_text": text is not None or (
+            size > inspection_limit and path.suffix.lower() in TEXT_SUFFIXES
+        ),
+        "previewable": size <= cfg.repo_tab.preview_max_bytes and text is not None,
+        "attachable": size <= context_max_bytes and text is not None,
+        "too_large": size > cfg.repo_tab.preview_max_bytes,
         "size": size,
     }
 
 
-def _context_dir_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, Any] | None:
-    """Walk one repository directory for the Discuss attachment index."""
+def _repository_dir_node(
+    path: Path,
+    root: Path,
+    cfg: Config,
+    context_max_bytes: int,
+) -> dict[str, Any] | None:
+    """Walk one repository directory for the canonical metadata index."""
     if path.name.startswith(".") or path.name in CONTEXT_SKIP_DIRS or path.is_symlink():
         return None
     try:
@@ -375,9 +419,9 @@ def _context_dir_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, 
         if child.name.startswith(".") or child.name in CONTEXT_SKIP_DIRS:
             continue
         if child.is_dir():
-            node = _context_dir_node(child, root, max_file_bytes)
+            node = _repository_dir_node(child, root, cfg, context_max_bytes)
         elif child.is_file():
-            node = _context_file_node(child, root, max_file_bytes)
+            node = _repository_file_node(child, root, cfg, context_max_bytes)
         else:
             node = None
         if node is not None:
@@ -388,23 +432,26 @@ def _context_dir_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, 
         "name": path.name,
         "path": path.relative_to(root).as_posix(),
         "is_file": False,
+        "attachable": any(bool(child.get("attachable")) for child in children),
         "children": children,
     }
 
 
-def build_context_tree(
+def build_repository_tree(
     root: Path,
+    cfg: Config | None = None,
     *,
-    max_file_bytes: int = CONTEXT_FILE_MAX_BYTES,
+    context_max_bytes: int = CONTEXT_FILE_MAX_BYTES,
 ) -> list[dict[str, Any]]:
-    """Return every attachable repository text file for Discuss.
+    """Return the canonical metadata-only repository inventory.
 
-    Unlike :func:`build_tree`, this inventory is not limited by the file-preview
-    configuration and includes manuscript scenes. It carries metadata only,
-    skips hidden/internal directories and symlinks, and omits files the Discuss
-    context boundary cannot accept.
+    Consumers select files by explicit capability flags instead of maintaining
+    separate universes for navigation and agent context. Hidden/internal paths
+    and symlinks remain outside the inventory; no file bodies or absolute paths
+    are serialized into the browser.
     """
     resolved_root = root.resolve()
+    cfg = cfg or Config.load(resolved_root)
     try:
         entries = sorted(resolved_root.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
     except OSError:
@@ -414,11 +461,36 @@ def build_context_tree(
         if entry.name.startswith(".") or entry.name in CONTEXT_SKIP_DIRS:
             continue
         if entry.is_dir():
-            node = _context_dir_node(entry, resolved_root, max_file_bytes)
+            node = _repository_dir_node(entry, resolved_root, cfg, context_max_bytes)
         elif entry.is_file():
-            node = _context_file_node(entry, resolved_root, max_file_bytes)
+            node = _repository_file_node(entry, resolved_root, cfg, context_max_bytes)
         else:
             node = None
         if node is not None:
             nodes.append(node)
     return nodes
+
+
+def build_context_tree(
+    root: Path,
+    *,
+    max_file_bytes: int = CONTEXT_FILE_MAX_BYTES,
+) -> list[dict[str, Any]]:
+    """Compatibility projection containing only attachable context paths."""
+    repository = build_repository_tree(root, context_max_bytes=max_file_bytes)
+
+    def project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        projected: list[dict[str, Any]] = []
+        for node in nodes:
+            if node.get("is_file"):
+                if node.get("attachable"):
+                    projected.append(dict(node))
+                continue
+            children = project(list(node.get("children") or []))
+            if children:
+                copy = dict(node)
+                copy["children"] = children
+                projected.append(copy)
+        return projected
+
+    return project(repository)

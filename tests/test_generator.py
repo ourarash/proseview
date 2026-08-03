@@ -93,7 +93,7 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
         "if ('scrollRestoration' in history) history.scrollRestoration = 'manual';",
         "routeHydrating = true;",
         "sessionStorage.setItem(VIEW_SCROLL_STORAGE_PREFIX + key",
-        "function previewRepoFile(path)",
+        "function previewRepoFile(path, options)",
         "name = VALID_TABS.includes(name) ? name : 'overview';",
         ".top-banner {",
     ]:

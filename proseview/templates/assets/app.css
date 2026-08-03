@@ -1127,8 +1127,6 @@
         .discuss-context-picker::backdrop { background: rgba(15,23,42,.48); }
         .discuss-picker-header, .discuss-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .discuss-picker-header h2 { margin: 0; font-size: 17px; }
-        .discuss-picker-tree { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 7px; padding: 8px; margin: 10px 0; }
-        .discuss-picker-tree label { display: block; padding: 3px 2px; }
         .discuss-picker-actions { justify-content: flex-end; }
         .discuss-picker-actions button { padding: 6px 10px; }
         .discuss-confirm-dialog { max-width: 470px; }

@@ -52,6 +52,10 @@ live and disclose the narrower scope.
 5. Inspect the current harness every time. Use its documented commands,
    fixtures, browser setup, demo repository, and helpers; do not assume private
    names are stable.
+6. Build a discovered capability-by-application-state matrix. For each material
+   capability, record its claimed scope, current entry points, reachable route
+   and panel states, backing data boundary, and complete user outcome. Derive
+   the matrix from the current product; never add feature names to this skill.
 
 ### 2. Preflight the live environment
 
@@ -111,17 +115,28 @@ live and disclose the narrower scope.
    exploration, create a temporary runner only inside the disposable copy or
    OS temporary directory and consume existing harness capabilities. Do not
    add a test or helper to the discovered harness tree.
-3. Run the primary 1400x1000 pass, a compact 1024x768 desktop pass, and a 200%
+3. Trace complete tasks across state boundaries: starting state, invocation,
+   intermediate transition, outcome, and recovery or next action. Separate
+   tests of two surfaces are not evidence that the transition between them
+   works. Material capabilities presented as global or persistent must be
+   exercised from every discovered state where a user can reasonably invoke
+   them.
+4. Run the primary 1400x1000 pass, a compact 1024x768 desktop pass, and a 200%
    zoom pass. Inspect both light and dark themes and complete a keyboard-only
    pass through core tasks.
-4. Observe outcomes, timing, focus movement, browser history, console errors,
+5. Observe outcomes, timing, focus movement, browser history, console errors,
    network failures, state persistence, empty/error/recovery states, and file
    effects in the isolated demo copy.
-5. Capture a screenshot only when it proves a specific finding. Record the
+6. Capture a screenshot only when it proves a specific finding. Record the
    preceding actions, viewport, theme, relevant DOM state, and screenshot path.
-6. Inspect source after observing behavior to confirm the cause or to identify
+7. Inspect source after observing behavior to confirm the cause or to identify
    a source-confirmed risk. Do not convert source suspicion into an observed
    defect without reproducing it.
+8. Challenge universal, collection-wide, persistence, safety, and accessibility
+   claims with a boundary case derived from current configuration and fixture
+   data. Verify visible operability and task completion; DOM presence,
+   programmatic focus, event dispatch, or a passing isolated test is
+   insufficient.
 
 ### 6. Analyze with calibrated skepticism
 
@@ -169,6 +184,9 @@ following are true for the requested scope:
 - Every required workflow and every high-risk probe for an in-scope lane was
   actually exercised. A required item marked `Not verified` is valid reporting
   but forces an `Incomplete` outcome.
+- Every material capability has a completed capability-by-state row. Any
+  uncovered claimed scope, cross-state transition, or recovery path is `Not
+  verified` and forces an `Incomplete` outcome.
 - For a full audit, both themes, all required desktop viewports, 200% zoom, and
   keyboard operation were attempted. For a focused audit, every context
   activated by the requested lanes/workflows was attempted and all

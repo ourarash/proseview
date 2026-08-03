@@ -19,6 +19,14 @@ For each lane, record:
 - **Status:** `Pass`, `Needs work`, `Fail`, `Not verified`, or `Out of scope`
   under the report contract.
 
+Before assigning lane status, derive a capability-by-state matrix from the
+current runtime and repository profile. Record each capability's claimed
+scope, invocation states, complete task transition, recovery/next action, and
+data boundary. Do not combine disconnected surface checks into journey
+evidence. For claims implying universal reach, persistence, safety, or a whole
+collection, select a counterexample from discovered configuration or fixture
+boundaries rather than hardcoding a product feature or path here.
+
 A lane passes only when its high-risk probes ran in the live product and the
 evidence supports the expected writer outcome. Never generate a finding from a
 generic heuristic without a concrete Prosview task, reachable scenario, and

@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from proseview.config import Config, RepoTabConfig  # noqa: E402
-from proseview.repo import build_tree  # noqa: E402
+from proseview.repo import build_context_tree, build_tree  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
 
@@ -153,3 +153,43 @@ def test_custom_folders_config_is_honored(tmp_path: Path):
     tree = build_tree(tmp_path, cfg)
     names = {n["name"] for n in tree}
     assert names == {"craft"}
+
+
+def test_context_tree_includes_attachable_files_across_the_repository(tmp_path: Path):
+    (tmp_path / "manuscript" / "ch01").mkdir(parents=True)
+    (tmp_path / "manuscript" / "ch01" / "scene.md").write_text("scene", encoding="utf-8")
+    (tmp_path / "research").mkdir()
+    (tmp_path / "research" / "timeline.txt").write_text("timeline", encoding="utf-8")
+    (tmp_path / "README.md").write_text("read me", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "agent.py").write_text("def run():\n    return True\n", encoding="utf-8")
+    (tmp_path / "web").mkdir()
+    (tmp_path / "web" / "panel.js").write_text("export const panel = true;\n", encoding="utf-8")
+    (tmp_path / "Makefile").write_text("test:\n\tpytest\n", encoding="utf-8")
+    (tmp_path / "cover.png").write_bytes(b"\x89PNG")
+    (tmp_path / "too-large.md").write_text("x" * (512 * 1024 + 1), encoding="utf-8")
+    (tmp_path / ".private").mkdir()
+    (tmp_path / ".private" / "secret.md").write_text("secret", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "package.md").write_text("dependency", encoding="utf-8")
+    outside = tmp_path.parent / "outside.md"
+    outside.write_text("outside", encoding="utf-8")
+    (tmp_path / "research" / "escape.md").symlink_to(outside)
+
+    tree = build_context_tree(tmp_path)
+
+    assert _find_descendant(tree, "manuscript/ch01/scene.md") is not None
+    assert _find_descendant(tree, "research/timeline.txt") is not None
+    assert _find_descendant(tree, "README.md") is not None
+    assert _find_descendant(tree, "src/agent.py") is not None
+    assert _find_descendant(tree, "web/panel.js") is not None
+    assert _find_descendant(tree, "Makefile") is not None
+    assert _find_descendant(tree, "cover.png") is None
+    assert _find_descendant(tree, "too-large.md") is None
+    assert _find_descendant(tree, ".private/secret.md") is None
+    assert _find_descendant(tree, "node_modules/package.md") is None
+    assert _find_descendant(tree, "research/escape.md") is None
+    scene = _find_descendant(tree, "manuscript/ch01/scene.md")
+    assert scene is not None
+    assert "body" not in scene
+    assert "abs_path" not in scene

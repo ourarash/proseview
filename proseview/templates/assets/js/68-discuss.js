@@ -244,9 +244,13 @@
             });
         }
 
-        function renderDiscussMarkdown(parent, text) {
+        function renderSafeMarkdown(parent, text) {
             try { appendMarkdownTokens(parent, marked.lexer(String(text || ''), {gfm: true})); }
             catch(e) { parent.textContent = String(text || ''); }
+        }
+
+        function renderDiscussMarkdown(parent, text) {
+            renderSafeMarkdown(parent, text);
         }
 
         function elementWith(className, text) {
@@ -405,13 +409,13 @@
                 (nodes || []).forEach(function(node) {
                     if (!node.path) return;
                     var kind = node.is_file ? 'file' : 'folder';
-                    if (!node.is_file || (node.is_text && !node.too_large)) {
+                    if ((!node.is_file && node.attachable) || (node.is_file && node.attachable)) {
                         candidates.push({kind: kind, path: node.path, name: node.name || node.path});
                     }
                     if (!node.is_file) visit(node.children);
                 });
             }
-            visit(contextTree);
+            visit(repositoryTree);
             _discussContextCandidateCache = candidates;
             return _discussContextCandidateCache;
         }
@@ -576,7 +580,11 @@
             }).then(function() {
                 input.value = ''; _discussSelection = ''; closeDiscussContextPicker(); renderDiscussContext(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = 'Question queued';
-            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() { button.disabled = false; input.focus(); });
+            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() {
+                button.disabled = false;
+                var active = document.activeElement;
+                if (active === input || active === button || active === document.body) input.focus();
+            });
         }
 
         function stopDiscussTurn() {

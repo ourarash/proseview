@@ -13,6 +13,9 @@
         var _termSend = null;
         var _termContextFile = null;
         var _termContextSel = null;
+        // Hash hydration runs before the preview function's source position, so
+        // lifecycle state used by it must be initialized at bundle entry.
+        var _repoPreviewRequestVersion = 0;
 
         function _activeSession() {
             for (var i = 0; i < _termSessions.length; i++) {
@@ -1162,7 +1165,7 @@
                 } else if (route.kind === 'scene' && route.arg && paths.indexOf(route.arg) >= 0) {
                     openSceneModal(route.arg);
                 } else if (route.kind === 'file' && route.arg) {
-                    if (repoFileByPath[route.arg]) previewRepoFile(route.arg);
+                    previewRepoFile(route.arg, { route: false });
                 } else {
                     delete document.documentElement.dataset.view;
                     showTab('overview');
@@ -1187,12 +1190,12 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        function previewRepoFile(path) {
+        function renderRepoFile(node, options) {
+            options = options || {};
+            var path = node.path;
             saveActiveScrollPosition();
-            const node = repoFileByPath[path];
-            if (!node) return;
             highlightSidebarItem(path);
-            routeToHash('/file/' + encodeURIComponent(path), true);
+            if (options.route !== false) routeToHash('/file/' + encodeURIComponent(path), true);
             document.getElementById('filePreviewTitle').textContent = node.path;
             const sizeKb = (node.size / 1024).toFixed(1);
             document.getElementById('filePreviewMeta').textContent =
@@ -1213,7 +1216,8 @@
                     if (node.body.length > 65536) {
                         body.innerHTML = '<div class="repo-warn">This file is ' + sizeKb + ' KB \u2014 too large for inline rendering. <a class="editor-btn" href="' + editorBtn.href + '" target="_blank">\u2197 Open in ' + escHtml(editorLabel) + '</a></div>';
                     } else {
-                        body.innerHTML = marked.parse(node.body);
+                        body.replaceChildren();
+                        renderSafeMarkdown(body, node.body);
                     }
                 } else {
                     body.innerHTML = '';
@@ -1227,6 +1231,50 @@
             restoreActiveScrollPosition();
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
+            if (options.focus) document.getElementById('filePreviewTitle').focus({ preventScroll: true });
+            return node;
+        }
+
+        function previewRepoFile(path, options) {
+            options = options || {};
+            const requestVersion = ++_repoPreviewRequestVersion;
+            const cached = repoFileByPath[path];
+            if (cached) return Promise.resolve(renderRepoFile(cached, options));
+
+            saveActiveScrollPosition();
+            highlightSidebarItem(path);
+            if (options.route !== false) routeToHash('/file/' + encodeURIComponent(path), true);
+            document.getElementById('filePreviewTitle').textContent = path;
+            document.getElementById('filePreviewMeta').textContent = 'Loading preview…';
+            document.getElementById('filePreviewBody').innerHTML = '<div class="repo-warn">Loading preview…</div>';
+            document.documentElement.dataset.view = 'file';
+            if (options.focus) document.getElementById('filePreviewTitle').focus({ preventScroll: true });
+
+            return fetch('/repo-file?path=' + encodeURIComponent(path), { cache: 'no-store' })
+                .then(function(response) {
+                    return response.json().then(function(data) {
+                        if (!response.ok || !data || !data.ok || !data.node) {
+                            throw new Error((data && data.error) || 'Could not load file preview');
+                        }
+                        return data.node;
+                    });
+                })
+                .then(function(node) {
+                    if (!node || node.path !== path) throw new Error('File preview returned the wrong document');
+                    repoFileByPath[path] = node;
+                    if (requestVersion !== _repoPreviewRequestVersion) return null;
+                    return renderRepoFile(node, { route: false, focus: options.focus });
+                })
+                .catch(function(error) {
+                    if (requestVersion !== _repoPreviewRequestVersion) return null;
+                    document.getElementById('filePreviewMeta').textContent = 'Preview unavailable';
+                    document.getElementById('filePreviewBody').innerHTML = '';
+                    var warning = document.createElement('div');
+                    warning.className = 'repo-warn';
+                    warning.textContent = error.message || 'Could not load file preview';
+                    document.getElementById('filePreviewBody').appendChild(warning);
+                    return null;
+                });
         }
 
         function closeFilePreview() {
@@ -1255,7 +1303,8 @@
                         throw new Error((data && data.error) || 'unknown error');
                     }
                     repoFileByPath[path] = data.node;
-                    previewRepoFile(path);
+                    if (activeRouteKey() !== '/file/' + path) return;
+                    previewRepoFile(path, { route: false });
                 })
                 .catch(function(err) {
                     if (!options.silent) alert('Could not refresh file: ' + err);

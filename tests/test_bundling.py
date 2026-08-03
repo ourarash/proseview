@@ -86,7 +86,9 @@ def test_dashboard_inlines_concatenated_bundle():
     # From 70-terminal.js
     assert "function spawnTerminal" in html or "function _initSessionXterm" in html
     # From 80-sidebar-init.js
-    assert "function previewRepoFile(path)" in html
+    assert "function previewRepoFile(path, options)" in html
+    assert "body.innerHTML = marked.parse(node.body)" not in html
+    assert "renderSafeMarkdown(body, node.body)" in html
 
 
 # ── Item 7: build_scene_data is the data source ──────────────────────────────
@@ -275,7 +277,7 @@ def test_prosemirror_imports_pin_specific_versions():
 def test_search_module_present_in_bundle():
     """The search palette JS is its own topical file, sorted to load
     after state/prose-indicators but before the router so it can
-    reference globals (contents, meta, paths, repoFileByPath) and
+    reference globals (contents, meta, paths, repositoryFileByPath) and
     define functions the router needs (focusSearch).
     """
     files = sorted(p.name for p in JS_DIR.glob("*.js"))
@@ -293,13 +295,16 @@ def test_template_contains_search_input_and_panel():
     template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
     assert 'id="searchBox"' in template
     assert 'id="searchResults"' in template
-    # The input lives inside .toolbar-actions so it sits next to the
-    # font and theme menus.
-    toolbar_start = template.find('class="toolbar-actions"')
-    toolbar_end = template.find('</div>', toolbar_start)
-    assert toolbar_start >= 0 and toolbar_end > toolbar_start
-    toolbar_html = template[toolbar_start:toolbar_end]
-    assert 'id="searchBox"' in toolbar_html, "search input must live inside .toolbar-actions"
+    assert 'id="searchPalette"' in template
+    # Dashboard search is inline and wide. The same menu is moved into the
+    # dialog only from routed scene/file views.
+    mount_start = template.find('id="dashboardSearchMount"')
+    font_start = template.find('id="fontMenu"', mount_start)
+    assert mount_start >= 0 and font_start > mount_start
+    dashboard_search_html = template[mount_start:font_start]
+    assert 'id="searchBox"' in dashboard_search_html
+    assert 'aria-label="Close search"' in dashboard_search_html
+    assert 'aria-label="Close scene and return to dashboard"' in template
 
 
 def test_search_cmd_k_shortcut_in_bundle():
@@ -408,5 +413,3 @@ def test_task_jump_button_resolves_against_prosemirror_dom():
         "Stale .prose-para query (the wrapper is no longer rendered)"
     # Headings are filtered so the index lines up with paragraph_blocks().
     assert "/^H[1-6]$/i.test(el.tagName)" in bundle
-
-

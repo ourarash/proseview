@@ -1,8 +1,7 @@
         // ── Repo-wide search palette ──────────────────────────────────────
-        // Pure client-side. Everything searchable is already in browser
-        // memory: contents[path] (full prose), meta[path] (frontmatter,
-        // todos, notes, abs_path), repoFileByPath (non-scene files under
-        // repo_tab.folders). For a typical novel (~80k words / ~500KB)
+        // Pure client-side. Repository paths come from the canonical metadata
+        // index; scene contents and metadata provide the richer prose/task
+        // matches. File bodies stay lazy. For a typical novel (~80k words / ~500KB)
         // substring scanning is microseconds in V8, so we just rescan on
         // every keystroke with a 50 ms debounce. No index, no library, no
         // server endpoint.
@@ -34,6 +33,7 @@
         var _searchCursor = -1;
         var _searchDebounceTimer = null;
         var _searchTotalHits = 0;
+        var _searchReturnFocus = null;
         const _searchParaOffsets = new Map();
 
         function _searchEscHtml(s) {
@@ -126,21 +126,9 @@
             const seenFiles = new Set();
             const seenScenes = new Set();
 
-            // 1. FILES — scene paths first, then non-scene repo files.
-            for (let i = 0; i < paths.length; i++) {
-                const p = paths[i];
-                if (p.toLowerCase().indexOf(q) === -1) continue;
-                seenFiles.add(p);
-                _searchTotalHits++;
-                if (out.length < SEARCH_RESULT_CAP) {
-                    out.push({
-                        category: 'FILES', path: p, isScene: true,
-                        primary: p, secondary: 'scene',
-                        primaryHi: _searchHighlight(p, query),
-                    });
-                }
-            }
-            const repoNodes = (typeof repoFileByPath === 'object' && repoFileByPath) || {};
+            // 1. FILES — every safe repository path, independent of the
+            // configured sidebar/preview folders.
+            const repoNodes = (typeof repositoryFileByPath === 'object' && repositoryFileByPath) || {};
             const repoKeys = Object.keys(repoNodes);
             for (let i = 0; i < repoKeys.length; i++) {
                 const fp = repoKeys[i];
@@ -153,7 +141,10 @@
                 _searchTotalHits++;
                 if (out.length < SEARCH_RESULT_CAP) {
                     out.push({
-                        category: 'FILES', path: fp, isScene: false,
+                        category: 'FILES',
+                        path: node.is_scene ? node.scene_path : fp,
+                        repoPath: fp,
+                        isScene: !!node.is_scene,
                         primary: fp, secondary: 'file',
                         primaryHi: _searchHighlight(fp, query),
                     });
@@ -295,16 +286,22 @@
 
         function _renderResults(results, query) {
             const panel = document.getElementById('searchResults');
+            const input = document.getElementById('searchBox');
+            const status = document.getElementById('searchStatus');
             if (!panel) return;
             if (!query || query.length < SEARCH_MIN_LEN) {
                 panel.hidden = true;
                 panel.innerHTML = '';
+                if (input) { input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
+                if (status) status.textContent = 'Type at least two characters to search';
                 return;
             }
             if (!results.length) {
                 panel.hidden = false;
                 panel.innerHTML = '<div class="search-empty">No matches for “'
                     + _searchEscHtml(query) + '”.</div>';
+                if (input) { input.setAttribute('aria-expanded', 'true'); input.removeAttribute('aria-activedescendant'); }
+                if (status) status.textContent = 'No search results';
                 return;
             }
 
@@ -328,7 +325,8 @@
                     const r = item.row;
                     const activeCls = item.idx === _searchCursor ? ' search-row-active' : '';
                     html += '<div class="search-row' + activeCls
-                        + '" data-idx="' + item.idx + '">'
+                        + '" id="searchResult' + item.idx + '" role="option" aria-selected="'
+                        + (item.idx === _searchCursor ? 'true' : 'false') + '" data-idx="' + item.idx + '">'
                         + '<div class="search-row-primary">' + r.primaryHi + '</div>'
                         + '<div class="search-row-secondary">'
                         + (r.secondaryHi || _searchEscHtml(r.secondary || '')) + '</div>'
@@ -343,7 +341,23 @@
 
             panel.innerHTML = html;
             panel.hidden = false;
+            if (input) input.setAttribute('aria-expanded', 'true');
+            if (status) status.textContent = results.length + (results.length === 1 ? ' search result' : ' search results');
             _ensureSearchCursorVisible();
+            _syncSearchActiveDescendant();
+        }
+
+        function _syncSearchActiveDescendant() {
+            const input = document.getElementById('searchBox');
+            const rows = document.querySelectorAll('#searchResults .search-row');
+            for (let i = 0; i < rows.length; i++) {
+                const idx = parseInt(rows[i].dataset.idx, 10);
+                rows[i].setAttribute('aria-selected', String(idx === _searchCursor));
+            }
+            if (!input) return;
+            if (_searchCursor >= 0 && document.getElementById('searchResult' + _searchCursor)) {
+                input.setAttribute('aria-activedescendant', 'searchResult' + _searchCursor);
+            } else input.removeAttribute('aria-activedescendant');
         }
 
         function _ensureSearchCursorVisible() {
@@ -365,6 +379,7 @@
                 const idx = parseInt(rows[i].dataset.idx, 10);
                 rows[i].classList.toggle('search-row-active', idx === _searchCursor);
             }
+            _syncSearchActiveDescendant();
             _ensureSearchCursorVisible();
         }
 
@@ -413,14 +428,25 @@
         function _activateSearchResult(idx) {
             const r = _searchResults[idx];
             if (!r) return;
-            _closeSearch(true);
+            const warning = document.getElementById('searchNavigationWarning');
+            if (document.documentElement.dataset.view === 'scene' && _pmEditMode && _pmDirty) {
+                if (warning) {
+                    warning.textContent = 'Save or cancel your scene edits before opening another result.';
+                    warning.hidden = false;
+                }
+                return;
+            }
+            if (warning) warning.hidden = true;
+            _closeSearch({ restoreFocus: false });
 
             if (r.category === 'FILES' && !r.isScene) {
-                if (typeof previewRepoFile === 'function') previewRepoFile(r.path);
+                if (typeof previewRepoFile === 'function') previewRepoFile(r.path, { focus: true });
                 return;
             }
             if (typeof openSceneModal === 'function') {
                 openSceneModal(r.path);
+                var title = document.getElementById('modalTitle');
+                if (title) title.focus({ preventScroll: true });
             }
 
             // TODO / Note hits: jump to the matching row in the Tasks
@@ -449,20 +475,47 @@
             }
         }
 
-        function _closeSearch(clearInput) {
+        function _closeSearch(options) {
+            options = options || {};
+            const palette = document.getElementById('searchPalette');
             const panel = document.getElementById('searchResults');
             const inp = document.getElementById('searchBox');
-            if (panel) { panel.hidden = true; panel.innerHTML = ''; }
+            if (palette && palette.open) palette.close();
+            if (panel) panel.hidden = true;
             if (inp) {
-                if (clearInput) inp.value = '';
+                inp.setAttribute('aria-expanded', 'false');
+                inp.removeAttribute('aria-activedescendant');
+                if (options.clear) {
+                    inp.value = '';
+                    panel.innerHTML = '';
+                    _searchResults = [];
+                    _searchCursor = -1;
+                }
                 inp.blur();
             }
-            _searchResults = [];
-            _searchCursor = -1;
+            _restoreSearchToDashboard();
+            if (options.restoreFocus !== false && _searchReturnFocus && _searchReturnFocus.isConnected) {
+                _searchReturnFocus.focus({ preventScroll: true });
+            }
+            _searchReturnFocus = null;
+        }
+
+        function _restoreSearchToDashboard() {
+            const mount = document.getElementById('dashboardSearchMount');
+            const menu = document.getElementById('searchMenu');
+            const results = document.getElementById('searchResults');
+            if (mount && menu && menu.parentElement !== mount) mount.appendChild(menu);
+            if (menu) {
+                menu.style.removeProperty('width');
+                menu.style.removeProperty('max-height');
+            }
+            if (results) results.style.removeProperty('max-height');
         }
 
         function _handleSearchInput(e) {
             const q = e.target.value;
+            const warning = document.getElementById('searchNavigationWarning');
+            if (warning) warning.hidden = true;
             if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
             _searchDebounceTimer = setTimeout(function() {
                 _searchResults = _runSearch(q);
@@ -473,7 +526,7 @@
 
         function _handleSearchKeydown(e) {
             if (e.key === 'Escape') {
-                _closeSearch(true);
+                _closeSearch();
                 e.preventDefault();
                 return;
             }
@@ -494,9 +547,38 @@
             }
         }
 
+        function positionSearchPalette() {
+            const palette = document.getElementById('searchPalette');
+            const menu = document.getElementById('searchMenu');
+            const results = document.getElementById('searchResults');
+            if (!palette || !palette.open || !menu) return;
+            const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+            const logicalWidth = window.innerWidth / zoom;
+            const logicalHeight = window.innerHeight / zoom;
+            palette.style.width = logicalWidth + 'px';
+            palette.style.height = logicalHeight + 'px';
+            menu.style.width = Math.max(240, Math.min(620, logicalWidth - 32)) + 'px';
+            menu.style.maxHeight = Math.max(180, logicalHeight - 32) + 'px';
+            if (results) results.style.maxHeight = Math.max(100, logicalHeight - 180) + 'px';
+        }
+
         function focusSearch() {
+            const palette = document.getElementById('searchPalette');
+            const menu = document.getElementById('searchMenu');
             const inp = document.getElementById('searchBox');
-            if (!inp) return;
+            const view = document.documentElement.dataset.view;
+            const needsPalette = view === 'scene' || view === 'file';
+            if (!palette || !menu || !inp) return;
+            if (needsPalette && !palette.open) {
+                _searchReturnFocus = document.activeElement;
+                palette.appendChild(menu);
+                palette.showModal();
+            } else if (!needsPalette) {
+                _restoreSearchToDashboard();
+            }
+            const warning = document.getElementById('searchNavigationWarning');
+            if (warning) warning.hidden = true;
+            if (needsPalette) positionSearchPalette();
             inp.focus();
             inp.select();
             if (inp.value && inp.value.length >= SEARCH_MIN_LEN) {
@@ -533,11 +615,25 @@
                 _activateSearchResult(idx);
             });
 
-            // Click outside the palette closes it.
+            document.getElementById('searchPalette').addEventListener('cancel', function(e) {
+                e.preventDefault();
+                _closeSearch();
+            });
+
+            // Clicking the backdrop closes the modal. On the dashboard,
+            // clicking outside the inline search only folds its result list.
             document.addEventListener('click', function(e) {
-                if (e.target.closest('#searchBox')) return;
-                if (e.target.closest('#searchResults')) return;
-                if (!panel.hidden) _closeSearch(false);
+                const palette = document.getElementById('searchPalette');
+                const menu = document.getElementById('searchMenu');
+                if (palette && palette.open) {
+                    if (e.target === palette) _closeSearch();
+                    return;
+                }
+                if (menu && !menu.contains(e.target) && !panel.hidden) {
+                    panel.hidden = true;
+                    inp.setAttribute('aria-expanded', 'false');
+                    inp.removeAttribute('aria-activedescendant');
+                }
             });
 
             // Global Cmd-K / Ctrl-K focuses the search input. Bound at
@@ -551,4 +647,6 @@
                     focusSearch();
                 }
             });
+            window.addEventListener('resize', positionSearchPalette);
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', positionSearchPalette);
         })();

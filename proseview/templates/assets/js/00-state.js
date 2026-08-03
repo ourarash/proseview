@@ -49,6 +49,41 @@ let currentTab = 'overview';
         let scrollSaveQueued = false;
         let routeHydrating = false;
 
+        function syncCssZoomViewport() {
+            const root = document.documentElement;
+            const body = document.body;
+            if (!body) return;
+            const zoom = parseFloat(getComputedStyle(body).zoom) || 1;
+            if (zoom <= 1) {
+                delete root.dataset.cssZoom;
+                root.style.removeProperty('--css-zoom-body-width');
+                return;
+            }
+            const logicalViewportWidth = window.innerWidth / zoom;
+            const sidebarWidth = root.dataset.sidebar === 'closed'
+                ? 0
+                : (parseFloat(getComputedStyle(root).getPropertyValue('--sidebar-w')) || 0) + 10;
+            root.dataset.cssZoom = 'true';
+            root.style.setProperty(
+                '--css-zoom-body-width',
+                Math.max(220, logicalViewportWidth - sidebarWidth) + 'px'
+            );
+        }
+
+        (function observeCssZoomViewport() {
+            syncCssZoomViewport();
+            window.addEventListener('resize', syncCssZoomViewport);
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', syncCssZoomViewport);
+            new MutationObserver(syncCssZoomViewport).observe(document.body, {
+                attributes: true,
+                attributeFilter: ['style'],
+            });
+            new MutationObserver(syncCssZoomViewport).observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-sidebar'],
+            });
+        })();
+
         var _pmView = null;
         var _pmEditMode = false;
         var _pmOpenMtime = null;
@@ -60,4 +95,3 @@ let currentTab = 'overview';
         // own save would otherwise cause.
         var _pendingSelfReloads = 0;
         var _pendingSelfReloadTimer = null;
-

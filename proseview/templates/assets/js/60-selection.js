@@ -466,6 +466,10 @@
         // before ProseMirror's keymap.
         document.addEventListener('keydown', function(e) {
             if (e.key !== 'Escape') return;
+            // Native top-layer dialogs own Escape while open. Intercepting it
+            // here would put the edit confirmation behind that dialog and make
+            // both surfaces unreachable.
+            if (document.querySelector('dialog[open]')) return;
             // Don't interfere if our own confirmation dialog is up; it has
             // its own Esc handler.
             if (_unsavedDialog) return;

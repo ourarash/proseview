@@ -6,6 +6,9 @@
         var _discussAttachments = [];
         var _discussSelection = '';
         var _discussIncludeCurrentDocument = true;
+        var _discussContextChoices = [];
+        var _discussContextActiveIndex = 0;
+        var _discussMentionRange = null;
         var _discussReturnFocus = null;
         var _discussRefreshTimer = null;
         var _discussLastApproval = '';
@@ -63,6 +66,7 @@
             _discussSelection = captureDiscussSelection();
             _discussAttachments = [];
             _discussIncludeCurrentDocument = true;
+            closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = false;
             document.body.classList.add('discuss-open');
@@ -89,6 +93,7 @@
         }
 
         function closeDiscuss() {
+            closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
             document.body.classList.remove('discuss-open');
@@ -383,25 +388,117 @@
             selection.textContent = _discussSelection ? 'Selected text: ' + _discussSelection.slice(0, 80) : '';
         }
 
-        function openDiscussContextPicker() {
-            document.getElementById('discussContextButton').setAttribute('aria-expanded', 'true');
-            var tree = document.getElementById('discussPickerTree'); tree.replaceChildren();
-            function visit(nodes, depth) {
+        function discussMentionAtCaret() {
+            var input = document.getElementById('discussInput');
+            if (input.selectionStart !== input.selectionEnd) return null;
+            var before = input.value.slice(0, input.selectionStart);
+            var match = before.match(/(^|\s)@([^\s@]*)$/);
+            if (!match) return null;
+            return {start: before.length - match[2].length - 1, end: input.selectionStart, query: match[2]};
+        }
+
+        function discussContextCandidates() {
+            var candidates = [];
+            function visit(nodes) {
                 (nodes || []).forEach(function(node) {
                     if (!node.path) return;
-                    var label = document.createElement('label'); label.style.paddingLeft = (depth * 16 + 2) + 'px';
-                    var box = document.createElement('input'); box.type = 'checkbox'; box.value = node.path; box.dataset.kind = node.is_file ? 'file' : 'folder';
-                    if (node.is_file && (!node.is_text || node.too_large)) {
-                        box.disabled = true;
-                        label.title = 'Only supported text files within the context limits can be attached';
+                    var kind = node.is_file ? 'file' : 'folder';
+                    if (!node.is_file || (node.is_text && !node.too_large)) {
+                        candidates.push({kind: kind, path: node.path, name: node.name || node.path});
                     }
-                    if (_discussAttachments.some(function(item) { return item.path === node.path && item.kind === box.dataset.kind; })) box.checked = true;
-                    label.appendChild(box); label.appendChild(document.createTextNode(' ' + (node.is_file ? '📄 ' : '📁 ') + (node.name || node.path))); tree.appendChild(label);
-                    if (!node.is_file) visit(node.children, depth + 1);
+                    if (!node.is_file) visit(node.children);
                 });
             }
-            visit(repoTree, 0);
-            document.getElementById('discussContextPicker').showModal();
+            visit(repoTree);
+            return candidates;
+        }
+
+        function setDiscussContextExpanded(expanded) {
+            document.getElementById('discussContextButton').setAttribute('aria-expanded', String(expanded));
+            document.getElementById('discussInput').setAttribute('aria-expanded', String(expanded));
+        }
+
+        function closeDiscussContextPicker() {
+            var picker = document.getElementById('discussContextPicker');
+            if (!picker) return;
+            picker.hidden = true;
+            _discussContextChoices = [];
+            _discussContextActiveIndex = 0;
+            _discussMentionRange = null;
+            var input = document.getElementById('discussInput');
+            input.removeAttribute('aria-activedescendant');
+            setDiscussContextExpanded(false);
+        }
+
+        function renderDiscussContextOptions() {
+            var mention = discussMentionAtCaret();
+            if (!mention) { closeDiscussContextPicker(); return; }
+            _discussMentionRange = mention;
+            var query = mention.query.toLowerCase();
+            _discussContextChoices = discussContextCandidates().filter(function(candidate) {
+                if (_discussAttachments.some(function(item) { return item.kind === candidate.kind && item.path === candidate.path; })) return false;
+                return !query || candidate.path.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query);
+            }).slice(0, 12);
+            _discussContextActiveIndex = Math.min(_discussContextActiveIndex, Math.max(0, _discussContextChoices.length - 1));
+            var options = document.getElementById('discussContextOptions'); options.replaceChildren();
+            if (!_discussContextChoices.length) {
+                options.appendChild(elementWith('discuss-context-empty', query ? 'No matching files or folders' : 'Type to search files and folders'));
+            }
+            _discussContextChoices.forEach(function(choice, index) {
+                var option = document.createElement('button');
+                option.type = 'button'; option.className = 'discuss-context-option'; option.id = 'discussContextOption' + index;
+                option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(index === _discussContextActiveIndex));
+                option.dataset.path = choice.path; option.dataset.kind = choice.kind;
+                var icon = elementWith('discuss-context-option-icon', choice.kind === 'file' ? '▤' : '▸'); icon.setAttribute('aria-hidden', 'true');
+                option.appendChild(icon); option.appendChild(elementWith('discuss-context-option-path', choice.path));
+                option.onmousedown = function(event) { event.preventDefault(); };
+                option.onclick = function() { selectDiscussContextOption(index); };
+                options.appendChild(option);
+            });
+            var picker = document.getElementById('discussContextPicker'); picker.hidden = false;
+            setDiscussContextExpanded(true);
+            updateDiscussContextActiveOption();
+        }
+
+        function updateDiscussContextActiveOption() {
+            var input = document.getElementById('discussInput');
+            document.querySelectorAll('#discussContextOptions [role="option"]').forEach(function(option, index) {
+                option.setAttribute('aria-selected', String(index === _discussContextActiveIndex));
+            });
+            if (_discussContextChoices.length) {
+                var active = document.getElementById('discussContextOption' + _discussContextActiveIndex);
+                input.setAttribute('aria-activedescendant', active.id);
+                active.scrollIntoView({block: 'nearest'});
+            } else input.removeAttribute('aria-activedescendant');
+        }
+
+        function selectDiscussContextOption(index) {
+            var choice = _discussContextChoices[index];
+            var input = document.getElementById('discussInput');
+            var mention = _discussMentionRange;
+            if (!choice || !mention) return;
+            if (!_discussAttachments.some(function(item) { return item.kind === choice.kind && item.path === choice.path; })) {
+                _discussAttachments.push({kind: choice.kind, path: choice.path});
+            }
+            input.value = input.value.slice(0, mention.start) + input.value.slice(mention.end);
+            input.setSelectionRange(mention.start, mention.start);
+            closeDiscussContextPicker();
+            renderDiscussContext();
+            document.getElementById('discussAnnouncement').textContent = 'Attached ' + choice.path;
+            input.focus();
+        }
+
+        function openDiscussContextPicker() {
+            var input = document.getElementById('discussInput');
+            input.focus();
+            var mention = discussMentionAtCaret();
+            if (!mention) {
+                var start = input.selectionStart;
+                var prefix = start > 0 && !/\s/.test(input.value.charAt(start - 1)) ? ' @' : '@';
+                input.setRangeText(prefix, start, input.selectionEnd, 'end');
+            }
+            _discussContextActiveIndex = 0;
+            renderDiscussContextOptions();
         }
 
         function openNewDiscussConversationDialog() {
@@ -428,6 +525,7 @@
                     _discussSelection = '';
                     _discussAttachments = [];
                     _discussIncludeCurrentDocument = true;
+                    closeDiscussContextPicker();
                     renderDiscussContext();
                     renderDiscussSnapshot();
                     dialog.close('confirmed');
@@ -446,14 +544,6 @@
             if (this.returnValue !== 'confirmed') document.getElementById('discussNewConversation').focus();
         });
 
-        function applyDiscussContext(event) {
-            event.preventDefault();
-            _discussAttachments = Array.from(document.querySelectorAll('#discussPickerTree input:checked')).map(function(input) {
-                return {kind: input.dataset.kind, path: input.value};
-            });
-            document.getElementById('discussContextPicker').close(); renderDiscussContext(); document.getElementById('discussInput').focus();
-        }
-
         function sendDiscussQuestion() {
             var input = document.getElementById('discussInput');
             var question = input.value.trim();
@@ -468,7 +558,7 @@
                 attachments: _discussAttachments,
                 include_current_document: _discussIncludeCurrentDocument
             }).then(function() {
-                input.value = ''; _discussSelection = ''; renderDiscussContext(); scheduleDiscussSnapshot();
+                input.value = ''; _discussSelection = ''; closeDiscussContextPicker(); renderDiscussContext(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = 'Question queued';
             }).catch(function(error) { renderDiscussError(error.message); }).finally(function() { button.disabled = false; input.focus(); });
         }
@@ -480,17 +570,32 @@
         }
 
         document.getElementById('discussInput').addEventListener('keydown', function(event) {
-            if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
-            else if (event.key === '@' && !event.isComposing && !this.value) { event.preventDefault(); openDiscussContextPicker(); }
+            var pickerOpen = !document.getElementById('discussContextPicker').hidden;
+            if (pickerOpen && event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (_discussContextChoices.length) _discussContextActiveIndex = (_discussContextActiveIndex + 1) % _discussContextChoices.length;
+                updateDiscussContextActiveOption();
+            } else if (pickerOpen && event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (_discussContextChoices.length) _discussContextActiveIndex = (_discussContextActiveIndex + _discussContextChoices.length - 1) % _discussContextChoices.length;
+                updateDiscussContextActiveOption();
+            } else if (pickerOpen && (event.key === 'Enter' || event.key === 'Tab') && !event.isComposing) {
+                event.preventDefault(); selectDiscussContextOption(_discussContextActiveIndex);
+            } else if (pickerOpen && event.key === 'Escape') {
+                event.preventDefault(); event.stopPropagation(); closeDiscussContextPicker();
+            } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
         });
-        document.getElementById('discussContextPicker').addEventListener('close', function() {
-            document.getElementById('discussContextButton').setAttribute('aria-expanded', 'false');
+        document.getElementById('discussInput').addEventListener('input', renderDiscussContextOptions);
+        document.addEventListener('mousedown', function(event) {
+            var picker = document.getElementById('discussContextPicker');
+            if (picker.hidden || picker.contains(event.target) || event.target === document.getElementById('discussContextButton') || event.target === document.getElementById('discussInput')) return;
+            closeDiscussContextPicker();
         });
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Escape') {
                 var picker = document.getElementById('discussContextPicker');
                 var resetDialog = document.getElementById('discussNewConversationDialog');
-                if ((picker && picker.open) || (resetDialog && resetDialog.open)) return;
+                if ((picker && !picker.hidden) || (resetDialog && resetDialog.open)) return;
                 var panel = document.getElementById('discussPanel');
                 if (panel && !panel.hidden) { event.preventDefault(); closeDiscuss(); }
             }

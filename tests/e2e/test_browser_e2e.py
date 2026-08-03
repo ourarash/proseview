@@ -884,7 +884,8 @@ def test_conflicting_save_is_refused_in_the_browser(page: Page, server: Prosevie
 
 def search_for(page: Page, query: str) -> None:
     box = page.locator("#searchBox")
-    box.click()
+    if box.is_hidden():
+        page.get_by_role("button", name="Search files").first.click()
     box.fill(query)
 
 
@@ -901,6 +902,48 @@ def search_groups(page: Page) -> list[str]:
     """
     labels = page.locator("#searchResults .search-group-label").all_inner_texts()
     return [t.strip().upper() for t in labels]
+
+
+def test_dashboard_search_is_large_and_inline(page: Page, shared_server: ProseviewServer):
+    open_dashboard(page, shared_server)
+
+    box = page.locator("#searchBox")
+    palette = page.locator("#searchPalette")
+    assert box.is_visible()
+    assert palette.is_hidden()
+    bounds = box.bounding_box()
+    assert bounds and bounds["width"] >= 300
+
+    box.fill("Rena")
+    page.wait_for_selector("#searchResults .search-row")
+    assert palette.is_hidden(), "dashboard search should not open a second modal"
+
+
+def test_scene_has_an_explicit_return_to_dashboard(page: Page, shared_server: ProseviewServer):
+    open_scene(page, shared_server)
+
+    back = page.get_by_role("button", name="Close scene and return to dashboard").first
+    assert back.is_visible()
+    assert "Dashboard" in back.inner_text()
+    back.click()
+
+    page.wait_for_selector("#sceneModal", state="hidden")
+    assert page.evaluate("document.documentElement.dataset.view || ''") == ""
+    assert page.locator("#tab-overview").is_visible()
+
+
+def test_scene_search_modal_has_pointer_close(page: Page, shared_server: ProseviewServer):
+    open_scene(page, shared_server)
+    page.locator("#sceneModal button[aria-label='Search files']").click()
+
+    palette = page.locator("#searchPalette")
+    palette.wait_for(state="visible")
+    close = page.get_by_role("button", name="Close search")
+    assert close.is_visible()
+    close.click()
+
+    palette.wait_for(state="hidden")
+    assert page.locator("#sceneModal").is_visible()
 
 
 def test_search_needs_two_characters_before_it_offers_anything(page: Page, shared_server: ProseviewServer):
@@ -972,6 +1015,184 @@ def test_search_finds_non_scene_repo_files(page: Page, shared_server: ProseviewS
     page.keyboard.press("Enter")
     page.wait_for_selector("#file-preview-panel", state="visible")
     assert "book-plan.md" in page.locator("#filePreviewTitle").inner_text()
+
+
+@pytest.mark.parametrize("start_view", ["scene", "file"])
+def test_global_search_opens_unconfigured_file_from_every_reader_view(
+    page: Page,
+    shared_server: ProseviewServer,
+    start_view: str,
+):
+    if start_view == "scene":
+        open_scene(page, shared_server)
+    else:
+        page.goto(f"{shared_server.base_url}#/file/plans/book-plan.md", wait_until="load")
+        page.wait_for_selector("#file-preview-panel", state="visible")
+
+    page.keyboard.press("ControlOrMeta+k")
+
+    palette = page.locator("#searchPalette")
+    box = page.locator("#searchBox")
+    palette.wait_for(state="visible")
+    assert box.is_visible()
+    assert page.evaluate("document.activeElement === document.getElementById('searchBox')")
+    assert box.evaluate("node => node.getClientRects().length > 0")
+
+    box.fill("check_continuity")
+    page.wait_for_selector("#searchResults .search-row")
+    assert "scripts/check_continuity.py" in page.locator("#searchResults").inner_text()
+    page.keyboard.press("Enter")
+
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    page.wait_for_function("() => document.getElementById('filePreviewTitle').innerText === 'scripts/check_continuity.py'")
+    page.wait_for_function("() => document.getElementById('filePreviewBody').innerText.includes('def check_continuity')")
+    assert "def check_continuity" in page.locator("#filePreviewBody").inner_text()
+
+    page.go_back(wait_until="load")
+    if start_view == "scene":
+        page.wait_for_selector("#sceneModal", state="visible")
+    else:
+        page.wait_for_function("() => document.getElementById('filePreviewTitle').innerText === 'plans/book-plan.md'")
+    page.go_forward(wait_until="load")
+    page.wait_for_function("() => document.getElementById('filePreviewTitle').innerText === 'scripts/check_continuity.py'")
+
+    page.keyboard.press("ControlOrMeta+k")
+    palette.wait_for(state="visible")
+    assert box.input_value() == "check_continuity"
+    assert "scripts/check_continuity.py" in page.locator("#searchResults").inner_text()
+    page.keyboard.press("Escape")
+    palette.wait_for(state="hidden")
+
+
+def test_global_search_has_visible_pointer_entry_and_lazy_deep_link(page: Page, shared_server: ProseviewServer):
+    page.goto(f"{shared_server.base_url}#/file/scripts/check_continuity.py", wait_until="load")
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    page.wait_for_function("() => document.getElementById('filePreviewTitle').innerText === 'scripts/check_continuity.py'")
+    page.wait_for_function("() => document.getElementById('filePreviewBody').innerText.includes('def check_continuity')")
+    assert "def check_continuity" in page.locator("#filePreviewBody").inner_text()
+
+    search_button = page.locator("#file-preview-panel").get_by_role("button", name="Search files")
+    assert search_button.is_visible()
+    page.select_option("#filePreviewThemeSelect", "dark")
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.evaluate("document.body.style.zoom = '2'")
+    search_button.click()
+    page.wait_for_selector("#searchPalette", state="visible")
+    assert page.evaluate("document.activeElement === document.getElementById('searchBox')")
+    palette_box = page.locator("#searchMenu").bounding_box()
+    assert palette_box
+    assert palette_box["x"] >= 0 and palette_box["x"] + palette_box["width"] <= 1024
+    assert palette_box["y"] >= 0 and palette_box["y"] + palette_box["height"] <= 768
+    page.keyboard.press("Escape")
+    assert page.evaluate("document.activeElement === document.querySelector('#file-preview-panel button[aria-label=\"Search files\"]')")
+
+
+def test_search_does_not_navigate_away_from_an_unsaved_scene(page: Page, server: ProseviewServer):
+    before = _stage_unsaved_edit(page, server)
+    page.keyboard.press("ControlOrMeta+k")
+    page.locator("#searchBox").fill("check_continuity")
+    page.wait_for_selector("#searchResults .search-row")
+
+    page.keyboard.press("Enter")
+
+    assert page.locator("#searchPalette").is_visible()
+    assert page.locator("#searchNavigationWarning").is_visible()
+    assert "Save or cancel" in page.locator("#searchNavigationWarning").inner_text()
+    assert page.evaluate("document.documentElement.dataset.view") == "scene"
+    assert TYPED.strip() in _editor_text(page)
+    assert server.scene_path().read_text(encoding="utf-8") == before
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#searchPalette", state="hidden")
+    assert page.evaluate("document.activeElement.classList.contains('ProseMirror')")
+    assert page.locator(DIALOG).count() == 0
+    assert TYPED.strip() in _editor_text(page)
+
+
+def test_scene_search_pointer_entry_reflows_at_two_hundred_percent_zoom(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, shared_server)
+    page.evaluate("document.body.style.zoom = '2'")
+    page.wait_for_function("() => document.documentElement.dataset.cssZoom === 'true'")
+
+    trigger = page.locator("#sceneModal button[aria-label='Search files']")
+    box = trigger.bounding_box()
+    assert box
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 1024
+    assert box["y"] >= 0 and box["y"] + box["height"] <= 768
+    trigger.click()
+    page.wait_for_selector("#searchPalette", state="visible")
+
+
+def test_scene_search_pointer_entry_reflows_for_compact_css_viewport(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 512, "height": 500})
+    open_scene(page, shared_server)
+
+    trigger = page.locator("#sceneModal button[aria-label='Search files']")
+    box = trigger.bounding_box()
+    assert box
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 512
+    assert box["y"] >= 0 and box["y"] + box["height"] <= 500
+    trigger.click()
+    page.wait_for_selector("#searchPalette", state="visible")
+
+
+def test_lazy_markdown_preview_treats_hostile_html_and_links_as_text(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    page.goto(f"{shared_server.base_url}#/file/scripts/hostile-preview.md", wait_until="load")
+    page.wait_for_function(
+        "() => document.getElementById('filePreviewTitle').innerText === 'scripts/hostile-preview.md'"
+    )
+    page.wait_for_function("() => document.getElementById('filePreviewBody').innerText.includes('<img src=x')")
+
+    body = page.locator("#filePreviewBody")
+    assert "<img src=x" in body.inner_text()
+    assert body.locator("img").count() == 0
+    assert body.locator("a").count() == 0
+    assert page.evaluate("window.__previewPwned === true") is False
+
+
+def test_hidden_repository_deep_link_never_displays_its_contents(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    page.goto(f"{shared_server.base_url}#/file/.private/token.txt", wait_until="load")
+    page.wait_for_function("() => document.getElementById('filePreviewMeta').innerText === 'Preview unavailable'")
+
+    assert "fixture secret" not in page.locator("#filePreviewBody").inner_text()
+
+
+def test_newer_lazy_preview_wins_when_an_older_request_finishes_late(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    def delay_first_preview(route):
+        if "check_continuity.py" in route.request.url:
+            time.sleep(0.25)
+        route.continue_()
+
+    page.route("**/repo-file?*", delay_first_preview)
+    open_dashboard(page, shared_server)
+    page.evaluate(
+        """() => {
+            previewRepoFile('scripts/check_continuity.py');
+            previewRepoFile('scripts/hostile-preview.md');
+        }"""
+    )
+
+    page.wait_for_function(
+        "() => document.getElementById('filePreviewBody').innerText.includes('Safe heading')"
+    )
+    page.wait_for_timeout(400)
+    assert page.locator("#filePreviewTitle").inner_text() == "scripts/hostile-preview.md"
+    assert "def check_continuity" not in page.locator("#filePreviewBody").inner_text()
 
 
 def test_arrow_keys_move_the_search_cursor(page: Page, shared_server: ProseviewServer):

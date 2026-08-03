@@ -26,6 +26,34 @@ TEXT_SUFFIXES: frozenset[str] = frozenset({
     ".md", ".markdown", ".txt", ".yaml", ".yml",
     ".json", ".toml", ".cfg", ".ini", ".rst",
 })
+CONTEXT_FILE_MAX_BYTES = 512 * 1024
+CONTEXT_SKIP_DIRS: frozenset[str] = frozenset({
+    ".git", ".proseview", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "node_modules", "__pycache__",
+})
+
+
+def is_context_text_file(path: Path, max_file_bytes: int = CONTEXT_FILE_MAX_BYTES) -> bool:
+    """Return whether *path* is attachable UTF-8 repository context.
+
+    Discuss is intentionally not limited to the dashboard preview suffixes:
+    source files, templates, prompts, and extensionless text files are useful
+    agent context too. Binary, malformed, and oversized files stay outside the
+    browser inventory and are rejected again at the API boundary.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size > max_file_bytes:
+            return False
+        payload = path.read_bytes()
+    except OSError:
+        return False
+    if b"\x00" in payload:
+        return False
+    try:
+        payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def _iso_mtime(path: Path) -> str:
@@ -308,6 +336,89 @@ def build_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
         if not candidate.exists() or not candidate.is_dir():
             continue
         node = _dir_node(candidate, root, preview_max, excluded)
+        if node is not None:
+            nodes.append(node)
+    return nodes
+
+
+def _context_file_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, Any] | None:
+    """Return attachable-file metadata without embedding user content."""
+    try:
+        resolved = path.resolve()
+        if path.is_symlink() or not resolved.is_relative_to(root) or not resolved.is_file():
+            return None
+        size = resolved.stat().st_size
+    except OSError:
+        return None
+    if size > max_file_bytes or not is_context_text_file(resolved, max_file_bytes):
+        return None
+    return {
+        "name": path.name,
+        "path": path.relative_to(root).as_posix(),
+        "is_file": True,
+        "is_text": True,
+        "too_large": False,
+        "size": size,
+    }
+
+
+def _context_dir_node(path: Path, root: Path, max_file_bytes: int) -> dict[str, Any] | None:
+    """Walk one repository directory for the Discuss attachment index."""
+    if path.name.startswith(".") or path.name in CONTEXT_SKIP_DIRS or path.is_symlink():
+        return None
+    try:
+        entries = sorted(path.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
+    except OSError:
+        return None
+    children: list[dict[str, Any]] = []
+    for child in entries:
+        if child.name.startswith(".") or child.name in CONTEXT_SKIP_DIRS:
+            continue
+        if child.is_dir():
+            node = _context_dir_node(child, root, max_file_bytes)
+        elif child.is_file():
+            node = _context_file_node(child, root, max_file_bytes)
+        else:
+            node = None
+        if node is not None:
+            children.append(node)
+    if not children:
+        return None
+    return {
+        "name": path.name,
+        "path": path.relative_to(root).as_posix(),
+        "is_file": False,
+        "children": children,
+    }
+
+
+def build_context_tree(
+    root: Path,
+    *,
+    max_file_bytes: int = CONTEXT_FILE_MAX_BYTES,
+) -> list[dict[str, Any]]:
+    """Return every attachable repository text file for Discuss.
+
+    Unlike :func:`build_tree`, this inventory is not limited by the file-preview
+    configuration and includes manuscript scenes. It carries metadata only,
+    skips hidden/internal directories and symlinks, and omits files the Discuss
+    context boundary cannot accept.
+    """
+    resolved_root = root.resolve()
+    try:
+        entries = sorted(resolved_root.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
+    except OSError:
+        return []
+    nodes: list[dict[str, Any]] = []
+    for entry in entries:
+        if entry.name.startswith(".") or entry.name in CONTEXT_SKIP_DIRS:
+            continue
+        if entry.is_dir():
+            node = _context_dir_node(entry, resolved_root, max_file_bytes)
+        elif entry.is_file():
+            node = _context_file_node(entry, resolved_root, max_file_bytes)
+        else:
+            node = None
         if node is not None:
             nodes.append(node)
     return nodes

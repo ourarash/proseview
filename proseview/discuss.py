@@ -22,14 +22,13 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import Config
-from .repo import TEXT_SUFFIXES
+from .repo import CONTEXT_FILE_MAX_BYTES, CONTEXT_SKIP_DIRS, is_context_text_file
 
 
 QUESTION_MAX = 32 * 1024
-FILE_MAX = 512 * 1024
+FILE_MAX = CONTEXT_FILE_MAX_BYTES
 FILES_MAX = 50
 TOTAL_MAX = 2 * 1024 * 1024
-_SKIP_DIRS = {".git", ".proseview", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "__pycache__"}
 
 
 class ContextError(ValueError):
@@ -95,8 +94,6 @@ class ContextBuilder:
     def _read_file(self, target: Path) -> ContextItem:
         if not target.is_file():
             raise ContextError(f"context path is not a file: {target.name}")
-        if target.suffix.lower() not in TEXT_SUFFIXES:
-            raise ContextError(f"context path is not a supported text file: {target.name}")
         try:
             size = target.stat().st_size
         except OSError as exc:
@@ -104,11 +101,15 @@ class ContextBuilder:
         if size > self.max_file_bytes:
             raise ContextError(f"context file exceeds {self.max_file_bytes} bytes: {target.name}")
         try:
-            content = target.read_text(encoding="utf-8")
-        except UnicodeDecodeError as exc:
-            raise ContextError(f"context file is not valid UTF-8 text: {target.name}") from exc
+            payload = target.read_bytes()
         except OSError as exc:
             raise ContextError(f"cannot read context file: {target.name}") from exc
+        if b"\x00" in payload:
+            raise ContextError(f"context path is not a supported text file: {target.name}")
+        try:
+            content = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ContextError(f"context file is not valid UTF-8 text: {target.name}") from exc
         return ContextItem(target.relative_to(self.root).as_posix(), content, size)
 
     def _folder_files(self, target: Path) -> Iterable[Path]:
@@ -119,12 +120,12 @@ class ContextBuilder:
                 rel_parts = candidate.relative_to(self.root).parts
             except ValueError:
                 raise ContextError("folder entry resolves outside the repository")
-            if any(part.startswith(".") or part in _SKIP_DIRS for part in rel_parts):
+            if any(part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in rel_parts):
                 continue
             resolved = candidate.resolve()
             if not resolved.is_relative_to(self.root):
                 raise ContextError("folder entry resolves outside the repository")
-            if resolved.is_file() and resolved.suffix.lower() in TEXT_SUFFIXES:
+            if resolved.is_file() and is_context_text_file(resolved, self.max_file_bytes):
                 yield resolved
 
     def build(

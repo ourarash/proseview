@@ -30,6 +30,7 @@ def _repo(tmp_path: Path) -> Path:
 
 def test_context_builder_includes_document_selection_and_sorted_attachments(tmp_path: Path):
     root = _repo(tmp_path)
+    (root / "plans" / "validator.py").write_text("def validate():\n    return True\n", encoding="utf-8")
     bundle = ContextBuilder(root).build(
         {"kind": "scene", "path": "ch01/opening.md"},
         "Why does this work?",
@@ -42,10 +43,12 @@ def test_context_builder_includes_document_selection_and_sorted_attachments(tmp_
         "manuscript/ch01/opening.md",
         "plans/arc.md",
         "plans/notes.txt",
+        "plans/validator.py",
     ]
     assert bundle.selection == "The first line."
     assert "BEGIN UNTRUSTED DOCUMENT" in bundle.prompt
     assert bundle.prompt.index("plans/arc.md") < bundle.prompt.index("plans/notes.txt")
+    assert "def validate" in bundle.prompt
 
 
 def test_context_builder_can_omit_default_document_and_attach_it_explicitly(tmp_path: Path):

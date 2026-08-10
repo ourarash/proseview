@@ -1484,10 +1484,28 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": True, **result}, 202)
                     return
                 if proposal_match:
+                    conversation_id = proposal_match.group(1)
+                    task_id = proposal_match.group(2)
+                    requested_client_id = body.get("client_id") or None
+                    existing = None
+                    with _ai_lock:
+                        for candidate in reversed(list(_ai_proposals.values())):
+                            if (
+                                candidate.get("conversation_id") == conversation_id
+                                and candidate.get("task_id") == task_id
+                                and candidate.get("status") not in {"accepted", "skipped"}
+                            ):
+                                candidate["client_id"] = requested_client_id
+                                candidate["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                                existing = dict(candidate)
+                                break
+                    if existing is not None:
+                        self._send_json({"ok": True, "proposal": existing})
+                        return
                     proposal_body = self.discuss_manager.proposal_for_task(
-                        proposal_match.group(1), proposal_match.group(2)
+                        conversation_id, task_id
                     )
-                    proposal_body["client_id"] = body.get("client_id") or None
+                    proposal_body["client_id"] = requested_client_id
                     prop = _new_ai_proposal(self.repo_root, proposal_body)
                     self.publish_event(_proposal_payload(dict(prop), "created"))
                     self._send_json({"ok": True, "proposal": prop})
@@ -1498,7 +1516,8 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 if task_status_match:
                     result = self.discuss_manager.set_task_status(
-                        task_status_match.group(1), task_status_match.group(2), str(body.get("status") or "")
+                        task_status_match.group(1), task_status_match.group(2), str(body.get("status") or ""),
+                        selected_option=body.get("selected_option"),
                     )
                     self._send_json({"ok": True, **result})
                     return

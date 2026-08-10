@@ -21,6 +21,8 @@
         var _discussSkills = [];
         var _discussAutoRun = false;
         var _discussPreservedDraft = '';
+        var _discussAutoReviewedTasks = Object.create(null);
+        var _discussAutoReviewRequests = Object.create(null);
 
         function discussDraftKey(doc) {
             return 'proseview-codex-draft:' + discussDocumentKey(doc);
@@ -245,6 +247,15 @@
                     if (type === 'approval.requested') {
                         var request = JSON.parse(event.data);
                         _discussLastApproval = request.request_id || '';
+                    }
+                    if (type === 'task.ready' || type === 'task.failed') {
+                        var completedTask = JSON.parse(event.data);
+                        var requestId = String(completedTask.client_request_id || '');
+                        var submittedHere = !!_discussAutoReviewRequests[requestId];
+                        if (submittedHere) delete _discussAutoReviewRequests[requestId];
+                        if (type === 'task.ready' && completedTask.kind === 'alternatives' && submittedHere) {
+                            autoReviewDiscussTask(completedTask.task_id);
+                        }
                     }
                     scheduleDiscussSnapshot();
                 });
@@ -481,11 +492,58 @@
             return groups;
         }
 
+        function discussTaskStatusLabel(status) {
+            if (status === 'applied' || status === 'staged') return 'Applied · Not saved';
+            if (status === 'saved') return 'Saved';
+            if (status === 'reviewing') return 'Reviewing';
+            if (status === 'ready') return 'Ready';
+            var label = String(status || 'Unknown').replace(/_/g, ' ');
+            return label.charAt(0).toUpperCase() + label.slice(1);
+        }
+
+        function renderDiscussAlternatives(task, result) {
+            var fragment = document.createDocumentFragment();
+            if (task.instruction) {
+                fragment.appendChild(elementWith('discuss-task-instruction', 'Instruction · ' + task.instruction));
+            }
+            var alternatives = result.alternatives || [];
+            var selected = Number.isInteger(task.selected_option) ? task.selected_option : -1;
+            if (selected >= 0 && selected < alternatives.length) {
+                var used = elementWith('discuss-task-used');
+                used.appendChild(elementWith('discuss-task-used-label', 'Used suggestion ' + String(selected + 1)));
+                used.appendChild(elementWith('discuss-alternative-text', alternatives[selected].text || ''));
+                fragment.appendChild(used);
+            }
+            var details = document.createElement('details'); details.className = 'discuss-alternatives';
+            var summary = document.createElement('summary');
+            summary.textContent = 'View ' + alternatives.length + ' suggestion' + (alternatives.length === 1 ? '' : 's');
+            details.appendChild(summary);
+            alternatives.forEach(function(alternative, index) {
+                var row = elementWith('discuss-alternative');
+                var label = 'Suggestion ' + String(index + 1);
+                if (index === selected) label += ' · Used';
+                row.appendChild(elementWith('discuss-alternative-label', label));
+                row.appendChild(elementWith('discuss-alternative-text', alternative.text || ''));
+                if (alternative.rationale) row.appendChild(elementWith('discuss-alternative-rationale', alternative.rationale));
+                details.appendChild(row);
+            });
+            fragment.appendChild(details);
+            return fragment;
+        }
+
+        function discussAlternativesStateSummary(task, result) {
+            var count = (result.alternatives || []).length;
+            var prefix = count + ' suggestion' + (count === 1 ? '' : 's');
+            if (task.status === 'applied' || task.status === 'staged') return prefix + ' · applied to draft, not saved';
+            if (task.status === 'saved') return prefix + ' · saved to manuscript';
+            return prefix + ' · manuscript unchanged';
+        }
+
         function renderDiscussTask(task, previousAttempts) {
             var card = elementWith('discuss-task'); card.dataset.taskId = task.id;
             var heading = document.createElement('div'); heading.className = 'discuss-task-heading';
             var title = document.createElement('strong'); title.textContent = task.label || selectionActionLabel(task.action_id);
-            var status = document.createElement('span'); status.className = 'discuss-task-status status-' + task.status; status.textContent = task.status;
+            var status = document.createElement('span'); status.className = 'discuss-task-status status-' + task.status; status.textContent = discussTaskStatusLabel(task.status);
             heading.appendChild(title); heading.appendChild(status); card.appendChild(heading);
             var target = task.target || {};
             var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
@@ -540,12 +598,11 @@
                 card.appendChild(propose);
             } else if (result.kind === 'alternatives') {
                 card.appendChild(elementWith('discuss-task-summary', result.summary || 'Rewrite alternatives are ready.'));
-                card.appendChild(elementWith('discuss-task-meta', (result.alternatives || []).length + ' alternatives · manuscript unchanged'));
-                if (task.status === 'ready' && task.reviewable !== false) {
+                card.appendChild(elementWith('discuss-task-meta', discussAlternativesStateSummary(task, result)));
+                card.appendChild(renderDiscussAlternatives(task, result));
+                if ((task.status === 'ready' || task.status === 'reviewing') && task.reviewable !== false) {
                     var review = document.createElement('button'); review.type = 'button'; review.className = 'discuss-primary'; review.textContent = 'Review changes';
                     review.onclick = function() { reviewDiscussTask(task, review); }; card.appendChild(review);
-                } else if (task.status === 'reviewing') {
-                    card.appendChild(elementWith('discuss-task-meta', 'Open in proposal review'));
                 }
             }
             if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'stale') {
@@ -570,7 +627,7 @@
         }
 
         function reviewDiscussTask(task, button) {
-            button.disabled = true;
+            if (button) button.disabled = true;
             var opened = false;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/tasks/' + encodeURIComponent(task.id) + '/proposal', {
                 client_id: (typeof aiClientId === 'function' ? aiClientId() : null)
@@ -579,7 +636,17 @@
                 if (data.proposal && typeof aiFocusProposal === 'function') aiFocusProposal(data.proposal, true);
                 document.getElementById('discussAnnouncement').textContent = 'Rewrite ready for review. The manuscript is unchanged.';
                 scheduleDiscussSnapshot();
-            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() { if (!opened) button.disabled = false; });
+            }).catch(function(error) {
+                renderDiscussError(error.message);
+                scheduleDiscussSnapshot();
+            }).finally(function() { if (!opened && button) button.disabled = false; });
+        }
+
+        function autoReviewDiscussTask(taskId) {
+            var key = String(_discussConversationId || '') + ':' + String(taskId || '');
+            if (!taskId || _discussAutoReviewedTasks[key]) return;
+            _discussAutoReviewedTasks[key] = true;
+            reviewDiscussTask({id: taskId}, null);
         }
 
         function downloadDiscussHistory(data, title) {
@@ -1152,6 +1219,7 @@
             }
             var custom = input.value.trim();
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            _discussAutoReviewRequests[requestId] = true;
             button.disabled = true;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
@@ -1171,8 +1239,14 @@
                 _discussPendingAction = null; _discussRetryOfTaskId = null; _discussSelectedSkill = null; _discussAutoRun = false; saveDiscussDraft();
                 _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. The manuscript will not change.';
-            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() {
-                button.disabled = false; input.focus();
+            }).catch(function(error) {
+                delete _discussAutoReviewRequests[requestId];
+                renderDiscussError(error.message);
+            }).finally(function() {
+                button.disabled = false;
+                var proposalPanel = document.getElementById('aiProposalPanel');
+                if (proposalPanel && !proposalPanel.hidden) proposalPanel.focus({preventScroll: true});
+                else input.focus();
             });
         }
 

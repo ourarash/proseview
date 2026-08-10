@@ -31,13 +31,14 @@ dismiss.
 
 The central product rule should be:
 
-> Codex may analyze and propose. Prosview alone targets, stages, and saves.
+> Codex may analyze and propose. Prosview alone targets, applies to the draft,
+> and saves.
 
-For rewrite-style actions, accepting a suggestion should stage only the
-selected replacement in ProseMirror, leave the document dirty, and require the
-normal save flow. For critique-style actions, Codex should not generate
-replacement prose unless the writer explicitly asks to turn a comment into a
-proposal.
+For rewrite-style actions, using a suggestion should apply only the selected
+replacement to the in-memory ProseMirror draft, leave the document dirty, and
+require the normal save flow. For critique-style actions, Codex should not
+generate replacement prose unless the writer explicitly asks to turn a comment
+into a proposal.
 
 This direction combines the strongest patterns from Sudowrite, ProWritingAid,
 Type, Lavish, and Skrib while fitting Prosview's local-first architecture. It
@@ -588,18 +589,19 @@ For rewrite results:
 1. highlight the original range in the prose;
 2. show one alternative at a time with previous/next controls;
 3. show word-count delta and a compact inline diff;
-4. offer **Stage change**, **Refine**, **Try again**, **Copy**, and **Reject**;
-5. make **Stage change** the primary action, not “Replace” or “Apply”;
-6. after staging, show **Undo** and the normal unsaved editor state;
+4. offer **Use this version**, **Refine**, **Try again**, **Copy**, and
+   **Reject**;
+5. make **Use this version** the primary action;
+6. after applying it to the draft, show **Undo** and the normal unsaved editor state;
 7. require the normal save command to write the Markdown file.
 
 Keyboard review shortcuts should be available only while the review card is
 active and should be shown in the UI:
 
-- `A` stage the current alternative;
+- `A` use the current alternative;
 - `R` reject;
 - `←/→` previous/next alternative;
-- `Cmd/Ctrl+Enter` stage;
+- `Cmd/Ctrl+Enter` use the current alternative;
 - `Escape` dismiss the review card without changing prose.
 
 Do not add “accept all” in the first release.
@@ -624,9 +626,9 @@ stateDiagram-v2
     CritiqueReady --> Dismissed
     ProposalReady --> Running: refine / regenerate
     ProposalReady --> Rejected
-    ProposalReady --> Staged: stage change
-    Staged --> ProposalReady: undo
-    Staged --> Saved: normal save
+    ProposalReady --> AppliedDraft: use this version
+    AppliedDraft --> ProposalReady: undo
+    AppliedDraft --> Saved: normal save
     ProposalReady --> Stale: selection or file changed
     Stale --> Configuring: reselect / retarget
     Failed --> Configuring: retry
@@ -1336,6 +1338,14 @@ recommended managed selection journey has now been implemented through Phases
 
 ### Delivered experience
 
+The August 2026 interaction simplification supersedes earlier user-facing
+“stage” terminology in this research record. Newly completed rewrite actions
+open proposal review automatically. Their task cards retain expandable exact
+suggestions, rationales, and custom instructions, while the used suggestion is
+identified through the applied and saved states. **Use this version** changes
+only the in-memory draft; the editor's existing **Save** command remains the
+single disk-write boundary.
+
 - The existing selection `···` control now opens a small, keyboard-operable
   root menu for **Rewrite**, **Critique**, **Ask Codex**, **Skills**, TODOs,
   notes, and editor navigation. Rewrite and critique presets stay in-place in
@@ -1347,18 +1357,18 @@ recommended managed selection journey has now been implemented through Phases
 - Preset rewrites return strict structured alternatives. Prosview presents one
   option at a time in a focused proposal-review dialog with rationale,
   previous/next navigation, keyboard shortcuts, refine/retry/copy/reject, and
-  an explicit **Stage change** action.
-- Staging changes only the mapped live ProseMirror range. It never writes the
-  manuscript automatically. Inline marks are restored exactly by Undo; normal
-  scene saving is required to reach disk, and managed history moves from
-  `staged` to `saved` only after that save succeeds.
+  an explicit **Use this version** action.
+- Applying a suggestion changes only the mapped live ProseMirror range. It
+  never writes the manuscript automatically. Inline marks are restored exactly
+  by Undo; normal scene saving is required to reach disk, and managed history
+  moves from `applied` to `saved` only after that save succeeds.
 - Dirty editor content is sent only as a bounded, base-mtime-checked live
   snapshot. This lets an action begin after local unsaved edits without
   overwriting or silently retargeting them. External file changes still make
   the proposal stale.
 - Critique results are evidence-linked and advice-only until the writer asks
   for a revision. Multiple actions can queue, each pending item can be removed,
-  and task cards expose ready/running/staged/saved/rejected/dismissed/stale/
+  and task cards expose ready/running/applied/saved/rejected/dismissed/stale/
   failed/cancelled history with export and confirmed clear controls.
 - At compact desktop and 200% CSS zoom, proposal review becomes the single
   foreground work surface so it remains fully reachable rather than colliding
@@ -1375,7 +1385,8 @@ recommended managed selection journey has now been implemented through Phases
   items.
 - Selection targets carry a normalized visible-text range, source mtime,
   document identity, and fingerprint. The browser rechecks the live decorated
-  range immediately before staging; the server rejects changed files.
+  range immediately before applying to the draft; the server rejects changed
+  files.
 - Critique evidence must be a contiguous excerpt of the selection. Validation
   tolerates presentation-only differences in typographic quotation marks, one
   balanced outer quote wrapper, and collapsed whitespace; it does not use
@@ -1402,15 +1413,18 @@ recommended managed selection journey has now been implemented through Phases
 - Independent live UI/UX review: **Complete — approve; no P0–P3 findings**
   across 1400×1000 light/100%, 1024×768 dark/200%, pointer, and keyboard
   contexts.
-- Full default test suite: **265 passed, 126 deselected**.
-- Full browser E2E suite: **126 passed, 265 deselected**.
+- Full default test suite: **283 passed, 130 deselected**.
+- Full browser E2E suite: **130 passed, 283 deselected**.
 - JavaScript syntax checks, Python compilation, and `git diff --check`: passed.
 - Added E2E coverage includes dirty-before-selection actions, repeated text,
-  Markdown emphasis and exact Undo, unrelated local edits before staging,
-  explicit save lifecycle, multiple staged tasks saved together, queue item
+  Markdown emphasis and exact Undo, unrelated local edits before applying,
+  explicit save lifecycle, multiple applied tasks saved together, queue item
   removal, draft reload, focus recovery, submenu keyboard behavior, dark 200%
   zoom containment, real-world critique punctuation/whitespace variants,
   invalid citations, actionable citation errors, and grouped retry attempts.
+  Automatic review coverage distinguishes a newly completed rewrite from
+  retained `task.ready` events replayed after a same-server page reload; replayed
+  history remains closed until the writer chooses **Review changes**.
   Restart coverage now stops and relaunches the real Prosview server, restores
   HTML-escaped Codex history, verifies both provenance-backed review and safe
   legacy-history rendering, decodes Markdown text entities such as

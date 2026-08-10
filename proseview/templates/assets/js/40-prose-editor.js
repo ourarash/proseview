@@ -209,7 +209,7 @@
                 if (data.mtime) _pmOpenMtime = data.mtime;
                 contents[p] = markdown;
                 setPmSaved();
-                if (typeof aiMarkStagedProposalSaved === 'function') aiMarkStagedProposalSaved();
+                if (typeof aiMarkAppliedProposalsSaved === 'function') aiMarkAppliedProposalsSaved();
                 cancelSceneEdit();
             }).catch(function(err) {
                 setPmDirty(true);
@@ -218,7 +218,7 @@
         }
 
         function cancelSceneEdit() {
-            if (typeof aiDiscardStagedProposals === 'function') aiDiscardStagedProposals();
+            if (typeof aiDiscardAppliedProposals === 'function') aiDiscardAppliedProposals();
             _pmEditMode = false;
             setPmDirty(false);
             _applyEditingProseClass();

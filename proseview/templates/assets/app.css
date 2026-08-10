@@ -1172,11 +1172,19 @@
         .discuss-message a { color: var(--primary); }
         .discuss-task { border: 1px solid var(--border); border-radius: 10px; padding: 11px; margin: 0 0 12px; background: color-mix(in srgb, var(--primary) 3%, var(--surface-card)); }
         .discuss-task-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .discuss-task-status { color: var(--text-muted); font-size: 10px; text-transform: capitalize; }
-        .discuss-task-status.status-ready, .discuss-task-status.status-reviewing { color: #16805c; }
+        .discuss-task-status { color: var(--text-muted); font-size: 10px; }
+        .discuss-task-status.status-ready, .discuss-task-status.status-reviewing, .discuss-task-status.status-applied, .discuss-task-status.status-staged { color: #16805c; }
         .discuss-task-status.status-failed, .discuss-task-status.status-stale { color: #b42318; }
         .discuss-task-selection { margin: 7px 0; color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.4; }
         .discuss-task-meta, .discuss-task-summary { margin: 6px 0; color: var(--text-muted); font-size: 11px; }
+        .discuss-task-instruction { margin: 8px 0; color: var(--text-main); font-size: 11px; line-height: 1.4; }
+        .discuss-task-used { margin: 9px 0; padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--primary) 7%, var(--surface-card)); }
+        .discuss-task-used-label, .discuss-alternative-label { color: var(--primary); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .discuss-alternatives { margin: 8px 0; color: var(--text-muted); font-size: 11px; }
+        .discuss-alternatives summary { cursor: pointer; color: var(--text-main); font-weight: 700; }
+        .discuss-alternative { margin-top: 8px; padding: 8px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-card); }
+        .discuss-alternative-text { margin-top: 4px; color: var(--text-main); white-space: pre-wrap; line-height: 1.45; }
+        .discuss-alternative-rationale { margin-top: 5px; color: var(--text-muted); line-height: 1.4; }
         .discuss-attempts { margin: 7px 0; color: var(--text-muted); font-size: 11px; }
         .discuss-attempts summary { cursor: pointer; font-weight: 700; }
         .discuss-attempts ul { margin: 6px 0 0; padding-left: 20px; }

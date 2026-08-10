@@ -1216,6 +1216,7 @@ class DiscussManager:
             "attempt": int(provenance["attempt"]) if provenance else 1,
             "superseded_by": None,
             "result": None,
+            "selected_option": None,
             "error": error,
             "restored": True,
             "reviewable": reviewable,
@@ -1361,6 +1362,7 @@ class DiscussManager:
             "attempt": int(retry_parent["attempt"]) + 1 if retry_parent else 1,
             "superseded_by": None,
             "result": None,
+            "selected_option": None,
             "error": "",
         }
         provenance = json.dumps({
@@ -1868,11 +1870,19 @@ class DiscussManager:
                             task["result"] = validate_action_result(str(event.get("text") or ""), task)
                             task["status"] = "ready"
                             task["error"] = ""
-                            conversation.publish("task.ready", {"task_id": task["id"], "kind": task["kind"]})
+                            conversation.publish("task.ready", {
+                                "task_id": task["id"],
+                                "kind": task["kind"],
+                                "client_request_id": task["client_request_id"],
+                            })
                         except ContextError as exc:
                             task["status"] = "failed"
                             task["error"] = str(exc)
-                            conversation.publish("task.failed", {"task_id": task["id"], "message": str(exc)})
+                            conversation.publish("task.failed", {
+                                "task_id": task["id"],
+                                "client_request_id": task["client_request_id"],
+                                "message": str(exc),
+                            })
                     else:
                         conversation.messages.append({
                             "role": "assistant",
@@ -1947,17 +1957,28 @@ class DiscussManager:
                 "conversation_id": conversation.id,
             }
 
-    def set_task_status(self, conversation_id: str, task_id: str, status: str) -> dict[str, Any]:
-        if status not in {"ready", "reviewing", "staged", "saved", "rejected", "dismissed"}:
+    def set_task_status(
+        self, conversation_id: str, task_id: str, status: str, *, selected_option: Any = None
+    ) -> dict[str, Any]:
+        if status not in {"ready", "reviewing", "applied", "staged", "saved", "rejected", "dismissed"}:
             raise ContextError("invalid selection assistance status")
         conversation = self._get(conversation_id)
         with conversation.lock:
             task = conversation.tasks.get(str(task_id))
             if task is None:
                 raise ContextError("selection assistance task not found")
+            if status == "applied":
+                if type(selected_option) is not int:
+                    raise ContextError("applied rewrite requires a selected suggestion")
+                alternatives = (task.get("result") or {}).get("alternatives") or []
+                if selected_option < 0 or selected_option >= len(alternatives):
+                    raise ContextError("selected suggestion is outside the rewrite alternatives")
+                task["selected_option"] = selected_option
+            elif status in {"ready", "reviewing", "rejected", "dismissed"}:
+                task["selected_option"] = None
             task["status"] = status
         conversation.publish("task.updated", {"task_id": task_id, "status": status})
-        return {"task_id": task_id, "status": status}
+        return {"task_id": task_id, "status": status, "selected_option": task.get("selected_option")}
 
     def clear_tasks(self, conversation_id: str) -> dict[str, Any]:
         conversation = self._get(conversation_id)

@@ -205,9 +205,11 @@
             }).then(function(r) { return r.json(); });
         }
 
-        function aiSetManagedTaskStatus(proposal, status) {
+        function aiSetManagedTaskStatus(proposal, status, selectedOption) {
             if (!proposal || !proposal.conversation_id || !proposal.task_id || typeof discussApi !== 'function') return;
-            discussApi('/api/discuss/conversations/' + encodeURIComponent(proposal.conversation_id) + '/tasks/' + encodeURIComponent(proposal.task_id) + '/status', {status: status})
+            var payload = {status: status};
+            if (Number.isInteger(selectedOption)) payload.selected_option = selectedOption;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(proposal.conversation_id) + '/tasks/' + encodeURIComponent(proposal.task_id) + '/status', payload)
                 .then(function() { if (typeof scheduleDiscussSnapshot === 'function') scheduleDiscussSnapshot(); })
                 .catch(function() {});
         }
@@ -400,14 +402,14 @@
             actions.className = 'ai-proposal-actions';
             if (!error && proposal.origin === 'managed_selection_action') {
                 var shortcuts = document.createElement('div'); shortcuts.className = 'ai-proposal-shortcuts';
-                shortcuts.textContent = 'A / ⌘Enter stage · R reject · ← → alternatives · Esc close';
+                shortcuts.textContent = 'A / ⌘Enter use · R reject · ← → alternatives · Esc close';
                 panel.appendChild(shortcuts);
             }
             if (!error && (proposal.options || []).length) {
                 var accept = document.createElement('button');
                 accept.className = 'ai-proposal-primary';
                 accept.type = 'button';
-                accept.textContent = 'Stage change';
+                accept.textContent = 'Use this version';
                 accept.onclick = function() { aiApplyProposal(proposal, _aiSelectedOptionIndex || 0); };
                 actions.appendChild(accept);
             }
@@ -559,8 +561,8 @@
 
         function aiApplyProposal(proposal, optionIndex) {
             var panel = aiPanel();
-            var stage = panel.querySelector('.ai-proposal-primary');
-            if (stage) stage.disabled = true;
+            var primary = panel.querySelector('.ai-proposal-primary');
+            if (primary) primary.disabled = true;
             aiPost('/ai/proposals/' + proposal.id + '/validate', {client_id: aiClientId()}).then(function(data) {
                 if (!data.ok) throw new Error(data.error || 'The proposal target is stale.');
                 aiApplyValidatedProposal(proposal, optionIndex);
@@ -618,7 +620,7 @@
                 hadDirtyBeforeApply: hadDirtyBeforeApply
             };
             if (proposal.conversation_id && proposal.task_id) _aiPendingSavedProposals[proposal.id] = proposal;
-            aiSetManagedTaskStatus(proposal, 'staged');
+            aiSetManagedTaskStatus(proposal, 'applied', optionIndex);
             _aiProposalRange = newRange;
             aiScrollRangeIntoView(newRange);
             aiSetProposalHighlight(newRange);
@@ -665,7 +667,7 @@
             aiRenderPanel(applied.proposal, restoredRange, null, false);
         }
 
-        function aiMarkStagedProposalSaved() {
+        function aiMarkAppliedProposalsSaved() {
             var saved = Object.keys(_aiPendingSavedProposals).map(function(id) { return _aiPendingSavedProposals[id]; });
             if (!saved.length) return;
             _aiPendingSavedProposals = Object.create(null);
@@ -673,7 +675,7 @@
             if (_aiAppliedProposal) aiFinishApplied(false);
         }
 
-        function aiDiscardStagedProposals() {
+        function aiDiscardAppliedProposals() {
             var discarded = Object.keys(_aiPendingSavedProposals).map(function(id) { return _aiPendingSavedProposals[id]; });
             _aiPendingSavedProposals = Object.create(null);
             discarded.forEach(function(proposal) { aiSetManagedTaskStatus(proposal, 'ready'); });
@@ -696,7 +698,7 @@
             var title = document.createElement('div');
             title.className = 'ai-proposal-title';
             title.id = 'aiProposalTitle';
-            title.textContent = 'Staged · Not saved';
+            title.textContent = 'Applied to draft · Not saved';
             panel.appendChild(title);
 
             var lineLabel = aiLineLabel(applied.proposal, applied.newRange);

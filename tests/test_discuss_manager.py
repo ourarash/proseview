@@ -169,6 +169,29 @@ def test_managed_rewrite_uses_output_schema_and_creates_stale_checked_proposal(t
     manager.close()
 
 
+def test_managed_task_records_the_applied_suggestion_until_save_or_undo(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid, client_request_id="rewrite-choice", question="", selection="First document.", action_id="tighten"
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+
+    applied = manager.set_task_status(cid, submitted["task_id"], "applied", selected_option=1)
+    assert applied == {"task_id": submitted["task_id"], "status": "applied", "selected_option": 1}
+    assert manager.get_snapshot(cid)["tasks"][0]["selected_option"] == 1
+
+    saved = manager.set_task_status(cid, submitted["task_id"], "saved")
+    assert saved["selected_option"] == 1
+    manager.set_task_status(cid, submitted["task_id"], "ready")
+    assert manager.get_snapshot(cid)["tasks"][0]["selected_option"] is None
+
+    with pytest.raises(ValueError, match="selected suggestion"):
+        manager.set_task_status(cid, submitted["task_id"], "applied", selected_option=5)
+    manager.close()
+
+
 def test_managed_critique_is_evidence_linked_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))

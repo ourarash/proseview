@@ -122,6 +122,9 @@
         }
 
         function openSceneModal(p) {
+            // Guard against a path that is not in the scene index: rendering
+            // meta[undefined] throws and leaves the user on a dead click.
+            if (paths.indexOf(p) === -1) return;
             saveActiveScrollPosition();
             curIdx = paths.indexOf(p);
             hls = _loadHighlightPrefs();
@@ -129,10 +132,9 @@
             document.documentElement.dataset.view = 'scene';
             routeToHash('/scene/' + encodeURIComponent(p), true);
             restoreActiveScrollPosition();
-            // highlight corresponding sidebar item
-            document.querySelectorAll('#sidebarTree .file-link').forEach(el => {
-                el.classList.toggle('active', el.dataset.scenePath === p);
-            });
+            // Reveal the scene in the sidebar: highlight it and expand the
+            // chapter folders above it.
+            if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
         }

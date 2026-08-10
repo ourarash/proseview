@@ -2,6 +2,17 @@ let currentTab = 'overview';
         let suppressHashWrite = false;
         const VALID_TABS = ['overview', 'todos', 'notes'];
 
+        // Headers for every state-changing request. The session token is the
+        // only thing separating this page from any other site the user has
+        // open: the server rejects mutations without it, and a cross-origin
+        // caller cannot set a custom header without a preflight we refuse.
+        function pvHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-Proseview-Session': pageSessionToken,
+            };
+        }
+
         const PASS_LABELS = {
             passive_voice: 'Passive Voice',
             filter_verbs: 'Filter Verbs',

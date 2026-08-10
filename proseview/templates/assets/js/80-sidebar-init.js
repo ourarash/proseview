@@ -59,6 +59,9 @@
             if (!container || !sidebarTree.length) return;
             container.innerHTML = '';
             container.appendChild(buildSidebarList(sidebarTree, 0));
+            // The tree is rendered lazily (first open) and rebuilt wholesale,
+            // so re-apply whatever the active document is.
+            applySidebarReveal();
         }
 
         function buildSidebarList(nodes, depth) {
@@ -76,15 +79,15 @@
                 if (node.is_scene) {
                     a.dataset.scenePath = node.scene_path || '';
                     a.innerHTML = '<span class="file-icon sidebar-scene-icon">\u25A0</span>' + escHtml(node.name);
-                    a.onclick = () => {
-                        highlightSidebarItem(node.path);
-                        openSceneModal(node.scene_path);
-                    };
+                    // openSceneModal reveals the scene in the sidebar itself.
+                    a.onclick = () => openSceneModal(node.scene_path);
                 } else {
                     a.innerHTML = '<span class="file-icon">\u25A1</span>' + escHtml(node.name);
-                    a.onclick = () => {
-                        if (repoFileByPath[node.path]) previewRepoFile(node.path);
-                    };
+                    // No cache guard: previewRepoFile serves from
+                    // repoFileByPath when present and fetches otherwise, which
+                    // is the only way to open files outside the preview
+                    // folders (manuscript notes, say).
+                    a.onclick = () => previewRepoFile(node.path);
                 }
                 li.appendChild(a);
             } else {
@@ -100,10 +103,43 @@
             return li;
         }
 
+        // The document the sidebar should point at, as {path} or {scenePath}.
+        // Kept outside the DOM so a tree that has not been rendered yet (the
+        // sidebar renders lazily on first open) still reveals the right file
+        // once it is built.
+        var _sidebarRevealTarget = null;
+
+        function revealSidebarItem(target) {
+            _sidebarRevealTarget = target || null;
+            applySidebarReveal();
+        }
+
         function highlightSidebarItem(fullPath) {
-            document.querySelectorAll('#sidebarTree .file-link').forEach(el => {
-                el.classList.toggle('active', el.dataset.path === fullPath);
+            revealSidebarItem({ path: fullPath });
+        }
+
+        function applySidebarReveal() {
+            const tree = document.getElementById('sidebarTree');
+            if (!tree) return;
+            const target = _sidebarRevealTarget;
+            let match = null;
+            tree.querySelectorAll('.file-link').forEach(el => {
+                const hit = !!target && (
+                    (!!target.path && el.dataset.path === target.path) ||
+                    (!!target.scenePath && el.dataset.scenePath === target.scenePath)
+                );
+                el.classList.toggle('active', hit);
+                if (hit) match = el;
             });
+            // Files outside the sidebar's folders (search reaches the whole
+            // repository) simply have nothing to reveal.
+            if (!match) return;
+            // Expand every ancestor folder so the file is actually on screen.
+            for (var li = match.closest('li'); li && tree.contains(li);
+                 li = li.parentElement && li.parentElement.closest('li')) {
+                li.classList.add('expanded');
+            }
+            match.scrollIntoView({ block: 'nearest' });
         }
 
         // Defer sidebar render so it does not block or interfere with initial

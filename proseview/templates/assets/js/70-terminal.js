@@ -172,7 +172,7 @@
             var s = _termSessions[idx];
             if (s.termId) {
                 fetch('/terminal-kill', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    method: 'POST', headers: pvHeaders(),
                     body: JSON.stringify({id: s.termId})
                 }).catch(function() {});
             }
@@ -220,7 +220,7 @@
             _setActiveSession(localId);
 
             fetch('/terminal-spawn', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
+                method: 'POST', headers: pvHeaders(),
                 body: JSON.stringify({
                     command: command, rows: 40, cols: 160,
                     type: type, label: label
@@ -312,7 +312,7 @@
                 var binary = '';
                 bytes.forEach(function(b) { binary += String.fromCharCode(b); });
                 fetch('/terminal-input', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    method: 'POST', headers: pvHeaders(),
                     body: JSON.stringify({id: tid, data: btoa(binary)})
                 }).catch(function() {});
             }
@@ -321,7 +321,7 @@
             term.onData(function(data) { sendToTerm(data); });
             term.onResize(function(sz) {
                 fetch('/terminal-resize', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    method: 'POST', headers: pvHeaders(),
                     body: JSON.stringify({id: tid, rows: sz.rows, cols: sz.cols})
                 }).catch(function() {});
             });
@@ -1006,7 +1006,7 @@
 
         function postAndReload(url, body, errorMsg, disableBtn) {
             if (disableBtn) disableBtn.disabled = true;
-            fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+            fetch(url, {method: 'POST', headers: pvHeaders(), body: JSON.stringify(body)})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.ok) setTimeout(function() { location.reload(); }, 300);

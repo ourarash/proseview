@@ -37,6 +37,7 @@ from .conftest import (
     AGENT_MARKER,
     ANNOTATED_SCENE_REL,
     LARGE_SCENE_REL,
+    NESTED_MANUSCRIPT_NOTE,
     SCENE_REL,
     ProseviewServer,
 )
@@ -211,17 +212,15 @@ def wait_for_discuss_answer(page: Page, text: str = "Fake answer") -> None:
     )
 
 
-def select_prose(page: Page, needle: str) -> str:
+def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
     """Select *needle* in the rendered prose and raise the selection pill.
 
     The pill is bound to ``mouseup`` on ``#modalBody``, so a synthetic Range has
-    to be followed by that event for the UI to react. The passage is scrolled
-    near the top of the viewport first: the pill is positioned at the selection
-    and its menu is tall, so a selection low on the page puts the menu items
-    off-screen and Playwright refuses to click them.
+    to be followed by that event for the UI to react. ``block`` lets placement
+    tests exercise selections near both vertical viewport edges.
     """
     selected = page.evaluate(
-        """(needle) => {
+        """({needle, block}) => {
             const host = document.getElementById('sceneProseHost');
             const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
             let node = null, idx = -1;
@@ -231,7 +230,7 @@ def select_prose(page: Page, needle: str) -> str:
             }
             if (!node) throw new Error('text not found in prose: ' + needle);
             if (node.parentElement) {
-                node.parentElement.scrollIntoView({ block: 'start' });
+                node.parentElement.scrollIntoView({ block });
             }
             const range = document.createRange();
             range.setStart(node, idx);
@@ -245,10 +244,26 @@ def select_prose(page: Page, needle: str) -> str:
             }));
             return sel.toString();
         }""",
-        needle,
+        {"needle": needle, "block": block},
     )
     page.wait_for_selector("#selectionPill", state="visible")
+    page.wait_for_function("needle => currentSelectionText.includes(needle)", arg=needle)
     return selected
+
+
+def assert_fully_inside_viewport(page: Page, selector: str) -> None:
+    """Assert that a rendered control is completely reachable in the viewport."""
+    box = page.locator(selector).bounding_box()
+    viewport = page.viewport_size
+    assert box and viewport, f"{selector} does not have a rendered box"
+    assert box["x"] >= 0, f"{selector} extends past the left viewport edge: {box}"
+    assert box["y"] >= 0, f"{selector} extends past the top viewport edge: {box}"
+    assert box["x"] + box["width"] <= viewport["width"], (
+        f"{selector} extends past the right viewport edge: {box}"
+    )
+    assert box["y"] + box["height"] <= viewport["height"], (
+        f"{selector} extends past the bottom viewport edge: {box}"
+    )
 
 
 def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, server: ProseviewServer):
@@ -259,7 +274,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert SCENE_REL in page.locator("#discussContext").inner_text()
-    assert "Selected text: ledger" in page.locator("#discussSelectionChip").inner_text()
+    assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
     page.fill("#discussInput", "Explain this scene")
     page.evaluate("sendDiscussQuestion(); sendDiscussQuestion()")
@@ -277,7 +292,6 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     assert page.locator(".discuss-message.user").count() == 1
 
     page.evaluate("_discussEventSource.close(); setDiscussConnection('Reconnecting', ''); connectDiscussEvents()")
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Reconnecting')")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')", timeout=15_000)
 
     page.locator("#sceneModal .nav-btn").nth(1).click()
@@ -287,6 +301,33 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.press("body", "Escape")
     page.wait_for_selector("#discussPanel", state="hidden")
     assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
+
+
+def test_discuss_decodes_restored_assistant_prose_after_server_restart(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Describe Patel's setting")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "Patel's note")
+
+    server.restart()
+    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
+    page.goto("about:blank")
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    wait_for_discuss_answer(page, "Patel's note")
+
+    assistant = page.locator(".discuss-message.assistant")
+    assert "Patel's note" in assistant.inner_text()
+    assert "&#39;" not in assistant.inner_text()
+    assert assistant.locator("code").inner_text() == "&amp;"
+    assert assistant.locator("script").count() == 0
+    assert assistant.locator("a", has_text="link").get_attribute("href") == "https://example.test"
+    assert assistant.locator("a", has_text="unsafe").count() == 0
 
 
 def test_discuss_current_file_is_default_removable_context(
@@ -444,7 +485,7 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
 
     page.fill("#discussInput", "Continue after the stopped turn")
     page.press("#discussInput", "Enter")
-    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('question queued')")
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('item queued')")
 
     page.reload(wait_until="load")
     page.wait_for_function("() => !!window._PM")
@@ -456,6 +497,59 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
     wait_for_discuss_answer(page, "Fake answer")
     assert page.locator(".discuss-message.user").count() == 2
     page.wait_for_selector("#discussStop", state="hidden")
+
+
+def test_discuss_pending_queue_item_can_be_removed(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussStop", state="visible")
+    page.fill("#discussInput", "Remove this queued request")
+    page.press("#discussInput", "Enter")
+    remove = page.get_by_role("button", name="Remove Question from queue")
+    remove.wait_for(state="visible")
+    remove.click()
+    page.wait_for_function("() => !document.querySelector('.discuss-queue-remove')")
+    assert page.locator(".discuss-message.user").count() == 1
+    page.click("#discussStop")
+    page.wait_for_selector("#discussStop", state="hidden")
+
+
+def test_active_codex_turn_explains_new_conversation_and_has_explicit_stop(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+
+    stop = page.get_by_role("button", name="Stop Codex")
+    stop.wait_for(state="visible")
+    assert page.locator("#discussNewConversation").is_disabled()
+    hint = page.locator("#discussNewConversationHint")
+    assert hint.is_visible()
+    assert "Stop Codex before starting a new conversation" in hint.inner_text()
+
+    stopping = page.evaluate(
+        """() => new Promise(resolve => {
+            const button = document.getElementById('discussStop');
+            const observer = new MutationObserver(() => {
+                if (button.textContent === 'Stopping…') {
+                    observer.disconnect();
+                    resolve(button.textContent);
+                }
+            });
+            observer.observe(button, {childList: true, subtree: true});
+            button.click();
+        })"""
+    )
+    assert stopping == "Stopping…"
+    page.wait_for_selector("#discussStop", state="hidden")
+    page.wait_for_function("() => !document.getElementById('discussNewConversation').disabled")
+    assert hint.is_hidden()
 
 
 def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explicit(
@@ -489,7 +583,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     page.keyboard.press("Enter")
     page.wait_for_selector("#discussNewConversationDialog", state="visible")
     assert page.evaluate("document.activeElement === document.getElementById('discussNewConversationCancel')")
-    assert "remains in your Codex history" in page.locator("#discussNewConversationDialog").inner_text()
+    assert "reopen the current conversation later from History" in page.locator("#discussNewConversationDialog").inner_text()
     page.keyboard.press("Escape")
     page.wait_for_selector("#discussNewConversationDialog", state="hidden")
     page.wait_for_selector("#discussPanel", state="visible")
@@ -509,6 +603,165 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
         "document.querySelector('#discussLog').innerText.includes('Fake answer')"
     )
     assert page.locator(".discuss-message.user").count() == 1
+
+
+def test_conversation_history_reopens_a_previous_thread(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Why is the opening quiet?")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+
+    page.click("#discussNewConversation")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.fill("#discussInput", "What changes in the second conversation?")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+
+    page.click("#discussHistory")
+    page.wait_for_selector("#discussHistoryDialog", state="visible")
+    previous = page.locator(".discuss-history-row").filter(has_text="Why is the opening quiet?")
+    previous.wait_for(state="visible")
+    assert previous.count() == 1
+    assert "Saved conversation" in previous.inner_text()
+    previous.get_by_role("button", name="Open").click()
+    page.wait_for_selector("#discussHistoryDialog", state="hidden")
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('Why is the opening quiet?')")
+    assert "What changes in the second conversation?" not in page.locator("#discussLog").inner_text()
+
+    page.fill("#discussInput", "Continue this earlier thought")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user').length === 2")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.assistant').length === 2")
+
+    page.click("#discussHistory")
+    current = page.locator(".discuss-history-row").filter(has_text="Why is the opening quiet?")
+    current.wait_for(state="visible")
+    current.locator("summary").click()
+    current.get_by_role("button", name="Rename").click()
+    current.locator("input").fill("Opening rhythm")
+    current.get_by_role("button", name="Save").click()
+    renamed = page.locator(".discuss-history-row").filter(has_text="Opening rhythm")
+    renamed.wait_for(state="visible")
+    renamed.locator("summary").click()
+    with page.expect_download() as download_info:
+        renamed.get_by_role("button", name="Export JSON").click()
+    exported = Path(download_info.value.path()).read_text(encoding="utf-8")
+    assert '"title": "Opening rhythm"' in exported
+    assert "BEGIN UNTRUSTED DOCUMENT" not in exported
+    assert "RAW SECRET" not in exported
+
+    page.click("#discussHistoryClose")
+    page.click("#discussNewConversation")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.click("#discussHistory")
+    saved = page.locator(".discuss-history-row").filter(has_text="Opening rhythm")
+    saved.wait_for(state="visible")
+    saved.locator("summary").click()
+    page.once("dialog", lambda dialog: dialog.accept())
+    saved.get_by_role("button", name="Remove from history").click()
+    saved.wait_for(state="detached")
+
+
+def test_new_conversation_dialog_announces_pending_and_recovers_from_failure(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.select_option("#modalThemeSelect", "dark")
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.click("#discussNewConversation")
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    page.evaluate(
+        """() => {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = function(...args) {
+                if (String(args[0]).endsWith('/new')) {
+                    return new Promise((resolve, reject) => {
+                        window.__releaseConversationReset = () => {
+                            window.fetch = originalFetch;
+                            originalFetch(...args).then(resolve, reject);
+                        };
+                    });
+                }
+                return originalFetch(...args);
+            };
+        }"""
+    )
+
+    pending = page.evaluate(
+        """() => new Promise(resolve => {
+            const dialog = document.getElementById('discussNewConversationDialog');
+            const button = document.getElementById('discussNewConversationConfirm');
+            const observer = new MutationObserver(() => {
+                if (button.textContent === 'Starting…') {
+                    observer.disconnect();
+                    resolve({
+                        label: button.textContent,
+                        disabled: button.disabled,
+                        busy: dialog.getAttribute('aria-busy'),
+                        announcement: document.getElementById('discussAnnouncement').textContent,
+                    });
+                }
+            });
+            observer.observe(button, {childList: true, subtree: true});
+            button.click();
+        })"""
+    )
+    assert pending == {
+        "label": "Starting…",
+        "disabled": True,
+        "busy": "true",
+        "announcement": "Starting a new conversation",
+    }
+    page.keyboard.press("Escape")
+    assert page.locator("#discussNewConversationDialog").is_visible()
+    slow_status = page.locator("#discussNewConversationStatus")
+    slow_status.wait_for(state="visible", timeout=3_000)
+    assert "Still starting" in slow_status.inner_text()
+    page.evaluate("window.__releaseConversationReset()")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+
+    page.click("#discussNewConversation")
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    page.route(
+        "**/api/discuss/conversations/*/new",
+        lambda route: route.fulfill(
+            status=409,
+            content_type="application/json",
+            body='{"error":"The local reset could not finish safely."}',
+        ),
+    )
+    page.click("#discussNewConversationConfirm")
+    error = page.locator("#discussNewConversationError")
+    error.wait_for(state="visible")
+    assert "could not finish safely" in error.inner_text()
+    retry = page.get_by_role("button", name="Try again")
+    assert retry.is_enabled()
+    assert retry.evaluate("button => document.activeElement === button")
+    assert page.locator("#discussNewConversationDialog").get_attribute("aria-busy") == "false"
+
+
+def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
+    page: Page, server: ProseviewServer
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.select_option("#modalThemeSelect", "dark")
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.evaluate("document.body.style.zoom = '2'")
+    page.click("#discussNewConversation")
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+
+    assert_fully_inside_viewport(page, "#discussNewConversationDialog")
+    assert page.get_by_role("button", name="Keep conversation").is_visible()
+    assert page.get_by_role("button", name="Start new conversation").is_visible()
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
 
 
 def open_selection_menu(page: Page, needle: str) -> None:
@@ -1015,6 +1268,69 @@ def test_search_finds_non_scene_repo_files(page: Page, shared_server: ProseviewS
     page.keyboard.press("Enter")
     page.wait_for_selector("#file-preview-panel", state="visible")
     assert "book-plan.md" in page.locator("#filePreviewTitle").inner_text()
+
+
+def test_search_opens_manuscript_files_outside_the_scene_index(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    """Manuscript Markdown nested below a chapter dir is not a scene.
+
+    It used to be flagged as one, which routed the click to a scene the
+    client had no entry for and left the result dead.
+    """
+    open_dashboard(page, shared_server)
+    search_for(page, "reader-pass-notes")
+
+    page.wait_for_selector("#searchResults .search-row")
+    assert NESTED_MANUSCRIPT_NOTE in page.locator("#searchResults").inner_text()
+
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    page.wait_for_function(
+        "path => document.getElementById('filePreviewTitle').innerText === path",
+        arg=NESTED_MANUSCRIPT_NOTE,
+    )
+    assert "safe reveal lands too early" in page.locator("#filePreviewBody").inner_text()
+
+
+def test_opening_a_file_reveals_and_highlights_it_in_the_sidebar(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    """Opening from search points the sidebar at the file, VS Code style:
+    ancestor folders expand, the row is highlighted and scrolled into view."""
+    open_dashboard(page, shared_server)
+    # Collapse everything first, so an expanded ancestor proves the reveal.
+    page.evaluate(
+        "() => document.querySelectorAll('#sidebarTree li')"
+        ".forEach(li => li.classList.remove('expanded'))"
+    )
+
+    search_for(page, "reader-pass-notes")
+    page.wait_for_selector("#searchResults .search-row")
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#file-preview-panel", state="visible")
+
+    active = page.locator("#sidebarTree .file-link.active")
+    active.wait_for(state="visible")
+    assert active.get_attribute("data-path") == NESTED_MANUSCRIPT_NOTE
+    # Every folder on the way down is open, so the row is actually on screen.
+    expanded = page.evaluate(
+        "() => [...document.querySelectorAll('#sidebarTree li.expanded > .dir-toggle')]"
+        ".map(el => el.textContent)"
+    )
+    assert {"manuscript", "ch01", "review"} <= set(expanded)
+
+    # A scene reveals the same way, matched on its scene path.
+    search_for(page, "02-walk")
+    page.wait_for_selector("#searchResults .search-row")
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#sceneModal", state="visible")
+    scene_active = page.locator("#sidebarTree .file-link.active")
+    scene_active.wait_for(state="visible")
+    assert scene_active.get_attribute("data-path") == "manuscript/ch01/02-walk.md"
+
 
 
 @pytest.mark.parametrize("start_view", ["scene", "file"])
@@ -1541,6 +1857,289 @@ def test_selection_pill_exposes_every_action(page: Page, server: ProseviewServer
         assert menu.locator(f"#{control}").is_visible(), f"{control} missing from the pill"
 
 
+def test_selection_menu_has_keyboard_semantics_and_restores_focus(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    select_prose(page, "the slow algebra")
+
+    trigger = page.locator("#selectionPillBtn")
+    menu = page.locator("#selectionPillMenu")
+    assert trigger.get_attribute("aria-label") == "Work with selected text"
+    assert trigger.get_attribute("aria-haspopup") == "menu"
+    assert trigger.get_attribute("aria-controls") == "selectionPillMenu"
+    assert trigger.get_attribute("aria-expanded") == "false"
+    assert menu.get_attribute("role") == "menu"
+
+    page.keyboard.press("ControlOrMeta+k")
+
+    menu.wait_for(state="visible")
+    assert page.locator("#searchPalette").is_hidden()
+    assert trigger.get_attribute("aria-expanded") == "true"
+    assert page.evaluate("document.activeElement === document.getElementById('selectionRewriteBtn')")
+    assert page.locator("#selectionRewriteBtn").get_attribute("aria-controls") == "selectionRewriteMenu"
+    assert page.locator("#selectionRewriteBtn").get_attribute("aria-expanded") == "false"
+    page.keyboard.press("ArrowRight")
+    assert page.locator("#selectionRewriteBtn").get_attribute("aria-expanded") == "true"
+    assert page.locator("#selectionRewriteMenu").is_visible()
+    page.keyboard.press("ArrowLeft")
+    assert page.locator("#selectionRewriteBtn").get_attribute("aria-expanded") == "false"
+    assert page.evaluate("document.activeElement === document.getElementById('selectionRewriteBtn')")
+
+    for _ in range(4):
+        page.keyboard.press("ArrowDown")
+    assert page.evaluate("document.activeElement === document.getElementById('selectionTodoBtn')")
+    page.keyboard.press("Enter")
+    assert page.evaluate("document.activeElement === document.getElementById('selectionTodoText')")
+
+    page.keyboard.press("Escape")
+    assert menu.is_visible()
+    assert page.locator("#selectionTodoForm").is_hidden()
+    assert page.evaluate("document.activeElement === document.getElementById('selectionTodoBtn')")
+
+    page.keyboard.press("Escape")
+    menu.wait_for(state="hidden")
+    assert trigger.is_visible()
+    assert trigger.get_attribute("aria-expanded") == "false"
+    assert page.evaluate("document.activeElement === document.getElementById('selectionPillBtn')")
+
+
+def test_selection_skills_open_managed_searchable_surface(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra")
+
+    page.locator("#selectionSkillsBtn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelectorAll('#discussSkillsPicker .discuss-skill').length >= 2")
+    assert "Tighten Prose" in page.locator("#discussSkillsPicker").inner_text()
+    page.locator("#discussSkillsPicker .discuss-skill").first.click()
+    page.fill("#discussInput", "Review this selected passage")
+    page.click("#discussSend")
+    wait_for_discuss_answer(page)
+
+    received = (server.env["HOME"] and Path(server.env["HOME"]) / "fake-codex-received.jsonl").read_text(encoding="utf-8")
+    assert '"type": "skill"' in received
+
+
+def test_selection_shortcut_falls_back_to_search_after_selection_is_cleared(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    select_prose(page, "the slow algebra")
+    page.keyboard.press("ControlOrMeta+k")
+    page.keyboard.press("Escape")
+    page.keyboard.press("Escape")
+
+    page.locator("#sceneProseHost .ProseMirror p").first.click()
+    assert page.evaluate("window.getSelection().isCollapsed")
+    assert page.locator("#selectionPill").is_hidden()
+
+    page.keyboard.press("ControlOrMeta+k")
+
+    page.wait_for_selector("#searchPalette", state="visible")
+    assert page.locator("#selectionPillMenu").is_hidden()
+    assert page.evaluate("document.activeElement === document.getElementById('searchBox')")
+
+
+def test_selection_pill_reanchors_with_the_scene_scroll_container(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.evaluate(
+        "document.querySelector('#sceneModal .modal-content').style.scrollBehavior = 'auto'"
+    )
+    select_prose(page, "the slow algebra", block="center")
+    page.wait_for_timeout(50)
+
+    before = page.evaluate(
+        """() => ({
+            anchorTop: currentSelectionRange.getBoundingClientRect().top,
+            pillTop: document.getElementById('selectionPillBtn').getBoundingClientRect().top,
+        })"""
+    )
+    page.evaluate(
+        """() => {
+            const scroller = document.querySelector('#sceneModal .modal-content');
+            scroller.scrollTop += 40;
+        }"""
+    )
+    page.wait_for_function(
+        "before => Math.abs(currentSelectionRange.getBoundingClientRect().top - before) > 20",
+        arg=before["anchorTop"],
+    )
+    page.wait_for_timeout(50)
+    after = page.evaluate(
+        """() => ({
+            anchorTop: currentSelectionRange.getBoundingClientRect().top,
+            pillTop: document.getElementById('selectionPillBtn').getBoundingClientRect().top,
+        })"""
+    )
+
+    anchor_delta = after["anchorTop"] - before["anchorTop"]
+    pill_delta = after["pillTop"] - before["pillTop"]
+    assert abs(anchor_delta - pill_delta) < 2
+    assert_fully_inside_viewport(page, "#selectionPillBtn")
+
+
+def test_selection_form_is_a_separate_accessible_surface(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra")
+
+    page.locator("#selectionTodoBtn").click()
+
+    assert page.locator("#selectionPillMenu").is_hidden()
+    form = page.locator("#selectionTodoForm")
+    assert form.is_visible()
+    assert form.get_attribute("role") == "dialog"
+    assert form.get_attribute("aria-label") == "Add TODO to selected text"
+    assert page.locator("#selectionPillBtn").get_attribute("aria-expanded") == "false"
+    assert page.locator("#selectionPill [role='menuitem']:visible").count() == 0
+
+    page.keyboard.press("Escape")
+    assert form.is_hidden()
+    assert page.locator("#selectionPillMenu").is_visible()
+    assert page.locator("#selectionPillMenu").get_attribute("role") == "menu"
+    assert page.evaluate("document.activeElement === document.getElementById('selectionTodoBtn')")
+
+
+def test_selection_menu_tab_dismisses_to_a_page_control(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    select_prose(page, "the slow algebra")
+    page.keyboard.press("ControlOrMeta+k")
+    assert page.evaluate("document.activeElement === document.getElementById('selectionRewriteBtn')")
+
+    page.keyboard.press("Tab")
+    assert page.locator("#selectionPillMenu").is_hidden()
+    assert page.evaluate(
+        "document.activeElement !== document.body && !document.getElementById('selectionPill').contains(document.activeElement)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("opener_id", "form_id", "first_id", "last_id"),
+    [
+        ("selectionTodoBtn", "selectionTodoForm", "selectionTodoText", "selectionTodoCancel"),
+        ("selectionNoteBtn", "selectionNoteForm", "selectionNoteTag", "selectionNoteCancel"),
+    ],
+)
+def test_selection_dialogs_trap_tab_focus(
+    page: Page,
+    server: ProseviewServer,
+    opener_id: str,
+    form_id: str,
+    first_id: str,
+    last_id: str,
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra")
+    page.locator(f"#{opener_id}").click()
+    assert page.locator(f"#{form_id}").is_visible()
+
+    page.locator(f"#{first_id}").focus()
+    page.keyboard.press("Shift+Tab")
+    assert page.evaluate(
+        "lastId => document.activeElement === document.getElementById(lastId)",
+        last_id,
+    )
+
+    page.keyboard.press("Tab")
+    assert page.evaluate(
+        "firstId => document.activeElement === document.getElementById(firstId)",
+        first_id,
+    )
+    assert page.locator(f"#{form_id}").is_visible()
+
+
+@pytest.mark.parametrize("dirty", [False, True])
+def test_selection_escape_precedes_edit_mode_escape(
+    page: Page,
+    server: ProseviewServer,
+    dirty: bool,
+):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    if dirty:
+        append_to_paragraph(page, "The loft smelled of cold coffee", TYPED)
+        assert TYPED.strip() in _editor_text(page)
+    select_prose(page, "the slow algebra")
+    page.keyboard.press("ControlOrMeta+k")
+    page.locator("#selectionTodoBtn").click()
+    assert page.locator("#selectionTodoForm").is_visible()
+
+    page.keyboard.press("Escape")
+    assert page.locator("#selectionTodoForm").is_hidden()
+    assert page.locator("#selectionPillMenu").is_visible()
+    assert page.evaluate("window._pmEditMode === true")
+    assert page.locator(DIALOG).count() == 0
+
+    page.keyboard.press("Escape")
+    assert page.locator("#selectionPillMenu").is_hidden()
+    assert page.locator("#selectionPillBtn").is_visible()
+    assert page.evaluate("window._pmEditMode === true")
+    assert page.locator(DIALOG).count() == 0
+
+    page.keyboard.press("Escape")
+    assert page.locator("#selectionPill").is_hidden()
+    assert page.evaluate("window._pmEditMode === true")
+    assert page.locator(DIALOG).count() == 0
+
+    page.keyboard.press("Escape")
+    if dirty:
+        page.wait_for_selector(DIALOG, state="visible")
+        assert page.evaluate("window._pmEditMode === true")
+    else:
+        page.wait_for_function("() => window._pmEditMode === false")
+        assert page.locator(DIALOG).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "zoom", "theme"),
+    [(1400, 1000, 1, "light"), (1024, 768, 2, "dark")],
+)
+def test_selection_menu_and_managed_dock_stay_inside_the_visual_viewport(
+    page: Page,
+    server: ProseviewServer,
+    width: int,
+    height: int,
+    zoom: int,
+    theme: str,
+):
+    page.set_viewport_size({"width": width, "height": height})
+    open_scene(page, server)
+    page.select_option("#modalThemeSelect", theme)
+    page.evaluate("zoom => { document.body.style.zoom = String(zoom); }", zoom)
+    if zoom > 1:
+        page.wait_for_function("() => document.documentElement.dataset.cssZoom === 'true'")
+
+    select_prose(page, "the slow algebra", block="end")
+    assert_fully_inside_viewport(page, "#selectionPillBtn")
+
+    page.locator("#selectionPillBtn").click()
+    page.wait_for_selector("#selectionPillMenu", state="visible")
+    assert_fully_inside_viewport(page, "#selectionPillMenu")
+
+    page.locator("#selectionCodexBtn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.activeElement === document.getElementById('discussInput')")
+    assert page.locator("#selectionPillMenu").is_hidden()
+    assert_fully_inside_viewport(page, "#discussPanel")
+    assert_fully_inside_viewport(page, "#discussInput")
+    assert_fully_inside_viewport(page, "#discussSend")
+
+
 def test_selection_add_todo_writes_the_comment_to_the_file(page: Page, server: ProseviewServer):
     path = server.scene_path()
     open_scene(page, server)
@@ -1574,24 +2173,16 @@ def test_selection_add_note_writes_a_tagged_comment(page: Page, server: Prosevie
     )
 
 
-def test_skills_submenu_lists_the_repo_snippet_skills(page: Page, server: ProseviewServer):
-    """Skills come from ``skills/*/SKILL.md``, read at render time.
-
-    The selection menu deliberately lists only ``snippet-`` type skills, so
-    ``tighten-prose`` must stay out of it. ``snippet-continuity`` carries an
-    ``agents/openai.yaml``, so seeing its *display* name rather than its
-    directory name proves that file was parsed.
-    """
+def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_selection_menu(page, "the slow algebra")
 
     page.click("#selectionSkillsBtn")
-    page.wait_for_selector("#selectionSkillsMenu", state="visible")
-    listed = page.locator("#selectionSkillsMenu").inner_text()
+    page.wait_for_function("() => document.querySelectorAll('#discussSkillsPicker .discuss-skill').length >= 2")
+    listed = page.locator("#discussSkillsPicker").inner_text()
 
-    assert "Continuity Check" in listed, "display_name from agents/openai.yaml was not used"
-    assert "snippet-sensory" in listed, "snippet skill without openai.yaml is missing"
-    assert "tighten-prose" not in listed, "non-snippet skill leaked into the selection menu"
+    assert "Continuity Check" in listed
+    assert "Tighten Prose" in listed
 
 
 # ── agents and terminal ─────────────────────────────────────────────────────
@@ -1681,63 +2272,410 @@ def _terminal_flat(page: Page) -> str:
     return " ".join(_terminal_text(page).split())
 
 
-def test_running_a_selection_in_codex_sends_the_passage(page: Page, server: ProseviewServer):
-    """The whole prompt reaches the agent's stdin, not just the instruction.
-
-    The selection menu composes ``Run <instruction> on "<selection>" in @<path>``
-    and types it into the PTY -- it is never passed as argv. All three parts
-    matter: an agent that receives the instruction but loses the passage or the
-    file reference is being handed a task it cannot do.
-    """
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-
-    page.click("#selectionCodexBtn")
-    page.fill("#selectionCodexInstruction", "Tighten this passage")
-    page.click("#selectionCodexRun")
-
-    page.wait_for_selector("#terminalPanel", state="visible")
-    _wait_until(lambda: f"{AGENT_MARKER} codex" in _terminal_text(page), timeout=25,
-                message="Run in Codex did not launch the agent")
-    _wait_until(lambda: "Tighten this passage" in _terminal_flat(page), timeout=25,
-                message="instruction never reached the agent process")
-
-    delivered = _terminal_flat(page)
-    assert quote in delivered, "the selected passage was dropped from the prompt"
-    assert f"@{SCENE_REL}" in delivered, "the scene reference was dropped from the prompt"
-    # The stub echoes stdin, so seeing it prefixed proves it arrived as input.
-    assert f"STDIN:Run Tighten this passage on" in delivered
-
-
-def test_running_a_selection_without_an_instruction_still_sends_the_passage(
+def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page: Page, server: ProseviewServer
 ):
-    """With no instruction the menu falls back to a review prompt."""
+    quote = "the slow algebra of yesterday's receipts"
+    path = server.scene_path()
+    before = path.read_bytes()
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+
+    assert page.locator("#selectionCodexBtn").inner_text() == "Ask about selection"
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert quote in page.locator("#discussSelectionChip").inner_text()
+    assert SCENE_REL in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about this selection…"
+    assert page.locator("#discussSend").inner_text() == "Send"
+
+    page.fill("#discussInput", "Explain how this image affects the voice")
+    page.click("#discussSend")
+    wait_for_discuss_answer(page)
+    assert quote in page.locator("#discussSelectionChip").inner_text()
+    assert page.locator(".discuss-task").count() == 0
+    assert page.locator(".ai-proposal-panel:visible").count() == 0
+
+    page.fill("#discussInput", "What does it reveal about the narrator?")
+    page.click("#discussSend")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.assistant').length === 2")
+    assert quote in page.locator("#discussSelectionChip").inner_text()
+
+    records = [
+        json.loads(line)
+        for line in (server.home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    questions = ("Explain how this image affects the voice", "What does it reveal about the narrator?")
+    prompts = [
+        record["params"]["input"][0]["text"]
+        for record in records
+        if record["params"].get("input")
+        and any(question in record["params"]["input"][0]["text"] for question in questions)
+    ]
+    assert len(prompts) == 2
+    assert all(f"BEGIN USER SELECTION\n{quote}\nEND USER SELECTION" in prompt for prompt in prompts)
+
+    page.locator("#discussSelectionChip button").click()
+    assert page.locator("#discussSelectionChip").is_hidden()
+    assert page.locator("#discussInput").get_attribute("placeholder") == "Ask about this document…"
+    assert path.read_bytes() == before
+
+
+def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra")
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussPanel", state="visible")
+    assert page.locator("#selectionPillBtn").is_visible()
+    page.click(".discuss-close")
+    assert page.evaluate("document.activeElement === document.getElementById('selectionPillBtn')")
+
+
+def test_unsent_selection_instruction_survives_panel_close_and_reload(
+    page: Page, server: ProseviewServer
+):
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
     open_selection_menu(page, quote)
 
     page.click("#selectionCodexBtn")
-    page.click("#selectionCodexRun")
+    page.fill("#discussInput", "Make the waiting feel more ominous")
+    page.click(".discuss-close")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    assert page.input_value("#discussInput") == "Make the waiting feel more ominous"
+    page.reload()
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    assert page.input_value("#discussInput") == "Make the waiting feel more ominous"
 
-    page.wait_for_selector("#terminalPanel", state="visible")
-    _wait_until(lambda: f'STDIN:Review "{quote}"' in _terminal_flat(page), timeout=25,
-                message="the no-instruction fallback prompt never reached the agent")
 
-
-def test_auto_approve_launches_codex_with_full_auto(page: Page, server: ProseviewServer):
+def test_selection_quick_flow_never_offers_auto_approve(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_selection_menu(page, "the slow algebra")
 
     page.click("#selectionCodexBtn")
-    page.fill("#selectionCodexInstruction", "Polish it")
-    page.check("#selectionCodexAutoApprove")
-    page.click("#selectionCodexRun")
+    page.wait_for_selector("#discussPanel", state="visible")
+    assert page.locator("text=Auto-approve changes").count() == 0
+    assert page.locator("#selectionCodexAutoApprove").count() == 0
 
-    page.wait_for_selector("#terminalPanel", state="visible")
-    _wait_until(lambda: "argv:--full-auto" in _terminal_text(page), timeout=25,
-                message="--full-auto was not passed to the agent")
+
+def test_new_conversation_clears_configured_selection_action_mode(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='custom_rewrite']")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert "Custom rewrite" in page.locator("#discussTaskMode").inner_text()
+    page.fill("#discussInput", "Make the diction more formal")
+
+    page.click("#discussNewConversation")
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+
+    assert page.locator("#discussTaskMode").is_hidden()
+    assert page.locator("#discussSelectionChip").is_hidden()
+    page.fill("#discussInput", "Fresh question after reset")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-message.user')?.textContent.includes('Fresh question after reset')"
+    )
+
+
+def test_managed_tighten_returns_reviewable_alternatives_and_stages_only_locally(
+    page: Page, server: ProseviewServer
+):
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    task = page.locator(".discuss-task").first
+    assert "Tighten" in task.inner_text()
+    assert "2 alternatives" in task.inner_text()
+    assert path.read_text(encoding="utf-8") == before
+
+    task.get_by_role("button", name="Review changes").click()
+    page.wait_for_selector(".ai-proposal-panel", state="visible")
+    panel = page.locator(".ai-proposal-panel")
+    assert panel.get_attribute("role") == "dialog"
+    assert panel.get_attribute("aria-modal") == "false"
+    assert panel.get_attribute("aria-labelledby") == "aiProposalTitle"
+    page.wait_for_function("() => document.activeElement === document.getElementById('aiProposalPanel')")
+    assert "PROPOSED · 1 OF 2" in panel.inner_text()
+    assert "Stage change" in panel.inner_text()
+    panel.get_by_role("button", name="Stage change").click()
+    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
+    assert path.read_text(encoding="utf-8") == before
+    assert "Staged · Not saved" in panel.inner_text()
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'staged'")
+
+    panel.get_by_role("button", name="Undo").click()
+    _wait_until(lambda: quote in _editor_text(page))
+    assert "Rena pressed her thumb" not in _editor_text(page)
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'")
+
+
+def test_managed_selection_action_restores_as_a_card_after_server_restart(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'ready'",
+        timeout=15_000,
+    )
+
+    server.restart()
+    # Force a fresh document so the restarted server's per-process mutation
+    # token is not satisfied from the browser cache.
+    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
+    page.goto("about:blank")
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_timeout(1_000)
+    connection = page.locator("#discussConnection").inner_text()
+    assert connection.startswith("Live"), connection
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'ready'",
+        timeout=15_000,
+    )
+
+    task = page.locator(".discuss-task")
+    assert task.count() == 1
+    assert "Tighten" in task.inner_text()
+    assert "Restored from Codex history" in task.inner_text()
+    assert "2 alternatives" in task.inner_text()
+    assert "&quot;" not in page.locator("#discussLog").inner_text()
+    assert '"kind":"alternatives"' not in page.locator("#discussLog").inner_text()
+    task.get_by_role("button", name="Review changes").click()
+    page.wait_for_selector(".ai-proposal-panel", state="visible")
+    assert quote in page.locator(".ai-proposal-panel").inner_text()
+
+
+def test_legacy_selection_history_restores_as_a_safe_historical_card(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='custom_rewrite']")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SIMULATE_LEGACY_HISTORY")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'ready'",
+        timeout=15_000,
+    )
+
+    server.restart()
+    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
+    page.goto("about:blank")
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'restored'",
+        timeout=15_000,
+    )
+
+    task = page.locator(".discuss-task")
+    assert task.count() == 1
+    assert "Custom rewrite" in task.inner_text()
+    assert "Historical result · reselect the passage to use it safely" in task.inner_text()
+    assert "2 alternatives" in task.inner_text()
+    assert task.get_by_role("button", name="Review changes").count() == 0
+    assert "&quot;" not in page.locator("#discussLog").inner_text()
+    assert '"kind":"alternatives"' not in page.locator("#discussLog").inner_text()
+
+
+def test_managed_stage_tracks_target_after_unrelated_unsaved_insert(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.get_by_role("button", name="Review changes").click()
+    page.wait_for_selector(".pm-ai-proposal-highlight", state="visible")
+    page.evaluate(
+        """() => {
+            if (!_pmEditMode) toggleSceneEdit();
+            _pmView.dispatch(_pmView.state.tr.insertText('Local preface. ', 1));
+            setPmDirty(true);
+        }"""
+    )
+    page.get_by_role("button", name="Stage change").click()
+    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
+    assert "Local preface." in _editor_text(page)
+    assert quote not in _editor_text(page)
+
+
+def test_selection_action_started_from_dirty_editor_uses_live_target(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    page.click("#sceneEditBtn")
+    page.evaluate(
+        """() => {
+            _pmView.dispatch(_pmView.state.tr.insertText('Local preface. ', 1));
+            setPmDirty(true);
+        }"""
+    )
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.get_by_role("button", name="Review changes").click()
+    page.wait_for_selector(".pm-ai-proposal-highlight", state="visible")
+    page.get_by_role("button", name="Stage change").click()
+    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
+    assert "Local preface." in _editor_text(page)
+    assert quote not in _editor_text(page)
+
+
+def test_staged_managed_task_becomes_saved_only_after_normal_scene_save(
+    page: Page, server: ProseviewServer
+):
+    path = server.scene_path()
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.get_by_role("button", name="Review changes").click()
+    page.get_by_role("button", name="Stage change").click()
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'staged'")
+    assert "Rena pressed her thumb" not in path.read_text(encoding="utf-8")
+    page.get_by_role("button", name="Save scene").click()
+    _wait_until(lambda: "Rena pressed her thumb" in path.read_text(encoding="utf-8"))
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'saved'")
+
+
+def test_one_scene_save_marks_every_staged_managed_task_saved(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.get_by_role("button", name="Review changes").click()
+    page.get_by_role("button", name="Stage change").click()
+    page.locator("#aiProposalPanel").get_by_role("button", name="Close", exact=True).click()
+
+    open_selection_menu(page, "dial turned with a dry clatter")
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='clarify']")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-task-status')].some(node => node.textContent === 'ready')",
+        timeout=15_000,
+    )
+    page.get_by_role("button", name="Review changes").click()
+    page.get_by_role("button", name="Stage change").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-task-status.status-staged').length === 2"
+    )
+    page.get_by_role("button", name="Save scene").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-task-status.status-saved').length === 2"
+    )
+
+
+def test_proposal_review_fits_beside_dock_at_200_percent_zoom(
+    page: Page, server: ProseviewServer
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.get_by_role("button", name="Review changes").click()
+    page.wait_for_selector("#aiProposalPanel", state="visible")
+    page.select_option("#modalThemeSelect", "dark")
+    page.evaluate("document.body.style.zoom = '2'")
+    page.wait_for_timeout(150)
+    assert_fully_inside_viewport(page, "#aiProposalPanel")
+    assert page.locator("#discussPanel").bounding_box() is None
+
+
+def test_managed_critique_is_evidence_linked_and_can_transition_to_a_revision(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    task = page.locator(".discuss-task").first
+    assert "The passage delays its strongest image" in task.inner_text()
+    assert quote in task.inner_text()
+    assert page.locator(".ai-proposal-panel:visible").count() == 0
+
+    task.get_by_role("button", name="Propose a revision").click()
+    assert "Rephrase selection" in page.locator("#discussTaskMode").inner_text()
+    assert "Address the critique" in page.input_value("#discussInput")
+
+
+def test_failed_critique_retry_shows_the_bad_citation_and_groups_attempts(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    open_selection_menu(page, "dial turned with a dry clatter")
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'failed'", timeout=15_000)
+    task = page.locator(".discuss-task")
+    assert task.count() == 1
+    assert "a pressure gauge that was never selected" in task.inner_text()
+    task.get_by_role("button", name="Try again").click()
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task')?.querySelector('.discuss-task-status')?.textContent === 'failed'"
+        " && document.querySelector('.discuss-attempts summary')?.textContent.includes('previous attempt')",
+        timeout=15_000,
+    )
+    assert page.locator(".discuss-task").count() == 1
+    attempts = page.locator(".discuss-attempts")
+    assert "1 previous attempt" in attempts.locator("summary").inner_text()
+    attempts.locator("summary").click()
+    assert "Attempt 1 · failed" in attempts.inner_text()
+
+
+def test_selection_assistance_history_can_be_cleared_without_clearing_conversation(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'ready'", timeout=15_000)
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.click("#discussHistoryClear")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-task').length === 0")
+    assert page.locator("#discussPanel").is_visible()
 
 
 def test_terminal_survives_a_page_reload(page: Page, server: ProseviewServer):
@@ -1797,7 +2735,7 @@ def test_accepting_a_proposal_stages_the_edit_without_writing_the_file(page: Pag
 
     open_scene(page, server)
     _raise_proposal(page, server)
-    page.click(".ai-proposal-panel button:has-text('Accept selected')")
+    page.click(".ai-proposal-panel button:has-text('Stage change')")
 
     _wait_until(lambda: REPLACEMENT in _editor_text(page),
                 message="the replacement never appeared in the editor")
@@ -1808,7 +2746,7 @@ def test_accepting_a_proposal_stages_the_edit_without_writing_the_file(page: Pag
 def test_undo_restores_the_original_passage(page: Page, server: ProseviewServer):
     open_scene(page, server)
     _raise_proposal(page, server)
-    page.click(".ai-proposal-panel button:has-text('Accept selected')")
+    page.click(".ai-proposal-panel button:has-text('Stage change')")
     _wait_until(lambda: REPLACEMENT in _editor_text(page))
 
     page.click("button:has-text('Undo')")
@@ -1817,19 +2755,39 @@ def test_undo_restores_the_original_passage(page: Page, server: ProseviewServer)
     assert REPLACEMENT not in _editor_text(page)
 
 
-def test_done_commits_the_accepted_proposal_to_disk(page: Page, server: ProseviewServer):
-    """The end of the bridge: CLI -> SSE -> decoration -> accept -> Done -> file."""
+def test_proposal_undo_restores_original_inline_emphasis(page: Page, server: ProseviewServer):
+    path = open_annotated_scene(page, server)
+    original = path.read_text(encoding="utf-8")
+    server.cli(
+        "propose", "--root", str(server.root), "--file", ANNOTATED_SCENE_REL,
+        "--quote", "shop stayed quiet", "--message", "Test marked selection", "--option", "shop fell silent",
+    )
+    page.wait_for_selector(".ai-proposal-panel", timeout=20_000)
+    page.wait_for_selector(".pm-ai-proposal-highlight", timeout=20_000)
+    page.click(".ai-proposal-panel button:has-text('Stage change')")
+    _wait_until(lambda: "shop fell silent" in _editor_text(page))
+    page.click("button:has-text('Undo')")
+    _wait_until(lambda: page.locator("#sceneProseHost em", has_text="quiet").count() == 1)
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_staged_proposal_requires_normal_save_to_reach_disk(page: Page, server: ProseviewServer):
+    """The bridge stages locally; only the editor's normal Save writes the file."""
     path = server.scene_path()
     original = path.read_text(encoding="utf-8")
 
     open_scene(page, server)
     _raise_proposal(page, server)
-    page.click(".ai-proposal-panel button:has-text('Accept selected')")
+    page.click(".ai-proposal-panel button:has-text('Stage change')")
     _wait_until(lambda: REPLACEMENT in _editor_text(page))
 
-    page.click("button:has-text('Done')")
+    page.click("button:has-text('Close')")
+    page.wait_for_timeout(500)
+    assert path.read_text(encoding="utf-8") == original
+    page.click("#sceneProseHost .ProseMirror")
+    save_scene(page)
     _wait_until(lambda: REPLACEMENT in path.read_text(encoding="utf-8"), timeout=20,
-                message="Done did not persist the accepted proposal")
+                message="normal Save did not persist the staged proposal")
 
     after = path.read_text(encoding="utf-8")
     assert QUOTE not in after

@@ -60,7 +60,7 @@
     <nav id="repoSidebar" class="repo-sidebar">
         <div class="sidebar-header">
             <span class="sidebar-title">Files</span>
-            <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar">&times;</button>
+            <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar" aria-label="Close sidebar">&times;</button>
         </div>
         <div id="sidebarTree" class="repo-tree sidebar-tree"></div>
         <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
@@ -271,11 +271,11 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" class="utility-tab active" role="tab" aria-selected="true">Discuss</button>
+                    <button type="button" class="utility-tab active" role="tab" aria-selected="true">Codex</button>
                     <button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
-                <div class="discuss-heading"><h2 id="discussTitle">Discuss with Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
-                <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Discuss">&times;</button>
+                <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
+                <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Codex panel">&times;</button>
             </header>
             <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
@@ -286,13 +286,18 @@
                     <div id="discussContextOptions" class="discuss-context-options" role="listbox" aria-label="Repository context suggestions"></div>
                 </div>
                 <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
+                <div id="discussTaskMode" class="discuss-task-mode" hidden></div>
+                <div id="discussSkillsPicker" class="discuss-skills-picker" hidden></div>
                 <div class="discuss-composer-actions">
                     <div class="discuss-composer-action-group">
                         <button id="discussContextButton" type="button" class="discuss-context-button" onclick="openDiscussContextPicker()" aria-label="Add files and more" aria-haspopup="listbox" aria-expanded="false" title="Add files and more (@)"><span aria-hidden="true">+</span></button>
-                        <button id="discussNewConversation" type="button" class="discuss-secondary" onclick="openNewDiscussConversationDialog()">New conversation</button>
+                        <button id="discussNewConversation" type="button" class="discuss-secondary" onclick="openNewDiscussConversationDialog()" aria-describedby="discussNewConversationHint">New conversation</button>
+                        <button id="discussHistory" type="button" class="discuss-secondary" onclick="openDiscussHistoryDialog()">History</button>
+                        <button id="discussHistoryClear" type="button" class="discuss-secondary" onclick="clearDiscussHistory()" title="Clear selection results from this conversation">Clear selection results</button>
                     </div>
-                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
+                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop Codex</button>
                 </div>
+                <div id="discussNewConversationHint" class="discuss-control-hint" role="status" hidden></div>
                 <label class="sr-only" for="discussInput">Ask Codex about this document</label>
                 <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
                 <div class="discuss-send-row"><span id="discussHint">Enter to send · Shift+Enter for newline</span><button id="discussSend" type="button" onclick="sendDiscussQuestion()">Send</button></div>
@@ -300,12 +305,21 @@
             </div>
         </div>
     </aside>
-    <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription">
+    <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription" aria-busy="false">
         <form method="dialog">
             <div class="discuss-picker-header"><h2 id="discussNewConversationTitle">Start a new conversation?</h2></div>
-            <p id="discussNewConversationDescription">This clears the conversation shown for this document in Prosview. The previous conversation remains in your Codex history.</p>
+            <p id="discussNewConversationDescription">This starts a blank conversation for this document. You can reopen the current conversation later from History.</p>
+            <p id="discussNewConversationStatus" class="discuss-pending-status" role="status" aria-live="polite" hidden></p>
             <p id="discussNewConversationError" class="discuss-error" role="alert" hidden></p>
-            <div class="discuss-picker-actions"><button id="discussNewConversationCancel" value="cancel" autofocus>Keep conversation</button><button id="discussNewConversationConfirm" value="default" onclick="confirmNewDiscussConversation(event)">Start new conversation</button></div>
+            <div class="discuss-picker-actions"><button id="discussNewConversationCancel" class="discuss-secondary" value="cancel" autofocus>Keep conversation</button><button id="discussNewConversationConfirm" class="discuss-primary" value="default" onclick="confirmNewDiscussConversation(event)">Start new conversation</button></div>
+        </form>
+    </dialog>
+    <dialog id="discussHistoryDialog" class="discuss-context-picker discuss-history-dialog" aria-labelledby="discussHistoryTitle" aria-describedby="discussHistoryDescription" aria-busy="false">
+        <form method="dialog">
+            <div class="discuss-picker-header"><h2 id="discussHistoryTitle">Conversation history</h2><button id="discussHistoryClose" class="discuss-secondary" value="cancel" aria-label="Close conversation history">Done</button></div>
+            <p id="discussHistoryDescription">Conversations for the document you are viewing.</p>
+            <p id="discussHistoryStatus" class="discuss-pending-status" role="status" aria-live="polite">Loading conversations…</p>
+            <div id="discussHistoryList" class="discuss-history-list"></div>
         </form>
     </dialog>
 
@@ -322,7 +336,7 @@
         const sidebarTree = {{ sidebar_tree_json | safe }};
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
-        const discussSessionToken = {{ discuss_session_token_json | safe }};
+        const pageSessionToken = {{ session_token_json | safe }};
         const repoFileByPath = {};
         const repositoryFileByPath = {};
         (function indexRepo(nodes) {

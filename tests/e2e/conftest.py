@@ -46,6 +46,11 @@ SCENE_REL = "ch01/01-opening.md"
 ANNOTATED_SCENE_REL = "ch01/03-annotated.md"
 #: Generated ~10k-word scene used by the large-file cases.
 LARGE_SCENE_REL = "ch03/01-long-haul.md"
+#: Manuscript Markdown nested below a chapter dir, so outside the scene index.
+#: Repo-relative (it is not a scene, so it has no scene path). The name is
+#: deliberately unlike any scene's: search matches files on path substring, and
+#: folders sort above files, so a shared prefix would outrank the real scene.
+NESTED_MANUSCRIPT_NOTE = "manuscript/ch01/review/reader-pass-notes.md"
 
 #: Printed by every stub agent so tests can recognise a real spawn.
 AGENT_MARKER = "PROSEVIEW_FAKE_AGENT"
@@ -214,6 +219,14 @@ def _build_repo(dest: Path) -> Path:
     _seed_skills(dest)
     _seed_annotated_scene(dest)
     _seed_large_scene(dest)
+    # Manuscript Markdown that ``iter_scene_paths`` does not index: it is a
+    # plain repository file the reader must still be able to open.
+    note = dest / NESTED_MANUSCRIPT_NOTE
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(
+        "# Opening review\n\nThe safe reveal lands too early in this draft.\n",
+        encoding="utf-8",
+    )
     scripts = dest / "scripts"
     scripts.mkdir(exist_ok=True)
     (scripts / "check_continuity.py").write_text(
@@ -262,7 +275,7 @@ def _write_agent_stubs(bin_dir: Path) -> Path:
     codex = bin_dir / "codex"
     codex.write_text(
         """#!/usr/bin/env python3
-import json, os, pathlib, sys
+import html, json, os, pathlib, sys
 
 if len(sys.argv) >= 3 and sys.argv[1:3] == ['app-server', 'generate-json-schema']:
     out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1]) / 'v2'
@@ -270,7 +283,7 @@ if len(sys.argv) >= 3 and sys.argv[1:3] == ['app-server', 'generate-json-schema'
     schemas = {
         'ThreadStartParams.json': '{}',
         'ThreadReadParams.json': '{"includeTurns":true}',
-        'TurnStartParams.json': '{"summary":true,"readableRoots":true}',
+        'TurnStartParams.json': '{"summary":true,"readableRoots":true,"outputSchema":true}',
         'TurnInterruptParams.json': '{}',
         'CommandExecutionRequestApproval.json': '{}',
         'CommandExecutionRequestApprovalResponse.json': '{"enum":["accept","acceptForSession","decline","cancel"]}',
@@ -287,14 +300,25 @@ if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
         print('STDIN:' + line.rstrip('\\n'), flush=True)
     raise SystemExit(0)
 
-threads = {}
-next_thread = 0
-next_turn = 0
+state_path = pathlib.Path.cwd() / '.proseview' / 'fake-codex-thread-state.json'
+try:
+    saved_state = json.loads(state_path.read_text(encoding='utf-8'))
+except (FileNotFoundError, OSError, ValueError, TypeError):
+    saved_state = {}
+threads = saved_state.get('threads') if isinstance(saved_state.get('threads'), dict) else {}
+next_thread = int(saved_state.get('next_thread') or 0)
+next_turn = int(saved_state.get('next_turn') or 0)
 pending = {}
 record = pathlib.Path(os.environ['HOME']) / 'fake-codex-received.jsonl'
 
 def emit(value):
     print(json.dumps(value, separators=(',', ':')), flush=True)
+
+def save_state():
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({
+        'threads': threads, 'next_thread': next_thread, 'next_turn': next_turn,
+    }), encoding='utf-8')
 
 for line in sys.stdin:
     message = json.loads(line)
@@ -317,7 +341,14 @@ for line in sys.stdin:
         next_thread += 1
         thread_id = f'thread-{next_thread}'
         threads[thread_id] = {'id': thread_id, 'turns': []}
+        save_state()
         emit({'id': request_id, 'result': {'thread': threads[thread_id]}})
+    elif method == 'skills/list':
+        cwd = params.get('cwds', [os.getcwd()])[0]
+        emit({'id': request_id, 'result': {'data': [{'cwd': cwd, 'skills': [
+            {'name': 'tighten-prose', 'path': str(pathlib.Path(cwd) / 'skills' / 'tighten-prose' / 'SKILL.md'), 'enabled': True, 'description': 'Remove filler from selected prose.', 'interface': {'displayName': 'Tighten Prose', 'shortDescription': 'Remove filler from selected prose.'}, 'dependencies': {}},
+            {'name': 'snippet-continuity', 'path': str(pathlib.Path(cwd) / 'skills' / 'snippet-continuity' / 'SKILL.md'), 'enabled': True, 'description': 'Check story continuity.', 'interface': {'displayName': 'Continuity Check', 'shortDescription': 'Flag contradictions with the story bible.'}, 'dependencies': {}}
+        ], 'errors': []}]}})
     elif method == 'turn/start':
         next_turn += 1
         turn_id = f'turn-{next_turn}'
@@ -329,7 +360,13 @@ for line in sys.stdin:
         record.parent.mkdir(parents=True, exist_ok=True)
         with record.open('a', encoding='utf-8') as handle:
             handle.write(json.dumps({'threadId': thread_id, 'turnId': turn_id, 'params': params}) + '\\n')
-        turn = {'id': turn_id, 'status': 'inProgress', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': prompt}]}]}
+        stored_prompt = prompt
+        if 'SIMULATE_LEGACY_HISTORY' in prompt:
+            stored_prompt = '\\n'.join(
+                line for line in prompt.split('\\n')
+                if not line.startswith('PROSVIEW_SELECTION_ACTION_V1')
+            )
+        turn = {'id': turn_id, 'status': 'inProgress', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': stored_prompt}]}]}
         threads.setdefault(thread_id, {'id': thread_id, 'turns': []})['turns'].append(turn)
         emit({'id': request_id, 'result': {'turn': {'id': turn_id, 'status': 'inProgress'}}})
         if 'CRASH_PROCESS' in prompt:
@@ -346,13 +383,36 @@ for line in sys.stdin:
             pending[approval_id] = (thread_id, turn_id, turn)
             emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'command': 'printf approved', 'cwd': os.getcwd(), 'reason': 'Test approval', 'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
             continue
-        answer = 'Fake answer for ' + turn_id + ': **safe** [link](https://example.test) [unsafe](javascript:alert(1)) <script>hostile()</script>'
+        answer = "Fake answer for " + turn_id + ": Patel's note is **safe** [link](https://example.test) [unsafe](javascript:alert(1)) `&amp;` <script>hostile()</script>"
+        schema = params.get('outputSchema') or {}
+        kind = ((((schema.get('properties') or {}).get('kind') or {}).get('enum') or [None])[0])
+        selection = ''
+        if 'BEGIN USER SELECTION\\n' in prompt and '\\nEND USER SELECTION' in prompt:
+            selection = prompt.split('BEGIN USER SELECTION\\n', 1)[1].split('\\nEND USER SELECTION', 1)[0]
+        if kind == 'alternatives':
+            choices = [
+                {'text': 'Rena pressed her thumb against the envelope seam.', 'rationale': 'Uses a direct physical action.'},
+                {'text': 'Rena held the sealed envelope to the window.', 'rationale': 'Keeps the focus on the object.'},
+                {'text': 'Rena traced the envelope seam with one thumb.', 'rationale': 'Uses a quieter physical beat.'}
+            ]
+            count = schema['properties']['alternatives']['maxItems']
+            answer = json.dumps({'kind': 'alternatives', 'summary': 'A more direct version that preserves the scene beat.', 'alternatives': choices[:count]})
+        elif kind == 'critique':
+            evidence = selection[:120].strip() or 'selected passage'
+            if "yesterday's receipts" in selection:
+                evidence = '“' + evidence.replace("yesterday's", 'yesterday’s').replace(' ', '\\n', 1) + '”'
+            elif 'dial turned with a dry clatter' in selection:
+                evidence = 'a pressure gauge that was never selected'
+            answer = json.dumps({'kind': 'critique', 'findings': [{'observation': 'The passage delays its strongest image.', 'evidence': evidence, 'why_it_matters': 'The opening beat lands less sharply.', 'next_step': 'Lead with the character’s concrete action.'}]})
         emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
-        turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})
+        stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique'} else answer
+        turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': stored_answer}]})
+        save_state()
         emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
         if 'FORGET_THREAD_AFTER_TURN' in prompt:
             threads.pop(thread_id, None)
+            save_state()
     elif method == 'turn/interrupt':
         emit({'id': request_id, 'result': {}})
         emit({'method': 'turn/completed', 'params': {'threadId': params['threadId'], 'turn': {'id': params['turnId'], 'status': 'interrupted'}}})
@@ -362,6 +422,7 @@ for line in sys.stdin:
         answer = 'Approval resolved: ' + decision
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
         turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})
+        save_state()
         emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
 """,
         encoding="utf-8",
@@ -484,12 +545,29 @@ class SseStream:
 class ProseviewServer:
     """Handle on a running ``python -m proseview`` subprocess."""
 
-    def __init__(self, root: Path, port: int, proc: subprocess.Popen, env: dict[str, str]):
+    def __init__(
+        self,
+        root: Path,
+        port: int,
+        proc: subprocess.Popen,
+        env: dict[str, str],
+        bin_dir: Path,
+        home: Path,
+    ):
         self.root = root
         self.port = port
         self.proc = proc
         self.env = env
+        self.bin_dir = bin_dir
+        self.home = home
         self.base_url = f"http://localhost:{port}"
+
+    def restart(self) -> None:
+        """Restart Prosview on the same origin while retaining external Codex history."""
+        _stop_server(self)
+        replacement = _start_server(self.root, self.bin_dir, self.home, port=self.port)
+        self.proc = replacement.proc
+        self.env = replacement.env
 
     # -- paths -------------------------------------------------------------
 
@@ -512,8 +590,22 @@ class ProseviewServer:
     def get_json(self, path: str, timeout: float = 30.0) -> Any:
         return self.get(path, timeout=timeout).json()
 
+    @property
+    def session_token(self) -> str:
+        """The running server's mutation token, as a local client would read it."""
+        runtime = self.root / ".proseview" / "server.json"
+        try:
+            return str(json.loads(runtime.read_text(encoding="utf-8")).get("session_token") or "")
+        except (OSError, ValueError):
+            return ""
+
     def post_json(self, path: str, payload: dict, timeout: float = 30.0, headers: dict[str, str] | None = None) -> Response:
-        request_headers = {"Content-Type": "application/json"}
+        # Mutations are token-gated. Send it by default so tests exercise the
+        # normal path; a test proving rejection passes its own headers.
+        request_headers = {
+            "Content-Type": "application/json",
+            "X-Proseview-Session": self.session_token,
+        }
         request_headers.update(headers or {})
         req = urllib.request.Request(
             self.url(path),
@@ -602,8 +694,8 @@ def _server_env(bin_dir: Path, home: Path) -> dict[str, str]:
     return env
 
 
-def _start_server(root: Path, bin_dir: Path, home: Path) -> ProseviewServer:
-    port = _free_port()
+def _start_server(root: Path, bin_dir: Path, home: Path, *, port: int | None = None) -> ProseviewServer:
+    port = port or _free_port()
     env = _server_env(bin_dir, home)
     proc = subprocess.Popen(
         [
@@ -619,7 +711,7 @@ def _start_server(root: Path, bin_dir: Path, home: Path) -> ProseviewServer:
         stderr=subprocess.STDOUT,
         text=True,
     )
-    server = ProseviewServer(root, port, proc, env)
+    server = ProseviewServer(root, port, proc, env, bin_dir, home)
 
     deadline = time.monotonic() + BOOT_TIMEOUT
     while time.monotonic() < deadline:

@@ -154,20 +154,28 @@
             _pmView.focus();
         }
 
-        function saveSceneEdit() {
-            if (!_pmView || !_pmEditMode) return;
-            if (!_pmDirty) return;
+        function serializeSceneEditorMarkdown() {
+            if (!_pmView || !window._PM) return '';
             var PM = window._PM;
-            var p = paths[curIdx];
-
             var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
                 annotation: function(state, node) {
                     state.write(node.attrs.raw);
                     state.closeBlock(node);
                 }
             });
-            var serializer = new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks);
-            var markdown = serializer.serialize(_pmView.state.doc);
+            return new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks).serialize(_pmView.state.doc);
+        }
+
+        function currentSceneLiveDocumentSnapshot() {
+            if (!_pmView || !_pmDirty || !_pmEditMode || _pmOpenMtime === null || _pmOpenMtime === undefined) return null;
+            return {content: serializeSceneEditorMarkdown(), base_mtime: _pmOpenMtime};
+        }
+
+        function saveSceneEdit() {
+            if (!_pmView || !_pmEditMode) return;
+            if (!_pmDirty) return;
+            var p = paths[curIdx];
+            var markdown = serializeSceneEditorMarkdown();
 
             // Stay in edit mode while the request is in flight; reflect
             // progress in the pill instead of yanking the bar away.
@@ -186,7 +194,7 @@
             var absPath = meta[p] && meta[p].abs_path;
             fetch('/save-scene', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: pvHeaders(),
                 body: JSON.stringify({ abs_path: absPath, content: markdown, open_mtime: _pmOpenMtime })
             }).then(function(r) {
                 if (r.status === 409) {
@@ -201,6 +209,7 @@
                 if (data.mtime) _pmOpenMtime = data.mtime;
                 contents[p] = markdown;
                 setPmSaved();
+                if (typeof aiMarkStagedProposalSaved === 'function') aiMarkStagedProposalSaved();
                 cancelSceneEdit();
             }).catch(function(err) {
                 setPmDirty(true);
@@ -209,6 +218,7 @@
         }
 
         function cancelSceneEdit() {
+            if (typeof aiDiscardStagedProposals === 'function') aiDiscardStagedProposals();
             _pmEditMode = false;
             setPmDirty(false);
             _applyEditingProseClass();

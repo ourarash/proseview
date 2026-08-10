@@ -4,6 +4,11 @@
         let pillCurrentX = 0, pillCurrentY = 0;
         let currentSelectionText = '';
         let currentSelectionRange = null;
+        let selectionMemoryPreserved = false;
+        let selectionPillFallbackAnchor = null;
+        let selectionPillPositionFrame = null;
+        let pendingSelectionActionContext = null;
+        let lastValidSelectionActionContext = null;
 
         function nodeInsideElement(el, node) {
             if (!el || !node) return false;
@@ -25,6 +30,13 @@
             }
             currentSelectionText = text;
             currentSelectionRange = range.cloneRange();
+            selectionMemoryPreserved = false;
+            lastValidSelectionActionContext = {
+                selection: text,
+                range: currentSelectionFlatRange(),
+                liveDocument: typeof currentSceneLiveDocumentSnapshot === 'function'
+                    ? currentSceneLiveDocumentSnapshot() : null,
+            };
             return true;
         }
 
@@ -52,7 +64,31 @@
         function clearSceneSelectionMemory() {
             currentSelectionText = '';
             currentSelectionRange = null;
+            selectionPillFallbackAnchor = null;
+            selectionMemoryPreserved = false;
             clearPinnedSelectionHighlight();
+        }
+
+        function currentSelectionFlatRange() {
+            if (!currentSelectionRange || !_pmView || typeof aiDocTextMap !== 'function') return null;
+            try {
+                var from = _pmView.posAtDOM(currentSelectionRange.startContainer, currentSelectionRange.startOffset);
+                var to = _pmView.posAtDOM(currentSelectionRange.endContainer, currentSelectionRange.endOffset);
+                var map = aiDocTextMap(_pmView.state.doc);
+                var start = -1, end = -1;
+                for (var i = 0; i < map.posMap.length; i++) {
+                    var pos = map.posMap[i];
+                    if (pos === null) continue;
+                    if (pos >= from && pos < to) {
+                        if (start < 0) start = i;
+                        end = i + 1;
+                    }
+                }
+                if (start < 0 || end <= start) return null;
+                var selected = map.text.slice(start, end).replace(/\s+/g, ' ').trim();
+                if (selected !== currentSelectionText.replace(/\s+/g, ' ').trim()) return null;
+                return {start: start, end: end};
+            } catch (e) { return null; }
         }
 
         // ── Pinned scene selection highlight ─────────────────────────────
@@ -83,6 +119,215 @@
             _pinnedHighlight = null;
         }
 
+        function selectionViewportMetrics() {
+            const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+            const viewport = window.visualViewport;
+            const left = viewport ? viewport.offsetLeft : 0;
+            const top = viewport ? viewport.offsetTop : 0;
+            const width = viewport ? viewport.width : window.innerWidth;
+            const height = viewport ? viewport.height : window.innerHeight;
+            return {zoom: zoom, left: left, top: top, right: left + width, bottom: top + height};
+        }
+
+        function clampSelectionCoordinate(value, minimum, maximum) {
+            if (maximum < minimum) return minimum;
+            return Math.max(minimum, Math.min(maximum, value));
+        }
+
+        function currentSelectionAnchorRect() {
+            if (
+                currentSelectionRange &&
+                document.body.contains(currentSelectionRange.startContainer)
+            ) {
+                const rect = currentSelectionRange.getBoundingClientRect();
+                if (rect && (rect.width || rect.height)) return rect;
+            }
+            return selectionPillFallbackAnchor;
+        }
+
+        function visibleSelectionPillSurface() {
+            for (const id of ['selectionTodoForm', 'selectionNoteForm']) {
+                const form = document.getElementById(id);
+                if (form && !form.hidden) return form;
+            }
+            const menu = document.getElementById('selectionPillMenu');
+            return menu && !menu.hidden ? menu : null;
+        }
+
+        function positionSelectionPillSurface(metrics) {
+            const pill = document.getElementById('selectionPill');
+            const trigger = document.getElementById('selectionPillBtn');
+            const surface = visibleSelectionPillSurface();
+            if (!pill || !trigger || !surface || pill.style.display === 'none') return;
+
+            const gap = 8;
+            const triggerRect = trigger.getBoundingClientRect();
+            surface.style.top = 'auto';
+            surface.style.bottom = 'auto';
+            surface.style.left = 'auto';
+            surface.style.right = 'auto';
+            surface.style.maxHeight = 'none';
+            surface.style.minWidth = Math.min(190, Math.max(120, (metrics.right - metrics.left - gap * 2) / metrics.zoom)) + 'px';
+            surface.style.maxWidth = Math.max(120, (metrics.right - metrics.left - gap * 2) / metrics.zoom) + 'px';
+
+            const naturalHeight = surface.scrollHeight * metrics.zoom;
+            const spaceBelow = Math.max(0, metrics.bottom - triggerRect.bottom - gap);
+            const spaceAbove = Math.max(0, triggerRect.top - metrics.top - gap);
+            const openBelow = spaceBelow >= naturalHeight || spaceBelow >= spaceAbove;
+            const availableHeight = openBelow ? spaceBelow : spaceAbove;
+            surface.style.maxHeight = Math.max(48, availableHeight / metrics.zoom) + 'px';
+            if (openBelow) surface.style.top = 'calc(100% + 4px)';
+            else surface.style.bottom = 'calc(100% + 4px)';
+
+            const surfaceWidth = surface.offsetWidth * metrics.zoom;
+            if (triggerRect.right - surfaceWidth >= metrics.left + gap) surface.style.right = '0';
+            else surface.style.left = '0';
+        }
+
+        function positionSelectionPill() {
+            selectionPillPositionFrame = null;
+            const pill = document.getElementById('selectionPill');
+            const trigger = document.getElementById('selectionPillBtn');
+            if (!pill || !trigger || pill.style.display === 'none') return;
+            const anchor = currentSelectionAnchorRect();
+            if (!anchor) return;
+
+            const metrics = selectionViewportMetrics();
+            const gap = 8;
+            const triggerRect = trigger.getBoundingClientRect();
+            const triggerWidth = triggerRect.width;
+            const triggerHeight = triggerRect.height;
+
+            let renderedLeft = anchor.right + gap;
+            if (renderedLeft + triggerWidth > metrics.right - gap) {
+                renderedLeft = anchor.left - triggerWidth - gap;
+            }
+            renderedLeft = clampSelectionCoordinate(
+                renderedLeft,
+                metrics.left + gap,
+                metrics.right - triggerWidth - gap
+            );
+
+            let renderedTop = anchor.bottom + gap;
+            if (renderedTop + triggerHeight > metrics.bottom - gap) {
+                renderedTop = anchor.top - triggerHeight - gap;
+            }
+            renderedTop = clampSelectionCoordinate(
+                renderedTop,
+                metrics.top + gap,
+                metrics.bottom - triggerHeight - gap
+            );
+
+            pillCurrentX = renderedLeft;
+            pillCurrentY = renderedTop;
+            pill.style.left = renderedLeft / metrics.zoom + 'px';
+            pill.style.top = renderedTop / metrics.zoom + 'px';
+            positionSelectionPillSurface(metrics);
+        }
+
+        function scheduleSelectionPillPosition() {
+            if (selectionPillPositionFrame !== null) return;
+            selectionPillPositionFrame = requestAnimationFrame(positionSelectionPill);
+        }
+
+        function visibleSelectionMenuItems() {
+            const menu = document.getElementById('selectionPillMenu');
+            if (!menu) return [];
+            return Array.from(menu.querySelectorAll('.selection-pill-action')).filter(function(item) {
+                return !item.hidden && item.getClientRects().length > 0 && !item.disabled;
+            });
+        }
+
+        function selectionKeyboardItems() {
+            return visibleSelectionMenuItems();
+        }
+
+        function setSelectionMenuExpanded(expanded, options) {
+            options = options || {};
+            const trigger = document.getElementById('selectionPillBtn');
+            const menu = document.getElementById('selectionPillMenu');
+            if (!trigger || !menu) return;
+            if (!expanded) collapseSelectionPillMenu();
+            else {
+                ['selectionTodoForm', 'selectionNoteForm'].forEach(function(id) {
+                    const form = document.getElementById(id);
+                    if (form) form.hidden = true;
+                });
+                ['selectionTodoBtn', 'selectionNoteBtn'].forEach(function(id) {
+                    const opener = document.getElementById(id);
+                    if (opener) opener.setAttribute('aria-expanded', 'false');
+                });
+                menu.hidden = false;
+            }
+            trigger.setAttribute('aria-expanded', String(expanded));
+            if (expanded) {
+                if (currentSelectionRange) pinSelectionHighlight(currentSelectionRange);
+                positionSelectionPill();
+                if (options.focusFirst) {
+                    const items = visibleSelectionMenuItems();
+                    if (items.length) items[0].focus({preventScroll: true});
+                }
+            } else if (options.restoreFocus && pillIsVisible()) {
+                trigger.focus({preventScroll: true});
+            }
+        }
+
+        function pillIsVisible() {
+            const pill = document.getElementById('selectionPill');
+            return !!(
+                document.documentElement.dataset.view === 'scene' &&
+                pill &&
+                pill.style.display !== 'none' &&
+                pill.getClientRects().length > 0
+            );
+        }
+
+        function openSelectionForm(formId, inputId, openerId) {
+            const menu = document.getElementById('selectionPillMenu');
+            const trigger = document.getElementById('selectionPillBtn');
+            const form = document.getElementById(formId);
+            const input = document.getElementById(inputId);
+            const opener = document.getElementById(openerId);
+            if (!menu || !trigger || !form || !input || !opener) return;
+            [
+                ['selectionTodoForm', 'selectionTodoBtn'],
+                ['selectionNoteForm', 'selectionNoteBtn'],
+            ].forEach(function(pair) {
+                if (pair[0] === formId) return;
+                const otherForm = document.getElementById(pair[0]);
+                const otherButton = document.getElementById(pair[1]);
+                if (otherForm) otherForm.hidden = true;
+                if (otherButton) otherButton.setAttribute('aria-expanded', 'false');
+            });
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            form.hidden = false;
+            opener.setAttribute('aria-expanded', 'true');
+            positionSelectionPill();
+            input.focus({preventScroll: true});
+            input.scrollIntoView({block: 'nearest'});
+            scheduleSelectionPillPosition();
+        }
+
+        function closeSelectionForm(formId, openerId, options) {
+            options = options || {};
+            const menu = document.getElementById('selectionPillMenu');
+            const trigger = document.getElementById('selectionPillBtn');
+            const form = document.getElementById(formId);
+            const opener = document.getElementById(openerId);
+            if (!menu || !trigger || !form || !opener) return;
+            form.hidden = true;
+            opener.setAttribute('aria-expanded', 'false');
+            menu.hidden = false;
+            trigger.setAttribute('aria-expanded', 'true');
+            if (options.clearInput) {
+                const input = form.querySelector('textarea');
+                if (input) input.value = '';
+            }
+            positionSelectionPill();
+            if (options.restoreFocus) opener.focus({preventScroll: true});
+        }
+
         function getOrCreatePill() {
             let pill = document.getElementById('selectionPill');
             if (pill) return pill;
@@ -90,41 +335,55 @@
             pill.id = 'selectionPill';
             pill.className = 'selection-pill';
             pill.innerHTML =
-                '<button class="selection-pill-btn" id="selectionPillBtn" type="button">···</button>' +
-                '<div class="selection-pill-menu" id="selectionPillMenu" hidden>' +
-                    '<button class="selection-pill-action" id="selectionEditorBtn" type="button">↗ Open in editor at line</button>' +
-                    '<button class="selection-pill-action" id="selectionTodoBtn" type="button">📝 Add TODO</button>' +
-                    '<div class="selection-todo-form" id="selectionTodoForm" hidden>' +
-                        '<textarea class="selection-todo-textarea" id="selectionTodoText" placeholder="Describe what needs to change..."></textarea>' +
-                        '<div class="selection-todo-actions">' +
-                            '<button class="selection-todo-copy-btn" id="selectionTodoCopy" type="button">Add to file</button>' +
-                            '<button class="selection-todo-cancel-btn" id="selectionTodoCancel" type="button">Cancel</button>' +
-                        '</div>' +
+                '<button class="selection-pill-btn" id="selectionPillBtn" type="button" aria-label="Work with selected text" aria-haspopup="menu" aria-expanded="false" aria-controls="selectionPillMenu">···</button>' +
+                '<div class="selection-pill-menu" id="selectionPillMenu" role="menu" aria-label="Work with selected text" hidden>' +
+                    '<div id="selectionMenuRoot" role="none">' +
+                        '<button class="selection-pill-action" id="selectionRewriteBtn" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-controls="selectionRewriteMenu" aria-expanded="false">Rewrite <span aria-hidden="true">›</span></button>' +
+                        '<button class="selection-pill-action" id="selectionCritiqueBtn" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-controls="selectionCritiqueMenu" aria-expanded="false">Critique <span aria-hidden="true">›</span></button>' +
+                        '<button class="selection-pill-action" id="selectionCodexBtn" type="button" role="menuitem" tabindex="-1">Ask about selection</button>' +
+                        '<div class="selection-pill-separator" role="separator"></div>' +
+                        '<button class="selection-pill-action" id="selectionSkillsBtn" type="button" role="menuitem" tabindex="-1">Skills…</button>' +
+                        '<button class="selection-pill-action" id="selectionTodoBtn" type="button" role="menuitem" tabindex="-1" aria-controls="selectionTodoForm" aria-expanded="false">Add TODO</button>' +
+                        '<button class="selection-pill-action" id="selectionNoteBtn" type="button" role="menuitem" tabindex="-1" aria-controls="selectionNoteForm" aria-expanded="false">Add Note</button>' +
+                        '<button class="selection-pill-action" id="selectionEditorBtn" type="button" role="menuitem" tabindex="-1">Open in editor at line</button>' +
                     '</div>' +
-                    (SKILLS.length ? '<div style="position:relative"><button class="selection-pill-action" id="selectionSkillsBtn" type="button">&#x2728; Skills &#x25BE;</button><div id="selectionSkillsMenu" class="skills-dropdown" style="display:none;left:100%;top:0;bottom:auto;right:auto;"></div></div>' : '') +
-                    '<button class="selection-pill-action" id="selectionCodexBtn" type="button">&#x26A1; Run in Codex</button>' +
-                    '<div class="selection-codex-form" id="selectionCodexForm" hidden>' +
-                        '<textarea class="selection-todo-textarea" id="selectionCodexInstruction" placeholder="What should Codex do with this passage?" rows="3"></textarea>' +
-                        '<label class="selection-codex-autoapprove"><input type="checkbox" id="selectionCodexAutoApprove"> Auto-approve changes</label>' +
-                        '<div class="selection-todo-actions">' +
-                            '<button class="selection-todo-copy-btn" id="selectionCodexRun" type="button">Run</button>' +
-                            '<button class="selection-todo-cancel-btn" id="selectionCodexCancel" type="button">Cancel</button>' +
-                        '</div>' +
+                    '<div id="selectionRewriteMenu" role="none" hidden>' +
+                        '<button class="selection-pill-action selection-menu-back" type="button" role="menuitem" tabindex="-1" data-selection-back>← Rewrite</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="rephrase">Rephrase <small>3 options</small></button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="tighten">Tighten <small>2 options</small></button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="clarify">Clarify <small>2 options</small></button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="sensory_detail">Add sensory detail</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="show_moment">Show the moment</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="custom_rewrite" data-selection-configure="true">Custom rewrite…</button>' +
                     '</div>' +
-                    '<button class="selection-pill-action" id="selectionNoteBtn" type="button">📌 Add Note</button>' +
-                    '<div class="selection-todo-form" id="selectionNoteForm" hidden>' +
-                        '<select class="selection-note-tag" id="selectionNoteTag">' +
-                            '<option value="note">note</option>' +
-                            '<option value="continuity">continuity</option>' +
-                            '<option value="character">character</option>' +
-                            '<option value="theme">theme</option>' +
-                            '<option value="question">question</option>' +
-                        '</select>' +
-                        '<textarea class="selection-todo-textarea" id="selectionNoteText" placeholder="Editorial observation..."></textarea>' +
-                        '<div class="selection-todo-actions">' +
-                            '<button class="selection-todo-copy-btn" id="selectionNoteCopy" type="button">Add to file</button>' +
-                            '<button class="selection-todo-cancel-btn" id="selectionNoteCancel" type="button">Cancel</button>' +
-                        '</div>' +
+                    '<div id="selectionCritiqueMenu" role="none" hidden>' +
+                        '<button class="selection-pill-action selection-menu-back" type="button" role="menuitem" tabindex="-1" data-selection-back>← Critique</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="quick_critique">Quick critique</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="voice_character">Voice and character</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="pacing_tension">Pacing and tension</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="clarity_flow">Clarity and flow</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="continuity">Continuity check</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="selection-pill-form selection-todo-form" id="selectionTodoForm" role="dialog" aria-label="Add TODO to selected text" hidden>' +
+                    '<textarea class="selection-todo-textarea" id="selectionTodoText" aria-label="TODO text" placeholder="Describe what needs to change..."></textarea>' +
+                    '<div class="selection-todo-actions">' +
+                        '<button class="selection-todo-copy-btn" id="selectionTodoCopy" type="button">Add to file</button>' +
+                        '<button class="selection-todo-cancel-btn" id="selectionTodoCancel" type="button">Cancel</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="selection-pill-form selection-todo-form" id="selectionNoteForm" role="dialog" aria-label="Add note to selected text" hidden>' +
+                    '<select class="selection-note-tag" id="selectionNoteTag" aria-label="Note tag">' +
+                        '<option value="note">note</option>' +
+                        '<option value="continuity">continuity</option>' +
+                        '<option value="character">character</option>' +
+                        '<option value="theme">theme</option>' +
+                        '<option value="question">question</option>' +
+                    '</select>' +
+                    '<textarea class="selection-todo-textarea" id="selectionNoteText" aria-label="Note text" placeholder="Editorial observation..."></textarea>' +
+                    '<div class="selection-todo-actions">' +
+                        '<button class="selection-todo-copy-btn" id="selectionNoteCopy" type="button">Add to file</button>' +
+                        '<button class="selection-todo-cancel-btn" id="selectionNoteCancel" type="button">Cancel</button>' +
                     '</div>' +
                 '</div>';
             document.body.appendChild(pill);
@@ -133,13 +392,7 @@
                 e.stopPropagation();
                 const menu = document.getElementById('selectionPillMenu');
                 const isOpen = !menu.hidden;
-                menu.hidden = isOpen;
-                if (!isOpen) {
-                    document.getElementById('selectionTodoForm').hidden = true;
-                    document.getElementById('selectionTodoText').value = '';
-                    document.getElementById('selectionNoteForm').hidden = true;
-                    document.getElementById('selectionNoteText').value = '';
-                }
+                setSelectionMenuExpanded(!isOpen, {focusFirst: !isOpen});
             });
 
             document.getElementById('selectionEditorBtn').addEventListener('click', function(e) {
@@ -161,8 +414,11 @@
 
             document.getElementById('selectionTodoBtn').addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('selectionTodoForm').hidden = false;
-                document.getElementById('selectionTodoText').focus();
+                openSelectionForm(
+                    'selectionTodoForm',
+                    'selectionTodoText',
+                    'selectionTodoBtn'
+                );
             });
 
             document.getElementById('selectionTodoCopy').addEventListener('click', function(e) {
@@ -183,7 +439,7 @@
                 btn.disabled = true;
                 fetch('/insert-todo', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: pvHeaders(),
                     body: JSON.stringify({
                         abs_path: m.abs_path,
                         selection_text: currentSelectionText,
@@ -206,14 +462,19 @@
 
             document.getElementById('selectionTodoCancel').addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('selectionTodoText').value = '';
-                document.getElementById('selectionTodoForm').hidden = true;
+                closeSelectionForm('selectionTodoForm', 'selectionTodoBtn', {
+                    clearInput: true,
+                    restoreFocus: true,
+                });
             });
 
             document.getElementById('selectionNoteBtn').addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('selectionNoteForm').hidden = false;
-                document.getElementById('selectionNoteText').focus();
+                openSelectionForm(
+                    'selectionNoteForm',
+                    'selectionNoteText',
+                    'selectionNoteBtn'
+                );
             });
 
             document.getElementById('selectionNoteCopy').addEventListener('click', function(e) {
@@ -235,7 +496,7 @@
                 btn.disabled = true;
                 fetch('/add-note', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: pvHeaders(),
                     body: JSON.stringify({
                         abs_path: m.abs_path,
                         selection_text: currentSelectionText,
@@ -259,81 +520,98 @@
 
             document.getElementById('selectionNoteCancel').addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('selectionNoteText').value = '';
-                document.getElementById('selectionNoteForm').hidden = true;
+                closeSelectionForm('selectionNoteForm', 'selectionNoteBtn', {
+                    clearInput: true,
+                    restoreFocus: true,
+                });
             });
 
-            if (SKILLS.length) {
-                document.getElementById('selectionSkillsBtn').addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    var menu = document.getElementById('selectionSkillsMenu');
-                    var isOpen = menu.style.display !== 'none';
-                    menu.style.display = isOpen ? 'none' : 'block';
-                    if (!isOpen) {
-                        menu.innerHTML = '';
-                        var snippetSkills = SKILLS.filter(function(s) { return s.type === 'snippet'; });
-                        snippetSkills.forEach(function(skill) {
-                            var btn = document.createElement('button');
-                            btn.className = 'skills-dropdown-item';
-                            btn.textContent = skill.display_name;
-                            btn.title = skill.short_description;
-                            btn.onclick = function(ev) {
-                                ev.stopPropagation();
-                                menu.style.display = 'none';
-                                if (curIdx < 0) return;
-                                var p = paths[curIdx], m = meta[p];
-                                if (!m) return;
-                                var sel = currentSelectionText.trim();
-                                var prompt = skill.default_prompt
-                                    + (sel ? '\n\n"' + sel + '"' : '')
-                                    + '\n\nin @' + p;
-                                hideSelectionPill();
-                                openCodexTerminal(prompt, m.abs_path, false, p);
-                            };
-                            menu.appendChild(btn);
-                        });
-                    }
-                });
+            function showSelectionSubmenu(id) {
+                pendingSelectionActionContext = currentSelectionText ? {
+                    selection: currentSelectionText.trim(),
+                    range: currentSelectionFlatRange(),
+                    liveDocument: typeof currentSceneLiveDocumentSnapshot === 'function'
+                        ? currentSceneLiveDocumentSnapshot() : null,
+                } : lastValidSelectionActionContext;
+                var opener = document.getElementById(id === 'selectionRewriteMenu' ? 'selectionRewriteBtn' : 'selectionCritiqueBtn');
+                document.getElementById('selectionMenuRoot').hidden = true;
+                document.getElementById('selectionRewriteMenu').hidden = id !== 'selectionRewriteMenu';
+                document.getElementById('selectionCritiqueMenu').hidden = id !== 'selectionCritiqueMenu';
+                document.getElementById('selectionRewriteBtn').setAttribute('aria-expanded', String(id === 'selectionRewriteMenu'));
+                document.getElementById('selectionCritiqueBtn').setAttribute('aria-expanded', String(id === 'selectionCritiqueMenu'));
+                document.getElementById('selectionPillMenu').setAttribute('aria-label', opener.textContent.trim() + ' actions');
+                positionSelectionPill();
+                var first = document.querySelector('#' + id + ' .selection-pill-action');
+                if (first) first.focus({preventScroll: true});
             }
+
+            function managedSelectionIsCurrent() {
+                return !!(currentSelectionText && currentSelectionRange);
+            }
+
+            function handoffSelectionToDiscuss(options) {
+                var frozen = pendingSelectionActionContext;
+                var selection = frozen ? frozen.selection : currentSelectionText.trim();
+                var selectionRange = frozen ? frozen.range : currentSelectionFlatRange();
+                var liveDocument = frozen ? frozen.liveDocument : (
+                    typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null
+                );
+                if (currentSelectionRange) pinSelectionHighlight(currentSelectionRange);
+                selectionMemoryPreserved = true;
+                setSelectionMenuExpanded(false, {restoreFocus: true});
+                openDiscussForSelection(document.getElementById('selectionPillBtn'), selection, Object.assign({selectionRange: selectionRange, liveDocument: liveDocument}, options || {}));
+                pendingSelectionActionContext = null;
+            }
+
+            document.getElementById('selectionRewriteBtn').addEventListener('click', function(e) {
+                e.stopPropagation(); showSelectionSubmenu('selectionRewriteMenu');
+            });
+            document.getElementById('selectionCritiqueBtn').addEventListener('click', function(e) {
+                e.stopPropagation(); showSelectionSubmenu('selectionCritiqueMenu');
+            });
+            pill.querySelectorAll('[data-selection-back]').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (!managedSelectionIsCurrent()) return;
+                    document.getElementById('selectionMenuRoot').hidden = false;
+                    document.getElementById('selectionRewriteMenu').hidden = true;
+                    document.getElementById('selectionCritiqueMenu').hidden = true;
+                    document.getElementById('selectionRewriteBtn').setAttribute('aria-expanded', 'false');
+                    document.getElementById('selectionCritiqueBtn').setAttribute('aria-expanded', 'false');
+                    document.getElementById('selectionPillMenu').setAttribute('aria-label', 'Work with selected text');
+                    pendingSelectionActionContext = null;
+                    positionSelectionPill();
+                    var target = button.closest('#selectionRewriteMenu') ? 'selectionRewriteBtn' : 'selectionCritiqueBtn';
+                    document.getElementById(target).focus({preventScroll: true});
+                });
+            });
+            pill.querySelectorAll('[data-selection-action]').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var actionId = button.dataset.selectionAction;
+                    handoffSelectionToDiscuss({actionId: actionId, runImmediately: button.dataset.selectionConfigure !== 'true'});
+                });
+            });
+
+            document.getElementById('selectionSkillsBtn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!managedSelectionIsCurrent()) return;
+                handoffSelectionToDiscuss({showSkills: true});
+            });
 
             document.getElementById('selectionCodexBtn').addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('selectionCodexForm').hidden = false;
-                document.getElementById('selectionCodexInstruction').focus();
-            });
-
-            document.getElementById('selectionCodexRun').addEventListener('click', function(e) {
-                e.stopPropagation();
-                if (curIdx < 0) return;
-                const p = paths[curIdx];
-                const m = meta[p];
-                if (!m) return;
-                const sel = currentSelectionText.trim();
-                if (!sel) {
-                    alert('Select some text in the scene first.');
-                    return;
-                }
-                const instruction = document.getElementById('selectionCodexInstruction').value.trim();
-                const autoApprove = document.getElementById('selectionCodexAutoApprove').checked;
-                const fullPrompt = instruction
-                    ? 'Run ' + instruction + ' on "' + sel + '" in @' + p
-                    : 'Review "' + sel + '" in @' + p;
-                hideSelectionPill();
-                openCodexTerminal(fullPrompt, m.abs_path, autoApprove, p);
-            });
-
-            document.getElementById('selectionCodexCancel').addEventListener('click', function(e) {
-                e.stopPropagation();
-                document.getElementById('selectionCodexInstruction').value = '';
-                document.getElementById('selectionCodexForm').hidden = true;
+                if (!managedSelectionIsCurrent()) return;
+                handoffSelectionToDiscuss({});
             });
 
             // Drag: only when clicking the pill background (not a button/textarea)
             pill.addEventListener('mousedown', function(e) {
                 if (e.target.closest('button') || e.target.tagName === 'TEXTAREA') return;
+                const rect = pill.getBoundingClientRect();
                 pillDragging = true;
-                pillDragStartX = e.clientX - pillCurrentX;
-                pillDragStartY = e.clientY - pillCurrentY;
+                pillDragStartX = e.clientX - rect.left;
+                pillDragStartY = e.clientY - rect.top;
                 e.preventDefault();
             });
 
@@ -342,34 +620,201 @@
 
         function collapseSelectionPillMenu() {
             const menu = document.getElementById('selectionPillMenu');
-            if (menu) menu.hidden = true;
-            ['selectionTodoForm', 'selectionNoteForm', 'selectionCodexForm'].forEach(function(id) {
+            if (menu) {
+                menu.hidden = true;
+                menu.setAttribute('role', 'menu');
+                menu.setAttribute('aria-label', 'Work with selected text');
+            }
+            const root = document.getElementById('selectionMenuRoot');
+            const rewrite = document.getElementById('selectionRewriteMenu');
+            const critique = document.getElementById('selectionCritiqueMenu');
+            if (root) root.hidden = false;
+            if (rewrite) rewrite.hidden = true;
+            if (critique) critique.hidden = true;
+            ['selectionRewriteBtn', 'selectionCritiqueBtn'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.setAttribute('aria-expanded', 'false');
+            });
+            ['selectionTodoForm', 'selectionNoteForm'].forEach(function(id) {
                 const el = document.getElementById(id);
                 if (el) el.hidden = true;
             });
-            ['selectionTodoText', 'selectionNoteText', 'selectionCodexInstruction'].forEach(function(id) {
+            ['selectionTodoText', 'selectionNoteText'].forEach(function(id) {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
-            const skillsMenu = document.getElementById('selectionSkillsMenu');
-            if (skillsMenu) skillsMenu.style.display = 'none';
+            ['selectionTodoBtn', 'selectionNoteBtn'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.setAttribute('aria-expanded', 'false');
+            });
+            const trigger = document.getElementById('selectionPillBtn');
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
         }
 
         function showSelectionPill(x, y, selText) {
             currentSelectionText = selText || '';
             const pill = getOrCreatePill();
             collapseSelectionPillMenu();
-            pillCurrentX = Math.min(x, window.innerWidth - 160);
-            pillCurrentY = Math.min(y + 8, window.innerHeight - 50);
-            pill.style.left = pillCurrentX + 'px';
-            pill.style.top = pillCurrentY + 'px';
+            selectionPillFallbackAnchor = {left: x, right: x, top: y, bottom: y};
             pill.style.display = 'flex';
+            positionSelectionPill();
         }
 
         function hideSelectionPill() {
             const pill = document.getElementById('selectionPill');
             if (pill) pill.style.display = 'none';
             collapseSelectionPillMenu();
+            clearPinnedSelectionHighlight();
+        }
+
+        function openSelectionCommandMenuFromKeyboard() {
+            if (document.documentElement.dataset.view !== 'scene') return false;
+            const liveSelection = window.getSelection ? window.getSelection() : null;
+            if (liveSelection && !liveSelection.isCollapsed && liveSelection.rangeCount) {
+                if (!rememberSceneSelection(liveSelection)) return false;
+            } else if (!selectionMemoryPreserved) {
+                clearSceneSelectionMemory();
+                return false;
+            }
+            if (!currentSelectionText || !currentSelectionRange) return false;
+            if (
+                !document.body.contains(currentSelectionRange.startContainer) ||
+                !document.body.contains(currentSelectionRange.endContainer)
+            ) {
+                clearSceneSelectionMemory();
+                return false;
+            }
+            const rect = currentSelectionRange.getBoundingClientRect();
+            if (!pillIsVisible()) showSelectionPill(rect.right, rect.bottom, currentSelectionText);
+            setSelectionMenuExpanded(true, {focusFirst: true});
+            return true;
+        }
+
+        function closeVisibleSelectionSubsurface() {
+            const root = document.getElementById('selectionMenuRoot');
+            const rewrite = document.getElementById('selectionRewriteMenu');
+            const critique = document.getElementById('selectionCritiqueMenu');
+            if (root && root.hidden && ((rewrite && !rewrite.hidden) || (critique && !critique.hidden))) {
+                const wasRewrite = !!(rewrite && !rewrite.hidden);
+                root.hidden = false;
+                if (rewrite) rewrite.hidden = true;
+                if (critique) critique.hidden = true;
+                document.getElementById('selectionRewriteBtn').setAttribute('aria-expanded', 'false');
+                document.getElementById('selectionCritiqueBtn').setAttribute('aria-expanded', 'false');
+                document.getElementById('selectionPillMenu').setAttribute('aria-label', 'Work with selected text');
+                positionSelectionPill();
+                document.getElementById(wasRewrite ? 'selectionRewriteBtn' : 'selectionCritiqueBtn').focus({preventScroll: true});
+                return true;
+            }
+            const forms = [
+                ['selectionTodoForm', 'selectionTodoBtn'],
+                ['selectionNoteForm', 'selectionNoteBtn'],
+            ];
+            for (const pair of forms) {
+                const form = document.getElementById(pair[0]);
+                if (form && !form.hidden) {
+                    closeSelectionForm(pair[0], pair[1], {restoreFocus: true});
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function focusableSelectionDialogControls(dialog) {
+            if (!dialog) return [];
+            return Array.from(dialog.querySelectorAll(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )).filter(function(control) {
+                return control.getClientRects().length > 0 && !control.hidden;
+            });
+        }
+
+        function moveFocusBeyondSelectionPill(reverse) {
+            const pill = document.getElementById('selectionPill');
+            const candidates = Array.from(document.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+            )).filter(function(control) {
+                return (!pill || !pill.contains(control)) &&
+                    control.tabIndex >= 0 &&
+                    control.getClientRects().length > 0 &&
+                    getComputedStyle(control).visibility !== 'hidden';
+            });
+            const destination = reverse ? candidates[candidates.length - 1] : candidates[0];
+            if (destination) destination.focus({preventScroll: true});
+            else if (pill) document.getElementById('selectionPillBtn').focus({preventScroll: true});
+        }
+
+        function handleSelectionPillKeydown(e) {
+            if (!pillIsVisible()) return;
+            const menu = document.getElementById('selectionPillMenu');
+            if (e.key === 'Tab') {
+                const dialog = visibleSelectionPillSurface();
+                if (dialog && dialog.getAttribute('role') === 'dialog') {
+                    const controls = focusableSelectionDialogControls(dialog);
+                    if (!controls.length) return;
+                    const activeIndex = controls.indexOf(document.activeElement);
+                    if (activeIndex < 0 || (e.shiftKey && activeIndex === 0)) {
+                        controls[controls.length - 1].focus({preventScroll: true});
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                    } else if (!e.shiftKey && activeIndex === controls.length - 1) {
+                        controls[0].focus({preventScroll: true});
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                    }
+                    return;
+                }
+                if (menu && !menu.hidden) {
+                    setSelectionMenuExpanded(false);
+                    moveFocusBeyondSelectionPill(e.shiftKey);
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+            }
+            if (e.key === 'Escape') {
+                if (closeVisibleSelectionSubsurface()) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+                if (menu && !menu.hidden) {
+                    setSelectionMenuExpanded(false, {restoreFocus: true});
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+                hideSelectionPill();
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return;
+            }
+            if (!menu || menu.hidden || menu.getAttribute('role') !== 'menu') return;
+            if (e.key === 'ArrowRight' && (document.activeElement === document.getElementById('selectionRewriteBtn') || document.activeElement === document.getElementById('selectionCritiqueBtn'))) {
+                document.activeElement.click();
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            if (e.key === 'ArrowLeft') {
+                const root = document.getElementById('selectionMenuRoot');
+                if (root && root.hidden && closeVisibleSelectionSubsurface()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            const items = selectionKeyboardItems();
+            if (!items.length) return;
+            let index = items.indexOf(document.activeElement);
+            if (e.key === 'Home') index = 0;
+            else if (e.key === 'End') index = items.length - 1;
+            else if (e.key === 'ArrowDown') index = index < 0 ? 0 : (index + 1) % items.length;
+            else index = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+            items[index].focus({preventScroll: true});
+            e.preventDefault();
+            e.stopPropagation();
         }
 
         function initSelectionPill() {
@@ -383,6 +828,7 @@
                     const sel = window.getSelection();
                     if (!rememberSceneSelection(sel)) {
                         hideSelectionPill();
+                        clearSceneSelectionMemory();
                         return;
                     }
                     // The live browser selection is what the user sees right
@@ -400,6 +846,7 @@
                 const pill = document.getElementById('selectionPill');
                 if (!pill || pill.style.display === 'none') return;
                 if (e.target.closest('#terminalPanel')) return;
+                if (e.target.closest('#discussPanel')) return;
                 if (!pill.contains(e.target) && !e.target.closest('#modalBody')) {
                     hideSelectionPill();
                     clearSceneSelectionMemory();
@@ -420,6 +867,7 @@
                     }
                     if (currentSelectionRange) {
                         pinSelectionHighlight(currentSelectionRange);
+                        selectionMemoryPreserved = true;
                     }
                     terminalMouseDown = {x: e.clientX, y: e.clientY};
                 }, true);
@@ -448,18 +896,50 @@
 
             document.addEventListener('mousemove', function(e) {
                 if (!pillDragging) return;
-                pillCurrentX = e.clientX - pillDragStartX;
-                pillCurrentY = e.clientY - pillDragStartY;
                 const pill = document.getElementById('selectionPill');
-                if (pill) { pill.style.left = pillCurrentX + 'px'; pill.style.top = pillCurrentY + 'px'; }
+                const trigger = document.getElementById('selectionPillBtn');
+                if (!pill || !trigger) return;
+                const metrics = selectionViewportMetrics();
+                const rect = trigger.getBoundingClientRect();
+                pillCurrentX = clampSelectionCoordinate(
+                    e.clientX - pillDragStartX,
+                    metrics.left + 8,
+                    metrics.right - rect.width - 8
+                );
+                pillCurrentY = clampSelectionCoordinate(
+                    e.clientY - pillDragStartY,
+                    metrics.top + 8,
+                    metrics.bottom - rect.height - 8
+                );
+                pill.style.left = pillCurrentX / metrics.zoom + 'px';
+                pill.style.top = pillCurrentY / metrics.zoom + 'px';
+                positionSelectionPillSurface(metrics);
             });
 
             document.addEventListener('mouseup', function() { pillDragging = false; });
 
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') hideSelectionPill();
+            document.addEventListener('keydown', handleSelectionPillKeydown, true);
+            modalBody.addEventListener('scroll', scheduleSelectionPillPosition, {passive: true});
+            const modalScroller = modalBody.closest('.modal-content');
+            if (modalScroller && modalScroller !== modalBody) {
+                modalScroller.addEventListener('scroll', scheduleSelectionPillPosition, {passive: true});
+            }
+            window.addEventListener('scroll', scheduleSelectionPillPosition, {passive: true});
+            window.addEventListener('resize', scheduleSelectionPillPosition);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', scheduleSelectionPillPosition);
+                window.visualViewport.addEventListener('scroll', scheduleSelectionPillPosition);
+            }
+            new MutationObserver(scheduleSelectionPillPosition).observe(document.body, {
+                attributes: true,
+                attributeFilter: ['style'],
             });
+            getOrCreatePill().addEventListener('pointerup', scheduleSelectionPillPosition);
         }
+
+        // Register the layered selection Escape handler before the edit-mode
+        // handler below so the closest visible surface always closes first.
+        initSelectionPill();
 
         // Global Esc -> exit edit mode (with unsaved-changes confirmation).
         // Capture phase so we run before any popover/selection handlers and
@@ -478,8 +958,6 @@
                 e.stopPropagation();
             }
         }, true);
-
-        initSelectionPill();
 
         var _pendingReload = false;
         var _refreshTimer = null;

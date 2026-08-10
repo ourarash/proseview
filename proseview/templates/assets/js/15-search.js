@@ -439,8 +439,14 @@
             if (warning) warning.hidden = true;
             _closeSearch({ restoreFocus: false });
 
-            if (r.category === 'FILES' && !r.isScene) {
-                if (typeof previewRepoFile === 'function') previewRepoFile(r.path, { focus: true });
+            // Anything the scene index does not know (a manuscript note
+            // nested below a chapter dir, say) opens in the file preview:
+            // openSceneModal() has no entry to render for it.
+            const inSceneIndex = r.isScene && paths.indexOf(r.path) !== -1;
+            if (r.category === 'FILES' && !inSceneIndex) {
+                if (typeof previewRepoFile === 'function') {
+                    previewRepoFile(r.repoPath || r.path, { focus: true });
+                }
                 return;
             }
             if (typeof openSceneModal === 'function') {
@@ -644,6 +650,13 @@
             document.addEventListener('keydown', function(e) {
                 if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
+                    if (
+                        typeof openSelectionCommandMenuFromKeyboard === 'function' &&
+                        openSelectionCommandMenuFromKeyboard()
+                    ) {
+                        e.stopImmediatePropagation();
+                        return;
+                    }
                     focusSearch();
                 }
             });

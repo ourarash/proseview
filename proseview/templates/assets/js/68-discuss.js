@@ -23,6 +23,7 @@
         var _discussPreservedDraft = '';
         var _discussAutoReviewedTasks = Object.create(null);
         var _discussAutoReviewRequests = Object.create(null);
+        var _prosviewRepositoryRootCache = null;
 
         function discussDraftKey(doc) {
             return 'proseview-codex-draft:' + discussDocumentKey(doc);
@@ -296,9 +297,163 @@
             discussAfterActivity(atBottom);
         }
 
+        function normalizeProsviewRepositoryPath(value) {
+            var parts = String(value || '').replace(/\\/g, '/').split('/');
+            var clean = [];
+            for (var i = 0; i < parts.length; i++) {
+                var part = parts[i];
+                if (!part || part === '.') continue;
+                if (part === '..') {
+                    if (!clean.length) return null;
+                    clean.pop();
+                } else clean.push(part);
+            }
+            return clean.join('/');
+        }
+
+        function prosviewRepositoryRoot() {
+            if (_prosviewRepositoryRootCache !== null) return _prosviewRepositoryRootCache;
+            var keys = Object.keys(typeof repositoryFileByPath === 'undefined' ? {} : repositoryFileByPath);
+            for (var i = 0; i < keys.length; i++) {
+                var node = repositoryFileByPath[keys[i]];
+                if (!node || !node.is_scene || !node.scene_path || !meta[node.scene_path]) continue;
+                var absolute = String(meta[node.scene_path].abs_path || '').replace(/\\/g, '/');
+                var suffix = '/' + String(node.path || '').replace(/\\/g, '/');
+                if (absolute.endsWith(suffix)) {
+                    _prosviewRepositoryRootCache = absolute.slice(0, -suffix.length);
+                    return _prosviewRepositoryRootCache;
+                }
+            }
+            _prosviewRepositoryRootCache = '';
+            return _prosviewRepositoryRootCache;
+        }
+
+        function prosviewTargetForRepositoryPath(path, line) {
+            var clean = normalizeProsviewRepositoryPath(path);
+            if (!clean) return null;
+            if (paths.indexOf(clean) >= 0) return {kind: 'scene', path: clean, line: line};
+            var node = (typeof repositoryFileByPath !== 'undefined' && repositoryFileByPath[clean])
+                || (typeof repoFileByPath !== 'undefined' && repoFileByPath[clean]);
+            if (!node) return null;
+            if (node.is_scene && node.scene_path && paths.indexOf(node.scene_path) >= 0) {
+                return {kind: 'scene', path: node.scene_path, line: line};
+            }
+            return {kind: 'file', path: node.path, line: line};
+        }
+
+        function currentProsviewRepositoryPath() {
+            if (document.documentElement.dataset.view === 'file') {
+                var title = document.getElementById('filePreviewTitle');
+                return title ? String(title.textContent || '') : '';
+            }
+            if (document.documentElement.dataset.view !== 'scene' || curIdx < 0 || !paths[curIdx]) return '';
+            var scenePath = paths[curIdx];
+            var keys = Object.keys(typeof repositoryFileByPath === 'undefined' ? {} : repositoryFileByPath);
+            for (var i = 0; i < keys.length; i++) {
+                var node = repositoryFileByPath[keys[i]];
+                if (node && node.is_scene && node.scene_path === scenePath) return node.path;
+            }
+            return scenePath;
+        }
+
+        function resolveProsviewFileReference(value) {
+            var raw = String(value || '').trim();
+            if (!raw) return null;
+            try { raw = decodeURIComponent(raw); } catch(e) {}
+            if (/^file:\/\//i.test(raw)) {
+                try {
+                    var fileUrl = new URL(raw);
+                    if (fileUrl.protocol !== 'file:' || (fileUrl.host && fileUrl.host !== 'localhost')) return null;
+                    raw = fileUrl.pathname;
+                } catch(e) { return null; }
+            } else if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+                return null;
+            }
+
+            var line = null;
+            var hashLine = raw.match(/#L(\d+)(?:C\d+)?$/i);
+            if (hashLine) {
+                line = parseInt(hashLine[1], 10);
+                raw = raw.slice(0, hashLine.index);
+            } else {
+                var suffixLine = raw.match(/:(\d+)(?::\d+)?$/);
+                if (suffixLine) {
+                    line = parseInt(suffixLine[1], 10);
+                    raw = raw.slice(0, suffixLine.index);
+                }
+            }
+            if (!Number.isInteger(line) || line < 1) line = null;
+            raw = raw.replace(/\\/g, '/');
+
+            if (raw.charAt(0) === '/') {
+                var sceneKeys = Object.keys(meta || {});
+                for (var i = 0; i < sceneKeys.length; i++) {
+                    var scenePath = sceneKeys[i];
+                    if (String((meta[scenePath] || {}).abs_path || '').replace(/\\/g, '/') === raw) {
+                        return {kind: 'scene', path: scenePath, line: line};
+                    }
+                }
+                var fileKeys = Object.keys(typeof repoFileByPath === 'undefined' ? {} : repoFileByPath);
+                for (var j = 0; j < fileKeys.length; j++) {
+                    var fileNode = repoFileByPath[fileKeys[j]];
+                    if (String((fileNode || {}).abs_path || '').replace(/\\/g, '/') === raw) {
+                        return prosviewTargetForRepositoryPath(fileNode.path, line);
+                    }
+                }
+                var root = prosviewRepositoryRoot();
+                if (!root || (raw !== root && !raw.startsWith(root + '/'))) return null;
+                return prosviewTargetForRepositoryPath(raw.slice(root.length + 1), line);
+            }
+
+            var direct = prosviewTargetForRepositoryPath(raw, line);
+            if (direct) return direct;
+            var current = currentProsviewRepositoryPath();
+            if (!current) return null;
+            var slash = current.lastIndexOf('/');
+            var relative = (slash >= 0 ? current.slice(0, slash + 1) : '') + raw;
+            return prosviewTargetForRepositoryPath(relative, line);
+        }
+
+        function focusProsviewSourceLine(line) {
+            if (!Number.isInteger(line) || line < 1) return;
+            var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+            if (!blocks.length) return;
+            var target = null;
+            for (var i = 0; i < blocks.length; i++) {
+                var blockLine = parseInt(blocks[i].getAttribute('data-line') || '', 10);
+                if (!Number.isInteger(blockLine)) continue;
+                if (blockLine === line) { target = blocks[i]; break; }
+                if (blockLine < line) target = blocks[i];
+                else if (!target) { target = blocks[i]; break; }
+            }
+            if (target && typeof _flashAndScrollTo === 'function') _flashAndScrollTo(target);
+        }
+
+        function openProsviewFileReference(target) {
+            if (!target) return;
+            var currentScene = document.documentElement.dataset.view === 'scene' && curIdx >= 0 ? paths[curIdx] : '';
+            var sameScene = target.kind === 'scene' && target.path === currentScene;
+            if (_pmEditMode && _pmDirty && !sameScene) {
+                var warning = 'Save or cancel your scene edits before opening another file.';
+                document.getElementById('discussAnnouncement').textContent = warning;
+                renderDiscussError(warning);
+                return;
+            }
+            if (target.kind === 'scene') {
+                if (!sameScene && typeof openSceneModal === 'function') openSceneModal(target.path);
+                window.setTimeout(function() { focusProsviewSourceLine(target.line); }, 0);
+                document.getElementById('discussAnnouncement').textContent = 'Opened ' + target.path + (target.line ? ' at line ' + target.line : '');
+                return;
+            }
+            if (typeof closeSceneModal === 'function' && document.documentElement.dataset.view === 'scene') closeSceneModal();
+            if (typeof previewRepoFile === 'function') previewRepoFile(target.path, {focus: true});
+            document.getElementById('discussAnnouncement').textContent = 'Opened ' + target.path + ' in Prosview';
+        }
+
         function safeDiscussUrl(value) {
             try {
-                var parsed = new URL(value, location.href);
+                if (!/^(?:https?:\/\/|mailto:)/i.test(String(value || '').trim())) return null;
+                var parsed = new URL(value);
                 return ['http:', 'https:', 'mailto:'].indexOf(parsed.protocol) >= 0 ? value : null;
             } catch(e) { return null; }
         }
@@ -343,9 +498,26 @@
                 else if (token.type === 'list') node = document.createElement(token.ordered ? 'ol' : 'ul');
                 else if (token.type === 'list_item') node = document.createElement('li');
                 else if (token.type === 'link') {
-                    var href = safeDiscussUrl(token.href || '');
-                    node = href ? document.createElement('a') : document.createElement('span');
-                    if (href) { node.href = href; node.rel = 'noopener noreferrer'; if (node.protocol !== 'mailto:') node.target = '_blank'; }
+                    let localTarget = resolveProsviewFileReference(token.href || '');
+                    var href = localTarget ? null : safeDiscussUrl(token.href || '');
+                    node = (localTarget || href) ? document.createElement('a') : document.createElement('span');
+                    if (localTarget) {
+                        node.href = '#/' + localTarget.kind + '/' + encodeURIComponent(localTarget.path);
+                        node.dataset.prosviewKind = localTarget.kind;
+                        node.dataset.prosviewPath = localTarget.path;
+                        if (localTarget.line) node.dataset.prosviewLine = String(localTarget.line);
+                        var titleLine = localTarget.kind === 'scene' ? localTarget.line : null;
+                        node.title = 'Open in Prosview' + (titleLine ? ' at line ' + titleLine : '');
+                        node.onclick = function(event) {
+                            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                            event.preventDefault();
+                            openProsviewFileReference(localTarget);
+                        };
+                    } else if (href) {
+                        node.href = href;
+                        node.rel = 'noopener noreferrer';
+                        if (node.protocol !== 'mailto:') node.target = '_blank';
+                    }
                 } else if (token.type === 'br') node = document.createElement('br');
                 else { parent.appendChild(document.createTextNode(token.raw || token.text || '')); return; }
                 if (token.type === 'list') {

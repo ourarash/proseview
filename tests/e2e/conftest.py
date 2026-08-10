@@ -384,6 +384,16 @@ for line in sys.stdin:
             emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'command': 'printf approved', 'cwd': os.getcwd(), 'reason': 'Test approval', 'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
             continue
         answer = "Fake answer for " + turn_id + ": Patel's note is **safe** [link](https://example.test) [unsafe](javascript:alert(1)) `&amp;` <script>hostile()</script>"
+        if 'SHOW_FILE_LINKS' in prompt:
+            current_scene = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            answer = (
+                f'[current scene]({current_scene}:18) '
+                '[another scene](manuscript/ch01/02-walk.md#L19) '
+                '[repository file](scripts/check_continuity.py:2) '
+                '[outside repository](/tmp/private-notes.md:4) '
+                '[external](https://example.test/reference) '
+                '[unsafe](javascript:alert(1))'
+            )
         schema = params.get('outputSchema') or {}
         kind = ((((schema.get('properties') or {}).get('kind') or {}).get('enum') or [None])[0])
         selection = ''

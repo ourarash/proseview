@@ -932,7 +932,7 @@ def test_manager_surfaces_and_resolves_allowlisted_approval(tmp_path: Path, monk
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
-    manager._on_codex_message({
+    manager._on_agent_message({
         "id": 91,
         "method": "item/commandExecution/requestApproval",
         "params": {
@@ -1087,7 +1087,7 @@ def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, m
         (103, "item/permissions/requestApproval", {"permissions": {"filesystem": ["one.md"]}}, "permissions"),
     ]
     for request_id, method, extra, expected_kind in requests:
-        manager._on_codex_message({
+        manager._on_agent_message({
             "id": request_id,
             "method": method,
             "params": {
@@ -1115,7 +1115,7 @@ def test_approval_without_advertised_decisions_is_declined(tmp_path: Path, monke
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
-    manager._on_codex_message({
+    manager._on_agent_message({
         "id": 104,
         "method": "item/fileChange/requestApproval",
         "params": {"threadId": thread_id, "turnId": "turn-x", "itemId": "item-x"},

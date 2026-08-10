@@ -23,9 +23,12 @@ from proseview.config import Config, RepoTabConfig  # noqa: E402
 from proseview.repo import (  # noqa: E402
     build_context_tree,
     build_repository_tree,
+    build_sidebar_tree,
     build_tree,
     resolve_visible_repository_path,
+    scene_relative_path,
 )
+from proseview.scenes import iter_scene_paths  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
 
@@ -218,6 +221,64 @@ def test_repository_tree_is_canonical_across_navigation_and_context_boundaries(t
     assert tool and tool["attachable"] is True and tool["previewable"] is True
     assert binary and binary["attachable"] is False and binary["previewable"] is False
     assert "body" not in tool and "abs_path" not in tool
+
+
+def test_manuscript_files_outside_the_scene_index_are_plain_repository_files(tmp_path: Path):
+    """Only files ``iter_scene_paths`` indexes may be flagged ``is_scene``.
+
+    A note nested below a chapter dir has no entry in the client's scene
+    index, so routing it to the scene modal would dead-end the click.
+    """
+    chapter = tmp_path / "manuscript" / "ch05"
+    (chapter / "review").mkdir(parents=True)
+    (chapter / "05-work-session.md").write_text("scene", encoding="utf-8")
+    (chapter / "README.md").write_text("chapter readme", encoding="utf-8")
+    (chapter / "review" / "05-work-session-review.md").write_text("note", encoding="utf-8")
+
+    tree = build_repository_tree(tmp_path, Config())
+    indexed = {p.relative_to(tmp_path / "manuscript").as_posix()
+               for p in iter_scene_paths(tmp_path / "manuscript")}
+
+    scene = _find_descendant(tree, "manuscript/ch05/05-work-session.md")
+    nested = _find_descendant(tree, "manuscript/ch05/review/05-work-session-review.md")
+    readme = _find_descendant(tree, "manuscript/ch05/README.md")
+
+    assert scene and scene["is_scene"] is True and scene["scene_path"] in indexed
+    assert nested and nested["is_scene"] is False and nested["scene_path"] is None
+    assert readme and readme["is_scene"] is False and readme["scene_path"] is None
+
+
+def test_sidebar_lists_nested_manuscript_notes_as_plain_files(tmp_path: Path):
+    """The sidebar keeps nested manuscript notes but does not call them scenes.
+
+    They stay clickable through the file preview; marking them ``is_scene``
+    would send the click to a scene the client cannot render.
+    """
+    chapter = tmp_path / "manuscript" / "ch05"
+    (chapter / "review").mkdir(parents=True)
+    (chapter / "05-work-session.md").write_text("scene", encoding="utf-8")
+    (chapter / "review" / "05-work-session-review.md").write_text("note", encoding="utf-8")
+
+    tree = build_sidebar_tree(tmp_path, Config())
+
+    scene = _find_descendant(tree, "manuscript/ch05/05-work-session.md")
+    nested = _find_descendant(tree, "manuscript/ch05/review/05-work-session-review.md")
+    assert scene and scene["is_scene"] is True and scene["scene_path"] == "ch05/05-work-session.md"
+    assert nested and nested["is_scene"] is False and nested["scene_path"] is None
+
+
+@pytest.mark.parametrize(
+    "relative,expected",
+    [
+        ("manuscript/ch05/scene.md", "ch05/scene.md"),
+        ("manuscript/ch05/review/note.md", None),
+        ("manuscript/ch05/README.md", None),
+        ("manuscript/loose.md", None),
+        ("plans/ch05/scene.md", None),
+    ],
+)
+def test_scene_relative_path_matches_scene_discovery(relative: str, expected: str | None):
+    assert scene_relative_path(relative, "manuscript") == expected
 
 
 @pytest.mark.parametrize(

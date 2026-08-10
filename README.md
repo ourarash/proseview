@@ -16,7 +16,7 @@ files stay where they are.
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-![The Proseview dashboard: word-count goal, writing streak, and recently modified files](docs/images/dashboard.png)
+![The Proseview dashboard: word-count goal, writing streak, and recently modified files](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
 ## 📸 A look around
 
@@ -25,18 +25,18 @@ files stay where they are.
 Nine prose passes highlight repetition, passive voice, filter verbs and more,
 right on the page you are reading.
 
-![A scene open in the reading view with four highlight passes enabled](docs/images/scene-highlights.png)
+![A scene open in the reading view with four highlight passes enabled](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/scene-highlights.png)
 
 ### Search the whole repository
 
 `Mod-K` from anywhere. File paths, scene metadata, TODOs, notes, and prose,
 grouped by kind.
 
-![The search palette open over a scene, showing file, scene, and prose matches](docs/images/search.png)
+![The search palette open over a scene, showing file, scene, and prose matches](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/search.png)
 
 ### Analytics that mean something
 
-![Character presence, sentence-rhythm bands, setting stickiness, and character co-occurrence charts](docs/images/analytics.png)
+![Character presence, sentence-rhythm bands, setting stickiness, and character co-occurrence charts](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
 
 > Screenshots use the bundled `fixtures/demo-repo` (four scenes), so the charts
 > are deliberately small. Your book fills them in.

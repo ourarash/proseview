@@ -70,6 +70,9 @@ grouped by kind.
 - 🔎 **Repository search.** `Mod-K` from anywhere. File paths, scene
   metadata, TODOs, notes, and prose, grouped by kind. Opening a result
   reveals it in the sidebar.
+- 📦 **EPUB export.** `proseview export` compiles your scenes into a book,
+  in the same order the dashboard counts them. Needs `pandoc` installed;
+  nothing else does.
 - 🔁 **Live reload.** Save a file in your editor and the dashboard
   picks up the change over Server-Sent Events. No manual refresh.
 - 🔗 **Deep links.** Every scene and file has a URL. Copy the address
@@ -200,6 +203,27 @@ through and ignored. Every field is optional.
 A scene with no frontmatter still renders, just with `Unknown` /
 `Not defined` placeholders in the scene card and the file's stem as
 its title.
+
+## 📦 Export
+
+```bash
+proseview export --root /path/to/your/novel --author "Your Name"
+# → output/your-novel.epub
+```
+
+Scenes are compiled in the same order the dashboard counts them: chapters
+become top-level sections, scenes become sub-sections, and pandoc builds the
+table of contents from that structure. Titles and chapters use frontmatter
+where present and fall back to the filename and folder, exactly as the scene
+table does.
+
+Options: `--output`, `--title`, `--author`, `--language`, `--epub-version`
+(`epub3` / `epub2`), `--cover-image`, and repeatable `--css`.
+
+**Requires [pandoc](https://pandoc.org/installing.html)** (`brew install pandoc`
+or `apt install pandoc`). It is the only external binary Proseview ever calls,
+nothing else needs it, and the export tells you how to install it if it is
+missing.
 
 ## ⚙️ Configuration
 

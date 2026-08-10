@@ -107,6 +107,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite an existing .proseview.yaml.",
     )
 
+    export_p = sub.add_parser(
+        "export", help="Compile the manuscript into an EPUB (requires pandoc).",
+        description="Compile the manuscript into a single document via pandoc.",
+    )
+    export_p.add_argument(
+        "--root", type=Path, default=Path.cwd(),
+        help="Path to the novel repo (default: current directory).",
+    )
+    export_p.add_argument(
+        "--format", choices=["epub"], default="epub",
+        help="Output format (default: epub).",
+    )
+    export_p.add_argument(
+        "--output", type=Path, default=None,
+        help="Destination file (default: <root>/output/<repo>.epub).",
+    )
+    export_p.add_argument("--title", default="", help="Title metadata (default: the repo folder name).")
+    export_p.add_argument("--author", default="", help="Author metadata.")
+    export_p.add_argument("--language", default="en-US", help="Language metadata (default: en-US).")
+    export_p.add_argument(
+        "--epub-version", choices=["epub3", "epub2"], default="epub3",
+        help="Try epub2 for older readers (default: epub3).",
+    )
+    export_p.add_argument("--cover-image", type=Path, default=None, help="Cover image passed to pandoc.")
+    export_p.add_argument(
+        "--css", type=Path, action="append", default=None,
+        help="Stylesheet to embed. Repeatable.",
+    )
+
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
         description="Create an AI proposal in a running proseview server.",
@@ -328,6 +357,32 @@ def proposal_action(args: argparse.Namespace) -> int:
     return 0
 
 
+def export_manuscript(args: argparse.Namespace) -> int:
+    """Compile the manuscript to a file. pandoc is imported lazily on purpose."""
+    from .config import Config
+    from .export import ExportError, collect_scene_documents, export_epub, scene_count_summary
+
+    root = args.root.resolve()
+    cfg = Config.load(root)
+    output = args.output or (root / "output" / f"{root.name}.epub")
+    try:
+        written = export_epub(
+            root, cfg, Path(output),
+            title=args.title,
+            author=args.author,
+            language=args.language,
+            epub_version=args.epub_version,
+            cover_image=args.cover_image,
+            css=args.css,
+        )
+        summary = scene_count_summary(collect_scene_documents(root, cfg))
+    except ExportError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(f"Wrote {written}")
+    print(summary)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -335,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "init":
         return init_repo(args.root, force=args.force)
+    if args.cmd == "export":
+        return export_manuscript(args)
     if args.cmd == "propose":
         return create_proposal(args)
     if args.cmd == "proposal":

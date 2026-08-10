@@ -1040,7 +1040,7 @@ cannot pass.
 
 ## Scope and environment
 
-- Repository: `/Users/ari/github/prosview`
+- Repository: `/Users/ari/github/proseview`
 - Commit: `940404581adf96466d568155f56b2f890e97c38c`
 - Worktree: extensive pre-existing modified and untracked work, including the
   managed Discuss and E2E surfaces; preserved without attribution or rollback

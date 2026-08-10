@@ -51,8 +51,6 @@ version was ever published to PyPI.
 
 | Problem | Why it matters |
 |---|---|
-| Repo is `prosview`, product is `proseview` | The URL reads like a typo. Both names were free on PyPI as of this date. Rename the repo (GitHub redirects) and claim the package name. |
-| Not on PyPI | `git clone && pip install -r requirements.txt` loses most non-developers at step one. `pipx install proseview` does not. |
 | macOS/Linux only | Novelists skew Windows and iPad. `fcntl` at `server.py:12` is unconditional, so Windows fails at import, not just at the terminal. |
 | No export | No docx/epub/compile anywhere in the codebase. Writers submit to agents and publishers. bibisco and Longform both export. |
 | No demo | You must clone and run the server to see anything at all. |
@@ -137,8 +135,9 @@ Do not chase Sudowrite's audience. Different product, different person.
       paragraph combined. Biggest missing asset, and nearly free.
 - [ ] A 20-second GIF at the top of the README (select text → highlight passes
       → search). Stills undersell an interactive tool.
-- [ ] Rewrite the README's top third around the dashboard pitch; demote AI to
+- [x] Rewrite the README's top third around the dashboard pitch; demote AI to
       one section.
+- [x] Repo presentation: GitHub Releases for each tag, topics, homepage URL.
 
 ### Where to post
 

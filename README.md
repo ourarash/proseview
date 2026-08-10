@@ -1,14 +1,22 @@
 # Proseview
 
-> A local dashboard and AI harness for novelists who write in Markdown. ✍️
+> A writer's dashboard for a folder of Markdown. ✍️
 
-Proseview reads your manuscript folder, gives you a writer-grade view of
-its structure and prose, and turns the same surface into a place where you
-can read, edit, annotate, and bring an AI assistant to any paragraph
-without leaving the page.
+Point it at your manuscript. Get lexical health, pacing, character presence,
+and revision history from the files you already have — then read, edit, and
+annotate them on the same surface.
 
-It runs entirely on your machine. No cloud, no telemetry, no lock-in. Your
-files stay where they are.
+Nothing uploads. No account, no subscription, no database. Your book stays a
+folder of Markdown files in your own git repository, readable by every other
+tool you own.
+
+```bash
+pipx install proseview
+proseview --root /path/to/your/novel
+```
+
+Already writing in Obsidian, novelWriter, or plain Vim? Keep doing that.
+Proseview reads the same files and gives you the numbers your editor doesn't.
 
 [![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
@@ -59,31 +67,31 @@ grouped by kind.
 - 🗒️ **Inline TODOs and Notes.** Select a passage, drop a `TODO` or a
   tagged `NOTE` (continuity / character / theme / question), and it
   lands in the file as a Markdown comment. Survives in git.
-- 🤖 **AI on the selection.** Send the highlighted passage to Codex,
-  Claude, or Gemini in one click. An in-browser terminal hosts the
-  conversation; the agent can see the file, the selection, and your
-  repo. Your tools, your prompts.
-- 💬 **Discuss with Codex.** Open a document-aware conversation beside
-  any scene or supported repository text file. Proseview sends the current
-  document automatically and only adds selections, files, or folders you
-  explicitly attach. Safe progress summaries, plans, tool activity, approval
-  requests, and streamed answers stay visible while you read.
-- 🧰 **In-browser terminal.** xterm.js wired to a real PTY. Run `codex`,
-  `claude`, or any shell command without leaving the dashboard. Tabs
-  persist across page reloads.
+- 🔎 **Repository search.** `Mod-K` from anywhere. File paths, scene
+  metadata, TODOs, notes, and prose, grouped by kind. Opening a result
+  reveals it in the sidebar.
 - 🔁 **Live reload.** Save a file in your editor and the dashboard
   picks up the change over Server-Sent Events. No manual refresh.
 - 🔗 **Deep links.** Every scene and file has a URL. Copy the address
   bar to share or revisit a view. Back / forward work.
-- 🔎 **Repository search.** Press Mod-K or choose Search from any dashboard,
-  scene, or file view. File paths come from one repository-wide inventory;
-  opening a result loads its preview lazily and reopening Search preserves the
-  current query.
 - 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
   Literary, Inter, Georgia, Baskerville, Sans, Mono.
 - 🧪 **Tested.** 400 tests: unit coverage of the analytics engine, scene
   parsing, save guards, history, and refresh behavior, plus end-to-end
   tiers that boot the real server and drive the real UI in a browser.
+
+### 🤖 And AI, if you want it
+
+Entirely optional, and it never runs on its own. Proseview has no model of its
+own and no API key of yours — it drives the agent CLIs already installed on
+your machine, under your login.
+
+Select a passage and send it to Codex, Claude, or Gemini; open a
+document-aware **Discuss** conversation beside a scene; or use the built-in
+terminal (a real PTY) for anything else. [Details below](#-working-with-ai).
+
+If you want none of this, ignore it. Everything above works without an agent
+installed.
 
 ## 🚀 Quick start
 

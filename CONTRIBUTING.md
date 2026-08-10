@@ -8,8 +8,8 @@ opinionated AI workflows, account systems) are not.
 ## 🛠️ Setting up
 
 ```bash
-git clone https://github.com/ourarash/prosview.git
-cd prosview
+git clone https://github.com/ourarash/proseview.git
+cd proseview
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"

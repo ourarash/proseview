@@ -213,7 +213,7 @@ def build_dashboard(
     cfg: Config | None = None,
     *,
     history_rows: list[HistoryRow] | None = None,
-    discuss_session_token: str = "",
+    session_token: str = "",
 ) -> str:
     """Produce the full HTML dashboard for the repo at ``root``."""
     cfg = cfg or Config.load(root)
@@ -238,7 +238,7 @@ def build_dashboard(
         repository_nodes=repository_nodes,
         recent_entries=recent_entries,
         recent_git=recent_git,
-        discuss_session_token=discuss_session_token,
+        session_token=session_token,
     )
 
 
@@ -327,7 +327,7 @@ def render_html_report(
     repository_nodes: list[dict[str, object]] | None = None,
     recent_entries: list[dict[str, object]] | None = None,
     recent_git: bool | None = None,
-    discuss_session_token: str = "",
+    session_token: str = "",
 ) -> str:
     del baseline
 
@@ -564,7 +564,7 @@ def render_html_report(
             }
         ),
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),
-        "discuss_session_token_json": json.dumps(discuss_session_token),
+        "session_token_json": json.dumps(session_token),
     }
     return _render_template("index.html.j2", **context)
 

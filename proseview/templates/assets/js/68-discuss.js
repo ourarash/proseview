@@ -5,6 +5,8 @@
         var _discussEventSource = null;
         var _discussAttachments = [];
         var _discussSelection = '';
+        var _discussSelectionRange = null;
+        var _discussLiveDocument = null;
         var _discussIncludeCurrentDocument = true;
         var _discussContextChoices = [];
         var _discussContextActiveIndex = 0;
@@ -13,6 +15,31 @@
         var _discussReturnFocus = null;
         var _discussRefreshTimer = null;
         var _discussLastApproval = '';
+        var _discussPendingAction = null;
+        var _discussRetryOfTaskId = null;
+        var _discussSelectedSkill = null;
+        var _discussSkills = [];
+        var _discussAutoRun = false;
+        var _discussPreservedDraft = '';
+
+        function discussDraftKey(doc) {
+            return 'proseview-codex-draft:' + discussDocumentKey(doc);
+        }
+
+        function saveDiscussDraft() {
+            var input = document.getElementById('discussInput');
+            if (!_discussDocumentKey || !input) return;
+            var key = 'proseview-codex-draft:' + _discussDocumentKey;
+            try {
+                if (input.value) sessionStorage.setItem(key, input.value);
+                else sessionStorage.removeItem(key);
+            } catch(e) {}
+        }
+
+        function restoreDiscussDraft(doc) {
+            try { return sessionStorage.getItem(discussDraftKey(doc)) || ''; }
+            catch(e) { return ''; }
+        }
 
         function discussDocument() {
             var view = document.documentElement.dataset.view;
@@ -39,7 +66,7 @@
         function discussApi(path, body) {
             return fetch(path, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-Proseview-Session': discussSessionToken},
+                headers: pvHeaders(),
                 body: JSON.stringify(body || {})
             }).then(function(response) {
                 return response.json().catch(function() { return {}; }).then(function(data) {
@@ -55,7 +82,8 @@
             node.dataset.state = state;
         }
 
-        function openDiscuss(trigger) {
+        function openDiscuss(trigger, options) {
+            options = options || {};
             var doc = discussDocument();
             if (!doc) {
                 alert('Open a scene or supported text file before starting a discussion.');
@@ -63,13 +91,29 @@
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
-            _discussReturnFocus = trigger || document.activeElement;
-            _discussSelection = captureDiscussSelection();
+            saveDiscussDraft();
+            var sceneBack = document.querySelector('#sceneModal .scene-back-btn');
+            _discussReturnFocus = (trigger && trigger.getClientRects && trigger.getClientRects().length) ? trigger : sceneBack;
+            _discussSelection = options.selection !== undefined ? String(options.selection || '') : captureDiscussSelection();
+            _discussSelectionRange = options.selectionRange && typeof options.selectionRange.start === 'number'
+                ? {start: options.selectionRange.start, end: options.selectionRange.end}
+                : null;
+            _discussLiveDocument = options.liveDocument || null;
             _discussAttachments = [];
             _discussIncludeCurrentDocument = true;
+            _discussPendingAction = options.actionId || null;
+            _discussRetryOfTaskId = null;
+            _discussSelectedSkill = null;
+            _discussAutoRun = !!options.runImmediately;
+            var requestedAutoRun = _discussAutoRun;
+            var requestedAction = _discussPendingAction;
+            var requestedSelection = _discussSelection;
+            var requestedSelectionRange = _discussSelectionRange;
+            var requestedLiveDocument = _discussLiveDocument;
             closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = false;
+            document.getElementById('discussSend').disabled = true;
             document.body.classList.add('discuss-open');
             if (typeof _termDock !== 'undefined' && _termDock === 'right') {
                 var terminal = document.getElementById('terminalPanel');
@@ -77,23 +121,60 @@
                 document.body.classList.remove('terminal-right-open');
             }
             renderDiscussContext();
+            renderDiscussTaskMode();
             setDiscussConnection('Restoring conversation', '');
             var key = discussDocumentKey(doc);
             _discussDocumentKey = key;
+            var input = document.getElementById('discussInput');
+            _discussPreservedDraft = restoreDiscussDraft(doc);
+            input.value = requestedAutoRun ? '' : _discussPreservedDraft;
             discussApi('/api/discuss/conversations/open', doc).then(function(data) {
                 if (_discussDocumentKey !== key) return;
                 _discussConversationId = data.conversation_id;
                 _discussSnapshot = data.snapshot;
                 renderDiscussSnapshot();
                 connectDiscussEvents();
-                document.getElementById('discussInput').focus();
+                document.getElementById('discussSend').disabled = false;
+                if (options.showSkills) loadDiscussSkills();
+                else if (requestedAutoRun && requestedAction) {
+                    runDiscussSelectionAction(requestedAction, requestedSelection, requestedSelectionRange, requestedLiveDocument);
+                }
+                else input.focus();
             }).catch(function(error) {
                 setDiscussConnection('Unavailable', error.message);
                 renderDiscussError(error.message);
             });
         }
 
+        function openDiscussForSelection(trigger, selection, options) {
+            options = options || {};
+            options.selection = String(selection || '');
+            var panel = document.getElementById('discussPanel');
+            var doc = discussDocument();
+            if (panel && !panel.hidden && doc && _discussConversationId && _discussDocumentKey === discussDocumentKey(doc)) {
+                _discussReturnFocus = (trigger && trigger.getClientRects && trigger.getClientRects().length)
+                    ? trigger : document.querySelector('#sceneModal .scene-back-btn');
+                _discussSelection = options.selection;
+                _discussSelectionRange = options.selectionRange || null;
+                _discussLiveDocument = options.liveDocument || null;
+                _discussPendingAction = options.actionId || null;
+                _discussRetryOfTaskId = null;
+                _discussSelectedSkill = null;
+                _discussAutoRun = !!options.runImmediately;
+                renderDiscussContext(); renderDiscussTaskMode();
+                if (options.showSkills) loadDiscussSkills();
+                else if (_discussAutoRun && _discussPendingAction) {
+                    runDiscussSelectionAction(
+                        _discussPendingAction, _discussSelection, _discussSelectionRange, _discussLiveDocument
+                    );
+                } else document.getElementById('discussInput').focus();
+                return;
+            }
+            openDiscuss(trigger, options);
+        }
+
         function closeDiscuss() {
+            saveDiscussDraft();
             closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
@@ -153,8 +234,9 @@
                 _discussSnapshot = JSON.parse(event.data);
                 renderDiscussSnapshot();
             });
-            ['connection', 'conversation.reset', 'turn.queued', 'turn.started', 'turn.completed', 'response.completed', 'progress.delta',
-             'plan.updated', 'activity.updated', 'approval.requested', 'approval.resolved', 'approval.expired', 'warning', 'error'].forEach(function(type) {
+            ['connection', 'conversation.reset', 'turn.queued', 'turn.cancelled', 'turn.preparing', 'turn.started', 'turn.completed', 'turn.idle', 'response.completed', 'progress.delta',
+             'plan.updated', 'activity.updated', 'approval.requested', 'approval.resolved', 'approval.expired', 'task.ready', 'task.failed',
+             'task.updated', 'tasks.cleared', 'warning', 'error'].forEach(function(type) {
                 source.addEventListener(type, function(event) {
                     if (type === 'connection') {
                         var detail = JSON.parse(event.data);
@@ -167,6 +249,7 @@
                     scheduleDiscussSnapshot();
                 });
             });
+            source.addEventListener('skills.changed', function() { if (!document.getElementById('discussSkillsPicker').hidden) loadDiscussSkills(true); });
             source.addEventListener('response.delta', function(event) {
                 var detail = JSON.parse(event.data);
                 appendDiscussStreamDelta(detail.text || '');
@@ -209,13 +292,33 @@
             } catch(e) { return null; }
         }
 
+        function decodeMarkdownText(value) {
+            var named = {amp: '&', lt: '<', gt: '>', quot: '"', apos: "'"};
+            var decoded = String(value || '');
+            // Marked escapes text tokens for HTML output. This renderer uses
+            // text nodes instead, so reverse that one encoding layer.
+            for (var pass = 0; pass < 1; pass += 1) {
+                var next = decoded.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos));/gi, function(match, decimal, hex, name) {
+                    var code = decimal ? Number(decimal) : (hex ? parseInt(hex, 16) : null);
+                    if (code !== null) {
+                        if (!Number.isInteger(code) || code < 1 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return '\ufffd';
+                        return String.fromCodePoint(code);
+                    }
+                    return named[String(name || '').toLowerCase()] || match;
+                });
+                if (next === decoded) break;
+                decoded = next;
+            }
+            return decoded;
+        }
+
         function appendMarkdownTokens(parent, tokens) {
             (tokens || []).forEach(function(token) {
                 var node;
                 if (token.type === 'space') return;
                 if (token.type === 'text' || token.type === 'escape') {
                     if (token.tokens) appendMarkdownTokens(parent, token.tokens);
-                    else parent.appendChild(document.createTextNode(token.text || token.raw || ''));
+                    else parent.appendChild(document.createTextNode(decodeMarkdownText(token.text || token.raw || '')));
                     return;
                 }
                 if (token.type === 'html') { parent.appendChild(document.createTextNode(token.raw || token.text || '')); return; }
@@ -223,8 +326,8 @@
                 else if (token.type === 'heading') node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
                 else if (token.type === 'strong') node = document.createElement('strong');
                 else if (token.type === 'em') node = document.createElement('em');
-                else if (token.type === 'codespan') { node = document.createElement('code'); node.textContent = token.text || ''; }
-                else if (token.type === 'code') { node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = token.text || ''; node.appendChild(code); }
+                else if (token.type === 'codespan') { node = document.createElement('code'); node.textContent = decodeMarkdownText(token.text || ''); }
+                else if (token.type === 'code') { node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = decodeMarkdownText(token.text || ''); node.appendChild(code); }
                 else if (token.type === 'blockquote') node = document.createElement('blockquote');
                 else if (token.type === 'list') node = document.createElement(token.ordered ? 'ol' : 'ul');
                 else if (token.type === 'list_item') node = document.createElement('li');
@@ -238,7 +341,7 @@
                     (token.items || []).forEach(function(item) { appendMarkdownTokens(node, [item]); });
                 } else if (token.type !== 'code' && token.type !== 'codespan' && token.type !== 'br') {
                     if (token.tokens) appendMarkdownTokens(node, token.tokens);
-                    else if (token.text) node.textContent = token.text;
+                    else if (token.text) node.textContent = decodeMarkdownText(token.text);
                 }
                 parent.appendChild(node);
             });
@@ -267,12 +370,15 @@
             var log = document.getElementById('discussLog');
             var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 70;
             log.replaceChildren();
-            if (!(snapshot.messages || []).length && !(snapshot.progress || []).length) {
+            if (!(snapshot.messages || []).length && !(snapshot.progress || []).length && !(snapshot.tasks || []).length) {
                 var empty = elementWith('discuss-empty');
                 var title = document.createElement('strong'); title.textContent = 'Ask about what you are reading';
                 empty.appendChild(title); empty.appendChild(document.createTextNode('Codex receives this document plus only the context you explicitly attach.'));
                 log.appendChild(empty);
             }
+            groupDiscussTasks(snapshot.tasks || []).forEach(function(group) {
+                log.appendChild(renderDiscussTask(group.latest, group.previous));
+            });
             (snapshot.messages || []).forEach(function(message) {
                 var wrap = elementWith('discuss-message ' + (message.role === 'user' ? 'user' : 'assistant'));
                 var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : 'Codex');
@@ -302,10 +408,46 @@
             (snapshot.notices || []).forEach(function(notice) {
                 log.appendChild(elementWith(notice.kind === 'error' ? 'discuss-error' : 'discuss-queue', notice.message || ''));
             });
-            if ((snapshot.queue || []).length) log.appendChild(elementWith('discuss-queue', snapshot.queue.length + ' question' + (snapshot.queue.length === 1 ? '' : 's') + ' queued'));
-            document.getElementById('discussStop').hidden = !snapshot.active_turn_id;
+            if ((snapshot.queue || []).length) {
+                var queueCard = elementWith('discuss-queue');
+                var queueTitle = document.createElement('strong'); queueTitle.textContent = snapshot.queue.length + ' item' + (snapshot.queue.length === 1 ? '' : 's') + ' queued'; queueCard.appendChild(queueTitle);
+                snapshot.queue.forEach(function(item) {
+                    var row = elementWith('discuss-queue-item', item.label || 'Question');
+                    var remove = document.createElement('button');
+                    remove.type = 'button'; remove.className = 'discuss-queue-remove';
+                    remove.textContent = 'Remove';
+                    remove.setAttribute('aria-label', 'Remove ' + (item.label || 'question') + ' from queue');
+                    remove.onclick = function() {
+                        remove.disabled = true;
+                        discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/queue/' + encodeURIComponent(item.client_request_id) + '/cancel', {})
+                            .then(function() {
+                                document.getElementById('discussAnnouncement').textContent = (item.label || 'Question') + ' removed from queue';
+                                scheduleDiscussSnapshot();
+                            })
+                            .catch(function(error) { remove.disabled = false; renderDiscussError(error.message); });
+                    };
+                    row.appendChild(remove); queueCard.appendChild(row);
+                });
+                log.appendChild(queueCard);
+            }
+            var stopButton = document.getElementById('discussStop');
+            stopButton.hidden = !snapshot.active_turn_id;
+            if (!snapshot.active_turn_id) {
+                stopButton.disabled = false;
+                stopButton.textContent = 'Stop Codex';
+            }
             var pendingApproval = (snapshot.approvals || []).some(function(approval) { return approval.status === 'pending'; });
-            document.getElementById('discussNewConversation').disabled = !!snapshot.active_turn_id || !!(snapshot.queue || []).length || pendingApproval;
+            var newConversation = document.getElementById('discussNewConversation');
+            var newConversationHint = document.getElementById('discussNewConversationHint');
+            var unavailableReason = '';
+            if (snapshot.active_turn_id) unavailableReason = 'Stop Codex before starting a new conversation.';
+            else if (snapshot.active_request_id) unavailableReason = 'Wait for Codex to start this question before starting a new conversation.';
+            else if ((snapshot.queue || []).length) unavailableReason = 'Remove or wait for queued items before starting a new conversation.';
+            else if (pendingApproval) unavailableReason = 'Resolve the Codex approval request before starting a new conversation.';
+            newConversation.disabled = !!unavailableReason;
+            newConversation.title = unavailableReason;
+            if (newConversationHint.textContent !== unavailableReason) newConversationHint.textContent = unavailableReason;
+            newConversationHint.hidden = !unavailableReason;
             log.setAttribute('aria-busy', snapshot.active_turn_id ? 'true' : 'false');
             discussAfterActivity(atBottom);
             if (_discussLastApproval) {
@@ -313,6 +455,239 @@
                 if (target) { target.focus(); document.getElementById('discussAnnouncement').textContent = 'Codex is requesting approval'; }
                 _discussLastApproval = '';
             }
+        }
+
+        function groupDiscussTasks(tasks) {
+            var groups = [];
+            var byRoot = Object.create(null);
+            tasks.forEach(function(task) {
+                var rootId = task.retry_root_id || task.id;
+                var group = byRoot[rootId];
+                if (!group) {
+                    group = {attempts: []};
+                    byRoot[rootId] = group;
+                    groups.push(group);
+                }
+                group.attempts.push(task);
+            });
+            groups.forEach(function(group) {
+                group.attempts.sort(function(left, right) {
+                    var attemptDelta = Number(left.attempt || 1) - Number(right.attempt || 1);
+                    return attemptDelta || Number(left.created_at || 0) - Number(right.created_at || 0);
+                });
+                group.latest = group.attempts[group.attempts.length - 1];
+                group.previous = group.attempts.slice(0, -1);
+            });
+            return groups;
+        }
+
+        function renderDiscussTask(task, previousAttempts) {
+            var card = elementWith('discuss-task'); card.dataset.taskId = task.id;
+            var heading = document.createElement('div'); heading.className = 'discuss-task-heading';
+            var title = document.createElement('strong'); title.textContent = task.label || selectionActionLabel(task.action_id);
+            var status = document.createElement('span'); status.className = 'discuss-task-status status-' + task.status; status.textContent = task.status;
+            heading.appendChild(title); heading.appendChild(status); card.appendChild(heading);
+            var target = task.target || {};
+            var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
+            card.appendChild(preview);
+            previousAttempts = previousAttempts || [];
+            if (previousAttempts.length) {
+                card.appendChild(elementWith('discuss-task-meta', 'Attempt ' + String(task.attempt || previousAttempts.length + 1)));
+            }
+            if (task.restored) {
+                var restoredLabel = task.status === 'restored'
+                    ? 'Historical result · reselect the passage to use it safely'
+                    : 'Restored from Codex history';
+                card.appendChild(elementWith('discuss-task-meta', restoredLabel));
+            }
+            if (task.skill && task.skill.name) card.appendChild(elementWith('discuss-task-meta', 'Skill · ' + task.skill.name));
+            if (task.error) card.appendChild(elementWith('discuss-error', task.error));
+            if (previousAttempts.length) {
+                var attempts = document.createElement('details'); attempts.className = 'discuss-attempts';
+                var attemptsSummary = document.createElement('summary');
+                attemptsSummary.textContent = previousAttempts.length + ' previous attempt' + (previousAttempts.length === 1 ? '' : 's');
+                attempts.appendChild(attemptsSummary);
+                var attemptsList = document.createElement('ul');
+                previousAttempts.forEach(function(previous) {
+                    var attempt = document.createElement('li');
+                    attempt.textContent = 'Attempt ' + String(previous.attempt || 1) + ' · ' + String(previous.status || 'unknown');
+                    attemptsList.appendChild(attempt);
+                });
+                attempts.appendChild(attemptsList); card.appendChild(attempts);
+            }
+            var result = task.result || {};
+            if (result.kind === 'critique') {
+                var list = document.createElement('ol'); list.className = 'discuss-findings';
+                (result.findings || []).forEach(function(finding) {
+                    var item = document.createElement('li');
+                    var observation = document.createElement('strong'); observation.textContent = finding.observation; item.appendChild(observation);
+                    var evidence = document.createElement('q'); evidence.textContent = finding.evidence; item.appendChild(evidence);
+                    item.appendChild(elementWith('discuss-finding-detail', finding.why_it_matters));
+                    item.appendChild(elementWith('discuss-finding-next', 'Next: ' + finding.next_step));
+                    list.appendChild(item);
+                });
+                card.appendChild(list);
+                var propose = document.createElement('button'); propose.type = 'button'; propose.className = 'discuss-secondary'; propose.textContent = 'Propose a revision';
+                propose.onclick = function() {
+                    _discussSelection = target.selection || '';
+                    _discussSelectionRange = target.range || null;
+                    _discussLiveDocument = typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null;
+                    _discussPendingAction = 'rephrase';
+                    _discussRetryOfTaskId = null;
+                    var input = document.getElementById('discussInput'); input.value = 'Address the critique while preserving the passage’s facts, point of view, and tense.';
+                    renderDiscussContext(); renderDiscussTaskMode(); saveDiscussDraft(); input.focus();
+                };
+                card.appendChild(propose);
+            } else if (result.kind === 'alternatives') {
+                card.appendChild(elementWith('discuss-task-summary', result.summary || 'Rewrite alternatives are ready.'));
+                card.appendChild(elementWith('discuss-task-meta', (result.alternatives || []).length + ' alternatives · manuscript unchanged'));
+                if (task.status === 'ready' && task.reviewable !== false) {
+                    var review = document.createElement('button'); review.type = 'button'; review.className = 'discuss-primary'; review.textContent = 'Review changes';
+                    review.onclick = function() { reviewDiscussTask(task, review); }; card.appendChild(review);
+                } else if (task.status === 'reviewing') {
+                    card.appendChild(elementWith('discuss-task-meta', 'Open in proposal review'));
+                }
+            }
+            if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'stale') {
+                var retry = document.createElement('button'); retry.type = 'button'; retry.className = 'discuss-secondary'; retry.textContent = 'Try again';
+                retry.onclick = function() {
+                    _discussSelection = target.selection || '';
+                    _discussSelectionRange = target.range || null;
+                    _discussLiveDocument = typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null;
+                    _discussPendingAction = task.action_id;
+                    _discussRetryOfTaskId = task.id;
+                    var input = document.getElementById('discussInput');
+                    input.value = task.instruction || '';
+                    renderDiscussContext(); renderDiscussTaskMode(); saveDiscussDraft();
+                    if (task.action_id === 'custom_rewrite' || task.instruction) {
+                        input.focus();
+                        document.getElementById('discussAnnouncement').textContent = 'Review the restored instruction, then run the action again';
+                    } else runDiscussSelectionAction(task.action_id, target.selection || '', target.range || null, _discussLiveDocument, 0, task.id);
+                };
+                card.appendChild(retry);
+            }
+            return card;
+        }
+
+        function reviewDiscussTask(task, button) {
+            button.disabled = true;
+            var opened = false;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/tasks/' + encodeURIComponent(task.id) + '/proposal', {
+                client_id: (typeof aiClientId === 'function' ? aiClientId() : null)
+            }).then(function(data) {
+                opened = true;
+                if (data.proposal && typeof aiFocusProposal === 'function') aiFocusProposal(data.proposal, true);
+                document.getElementById('discussAnnouncement').textContent = 'Rewrite ready for review. The manuscript is unchanged.';
+                scheduleDiscussSnapshot();
+            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() { if (!opened) button.disabled = false; });
+        }
+
+        function downloadDiscussHistory(data, title) {
+            data.exported_at = new Date().toISOString();
+            var blob = new Blob([JSON.stringify(data, null, 2) + '\n'], {type: 'application/json'});
+            var url = URL.createObjectURL(blob); var link = document.createElement('a'); link.href = url;
+            var slug = String(title || 'conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+            link.download = 'prosview-' + (slug || 'conversation') + '.json'; link.click();
+            setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+            document.getElementById('discussAnnouncement').textContent = 'Conversation exported locally';
+        }
+
+        function historyActionButton(label, handler) {
+            var button = document.createElement('button');
+            button.type = 'button'; button.textContent = label; button.onclick = handler;
+            return button;
+        }
+
+        function renderDiscussHistoryRows(rows) {
+            var list = document.getElementById('discussHistoryList');
+            var status = document.getElementById('discussHistoryStatus');
+            list.replaceChildren();
+            if (!rows.length) {
+                status.textContent = 'No saved conversations for this document yet.'; status.hidden = false;
+                return;
+            }
+            status.hidden = true;
+            rows.forEach(function(item) {
+                var row = elementWith('discuss-history-row');
+                var copy = elementWith('discuss-history-copy');
+                var title = document.createElement('strong'); title.textContent = item.title || 'Previous conversation'; copy.appendChild(title);
+                if (item.preview) { var preview = document.createElement('span'); preview.textContent = item.preview; copy.appendChild(preview); }
+                var meta = document.createElement('span');
+                var stamp = item.updated_at ? new Date(item.updated_at * 1000).toLocaleString() : '';
+                meta.textContent = (item.current ? 'Current conversation' : 'Saved conversation') + (stamp ? ' · ' + stamp : ''); copy.appendChild(meta);
+                row.appendChild(copy);
+
+                var actions = elementWith('discuss-history-actions');
+                var openButton = historyActionButton(item.current ? 'Current' : 'Open', function() {
+                    openButton.disabled = true;
+                    discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/open', {})
+                        .then(function(data) {
+                            _discussSnapshot = data.snapshot; renderDiscussSnapshot();
+                            document.getElementById('discussHistoryDialog').close('opened');
+                            document.getElementById('discussAnnouncement').textContent = 'Conversation opened';
+                            document.getElementById('discussInput').focus();
+                        })
+                        .catch(function(error) { openButton.disabled = false; status.textContent = error.message; status.hidden = false; });
+                });
+                var workInProgress = !!(_discussSnapshot && (
+                    _discussSnapshot.active_request_id || _discussSnapshot.active_turn_id || (_discussSnapshot.queue || []).length
+                ));
+                openButton.disabled = !!item.current || workInProgress; actions.appendChild(openButton);
+                var more = document.createElement('details');
+                var summary = document.createElement('summary'); summary.textContent = 'More'; more.appendChild(summary);
+                var menu = elementWith('discuss-history-menu');
+                var renameForm = elementWith('discuss-history-rename'); renameForm.hidden = true;
+                var renameLabel = document.createElement('label'); renameLabel.className = 'sr-only'; renameLabel.textContent = 'Conversation title';
+                var renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.maxLength = 200; renameInput.value = item.title || '';
+                renameLabel.appendChild(renameInput); renameForm.appendChild(renameLabel);
+                menu.appendChild(historyActionButton('Rename', function() { more.open = false; renameForm.hidden = false; renameInput.focus(); renameInput.select(); }));
+                menu.appendChild(historyActionButton('Export JSON', function() {
+                    discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/export', {})
+                        .then(function(data) { downloadDiscussHistory(data.export, item.title); })
+                        .catch(function(error) { status.textContent = error.message; status.hidden = false; });
+                }));
+                var removeButton = historyActionButton('Remove from history', function() {
+                    if (!window.confirm('Remove this conversation from Prosview history? It will remain in Codex history.')) return;
+                    removeButton.disabled = true;
+                    discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/remove', {})
+                        .then(loadDiscussHistory)
+                        .then(function() { document.getElementById('discussAnnouncement').textContent = 'Conversation removed from Prosview history'; })
+                        .catch(function(error) { removeButton.disabled = false; status.textContent = error.message; status.hidden = false; });
+                });
+                removeButton.disabled = !!item.current; menu.appendChild(removeButton);
+                more.appendChild(menu); actions.appendChild(more); row.appendChild(actions);
+                renameForm.appendChild(historyActionButton('Save', function() {
+                    var clean = renameInput.value.trim(); if (!clean) { renameInput.focus(); return; }
+                    discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/rename', {title: clean})
+                        .then(loadDiscussHistory)
+                        .catch(function(error) { status.textContent = error.message; status.hidden = false; });
+                }));
+                renameForm.appendChild(historyActionButton('Cancel', function() { renameForm.hidden = true; summary.focus(); }));
+                row.appendChild(renameForm); list.appendChild(row);
+            });
+        }
+
+        function loadDiscussHistory() {
+            var status = document.getElementById('discussHistoryStatus');
+            status.textContent = 'Loading conversations…'; status.hidden = false;
+            return discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/list', {})
+                .then(function(data) { renderDiscussHistoryRows(data.conversations || []); })
+                .catch(function(error) { status.textContent = error.message; status.hidden = false; });
+        }
+
+        function openDiscussHistoryDialog() {
+            if (!_discussConversationId) return;
+            var dialog = document.getElementById('discussHistoryDialog');
+            document.getElementById('discussHistoryList').replaceChildren();
+            dialog.showModal(); loadDiscussHistory(); document.getElementById('discussHistoryClose').focus();
+        }
+
+        function clearDiscussHistory() {
+            if (!_discussConversationId) return;
+            if (!window.confirm('Clear selection assistance history for this document? This cannot be undone.')) return;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/tasks/clear', {})
+                .then(function() { scheduleDiscussSnapshot(); document.getElementById('discussAnnouncement').textContent = 'Selection results cleared'; })
+                .catch(function(error) { renderDiscussError(error.message); });
         }
 
         function renderDiscussApproval(approval) {
@@ -390,7 +765,130 @@
             });
             var selection = document.getElementById('discussSelectionChip');
             selection.hidden = !_discussSelection;
-            selection.textContent = _discussSelection ? 'Selected text: ' + _discussSelection.slice(0, 80) : '';
+            selection.replaceChildren();
+            if (_discussSelection) {
+                var words = _discussSelection.trim().split(/\s+/).filter(Boolean).length;
+                selection.appendChild(document.createTextNode('Selection · ' + words + ' words · “' + _discussSelection.slice(0, 72) + (_discussSelection.length > 72 ? '…' : '') + '”'));
+                var removeSelection = document.createElement('button');
+                removeSelection.type = 'button'; removeSelection.textContent = '×';
+                removeSelection.setAttribute('aria-label', 'Remove selected text from Codex context');
+                removeSelection.onclick = function() {
+                    _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussPendingAction = null; _discussRetryOfTaskId = null; renderDiscussContext(); renderDiscussTaskMode();
+                    document.getElementById('discussAnnouncement').textContent = 'Selection removed from context';
+                };
+                selection.appendChild(removeSelection);
+            }
+        }
+
+        function selectionActionLabel(actionId) {
+            return ({
+                rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', sensory_detail: 'Add sensory detail',
+                show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', voice_character: 'Voice and character',
+                pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check'
+            })[actionId] || 'Selection action';
+        }
+
+        function recentDiscussInstructions() {
+            try { var rows = JSON.parse(localStorage.getItem('proseview-codex-recent-instructions') || '[]'); return Array.isArray(rows) ? rows.slice(0, 8) : []; }
+            catch(e) { return []; }
+        }
+
+        function rememberDiscussInstruction(value) {
+            value = String(value || '').trim();
+            if (!value) return;
+            var rows = recentDiscussInstructions().filter(function(row) { return row !== value; });
+            rows.unshift(value);
+            try { localStorage.setItem('proseview-codex-recent-instructions', JSON.stringify(rows.slice(0, 8))); } catch(e) {}
+        }
+
+        function favoriteDiscussInstructions() {
+            try { var rows = JSON.parse(localStorage.getItem('proseview-codex-favorite-instructions') || '[]'); return Array.isArray(rows) ? rows.slice(0, 12) : []; }
+            catch(e) { return []; }
+        }
+
+        function toggleDiscussInstructionFavorite(value) {
+            var rows = favoriteDiscussInstructions(); var index = rows.indexOf(value);
+            if (index >= 0) rows.splice(index, 1); else rows.unshift(value);
+            try { localStorage.setItem('proseview-codex-favorite-instructions', JSON.stringify(rows.slice(0, 12))); } catch(e) {}
+            renderDiscussTaskMode();
+        }
+
+        function appendDiscussInstructionShortcut(node, value, favorite) {
+            var wrap = elementWith('discuss-instruction-shortcut');
+            var button = document.createElement('button'); button.type = 'button'; button.className = 'discuss-recent'; button.textContent = value;
+            button.onclick = function() { document.getElementById('discussInput').value = value; saveDiscussDraft(); document.getElementById('discussInput').focus(); };
+            var star = document.createElement('button'); star.type = 'button'; star.className = 'discuss-favorite'; star.textContent = favorite ? '★' : '☆';
+            star.setAttribute('aria-label', (favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + value);
+            star.onclick = function() { toggleDiscussInstructionFavorite(value); };
+            wrap.appendChild(button); wrap.appendChild(star); node.appendChild(wrap);
+        }
+
+        function renderDiscussTaskMode() {
+            var node = document.getElementById('discussTaskMode');
+            if (!node) return;
+            node.replaceChildren();
+            if (_discussPendingAction) {
+                node.hidden = false;
+                var title = document.createElement('strong'); title.textContent = selectionActionLabel(_discussPendingAction) + ' selection'; node.appendChild(title);
+                var help = document.createElement('span'); help.textContent = 'Optional constraint'; node.appendChild(help);
+                document.getElementById('discussInput').placeholder = 'Add a constraint, or run as shown…';
+                document.getElementById('discussSend').textContent = 'Run';
+                return;
+            }
+            document.getElementById('discussSend').textContent = 'Send';
+            var recents = recentDiscussInstructions();
+            var favorites = favoriteDiscussInstructions();
+            document.getElementById('discussInput').placeholder = _discussSelection
+                ? 'Ask anything about this selection…'
+                : 'Ask about this document…';
+            node.hidden = !(_discussSelection && (recents.length || favorites.length));
+            if (!node.hidden) {
+                var label = document.createElement('span'); label.textContent = favorites.length ? 'Favorites and recent' : 'Recent instructions'; node.appendChild(label);
+                favorites.slice(0, 3).forEach(function(value) { appendDiscussInstructionShortcut(node, value, true); });
+                recents.filter(function(value) { return favorites.indexOf(value) < 0; }).slice(0, 3).forEach(function(value) { appendDiscussInstructionShortcut(node, value, false); });
+            }
+        }
+
+        function loadDiscussSkills(forceReload) {
+            var picker = document.getElementById('discussSkillsPicker');
+            picker.hidden = false; picker.textContent = 'Loading Codex skills…';
+            discussApi('/api/discuss/skills', {force_reload: !!forceReload}).then(function(data) {
+                _discussSkills = data.skills || []; renderDiscussSkills();
+            }).catch(function(error) { picker.textContent = 'Skills unavailable: ' + error.message; });
+        }
+
+        function renderDiscussSkills() {
+            var picker = document.getElementById('discussSkillsPicker'); picker.replaceChildren(); picker.hidden = false;
+            var title = document.createElement('strong'); title.textContent = 'Run a skill'; picker.appendChild(title);
+            var search = document.createElement('input'); search.type = 'search'; search.className = 'discuss-skill-search'; search.placeholder = 'Search skills'; search.setAttribute('aria-label', 'Search Codex skills'); picker.appendChild(search);
+            var results = elementWith('discuss-skill-results'); picker.appendChild(results);
+            function showSkills() {
+                var query = search.value.trim().toLowerCase(); results.replaceChildren();
+                var matches = _discussSkills.filter(function(skill) { return !query || (skill.name + ' ' + skill.display_name + ' ' + skill.description).toLowerCase().includes(query); });
+                if (!matches.length) results.appendChild(document.createTextNode(_discussSkills.length ? 'No matching skills.' : 'No enabled Codex skills were found.'));
+                matches.forEach(function(skill) {
+                    var button = document.createElement('button'); button.type = 'button'; button.className = 'discuss-skill';
+                    var name = document.createElement('strong'); name.textContent = skill.display_name || skill.name;
+                    var description = document.createElement('span'); description.textContent = skill.description || 'Codex skill';
+                    var metadata = document.createElement('small'); metadata.textContent = 'Conversation / unknown output · ' + (skill.scope || 'Codex');
+                    button.appendChild(name); button.appendChild(description); button.appendChild(metadata);
+                    if (skill.dependencies && Object.keys(skill.dependencies).length) {
+                        var dependency = document.createElement('small'); dependency.textContent = 'Dependencies: ' + JSON.stringify(skill.dependencies); button.appendChild(dependency);
+                    }
+                    button.onclick = function() {
+                        _discussSelectedSkill = {name: skill.name, path: skill.path};
+                        picker.hidden = true;
+                        var input = document.getElementById('discussInput');
+                        input.placeholder = 'Tell ' + (skill.display_name || skill.name) + ' what to do with this selection…'; input.focus();
+                        document.getElementById('discussAnnouncement').textContent = (skill.display_name || skill.name) + ' selected';
+                    };
+                    results.appendChild(button);
+                });
+            }
+            search.oninput = showSkills; showSkills();
+            var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'discuss-secondary'; cancel.textContent = 'Cancel';
+            cancel.onclick = function() { picker.hidden = true; document.getElementById('discussInput').focus(); };
+            picker.appendChild(cancel); search.focus();
         }
 
         function discussMentionAtCaret() {
@@ -526,9 +1024,16 @@
             if (!_discussConversationId || button.disabled) return;
             var dialog = document.getElementById('discussNewConversationDialog');
             var error = document.getElementById('discussNewConversationError');
+            var status = document.getElementById('discussNewConversationStatus');
+            var confirm = document.getElementById('discussNewConversationConfirm');
+            var cancel = document.getElementById('discussNewConversationCancel');
             error.hidden = true; error.textContent = '';
+            status.hidden = true; status.textContent = '';
+            dialog.setAttribute('aria-busy', 'false');
+            confirm.disabled = false; confirm.textContent = 'Start new conversation';
+            cancel.disabled = false;
             dialog.showModal();
-            document.getElementById('discussNewConversationCancel').focus();
+            cancel.focus();
         }
 
         function confirmNewDiscussConversation(event) {
@@ -536,38 +1041,72 @@
             if (!_discussConversationId) return;
             var dialog = document.getElementById('discussNewConversationDialog');
             var confirm = document.getElementById('discussNewConversationConfirm');
+            var cancel = document.getElementById('discussNewConversationCancel');
+            var status = document.getElementById('discussNewConversationStatus');
             var error = document.getElementById('discussNewConversationError');
-            confirm.disabled = true;
+            confirm.disabled = true; confirm.textContent = 'Starting…';
+            cancel.disabled = true;
+            dialog.setAttribute('aria-busy', 'true');
+            status.hidden = true; status.textContent = '';
             error.hidden = true; error.textContent = '';
+            document.getElementById('discussAnnouncement').textContent = 'Starting a new conversation';
+            var slowTimer = setTimeout(function() {
+                status.textContent = 'Still starting… Prosview is waiting for the local conversation reset to finish.';
+                status.hidden = false;
+            }, 1200);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
                 .then(function(data) {
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';
+                    _discussSelectionRange = null;
+                    _discussLiveDocument = null;
+                    _discussPendingAction = null;
+                    _discussRetryOfTaskId = null;
+                    _discussSelectedSkill = null;
+                    _discussAutoRun = false;
                     _discussAttachments = [];
                     _discussIncludeCurrentDocument = true;
                     closeDiscussContextPicker();
                     renderDiscussContext();
+                    renderDiscussTaskMode();
                     renderDiscussSnapshot();
                     dialog.close('confirmed');
                     document.getElementById('discussAnnouncement').textContent = 'New conversation started';
                     document.getElementById('discussInput').focus();
                 })
                 .catch(function(requestError) {
+                    status.hidden = true; status.textContent = '';
                     error.textContent = requestError.message;
                     error.hidden = false;
-                    confirm.focus();
+                    confirm.textContent = 'Try again';
+                    document.getElementById('discussAnnouncement').textContent = 'New conversation failed. ' + requestError.message;
                 })
-                .finally(function() { confirm.disabled = false; });
+                .finally(function() {
+                    clearTimeout(slowTimer);
+                    dialog.setAttribute('aria-busy', 'false');
+                    confirm.disabled = false;
+                    cancel.disabled = false;
+                    if (!error.hidden) confirm.focus();
+                });
         }
 
         document.getElementById('discussNewConversationDialog').addEventListener('close', function() {
             if (this.returnValue !== 'confirmed') document.getElementById('discussNewConversation').focus();
+        });
+        document.getElementById('discussNewConversationDialog').addEventListener('cancel', function(event) {
+            if (this.getAttribute('aria-busy') !== 'true') return;
+            event.preventDefault();
+            document.getElementById('discussAnnouncement').textContent = 'Wait for the conversation reset to finish';
+        });
+        document.getElementById('discussHistoryDialog').addEventListener('close', function() {
+            if (this.returnValue !== 'opened') document.getElementById('discussHistory').focus();
         });
 
         function sendDiscussQuestion() {
             var input = document.getElementById('discussInput');
             var question = input.value.trim();
             var button = document.getElementById('discussSend');
+            if (_discussPendingAction) { runDiscussSelectionAction(); return; }
             if (!question || !_discussConversationId || button.disabled) return;
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             button.disabled = true;
@@ -575,11 +1114,17 @@
                 client_request_id: requestId,
                 question: question,
                 selection: _discussSelection,
+                selection_range: _discussSelectionRange,
+                live_document: _discussLiveDocument,
                 attachments: _discussAttachments,
-                include_current_document: _discussIncludeCurrentDocument
+                include_current_document: _discussIncludeCurrentDocument,
+                skill: _discussSelectedSkill
             }).then(function() {
-                input.value = ''; _discussSelection = ''; closeDiscussContextPicker(); renderDiscussContext(); scheduleDiscussSnapshot();
-                document.getElementById('discussAnnouncement').textContent = 'Question queued';
+                rememberDiscussInstruction(question); input.value = ''; saveDiscussDraft(); _discussSelectedSkill = null;
+                closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                document.getElementById('discussAnnouncement').textContent = _discussSelection
+                    ? 'Question queued. Selection remains attached for follow-up questions.'
+                    : 'Question queued';
             }).catch(function(error) { renderDiscussError(error.message); }).finally(function() {
                 button.disabled = false;
                 var active = document.activeElement;
@@ -587,10 +1132,63 @@
             });
         }
 
+        function runDiscussSelectionAction(actionOverride, selectionOverride, rangeOverride, liveDocumentOverride, retryCount, retryOfOverride) {
+            var input = document.getElementById('discussInput');
+            var button = document.getElementById('discussSend');
+            var actionId = actionOverride || _discussPendingAction;
+            var selection = selectionOverride || _discussSelection;
+            var selectionRange = rangeOverride || _discussSelectionRange;
+            var liveDocument = liveDocumentOverride || _discussLiveDocument;
+            var retryOfTaskId = retryOfOverride || _discussRetryOfTaskId;
+            if (!actionId || !selection || !_discussConversationId) return;
+            if (button.disabled) {
+                retryCount = Number(retryCount || 0);
+                if (retryCount < 100) {
+                    setTimeout(function() {
+                        runDiscussSelectionAction(actionId, selection, selectionRange, liveDocument, retryCount + 1, retryOfTaskId);
+                    }, 50);
+                }
+                return;
+            }
+            var custom = input.value.trim();
+            var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            button.disabled = true;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
+                client_request_id: requestId,
+                question: '',
+                selection: selection,
+                selection_range: selectionRange,
+                live_document: liveDocument,
+                attachments: _discussAttachments,
+                include_current_document: _discussIncludeCurrentDocument,
+                action_id: actionId,
+                custom_instruction: custom,
+                skill: _discussSelectedSkill,
+                retry_of_task_id: retryOfTaskId
+            }).then(function() {
+                if (custom) rememberDiscussInstruction(custom);
+                input.value = _discussAutoRun ? _discussPreservedDraft : '';
+                _discussPendingAction = null; _discussRetryOfTaskId = null; _discussSelectedSkill = null; _discussAutoRun = false; saveDiscussDraft();
+                _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. The manuscript will not change.';
+            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() {
+                button.disabled = false; input.focus();
+            });
+        }
+
         function stopDiscussTurn() {
             if (!_discussSnapshot || !_discussSnapshot.active_turn_id) return;
+            var button = document.getElementById('discussStop');
+            if (button.disabled) return;
+            button.disabled = true;
+            button.textContent = 'Stopping…';
+            document.getElementById('discussAnnouncement').textContent = 'Stopping Codex';
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/turns/' + encodeURIComponent(_discussSnapshot.active_turn_id) + '/stop', {})
-                .then(scheduleDiscussSnapshot).catch(function(error) { renderDiscussError(error.message); });
+                .then(scheduleDiscussSnapshot).catch(function(error) {
+                    button.disabled = false;
+                    button.textContent = 'Stop Codex';
+                    renderDiscussError(error.message);
+                });
         }
 
         document.getElementById('discussInput').addEventListener('keydown', function(event) {
@@ -609,7 +1207,7 @@
                 event.preventDefault(); event.stopPropagation(); closeDiscussContextPicker();
             } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
         });
-        document.getElementById('discussInput').addEventListener('input', renderDiscussContextOptions);
+        document.getElementById('discussInput').addEventListener('input', function() { saveDiscussDraft(); renderDiscussContextOptions(); });
         document.addEventListener('mousedown', function(event) {
             var picker = document.getElementById('discussContextPicker');
             if (picker.hidden || picker.contains(event.target) || event.target === document.getElementById('discussContextButton') || event.target === document.getElementById('discussInput')) return;
@@ -621,7 +1219,8 @@
             if (event.key === 'Escape') {
                 var picker = document.getElementById('discussContextPicker');
                 var resetDialog = document.getElementById('discussNewConversationDialog');
-                if ((picker && !picker.hidden) || (resetDialog && resetDialog.open)) return;
+                var historyDialog = document.getElementById('discussHistoryDialog');
+                if ((picker && !picker.hidden) || (resetDialog && resetDialog.open) || (historyDialog && historyDialog.open)) return;
                 var panel = document.getElementById('discussPanel');
                 if (panel && !panel.hidden) { event.preventDefault(); closeDiscuss(); }
             }

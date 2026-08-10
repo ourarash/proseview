@@ -4,6 +4,7 @@
         var _aiProposalRange = null;
         var _aiProposalPluginKey = null;
         var _aiSelectedOptionIndex = 0;
+        var _aiPendingSavedProposals = Object.create(null);
         // After an Accept the panel transitions to a confirmation view with an
         // Undo button. Holds the snapshot needed to revert the replacement.
         var _aiAppliedProposal = null;
@@ -29,7 +30,7 @@
         function aiHeartbeat() {
             fetch('/ai/clients/heartbeat', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: pvHeaders(),
                 body: JSON.stringify({client_id: aiClientId(), active_scene: currentScenePath()})
             }).catch(function() {});
         }
@@ -120,31 +121,35 @@
             if (!_pmView) return {error: 'No scene editor is mounted.'};
             var map = aiDocTextMap(_pmView.state.doc);
             var start = -1, end = -1;
-            var quoteRange = aiResolveQuoteRange(map, proposal.resolved_quote || proposal.quote);
-            if (quoteRange && quoteRange.error) return quoteRange;
-            if (quoteRange) return quoteRange;
             if (proposal.range && typeof proposal.range.start === 'number' && typeof proposal.range.end === 'number') {
                 start = proposal.range.start;
                 end = proposal.range.end;
-            } else {
-                return {error: 'Could not find the proposal quote in this scene.'};
             }
-            if (start < 0 || end <= start || end > map.posMap.length) {
-                var fallback = aiResolveQuoteRange(map, proposal.resolved_quote || proposal.quote);
-                if (fallback) return fallback;
-                return {error: 'Proposal range is outside the current scene.'};
+            if (start >= 0 && end > start && end <= map.posMap.length) {
+                var from = null, to = null;
+                for (var i = start; i < end; i++) {
+                    if (map.posMap[i] !== null && from === null) from = map.posMap[i];
+                    if (map.posMap[i] !== null) to = map.posMap[i] + 1;
+                }
+                if (from !== null && to !== null && to > from) {
+                    var expected = aiNormalizedTextMap(proposal.resolved_quote || proposal.quote || '').text;
+                    var candidate = aiNormalizedTextMap(_pmView.state.doc.textBetween(from, to, '\n')).text;
+                    if (!expected || candidate === expected) return {from: from, to: to};
+                }
             }
-            var from = null, to = null;
-            for (var i = start; i < end; i++) {
-                if (map.posMap[i] !== null && from === null) from = map.posMap[i];
-                if (map.posMap[i] !== null) to = map.posMap[i] + 1;
-            }
-            if (from === null || to === null || to <= from) {
-                var quoteFallback = aiResolveQuoteRange(map, proposal.resolved_quote || proposal.quote);
-                if (quoteFallback) return quoteFallback;
-                return {error: 'Could not map proposal range into the editor.'};
-            }
-            return {from: from, to: to};
+            var quoteRange = aiResolveQuoteRange(map, proposal.resolved_quote || proposal.quote);
+            if (quoteRange) return quoteRange;
+            return {error: 'Could not safely resolve this proposal in the current scene.'};
+        }
+
+        function aiCurrentDecoratedRange() {
+            if (!_pmView || !_aiProposalPluginKey) return null;
+            try {
+                var set = _aiProposalPluginKey.getState(_pmView.state);
+                var decorations = set ? set.find() : [];
+                if (decorations.length !== 1) return null;
+                return {from: decorations[0].from, to: decorations[0].to};
+            } catch (e) { return null; }
         }
 
         function aiSetProposalHighlight(range) {
@@ -183,6 +188,10 @@
             panel = document.createElement('div');
             panel.id = 'aiProposalPanel';
             panel.className = 'ai-proposal-panel';
+            panel.setAttribute('role', 'dialog');
+            panel.setAttribute('aria-modal', 'false');
+            panel.setAttribute('aria-labelledby', 'aiProposalTitle');
+            panel.tabIndex = -1;
             panel.hidden = true;
             document.body.appendChild(panel);
             return panel;
@@ -191,15 +200,22 @@
         function aiPost(path, payload) {
             return fetch(path, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: pvHeaders(),
                 body: JSON.stringify(payload || {})
             }).then(function(r) { return r.json(); });
+        }
+
+        function aiSetManagedTaskStatus(proposal, status) {
+            if (!proposal || !proposal.conversation_id || !proposal.task_id || typeof discussApi !== 'function') return;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(proposal.conversation_id) + '/tasks/' + encodeURIComponent(proposal.task_id) + '/status', {status: status})
+                .then(function() { if (typeof scheduleDiscussSnapshot === 'function') scheduleDiscussSnapshot(); })
+                .catch(function() {});
         }
 
         function aiPatch(path, payload) {
             return fetch(path, {
                 method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
+                headers: pvHeaders(),
                 body: JSON.stringify(payload || {})
             }).then(function(r) { return r.json(); });
         }
@@ -270,7 +286,8 @@
             panel.innerHTML = '';
             var title = document.createElement('div');
             title.className = 'ai-proposal-title';
-            title.textContent = needsClaim ? 'Proposal available for this scene' : 'AI proposal';
+            title.id = 'aiProposalTitle';
+            title.textContent = needsClaim ? 'Proposal available for this scene' : (proposal.action_id ? selectionActionLabel(proposal.action_id) + ' selection' : 'AI proposal');
             panel.appendChild(title);
 
             if (needsClaim) {
@@ -288,6 +305,7 @@
                     aiFocusProposal(proposal, true);
                 };
                 panel.appendChild(claim);
+                requestAnimationFrame(function() { panel.focus({preventScroll: true}); });
                 return;
             }
 
@@ -329,27 +347,27 @@
                 _aiSelectedOptionIndex = Math.min(_aiSelectedOptionIndex || 0, Math.max(0, (proposal.options || []).length - 1));
                 var optionsLabel = document.createElement('div');
                 optionsLabel.className = 'ai-proposal-label';
-                optionsLabel.textContent = 'SUGGESTIONS';
+                optionsLabel.textContent = 'PROPOSED · ' + (_aiSelectedOptionIndex + 1) + ' OF ' + (proposal.options || []).length;
                 panel.appendChild(optionsLabel);
                 (proposal.options || []).forEach(function(opt, idx) {
+                    if (idx !== _aiSelectedOptionIndex) return;
                     var item = document.createElement('div');
-                    item.className = 'ai-proposal-option' + (idx === _aiSelectedOptionIndex ? ' is-selected' : '');
-                    item.setAttribute('role', 'button');
-                    item.tabIndex = 0;
-                    item.onclick = function() {
-                        _aiSelectedOptionIndex = idx;
-                        aiRenderPanel(proposal, range, error, needsClaim);
-                    };
+                    item.className = 'ai-proposal-option is-selected';
                     var text = document.createElement('div');
                     text.className = 'ai-proposal-option-text';
                     text.textContent = opt.text || String(opt);
-                    var choice = document.createElement('div');
-                    choice.className = 'ai-proposal-choice';
-                    choice.textContent = idx === _aiSelectedOptionIndex ? 'Selected' : 'Select';
                     item.appendChild(text);
-                    item.appendChild(choice);
+                    if (opt.rationale) item.appendChild(elementWith('ai-proposal-rationale', opt.rationale));
                     panel.appendChild(item);
                 });
+                if ((proposal.options || []).length > 1) {
+                    var nav = document.createElement('div'); nav.className = 'ai-proposal-nav';
+                    var previous = document.createElement('button'); previous.type = 'button'; previous.textContent = '← Previous'; previous.disabled = _aiSelectedOptionIndex === 0;
+                    previous.onclick = function() { _aiSelectedOptionIndex--; aiRenderPanel(proposal, range, error, needsClaim); };
+                    var next = document.createElement('button'); next.type = 'button'; next.textContent = 'Next →'; next.disabled = _aiSelectedOptionIndex >= proposal.options.length - 1;
+                    next.onclick = function() { _aiSelectedOptionIndex++; aiRenderPanel(proposal, range, error, needsClaim); };
+                    nav.appendChild(previous); nav.appendChild(next); panel.appendChild(nav);
+                }
             } else {
                 var useSelection = document.createElement('button');
                 useSelection.className = 'ai-proposal-primary';
@@ -380,44 +398,53 @@
 
             var actions = document.createElement('div');
             actions.className = 'ai-proposal-actions';
+            if (!error && proposal.origin === 'managed_selection_action') {
+                var shortcuts = document.createElement('div'); shortcuts.className = 'ai-proposal-shortcuts';
+                shortcuts.textContent = 'A / ⌘Enter stage · R reject · ← → alternatives · Esc close';
+                panel.appendChild(shortcuts);
+            }
             if (!error && (proposal.options || []).length) {
                 var accept = document.createElement('button');
                 accept.className = 'ai-proposal-primary';
                 accept.type = 'button';
-                accept.textContent = 'Accept selected';
+                accept.textContent = 'Stage change';
                 accept.onclick = function() { aiApplyProposal(proposal, _aiSelectedOptionIndex || 0); };
                 actions.appendChild(accept);
             }
             var refine = document.createElement('button');
             refine.type = 'button';
-            refine.textContent = 'Refine in terminal';
+            refine.textContent = 'Refine…';
             refine.onclick = function() {
-                if (typeof openCodexTerminal === 'function') {
-                    openCodexTerminal(
-                        'Refine proposal ' + proposal.id + ' for @' + proposal.file +
-                        '. Update it with `proseview proposal update ' + proposal.id +
-                        ' --option "..."` when ready.',
-                        null,
-                        false,
-                        proposal.file
-                    );
-                }
+                aiClearProposal();
+                openDiscussForSelection(null, proposal.resolved_quote || proposal.quote, {actionId: proposal.action_id || 'rephrase'});
+                setTimeout(function() { var input = document.getElementById('discussInput'); input.value = 'Refine the selected rewrite with this constraint: '; input.focus(); saveDiscussDraft(); }, 80);
+            };
+            var retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Try again';
+            retry.onclick = function() { aiClearProposal(); openDiscussForSelection(null, proposal.resolved_quote || proposal.quote, {actionId: proposal.action_id || 'rephrase', runImmediately: true}); };
+            var copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copy';
+            copy.onclick = function() {
+                var opt = (proposal.options || [])[_aiSelectedOptionIndex || 0];
+                if (opt && navigator.clipboard) navigator.clipboard.writeText(opt.text || '').then(function() { copy.textContent = 'Copied'; setTimeout(function() { copy.textContent = 'Copy'; }, 1200); });
             };
             var skip = document.createElement('button');
             skip.type = 'button';
-            skip.textContent = 'Skip';
+            skip.textContent = 'Reject';
             skip.onclick = function() {
                 aiPost('/ai/proposals/' + proposal.id + '/skip', {client_id: aiClientId()});
+                aiSetManagedTaskStatus(proposal, 'rejected');
                 aiClearProposal();
             };
             var dismiss = document.createElement('button');
             dismiss.type = 'button';
             dismiss.textContent = 'Dismiss';
-            dismiss.onclick = aiClearProposal;
+            dismiss.onclick = function() { aiSetManagedTaskStatus(proposal, 'dismissed'); aiClearProposal(); };
             actions.appendChild(refine);
+            actions.appendChild(retry);
+            actions.appendChild(copy);
             actions.appendChild(skip);
             actions.appendChild(dismiss);
             panel.appendChild(actions);
+            requestAnimationFrame(function() { panel.focus({preventScroll: true}); });
         }
 
         function aiClearProposal() {
@@ -518,12 +545,52 @@
             return newRange;
         }
 
+        function aiReplaceRangeWithSlice(applyRange, slice) {
+            var PM = window._PM;
+            var tr = _pmView.state.tr.replaceRange(applyRange.from, applyRange.to, slice);
+            var newRange = {from: applyRange.from, to: applyRange.from + slice.size};
+            var safeSelectionPos = Math.max(0, Math.min(tr.doc.content.size, newRange.to));
+            try { tr = tr.setSelection(PM.TextSelection.create(tr.doc, safeSelectionPos, safeSelectionPos)); }
+            catch (e) { tr = tr.setSelection(PM.TextSelection.near(tr.doc.resolve(safeSelectionPos), 1)); }
+            if (_aiProposalPluginKey) tr = tr.setMeta(_aiProposalPluginKey, PM.DecorationSet.empty);
+            _pmView.dispatch(tr);
+            return newRange;
+        }
+
         function aiApplyProposal(proposal, optionIndex) {
+            var panel = aiPanel();
+            var stage = panel.querySelector('.ai-proposal-primary');
+            if (stage) stage.disabled = true;
+            aiPost('/ai/proposals/' + proposal.id + '/validate', {client_id: aiClientId()}).then(function(data) {
+                if (!data.ok) throw new Error(data.error || 'The proposal target is stale.');
+                aiApplyValidatedProposal(proposal, optionIndex);
+            }).catch(function(error) {
+                aiSetProposalHighlight(null);
+                aiRenderPanel(proposal, null, error.message, false);
+            });
+        }
+
+        function aiApplyValidatedProposal(proposal, optionIndex) {
             if (!_pmView || !_aiProposalRange) return;
             var opt = (proposal.options || [])[optionIndex];
             if (!opt) return;
-            var applyRange = {from: _aiProposalRange.from, to: _aiProposalRange.to};
+            var liveRange = aiCurrentDecoratedRange() || aiResolveRange(proposal);
+            if (!liveRange || liveRange.error) {
+                aiSetProposalHighlight(null);
+                aiRenderPanel(proposal, null, (liveRange && liveRange.error) || 'The selected passage could not be resolved.', false);
+                return;
+            }
+            var expected = aiNormalizedTextMap(proposal.resolved_quote || proposal.quote || '').text;
+            var liveText = aiNormalizedTextMap(_pmView.state.doc.textBetween(liveRange.from, liveRange.to, '\n')).text;
+            if (expected && liveText !== expected) {
+                aiSetProposalHighlight(null);
+                aiRenderPanel(proposal, null, 'The selected passage changed locally. Reselect it and try again.', false);
+                return;
+            }
+            _aiProposalRange = liveRange;
+            var applyRange = {from: liveRange.from, to: liveRange.to};
             var originalText = _pmView.state.doc.textBetween(applyRange.from, applyRange.to, '\n');
+            var originalSlice = _pmView.state.doc.slice(applyRange.from, applyRange.to);
             var hadDirtyBeforeApply = !!_pmDirty;
             aiSetProposalHighlight(null);
             aiClearNativeSelection();
@@ -545,10 +612,13 @@
                 proposal: proposal,
                 optionIndex: optionIndex,
                 originalText: originalText,
+                originalSlice: originalSlice,
                 originalRange: applyRange,
                 newRange: newRange,
                 hadDirtyBeforeApply: hadDirtyBeforeApply
             };
+            if (proposal.conversation_id && proposal.task_id) _aiPendingSavedProposals[proposal.id] = proposal;
+            aiSetManagedTaskStatus(proposal, 'staged');
             _aiProposalRange = newRange;
             aiScrollRangeIntoView(newRange);
             aiSetProposalHighlight(newRange);
@@ -575,7 +645,7 @@
             if (!_pmView || !_aiAppliedProposal) return;
             var applied = _aiAppliedProposal;
             var revertRange = applied.newRange;
-            var restoredRange = aiReplaceRangeWithMarkdown(revertRange, applied.originalText);
+            var restoredRange = aiReplaceRangeWithSlice(revertRange, applied.originalSlice);
             aiForceClearProposalHighlightDom();
             aiClearNativeSelection();
             if (!applied.hadDirtyBeforeApply) {
@@ -587,10 +657,27 @@
             // fine as a record of what the user did.
             _aiAppliedProposal = null;
             _aiActiveProposal = applied.proposal;
+            delete _aiPendingSavedProposals[applied.proposal.id];
+            aiSetManagedTaskStatus(applied.proposal, 'ready');
             _aiProposalRange = restoredRange;
             aiScrollRangeIntoView(restoredRange);
             aiSetProposalHighlight(restoredRange);
             aiRenderPanel(applied.proposal, restoredRange, null, false);
+        }
+
+        function aiMarkStagedProposalSaved() {
+            var saved = Object.keys(_aiPendingSavedProposals).map(function(id) { return _aiPendingSavedProposals[id]; });
+            if (!saved.length) return;
+            _aiPendingSavedProposals = Object.create(null);
+            saved.forEach(function(proposal) { aiSetManagedTaskStatus(proposal, 'saved'); });
+            if (_aiAppliedProposal) aiFinishApplied(false);
+        }
+
+        function aiDiscardStagedProposals() {
+            var discarded = Object.keys(_aiPendingSavedProposals).map(function(id) { return _aiPendingSavedProposals[id]; });
+            _aiPendingSavedProposals = Object.create(null);
+            discarded.forEach(function(proposal) { aiSetManagedTaskStatus(proposal, 'ready'); });
+            if (discarded.length) aiClearProposal();
         }
 
         function aiRenderAppliedPanel() {
@@ -608,7 +695,8 @@
 
             var title = document.createElement('div');
             title.className = 'ai-proposal-title';
-            title.textContent = 'Applied';
+            title.id = 'aiProposalTitle';
+            title.textContent = 'Staged · Not saved';
             panel.appendChild(title);
 
             var lineLabel = aiLineLabel(applied.proposal, applied.newRange);
@@ -646,17 +734,23 @@
             var actions = document.createElement('div');
             actions.className = 'ai-proposal-actions';
             var undo = document.createElement('button');
-            undo.className = 'ai-proposal-primary';
             undo.type = 'button';
             undo.textContent = 'Undo';
             undo.onclick = aiUndoApply;
+            var save = document.createElement('button');
+            save.className = 'ai-proposal-primary';
+            save.type = 'button';
+            save.textContent = 'Save scene';
+            save.onclick = function() { if (typeof saveSceneEdit === 'function') saveSceneEdit(); };
             var done = document.createElement('button');
             done.type = 'button';
-            done.textContent = 'Done';
-            done.onclick = function() { aiFinishApplied(true); };
+            done.textContent = 'Close';
+            done.onclick = function() { aiFinishApplied(false); };
             actions.appendChild(undo);
+            actions.appendChild(save);
             actions.appendChild(done);
             panel.appendChild(actions);
+            requestAnimationFrame(function() { panel.focus({preventScroll: true}); });
         }
 
         function handleAiProposalEvent(payload) {
@@ -691,3 +785,21 @@
         aiClientId();
         aiHeartbeat();
         setInterval(aiHeartbeat, 5000);
+
+        document.addEventListener('keydown', function(event) {
+            if (!_aiActiveProposal || _aiAppliedProposal) return;
+            var panel = document.getElementById('aiProposalPanel');
+            if (!panel || panel.hidden || event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+            var options = _aiActiveProposal.options || [];
+            if (event.key === 'ArrowLeft' && _aiSelectedOptionIndex > 0) {
+                event.preventDefault(); _aiSelectedOptionIndex--; aiRenderPanel(_aiActiveProposal, _aiProposalRange, null, false);
+            } else if (event.key === 'ArrowRight' && _aiSelectedOptionIndex < options.length - 1) {
+                event.preventDefault(); _aiSelectedOptionIndex++; aiRenderPanel(_aiActiveProposal, _aiProposalRange, null, false);
+            } else if ((event.key === 'a' || event.key === 'A' || (event.key === 'Enter' && (event.metaKey || event.ctrlKey))) && options.length) {
+                event.preventDefault(); aiApplyProposal(_aiActiveProposal, _aiSelectedOptionIndex || 0);
+            } else if (event.key === 'r' || event.key === 'R') {
+                event.preventDefault(); aiPost('/ai/proposals/' + _aiActiveProposal.id + '/skip', {client_id: aiClientId()}); aiSetManagedTaskStatus(_aiActiveProposal, 'rejected'); aiClearProposal();
+            } else if (event.key === 'Escape') {
+                event.preventDefault(); aiSetManagedTaskStatus(_aiActiveProposal, 'dismissed'); aiClearProposal();
+            }
+        });

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Develop Proseview"
+  short_description: "Discover, implement, and verify Proseview changes"
+  default_prompt: "Use $develop to discover the current repository contracts, implement this Proseview change, and verify every activated engineering lane."

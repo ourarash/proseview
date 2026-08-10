@@ -1,4 +1,0 @@
-interface:
-  display_name: "Develop Prosview"
-  short_description: "Discover, implement, and verify Prosview changes"
-  default_prompt: "Use $develop-prosview to discover the current repository contracts, implement this Prosview change, and verify every activated engineering lane."

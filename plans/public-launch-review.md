@@ -125,7 +125,7 @@ Do not chase Sudowrite's audience. Different product, different person.
 
 - [x] Fix the unauthenticated-mutation hole in section 1. Non-negotiable.
 - [x] Rename repo to `proseview`; claim the PyPI name.
-- [ ] Publish to PyPI so `pipx install proseview` works.
+- [x] Publish to PyPI so `pipx install proseview` works (0.1.1, trusted publishing).
 - [x] Add `SECURITY.md` stating plainly that it runs a local server with shell
       access, and how to report issues.
 

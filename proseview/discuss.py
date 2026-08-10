@@ -1077,6 +1077,7 @@ class DiscussManager:
     def _restore_thread(self, conversation: _Conversation, thread: dict[str, Any]) -> None:
         restored: list[dict[str, Any]] = []
         restored_tasks: dict[str, dict[str, Any]] = {}
+        unsafe_turns = 0
         rebuild_tasks = not conversation.thread_restored
         for turn_index, turn in enumerate(thread.get("turns") or []):
             if not isinstance(turn, dict):
@@ -1100,6 +1101,13 @@ class DiscussManager:
                 # Structured action prompts and results have their own safe UI
                 # projection. Never expose either as ordinary chat text.
                 continue
+            marker = "\n\nUSER QUESTION\n"
+            if not prompts or any(marker not in prompt for prompt in prompts):
+                # Prosview-authored ordinary turns always use the context
+                # envelope above. Failing closed prevents malformed, legacy,
+                # or unrelated protocol content from leaking packaged files.
+                unsafe_turns += 1
+                continue
             for item in items:
                 if not isinstance(item, dict):
                     continue
@@ -1108,8 +1116,7 @@ class DiscussManager:
                         str(part.get("text") or "") for part in item.get("content") or []
                         if isinstance(part, dict) and part.get("type") == "text"
                     )
-                    marker = "\n\nUSER QUESTION\n"
-                    visible = text.rsplit(marker, 1)[-1] if marker in text else text
+                    visible = text.rsplit(marker, 1)[-1]
                     restored.append({"role": "user", "text": _bounded_text(visible), "restored": True})
                 elif item.get("type") == "agentMessage":
                     phase = item.get("phase") or "final_answer"
@@ -1126,6 +1133,14 @@ class DiscussManager:
                 if parent is not None:
                     parent["superseded_by"] = task["id"]
             conversation.tasks = restored_tasks
+        if unsafe_turns:
+            warning = {
+                "kind": "warning",
+                "message": "Some earlier Codex content could not be displayed safely.",
+            }
+            if warning not in conversation.notices:
+                conversation.notices.append(warning)
+                conversation.notices = conversation.notices[-50:]
         conversation.thread_restored = True
 
     def _restored_action_task(
@@ -1654,7 +1669,7 @@ class DiscussManager:
                     raise ContextError("This Codex conversation is no longer available and was removed from Prosview history.") from exc
                 raise
             thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
-            restored_id = str(thread.get("id") or thread_id)
+            restored_id = str(thread.get("id") or "")
             if restored_id != thread_id:
                 raise ContextError("Codex returned a different conversation than Prosview requested")
             old_thread_id = conversation.thread_id
@@ -1695,6 +1710,8 @@ class DiscussManager:
         row = self._history_row(conversation, thread_id)
         result = self._ensure_client().request("thread/read", {"threadId": thread_id, "includeTurns": True})
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
+        if str(thread.get("id") or "") != thread_id:
+            raise ContextError("Codex returned a different conversation than Prosview requested")
         projected = _Conversation("export", conversation.document)
         self._restore_thread(projected, thread)
         return {

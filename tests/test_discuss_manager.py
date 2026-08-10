@@ -438,7 +438,7 @@ def test_restore_thread_rebuilds_escaped_selection_action_as_a_task_card(tmp_pat
     )
     manager._restore_thread(conversation, {"turns": [
         {"id": "ordinary", "items": [
-            {"type": "userMessage", "content": [{"type": "text", "text": "Earlier question"}]},
+            {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nEarlier question"}]},
             {"type": "agentMessage", "phase": "final_answer", "text": "Patel's earlier answer"},
         ]},
         {"id": "selection-turn", "items": [
@@ -699,6 +699,53 @@ def test_history_rename_export_and_remove_use_safe_projection(tmp_path: Path, mo
     removed = manager.remove_conversation(conversation_id, thread_id)
     assert removed == {"removed": True, "thread_id": thread_id}
     assert manager.list_conversations(conversation_id)["conversations"] == []
+    manager.close()
+
+
+def test_history_export_rejects_a_mismatched_codex_thread(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    thread_id = manager._start_thread(manager._get(cid), manager._client)
+    manager._client.threads[thread_id] = {"id": "different-thread", "turns": [{"items": [
+        {"type": "userMessage", "content": [{"type": "text", "text": "PRIVATE OTHER THREAD"}]},
+    ]}]}
+
+    with pytest.raises(ValueError, match="different conversation"):
+        manager.export_conversation(cid, thread_id)
+    manager.close()
+
+
+def test_history_open_rejects_a_missing_codex_thread_identity(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    thread_id = manager._start_thread(manager._get(cid), manager._client)
+    manager._client.threads[thread_id] = {"turns": [{"items": [
+        {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nDo not project me"}]},
+    ]}]}
+    manager.new_conversation(cid)
+
+    with pytest.raises(ValueError, match="different conversation"):
+        manager.open_conversation(cid, thread_id)
+    assert manager.get_snapshot(cid)["messages"] == []
+    manager.close()
+
+
+def test_restored_history_omits_unrecognized_user_prompt_envelopes(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    conversation = _Conversation("safe-restore", {"kind": "scene", "path": "one.md"})
+
+    manager._restore_thread(conversation, {"turns": [{"items": [
+        {"type": "userMessage", "content": [{"type": "text", "text": "PRIVATE PACKAGED BODY WITHOUT DELIMITER"}]},
+        {"type": "agentMessage", "phase": "final_answer", "text": "Answer from an unrecognized turn"},
+    ]}]})
+
+    snapshot = conversation.snapshot()
+    assert snapshot["messages"] == []
+    assert "PRIVATE PACKAGED BODY WITHOUT DELIMITER" not in json.dumps(snapshot)
+    assert any("could not be displayed safely" in notice["message"] for notice in snapshot["notices"])
     manager.close()
 
 

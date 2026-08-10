@@ -1,4 +1,0 @@
-interface:
-  display_name: "Review Prosview UI"
-  short_description: "Run a rigorous live UI/UX audit"
-  default_prompt: "Use $review-prosview-ui to run a full live UI/UX audit of Prosview."

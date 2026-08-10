@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit"
+  short_description: "Commit staged work, or group the worktree into focused commits"
+  default_prompt: "Use $commit to create a commit from the currently staged changes."

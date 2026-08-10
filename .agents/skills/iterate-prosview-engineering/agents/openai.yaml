@@ -1,4 +1,0 @@
-interface:
-  display_name: "Iterate Prosview Engineering"
-  short_description: "Discover, implement, review, and converge"
-  default_prompt: "Use $iterate-prosview-engineering to discover this Prosview change, implement it, independently review both specification and engineering quality, and iterate until the evidence gate passes."

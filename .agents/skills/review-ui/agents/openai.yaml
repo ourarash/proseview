@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Proseview UI"
+  short_description: "Run a rigorous live UI/UX audit"
+  default_prompt: "Use $review-ui to run a full live UI/UX audit of Proseview."

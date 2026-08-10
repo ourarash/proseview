@@ -52,7 +52,6 @@ version was ever published to PyPI.
 | Problem | Why it matters |
 |---|---|
 | macOS/Linux only | Novelists skew Windows and iPad. `fcntl` at `server.py:12` is unconditional, so Windows fails at import, not just at the terminal. |
-| No export | No docx/epub/compile anywhere in the codebase. Writers submit to agents and publishers. bibisco and Longform both export. |
 | No demo | You must clone and run the server to see anything at all. |
 | Discuss is Codex-only | A headline feature is bet on one vendor's CLI. |
 
@@ -150,7 +149,8 @@ novelWriter/Longform communities.
 ### Two decisions that cap growth (neither blocks launch)
 
 - **Windows support.** WSL-only cuts most of the writer market.
-- **Export.** Writers need docx eventually.
+- **Export beyond EPUB.** `proseview export` covers EPUB via pandoc; docx and
+  PDF are the same pandoc call with a different writer, plus a PDF engine.
 
 ---
 

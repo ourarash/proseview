@@ -509,10 +509,15 @@ def test_discuss_refresh_recovers_a_missing_thread_and_can_start_new_conversatio
         {"client_request_id": "forget", "question": "FORGET_THREAD_AFTER_TURN"},
         headers=headers,
     )
+    # The answer text lands before the turn is finished, and a turn that fails
+    # after that point flips the conversation to Unavailable from the worker
+    # thread. Wait for the turn to settle so the refresh below observes a
+    # stable connection state rather than racing the worker.
     _wait_discuss(
         server,
         conversation_id,
-        lambda value: any("Fake answer" in message["text"] for message in value["messages"]),
+        lambda value: value["active_turn_id"] is None
+        and any("Fake answer" in message["text"] for message in value["messages"]),
     )
 
     refreshed = server.post_json("/api/discuss/conversations/open", document, headers=headers).json()["snapshot"]

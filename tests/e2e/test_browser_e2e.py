@@ -330,6 +330,70 @@ def test_discuss_decodes_restored_assistant_prose_after_server_restart(
     assert assistant.locator("a", has_text="unsafe").count() == 0
 
 
+def test_discuss_repository_links_open_inside_prosview_and_target_source_line(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SHOW_FILE_LINKS")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "current scene")
+
+    assistant = page.locator(".discuss-message.assistant").last
+    current = assistant.get_by_role("link", name="current scene")
+    assert current.get_attribute("href").endswith("#/scene/ch01%2F01-opening.md")
+    assert current.get_attribute("target") is None
+    assert current.get_attribute("title") == "Open in Prosview at line 18"
+    assert assistant.get_by_role("link", name="another scene").get_attribute("href").endswith(
+        "#/scene/ch01%2F02-walk.md"
+    )
+    assert assistant.get_by_role("link", name="repository file").get_attribute("href").endswith(
+        "#/file/scripts%2Fcheck_continuity.py"
+    )
+    assert assistant.locator("a", has_text="outside repository").count() == 0
+    assert assistant.locator("a", has_text="unsafe").count() == 0
+    external = assistant.get_by_role("link", name="external")
+    assert external.get_attribute("href") == "https://example.test/reference"
+    assert external.get_attribute("target") == "_blank"
+
+    current.click()
+    assert page.evaluate("decodeURIComponent(location.hash)") == f"#/scene/{SCENE_REL}"
+    target = page.locator("#sceneProseHost .para-flash")
+    target.wait_for(state="visible")
+    assert target.get_attribute("data-line") == "18"
+
+    assistant.get_by_role("link", name="repository file").click()
+    page.wait_for_function(
+        "() => document.getElementById('filePreviewTitle').innerText === 'scripts/check_continuity.py'"
+    )
+    assert page.evaluate("decodeURIComponent(location.hash)") == "#/file/scripts/check_continuity.py"
+
+
+def test_discuss_repository_link_preserves_unsaved_scene_edits(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SHOW_FILE_LINKS")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "another scene")
+
+    page.click("#sceneEditBtn")
+    page.evaluate(
+        """() => {
+            _pmView.dispatch(_pmView.state.tr.insertText('Unsaved local note. ', 1));
+            setPmDirty(true);
+        }"""
+    )
+    page.locator(".discuss-message.assistant").last.get_by_role("link", name="another scene").click()
+
+    assert page.evaluate("decodeURIComponent(location.hash)") == f"#/scene/{SCENE_REL}"
+    assert "Unsaved local note." in _editor_text(page)
+    assert "Save or cancel your scene edits before opening another file." in page.locator("#discussLog").inner_text()
+
+
 def test_discuss_current_file_is_default_removable_context(
     page: Page,
     server: ProseviewServer,

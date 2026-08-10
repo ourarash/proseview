@@ -11,7 +11,7 @@ from proseview.discuss import (
     ContextError,
     DiscussStateStore,
     EventBuffer,
-    sanitize_codex_message,
+    sanitize_agent_message,
 )
 
 
@@ -47,6 +47,8 @@ def test_context_builder_includes_document_selection_and_sorted_attachments(tmp_
     ]
     assert bundle.selection == "The first line."
     assert "BEGIN UNTRUSTED DOCUMENT" in bundle.prompt
+    assert "use its repository-relative path" in bundle.prompt
+    assert "never use an absolute filesystem path" in bundle.prompt
     assert bundle.prompt.index("plans/arc.md") < bundle.prompt.index("plans/notes.txt")
     assert "def validate" in bundle.prompt
 
@@ -233,7 +235,7 @@ def test_event_buffer_replays_or_requests_snapshot_when_gap_was_evicted():
 
 
 def test_protocol_adapter_never_forwards_raw_reasoning():
-    started = sanitize_codex_message({
+    started = sanitize_agent_message({
         "method": "item/started",
         "params": {
             "threadId": "thread-1",
@@ -246,11 +248,11 @@ def test_protocol_adapter_never_forwards_raw_reasoning():
             },
         },
     })
-    raw_delta = sanitize_codex_message({
+    raw_delta = sanitize_agent_message({
         "method": "item/reasoning/textDelta",
         "params": {"delta": "SECRET RAW CHAIN OF THOUGHT"},
     })
-    summary_delta = sanitize_codex_message({
+    summary_delta = sanitize_agent_message({
         "method": "item/reasoning/summaryTextDelta",
         "params": {"threadId": "thread-1", "turnId": "turn-1", "delta": "Checking context"},
     })

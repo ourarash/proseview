@@ -24,6 +24,8 @@ from proseview.config import Config  # noqa: E402
 from proseview.export import (  # noqa: E402
     ExportError,
     build_manuscript_markdown,
+    candidate_appendix_folders,
+    collect_appendix_documents,
     collect_scene_documents,
     export_epub,
     scene_count_summary,
@@ -106,6 +108,103 @@ def test_unknown_epub_version_is_rejected_before_shelling_out(tmp_path: Path):
 def test_summary_counts_scenes_chapters_and_words(tmp_path: Path):
     summary = scene_count_summary(collect_scene_documents(_repo(tmp_path), Config()))
     assert summary.startswith("3 scenes across 3 chapters, ")
+
+
+def _with_plans(tmp_path: Path) -> Path:
+    root = _repo(tmp_path)
+    plans = root / "plans"
+    plans.mkdir()
+    (plans / "book-plan.md").write_text(
+        "---\nstatus: draft\n---\n\n# Book Plan\n\nThe spine of the story.\n\n## Beats\n\nOne, two.\n",
+        encoding="utf-8",
+    )
+    (plans / "backlog.md").write_text("Loose ends to chase.\n", encoding="utf-8")
+    (plans / "README.md").write_text("skip me\n", encoding="utf-8")
+    (plans / "done").mkdir()
+    (plans / "done" / "archived.md").write_text("archived, not part of the book\n", encoding="utf-8")
+    return root
+
+
+def test_appendix_collects_top_level_markdown_only(tmp_path: Path):
+    section = collect_appendix_documents(_with_plans(tmp_path), "plans", Config())
+
+    assert section.label == "Plans"
+    assert [title for title, _ in section.documents] == ["Backlog", "Book Plan"]
+    # README skipped, nested archive folder untouched, frontmatter stripped.
+    joined = "\n".join(body for _, body in section.documents)
+    assert "skip me" not in joined
+    assert "archived, not part of the book" not in joined
+    assert "status: draft" not in joined
+    assert "The spine of the story." in joined
+
+
+def test_appendix_without_frontmatter_keeps_a_leading_rule(tmp_path: Path):
+    root = _with_plans(tmp_path)
+    (root / "plans" / "backlog.md").write_text("---\n\nA horizontal rule, not frontmatter.\n", encoding="utf-8")
+
+    section = collect_appendix_documents(root, "plans", Config())
+    backlog = dict(section.documents)["Backlog"]
+    # A file opening with --- is ambiguous; only strip when it parses as frontmatter.
+    assert "horizontal rule" in backlog
+
+
+@pytest.mark.parametrize(
+    "folder,message",
+    [
+        ("manuscript", "already the body"),
+        ("does-not-exist", "does not exist"),
+        ("../escape", "not a usable repository path"),
+        (".hidden", "not a usable repository path"),
+    ],
+)
+def test_appendix_rejects_unusable_folders(tmp_path: Path, folder: str, message: str):
+    with pytest.raises(ExportError, match=message):
+        collect_appendix_documents(_with_plans(tmp_path), folder, Config())
+
+
+def test_appendix_is_appended_after_the_manuscript_with_demoted_headings(tmp_path: Path):
+    root = _with_plans(tmp_path)
+    documents = collect_scene_documents(root, Config())
+    section = collect_appendix_documents(root, "plans", Config())
+
+    markdown = build_manuscript_markdown(documents, title="A Novel", appendices=[section])
+
+    assert markdown.index("## After") < markdown.index("# Appendix: Plans")
+    # Two documents, so a contents list is emitted.
+    assert "- [Book Plan](#book-plan)" in markdown
+    # Compare whole lines: "## Book Plan" contains "# Book Plan" as a substring.
+    lines = markdown.splitlines()
+    assert "## Book Plan" in lines
+    # The document's own H1 is dropped and its H2 pushed to H4, keeping the
+    # appendix below the table-of-contents depth.
+    assert "# Book Plan" not in lines
+    assert "#### Beats" in lines
+    assert "## Beats" not in lines
+
+
+def test_candidate_appendix_folders_lists_what_you_can_append(tmp_path: Path):
+    root = _with_plans(tmp_path)
+    (root / ".hidden").mkdir()
+    (root / ".hidden" / "secret.md").write_text("no\n", encoding="utf-8")
+    (root / "empty-dir").mkdir()
+
+    folders = candidate_appendix_folders(root, Config())
+
+    assert ("plans", 2) in folders
+    assert all(name not in {"manuscript", ".hidden", "empty-dir"} for name, _ in folders)
+
+
+@pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
+def test_appendix_reaches_the_epub(tmp_path: Path):
+    root = _with_plans(tmp_path)
+    output = export_epub(root, Config(), tmp_path / "out.epub", appendix_folders=["plans"])
+
+    with zipfile.ZipFile(output) as book:
+        text = b"".join(
+            book.read(n) for n in book.namelist() if n.endswith(".xhtml")
+        ).decode("utf-8")
+    assert "The spine of the story." in text
+    assert "Appendix: Plans" in text
 
 
 @pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")

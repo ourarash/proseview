@@ -135,6 +135,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--css", type=Path, action="append", default=None,
         help="Stylesheet to embed. Repeatable.",
     )
+    export_p.add_argument(
+        "--appendix", action="append", default=None, metavar="FOLDER",
+        help=(
+            "Repo-relative folder whose Markdown files are appended after the "
+            "manuscript, e.g. --appendix plans. Repeatable; appendices appear "
+            "in the order given."
+        ),
+    )
+    export_p.add_argument(
+        "--list-appendix-folders", action="store_true",
+        help="List repository folders that contain Markdown files, then exit.",
+    )
 
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
@@ -360,10 +372,27 @@ def proposal_action(args: argparse.Namespace) -> int:
 def export_manuscript(args: argparse.Namespace) -> int:
     """Compile the manuscript to a file. pandoc is imported lazily on purpose."""
     from .config import Config
-    from .export import ExportError, collect_scene_documents, export_epub, scene_count_summary
+    from .export import (
+        ExportError,
+        candidate_appendix_folders,
+        collect_scene_documents,
+        export_epub,
+        scene_count_summary,
+    )
 
     root = args.root.resolve()
     cfg = Config.load(root)
+
+    if args.list_appendix_folders:
+        folders = candidate_appendix_folders(root, cfg)
+        if not folders:
+            print(f"No folders with Markdown files found in {root}")
+            return 0
+        print("Folders you can pass to --appendix:")
+        for name, count in folders:
+            print(f"  {name:<20} {count} file{'s' if count != 1 else ''}")
+        return 0
+
     output = args.output or (root / "output" / f"{root.name}.epub")
     try:
         written = export_epub(
@@ -374,6 +403,7 @@ def export_manuscript(args: argparse.Namespace) -> int:
             epub_version=args.epub_version,
             cover_image=args.cover_image,
             css=args.css,
+            appendix_folders=args.appendix,
         )
         summary = scene_count_summary(collect_scene_documents(root, cfg))
     except ExportError as exc:

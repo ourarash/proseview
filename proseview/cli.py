@@ -203,7 +203,13 @@ def _find_runtime_file(root: Path) -> Path | None:
     return None
 
 
-def _server_url(root: Path) -> str:
+def _server_runtime(root: Path) -> tuple[str, str]:
+    """Return the running server's ``(url, session_token)``.
+
+    Reading the token from ``.proseview/server.json`` is how the CLI proves it
+    is a local process rather than a web page: a browser can reach the port,
+    but it cannot read a file on disk.
+    """
     runtime = _find_runtime_file(root)
     if not runtime:
         raise SystemExit("No running proseview server found. Start `proseview serve` first.")
@@ -214,16 +220,24 @@ def _server_url(root: Path) -> str:
     url = str(data.get("url") or "").rstrip("/")
     if not url:
         raise SystemExit(f"{runtime} does not contain a server url")
-    return url
+    return url, str(data.get("session_token") or "")
+
+
+def _server_url(root: Path) -> str:
+    return _server_runtime(root)[0]
 
 
 def _request_json(root: Path, method: str, path: str, payload: dict) -> dict:
+    url, token = _server_runtime(root)
     body = json.dumps(payload).encode("utf-8") if method != "GET" else None
+    headers = {"X-Proseview-Session": token} if token else {}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
     req = Request(
-        _server_url(root) + path,
+        url + path,
         data=body,
         method=method,
-        headers={"Content-Type": "application/json"} if body is not None else {},
+        headers=headers,
     )
     try:
         with urlopen(req, timeout=10) as resp:

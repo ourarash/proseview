@@ -30,7 +30,7 @@ POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="PTY terminals are PO
 
 
 def _discuss_token(server: ProseviewServer) -> str:
-    match = re.search(r"const discussSessionToken = \"([a-f0-9]+)\";", server.get("/").text)
+    match = re.search(r"const pageSessionToken = \"([a-f0-9]+)\";", server.get("/").text)
     assert match, "page session token was not embedded"
     return match.group(1)
 
@@ -89,9 +89,12 @@ def test_runtime_file_advertises_this_server(shared_server: ProseviewServer):
 
 def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: ProseviewServer, fake_home: Path):
     headers = _discuss_headers(server)
+    # Explicitly tokenless: the harness attaches a valid token by default, and
+    # this case exists to prove the server refuses a request without one.
     denied = server.post_json(
         "/api/discuss/conversations/open",
         {"kind": "scene", "path": SCENE_REL},
+        headers={"X-Proseview-Session": ""},
     )
     assert denied.status == 403
 
@@ -127,6 +130,122 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
     assert "book-plan.md" in prompt
     assert "Explain the ledger" in prompt
     assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+
+
+def test_all_selection_presets_use_structured_read_only_turns(server: ProseviewServer, fake_home: Path):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
+    )
+    conversation_id = opened.json()["conversation_id"]
+    quote = "the slow algebra of yesterday's receipts"
+    actions = [
+        "rephrase", "tighten", "clarify", "sensory_detail", "show_moment", "custom_rewrite",
+        "quick_critique", "voice_character", "pacing_tension", "clarity_flow", "continuity",
+    ]
+    for index, action_id in enumerate(actions):
+        response = server.post_json(
+            f"/api/discuss/conversations/{conversation_id}/questions",
+            {
+                "client_request_id": f"preset-{index}", "question": "", "selection": quote,
+                "action_id": action_id,
+                "custom_instruction": "Make the diction more formal" if action_id == "custom_rewrite" else "",
+            },
+            headers=headers,
+        )
+        assert response.status == 202, response.text
+        if index in {4, 9}:
+            _wait_discuss(
+                server, conversation_id,
+                lambda value, expected=index + 1: len(value["tasks"]) >= expected and all(
+                    task["status"] == "ready" for task in value["tasks"][:expected]
+                ),
+                timeout=10.0,
+            )
+
+    snapshot = _wait_discuss(
+        server, conversation_id,
+        lambda value: len(value["tasks"]) == len(actions) and all(task["status"] == "ready" for task in value["tasks"]),
+        timeout=10.0,
+    )
+    assert [task["action_id"] for task in snapshot["tasks"]] == actions
+    records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
+    preset_records = [row for row in records if str(row["params"].get("clientUserMessageId", "")).startswith("preset-")]
+    assert len(preset_records) == len(actions)
+    assert all(row["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False} for row in preset_records)
+    assert all("outputSchema" in row["params"] for row in preset_records)
+
+
+def test_selection_action_retry_is_linked_and_keeps_actionable_citation_error(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
+    ).json()
+    conversation_id = opened["conversation_id"]
+    quote = "dial turned with a dry clatter"
+    first = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "invalid-critique-first",
+            "question": "",
+            "selection": quote,
+            "action_id": "quick_critique",
+        },
+        headers=headers,
+    ).json()
+    failed = _wait_discuss(
+        server, conversation_id,
+        lambda value: len(value["tasks"]) == 1 and value["tasks"][0]["status"] == "failed",
+    )
+    assert "a pressure gauge that was never selected" in failed["tasks"][0]["error"]
+
+    second = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "invalid-critique-retry",
+            "question": "",
+            "selection": quote,
+            "action_id": "quick_critique",
+            "retry_of_task_id": first["task_id"],
+        },
+        headers=headers,
+    ).json()
+    retried = _wait_discuss(
+        server, conversation_id,
+        lambda value: len(value["tasks"]) == 2 and value["tasks"][1]["status"] == "failed",
+    )
+    original, retry = retried["tasks"]
+    assert original["superseded_by"] == second["task_id"]
+    assert retry["retry_of"] == first["task_id"]
+    assert retry["retry_root_id"] == first["task_id"]
+    assert retry["attempt"] == 2
+
+
+def test_managed_proposal_blocks_stage_validation_after_external_change(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
+    )
+    conversation_id = opened.json()["conversation_id"]
+    response = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "stale-stage", "question": "", "selection": "the slow algebra of yesterday's receipts",
+            "action_id": "tighten",
+        },
+        headers=headers,
+    )
+    task_id = response.json()["task_id"]
+    _wait_discuss(server, conversation_id, lambda value: value["tasks"][0]["status"] == "ready")
+    proposal = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/tasks/{task_id}/proposal", {}, headers=headers
+    ).json()["proposal"]
+    path = server.scene_path()
+    path.write_text(path.read_text(encoding="utf-8") + "\nExternal edit.\n", encoding="utf-8")
+
+    validation = server.post_json(f"/ai/proposals/{proposal['id']}/validate", {})
+    assert validation.status == 409
+    assert "scene changed" in validation.json()["error"].lower()
 
 
 def test_discuss_http_can_remove_default_document_context(server: ProseviewServer, fake_home: Path):
@@ -242,6 +361,40 @@ def test_discuss_stop_preserves_and_runs_queued_question(server: ProseviewServer
         lambda value: any("Fake answer" in message["text"] for message in value["messages"]),
     )
     assert len([message for message in snapshot["messages"] if message["role"] == "user"]) == 2
+
+
+def test_discuss_can_remove_one_pending_queue_item(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    conversation_id = server.post_json(
+        "/api/discuss/conversations/open",
+        {"kind": "scene", "path": SCENE_REL},
+        headers=headers,
+    ).json()["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "held", "question": "HOLD_FOR_STOP"},
+        headers=headers,
+    )
+    active = _wait_discuss(server, conversation_id, lambda value: bool(value["active_turn_id"]))
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "remove-me", "question": "Do not run this"},
+        headers=headers,
+    )
+    cancelled = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/queue/remove-me/cancel",
+        {},
+        headers=headers,
+    )
+    assert cancelled.status == 200
+    assert cancelled.json()["status"] == "cancelled"
+    snapshot = _wait_discuss(server, conversation_id, lambda value: not value["queue"])
+    assert not any(message.get("client_request_id") == "remove-me" for message in snapshot["messages"])
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/turns/{active['active_turn_id']}/stop",
+        {},
+        headers=headers,
+    )
 
 
 def test_discuss_sse_replays_strictly_after_last_event_id(server: ProseviewServer):
@@ -401,6 +554,57 @@ def test_discuss_refresh_recovers_a_missing_thread_and_can_start_new_conversatio
     assert len([message for message in fresh["messages"] if message["role"] == "user"]) == 1
     records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
     assert records[-2]["threadId"] != records[-1]["threadId"]
+
+
+def test_discuss_history_endpoints_resume_rename_export_and_remove(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    document = {"kind": "scene", "path": SCENE_REL}
+    opened = server.post_json("/api/discuss/conversations/open", document, headers=headers).json()
+    conversation_id = opened["conversation_id"]
+    server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {"client_request_id": "history-first", "question": "Why does this opening feel quiet?"},
+        headers=headers,
+    )
+    _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: value["active_turn_id"] is None
+        and any("Fake answer" in message["text"] for message in value["messages"]),
+    )
+
+    listed = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/history/list", {}, headers=headers
+    )
+    assert listed.status == 200
+    first = listed.json()["conversations"][0]
+    assert first["title"] == "Why does this opening feel quiet?"
+    assert first["current"] is True
+
+    server.post_json(f"/api/discuss/conversations/{conversation_id}/new", {}, headers=headers)
+    reopened = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/history/{first['thread_id']}/open", {}, headers=headers
+    )
+    assert reopened.status == 200
+    assert any(message["text"] == "Why does this opening feel quiet?" for message in reopened.json()["snapshot"]["messages"])
+
+    renamed = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/history/{first['thread_id']}/rename",
+        {"title": "Quiet opening"}, headers=headers,
+    )
+    assert renamed.json()["conversation"]["title"] == "Quiet opening"
+    exported = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/history/{first['thread_id']}/export", {}, headers=headers
+    ).json()["export"]
+    assert exported["conversation"]["title"] == "Quiet opening"
+    assert "BEGIN UNTRUSTED DOCUMENT" not in json.dumps(exported)
+
+    server.post_json(f"/api/discuss/conversations/{conversation_id}/new", {}, headers=headers)
+    removed = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/history/{first['thread_id']}/remove", {}, headers=headers
+    )
+    assert removed.status == 200
+    assert removed.json()["removed"] is True
 
 
 def test_discuss_new_conversation_refuses_to_discard_active_work(server: ProseviewServer):

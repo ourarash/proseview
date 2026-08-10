@@ -22,6 +22,7 @@ import threading
 import uuid
 import webbrowser
 from datetime import datetime
+from hmac import compare_digest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from time import perf_counter
@@ -55,20 +56,35 @@ _ai_clients: dict[str, dict[str, Any]] = {}
 _ai_lock = threading.Lock()
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
+#: POST endpoints that take an absolute file path from the page and write
+#: through it. Each one is containment-checked against the served repo.
+_ABS_PATH_ENDPOINTS: frozenset[str] = frozenset({
+    "/insert-todo", "/edit-todo", "/delete-todo",
+    "/add-note", "/edit-note", "/delete-note",
+    "/save-scene",
+})
+
 
 def _runtime_file(root: Path) -> Path:
     return root / ".proseview" / "server.json"
 
 
-def _write_runtime_file(root: Path, port: int) -> None:
+def _write_runtime_file(root: Path, port: int, session_token: str = "") -> None:
     path = _runtime_file(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "url": f"http://localhost:{port}",
         "repo_root": str(root.resolve()),
         "started_at": datetime.now().isoformat(timespec="seconds"),
+        # How `proseview propose` and friends authenticate. A browser cannot
+        # read this file, which is what keeps a hostile page out.
+        "session_token": session_token,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
 
 def _remove_runtime_file(root: Path, port: int) -> None:
@@ -126,8 +142,57 @@ def _coerce_options(value: Any) -> list[dict[str, str]]:
             raise ValueError("each option must be a string or object")
         if not text:
             raise ValueError("proposal options cannot be empty")
-        options.append({"label": label, "text": text})
+        option = {"label": label, "text": text}
+        if isinstance(item, dict) and str(item.get("rationale") or "").strip():
+            option["rationale"] = str(item["rationale"]).strip()
+        options.append(option)
     return options
+
+
+def _new_ai_proposal(repo_root: str, body: dict[str, Any]) -> dict[str, Any]:
+    scene_rel = _normalize_ai_scene_file(repo_root, body.get("file", ""))
+    prop_id = uuid.uuid4().hex[:10]
+    now = datetime.now().isoformat(timespec="seconds")
+    prop = {
+        "id": prop_id,
+        "client_id": body.get("client_id") or None,
+        "file": scene_rel,
+        "quote": str(body.get("quote") or ""),
+        "range": body.get("range") or None,
+        "message": str(body.get("message") or "").strip(),
+        "options": _coerce_options(body.get("options")),
+        "status": "created",
+        "created_by": str(body.get("created_by") or "codex"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    for field in ("origin", "client_request_id", "action_id", "selection_fingerprint", "source_mtime_ns", "task_id", "conversation_id"):
+        if body.get(field) is not None:
+            prop[field] = body[field]
+    if not prop["quote"] and not prop["range"]:
+        raise ValueError("proposal requires quote or range")
+    if prop.get("origin") == "managed_selection_action" and isinstance(prop.get("range"), dict):
+        start = int(prop["range"].get("start"))
+        end = int(prop["range"].get("end"))
+        if start < 0 or end <= start or not prop["quote"]:
+            raise ValueError("managed proposal has an invalid selection target")
+        prop["range"] = {"start": start, "end": end}
+        prop["resolved_quote"] = str(body.get("resolved_quote") or prop["quote"])
+    else:
+        prop.update(_resolve_ai_target(repo_root, scene_rel, prop["quote"], prop["range"]))
+    with _ai_lock:
+        if not prop["client_id"]:
+            matching = [c for c in _ai_clients.values() if c.get("active_scene") == scene_rel]
+            if len(matching) == 1:
+                prop["client_id"] = matching[0]["client_id"]
+            elif len(matching) > 1:
+                prop["needs_target"] = True
+                prop["status"] = "needs_target"
+            elif _ai_clients:
+                latest = max(_ai_clients.values(), key=lambda c: c.get("last_seen", ""))
+                prop["client_id"] = latest["client_id"]
+        _ai_proposals[prop_id] = prop
+    return prop
 
 
 def _proposal_editor_text(markdown: str) -> str:
@@ -287,6 +352,16 @@ def _scene_to_editor_offset(scene_text: str, target: int) -> int:
     return editor_pos
 
 
+def _browser_editor_text(scene_text: str) -> str:
+    """Approximate the flat text emitted by ``aiDocTextMap`` in the browser."""
+    blocks = []
+    for block in _BLANK_LINE_SEPARATOR_RE.split(scene_text):
+        visible = _proposal_editor_text(block).strip()
+        if visible:
+            blocks.append(visible)
+    return "\n".join(blocks)
+
+
 def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
@@ -331,7 +406,20 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
         end = int(range_value.get("end"))
         if start < 0 or end <= start:
             raise ValueError("range must have start >= 0 and end > start")
-        return {"range": {"start": start, "end": end}}
+        root = Path(repo_root).resolve()
+        cfg = Config.load(root)
+        scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+        raw = scene_path.read_text(encoding="utf-8")
+        _fm, body = split_frontmatter(raw)
+        editor_text = _browser_editor_text(extract_scene_text(body))
+        if end > len(editor_text):
+            raise ValueError("range is outside the current scene")
+        resolved_quote = editor_text[start:end]
+        normalized_target, _ = _normalized_text_map(resolved_quote)
+        normalized_quote, _ = _normalized_text_map(_proposal_editor_text(quote))
+        if not normalized_target or normalized_target != normalized_quote:
+            raise ValueError("range does not match the selected quote in the current scene")
+        return {"range": {"start": start, "end": end}, "resolved_quote": resolved_quote}
 
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
@@ -341,14 +429,10 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
     if _HTML_COMMENT_RE.search(quote):
         raise ValueError("quote includes NOTE/TODO annotations; target visible prose only")
     scene_text = extract_scene_text(body)
-    editor_text, raw_map = _editor_text_with_raw_map(scene_text)
+    editor_text = _browser_editor_text(scene_text)
     start, end, resolved_quote = _resolve_quote_in_editor_text(editor_text, quote)
-    if raw_map and start < len(raw_map) and end - 1 < len(raw_map):
-        _reject_annotation_overlap(raw_map[start], raw_map[end - 1] + 1, _comment_spans(scene_text))
-    scene_start = raw_map[start] if raw_map and start < len(raw_map) else start
-    browser_start = _scene_to_editor_offset(scene_text, scene_start)
     return {
-        "range": {"start": browser_start, "end": browser_start + len(resolved_quote)},
+        "range": {"start": start, "end": end},
         "resolved_quote": resolved_quote,
     }
 
@@ -801,7 +885,7 @@ class _Handler(BaseHTTPRequestHandler):
     publish_event: Callable[[dict[str, Any]], None]
     repo_root: str
     discuss_manager: DiscussManager
-    discuss_session_token: str
+    session_token: str
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -837,14 +921,55 @@ class _Handler(BaseHTTPRequestHandler):
             return False
         return (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
 
-    def _authorize_discuss_mutation(self) -> bool:
+    def _is_local_request(self) -> bool:
+        """Whether Host (and Origin, when sent) name this loopback server.
+
+        The socket only listens on localhost, but that is not a boundary on its
+        own: a DNS-rebinding page resolves its own hostname to 127.0.0.1 and
+        then talks to us with its origin intact. Pinning Host closes that.
+        """
         host = self.headers.get("Host", "")
         origin = self.headers.get("Origin", "")
-        if not self._is_loopback_authority(host) or (origin and not self._is_loopback_authority(origin)):
-            self._send_json({"ok": False, "error": "Discuss is available only from this local Prosview page"}, 403)
+        if not self._is_loopback_authority(host):
             return False
-        if self.headers.get("X-Proseview-Session", "") != self.discuss_session_token:
-            self._send_json({"ok": False, "error": "invalid page session"}, 403)
+        return not origin or self._is_loopback_authority(origin)
+
+    def _contained_abs_path(self, body: dict[str, Any]) -> str | None:
+        """Validate a client-supplied ``abs_path`` before we write through it.
+
+        The annotation and save endpoints take an absolute path from the page.
+        Resolving it unchecked lets a caller edit any file the user owns, so
+        require it to land inside the served repository and to not be reached
+        through a symlink.
+        """
+        raw = str(body.get("abs_path") or "")
+        if not raw:
+            self._send_json({"ok": False, "error": "missing abs_path"}, 400)
+            return None
+        root = Path(self.repo_root).resolve()
+        candidate = Path(raw)
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root) or candidate.is_symlink():
+            self._send_json({"ok": False, "error": "path is outside this repository"}, 403)
+            return None
+        return str(resolved)
+
+    def _authorize_mutation(self) -> bool:
+        """Gate every state-changing request on the per-run session token.
+
+        Without this, any page the user visits can post here: a form with
+        ``enctype="text/plain"`` is not preflighted, so the browser sends it
+        cross-origin and the side effect lands even though the response is
+        unreadable. Requiring a custom header forces a preflight we never
+        answer, and the token keeps out anything that cannot read the page or
+        ``.proseview/server.json`` (which is how the local CLI authenticates).
+        """
+        if not self._is_local_request():
+            self._send_json({"ok": False, "error": "request must come from this local Proseview server"}, 403)
+            return False
+        supplied = self.headers.get("X-Proseview-Session", "")
+        if not self.session_token or not compare_digest(supplied, self.session_token):
+            self._send_json({"ok": False, "error": "invalid or missing page session"}, 403)
             return False
         return True
 
@@ -1048,6 +1173,24 @@ class _Handler(BaseHTTPRequestHandler):
                     prop["status"] = "focused"
                 elif action == "skip":
                     prop["status"] = "skipped"
+                elif action == "validate":
+                    scene_rel = _normalize_ai_scene_file(self.repo_root, str(prop["file"]))
+                    cfg = Config.load(Path(self.repo_root))
+                    target = Path(self.repo_root) / cfg.manuscript_subdir / scene_rel
+                    expected_mtime = prop.get("source_mtime_ns")
+                    if expected_mtime is not None and target.stat().st_mtime_ns != int(expected_mtime):
+                        prop["status"] = "stale"
+                        self._send_json({"ok": False, "error": "The scene changed after this rewrite was generated. Reselect the passage and try again."}, 409)
+                        return
+                    # Re-resolving the exact quote proves it still has one safe,
+                    # unambiguous target. Managed actions additionally carry a
+                    # source mtime, checked above, so no fuzzy retargeting occurs.
+                    if prop.get("origin") != "managed_selection_action":
+                        _resolve_ai_target(
+                            self.repo_root, scene_rel, str(prop.get("quote") or ""), prop.get("range")
+                        )
+                    self._send_json({"ok": True, "proposal": dict(prop)})
+                    return
                 elif action == "apply":
                     if prop.get("needs_target") and not prop.get("client_id"):
                         self._send_json({"ok": False, "error": "proposal needs a target browser tab"}, 409)
@@ -1069,6 +1212,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(exc)}, 500)
 
     def do_GET(self) -> None:  # noqa: N802
+        # Reads are not token-gated (a browser navigating here cannot send a
+        # custom header), but they must still address us as localhost so a
+        # rebound hostname cannot pull scene text or terminal output.
+        if not self._is_local_request():
+            self._send_json({"ok": False, "error": "request must come from this local Proseview server"}, 403)
+            return
         discuss_path = urlparse(self.path).path
         discuss_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/(snapshot|events)", discuss_path)
         if discuss_match:
@@ -1274,6 +1423,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(html)
 
     def do_PATCH(self) -> None:  # noqa: N802
+        if not self._authorize_mutation():
+            return
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -1290,16 +1441,28 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        if not self._authorize_mutation():
+            return
         if path.startswith("/api/discuss/"):
-            if not self._authorize_discuss_mutation():
-                return
             try:
                 body = self._read_json_limited()
                 if path == "/api/discuss/conversations/open":
                     snapshot = self.discuss_manager.open({"kind": body.get("kind"), "path": body.get("path")})
                     self._send_json({"ok": True, "conversation_id": snapshot["conversation_id"], "snapshot": snapshot})
                     return
+                if path == "/api/discuss/skills":
+                    skills = self.discuss_manager.list_skills(force_reload=bool(body.get("force_reload")))
+                    self._send_json({"ok": True, "skills": skills})
+                    return
                 question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)
+                proposal_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/proposal", path)
+                clear_tasks_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/clear", path)
+                task_status_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/status", path)
+                cancel_queue_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/queue/([^/]+)/cancel", path)
+                history_list_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/history/list", path)
+                history_action_match = re.fullmatch(
+                    r"/api/discuss/conversations/([^/]+)/history/([^/]+)/(open|rename|remove|export)", path
+                )
                 new_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/new", path)
                 stop_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/turns/([^/]+)/stop", path)
                 approval_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/approvals/([^/]+)", path)
@@ -1309,10 +1472,62 @@ class _Handler(BaseHTTPRequestHandler):
                         client_request_id=body.get("client_request_id", ""),
                         question=body.get("question", ""),
                         selection=body.get("selection", ""),
+                        selection_range=body.get("selection_range") if isinstance(body.get("selection_range"), dict) else None,
+                        live_document=body.get("live_document") if isinstance(body.get("live_document"), dict) else None,
                         attachments=body.get("attachments") or [],
                         include_current_document=body.get("include_current_document", True),
+                        action_id=str(body.get("action_id") or ""),
+                        custom_instruction=str(body.get("custom_instruction") or ""),
+                        skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
+                        retry_of_task_id=str(body.get("retry_of_task_id") or ""),
                     )
                     self._send_json({"ok": True, **result}, 202)
+                    return
+                if proposal_match:
+                    proposal_body = self.discuss_manager.proposal_for_task(
+                        proposal_match.group(1), proposal_match.group(2)
+                    )
+                    proposal_body["client_id"] = body.get("client_id") or None
+                    prop = _new_ai_proposal(self.repo_root, proposal_body)
+                    self.publish_event(_proposal_payload(dict(prop), "created"))
+                    self._send_json({"ok": True, "proposal": prop})
+                    return
+                if clear_tasks_match:
+                    result = self.discuss_manager.clear_tasks(clear_tasks_match.group(1))
+                    self._send_json({"ok": True, **result})
+                    return
+                if task_status_match:
+                    result = self.discuss_manager.set_task_status(
+                        task_status_match.group(1), task_status_match.group(2), str(body.get("status") or "")
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if cancel_queue_match:
+                    result = self.discuss_manager.cancel_queued(
+                        cancel_queue_match.group(1), cancel_queue_match.group(2)
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if history_list_match:
+                    result = self.discuss_manager.list_conversations(history_list_match.group(1))
+                    self._send_json({"ok": True, **result})
+                    return
+                if history_action_match:
+                    conversation_id, thread_id, action = history_action_match.groups()
+                    if action == "open":
+                        snapshot = self.discuss_manager.open_conversation(conversation_id, thread_id)
+                        self._send_json({"ok": True, "snapshot": snapshot})
+                    elif action == "rename":
+                        result = self.discuss_manager.rename_conversation(
+                            conversation_id, thread_id, str(body.get("title") or "")
+                        )
+                        self._send_json({"ok": True, "conversation": result})
+                    elif action == "remove":
+                        result = self.discuss_manager.remove_conversation(conversation_id, thread_id)
+                        self._send_json({"ok": True, **result})
+                    else:
+                        result = self.discuss_manager.export_conversation(conversation_id, thread_id)
+                        self._send_json({"ok": True, "export": result})
                     return
                 if new_match:
                     snapshot = self.discuss_manager.new_conversation(new_match.group(1))
@@ -1339,47 +1554,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": f"Bad JSON: {exc}"}, 400)
             return
         path = urlparse(self.path).path
+        if path in _ABS_PATH_ENDPOINTS:
+            contained = self._contained_abs_path(body)
+            if contained is None:
+                return
+            body["abs_path"] = contained
         if path in ("/ai/clients/register", "/ai/clients/heartbeat"):
             self._handle_ai_client(body)
         elif path == "/ai/proposals":
             try:
-                scene_rel = _normalize_ai_scene_file(self.repo_root, body.get("file", ""))
-                prop_id = uuid.uuid4().hex[:10]
-                now = datetime.now().isoformat(timespec="seconds")
-                prop = {
-                    "id": prop_id,
-                    "client_id": body.get("client_id") or None,
-                    "file": scene_rel,
-                    "quote": str(body.get("quote") or ""),
-                    "range": body.get("range") or None,
-                    "message": str(body.get("message") or "").strip(),
-                    "options": _coerce_options(body.get("options")),
-                    "status": "created",
-                    "created_by": str(body.get("created_by") or "codex"),
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                if not prop["quote"] and not prop["range"]:
-                    self._send_json({"ok": False, "error": "proposal requires quote or range"}, 400)
-                    return
-                prop.update(_resolve_ai_target(self.repo_root, scene_rel, prop["quote"], prop["range"]))
-                with _ai_lock:
-                    if not prop["client_id"]:
-                        matching = [
-                            c for c in _ai_clients.values()
-                            if c.get("active_scene") == scene_rel
-                        ]
-                        if len(matching) == 1:
-                            prop["client_id"] = matching[0]["client_id"]
-                        elif len(matching) > 1:
-                            prop["needs_target"] = True
-                            prop["status"] = "needs_target"
-                        elif _ai_clients:
-                            latest = max(_ai_clients.values(), key=lambda c: c.get("last_seen", ""))
-                            prop["client_id"] = latest["client_id"]
-                    _ai_proposals[prop_id] = prop
-                    event = _proposal_payload(dict(prop), "created")
-                self.publish_event(event)
+                prop = _new_ai_proposal(self.repo_root, body)
+                self.publish_event(_proposal_payload(dict(prop), "created"))
                 self._send_json({"ok": True, "proposal": prop})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
@@ -1541,7 +1726,7 @@ def _make_handler(
     publish_event: Callable[[dict[str, Any]], None],
     repo_root: str,
     discuss_manager: DiscussManager,
-    discuss_session_token: str,
+    session_token: str,
 ) -> type:
     class BoundHandler(_Handler):
         pass
@@ -1552,7 +1737,7 @@ def _make_handler(
     BoundHandler.publish_event = staticmethod(publish_event)  # type: ignore[method-assign]
     BoundHandler.repo_root = repo_root  # type: ignore[method-assign]
     BoundHandler.discuss_manager = discuss_manager  # type: ignore[method-assign]
-    BoundHandler.discuss_session_token = discuss_session_token  # type: ignore[method-assign]
+    BoundHandler.session_token = session_token  # type: ignore[method-assign]
     return BoundHandler
 
 
@@ -1569,14 +1754,14 @@ def serve(
     _sse_clients: list[queue.Queue[str]] = []
     _sse_lock = threading.Lock()
     discuss_manager = DiscussManager(root)
-    discuss_session_token = uuid.uuid4().hex
+    session_token = uuid.uuid4().hex
 
     def get_html() -> str:
         with lock:
             if _stale[0] or not _cache:
                 started = perf_counter()
                 cfg = Config.load(root)
-                html = build_dashboard(root, cfg, discuss_session_token=discuss_session_token)
+                html = build_dashboard(root, cfg, session_token=session_token)
                 _cache[:] = [html]
                 _stale[0] = False
                 elapsed = perf_counter() - started
@@ -1702,7 +1887,7 @@ def serve(
         publish_event,
         str(root.resolve()),
         discuss_manager,
-        discuss_session_token,
+        session_token,
     )
 
     class _Server(ThreadingHTTPServer):
@@ -1718,7 +1903,7 @@ def serve(
     url = f"http://localhost:{port}"
     print(f"proseview serving at {url}")
     print("Press Ctrl-C to stop.")
-    _write_runtime_file(root, port)
+    _write_runtime_file(root, port, session_token)
 
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()

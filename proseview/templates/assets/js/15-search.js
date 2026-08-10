@@ -524,10 +524,26 @@
             if (warning) warning.hidden = true;
             if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
             _searchDebounceTimer = setTimeout(function() {
+                _searchDebounceTimer = null;
                 _searchResults = _runSearch(q);
                 _searchCursor = _searchResults.length ? 0 : -1;
                 _renderResults(_searchResults, q);
             }, SEARCH_DEBOUNCE_MS);
+        }
+
+        function _flushPendingSearch() {
+            // Enter can land inside the debounce window, while _searchResults
+            // still belongs to the previous keystroke — a fast typist would
+            // open a document that is not the one on screen. Recompute
+            // synchronously so activation always matches the visible query.
+            if (!_searchDebounceTimer) return;
+            clearTimeout(_searchDebounceTimer);
+            _searchDebounceTimer = null;
+            const box = document.getElementById('searchBox');
+            const q = box ? box.value : '';
+            _searchResults = _runSearch(q);
+            _searchCursor = _searchResults.length ? 0 : -1;
+            _renderResults(_searchResults, q);
         }
 
         function _handleSearchKeydown(e) {
@@ -547,6 +563,7 @@
                 return;
             }
             if (e.key === 'Enter') {
+                _flushPendingSearch();
                 if (_searchCursor >= 0) _activateSearchResult(_searchCursor);
                 e.preventDefault();
                 return;

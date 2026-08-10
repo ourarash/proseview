@@ -100,6 +100,25 @@ def resolve_visible_repository_path(root: Path, value: str) -> Path:
     return resolved
 
 
+def scene_relative_path(rel: str, manuscript_subdir: str) -> str | None:
+    """Return the scene-index key for *rel*, or ``None`` when it is not a scene.
+
+    Mirrors ``scenes.iter_scene_paths``, which is what actually populates the
+    client's scene index: only ``*.md`` files exactly one directory below the
+    manuscript root are scenes, and READMEs are skipped. Deeper manuscript
+    notes (``manuscript/ch05/review/foo.md``) are ordinary repository files —
+    flagging them as scenes routes the client to a scene it cannot find.
+    """
+    prefix = manuscript_subdir.rstrip("/") + "/"
+    if not rel.startswith(prefix):
+        return None
+    scene_rel = rel[len(prefix):]
+    parts = Path(scene_rel).parts
+    if len(parts) != 2 or not parts[1].endswith(".md") or parts[1].lower() == "readme.md":
+        return None
+    return scene_rel
+
+
 def _file_node(path: Path, root: Path, preview_max: int) -> dict[str, Any]:
     rel = path.relative_to(root).as_posix()
     size = path.stat().st_size
@@ -150,16 +169,20 @@ def _dir_node(path: Path, root: Path, preview_max: int, excluded: set[str]) -> d
 
 
 def _file_node_scene(path: Path, root: Path, manuscript_subdir: str) -> dict[str, Any]:
-    """Lightweight node for a manuscript scene file (body omitted; modal has it)."""
+    """Lightweight node for a manuscript Markdown file (body omitted).
+
+    Files the scene index does not carry (READMEs, notes nested below a
+    chapter dir) stay in the sidebar but are marked as ordinary files, so the
+    click handler previews them instead of opening an absent scene.
+    """
     rel = path.relative_to(root).as_posix()
-    ms_prefix = manuscript_subdir.rstrip("/") + "/"
-    scene_path = rel[len(ms_prefix):] if rel.startswith(ms_prefix) else rel
+    scene_path = scene_relative_path(rel, manuscript_subdir)
     return {
         "name": path.name,
         "path": rel,
         "abs_path": str(path.resolve()),
         "is_file": True,
-        "is_scene": True,
+        "is_scene": scene_path is not None,
         "scene_path": scene_path,
         "modified_at": _iso_mtime(path),
         "size": path.stat().st_size,
@@ -281,7 +304,7 @@ def recent_changes(
     Each entry carries:
       path          relative path from repo root (forward slashes)
       abs_path      resolved absolute path string
-      is_scene      True when the file is a manuscript Markdown file
+      is_scene      True when the file is in the client's scene index
       scene_path    path relative to manuscript_subdir for scenes, else None
       modified_at   ISO date string of the most-recent touching commit
     """
@@ -291,7 +314,6 @@ def recent_changes(
     if not is_git_repo(root):
         return [], False
 
-    ms_prefix = cfg.manuscript_subdir.rstrip("/") + "/"
     content_dirs: list[str] = [cfg.manuscript_path, *list(cfg.repo_tab.folders)]
 
     try:
@@ -329,13 +351,12 @@ def recent_changes(
         if line.startswith("__PV_DATE__ "):
             current_date = line[len("__PV_DATE__ "):]
         elif line not in entries:
-            suffix = Path(line).suffix.lower()
-            is_scene = line.startswith(ms_prefix) and suffix in {".md", ".markdown"}
+            scene_rel = scene_relative_path(line, cfg.manuscript_subdir)
             entries[line] = {
                 "path": line,
                 "abs_path": str((root / line).resolve()),
-                "is_scene": is_scene,
-                "scene_path": line[len(ms_prefix):] if is_scene else None,
+                "is_scene": scene_rel is not None,
+                "scene_path": scene_rel,
                 "modified_at": current_date,
             }
 
@@ -383,14 +404,13 @@ def _repository_file_node(
     inspection_limit = max(cfg.repo_tab.preview_max_bytes, context_max_bytes)
     text = _read_utf8_text(resolved, inspection_limit)
     rel = path.relative_to(root).as_posix()
-    manuscript_prefix = cfg.manuscript_subdir.rstrip("/") + "/"
-    is_scene = rel.startswith(manuscript_prefix) and path.suffix.lower() in {".md", ".markdown"}
+    scene_rel = scene_relative_path(rel, cfg.manuscript_subdir)
     return {
         "name": path.name,
         "path": rel,
         "is_file": True,
-        "is_scene": is_scene,
-        "scene_path": rel[len(manuscript_prefix):] if is_scene else None,
+        "is_scene": scene_rel is not None,
+        "scene_path": scene_rel,
         "is_text": text is not None or (
             size > inspection_limit and path.suffix.lower() in TEXT_SUFFIXES
         ),

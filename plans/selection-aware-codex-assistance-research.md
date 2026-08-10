@@ -1388,6 +1388,12 @@ recommended managed selection journey has now been implemented through Phases
   rejected.
 - Duplicate client request IDs are idempotent, including retries after the
   source file changes.
+- On reopen, persisted selection-action turns are reconstructed as task cards
+  instead of exposed as raw JSON. New turns persist their original mtime,
+  range, and fingerprint in a versioned prompt marker, so review remains
+  available only when the original target can still be proven current. Legacy
+  history without that provenance remains readable but is explicitly
+  historical and cannot be applied to a newly baselined scene.
 
 ### Final verification
 
@@ -1396,8 +1402,8 @@ recommended managed selection journey has now been implemented through Phases
 - Independent live UI/UX review: **Complete — approve; no P0–P3 findings**
   across 1400×1000 light/100%, 1024×768 dark/200%, pointer, and keyboard
   contexts.
-- Full default test suite: **262 passed, 123 deselected**.
-- Full browser E2E suite: **123 passed, 262 deselected**.
+- Full default test suite: **265 passed, 126 deselected**.
+- Full browser E2E suite: **126 passed, 265 deselected**.
 - JavaScript syntax checks, Python compilation, and `git diff --check`: passed.
 - Added E2E coverage includes dirty-before-selection actions, repeated text,
   Markdown emphasis and exact Undo, unrelated local edits before staging,
@@ -1405,6 +1411,11 @@ recommended managed selection journey has now been implemented through Phases
   removal, draft reload, focus recovery, submenu keyboard behavior, dark 200%
   zoom containment, real-world critique punctuation/whitespace variants,
   invalid citations, actionable citation errors, and grouped retry attempts.
+  Restart coverage now stops and relaunches the real Prosview server, restores
+  HTML-escaped Codex history, verifies both provenance-backed review and safe
+  legacy-history rendering, decodes Markdown text entities such as
+  `Patel&#39;s` without activating unsafe HTML or links, and confirms that no
+  raw payload reaches the chat.
   New-conversation recovery also clears configured action, retry, skill, and
   auto-run state before returning the composer to normal Ask mode; active-turn
   explanation, Stop Codex feedback, pending/failure announcements, retry focus,

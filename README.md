@@ -10,9 +10,36 @@ without leaving the page.
 It runs entirely on your machine. No cloud, no telemetry, no lock-in. Your
 files stay where they are.
 
+[![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
+
+![The Proseview dashboard: word-count goal, writing streak, and recently modified files](docs/images/dashboard.png)
+
+## 📸 A look around
+
+### Read and revise, with editorial passes on
+
+Nine prose passes highlight repetition, passive voice, filter verbs and more,
+right on the page you are reading.
+
+![A scene open in the reading view with four highlight passes enabled](docs/images/scene-highlights.png)
+
+### Search the whole repository
+
+`Mod-K` from anywhere. File paths, scene metadata, TODOs, notes, and prose,
+grouped by kind.
+
+![The search palette open over a scene, showing file, scene, and prose matches](docs/images/search.png)
+
+### Analytics that mean something
+
+![Character presence, sentence-rhythm bands, setting stickiness, and character co-occurrence charts](docs/images/analytics.png)
+
+> Screenshots use the bundled `fixtures/demo-repo` (four scenes), so the charts
+> are deliberately small. Your book fills them in.
 
 ## ✨ What you get
 
@@ -37,7 +64,7 @@ files stay where they are.
   conversation; the agent can see the file, the selection, and your
   repo. Your tools, your prompts.
 - 💬 **Discuss with Codex.** Open a document-aware conversation beside
-  any scene or supported repository text file. Prosview sends the current
+  any scene or supported repository text file. Proseview sends the current
   document automatically and only adds selections, files, or folders you
   explicitly attach. Safe progress summaries, plans, tool activity, approval
   requests, and streamed answers stay visible while you read.
@@ -54,15 +81,18 @@ files stay where they are.
   current query.
 - 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
   Literary, Inter, Georgia, Baskerville, Sans, Mono.
-- 🧪 **Tested.** 260+ tests: unit coverage of the analytics engine, scene
+- 🧪 **Tested.** 400 tests: unit coverage of the analytics engine, scene
   parsing, save guards, history, and refresh behavior, plus end-to-end
   tiers that boot the real server and drive the real UI in a browser.
 
 ## 🚀 Quick start
 
+**Requirements:** Python 3.11+ on macOS or Linux. The server uses Unix-only
+APIs (`fcntl`, and a real PTY for the terminal), so Windows needs WSL.
+
 ```bash
-git clone https://github.com/ourarash/prosview.git
-cd prosview
+git clone https://github.com/ourarash/proseview.git
+cd proseview
 pip install -r requirements.txt
 
 # Run the dashboard against your novel repo
@@ -83,7 +113,7 @@ proseview --root /path/to/your/novel
 A folder of Markdown scene files, one folder per chapter. The minimum
 viable repo:
 
-```
+```text
 my-novel/
 ├── manuscript/
 │   ├── ch01/
@@ -233,20 +263,19 @@ Four places where AI shows up, all opt-in:
    Codex, Claude, or Gemini scoped to that file. The conversation runs
    in the in-browser terminal so you can keep reading the prose
    underneath while the agent works.
-3. **Discuss.** Choose `Discuss` in a scene or text-file header to use the
-   shared right utility dock. Prosview starts the local `codex app-server`
-   lazily, uses your existing Codex login and configured model, and keeps full
-   history in Codex's normal storage. Prosview persists only a hashed
-   document-to-thread mapping in your user state directory. Raw reasoning is
-   discarded; only Codex-authored progress summaries reach the browser. Tool
-   and file actions remain subject to visible, user-reviewed approvals. If a
-   stored Codex thread disappears, Prosview starts a replacement on the next
-   question instead of leaving the document stuck. Use `New conversation` to
-   intentionally clear the document's current discussion; the prior thread
-   remains available in Codex history. The visible document is attached by
-   default for each question; remove its context chip to omit it, or use the
-   compact add-context control (keyboard shortcut `@`) to attach repository
-   files and folders explicitly.
+3. **Discuss.** Choose `Discuss` in a scene or text-file header for a
+   document-aware conversation in the side dock. The document you are
+   reading is attached to each question by default — drop its chip to omit
+   it, or press `@` to attach other files and folders. Tool and file
+   actions wait on approvals you can see.
+
+   Under the hood it starts a local `codex app-server` on demand and uses
+   your existing Codex login, model, and history. Proseview stores a bounded
+   list of thread IDs and display metadata for each document in your state
+   directory, and discards raw reasoning — only Codex's own progress summaries
+   reach the browser. `History` lets you reopen, rename, export, or remove a
+   previous conversation. `New conversation` starts a blank discussion while
+   keeping the previous one available there.
 4. **TODOs as Markdown.** Every TODO and Note is a plain
    `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
    scene file. Your AI assistant can see them through the file, your
@@ -262,7 +291,7 @@ This is alpha. Things that are working and things that are coming:
 - ✅ Vendored front-end dependencies. chart.js, marked, xterm and
   friends ship with the package and load from `/vendor/`. ProseMirror
   modules are pinned to specific versions on esm.sh.
-- ✅ Modularized front-end. The JS lives in nine topical files under
+- ✅ Modularized front-end. The JS lives in twelve topical files under
   `templates/assets/js/`, concatenated at render time.
 - ✅ `proseview init` writes a starter `.proseview.yaml` so a fresh
   novel repo gets a working configuration with one command.

@@ -87,7 +87,7 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
         "let contents = JSON.parse(",
         "const repoTree = JSON.parse(",
         "const presenceChartData = JSON.parse(",
-        "const VALID_TABS = ['overview', 'todos', 'notes'];",
+        "const VALID_TABS = ['overview', 'timeline', 'todos', 'notes'];",
         "const MODAL_FONT_SIZE_STORAGE_KEY = 'proseview-modal-font-size';",
         "const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';",
         "if ('scrollRestoration' in history) history.scrollRestoration = 'manual';",

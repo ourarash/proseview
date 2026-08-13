@@ -39,6 +39,7 @@ from .conftest import (
     LARGE_SCENE_REL,
     NESTED_MANUSCRIPT_NOTE,
     SCENE_REL,
+    STORY_SCENES,
     ProseviewServer,
 )
 
@@ -2909,3 +2910,71 @@ def test_applied_proposal_requires_normal_save_to_reach_disk(page: Page, server:
     after = path.read_text(encoding="utf-8")
     assert QUOTE not in after
     assert frontmatter(after) == frontmatter(original)
+
+
+def test_timeline_tab_shows_shape_threads_and_chronology(page: Page, shared_server: ProseviewServer):
+    """The three story layers render from frontmatter, and the chronology view
+    names the scene that is read out of the order it happens."""
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    # Layer 1 is always available: one segment and one bar per scene.
+    scenes = page.evaluate("() => storyModel.scenes.length")
+    assert scenes > 0
+    assert page.locator(".story-seg").count() == scenes
+    assert page.locator(".story-barwrap").count() == scenes
+
+    # Layer 2: one lane per thread the fixture seeds.
+    lanes = page.locator(".story-lane-row")
+    lanes.first.wait_for(state="visible")
+    lane_text = page.locator("#timelineContent").inner_text().lower()
+    assert "present" in lane_text and "recollection" in lane_text
+
+    # Layer 3: the seeded flashback happens first but is read last.
+    assert "reading order vs story order" in lane_text
+    assert page.locator(".story-svg").count() == 1
+    assert "read far from where they happen" in lane_text
+    assert "flashback" in lane_text
+
+
+def test_timeline_scene_click_opens_the_scene(page: Page, shared_server: ProseviewServer):
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    first = page.locator(".story-barwrap[data-scene]").first
+    expected = page.evaluate("() => storyModel.scenes[+document.querySelector('.story-barwrap[data-scene]').dataset.scene].path")
+    first.click()
+
+    page.wait_for_selector("#sceneModal", state="visible")
+    assert expected in page.locator("#modalTitle").inner_text()
+
+
+def test_timeline_says_what_is_missing_rather_than_guessing(page: Page, shared_server: ProseviewServer):
+    """A manuscript with no story fields still gets the shape view, and the
+    other two layers name the field they would need instead of guessing."""
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    # Re-render against a model with no thread or day data, which is what an
+    # untagged manuscript produces (proseview/story.py decides that; this
+    # asserts what the renderer does with it).
+    page.evaluate("""() => {
+        storyModel.threads = [];
+        storyModel.has_threads = false;
+        storyModel.has_chronology = false;
+        _timelineBuilt = false;
+        buildTimelineTab();
+    }""")
+
+    text = page.locator("#timelineContent").inner_text().lower()
+    assert "proportion of the book" in text, "the shape layer must survive with no story fields"
+    assert "no storylines yet" in text
+    assert "thread" in text, "the empty state names the field to add"
+    assert "no chronology yet" in text
+    assert page.locator(".story-lane-row").count() == 0
+    assert page.locator(".story-svg").count() == 0
+    # Still navigable: the shape layer keeps its per-scene marks.
+    assert page.locator(".story-barwrap").count() > 0

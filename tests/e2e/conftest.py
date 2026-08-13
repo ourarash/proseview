@@ -52,6 +52,16 @@ LARGE_SCENE_REL = "ch03/01-long-haul.md"
 #: folders sort above files, so a shared prefix would outrank the real scene.
 NESTED_MANUSCRIPT_NOTE = "manuscript/ch01/review/reader-pass-notes.md"
 
+#: Scenes carrying story-layer fields, so the Timeline tab has threads and a
+#: chronology to draw. Deliberately told out of order: day 5 is read before
+#: day 4, which is the crossing the chronology view exists to show.
+STORY_SCENES = (
+    ("ch03/01-present-a.md", "present", 5),
+    ("ch03/02-present-b.md", "present", 6),
+    ("ch03/03-present-c.md", "present", 7),
+    ("ch03/04-flashback.md", "recollection", 1),
+)
+
 #: Printed by every stub agent so tests can recognise a real spawn.
 AGENT_MARKER = "PROSEVIEW_FAKE_AGENT"
 
@@ -221,6 +231,16 @@ def _build_repo(dest: Path) -> Path:
     _seed_large_scene(dest)
     # Manuscript Markdown that ``iter_scene_paths`` does not index: it is a
     # plain repository file the reader must still be able to open.
+    for rel, thread, day in STORY_SCENES:
+        scene = dest / "manuscript" / rel
+        scene.parent.mkdir(parents=True, exist_ok=True)
+        scene.write_text(
+            f"---\ntitle: {rel.split('/')[-1][:-3].replace('-', ' ').title()}\n"
+            f"chapter: Chapter 3\nthread: {thread}\nday: {day}\n"
+            f"when: Day {day}\nwhere: The shop\n---\n\nA scene on day {day}.\n",
+            encoding="utf-8",
+        )
+
     note = dest / NESTED_MANUSCRIPT_NOTE
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(

@@ -1847,3 +1847,43 @@
             color: #fff;
             opacity: 0.9;
         }
+
+        /* ── Timeline tab ────────────────────────────────────────────── */
+        /* Chapter and thread hues: the validated categorical order, stepped
+           for each surface. Never cycled beyond eight — the model folds the
+           overflow into "other" before it reaches here. */
+        :root {
+            --story-c0:#2a78d6; --story-c1:#eb6834; --story-c2:#1baf7a; --story-c3:#eda100;
+            --story-c4:#e87ba4; --story-c5:#008300; --story-c6:#4a3aa7; --story-c7:#e34948;
+        }
+        [data-theme="dark"], [data-theme="hopscotch"] {
+            --story-c0:#3987e5; --story-c1:#d95926; --story-c2:#199e70; --story-c3:#c98500;
+            --story-c4:#d55181; --story-c5:#008300; --story-c6:#9085e9; --story-c7:#e66767;
+        }
+        .story-section { margin-bottom: 30px; }
+        .story-h { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+                   color: var(--text-muted); margin: 0 0 9px; font-weight: 600; }
+        .story-sub, .story-note { color: var(--text-muted); font-size: 12px; margin: 9px 0 0; }
+        .story-empty { color: var(--text-muted); font-size: 13px; margin: 0;
+                       padding: 14px 16px; border: 1px dashed var(--border); border-radius: 8px; }
+        .story-empty code { font-size: 12px; }
+        .story-strip { display: flex; height: 44px; gap: 2px; border-radius: 5px; overflow: hidden; }
+        .story-seg { min-width: 1px; }
+        .story-seg:hover, .story-barwrap:hover .story-bar, .story-slot.on:hover { filter: brightness(1.15); }
+        .story-chart { display: flex; align-items: flex-end; gap: 2px; height: 160px;
+                       border-bottom: 1px solid var(--border); }
+        .story-barwrap { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+        .story-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+        .story-ticks { display: flex; gap: 2px; margin-top: 6px; }
+        .story-tick { text-align: center; font-size: 11px; color: var(--text-muted); min-width: 0;
+                      border-top: 2px solid var(--border); padding-top: 5px;
+                      overflow: hidden; white-space: nowrap; }
+        .story-lane-row { display: flex; align-items: center; gap: 12px; margin-bottom: 5px; }
+        .story-lane-name { flex: 0 0 150px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .story-lane-name i { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+        .story-lane-name span { color: var(--text-muted); }
+        .story-lane { flex: 1; display: flex; gap: 2px; height: 17px; }
+        .story-slot { flex: 1; border-radius: 2px; background: var(--surface-muted); }
+        .story-slot.on { background: var(--primary); }
+        .story-scroll { overflow-x: auto; }
+        .story-svg { min-width: 760px; color: var(--text-main); }

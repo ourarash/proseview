@@ -1120,6 +1120,7 @@
             const btn = document.querySelector('.tab-nav button[data-tab="' + name + '"]');
             if (btn) btn.classList.add('active');
             currentTab = name;
+            if (name === 'timeline') buildTimelineTab();
             if (name === 'notes') buildNotesTab();
             if (name === 'todos') buildTodosTab();
             routeToHash('/tab/' + name, true);

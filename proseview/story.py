@@ -152,6 +152,13 @@ def _coerce_day(value: Any) -> int | None:
         return None
 
 
+def _scene_path(path: Path, cfg: Config) -> str:
+    """Manuscript-relative path, matching the keys the browser opens scenes by."""
+    text = str(path)
+    prefix = cfg.manuscript_subdir + "/"
+    return text[len(prefix):] if text.startswith(prefix) else text
+
+
 def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
     """Assemble the story model from already-parsed scene stats."""
     thread_key = cfg.story.thread_field
@@ -164,7 +171,7 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
         rows.append(
             StoryScene(
                 index=index,
-                path=str(scene.path),
+                path=_scene_path(scene.path, cfg),
                 title=scene.title,
                 chapter=scene.chapter,
                 words=scene.words,

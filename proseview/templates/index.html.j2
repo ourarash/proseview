@@ -77,6 +77,7 @@
     <div class="app-toolbar">
         <nav class="tab-nav">
             <button class="active" data-tab="overview" onclick="showTab('overview')">Overview</button>
+            <button data-tab="timeline" onclick="showTab('timeline')">Timeline</button>
             <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
             <button data-tab="notes" onclick="showTab('notes')">Notes</button>
         </nav>
@@ -171,6 +172,10 @@
                 </tbody></table></div>
             <div class="sticky-sidebar"><div class="card"><div class="card-header"><span class="card-title">Lexical Health Map</span></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart"></canvas></div></div></div>
         </div>
+    </div>
+
+    <div id="tab-timeline" class="tab-panel">
+        <div id="timelineContent"></div>
     </div>
 
     <div id="tab-todos" class="tab-panel">
@@ -337,6 +342,7 @@
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
         const pageSessionToken = {{ session_token_json | safe }};
+        const storyModel = {{ story_json | safe }};
         const repoFileByPath = {};
         const repositoryFileByPath = {};
         (function indexRepo(nodes) {

@@ -46,6 +46,19 @@ class RepoTabConfig:
 
 
 @dataclass(frozen=True)
+class StoryConfig:
+    """Which frontmatter keys carry the story-layer fields.
+
+    Defaults are the names Proseview documents. A manuscript that already uses
+    its own convention points these at its own keys instead of rewriting 48
+    files.
+    """
+
+    thread_field: str = "thread"
+    day_field: str = "day"
+
+
+@dataclass(frozen=True)
 class Config:
     manuscript_path: str = "manuscript/"
     characters_path: str = DEFAULT_CHARACTERS_PATH
@@ -59,6 +72,7 @@ class Config:
     locations: tuple[str, ...] = ()
     editor: EditorConfig = field(default_factory=EditorConfig)
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
+    story: StoryConfig = field(default_factory=StoryConfig)
 
     @property
     def manuscript_subdir(self) -> str:
@@ -123,6 +137,7 @@ class Config:
             locations=_coerce_str_tuple(raw.get("locations", ()), "locations"),
             editor=_coerce_editor(raw.get("editor")),
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
+            story=_coerce_story(raw.get("story")),
         )
 
     def with_overrides(self, **kwargs: Any) -> "Config":
@@ -141,7 +156,7 @@ def _config_field_names() -> tuple[str, ...]:
         "manuscript_path", "characters_path", "skills_path",
         "target_words", "daily_target",
         "mattr_band", "mtld_band", "chapter_pattern",
-        "characters", "locations", "editor", "repo_tab",
+        "characters", "locations", "editor", "repo_tab", "story",
     )
 
 
@@ -246,3 +261,17 @@ def _parse_yaml(text: str) -> dict[str, Any]:
             f"top-level YAML must be a mapping, got {type(loaded).__name__}"
         )
     return loaded
+
+
+def _coerce_story(v: Any) -> StoryConfig:
+    defaults = StoryConfig()
+    if v is None:
+        return defaults
+    if not isinstance(v, dict):
+        raise ConfigError(f"'story' must be a mapping, got {type(v).__name__}: {v!r}")
+    thread_field = v.get("thread_field")
+    day_field = v.get("day_field")
+    return StoryConfig(
+        thread_field=_coerce_str(thread_field, "story.thread_field") if thread_field else defaults.thread_field,
+        day_field=_coerce_str(day_field, "story.day_field") if day_field else defaults.day_field,
+    )

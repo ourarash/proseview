@@ -28,6 +28,7 @@ from .history import HistoryRow, load_history, working_copy_delta
 from .lexical import FILTER_VERBS, calculate_lexical_stats
 from .related import find_related
 from .repo import build_repository_tree, build_sidebar_tree, build_tree, recent_changes
+from .story import story_payload
 from .scenes import (
     BaselineStats,
     SceneStats,
@@ -564,6 +565,7 @@ def render_html_report(
             }
         ),
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),
+        "story_json": _js_json(story_payload(scenes, cfg)),
         "session_token_json": json.dumps(session_token),
     }
     return _render_template("index.html.j2", **context)

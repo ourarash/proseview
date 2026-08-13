@@ -1,6 +1,6 @@
 let currentTab = 'overview';
         let suppressHashWrite = false;
-        const VALID_TABS = ['overview', 'todos', 'notes'];
+        const VALID_TABS = ['overview', 'timeline', 'todos', 'notes'];
 
         // Headers for every state-changing request. The session token is the
         // only thing separating this page from any other site the user has

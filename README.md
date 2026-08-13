@@ -1,22 +1,23 @@
 # Proseview
 
-> A writer's dashboard for a folder of Markdown. ✍️
+> A local dashboard for Markdown-first novel repositories. ✍️
 
-Point it at your manuscript. Get lexical health, pacing, character presence,
-and revision history from the files you already have — then read, edit, and
-annotate them on the same surface.
+Point it at a convention-structured manuscript. Get lexical health, pacing,
+character presence, and revision history from the files you already have —
+then read, edit, and annotate them on the same surface.
 
-Nothing uploads. No account, no subscription, no database. Your book stays a
-folder of Markdown files in your own git repository, readable by every other
-tool you own.
+Core analysis stays on your machine: no account, subscription, database, or
+telemetry. AI features are opt-in; when you use one, Proseview sends the active
+document by default, plus any selection or attachments, through your installed
+agent CLI under that agent's login and data handling.
 
 ```bash
 pipx install proseview
 proseview --root /path/to/your/novel
 ```
 
-Already writing in Obsidian, novelWriter, or plain Vim? Keep doing that.
-Proseview reads the same files and gives you the numbers your editor doesn't.
+Already writing in Obsidian, Vim, or another Markdown editor? Keep doing that.
+Proseview reads the same `.md` files once they follow the scene layout below.
 
 [![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
@@ -67,6 +68,10 @@ grouped by kind.
 - 🗒️ **Inline TODOs and Notes.** Select a passage, drop a `TODO` or a
   tagged `NOTE` (continuity / character / theme / question), and it
   lands in the file as a Markdown comment. Survives in git.
+- 🕰️ **Timeline.** The shape of the book, your storylines as lanes, and
+  reading order against the order events happen — so a scene read far from
+  where it happens is visible instead of inferred. Reads optional `thread:`
+  and `day:` frontmatter; each view hides itself when its field is absent.
 - 🔎 **Repository search.** `Mod-K` from anywhere. File paths, scene
   metadata, TODOs, notes, and prose, grouped by kind. Opening a result
   reveals it in the sidebar.
@@ -121,8 +126,8 @@ proseview --root /path/to/your/novel
 
 ## 📁 What proseview expects
 
-A folder of Markdown scene files, one folder per chapter. The minimum
-viable repo:
+A Proseview scene is a lowercase `.md` file exactly one folder below the
+configured manuscript directory. The default layout is:
 
 ```text
 my-novel/
@@ -135,6 +140,13 @@ my-novel/
 └── .proseview.yaml          # optional
 ```
 
+Chapter folder names are up to you; folders and files are read in name order.
+Root-level manuscript files, deeper nested files, `README.md`, and other
+extensions such as `.markdown` are not indexed as scenes. You can change the
+manuscript folder with `manuscript_path`, but the one-folder-deep scene layout
+still applies. Git is optional for the core dashboard, but revision history,
+goals, streaks, and recent changes require the root to be a Git worktree.
+
 Scene files use simple frontmatter:
 
 ```markdown
@@ -145,7 +157,9 @@ status: draft
 where: A bar in the West Village
 when: Friday night, late
 pov: Nima
-characters: [Nima, Mira]
+characters:
+  - Nima
+  - Mira
 goal: Nima needs to get the question on the table
 conflict: He's afraid she already has someone
 outcome: She agrees to dinner; he leaves rattled
@@ -159,7 +173,8 @@ The bar was loud and the music was bad...
 ```
 
 Every field is optional. Proseview reads what's there and falls back
-gracefully on what isn't.
+gracefully on what isn't. Frontmatter supports simple scalar values and block
+lists like the examples above; inline YAML lists are not interpreted as lists.
 
 ### 📝 Frontmatter contract
 
@@ -193,6 +208,20 @@ through and ignored. Every field is optional.
 - `goal` (string) "Goal" row in the arc panel.
 - `conflict` (string) "Conflict" row in the arc panel.
 - `outcome` (string) "Outcome" row in the arc panel.
+
+#### Story layer (optional)
+
+- `thread` (string) the storyline a scene belongs to — `present`, `1943`,
+  whatever you call them. Scenes sharing a value share a lane in the Timeline
+  tab. Up to eight threads render; the rest fold into `other`.
+- `day` (number) where the scene sits in story time. Counting up and counting
+  down both work — Proseview detects the direction rather than assuming it.
+  Scenes sharing a day keep their reading order. `day: "Day 93"` is read as
+  `93`.
+
+Both are optional and independent. With neither, the Timeline still shows the
+shape of the book; with only `thread`, the lanes appear; with `day` on two or
+more scenes, reading order can be compared with story order.
 
 #### Tasks
 
@@ -237,14 +266,14 @@ Options: `--output`, `--title`, `--author`, `--language`, `--epub-version`
 `--appendix`.
 
 **Requires [pandoc](https://pandoc.org/installing.html)** (`brew install pandoc`
-or `apt install pandoc`). It is the only external binary Proseview ever calls,
-nothing else needs it, and the export tells you how to install it if it is
-missing.
+or `apt install pandoc`). Only EPUB export needs it; the dashboard runs without
+it, and the export command explains how to install it when it is missing.
 
 ## ⚙️ Configuration
 
-`proseview` works with zero config. Drop a `.proseview.yaml` at the
-repo root if you want to customize:
+`proseview` works with zero config when your files match the default
+`manuscript/<chapter>/<scene>.md` layout. Drop a `.proseview.yaml` at the repo
+root if you want to customize:
 
 ```yaml
 # Where the manuscript lives. Default: manuscript/
@@ -275,9 +304,16 @@ editor:
 # Folders shown in the file tree alongside the manuscript.
 repo_tab:
   folders: [plans, continuity, outline, story-bible, docs, templates]
+
+# Which frontmatter keys the Timeline reads. Defaults shown; point them at
+# your own convention instead of renaming fields across the manuscript.
+story:
+  thread_field: thread
+  day_field: day
 ```
 
-Every key has a sensible default; missing folders are simply skipped.
+Every key has a sensible default. Missing optional folders are skipped, but the
+configured manuscript directory is required.
 
 ## 🧠 The analytics
 
@@ -345,9 +381,8 @@ This is alpha. Things that are working and things that are coming:
   novel repo gets a working configuration with one command.
 - ✅ Persisted UI prefs. Your highlight-pass toggles and theme choices
   survive scene navigation and reloads.
-- 🚧 Diff-confirm for AI-suggested edits (selection runs in a terminal
-  today; nothing applies edits without your approval, but the diff UX
-  is still terminal-only).
+- ✅ AI proposal review. Suggested selection edits show the original and
+  proposed text with explicit accept, reject, undo, and save steps.
 - 🚧 Configurable agent list (Codex / Claude / Gemini are presets today).
 - 🚧 Continuity surfacing (warn when a scene contradicts a known fact).
 - 🚧 Frontmatter editor (status, where, todos) inside the scene viewer

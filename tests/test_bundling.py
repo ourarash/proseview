@@ -80,7 +80,7 @@ def test_dashboard_inlines_concatenated_bundle():
     """
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     # From 00-state.js
-    assert "const VALID_TABS = ['overview', 'todos', 'notes'];" in html
+    assert "const VALID_TABS = ['overview', 'timeline', 'todos', 'notes'];" in html
     # From 30-router-modal.js
     assert "function openSceneModal(p)" in html
     # From 70-terminal.js

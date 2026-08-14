@@ -304,6 +304,206 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
 
 
+def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
+    page: Page, server: ProseviewServer
+):
+    before = server.scene_path().read_bytes()
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    trace = page.get_by_role("button", name=re.compile("Trace a canon change"))
+    assert trace.is_visible()
+    assert page.locator("#discussHistoryClear").is_hidden()
+    page.fill("#discussInput", "Mira grew up in Chicago, not Boston.")
+    trace.click()
+    assert page.locator("#discussSend").inner_text() == "Scan"
+    assert "Read-only scan" in page.locator("#discussTaskMode").inner_text()
+    assert page.locator(".discuss-story-action").count() == 0
+    assert page.locator("#discussInput").input_value() == "Mira grew up in Chicago, not Boston."
+
+    page.get_by_role("button", name="Change action").click()
+    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_visible()
+    assert page.locator("#discussSend").inner_text() == "Send"
+    assert page.locator("#discussInput").input_value() == "Mira grew up in Chicago, not Boston."
+    page.get_by_role("button", name=re.compile("Trace a canon change")).click()
+    assert page.locator(".discuss-story-action").count() == 0
+    page.fill("#discussInput", "Rena changed the safe code this spring.")
+    page.locator("#discussSend").click()
+
+    page.wait_for_selector(".discuss-refactor-finding", state="visible")
+    assert page.locator("#discussHistoryClear").inner_text() == "Clear results"
+    assert page.locator("#discussHistoryClear").is_visible()
+    report = page.locator(".discuss-task", has_text="Trace a canon change")
+    assert "Read-only scan complete" in report.inner_text()
+    assert "manuscript/ch01/01-opening.md#L18" in report.inner_text()
+    assert server.scene_path().read_bytes() == before
+
+    report.get_by_role("button", name="Mark intentional").click()
+    page.get_by_role("button", name="Mark unresolved").wait_for(state="visible")
+    assert server.scene_path().read_bytes() == before
+
+    report.get_by_role("button", name="Review proposed edit").click()
+    page.wait_for_selector("#aiProposalPanel", state="visible")
+    assert "This sentence preserves the old safe-code history." in page.locator("#aiProposalPanel").inner_text()
+    assert server.scene_path().read_bytes() == before
+
+    page.locator("#aiProposalPanel").get_by_role("button", name=re.compile("Dismiss|Close")).click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'dismissed'"
+    )
+    report.get_by_role("button", name="Review proposed edit").click()
+    page.get_by_role("button", name="Use this version").wait_for(state="visible")
+    page.get_by_role("button", name="Use this version").click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'applied'"
+    )
+    assert server.scene_path().read_bytes() == before
+    page.get_by_role("button", name="Undo").click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'proposal'"
+    )
+    assert server.scene_path().read_bytes() == before
+    page.get_by_role("button", name="Reject").click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'rejected'"
+    )
+    report.get_by_role("button", name="Verify after edits").click()
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-task-heading strong')]"
+        ".some(node => node.innerText === 'Verify a canon change')"
+    )
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-task')]"
+        ".some(node => node.innerText.includes('Verify a canon change') && node.innerText.includes('Read-only scan complete'))"
+    )
+    assert server.scene_path().read_bytes() == before
+
+
+def test_discuss_canon_refactor_marks_a_proposal_resolved_only_after_scene_save(
+    page: Page, server: ProseviewServer
+):
+    before = server.scene_path().read_bytes()
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role("button", name=re.compile("Trace a canon change")).click()
+    page.fill("#discussInput", "Rena changed the safe code this spring.")
+    page.locator("#discussSend").click()
+    page.wait_for_selector(".discuss-refactor-finding", state="visible")
+    page.get_by_role("button", name="Review proposed edit").click()
+    page.get_by_role("button", name="Use this version").wait_for(state="visible")
+    page.get_by_role("button", name="Use this version").click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'applied'"
+    )
+    assert server.scene_path().read_bytes() == before
+
+    page.get_by_role("button", name="Save scene").click()
+    _wait_until(lambda: server.scene_path().read_bytes() != before)
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-refactor-finding')?.dataset.decision === 'resolved'"
+    )
+
+
+def test_discuss_scene_continuity_starts_without_an_optional_focus(
+    page: Page, server: ProseviewServer
+):
+    before = server.scene_path().read_bytes()
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
+
+    assert page.get_by_text("Ready to scan this scene", exact=True).is_visible()
+    assert "optional focus" in page.locator("#discussLog").inner_text().lower()
+    assert page.locator("#discussInput").input_value() == ""
+    page.locator("#discussSend").click()
+
+    page.wait_for_selector(".discuss-refactor-finding", state="visible")
+    report = page.locator(".discuss-task", has_text="Check this scene's continuity")
+    assert "Read-only scan complete" in report.inner_text()
+    assert server.scene_path().read_bytes() == before
+
+
+def test_discuss_scene_continuity_reports_that_a_scan_is_starting_and_recovers_on_failure(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
+    page.evaluate(
+        """
+        () => {
+            window.__discussOriginalFetch = window.fetch;
+            window.fetch = function(input, options) {
+                if (String(input).includes('/questions')) {
+                    return new Promise(function(resolve) {
+                        window.__resolveDiscussQuestion = function() {
+                            resolve(new Response(JSON.stringify({error: 'Continuity scan could not start.'}), {
+                                status: 503,
+                                headers: {'Content-Type': 'application/json'}
+                            }));
+                        };
+                    });
+                }
+                return window.__discussOriginalFetch(input, options);
+            };
+        }
+        """
+    )
+
+    page.locator("#discussSend").click()
+
+    assert page.get_by_text("Starting continuity scan…", exact=True).is_visible()
+    assert page.locator("#discussSend").is_disabled()
+    assert page.locator("#discussSend").inner_text() == "Starting…"
+    page.evaluate(
+        """
+        () => {
+            window.fetch = window.__discussOriginalFetch;
+            window.__resolveDiscussQuestion();
+        }
+        """
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('discussSend').disabled "
+        "&& document.getElementById('discussSend').innerText === 'Scan'"
+    )
+    assert page.get_by_text("Ready to scan this scene", exact=True).is_visible()
+    assert page.get_by_text("Continuity scan could not start.", exact=True).is_visible()
+
+
+def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zoom(
+    page: Page, server: ProseviewServer
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.select_option("#modalThemeSelect", "dark")
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.evaluate("document.body.style.zoom = '2'")
+
+    trace = page.get_by_role("button", name=re.compile("Trace a canon change"))
+    trace.click()
+
+    assert page.locator(".discuss-story-action").count() == 0
+    change_action = page.get_by_role("button", name="Change action")
+    assert change_action.is_visible()
+    assert page.locator("#discussSend").inner_text() == "Scan"
+    assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
+    assert_fully_inside_viewport(page, "#discussTaskMode")
+    assert_fully_inside_viewport(page, "#discussInput")
+    assert_fully_inside_viewport(page, "#discussSend")
+    change_action.focus()
+    assert change_action.evaluate("button => document.activeElement === button")
+    change_action.press("Enter")
+    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_visible()
+    assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
+
+
 def test_discuss_decodes_restored_assistant_prose_after_server_restart(
     page: Page, server: ProseviewServer
 ):

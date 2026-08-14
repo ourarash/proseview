@@ -166,7 +166,10 @@ def _new_ai_proposal(repo_root: str, body: dict[str, Any]) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
-    for field in ("origin", "client_request_id", "action_id", "selection_fingerprint", "source_mtime_ns", "task_id", "conversation_id"):
+    for field in (
+        "origin", "client_request_id", "action_id", "selection_fingerprint", "source_mtime_ns",
+        "task_id", "conversation_id", "refactor_task_id", "finding_id",
+    ):
         if body.get(field) is not None:
             prop[field] = body[field]
     if not prop["quote"] and not prop["range"]:
@@ -1456,6 +1459,12 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)
                 proposal_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/proposal", path)
+                refactor_proposal_match = re.fullmatch(
+                    r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/findings/([^/]+)/proposal", path
+                )
+                refactor_decision_match = re.fullmatch(
+                    r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/findings/([^/]+)/decision", path
+                )
                 clear_tasks_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/clear", path)
                 task_status_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/status", path)
                 cancel_queue_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/queue/([^/]+)/cancel", path)
@@ -1480,6 +1489,7 @@ class _Handler(BaseHTTPRequestHandler):
                         custom_instruction=str(body.get("custom_instruction") or ""),
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),
+                        verify_of_task_id=str(body.get("verify_of_task_id") or ""),
                     )
                     self._send_json({"ok": True, **result}, 202)
                     return
@@ -1509,6 +1519,43 @@ class _Handler(BaseHTTPRequestHandler):
                     prop = _new_ai_proposal(self.repo_root, proposal_body)
                     self.publish_event(_proposal_payload(dict(prop), "created"))
                     self._send_json({"ok": True, "proposal": prop})
+                    return
+                if refactor_proposal_match:
+                    conversation_id, task_id, finding_id = refactor_proposal_match.groups()
+                    requested_client_id = body.get("client_id") or None
+                    existing = None
+                    with _ai_lock:
+                        for candidate in reversed(list(_ai_proposals.values())):
+                            if (
+                                candidate.get("conversation_id") == conversation_id
+                                and candidate.get("refactor_task_id") == task_id
+                                and candidate.get("finding_id") == finding_id
+                                and candidate.get("status") not in {"accepted", "skipped"}
+                            ):
+                                candidate["client_id"] = requested_client_id
+                                candidate["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                                existing = dict(candidate)
+                                break
+                    if existing is not None:
+                        self._send_json({"ok": True, "proposal": existing})
+                        return
+                    proposal_body = self.discuss_manager.proposal_for_refactor_finding(
+                        conversation_id, task_id, finding_id
+                    )
+                    proposal_body["client_id"] = requested_client_id
+                    prop = _new_ai_proposal(self.repo_root, proposal_body)
+                    self.discuss_manager.set_refactor_finding_decision(
+                        conversation_id, task_id, finding_id, "proposal"
+                    )
+                    self.publish_event(_proposal_payload(dict(prop), "created"))
+                    self._send_json({"ok": True, "proposal": prop})
+                    return
+                if refactor_decision_match:
+                    conversation_id, task_id, finding_id = refactor_decision_match.groups()
+                    result = self.discuss_manager.set_refactor_finding_decision(
+                        conversation_id, task_id, finding_id, str(body.get("decision") or "")
+                    )
+                    self._send_json({"ok": True, **result})
                     return
                 if clear_tasks_match:
                     result = self.discuss_manager.clear_tasks(clear_tasks_match.group(1))

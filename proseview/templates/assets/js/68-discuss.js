@@ -16,6 +16,7 @@
         var _discussRefreshTimer = null;
         var _discussLastApproval = '';
         var _discussPendingAction = null;
+        var _discussRepositoryAction = null;
         var _discussRetryOfTaskId = null;
         var _discussSelectedSkill = null;
         var _discussSkills = [];
@@ -105,6 +106,7 @@
             _discussAttachments = [];
             _discussIncludeCurrentDocument = true;
             _discussPendingAction = options.actionId || null;
+            _discussRepositoryAction = null;
             _discussRetryOfTaskId = null;
             _discussSelectedSkill = null;
             _discussAutoRun = !!options.runImmediately;
@@ -161,6 +163,7 @@
                 _discussSelectionRange = options.selectionRange || null;
                 _discussLiveDocument = options.liveDocument || null;
                 _discussPendingAction = options.actionId || null;
+                _discussRepositoryAction = null;
                 _discussRetryOfTaskId = null;
                 _discussSelectedSkill = null;
                 _discussAutoRun = !!options.runImmediately;
@@ -553,10 +556,48 @@
             var log = document.getElementById('discussLog');
             var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 70;
             log.replaceChildren();
-            if (!(snapshot.messages || []).length && !(snapshot.progress || []).length && !(snapshot.tasks || []).length) {
+            var hasNoDiscussActivity = !(snapshot.messages || []).length
+                && !(snapshot.progress || []).length
+                && !(snapshot.tasks || []).length;
+            if (hasNoDiscussActivity) {
                 var empty = elementWith('discuss-empty');
-                var title = document.createElement('strong'); title.textContent = 'Ask about what you are reading';
-                empty.appendChild(title); empty.appendChild(document.createTextNode('Codex receives this document plus only the context you explicitly attach.'));
+                var title = document.createElement('strong');
+                if (_discussRepositoryAction) {
+                    var scanStarting = document.getElementById('discussSend').disabled;
+                    if (scanStarting) {
+                        title.textContent = _discussRepositoryAction === 'scene_continuity'
+                            ? 'Starting continuity scan…'
+                            : 'Starting canon scan…';
+                        empty.appendChild(title);
+                        empty.appendChild(document.createTextNode('Gathering the configured story evidence. This can take a moment.'));
+                    } else if (_discussRepositoryAction === 'scene_continuity') {
+                        title.textContent = 'Ready to scan this scene';
+                        empty.appendChild(title);
+                        empty.appendChild(document.createTextNode('Add an optional focus below, or scan the active scene as-is.'));
+                        var readyActions = elementWith('discuss-story-actions');
+                        var scanNow = document.createElement('button'); scanNow.type = 'button'; scanNow.className = 'discuss-primary'; scanNow.textContent = 'Scan scene now';
+                        scanNow.onclick = function() { runDiscussRepositoryAction(); };
+                        readyActions.appendChild(scanNow); empty.appendChild(readyActions);
+                    } else {
+                        title.textContent = 'Ready to trace a canon change';
+                        empty.appendChild(title);
+                        empty.appendChild(document.createTextNode('Describe the old and new fact below, then scan for consequences.'));
+                    }
+                } else {
+                    title.textContent = 'What do you want to examine?';
+                    empty.appendChild(title); empty.appendChild(document.createTextNode('Ask about what you are reading, or start with a story-aware action.'));
+                    var actions = elementWith('discuss-story-actions');
+                    var canon = document.createElement('button'); canon.type = 'button'; canon.className = 'discuss-story-action';
+                    canon.appendChild(elementWith('discuss-story-action-title', 'Trace a canon change'));
+                    canon.appendChild(elementWith('discuss-story-action-copy', 'Find consequences across the configured story folders.'));
+                    canon.onclick = function() { startDiscussRepositoryAction('canon_refactor'); };
+                    actions.appendChild(canon);
+                    var continuity = document.createElement('button'); continuity.type = 'button'; continuity.className = 'discuss-story-action';
+                    continuity.appendChild(elementWith('discuss-story-action-title', "Check this scene's continuity"));
+                    continuity.appendChild(elementWith('discuss-story-action-copy', 'Compare this document with the rest of the story evidence.'));
+                    continuity.onclick = function() { startDiscussRepositoryAction('scene_continuity'); };
+                    actions.appendChild(continuity); empty.appendChild(actions);
+                }
                 log.appendChild(empty);
             }
             groupDiscussTasks(snapshot.tasks || []).forEach(function(group) {
@@ -619,6 +660,22 @@
                 stopButton.disabled = false;
                 stopButton.textContent = 'Stop Codex';
             }
+            var clearResults = document.getElementById('discussHistoryClear');
+            var hasClearableResults = (snapshot.tasks || []).some(function(task) {
+                return task.status !== 'queued' && task.status !== 'running';
+            });
+            clearResults.hidden = !hasClearableResults;
+            clearResults.disabled = !!(
+                snapshot.active_turn_id
+                || snapshot.active_request_id
+                || (snapshot.queue || []).length
+                || (snapshot.tasks || []).some(function(task) {
+                    return task.status === 'queued' || task.status === 'running';
+                })
+            );
+            clearResults.title = clearResults.disabled
+                ? 'Wait for assistance to finish before clearing results'
+                : 'Clear assistance results from this conversation';
             var pendingApproval = (snapshot.approvals || []).some(function(approval) { return approval.status === 'pending'; });
             var newConversation = document.getElementById('discussNewConversation');
             var newConversationHint = document.getElementById('discussNewConversationHint');
@@ -711,6 +768,105 @@
             return prefix + ' · manuscript unchanged';
         }
 
+        function openContinuityFinding(finding) {
+            var target = resolveProsviewFileReference(finding.file + '#L' + String(finding.line || 1));
+            if (!target) {
+                renderDiscussError('This scanned file is not available in the current Proseview sidebar.');
+                return;
+            }
+            openProsviewFileReference(target);
+        }
+
+        function setContinuityFindingDecision(task, finding, decision, button) {
+            if (button) button.disabled = true;
+            discussApi(
+                '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                + '/tasks/' + encodeURIComponent(task.id) + '/findings/' + encodeURIComponent(finding.id) + '/decision',
+                {decision: decision}
+            ).then(function() {
+                finding.decision = decision;
+                renderDiscussSnapshot();
+                document.getElementById('discussAnnouncement').textContent = decision === 'intentional'
+                    ? 'Reference marked intentional' : 'Continuity decision updated';
+                scheduleDiscussSnapshot();
+            }).catch(function(error) { if (button) button.disabled = false; renderDiscussError(error.message); });
+        }
+
+        function reviewContinuityFinding(task, finding, button) {
+            if (button) button.disabled = true;
+            discussApi(
+                '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                + '/tasks/' + encodeURIComponent(task.id) + '/findings/' + encodeURIComponent(finding.id) + '/proposal',
+                {client_id: (typeof aiClientId === 'function' ? aiClientId() : null)}
+            ).then(function(data) {
+                if (data.proposal && typeof aiFocusProposal === 'function') aiFocusProposal(data.proposal, true);
+                document.getElementById('discussAnnouncement').textContent = 'Proposed edit opened for review. The manuscript is unchanged.';
+                scheduleDiscussSnapshot();
+            }).catch(function(error) { if (button) button.disabled = false; renderDiscussError(error.message); });
+        }
+
+        function renderContinuityReport(task, result) {
+            var fragment = document.createDocumentFragment();
+            fragment.appendChild(elementWith('discuss-task-summary', result.summary || 'Continuity scan complete.'));
+            var scope = task.scope || {};
+            var scopeCopy = String(scope.files_scanned || 0) + ' files · ' + Math.ceil(Number(scope.bytes_scanned || 0) / 1024) + ' KB';
+            fragment.appendChild(elementWith('discuss-refactor-scope', '✓ Read-only scan complete · ' + scopeCopy + ' · no manuscript files changed'));
+            var scopeDetails = document.createElement('details'); scopeDetails.className = 'discuss-refactor-scope-details';
+            var scopeSummary = document.createElement('summary'); scopeSummary.textContent = 'Scanned folders'; scopeDetails.appendChild(scopeSummary);
+            var scopeList = document.createElement('ul');
+            (scope.roots || []).forEach(function(root) { var item = document.createElement('li'); item.textContent = root; scopeList.appendChild(item); });
+            scopeDetails.appendChild(scopeList); fragment.appendChild(scopeDetails);
+            var groups = [
+                ['direct', 'Direct contradictions'],
+                ['judgment', 'Needs your judgment'],
+                ['intentional', 'Likely intentional']
+            ];
+            var findings = result.findings || [];
+            if (!findings.length) {
+                fragment.appendChild(elementWith('discuss-refactor-clear', task.verify_of
+                    ? 'No unexplained continuity findings remain in the scanned scope.'
+                    : 'No supported continuity findings were found in the scanned scope.'));
+            }
+            groups.forEach(function(group) {
+                var rows = findings.filter(function(finding) { return finding.category === group[0]; });
+                if (!rows.length) return;
+                var section = document.createElement('section'); section.className = 'discuss-refactor-group';
+                var heading = document.createElement('h4'); heading.textContent = group[1] + ' · ' + String(rows.length); section.appendChild(heading);
+                rows.forEach(function(finding) {
+                    var row = elementWith('discuss-refactor-finding'); row.dataset.decision = finding.decision || 'open';
+                    var source = document.createElement('button'); source.type = 'button'; source.className = 'discuss-refactor-source';
+                    source.textContent = finding.file + '#L' + finding.line; source.onclick = function() { openContinuityFinding(finding); };
+                    row.appendChild(source);
+                    var quote = document.createElement('q'); quote.textContent = finding.quote || ''; row.appendChild(quote);
+                    row.appendChild(elementWith('discuss-finding-detail', finding.explanation || ''));
+                    if (finding.decision && finding.decision !== 'open') {
+                        row.appendChild(elementWith('discuss-refactor-decision', 'Decision · ' + String(finding.decision).replace(/_/g, ' ')));
+                    }
+                    var actions = elementWith('discuss-refactor-finding-actions');
+                    if (finding.replacement && finding.proposal_eligible && finding.category !== 'intentional') {
+                        var review = document.createElement('button'); review.type = 'button'; review.className = 'discuss-primary'; review.textContent = 'Review proposed edit';
+                        review.onclick = function() { reviewContinuityFinding(task, finding, review); }; actions.appendChild(review);
+                    }
+                    var intentional = document.createElement('button'); intentional.type = 'button'; intentional.className = 'discuss-secondary';
+                    intentional.textContent = finding.decision === 'intentional' ? 'Mark unresolved' : 'Mark intentional';
+                    intentional.onclick = function() {
+                        setContinuityFindingDecision(task, finding, finding.decision === 'intentional' ? 'open' : 'intentional', intentional);
+                    };
+                    actions.appendChild(intentional); row.appendChild(actions); section.appendChild(row);
+                });
+                fragment.appendChild(section);
+            });
+            if (findings.length >= Number(scope.finding_limit || 50)) {
+                fragment.appendChild(elementWith('discuss-error', 'The finding limit was reached; this report may not include every consequence.'));
+            }
+            if (task.action_id !== 'verify_refactor') {
+                var verify = document.createElement('button'); verify.type = 'button'; verify.className = 'discuss-secondary discuss-refactor-verify';
+                verify.textContent = 'Verify after edits'; verify.onclick = function() { runDiscussRepositoryAction('verify_refactor', task.id); };
+                fragment.appendChild(verify);
+            }
+            return fragment;
+        }
+
         function renderDiscussTask(task, previousAttempts) {
             var card = elementWith('discuss-task'); card.dataset.taskId = task.id;
             var heading = document.createElement('div'); heading.className = 'discuss-task-heading';
@@ -718,8 +874,12 @@
             var status = document.createElement('span'); status.className = 'discuss-task-status status-' + task.status; status.textContent = discussTaskStatusLabel(task.status);
             heading.appendChild(title); heading.appendChild(status); card.appendChild(heading);
             var target = task.target || {};
-            var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
-            card.appendChild(preview);
+            if (task.kind === 'continuity_report') {
+                card.appendChild(elementWith('discuss-task-selection', task.change_request || task.instruction || 'Repository continuity scan'));
+            } else {
+                var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
+                card.appendChild(preview);
+            }
             previousAttempts = previousAttempts || [];
             if (previousAttempts.length) {
                 card.appendChild(elementWith('discuss-task-meta', 'Attempt ' + String(task.attempt || previousAttempts.length + 1)));
@@ -746,7 +906,9 @@
                 attempts.appendChild(attemptsList); card.appendChild(attempts);
             }
             var result = task.result || {};
-            if (result.kind === 'critique') {
+            if (result.kind === 'continuity_report') {
+                card.appendChild(renderContinuityReport(task, result));
+            } else if (result.kind === 'critique') {
                 var list = document.createElement('ol'); list.className = 'discuss-findings';
                 (result.findings || []).forEach(function(finding) {
                     var item = document.createElement('li');
@@ -923,9 +1085,9 @@
 
         function clearDiscussHistory() {
             if (!_discussConversationId) return;
-            if (!window.confirm('Clear selection assistance history for this document? This cannot be undone.')) return;
+            if (!window.confirm('Clear assistance results for this document? This cannot be undone.')) return;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/tasks/clear', {})
-                .then(function() { scheduleDiscussSnapshot(); document.getElementById('discussAnnouncement').textContent = 'Selection results cleared'; })
+                .then(function() { scheduleDiscussSnapshot(); document.getElementById('discussAnnouncement').textContent = 'Assistance results cleared'; })
                 .catch(function(error) { renderDiscussError(error.message); });
         }
 
@@ -1023,7 +1185,9 @@
             return ({
                 rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', sensory_detail: 'Add sensory detail',
                 show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', voice_character: 'Voice and character',
-                pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check'
+                pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check',
+                canon_refactor: 'Trace a canon change', scene_continuity: "Check this scene's continuity",
+                verify_refactor: 'Verify a canon change'
             })[actionId] || 'Selection action';
         }
 
@@ -1066,6 +1230,21 @@
             var node = document.getElementById('discussTaskMode');
             if (!node) return;
             node.replaceChildren();
+            if (_discussRepositoryAction) {
+                node.hidden = false;
+                var repositoryTitle = document.createElement('strong');
+                repositoryTitle.textContent = selectionActionLabel(_discussRepositoryAction); node.appendChild(repositoryTitle);
+                var repositoryHelp = document.createElement('span');
+                repositoryHelp.textContent = 'Read-only scan · configured manuscript and repository folders'; node.appendChild(repositoryHelp);
+                var changeAction = document.createElement('button');
+                changeAction.type = 'button'; changeAction.className = 'discuss-secondary'; changeAction.textContent = 'Change action';
+                changeAction.onclick = cancelDiscussRepositoryAction; node.appendChild(changeAction);
+                document.getElementById('discussInput').placeholder = _discussRepositoryAction === 'canon_refactor'
+                    ? 'Describe the canon change, including the old and new fact…'
+                    : 'Optional: name the continuity concern to focus on…';
+                document.getElementById('discussSend').textContent = 'Scan';
+                return;
+            }
             if (_discussPendingAction) {
                 node.hidden = false;
                 var title = document.createElement('strong'); title.textContent = selectionActionLabel(_discussPendingAction) + ' selection'; node.appendChild(title);
@@ -1300,6 +1479,7 @@
                     _discussSelectionRange = null;
                     _discussLiveDocument = null;
                     _discussPendingAction = null;
+                    _discussRepositoryAction = null;
                     _discussRetryOfTaskId = null;
                     _discussSelectedSkill = null;
                     _discussAutoRun = false;
@@ -1346,6 +1526,7 @@
             var question = input.value.trim();
             var button = document.getElementById('discussSend');
             if (_discussPendingAction) { runDiscussSelectionAction(); return; }
+            if (_discussRepositoryAction) { runDiscussRepositoryAction(); return; }
             if (!question || !_discussConversationId || button.disabled) return;
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             button.disabled = true;
@@ -1368,6 +1549,67 @@
                 button.disabled = false;
                 var active = document.activeElement;
                 if (active === input || active === button || active === document.body) input.focus();
+            });
+        }
+
+        function startDiscussRepositoryAction(actionId) {
+            _discussRepositoryAction = actionId;
+            _discussPendingAction = null;
+            _discussSelectedSkill = null;
+            renderDiscussTaskMode();
+            renderDiscussSnapshot();
+            var input = document.getElementById('discussInput');
+            input.focus();
+            document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' selected';
+        }
+
+        function cancelDiscussRepositoryAction() {
+            if (!_discussRepositoryAction) return;
+            _discussRepositoryAction = null;
+            renderDiscussTaskMode();
+            renderDiscussSnapshot();
+            document.getElementById('discussInput').focus();
+            document.getElementById('discussAnnouncement').textContent = 'Choose a story-aware action';
+        }
+
+        function runDiscussRepositoryAction(actionOverride, verifyOfTaskId) {
+            var actionId = actionOverride || _discussRepositoryAction;
+            var input = document.getElementById('discussInput');
+            var question = input.value.trim();
+            var button = document.getElementById('discussSend');
+            if (!actionId || !_discussConversationId || button.disabled) return;
+            if (actionId === 'canon_refactor' && !question) {
+                input.focus();
+                document.getElementById('discussAnnouncement').textContent = 'Describe the old and new canon fact first';
+                return;
+            }
+            var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            button.disabled = true;
+            button.textContent = 'Starting…';
+            document.getElementById('discussAnnouncement').textContent = 'Starting ' + selectionActionLabel(actionId).toLowerCase();
+            renderDiscussSnapshot();
+            document.getElementById('discussLog').setAttribute('aria-busy', 'true');
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
+                client_request_id: requestId,
+                question: question,
+                action_id: actionId,
+                verify_of_task_id: verifyOfTaskId || ''
+            }).then(function() {
+                if (question) rememberDiscussInstruction(question);
+                input.value = '';
+                _discussRepositoryAction = null;
+                saveDiscussDraft(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. This scan cannot change manuscript files.';
+            }).catch(function(error) {
+                button.disabled = false;
+                renderDiscussTaskMode();
+                renderDiscussSnapshot();
+                renderDiscussError(error.message);
+            }).finally(function() {
+                button.disabled = false;
+                document.getElementById('discussLog').setAttribute('aria-busy', 'false');
+                renderDiscussTaskMode();
+                input.focus();
             });
         }
 

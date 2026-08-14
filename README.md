@@ -353,6 +353,20 @@ Four places where AI shows up, all opt-in:
    it, or press `@` to attach other files and folders. Tool and file
    actions wait on approvals you can see.
 
+   Discuss also has evidence-first continuity actions. **Trace a canon
+   change** scans the configured manuscript and repository-tab folders,
+   separates direct contradictions from ambiguous and likely intentional
+   references, and cites the exact file, line, and passage for every finding.
+   Nothing is edited during the scan. You can preserve an intentional
+   exception, send one scene finding at a time through the existing proposal
+   review, then rescan to verify the result. **Check this scene's continuity**
+   runs the same guarded workflow with the active document as its focus.
+
+   Repository continuity scans are bounded to 200 supported text files, 4 MB
+   of context, and 50 displayed findings. The impact report shows the actual
+   files and bytes scanned, and warns when the finding limit is reached. These
+   impact reports and their decisions are session-only in the current MVP.
+
    Under the hood it starts a local `codex app-server` on demand and uses
    your existing Codex login, model, and history. Proseview stores a bounded
    list of thread IDs and display metadata for each document in your state
@@ -384,7 +398,8 @@ This is alpha. Things that are working and things that are coming:
 - ✅ AI proposal review. Suggested selection edits show the original and
   proposed text with explicit accept, reject, undo, and save steps.
 - 🚧 Configurable agent list (Codex / Claude / Gemini are presets today).
-- 🚧 Continuity surfacing (warn when a scene contradicts a known fact).
+- ✅ Evidence-first continuity and canon refactoring in Discuss, with cited
+  impact reports, intentional exceptions, proposal handoff, and verification.
 - 🚧 Frontmatter editor (status, where, todos) inside the scene viewer
   so you don't need to drop into your text editor for routine fields.
 

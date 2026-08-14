@@ -176,6 +176,84 @@ def test_all_selection_presets_use_structured_read_only_turns(server: ProseviewS
     assert all("outputSchema" in row["params"] for row in preset_records)
 
 
+def test_continuity_refactor_http_flow_scans_without_writing_and_hands_off_one_proposal(server: ProseviewServer):
+    headers = _discuss_headers(server)
+    opened = server.post_json(
+        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
+    ).json()
+    conversation_id = opened["conversation_id"]
+    before = server.scene_path().read_bytes()
+
+    submitted = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "canon-http-1",
+            "question": "Rena changed the safe code this spring.",
+            "action_id": "canon_refactor",
+        },
+        headers=headers,
+    )
+    assert submitted.status == 202, submitted.text
+    task_id = submitted.json()["task_id"]
+    snapshot = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any(task["id"] == task_id and task["status"] == "ready" for task in value["tasks"]),
+    )
+    task = next(task for task in snapshot["tasks"] if task["id"] == task_id)
+    finding = task["result"]["findings"][0]
+    assert task["scope"]["files_scanned"] >= 4
+    assert finding["file"] == "manuscript/ch01/01-opening.md"
+    assert server.scene_path().read_bytes() == before
+
+    intentional = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/tasks/{task_id}/findings/{finding['id']}/decision",
+        {"decision": "intentional"},
+        headers=headers,
+    )
+    assert intentional.status == 200
+    assert intentional.json()["decision"] == "intentional"
+
+    proposal = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/tasks/{task_id}/findings/{finding['id']}/proposal",
+        {},
+        headers=headers,
+    )
+    assert proposal.status == 200, proposal.text
+    assert proposal.json()["proposal"]["origin"] == "managed_continuity_refactor"
+    assert proposal.json()["proposal"]["file"] == SCENE_REL
+    assert server.scene_path().read_bytes() == before
+
+    repeated = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/tasks/{task_id}/findings/{finding['id']}/proposal",
+        {},
+        headers=headers,
+    )
+    assert repeated.status == 200, repeated.text
+    assert repeated.json()["proposal"]["id"] == proposal.json()["proposal"]["id"]
+
+    verification = server.post_json(
+        f"/api/discuss/conversations/{conversation_id}/questions",
+        {
+            "client_request_id": "canon-http-verify",
+            "question": "",
+            "action_id": "verify_refactor",
+            "verify_of_task_id": task_id,
+        },
+        headers=headers,
+    )
+    assert verification.status == 202, verification.text
+    verify_id = verification.json()["task_id"]
+    verified = _wait_discuss(
+        server,
+        conversation_id,
+        lambda value: any(task["id"] == verify_id and task["status"] == "ready" for task in value["tasks"]),
+    )
+    verify_task = next(task for task in verified["tasks"] if task["id"] == verify_id)
+    assert verify_task["verify_of"] == task_id
+    assert server.scene_path().read_bytes() == before
+
+
 def test_selection_action_retry_is_linked_and_keeps_actionable_citation_error(server: ProseviewServer):
     headers = _discuss_headers(server)
     opened = server.post_json(

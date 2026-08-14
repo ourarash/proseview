@@ -173,6 +173,33 @@ def test_payload_is_json_safe_and_reports_what_is_missing(tmp_path: Path):
     assert payload["thread_field"] == "thread" and payload["day_field"] == "day"
 
 
+def test_hover_blurb_prefers_summary_then_falls_back_to_the_arc(tmp_path: Path):
+    _write(tmp_path, "ch01", "01-a.md", fm=(
+        "summary: Rena counts the till and finds it short.\n"
+        "goal: Balance the books\nconflict: The safe is stuck\noutcome: She gives up\n"))
+    _write(tmp_path, "ch01", "02-b.md", fm=(
+        "goal: Balance the books\nconflict: The safe is stuck\noutcome: She gives up\n"))
+    _write(tmp_path, "ch01", "03-c.md")
+
+    scenes = _model(tmp_path).scenes
+
+    assert scenes[0].blurb == "Rena counts the till and finds it short."
+    # No summary: the arc fields carry the hover instead, which is what most
+    # manuscripts actually fill in.
+    assert scenes[1].blurb == "Balance the books · The safe is stuck · She gives up"
+    assert scenes[2].blurb == ""
+
+
+def test_payload_carries_the_blurb(tmp_path: Path):
+    _write(tmp_path, "ch01", "01-a.md", fm="summary: A short scene.\n")
+
+    cfg = Config()
+    payload = story_payload(collect_scene_stats(tmp_path, cfg), cfg)
+
+    assert payload["scenes"][0]["blurb"] == "A short scene."
+    assert payload["scenes"][0]["summary"] == "A short scene."
+
+
 def test_untagged_summary_counts_both_fields(tmp_path: Path):
     _write(tmp_path, "ch01", "01-a.md", fm="thread: present\nday: 1\n")
     _write(tmp_path, "ch01", "02-b.md", fm="thread: past\n")

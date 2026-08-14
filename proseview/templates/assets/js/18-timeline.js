@@ -20,14 +20,46 @@
             return seen;
         }
 
-        function _storyTip(scene) {
-            const bits = [scene.chapter];
-            if (scene.day != null) bits.push(storyModel.day_field + ' ' + scene.day);
-            if (scene.thread) bits.push(storyModel.thread_field + ': ' + scene.thread);
+        function _storyCardHtml(scene) {
+            const bits = [_storyEsc(scene.chapter)];
+            if (scene.day != null) bits.push(_storyEsc(storyModel.day_field + ' ' + scene.day));
+            if (scene.thread) bits.push(_storyEsc(scene.thread));
             bits.push(scene.words.toLocaleString() + ' words');
-            return _storyEsc(scene.title || scene.path) + '\n' + bits.join(' · ')
-                + (scene.when ? '\n' + _storyEsc(scene.when) : '')
-                + (scene.where ? '\n' + _storyEsc(scene.where) : '');
+            let html = '<b>' + _storyEsc(scene.title || scene.path) + '</b>'
+                + '<em>' + bits.join(' · ') + '</em>';
+            const place = [scene.when, scene.where].filter(Boolean).map(_storyEsc).join(' · ');
+            if (place) html += '<em>' + place + '</em>';
+            if (scene.blurb) html += '<p>' + _storyEsc(scene.blurb) + '</p>';
+            return html;
+        }
+
+        var _storyCard = null;
+
+        function _storyCardEl() {
+            if (!_storyCard) {
+                _storyCard = document.createElement('div');
+                _storyCard.id = 'storyCard';
+                _storyCard.setAttribute('role', 'tooltip');
+                document.body.appendChild(_storyCard);
+            }
+            return _storyCard;
+        }
+
+        function _storyCardShow(scene, event) {
+            const card = _storyCardEl();
+            card.innerHTML = _storyCardHtml(scene);
+            card.classList.add('on');
+            const pad = 16;
+            const w = card.offsetWidth || 320, h = card.offsetHeight || 120;
+            let x = event.clientX + pad, y = event.clientY + pad;
+            if (x + w > window.innerWidth - 8) x = event.clientX - w - pad;
+            if (y + h > window.innerHeight - 8) y = Math.max(8, event.clientY - h - pad);
+            card.style.left = x + 'px';
+            card.style.top = y + 'px';
+        }
+
+        function _storyCardHide() {
+            if (_storyCard) _storyCard.classList.remove('on');
         }
 
         function _storyEmpty(message) {
@@ -44,10 +76,10 @@
             const strip = scenes.map(s =>
                 '<div class="story-seg" style="flex:' + Math.max(s.words, 1)
                 + ';background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"'
-                + ' title="' + _storyTip(s) + '" data-scene="' + s.index + '"></div>').join('');
+                + ' data-scene="' + s.index + '"></div>').join('');
 
             const bars = scenes.map(s =>
-                '<div class="story-barwrap" title="' + _storyTip(s) + '" data-scene="' + s.index + '">'
+                '<div class="story-barwrap" data-scene="' + s.index + '">'
                 + '<div class="story-bar" style="height:' + (100 * s.words / max).toFixed(2) + '%;'
                 + 'background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"></div></div>').join('');
 
@@ -75,7 +107,7 @@
                 const lane = storyModel.scenes.map(function(s) {
                     const on = s.thread === name;
                     return '<div class="story-slot' + (on ? ' on' : '') + '"'
-                        + (on ? ' title="' + _storyTip(s) + '" data-scene="' + s.index + '"' : '')
+                        + (on ? ' data-scene="' + s.index + '"' : '')
                         + (on ? ' style="background:var(--story-c' + (row % STORY_HUES) + ')"' : '')
                         + '></div>';
                 }).join('');
@@ -132,7 +164,7 @@
                 const arr = pair[0], y = pair[1];
                 arr.forEach(function(s, i) {
                     const x = 20 + i * step;
-                    svg += '<g><title>' + _storyTip(s) + '</title>'
+                    svg += '<g data-scene="' + s.index + '" class="story-node">'
                         + '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + BW + '" height="48" rx="5" '
                         + 'fill="var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"/>'
                         + '<text x="' + (x + BW / 2).toFixed(1) + '" y="' + (y + 20) + '" text-anchor="middle" '
@@ -173,12 +205,18 @@
             // Any marked element opens its scene, so the views are navigation
             // as well as diagnosis.
             host.querySelectorAll('[data-scene]').forEach(function(el) {
+                const scene = storyModel.scenes[+el.dataset.scene];
+                if (!scene) return;
                 el.style.cursor = 'pointer';
+                el.addEventListener('mousemove', function(e) { _storyCardShow(scene, e); });
+                el.addEventListener('mouseleave', _storyCardHide);
                 el.addEventListener('click', function() {
-                    const scene = storyModel.scenes[+el.dataset.scene];
-                    if (scene && typeof openSceneModal === 'function') openSceneModal(scene.path);
+                    _storyCardHide();
+                    if (typeof openSceneModal === 'function') openSceneModal(scene.path);
                 });
             });
+            // A scroll or a tab change must not strand the card on screen.
+            window.addEventListener('scroll', _storyCardHide, { passive: true });
             _timelineBuilt = true;
         }
 

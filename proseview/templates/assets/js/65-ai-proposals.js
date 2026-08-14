@@ -206,7 +206,23 @@
         }
 
         function aiSetManagedTaskStatus(proposal, status, selectedOption) {
-            if (!proposal || !proposal.conversation_id || !proposal.task_id || typeof discussApi !== 'function') return;
+            if (!proposal || !proposal.conversation_id || typeof discussApi !== 'function') return;
+            if (proposal.refactor_task_id && proposal.finding_id) {
+                var decision = ({
+                    rejected: 'rejected', dismissed: 'dismissed', applied: 'applied',
+                    ready: 'proposal', saved: 'resolved'
+                })[status];
+                if (!decision) return;
+                discussApi(
+                    '/api/discuss/conversations/' + encodeURIComponent(proposal.conversation_id)
+                    + '/tasks/' + encodeURIComponent(proposal.refactor_task_id)
+                    + '/findings/' + encodeURIComponent(proposal.finding_id) + '/decision',
+                    {decision: decision}
+                ).then(function() { if (typeof scheduleDiscussSnapshot === 'function') scheduleDiscussSnapshot(); })
+                    .catch(function() {});
+                return;
+            }
+            if (!proposal.task_id) return;
             var payload = {status: status};
             if (Number.isInteger(selectedOption)) payload.selected_option = selectedOption;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(proposal.conversation_id) + '/tasks/' + encodeURIComponent(proposal.task_id) + '/status', payload)
@@ -619,7 +635,9 @@
                 newRange: newRange,
                 hadDirtyBeforeApply: hadDirtyBeforeApply
             };
-            if (proposal.conversation_id && proposal.task_id) _aiPendingSavedProposals[proposal.id] = proposal;
+            if (proposal.conversation_id && (proposal.task_id || proposal.refactor_task_id)) {
+                _aiPendingSavedProposals[proposal.id] = proposal;
+            }
             aiSetManagedTaskStatus(proposal, 'applied', optionIndex);
             _aiProposalRange = newRange;
             aiScrollRangeIntoView(newRange);

@@ -35,6 +35,10 @@ class _FakeClient:
         self.turn_start_attempts = 0
         self.finish_delay = 0.04
         self.reject_turn_starts = False
+        self.invalid_continuity_result = False
+        self.continuity_file = "manuscript/one.md"
+        self.continuity_line = 3
+        self.continuity_quote = "Mira learned winter in Boston."
         self.capabilities = {"reasoning_summary": True}
         self.threads: dict[str, dict] = {}
         self._lock = threading.Lock()
@@ -101,6 +105,32 @@ class _FakeClient:
                     answer = json.dumps({"kind": "alternatives", "summary": "A tighter beat.", "alternatives": choices[:count]})
                 elif kind == "critique":
                     answer = json.dumps({"kind": "critique", "findings": [{"observation": "The opening is abstract.", "evidence": "First document.", "why_it_matters": "The image is hard to picture.", "next_step": "Use one concrete detail."}]})
+                elif kind == "continuity_report":
+                    answer = json.dumps({
+                        "kind": "continuity_report",
+                        "summary": "One direct contradiction needs review.",
+                        "findings": [{
+                            "category": "direct",
+                            "file": self.continuity_file,
+                            "line": self.continuity_line,
+                            "quote": self.continuity_quote,
+                            "explanation": "This conflicts with the requested Chicago childhood.",
+                            "replacement": "Mira learned winter in Chicago.",
+                        }],
+                    })
+                    if self.invalid_continuity_result:
+                        answer = json.dumps({
+                            "kind": "continuity_report",
+                            "summary": "Unsupported citation.",
+                            "findings": [{
+                                "category": "direct",
+                                "file": "manuscript/one.md",
+                                "line": 3,
+                                "quote": "This quote is not in the scanned file.",
+                                "explanation": "Invented evidence.",
+                                "replacement": "Replacement.",
+                            }],
+                        })
                 self.callback({
                     "method": "item/completed",
                     "params": {
@@ -166,6 +196,344 @@ def test_managed_rewrite_uses_output_schema_and_creates_stale_checked_proposal(t
         {"text": "A revised document.", "rationale": "Changes the rhythm."},
     ]
     assert (root / "manuscript" / "one.md").read_text(encoding="utf-8") == "# One\n\nFirst document.\n"
+    manager.close()
+
+
+def test_canon_refactor_scans_configured_story_scope_and_creates_reviewable_finding(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    (root / "manuscript" / "ch01").mkdir()
+    (root / "manuscript" / "ch01" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    (root / "story-bible" / "characters").mkdir(parents=True)
+    (root / "story-bible" / "characters" / "mira.md").write_text(
+        "# Mira\n\nMira grew up in Chicago.\n", encoding="utf-8"
+    )
+    (root / "continuity").mkdir()
+    (root / "continuity" / "known-lies.md").write_text(
+        "Mira sometimes claims Boston to strangers.\n", encoding="utf-8"
+    )
+    clients: list[_FakeClient] = []
+    def factory(callback):
+        client = _FakeClient(callback)
+        client.continuity_file = "manuscript/ch01/one.md"
+        clients.append(client)
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    submitted = manager.submit(
+        cid,
+        client_request_id="canon-1",
+        question="Mira grew up in Chicago, not Boston.",
+        action_id="canon_refactor",
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+
+    task = manager.get_snapshot(cid)["tasks"][0]
+    assert submitted["task_id"] == task["id"]
+    assert task["kind"] == "continuity_report"
+    assert task["scope"]["files_scanned"] == 5
+    assert task["result"]["findings"][0]["id"]
+    assert task["result"]["findings"][0]["decision"] == "open"
+    assert task["result"]["findings"][0]["proposal_eligible"] is True
+    assert clients[0].turn_params[0]["outputSchema"]["properties"]["kind"]["enum"] == ["continuity_report"]
+    assert "manuscript/one.md" in clients[0].prompts[0]
+    assert "story-bible/characters/mira.md" in clients[0].prompts[0]
+    assert "continuity/known-lies.md" in clients[0].prompts[0]
+    assert clients[0].turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+
+    proposal = manager.proposal_for_refactor_finding(cid, task["id"], task["result"]["findings"][0]["id"])
+    assert proposal["file"] == "ch01/one.md"
+    assert proposal["quote"] == "Mira learned winter in Boston."
+    assert proposal["options"][0]["text"] == "Mira learned winter in Chicago."
+    assert proposal["origin"] == "managed_continuity_refactor"
+    assert (root / "manuscript" / "one.md").read_text(encoding="utf-8") == "# One\n\nMira learned winter in Boston.\n"
+    manager.close()
+
+
+def test_non_scene_manuscript_finding_cannot_enter_scene_proposal_flow(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid, client_request_id="canon-nonscene", question="Change a fact.", action_id="canon_refactor"
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    finding = manager.get_snapshot(cid)["tasks"][0]["result"]["findings"][0]
+
+    assert finding["proposal_eligible"] is False
+    with pytest.raises(ValueError, match="only manuscript scene findings"):
+        manager.proposal_for_refactor_finding(cid, submitted["task_id"], finding["id"])
+    manager.close()
+
+
+def test_canon_refactor_rejects_agent_citations_outside_scanned_context(tmp_path: Path):
+    task = {
+        "kind": "continuity_report",
+        "context_files": {"manuscript/one.md": {"content": "# One\n\nOnly Chicago appears.\n", "mtime_ns": 1}},
+    }
+    with pytest.raises(ValueError, match="evidence was not found"):
+        validate_action_result(json.dumps({
+            "kind": "continuity_report",
+            "summary": "A contradiction.",
+            "findings": [{
+                "category": "direct",
+                "file": "manuscript/one.md",
+                "line": 3,
+                "quote": "Mira grew up in Boston.",
+                "explanation": "Contradiction.",
+                "replacement": "Mira grew up in Chicago.",
+            }],
+        }), task)
+
+
+def test_model_intentional_category_does_not_become_a_writer_decision():
+    task = {
+        "id": "report-1",
+        "kind": "continuity_report",
+        "context_files": {
+            "manuscript/one.md": {
+                "content": "# One\n\nMira tells strangers she grew up in Boston.\n",
+                "mtime_ns": 1,
+            }
+        },
+    }
+    result = validate_action_result(json.dumps({
+        "kind": "continuity_report",
+        "summary": "One likely intentional reference.",
+        "findings": [{
+            "category": "intentional",
+            "file": "manuscript/one.md",
+            "line": 3,
+            "quote": "Mira tells strangers she grew up in Boston.",
+            "explanation": "This may be a deliberate lie.",
+            "replacement": "",
+        }],
+    }), task)
+
+    assert result["findings"][0]["category"] == "intentional"
+    assert result["findings"][0]["decision"] == "open"
+
+
+@pytest.mark.parametrize(
+    ("line", "quote"),
+    [
+        (2, "origin: Boston"),
+        (7, "<!-- NOTE[continuity]: Boston was a cover story. -->"),
+    ],
+)
+def test_frontmatter_and_annotations_are_not_offered_as_scene_edits(line: int, quote: str):
+    content = (
+        "---\norigin: Boston\n---\n# One\n\nVisible scene prose.\n"
+        "<!-- NOTE[continuity]: Boston was a cover story. -->\n"
+    )
+    result = validate_action_result(json.dumps({
+        "kind": "continuity_report",
+        "summary": "One repository reference.",
+        "findings": [{
+            "category": "judgment",
+            "file": "manuscript/ch01/one.md",
+            "line": line,
+            "quote": quote,
+            "explanation": "This is metadata, not visible scene prose.",
+            "replacement": "origin: Chicago",
+        }],
+    }), {
+        "id": "report-metadata",
+        "kind": "continuity_report",
+        "manuscript_subdir": "manuscript",
+        "context_files": {"manuscript/ch01/one.md": {"content": content, "mtime_ns": 1}},
+    })
+
+    assert result["findings"][0]["proposal_eligible"] is False
+
+
+def test_failed_refactor_validation_discards_private_scan_bodies(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    client: _FakeClient | None = None
+
+    def factory(callback):
+        nonlocal client
+        client = _FakeClient(callback)
+        client.invalid_continuity_result = True
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid,
+        client_request_id="canon-invalid",
+        question="Change a fact across the story.",
+        action_id="canon_refactor",
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "failed")
+
+    assert submitted["task_id"] not in manager._task_context
+    manager.close()
+
+
+def test_refactor_scan_rejects_a_source_changed_during_context_capture(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    original_build = manager.refactor_context.build
+
+    def build_then_change(*args, **kwargs):
+        bundle = original_build(*args, **kwargs)
+        (root / "manuscript" / "one.md").write_text("# One\n\nChanged during scan.\n", encoding="utf-8")
+        return bundle
+
+    monkeypatch.setattr(manager.refactor_context, "build", build_then_change)
+    with pytest.raises(ValueError, match="changed while it was being scanned"):
+        manager.submit(
+            cid,
+            client_request_id="canon-raced",
+            question="Change a fact across the story.",
+            action_id="canon_refactor",
+        )
+
+    assert not manager._task_context
+    manager.close()
+
+
+def test_refactor_finding_becomes_stale_and_intentional_decisions_feed_verification(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    (root / "manuscript" / "ch01").mkdir()
+    (root / "manuscript" / "ch01" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+
+    def factory(callback):
+        client = _FakeClient(callback)
+        client.continuity_file = "manuscript/ch01/one.md"
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid, client_request_id="canon-stale", question="Mira grew up in Chicago, not Boston.", action_id="canon_refactor"
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    task = manager.get_snapshot(cid)["tasks"][0]
+    finding_id = task["result"]["findings"][0]["id"]
+
+    decision = manager.set_refactor_finding_decision(cid, submitted["task_id"], finding_id, "intentional")
+    assert decision["decision"] == "intentional"
+    verified = manager.submit(
+        cid,
+        client_request_id="verify-1",
+        question="",
+        action_id="verify_refactor",
+        verify_of_task_id=submitted["task_id"],
+    )
+    _wait_for(lambda: len(manager.get_snapshot(cid)["tasks"]) == 2 and len(manager._client.prompts) == 2)
+    verify_task = next(row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"])
+    assert verify_task["verify_of"] == submitted["task_id"]
+    assert "intentionally preserved" in manager._client.prompts[-1]
+    _wait_for(
+        lambda: next(
+            row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"]
+        )["status"] == "ready"
+    )
+    verify_task = next(row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"])
+    assert verify_task["result"]["findings"][0]["decision"] == "intentional"
+
+    (root / "manuscript" / "ch01" / "one.md").write_text("# One\n\nChanged elsewhere.\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="changed since the impact scan"):
+        manager.proposal_for_refactor_finding(cid, submitted["task_id"], finding_id)
+    manager.close()
+
+
+def test_verification_bounds_prior_decision_quotes_for_a_maximum_report(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
+    )
+    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid, client_request_id="canon-max", question="Change a fact.", action_id="canon_refactor"
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    conversation = manager._get(cid)
+    with conversation.lock:
+        parent = conversation.tasks[submitted["task_id"]]
+        seed = parent["result"]["findings"][0]
+        parent["result"]["findings"] = [
+            {**seed, "id": f"finding-{index}", "quote": "x" * 4000, "decision": "intentional"}
+            for index in range(discuss_module.REFACTOR_FINDINGS_MAX)
+        ]
+
+    manager.submit(
+        cid,
+        client_request_id="verify-max",
+        question="",
+        action_id="verify_refactor",
+        verify_of_task_id=submitted["task_id"],
+    )
+    _wait_for(lambda: len(manager._client.prompts) == 2)
+
+    verification_prompt = manager._client.prompts[-1]
+    assert verification_prompt.count("intentionally preserved") == discuss_module.REFACTOR_FINDINGS_MAX
+    internal_question = verification_prompt.rsplit("\n\nUSER QUESTION\n", 1)[-1]
+    assert len(internal_question.encode("utf-8")) <= discuss_module.REFACTOR_QUESTION_MAX
+    manager.close()
+
+
+def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\nMira learned winter in Boston.\nMira later moved to Chicago.\n", encoding="utf-8"
+    )
+    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    submitted = manager.submit(
+        cid, client_request_id="canon-changed", question="Change a fact.", action_id="canon_refactor"
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    parent = manager.get_snapshot(cid)["tasks"][0]
+    manager.set_refactor_finding_decision(
+        cid, submitted["task_id"], parent["result"]["findings"][0]["id"], "intentional"
+    )
+    manager._client.continuity_line = 4
+    manager._client.continuity_quote = "Mira later moved to Chicago."
+    verified = manager.submit(
+        cid,
+        client_request_id="verify-changed",
+        question="",
+        action_id="verify_refactor",
+        verify_of_task_id=submitted["task_id"],
+    )
+    _wait_for(
+        lambda: next(
+            row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"]
+        )["status"] == "ready"
+    )
+    verification = next(
+        row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"]
+    )
+    assert verification["result"]["findings"][0]["decision"] == "open"
     manager.close()
 
 

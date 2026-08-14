@@ -434,9 +434,18 @@ for line in sys.stdin:
             elif 'dial turned with a dry clatter' in selection:
                 evidence = 'a pressure gauge that was never selected'
             answer = json.dumps({'kind': 'critique', 'findings': [{'observation': 'The passage delays its strongest image.', 'evidence': evidence, 'why_it_matters': 'The opening beat lands less sharply.', 'next_step': 'Lead with the character’s concrete action.'}]})
+        elif kind == 'continuity_report':
+            answer = json.dumps({'kind': 'continuity_report', 'summary': 'One direct consequence needs review.', 'findings': [{
+                'category': 'direct',
+                'file': 'manuscript/ch01/01-opening.md',
+                'line': 18,
+                'quote': "She had used the same four digits since spring.",
+                'explanation': 'This sentence preserves the old safe-code history.',
+                'replacement': 'She had changed the four digits at the start of spring.'
+            }]})
         emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
-        stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique'} else answer
+        stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique', 'continuity_report'} else answer
         turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': stored_answer}]})
         save_state()
         emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})

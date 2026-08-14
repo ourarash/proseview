@@ -118,12 +118,29 @@
                     + '<div class="story-lane">' + lane + '</div></div>';
             }).join('');
 
+            // Untagged scenes get a lane of their own. Drawn only as gaps in
+            // the other lanes they read as a rendering fault rather than as
+            // work still to do.
             const untagged = storyModel.scenes.filter(s => !s.thread).length;
+            let untaggedRow = '';
+            if (untagged) {
+                const lane = storyModel.scenes.map(function(s) {
+                    const on = !s.thread;
+                    return '<div class="story-slot' + (on ? ' none' : '') + '"'
+                        + (on ? ' data-scene="' + s.index + '"' : '') + '></div>';
+                }).join('');
+                untaggedRow = '<div class="story-lane-row story-lane-untagged">'
+                    + '<div class="story-lane-name"><i class="story-swatch-none"></i>'
+                    + 'no ' + _storyEsc(storyModel.thread_field) + ' <span>' + untagged + '</span></div>'
+                    + '<div class="story-lane">' + lane + '</div></div>';
+            }
             const foot = untagged
                 ? '<p class="story-note">' + untagged + ' of ' + storyModel.scenes.length
-                  + ' scenes have no ' + storyModel.thread_field + ' yet.</p>'
+                  + ' scenes have no ' + _storyEsc(storyModel.thread_field)
+                  + ' yet — hover one to see which.</p>'
                 : '<p class="story-note">Every scene belongs to a storyline.</p>';
-            return '<h3 class="story-h">Storylines, in reading order</h3>' + rows + foot;
+            return '<h3 class="story-h">Storylines, in reading order</h3>'
+                + rows + untaggedRow + foot;
         }
 
         // ── Layer 3: chronology ─────────────────────────────────────────

@@ -3013,3 +3013,71 @@ def test_timeline_hover_card_reaches_the_chronology_blocks(page: Page, shared_se
     page.locator(".story-node[data-scene]").first.hover()
     page.wait_for_selector("#storyCard.on")
     assert page.locator("#storyCard").inner_text().strip() != ""
+
+
+def test_timeline_shows_untagged_scenes_as_their_own_lane(page: Page, shared_server: ProseviewServer):
+    """Untagged scenes are a state, not a gap.
+
+    Drawn only as holes in the real lanes they read as a rendering fault, so
+    they get a lane of their own that says how many and which.
+    """
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    untagged = page.evaluate("() => storyModel.scenes.filter(s => !s.thread).length")
+    assert untagged > 0, "the fixture must have some untagged scenes for this to mean anything"
+
+    row = page.locator(".story-lane-untagged")
+    row.wait_for(state="visible")
+    assert str(untagged) in row.inner_text()
+    assert storyModel_field(page) in row.inner_text()
+    # Its marks are real scenes: hoverable and clickable like any other.
+    assert page.locator(".story-lane-untagged .story-slot.none[data-scene]").count() == untagged
+
+    page.locator(".story-lane-untagged .story-slot.none[data-scene]").first.hover()
+    page.wait_for_selector("#storyCard.on")
+
+
+def storyModel_field(page: Page) -> str:
+    return page.evaluate("() => storyModel.thread_field")
+
+
+def test_timeline_hides_the_untagged_lane_when_everything_is_tagged(page: Page, shared_server: ProseviewServer):
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    page.evaluate("""() => {
+        storyModel.scenes.forEach(s => { s.thread = s.thread || 'present'; });
+        _timelineBuilt = false;
+        buildTimelineTab();
+    }""")
+
+    assert page.locator(".story-lane-untagged").count() == 0
+    assert "every scene belongs to a storyline" in page.locator("#timelineContent").inner_text().lower()
+
+
+def test_scene_card_shows_the_story_fields_when_present(page: Page, shared_server: ProseviewServer):
+    """A scene's storyline and day belong on the scene card, not only in the
+    Timeline, and are labelled with the keys this repo actually uses."""
+    rel, thread, day = STORY_SCENES[0]
+    open_scene(page, shared_server, rel.split("manuscript/")[-1] if "manuscript/" in rel else rel)
+
+    card = page.locator(".scene-card").inner_text().lower()
+    assert thread in card
+    assert str(day) in card
+    assert page.evaluate("() => storyModel.thread_field") in card
+    assert page.evaluate("() => storyModel.day_field") in card
+
+
+def test_scene_card_omits_story_rows_when_the_scene_has_none(page: Page, shared_server: ProseviewServer):
+    """A manuscript that does not use these fields sees no row at all, rather
+    than a line of 'Unknown' for something it never opted into."""
+    open_scene(page, shared_server, SCENE_REL)
+
+    card = page.locator(".scene-card").inner_text().lower()
+    thread_field = page.evaluate("() => storyModel.thread_field")
+    assert thread_field not in card
+    # The rows that were always there are untouched.
+    assert "pov" in card and "when" in card and "goal" in card

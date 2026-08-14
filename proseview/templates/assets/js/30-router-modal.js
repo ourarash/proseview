@@ -299,6 +299,21 @@
                 relatedHtml += '<div class="related-doc-empty">No related planning or continuity docs matched this scene.</div>';
             }
             relatedHtml += '</div></div>';
+            // Story-layer fields, labelled with the keys this repo actually
+            // uses, so the row is traceable back to the frontmatter. Optional:
+            // a manuscript that does not use them shows no row rather than a
+            // line of "Unknown".
+            const storyFields = (typeof storyModel === 'object' && storyModel) || {};
+            const threadKey = storyFields.thread_field || 'thread';
+            const dayKey = storyFields.day_field || 'day';
+            const cap = function(t) { return t.charAt(0).toUpperCase() + t.slice(1); };
+            const storyRow = function(label, value) {
+                return value === undefined || value === null || value === ''
+                    ? ''
+                    : '<div class="sc-row"><span class="sc-label">' + escHtml(cap(label))
+                      + '</span><span class="sc-value">' + escHtml(String(value)) + '</span></div>';
+            };
+
             let cardHtml = '<div class="scene-card">' +
                            '<div class="scene-card-meta">' +
                            '<div class="sc-row scene-card-top">' +
@@ -306,7 +321,9 @@
                            '<a class="editor-btn" href="' + editorHref + '" target="_blank">\u2197 Open in ' + editorLabel + '</a>' +
                            '</div>' +
                            '<div class="sc-row"><span class="sc-label">POV</span><span class="sc-value">' + (fm.pov || "Unknown") + '</span></div>' +
+                           storyRow(threadKey, fm[threadKey]) +
                            '<div class="sc-row"><span class="sc-label">When</span><span class="sc-value">' + (fm.when || "Unknown") + '</span></div>' +
+                           storyRow(dayKey, fm[dayKey]) +
                            '<div class="sc-row"><span class="sc-label">Where</span><span class="sc-value">' + (fm.where || fm.location || "Unknown") + '</span></div>' +
                            '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
                            renderCharacterTags(chars) + '</div></div>' +

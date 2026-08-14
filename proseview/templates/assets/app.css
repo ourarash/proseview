@@ -1885,6 +1885,14 @@
         .story-lane { flex: 1; display: flex; gap: 2px; height: 17px; }
         .story-slot { flex: 1; border-radius: 2px; background: var(--surface-muted); }
         .story-slot.on { background: var(--primary); }
+        /* Untagged scenes are a state, not an absence: visible, but clearly
+           unlike a real lane so they never read as a third storyline. */
+        .story-slot.none { background: repeating-linear-gradient(135deg,
+            var(--border) 0 3px, transparent 3px 6px); }
+        .story-lane-untagged .story-lane-name { color: var(--text-muted); }
+        .story-swatch-none { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto;
+            background: repeating-linear-gradient(135deg, var(--border) 0 2px, transparent 2px 4px);
+            border: 1px solid var(--border); }
         .story-scroll { overflow-x: auto; }
         .story-svg { min-width: 760px; color: var(--text-main); }
         #storyCard { position: fixed; z-index: 400; max-width: 340px; opacity: 0;

@@ -1887,3 +1887,15 @@
         .story-slot.on { background: var(--primary); }
         .story-scroll { overflow-x: auto; }
         .story-svg { min-width: 760px; color: var(--text-main); }
+        #storyCard { position: fixed; z-index: 400; max-width: 340px; opacity: 0;
+                     pointer-events: none; transition: opacity 90ms ease;
+                     background: var(--surface-card); color: var(--text-main);
+                     border: 1px solid var(--border); border-radius: 8px;
+                     padding: 11px 13px; font-size: 12px; line-height: 1.5;
+                     box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
+        #storyCard.on { opacity: 1; }
+        #storyCard b { display: block; font-size: 13px; margin-bottom: 3px; }
+        #storyCard em { display: block; font-style: normal; color: var(--text-muted); font-size: 11px; }
+        #storyCard p { margin: 8px 0 0; color: var(--text-main); }
+        .story-node { cursor: pointer; }
+        .story-node:hover rect { filter: brightness(1.12); }

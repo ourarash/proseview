@@ -45,6 +45,22 @@ class StoryScene:
     where: str
     thread: str
     day: int | None
+    summary: str = ""
+    goal: str = ""
+    conflict: str = ""
+    outcome: str = ""
+
+    @property
+    def blurb(self) -> str:
+        """The one-line description to show on hover.
+
+        Prefers an explicit ``summary``; otherwise the arc fields, which most
+        manuscripts fill in far more often than a summary.
+        """
+        if self.summary:
+            return self.summary
+        parts = [p for p in (self.goal, self.conflict, self.outcome) if p]
+        return " · ".join(parts)
 
     @property
     def has_day(self) -> bool:
@@ -179,6 +195,10 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
                 where=str(fm.get("where", "") or "").strip() or scene.location,
                 thread=thread,
                 day=_coerce_day(fm.get(day_key)),
+                summary=str(fm.get("summary", "") or "").strip(),
+                goal=str(fm.get("goal", "") or "").strip(),
+                conflict=str(fm.get("conflict", "") or "").strip(),
+                outcome=str(fm.get("outcome", "") or "").strip(),
             )
         )
 
@@ -237,6 +257,9 @@ def story_payload(scenes: list[SceneStats], cfg: Config) -> dict[str, Any]:
                 "index": s.index, "path": s.path, "title": s.title, "chapter": s.chapter,
                 "words": s.words, "when": s.when, "where": s.where,
                 "thread": s.thread, "day": s.day,
+                "summary": s.summary, "goal": s.goal,
+                "conflict": s.conflict, "outcome": s.outcome,
+                "blurb": s.blurb,
             }
             for s in model.scenes
         ],

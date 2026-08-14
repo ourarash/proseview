@@ -2978,3 +2978,38 @@ def test_timeline_says_what_is_missing_rather_than_guessing(page: Page, shared_s
     assert page.locator(".story-svg").count() == 0
     # Still navigable: the shape layer keeps its per-scene marks.
     assert page.locator(".story-barwrap").count() > 0
+
+
+def test_timeline_hover_shows_a_scene_card(page: Page, shared_server: ProseviewServer):
+    """Hovering a scene mark shows its title, metadata, and what happens in it."""
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    card = page.locator("#storyCard")
+    assert card.count() == 0, "the card is created on first hover, not up front"
+
+    page.locator(".story-barwrap[data-scene]").first.hover()
+    page.wait_for_selector("#storyCard.on")
+
+    text = card.inner_text()
+    expected = page.evaluate(
+        "() => storyModel.scenes[+document.querySelector('.story-barwrap[data-scene]').dataset.scene]")
+    assert expected["title"] in text
+    assert "words" in text
+    if expected["blurb"]:
+        assert expected["blurb"][:40] in text
+
+    # It goes away again, and never covers what it describes.
+    page.locator("#timelineContent .story-h").first.hover()
+    page.wait_for_function("() => !document.getElementById('storyCard').classList.contains('on')")
+
+
+def test_timeline_hover_card_reaches_the_chronology_blocks(page: Page, shared_server: ProseviewServer):
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector(".story-svg")
+
+    page.locator(".story-node[data-scene]").first.hover()
+    page.wait_for_selector("#storyCard.on")
+    assert page.locator("#storyCard").inner_text().strip() != ""

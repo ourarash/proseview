@@ -11,9 +11,9 @@ because distribution is broken. Stability comes before reach.
 ## Status, 2026-08-15
 
 Landed: **1** (by you, in `51a53c8`), **2**, **3**, **7** (the 5xx half; the
-console-error half also arrived in `51a53c8`), **8**, **12b**, **13**, **15**, and **16**.
+console-error half also arrived in `51a53c8`), **5**, **8**, **12b**, **13**, **15**, and **16**.
 
-Test counts moved from 280 unit / 164 browser to **317 unit / 167 browser**
+Test counts moved from 280 unit / 164 browser to **337 unit / 167 browser**
 (plus 47 in the stdlib HTTP tier).
 
 ### The headline: the dashboard rebuild is 75% faster
@@ -110,16 +110,34 @@ separate week; label the terminal Unix-only until then.
 
 **Effort:** 1–2 days basic.
 
-### 5. Read any folder of Markdown
+### 5. Read any folder of Markdown — DONE
 
-`iter_scene_paths` requires a two-level `manuscript/<dir>/*.md` tree
-([proseview/scenes.py:243](../proseview/scenes.py#L243)). The README positions
-Proseview as a companion to Obsidian and Longform, but an Obsidian user who
-installs it today points it at a vault and sees an empty dashboard.
+`iter_scene_paths` required a two-level `manuscript/<dir>/*.md` tree, so an
+Obsidian user pointing at a vault got an empty dashboard and no explanation.
+Scenes are now any `.md` at any depth, and `resolve_manuscript_dir` falls back
+to the repo root when there is no `manuscript/` directory — which is what makes
+"point it at your vault" true rather than aspirational.
 
-Support flat directories, arbitrary nesting, and vault layouts.
+Chapters group by the first folder below the manuscript root, so the
+conventional layout groups exactly as before and a deeper `ch01/drafts/02.md`
+stays with its chapter. Hidden and tool directories (`.obsidian`, `.git`,
+`node_modules`) are skipped, so pointing at a repo root does not sweep them in.
 
-**Effort:** 3–5 days.
+**The assumption was in four places, not one.** Discovery was the visible one;
+the other three failed silently:
+
+| Where | Symptom in a vault |
+| --- | --- |
+| `save_scene_content` | **Every save rejected** as "outside the manuscript directory" — the app was read-only, and only reading looked fine |
+| `history.py` git pathspecs | `-- manuscript/` matched nothing, so history, Goals, streaks, and the word-count delta all quietly reported zero |
+| `stats_for_commit` | `len(parts) >= 3` — the same two-level rule, applied to git history |
+| `export.py` | Wrong directory, and chapters from `path.parent.name` |
+
+Found by running a real vault against the real server rather than reasoning
+about it. `tests/test_layouts.py` covers all of them.
+
+**Effort:** ~half a day, against the 3–5 days originally estimated — the
+reframing to "render any `.md`, degrade what does not apply" was right.
 
 ### 6. Conditional: performance on a real manuscript
 

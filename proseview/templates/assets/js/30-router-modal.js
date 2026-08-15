@@ -129,6 +129,7 @@
             curIdx = paths.indexOf(p);
             hls = _loadHighlightPrefs();
             updateModal();
+            resetSceneToolbarForRoute();
             document.documentElement.dataset.view = 'scene';
             routeToHash('/scene/' + encodeURIComponent(p), true);
             restoreActiveScrollPosition();
@@ -148,9 +149,8 @@
             const p = paths[curIdx], m = meta[p], b = document.getElementById('modalBody'), a = document.getElementById('modalAlerts'), s = document.getElementById('modalStats');
             document.getElementById('modalTitle').innerText = p;
             const _modalEditorBtn = document.getElementById('modalEditorBtn');
-            _modalEditorBtn.style.display = 'inline-block';
+            _modalEditorBtn.style.display = 'flex';
             _modalEditorBtn.href = buildEditorUrl(m.abs_path);
-            _modalEditorBtn.innerText = '\u2197';
             _modalEditorBtn.title = 'Open in ' + editorLabel;
 
             // Tone is derived from dialogue density and sentence length:
@@ -201,6 +201,174 @@
             } catch (err) {
                 // Ignore storage errors and keep the current session size.
             }
+        }
+
+        // ── Compact scene toolbar ───────────────────────────────────────
+        // This is presentation state only. It never changes a manuscript,
+        // and the persisted preference deliberately has a small allow-list so
+        // stale or edited localStorage values fail safely to auto-hide.
+        const SCENE_TOOLBAR_MODE_STORAGE_KEY = 'proseview-scene-toolbar-mode';
+        const SCENE_TOOLBAR_MODES = ['auto', 'pinned', 'hidden'];
+        var _sceneToolbarMode = loadSceneToolbarMode();
+        var _sceneToolbarLastScrollTop = 0;
+        var _sceneToolbarHideTimer = null;
+
+        function loadSceneToolbarMode() {
+            try {
+                var saved = localStorage.getItem(SCENE_TOOLBAR_MODE_STORAGE_KEY);
+                return SCENE_TOOLBAR_MODES.indexOf(saved) >= 0 ? saved : 'auto';
+            } catch (err) {
+                return 'auto';
+            }
+        }
+
+        function sceneToolbarHeader() {
+            return document.querySelector('#sceneModal .modal-header');
+        }
+
+        function sceneToolbarReducedMotion() {
+            return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        }
+
+        function sceneToolbarMenuIsOpen() {
+            return !!document.querySelector('.scene-toolbar-popover:not([hidden])');
+        }
+
+        function setSceneToolbarHidden(hidden) {
+            var header = sceneToolbarHeader();
+            if (!header) return;
+            header.dataset.toolbarHidden = hidden ? 'true' : 'false';
+        }
+
+        function clearSceneToolbarHideTimer() {
+            window.clearTimeout(_sceneToolbarHideTimer);
+            _sceneToolbarHideTimer = null;
+        }
+
+        function sceneToolbarModeRequiresHidden() {
+            return _sceneToolbarMode === 'hidden' ||
+                !!document.querySelector('#sceneModal .modal-content.modal-focus');
+        }
+
+        function revealSceneToolbar(temporary) {
+            clearSceneToolbarHideTimer();
+            setSceneToolbarHidden(false);
+            if (temporary && sceneToolbarModeRequiresHidden()) {
+                _sceneToolbarHideTimer = window.setTimeout(function() {
+                    _sceneToolbarHideTimer = null;
+                    var header = sceneToolbarHeader();
+                    if (!header || !sceneToolbarModeRequiresHidden() ||
+                            header.contains(document.activeElement) || sceneToolbarMenuIsOpen()) return;
+                    setSceneToolbarHidden(true);
+                }, 1800);
+            }
+        }
+
+        function syncSceneToolbarModeControls() {
+            var header = sceneToolbarHeader();
+            if (header) header.dataset.toolbarMode = _sceneToolbarMode;
+            document.querySelectorAll('input[name="sceneToolbarMode"]').forEach(function(input) {
+                input.checked = input.value === _sceneToolbarMode;
+            });
+        }
+
+        function setSceneToolbarMode(mode, persist) {
+            if (SCENE_TOOLBAR_MODES.indexOf(mode) < 0) mode = 'auto';
+            clearSceneToolbarHideTimer();
+            _sceneToolbarMode = mode;
+            syncSceneToolbarModeControls();
+            if (persist !== false) {
+                try { localStorage.setItem(SCENE_TOOLBAR_MODE_STORAGE_KEY, mode); } catch (err) {}
+            }
+            var focusLayout = !!document.querySelector('#sceneModal .modal-content.modal-focus');
+            if (focusLayout || mode === 'hidden') {
+                closeSceneToolbarMenus();
+                setSceneToolbarHidden(true);
+            } else {
+                setSceneToolbarHidden(false);
+            }
+        }
+
+        function closeSceneToolbarMenus(options) {
+            var restoreFocus = !!(options && options.restoreFocus);
+            var focusedOpener = null;
+            document.querySelectorAll('.scene-toolbar-popover').forEach(function(menu) {
+                if (menu.hidden) return;
+                var opener = document.querySelector('[aria-controls="' + menu.id + '"]');
+                menu.hidden = true;
+                if (opener) {
+                    opener.setAttribute('aria-expanded', 'false');
+                    focusedOpener = focusedOpener || opener;
+                }
+            });
+            if (typeof closeAgentMenus === 'function') closeAgentMenus();
+            if (restoreFocus && focusedOpener) focusedOpener.focus();
+        }
+
+        function toggleSceneToolbarMenu(menuId, opener) {
+            var menu = document.getElementById(menuId);
+            if (!menu || !opener) return;
+            var opening = menu.hidden;
+            closeSceneToolbarMenus();
+            if (!opening) return;
+            revealSceneToolbar(false);
+            menu.hidden = false;
+            opener.setAttribute('aria-expanded', 'true');
+        }
+
+        function resetSceneToolbarForRoute() {
+            var scroller = document.querySelector('#sceneModal .modal-content');
+            clearSceneToolbarHideTimer();
+            _sceneToolbarLastScrollTop = scroller ? scroller.scrollTop : 0;
+            closeSceneToolbarMenus();
+            syncSceneToolbarModeControls();
+            var focusLayout = !!(scroller && scroller.classList.contains('modal-focus'));
+            setSceneToolbarHidden(focusLayout || _sceneToolbarMode === 'hidden');
+        }
+
+        function handleSceneToolbarScroll(event) {
+            if (event.target !== document.querySelector('#sceneModal .modal-content')) return;
+            var current = event.target.scrollTop;
+            var delta = current - _sceneToolbarLastScrollTop;
+            _sceneToolbarLastScrollTop = current;
+            if (_sceneToolbarMode !== 'auto' || sceneToolbarReducedMotion()) return;
+            if (document.querySelector('#sceneModal .modal-content.modal-focus')) return;
+            if (current < 24 || delta < -8) {
+                revealSceneToolbar(false);
+            } else if (current > 80 && delta > 8 && !sceneToolbarMenuIsOpen()) {
+                setSceneToolbarHidden(true);
+            }
+        }
+
+        function initSceneToolbar() {
+            var header = sceneToolbarHeader();
+            var scroller = document.querySelector('#sceneModal .modal-content');
+            if (!header || !scroller) return;
+            syncSceneToolbarModeControls();
+            setSceneToolbarHidden(_sceneToolbarMode === 'hidden');
+            scroller.addEventListener('scroll', handleSceneToolbarScroll, { passive: true });
+            header.addEventListener('focusin', function() { revealSceneToolbar(false); });
+            header.addEventListener('focusout', function() {
+                window.setTimeout(function() {
+                    if (header.contains(document.activeElement) || sceneToolbarMenuIsOpen()) return;
+                    if (_sceneToolbarMode === 'hidden' || scroller.classList.contains('modal-focus')) {
+                        setSceneToolbarHidden(true);
+                    }
+                }, 0);
+            });
+            header.addEventListener('mouseenter', function() { revealSceneToolbar(false); });
+            header.addEventListener('mouseleave', function() {
+                if (_sceneToolbarMode !== 'hidden' && !scroller.classList.contains('modal-focus')) return;
+                clearSceneToolbarHideTimer();
+                _sceneToolbarHideTimer = window.setTimeout(function() {
+                    _sceneToolbarHideTimer = null;
+                    if (sceneToolbarModeRequiresHidden() && !header.contains(document.activeElement) &&
+                            !sceneToolbarMenuIsOpen()) setSceneToolbarHidden(true);
+                }, 500);
+            });
+            document.addEventListener('pointerdown', function(event) {
+                if (!event.target.closest('.scene-toolbar-menu-wrap')) closeSceneToolbarMenus();
+            });
         }
 
         function openBio(name) {
@@ -407,16 +575,27 @@
             var mc = document.querySelector('#sceneModal .modal-content');
             if (!mc) return;
             var entering = !mc.classList.contains('modal-focus');
+            clearSceneToolbarHideTimer();
             mc.classList.toggle('modal-focus', entering);
             var btn = document.getElementById('modalFocusBtn');
-            if (btn) btn.textContent = entering ? '▴' : '▾';
+            if (btn) {
+                btn.classList.toggle('is-active', entering);
+                btn.setAttribute('aria-pressed', entering ? 'true' : 'false');
+            }
+            closeSceneToolbarMenus();
+            setSceneToolbarHidden(entering || _sceneToolbarMode === 'hidden');
         }
 
         function exitFocusMode() {
+            clearSceneToolbarHideTimer();
             var mc = document.querySelector('#sceneModal .modal-content');
             if (mc) mc.classList.remove('modal-focus');
             var btn = document.getElementById('modalFocusBtn');
-            if (btn) btn.textContent = '▾';
+            if (btn) {
+                btn.classList.remove('is-active');
+                btn.setAttribute('aria-pressed', 'false');
+            }
+            setSceneToolbarHidden(_sceneToolbarMode === 'hidden');
         }
 
         document.addEventListener('keydown', function(e) {
@@ -435,3 +614,12 @@
                 setSidebarOpen(document.documentElement.dataset.sidebar === 'closed');
             }
         });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Escape' || !sceneToolbarMenuIsOpen()) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            closeSceneToolbarMenus({ restoreFocus: true });
+        });
+
+        initSceneToolbar();

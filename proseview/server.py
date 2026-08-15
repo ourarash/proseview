@@ -38,7 +38,7 @@ except ImportError:
 from .config import Config
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
-from .generator import TEMPLATE_DIR, _load_asset, build_dashboard, build_scene_data
+from .generator import TEMPLATE_DIR, _load_app_css, _load_asset, build_dashboard, build_scene_data
 from .lexical import paragraph_blocks
 from .repo import _file_node as _repo_file_node, resolve_visible_repository_path
 from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
@@ -1392,7 +1392,7 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 # cache_clear() is called by the asset watcher when CSS changes,
                 # so this returns the current on-disk content.
-                css = _load_asset("assets/app.css").encode("utf-8")
+                css = _load_app_css().encode("utf-8")
             except Exception as exc:
                 self.send_response(500)
                 self.end_headers()

@@ -9,6 +9,7 @@
             var btn = document.getElementById('modalLineNumbersBtn');
             if (btn) {
                 btn.classList.toggle('is-active', _lineNumbersOn);
+                btn.setAttribute('aria-pressed', _lineNumbersOn ? 'true' : 'false');
                 btn.title = _lineNumbersOn ? 'Hide source line numbers' : 'Show source line numbers';
             }
         }

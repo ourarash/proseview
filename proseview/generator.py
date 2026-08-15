@@ -57,6 +57,22 @@ def _load_asset(relative_path: str) -> str:
     return (TEMPLATE_DIR / relative_path).read_text(encoding="utf-8")
 
 
+def _load_app_css() -> str:
+    """Concatenate ``assets/app.css`` with every theme in ``assets/themes``.
+
+    Themes live in their own files so one can be added or edited without
+    touching the main stylesheet — the same reason the front-end JS is split.
+    Order is app.css first, then themes lexically, so a theme's ``[data-theme]``
+    block always wins over the defaults it overrides.
+    """
+    parts = [_load_asset("assets/app.css")]
+    themes_dir = TEMPLATE_DIR / "assets" / "themes"
+    if themes_dir.is_dir():
+        for path in sorted(themes_dir.glob("*.css")):
+            parts.append(_load_asset(f"assets/themes/{path.name}"))
+    return "\n".join(parts)
+
+
 def _load_app_js() -> str:
     """Concatenate ``templates/assets/js/*.js`` in lexical order.
 
@@ -507,7 +523,7 @@ def render_html_report(
         )
 
     context = {
-        "app_css": _load_asset("assets/app.css"),
+        "app_css": _load_app_css(),
         "app_js": _load_app_js(),
         "total_words_text": f"{total_words:,}",
         "target_words_text": f"{target_words:,}",

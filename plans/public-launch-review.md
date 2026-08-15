@@ -154,6 +154,40 @@ novelWriter/Longform communities.
 
 ---
 
+## 6. Follow-up, 2026-08-15
+
+This review assumed the bottleneck was reach. It is not — Proseview has one
+user because it has not been advertised anywhere, by choice. Stability comes
+before distribution, which reorders section 5.
+
+What changed since the review: the Timeline and story layer, EPUB export,
+evidence-first continuity actions in Discuss, and a themes directory still
+uncommitted.
+
+What the reorder concluded, in short:
+
+- **Reprioritised up.** Data integrity in the annotation write paths, Windows
+  support, and reading arbitrary Markdown layouts rather than only
+  `manuscript/<dir>/*.md`. The last one matters because this document's own
+  positioning — a companion to Obsidian and Longform — is a claim the code
+  does not yet honour.
+- **Reprioritised down.** The live demo and README GIF from section 5. Both
+  are still worth doing and still cheap; they are simply reach, and reach is
+  not the constraint until the tool is trustworthy.
+- **Evaluated and deferred.** A VSCode extension serves the one audience
+  `pipx install` already reaches. An Electron app is the eventual route to
+  novelists without a terminal and the most expensive item on the list; a
+  double-clickable binary buys most of it first.
+- **Rejected.** Using the e2e harness to have an AI file feature requests. The
+  bug-finding half of that idea is worth building, starting with instrumentation
+  rather than a model. No synthetic tester substitutes for five real alpha
+  users.
+
+Full punch list with effort estimates:
+[pre-alpha-punch-list.md](pre-alpha-punch-list.md).
+
+---
+
 ## Sources
 
 - [Sudowrite vs NovelCrafter comparison](https://usenoren.ai/blog/sudowrite-novelcrafter-alternatives)

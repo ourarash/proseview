@@ -446,6 +446,31 @@ class _FileConflictError(Exception):
     pass
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Replace *path*'s contents with *text* atomically.
+
+    Every writer that touches a manuscript file goes through here. A partial
+    write would truncate someone's prose, so the new content lands in a
+    temporary file alongside the target and is moved into place with
+    ``os.replace``, which is atomic on the same filesystem.
+    """
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", dir=path.parent, delete=False, suffix=".tmp", encoding="utf-8"
+        ) as tmp:
+            tmp.write(text)
+            tmp_path = tmp.name
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def save_scene_content(
     abs_path: str,
     content: str,
@@ -476,21 +501,7 @@ def save_scene_content(
     header = "".join(raw.splitlines(keepends=True)[:offset])
 
     body_out = content if content.endswith("\n") else content + "\n"
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w", dir=resolved.parent, delete=False, suffix=".tmp", encoding="utf-8"
-        ) as tmp:
-            tmp.write(header + body_out)
-            tmp_path = tmp.name
-        os.replace(tmp_path, resolved)
-        tmp_path = None
-    finally:
-        if tmp_path is not None:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+    _atomic_write_text(resolved, header + body_out)
 
 
 # ── In-browser terminal sessions ─────────────────────────────────────────────
@@ -678,6 +689,70 @@ def spawn_terminal(
     return session
 
 
+class _AnnotationAnchorError(ValueError):
+    """The paragraph an annotation was anchored to could not be found."""
+
+
+def _resolve_annotation_target(abs_path: str) -> tuple[Path, str, list[str]]:
+    """Resolve *abs_path* and read it, returning the path, raw text, and lines."""
+    path = Path(abs_path).resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {abs_path}")
+    raw = path.read_text(encoding="utf-8")
+    return path, raw, raw.splitlines(keepends=True)
+
+
+def _annotation_insert_line(
+    path: Path, lines: list[str], selection_text: str, txt_line_offset: int
+) -> int:
+    """Return the 0-based line where an annotation anchored to *selection_text* goes.
+
+    Raises rather than guessing. The previous behaviour silently fell back to the
+    first paragraph, so a selection that had shifted since the page loaded put the
+    comment at the top of the scene with no indication anything had gone wrong.
+    """
+    extracted = "".join(lines[txt_line_offset:])
+    paras = paragraph_blocks(extracted)
+    if not paras:
+        raise ValueError("No paragraphs found in scene")
+
+    needle = selection_text.strip()[:50]
+    if not needle:
+        raise _AnnotationAnchorError(
+            "No selected text to anchor to; select a passage and try again"
+        )
+
+    para_idx = next((i for i, para in enumerate(paras) if needle in para), -1)
+    if para_idx < 0:
+        raise _AnnotationAnchorError(
+            f"Could not find the selected passage in {path.name}; it may have changed "
+            "since the page loaded. Reload and try again"
+        )
+
+    para_start = paras[para_idx].lstrip("\n")[:60]
+    para_pos = extracted.find(para_start)
+    if para_pos < 0:
+        raise _AnnotationAnchorError(f"Cannot locate paragraph {para_idx} in {path.name}")
+
+    # Absolute 0-based line in the full file where the target paragraph begins
+    return txt_line_offset + extracted[:para_pos].count("\n")
+
+
+def _splice_annotation(lines: list[str], insert_at: int, comment: str) -> str:
+    """Return *lines* with *comment* inserted at *insert_at*, blank-line padded."""
+    to_insert: list[str] = []
+    # Ensure a blank line before the comment if not already present
+    if insert_at > 0 and lines[insert_at - 1].strip():
+        to_insert.append("\n")
+    to_insert.append(comment + "\n")
+    to_insert.append("\n")
+
+    spliced = list(lines)
+    for i, line in enumerate(to_insert):
+        spliced.insert(insert_at + i, line)
+    return "".join(spliced)
+
+
 def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_text: str) -> None:
     """Insert ``<!-- TODO: todo_text -->`` before the paragraph that contains *selection_text*.
 
@@ -685,73 +760,23 @@ def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_t
     extracted prose within the raw file, then searches paragraph_blocks for the
     first block that contains the selection text and inserts the comment above it.
     """
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
+    path, _raw, lines = _resolve_annotation_target(abs_path)
+    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
 
-    raw = path.read_text(encoding="utf-8")
-    lines = raw.splitlines(keepends=True)
-
-    extracted = "".join(lines[txt_line_offset:])
-    paras = paragraph_blocks(extracted)
-    if not paras:
-        raise ValueError("No paragraphs found in scene")
-
-    # Find the paragraph that contains the selection text
-    needle = selection_text.strip()[:50]
-    para_idx = 0
-    for i, para in enumerate(paras):
-        if needle and needle in para:
-            para_idx = i
-            break
-
-    target_para = paras[para_idx]
-    para_start = target_para.lstrip("\n")[:60]
-    para_pos = extracted.find(para_start)
-    if para_pos < 0:
-        raise ValueError(f"Cannot locate paragraph {para_idx} in {path.name}")
-
-    # Absolute 0-based line in the full file where the target paragraph begins
-    insert_at = txt_line_offset + extracted[:para_pos].count("\n")
-
-    # Ensure a blank line before the comment if not already present
-    to_insert: list[str] = []
-    if insert_at > 0 and lines[insert_at - 1].strip():
-        to_insert.append("\n")
-    to_insert.append(f"<!-- TODO: {todo_text} -->\n")
-    to_insert.append("\n")
-
-    for i, line in enumerate(to_insert):
-        lines.insert(insert_at + i, line)
-
-    path.write_text("".join(lines), encoding="utf-8")
+    _atomic_write_text(path, _splice_annotation(lines, insert_at, f"<!-- TODO: {todo_text} -->"))
     stamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{stamp}] inserted TODO into {path.name} (line {insert_at + 1})")
 
 
-def edit_todo(abs_path: str, old_todo_text: str, new_todo_text: str) -> None:
-    """Replace an existing <!-- TODO: old_text --> comment with new text."""
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
-    old_comment = f"<!-- TODO: {old_todo_text} -->"
-    new_comment = f"<!-- TODO: {new_todo_text} -->"
-    raw = path.read_text(encoding="utf-8")
+def _replace_comment(path: Path, raw: str, old_comment: str, new_comment: str, kind: str) -> None:
+    """Swap the first occurrence of *old_comment* for *new_comment* in *path*."""
     if old_comment not in raw:
-        raise ValueError(f"TODO not found: {old_comment!r}")
-    path.write_text(raw.replace(old_comment, new_comment, 1), encoding="utf-8")
-    stamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{stamp}] edited TODO in {path.name}")
+        raise ValueError(f"{kind} not found: {old_comment!r}")
+    _atomic_write_text(path, raw.replace(old_comment, new_comment, 1))
 
 
-def delete_todo(abs_path: str, todo_text: str) -> None:
-    """Remove a <!-- TODO: todo_text --> comment from the file."""
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
-    comment = f"<!-- TODO: {todo_text} -->"
-    raw = path.read_text(encoding="utf-8")
-    lines = raw.splitlines(keepends=True)
+def _remove_comment_line(path: Path, lines: list[str], comment: str, kind: str) -> None:
+    """Drop the first line containing *comment*, collapsing the blank it leaves."""
     new_lines = []
     removed = False
     for line in lines:
@@ -760,108 +785,7 @@ def delete_todo(abs_path: str, todo_text: str) -> None:
             continue
         new_lines.append(line)
     if not removed:
-        raise ValueError(f"TODO not found: {comment!r}")
-    collapsed: list[str] = []
-    prev_blank = False
-    for line in new_lines:
-        is_blank = not line.strip()
-        if is_blank and prev_blank:
-            continue
-        collapsed.append(line)
-        prev_blank = is_blank
-    path.write_text("".join(collapsed), encoding="utf-8")
-    stamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{stamp}] deleted TODO from {path.name}")
-
-
-def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text: str, tag: str) -> None:
-    """Insert <!-- NOTE[tag]: note_text --> before the paragraph containing *selection_text*."""
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
-
-    raw = path.read_text(encoding="utf-8")
-    lines = raw.splitlines(keepends=True)
-
-    extracted = "".join(lines[txt_line_offset:])
-    paras = paragraph_blocks(extracted)
-    if not paras:
-        raise ValueError("No paragraphs found in scene")
-
-    needle = selection_text.strip()[:50]
-    para_idx = 0
-    for i, para in enumerate(paras):
-        if needle and needle in para:
-            para_idx = i
-            break
-
-    target_para = paras[para_idx]
-    para_start = target_para.lstrip("\n")[:60]
-    para_pos = extracted.find(para_start)
-    if para_pos < 0:
-        raise ValueError(f"Cannot locate paragraph {para_idx} in {path.name}")
-
-    insert_at = txt_line_offset + extracted[:para_pos].count("\n")
-
-    tag = tag.strip().lower() if tag and tag.strip() else "note"
-    comment = f"<!-- NOTE: {note_text} -->" if tag == "note" else f"<!-- NOTE[{tag}]: {note_text} -->"
-
-    to_insert: list[str] = []
-    if insert_at > 0 and lines[insert_at - 1].strip():
-        to_insert.append("\n")
-    to_insert.append(comment + "\n")
-    to_insert.append("\n")
-
-    for i, line in enumerate(to_insert):
-        lines.insert(insert_at + i, line)
-
-    path.write_text("".join(lines), encoding="utf-8")
-    stamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{stamp}] inserted NOTE into {path.name} (line {insert_at + 1})")
-
-
-def edit_note(abs_path: str, old_note_text: str, old_tag: str, new_note_text: str, new_tag: str) -> None:
-    """Replace an existing NOTE comment with updated text/tag in-place."""
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
-
-    old_tag = old_tag.strip().lower() if old_tag and old_tag.strip() else "note"
-    new_tag = new_tag.strip().lower() if new_tag and new_tag.strip() else "note"
-    old_comment = f"<!-- NOTE: {old_note_text} -->" if old_tag == "note" else f"<!-- NOTE[{old_tag}]: {old_note_text} -->"
-    new_comment = f"<!-- NOTE: {new_note_text} -->" if new_tag == "note" else f"<!-- NOTE[{new_tag}]: {new_note_text} -->"
-
-    raw = path.read_text(encoding="utf-8")
-    if old_comment not in raw:
-        raise ValueError(f"Note not found: {old_comment!r}")
-
-    path.write_text(raw.replace(old_comment, new_comment, 1), encoding="utf-8")
-    stamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{stamp}] edited NOTE in {path.name}")
-
-
-def delete_note(abs_path: str, note_text: str, tag: str) -> None:
-    """Remove the <!-- NOTE[tag]: note_text --> comment from the file."""
-    path = Path(abs_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {abs_path}")
-
-    tag = tag.strip().lower() if tag and tag.strip() else "note"
-    comment = f"<!-- NOTE: {note_text} -->" if tag == "note" else f"<!-- NOTE[{tag}]: {note_text} -->"
-
-    raw = path.read_text(encoding="utf-8")
-    lines = raw.splitlines(keepends=True)
-
-    new_lines = []
-    removed = False
-    for line in lines:
-        if not removed and comment in line:
-            removed = True
-            continue
-        new_lines.append(line)
-
-    if not removed:
-        raise ValueError(f"Note not found: {comment!r}")
+        raise ValueError(f"{kind} not found: {comment!r}")
 
     # Collapse any double blank lines that result from the removal
     collapsed: list[str] = []
@@ -872,8 +796,61 @@ def delete_note(abs_path: str, note_text: str, tag: str) -> None:
             continue
         collapsed.append(line)
         prev_blank = is_blank
+    _atomic_write_text(path, "".join(collapsed))
 
-    path.write_text("".join(collapsed), encoding="utf-8")
+
+def edit_todo(abs_path: str, old_todo_text: str, new_todo_text: str) -> None:
+    """Replace an existing <!-- TODO: old_text --> comment with new text."""
+    path, raw, _lines = _resolve_annotation_target(abs_path)
+    _replace_comment(
+        path, raw, f"<!-- TODO: {old_todo_text} -->", f"<!-- TODO: {new_todo_text} -->", "TODO"
+    )
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] edited TODO in {path.name}")
+
+
+def delete_todo(abs_path: str, todo_text: str) -> None:
+    """Remove a <!-- TODO: todo_text --> comment from the file."""
+    path, _raw, lines = _resolve_annotation_target(abs_path)
+    _remove_comment_line(path, lines, f"<!-- TODO: {todo_text} -->", "TODO")
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] deleted TODO from {path.name}")
+
+
+def _note_comment(note_text: str, tag: str) -> str:
+    """Render the NOTE comment for *note_text*, tagged unless the tag is the default."""
+    tag = tag.strip().lower() if tag and tag.strip() else "note"
+    return f"<!-- NOTE: {note_text} -->" if tag == "note" else f"<!-- NOTE[{tag}]: {note_text} -->"
+
+
+def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text: str, tag: str) -> None:
+    """Insert <!-- NOTE[tag]: note_text --> before the paragraph containing *selection_text*."""
+    path, _raw, lines = _resolve_annotation_target(abs_path)
+    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
+
+    _atomic_write_text(path, _splice_annotation(lines, insert_at, _note_comment(note_text, tag)))
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] inserted NOTE into {path.name} (line {insert_at + 1})")
+
+
+def edit_note(abs_path: str, old_note_text: str, old_tag: str, new_note_text: str, new_tag: str) -> None:
+    """Replace an existing NOTE comment with updated text/tag in-place."""
+    path, raw, _lines = _resolve_annotation_target(abs_path)
+    _replace_comment(
+        path,
+        raw,
+        _note_comment(old_note_text, old_tag),
+        _note_comment(new_note_text, new_tag),
+        "Note",
+    )
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] edited NOTE in {path.name}")
+
+
+def delete_note(abs_path: str, note_text: str, tag: str) -> None:
+    """Remove the <!-- NOTE[tag]: note_text --> comment from the file."""
+    path, _raw, lines = _resolve_annotation_target(abs_path)
+    _remove_comment_line(path, lines, _note_comment(note_text, tag), "Note")
     stamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{stamp}] deleted NOTE from {path.name}")
 

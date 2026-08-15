@@ -1259,9 +1259,52 @@ def test_dashboard_renders_the_scene_table_and_charts(page: Page, server: Prosev
     assert "10,069" in table, "word counts are not rendered in the scene table"
 
     # Charts are Chart.js canvases; a non-zero box means they actually laid out.
-    for chart_id in ("presenceChart", "rhythmChart", "locationChart", "lexicalScatterChart"):
+    # Only the frontmatter-driven charts are on Overview now -- the two that need
+    # the lexical pass moved to the Analysis tab.
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart"):
         box = page.locator(f"#{chart_id}").bounding_box()
         assert box and box["width"] > 0, f"{chart_id} did not render"
+
+
+def test_overview_does_not_ship_the_lexical_analysis(page: Page, server: ProseviewServer):
+    """The expensive pass must not be paid at first paint.
+
+    The Overview scene table drops the four analysis columns, and the two
+    analysis charts render only once their tab is opened.
+    """
+    open_dashboard(page, server)
+
+    # The header row is upper-cased by CSS, so compare case-insensitively.
+    headers = [h.strip().lower() for h in page.locator("#sceneTable thead th").all_inner_texts()]
+    assert headers == ["scene", "chapter", "words", "flavor"]
+    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+        assert page.locator(f"#{chart_id}").bounding_box() is None, \
+            f"{chart_id} should not be laid out before the Analysis tab is opened"
+
+
+def test_analysis_tab_loads_on_demand_and_renders_every_panel(page: Page, server: ProseviewServer):
+    """End-to-end cover for the lazy Analysis tab: fetch, inject, chart."""
+    open_dashboard(page, server)
+    page.click('.tab-nav button[data-tab="analysis"]')
+
+    page.wait_for_selector("#analysisContent:not([hidden])")
+    page.wait_for_function("() => document.querySelectorAll('#analysisSceneTable tbody tr').length > 0")
+
+    # The four analysis columns are back on this table.
+    headers = [h.strip().lower() for h in page.locator("#analysisSceneTable thead th").all_inner_texts()]
+    assert headers == ["scene", "chapter", "words", "variety", "flavor", "top repeat", "dlg%", "sent"]
+
+    # Book-wide lexical health is filled in from the payload, not left blank.
+    assert page.locator("#analysisMattrText").inner_text().strip()
+    assert page.locator("#analysisMtldText").inner_text().strip()
+    assert page.locator("#analysisAlerts").inner_text().strip()
+
+    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+        box = page.locator(f"#{chart_id}").bounding_box()
+        assert box and box["width"] > 0, f"{chart_id} did not render on the Analysis tab"
+
+    # The tab is a real route, so a deep link lands on it directly.
+    assert page.evaluate("decodeURIComponent(location.hash)") == "#/tab/analysis"
 
 
 def test_deep_link_opens_a_scene_and_back_returns_to_the_dashboard(page: Page, server: ProseviewServer):

@@ -23,7 +23,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from proseview.config import Config  # noqa: E402
-from proseview.generator import build_dashboard  # noqa: E402
+from proseview.generator import build_analysis_payload, build_dashboard  # noqa: E402
 from proseview.scenes import collect_scene_stats, split_frontmatter  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "demo-repo"
@@ -87,7 +87,7 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
         "let contents = JSON.parse(",
         "const repoTree = JSON.parse(",
         "const presenceChartData = JSON.parse(",
-        "const VALID_TABS = ['overview', 'timeline', 'todos', 'notes'];",
+        "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes'];",
         "const MODAL_FONT_SIZE_STORAGE_KEY = 'proseview-modal-font-size';",
         "const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';",
         "if ('scrollRestoration' in history) history.scrollRestoration = 'manual';",
@@ -305,9 +305,40 @@ def test_editor_scheme_is_honored_in_editor_button():
 
 
 def test_mattr_band_override_moves_scatter_annotation():
-    html = build_dashboard(FIXTURE, Config().with_overrides(mattr_band=(0.60, 0.95)))
-    scatter = json.loads(_extract_js_literal(html, "lexicalScatterChartData"))
-    assert scatter["bands"]["mattr"] == [0.60, 0.95]
+    """The scatter bands moved to the on-demand Analysis payload.
+
+    The chart is no longer built at first paint, so the override has to be
+    asserted where the data now lives rather than in the embedded HTML.
+    """
+    payload = build_analysis_payload(FIXTURE, Config().with_overrides(mattr_band=(0.60, 0.95)))
+    assert payload["scatterChart"]["bands"]["mattr"] == [0.60, 0.95]
+
+
+def test_overview_build_skips_the_lexical_passes():
+    """The Overview tab must not pay for analysis it does not display.
+
+    ``build_dashboard`` scans with ``analyze=False``, so the per-scene lexical
+    and style fields come back zeroed; the real numbers are only computed when
+    the Analysis tab asks for them.
+    """
+    html = build_dashboard(FIXTURE, Config.load(FIXTURE))
+    assert "lexicalScatterChartData" not in html, "scatter data should no longer be inlined"
+    assert "rhythmChartData" not in html, "rhythm data should no longer be inlined"
+    # The cheap, frontmatter-driven charts are still served at first paint.
+    assert "const presenceChartData = JSON.parse(" in html
+    assert "const coOccurChartData = JSON.parse(" in html
+
+
+def test_analysis_payload_carries_every_panel_the_tab_renders():
+    payload = build_analysis_payload(FIXTURE, Config.load(FIXTURE))
+
+    assert set(payload) == {"alertsHtml", "tableBody", "rhythmChart", "scatterChart", "lexical"}
+    assert payload["rhythmChart"]["datasets"], "rhythm chart needs a dataset"
+    assert payload["scatterChart"]["datasets"][0]["data"], "scatter chart needs points"
+    for key in ("mattrText", "mtldText", "mattrMarkerLeft", "mtldMarkerLeft"):
+        assert payload["lexical"][key], f"missing lexical field {key!r}"
+    # The Analysis table keeps the four analysis columns and their filter hooks.
+    assert "data-dlg=" in payload["tableBody"] and "data-rep=" in payload["tableBody"]
 
 
 def test_dashboard_has_no_book_specific_strings_from_host_repo():

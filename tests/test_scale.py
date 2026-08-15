@@ -12,7 +12,9 @@ are printed for whoever is looking.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -38,6 +40,21 @@ def book(tmp_path_factory: pytest.TempPathFactory):
 
 def _manuscript_bytes(root: Path) -> int:
     return sum(p.stat().st_size for p in root.rglob("*.md"))
+
+
+def _git_init(root: Path) -> None:
+    """Make *root* a committed git repo, so the git-gated paths actually run."""
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+    run = lambda *args: subprocess.run(  # noqa: E731
+        ["git", *args], cwd=root, env=env, check=True, capture_output=True
+    )
+    run("init", "-q")
+    run("add", "-A")
+    run("commit", "-qm", "book")
 
 
 def test_the_generated_book_is_actually_book_shaped(book):
@@ -85,6 +102,36 @@ def test_build_time_stays_roughly_linear_in_scene_count(tmp_path_factory):
     # Linear would be ~3x. Quadratic would be ~9x. Allow generous headroom for
     # timing noise on a loaded CI box while still failing on a quadratic.
     assert ratio < 6.0, f"build time grew {ratio:.1f}x for 3x the scenes; suspect superlinear work"
+
+
+def test_the_manuscript_is_indexed_only_once_per_build(book, monkeypatch):
+    """``collect_scene_stats`` runs the full lexical analysis of every scene.
+
+    ``build_dashboard`` used to call it once directly and once more inside
+    ``working_copy_delta``, which needed nothing but the word total. On a real
+    62k-word repo that duplicate accounted for about a third of the build.
+    """
+    from proseview import scenes as scenes_module
+
+    # The duplicate lived behind ``is_git_repo``, so this only means anything
+    # against a real repository -- in a plain directory ``working_copy_delta``
+    # returns before it would have indexed anything.
+    _git_init(book.root)
+
+    calls = 0
+    original = scenes_module.collect_scene_stats
+
+    def counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(scenes_module, "collect_scene_stats", counting)
+    monkeypatch.setattr(generator, "collect_scene_stats", counting)
+
+    generator.build_dashboard(book.root, Config.load(book.root))
+
+    assert calls == 1, f"the manuscript was indexed {calls} times in one build"
 
 
 def test_page_weight_is_dominated_by_the_inlined_manuscript(book):

@@ -38,7 +38,7 @@ observable impact.
 2. Core workflow effectiveness and correctness
 3. Interaction behavior, feedback, and recovery
 4. Accessibility and keyboard usability
-5. Visual design and data visualization
+5. Visual design, craft, and data visualization
 6. Content design and cognitive load
 7. Performance and perceived responsiveness
 8. Trust, data safety, and local-first clarity
@@ -73,7 +73,7 @@ paths, including URL/history state and one empty/first-use state.
 **Activation:** Always for a full audit; for a focused audit, the requested
 writer workflow and every prerequisite, durable effect, and recovery path.
 
-- Complete each workflow in `proseview-workflows.md` from the user's point of
+- Complete each workflow in `workflows.md` from the user's point of
   view; do not rely only on existing assertions.
 - Verify that displayed titles, paths, counts, statuses, selections, filters,
   chart values, and saved content match the underlying demo data.
@@ -178,30 +178,48 @@ computed-name/state inspection of custom controls, visible focus/focus recovery,
 contrast/non-color evidence, and reflow/zoom observations mapped to relevant
 WCAG 2.2 AA criteria.
 
-## 5. Visual design and data visualization
+## 5. Visual design, craft, and data visualization
 
 **Activation:** Layout, hierarchy, typography, color/theme, responsive/reflow
-behavior, charts, metrics, highlights, or visual status is visible in scope.
+behavior, charts, metrics, highlights, visual status, modernity, polish,
+density, chrome, or design-system consistency is visible in scope. When the
+request emphasizes visual quality, also apply `visual-quality-bar.md`.
 
 - Evaluate hierarchy, alignment, spacing, density, grouping, and consistency
   across dashboard, scene, file, editor, annotation, AI, and terminal surfaces.
+- Verify that persistent chrome leaves the manuscript dominant. Measure the
+  workspace shell in normal and compact contexts and compare auxiliary panels
+  closed and open rather than judging one default screenshot.
 - Check that primary, secondary, destructive, selected, and disabled actions
   are visually distinct without relying on decoration alone.
+- Compare repeated typography, buttons, fields, tabs, chips, menus, icons,
+  radii, borders, shadows, spacing, and semantic colors. Identify systemic
+  drift separately from isolated personal preference.
+- Check for excessive boxed controls, nested cards, redundant headings,
+  arbitrary empty space, mixed icon families, browser-default controls beside
+  custom controls, and elevation that does not communicate a stable hierarchy.
 - Verify supported fonts and light/dark themes for contrast, layout stability,
   syntax/prose legibility, focus treatment, and semantic color consistency.
 - Inspect 1400x1000, 1024x768, and 200% zoom for overflow, occlusion, cramped
   controls, broken sticky regions, and competing scroll containers.
+- Observe panel, menu, disclosure, loading, save, error, and reload transitions
+  for stable geometry, visual continuity, interruption safety, and reduced
+  motion. Do not infer polish from static DOM or screenshots alone.
 - Check charts for meaningful titles, units, axes, legends, scales, ordering,
   target bands, zero baselines where relevant, and honest treatment of missing
   or small samples.
 - Verify that dashboard density helps a writer decide what to do rather than
   presenting analytics without priority, explanation, or action.
-- Treat personal visual taste as low-confidence unless it creates measurable
-  comprehension, accessibility, consistency, or task-efficiency problems.
+- Report personal taste only when it is tied to the stated experience direction
+  or repeated system evidence. Keep non-defect craft opportunities separate
+  from P-level usability and accessibility findings.
 
 **Pass evidence:** Side-by-side observations across the required desktop
-contexts and exposed themes/fonts, plus verified chart labels/units/scales and
-text alternatives against current fixture data.
+contexts and exposed themes/fonts, a rendered/source consistency inventory,
+workspace-chrome measurements, observed transition states, and verified chart
+labels/units/scales and text alternatives against current fixture data. For a
+visual-modernization audit, complete the comparison set and craft assessment in
+`visual-quality-bar.md`.
 
 ## 6. Content design and cognitive load
 

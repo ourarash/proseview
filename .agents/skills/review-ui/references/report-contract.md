@@ -11,8 +11,9 @@ evidence for an engineer or designer to reproduce and verify every finding.
 3. Severity model
 4. Evidence model
 5. Finding format
-6. Required report shape
-7. Final self-check
+6. Craft opportunity format
+7. Required report shape
+8. Final self-check
 
 ## 1. Audit outcome
 
@@ -33,8 +34,9 @@ Never call a static-only review complete.
 Assign one status to every in-scope lane:
 
 - **Pass:** live evidence covers the lane and no material issue was found.
-- **Needs work:** the lane works but contains one or more P2/P3 problems, or a
-  narrowly contained P1 with a viable alternative.
+- **Needs work:** the lane works but contains one or more P2/P3 problems, a
+  narrowly contained P1 with a viable alternative, or—when the visual quality
+  bar is active—a material repeated craft gap.
 - **Fail:** a P0/P1 issue breaks, excludes, misleads, or makes the lane unsafe.
 - **Not verified:** evidence is insufficient. Explain what was not tested and
   why.
@@ -43,7 +45,8 @@ Assign one status to every in-scope lane:
   product lane.
 
 Do not average statuses or produce an aggregate numeric score. A Pass means
-tested and acceptable, not merely that no source defect was noticed.
+tested and acceptable, not merely that no source defect was noticed. Do not
+assign `Fail` to a visual lane for aesthetic preference alone.
 
 ## 3. Severity model
 
@@ -107,7 +110,32 @@ Keep one root cause per finding. Combine repeated manifestations when one
 remedy and acceptance check cover them; split findings when impacts or remedies
 differ. Place hypotheses in a separate section without P-level severity.
 
-## 6. Required report shape
+## 6. Craft opportunity format
+
+Use craft opportunities only when the visual quality bar is active and a
+repeated visual-system pattern misses the stated experience direction without
+demonstrated P-level user harm. Do not assign P0-P3 severity.
+
+```markdown
+### Craft-01 — Concise system-level opportunity
+
+- Experience quality: Writing-first / Calm and literary / Compact, not cramped / Contemporary desktop / Quietly capable / Coherent
+- Evidence: Observed
+- Surfaces: Repeated rendered states where the pattern appears.
+- Current pattern: Concrete hierarchy, typography, spacing, control, icon,
+  surface, color, or motion evidence.
+- Consequence: The visual or cognitive effect without inventing task harm.
+- Direction: System-level change; avoid unsupported pixel prescriptions.
+- Acceptance review: Equivalent states, themes, compact desktop, and zoom that
+  must be compared after implementation.
+- Confidence: High, Medium, or Low.
+```
+
+Keep the list prioritized and short. Combine manifestations that share a design
+system cause. Do not use craft opportunities as a second list of P3 findings,
+generic inspiration, or a place to recommend fashionable decoration.
+
+## 7. Required report shape
 
 Use these sections in order:
 
@@ -124,22 +152,28 @@ Use these sections in order:
 4. **Lane scorecard**
    - A compact table with Lane, Status, Highest severity, and Evidence note for
      all eight lanes. For a focused audit, mark other lanes Out of scope rather
-     than assigning a quality status.
+     than assigning a quality status. Use `— (craft only)` when a visual lane
+     needs work solely because of non-defect craft opportunities.
 5. **Prioritized findings**
    - Sort P0 through P3, then by affected workflow. Use the finding format.
-6. **Evidence-backed strengths**
+6. **Visual direction and craft opportunities**
+   - Required when the visual quality bar was activated; otherwise omit.
+   - State the intended experience direction, summarize the temporary comparison
+     set and consistency inventory, and use the craft opportunity format.
+   - Keep verified defects in Prioritized findings rather than duplicating them.
+7. **Evidence-backed strengths**
    - Include at most three strengths that were actively tested. Omit this
-     section if none materially help prioritization.
-7. **Hypotheses and unverified risks**
+   section if none materially help prioritization.
+8. **Hypotheses and unverified risks**
    - Keep separate from confirmed findings. State the test needed to resolve
-     each one.
-8. **Limitations**
+   each one.
+9. **Limitations**
    - Name unavailable workflows, environment/harness constraints, simulations,
-     and anything not tested.
-9. **Self-check**
+   external research not performed, and anything not tested.
+10. **Self-check**
    - Reproduce and complete every item below.
 
-## 7. Final self-check
+## 8. Final self-check
 
 End every report with these items and an evidence note after each checkbox. Use
 `[x]` only when true; use `[ ]` and explain the gap otherwise.
@@ -169,6 +203,13 @@ End every report with these items and an evidence note after each checkbox. Use
       by user impact.
 - [ ] Every recommendation has an observable acceptance check and stays within
       the evidence.
+- [ ] When visual modernization was in scope, the intended experience direction,
+      temporary comparison set, workspace measurements, design-system
+      inventory, and interaction-polish observations were completed.
+- [ ] P-level defects and non-defect craft opportunities were kept separate;
+      aesthetic preference was not inflated into user harm.
+- [ ] Claims about what writers prefer or understand were identified as expert
+      hypotheses unless supported by actual participant evidence.
 - [ ] Hypotheses, source-confirmed risks, and observed defects are separated.
 - [ ] Limitations, harness failures, and untested states are explicit.
 - [ ] No real manuscript, Proseview product file, test, or E2E harness file was

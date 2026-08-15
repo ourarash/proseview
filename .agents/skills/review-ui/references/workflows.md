@@ -29,6 +29,7 @@ with evidence. P0/P1 here describes coverage priority, not finding severity.
 6. Agents, terminal, and proposals
 7. Exceptional states
 8. Accessibility pass
+9. Visual-modernization focused pass
 
 ## 1. Test contexts
 
@@ -206,3 +207,41 @@ Complete the following without a pointer:
 6. Inspect visible focus, contrast, non-color cues, target size, reading
    typography, chart alternatives, reduced motion, 200% zoom, and compact
    desktop reflow using the accessibility checklist.
+
+## 9. Visual-modernization focused pass
+
+Use this section when the request emphasizes a modern, slick, polished,
+compact, calm, or less dated interface. This is a focused audit mode, not a
+shortcut around accessibility or core-task correctness: activate every lane
+and workflow that the discovered visual change can affect.
+
+1. Read `visual-quality-bar.md` and derive the current product's accepted
+   visual direction from repository design records before judging style.
+2. Build a state matrix for the discovered workspace shell. Include the primary
+   dashboard, reading, editing, and auxiliary-panel states; current controls
+   and routes must be discovered rather than copied from this reference.
+3. Capture the visual quality bar's minimum temporary comparison set. Do not
+   run a Cartesian product of every state, viewport, theme, and zoom level;
+   use its stated primary, compact, theme, exceptional-state, and zoom samples.
+   Mark a trace-unreachable state `Out of scope` and an applicable but untested
+   state `Not verified` under the main completion gate.
+4. Measure persistent top chrome, available reading width with panels closed
+   and open, competing primary-looking actions, wrapping/overflow, and scroll
+   ownership. Use measurements comparatively, not as universal thresholds.
+5. Inventory rendered and source-level typography, spacing/sizing, controls,
+   tabs/chips/menus, icons, surfaces/depth, semantic colors, and motion. Trace
+   repeated visible drift to its component or token source when possible.
+6. Exercise opening, closing, docking, resizing, sticky/auto-hidden behavior,
+   menus, loading, save, error, and recovery transitions exposed by the current
+   build. Inspect stable geometry, focus visibility, interruption, and reduced
+   motion rather than reviewing only static screenshots.
+7. Identify what should be removed, consolidated, demoted, progressively
+   disclosed, or made content-dominant before proposing decoration. Preserve
+   Proseview's local, dependency-light desktop constraints.
+8. Report demonstrated user harm as P0-P3 findings. Report repeated visual
+   system gaps without demonstrated task harm as craft opportunities using the
+   report contract. Do not inflate aesthetic preference into severity.
+9. If the user explicitly asked for research or competitive comparison,
+   inspect a small current set of relevant products under the visual quality
+   bar's external-reference rules and cite the current sources. Otherwise state
+   that no external benchmark was performed.

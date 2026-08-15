@@ -1,6 +1,6 @@
 ---
 name: review-ui
-description: Run skeptical, evidence-based live UI/UX audits of the Proseview writing dashboard through its existing browser E2E framework. Use when Codex is asked to review, critique, evaluate, or score Proseview's usability, accessibility, information architecture, interaction design, visual design, user-facing correctness, workflow safety, or recent UI changes; to perform a full product audit or a focused audit lane; or to verify that Proseview meets a high desktop and WCAG 2.2 AA quality bar.
+description: Run skeptical, evidence-based live UI/UX and visual-craft audits of the Proseview writing dashboard through its existing browser E2E framework. Use when Codex is asked to review, critique, evaluate, or score Proseview's usability, accessibility, information architecture, interaction design, visual design, modernity, polish, density, user-facing correctness, workflow safety, or recent UI changes; to perform a full product audit, focused workflow audit, or visual-modernization audit; or to verify that Proseview meets a high desktop and WCAG 2.2 AA quality bar.
 ---
 
 # Review Proseview UI
@@ -16,9 +16,9 @@ separate implementation request after the audit.
 
 ## Load the audit references
 
-Read all three references before starting a full audit:
+Read the core references before starting a full audit:
 
-- Read `../develop-proseview/references/repository-discovery.md` and build a
+- Read `../develop/references/repository-discovery.md` and build a
   current repository profile before selecting documents, commands, fixtures,
   routes, controls, or harness helpers. If unavailable, perform the same
   discovery directly; do not substitute assumed paths or commands.
@@ -29,6 +29,10 @@ Read all three references before starting a full audit:
 - Read [references/report-contract.md](references/report-contract.md) for
   severity calibration, finding structure, lane statuses, and the final
   self-check.
+- Read [references/visual-quality-bar.md](references/visual-quality-bar.md)
+  when the request concerns modernity, polish, visual direction, density,
+  chrome, consistency, or interaction craft. Read it for a full audit when
+  visual design is a stated priority.
 
 For a focused audit, read the report contract plus the sections of the other
 references that cover the requested lane or workflow. Still run the product
@@ -38,7 +42,10 @@ live and disclose the narrower scope.
 
 ### 1. Establish scope and preserve state
 
-1. Treat a request without a narrower scope as a full audit.
+1. Treat a request without a narrower scope as a full audit. Treat a request
+   framed around "modern", "slick", "polished", "dated", visual hierarchy,
+   density, chrome, or design consistency as a focused visual-modernization
+   audit unless the user explicitly requests the full product audit.
 2. Record the repository path, current commit, `git status --short`, and the
    requested audit scope. Preserve this as the before-state; existing changes
    belong to the user or another agent.
@@ -127,8 +134,11 @@ live and disclose the narrower scope.
 5. Observe outcomes, timing, focus movement, browser history, console errors,
    network failures, state persistence, empty/error/recovery states, and file
    effects in the isolated demo copy.
-6. Capture a screenshot only when it proves a specific finding. Record the
-   preceding actions, viewport, theme, relevant DOM state, and screenshot path.
+6. Capture a screenshot only when it proves a specific finding. For a
+   visual-modernization audit, also capture the temporary comparison set
+   required by the visual quality bar so the composition is judged across
+   equivalent states rather than from memory. Record the preceding actions,
+   viewport, theme, relevant DOM state, and screenshot path.
 7. Inspect source after observing behavior to confirm the cause or to identify
    a source-confirmed risk. Do not convert source suspicion into an observed
    defect without reproducing it.
@@ -155,13 +165,20 @@ live and disclose the narrower scope.
    data-loss or exclusion risk. Do not inflate cosmetic preferences.
 5. Make every recommendation concrete and verify it with an acceptance check.
    Respect Proseview's local-first, dependency-light product constraints.
+6. In a visual-modernization audit, separate usability/accessibility defects
+   from non-defect craft opportunities. Apply P0-P3 only to demonstrated user
+   harm. Report systemic visual drift, dated conventions, and aesthetic
+   incoherence under the report contract's craft format, supported by the
+   visual-quality-bar evidence.
 
 ### 7. Report and close cleanly
 
 1. Follow the report contract exactly. Return the complete report in chat; do
    not write a report into the repository.
 2. Include the baseline result, scope, lane scorecard, prioritized findings,
-   limitations, and completed self-check. Do not calculate an aggregate score.
+   limitations, and completed self-check. Include visual direction and craft
+   opportunities when the visual-quality bar was activated. Do not calculate
+   an aggregate score.
 3. Stop all browser contexts, browser-automation processes, Proseview servers,
    terminal sessions, and event streams created by the audit.
 4. Remove the disposable copy and temporary artifacts after extracting the
@@ -192,6 +209,9 @@ following are true for the requested scope:
   activated by the requested lanes/workflows was attempted and all
   trace-unreachable lanes/contexts were explicitly `Out of scope`.
 - Findings meet the evidence and report contracts.
+- When visual modernization is in scope, the temporary comparison set,
+  workspace-chrome measurements, consistency inventory, and craft assessment
+  required by the visual quality bar are complete.
 - The final self-check is complete.
 - The primary repository and E2E harness were not changed by the audit.
 - No concurrent edit invalidated evidence from the disposable snapshot.

@@ -11,12 +11,29 @@ because distribution is broken. Stability comes before reach.
 ## Status, 2026-08-15
 
 Landed: **1** (by you, in `51a53c8`), **2**, **3**, **7** (the 5xx half; the
-console-error half also arrived in `51a53c8`), and **8**.
+console-error half also arrived in `51a53c8`), **8**, **12b**, and **13**.
 
-Test counts moved from 280 unit / 164 browser to **312 unit / 165 browser**.
+Test counts moved from 280 unit / 164 browser to **315 unit / 167 browser**.
 
-Two things surfaced while doing the work, both recorded below as new items:
-the dashboard's page weight (item 13) and a flaky Discuss test (item 14).
+### The headline: the dashboard rebuild is 75% faster
+
+Measured on the real repo at `~/github/book` — 48 scenes, 62k words:
+
+| | Start of day | Now |
+| --- | --- | --- |
+| Server rebuild, paid after every save | 1690 ms | **418 ms** |
+| Analysis tab, first open | n/a | 839 ms |
+| Analysis tab, reopened | n/a | 32 ms |
+
+Three changes got there: removing a duplicate manuscript index (item 13),
+moving the MATTR/MTLD pass behind an on-demand Analysis tab (item 16), and
+deleting the dead computation both left behind.
+
+### Still open
+
+Browser-side load is untouched at ~600 ms, and the page is still ~2.9 MB.
+Item 15 (vendoring ProseMirror) is now the largest single remaining win.
+Item 17 records the next structural one.
 
 ---
 
@@ -148,9 +165,81 @@ Writers send `.docx` to editors.
 
 **Effort:** ~1 day.
 
-### 13. Page weight at book length
+### 16. Overview and Analysis are separate tabs — DONE
 
-Found by item 8. Against a synthetic 300-scene, 98k-word novel:
+The Overview tab priced out at 611 ms of its 1070 ms build being lexical and
+style analysis that the tab you actually use does not read. It is now split:
+
+- **Overview** (still the default): Goals, Recently Changed, Character
+  Presence, Setting Stickiness, Co-Occurrence, and a four-column scene table.
+  Everything here comes from frontmatter and word counts.
+- **Analysis** (new): Editorial Alerts, Book-Wide Lexical Health, Rhythm &
+  Pacing, Lexical Health Map, and the full eight-column table with its metric
+  filters. Fetched from `/analysis.json` on first open, cached server-side
+  against the same file-watch invalidation as the HTML, and routable at
+  `#/tab/analysis`.
+
+**One correction worth keeping.** The first cut skipped both the lexical *and*
+style passes, and the browser tier immediately went red on three highlight
+tests: [generator.py:297](../proseview/generator.py#L297) wires the `repeats`
+reading-view highlight to `scene.repetition_examples`, and the scene modal's
+stat grid reads the style fields. That would have shipped a silently degraded
+reading view — no error, just an empty highlight pass and a grid of zeros.
+
+`collect_scene_stats(lexical=False)` now skips **only** MATTR/MTLD, which
+nothing outside the Analysis tab reads. The style pass always runs.
+
+The e2e suite caught this, which is the argument for item 7 in one line.
+
+### 17. Defer the style pass per scene
+
+`analyze_style_shape` is ~385 ms of the remaining 418 ms build, and it still
+runs for every scene on every rebuild because the reading view needs it — the
+stat grid and the `repeats` highlight, both per-scene.
+
+Computing it for the one scene being opened rather than all of them is the next
+structural win, and it would take the rebuild close to the ~26 ms that a
+metadata-only scan costs. Bigger job than item 16: the scene modal and
+`build_scene_data` both assume the fields are already populated.
+
+### 12b. An empty scene file crashes the whole dashboard — DONE
+
+`analyze_style_shape("")` raises `ZeroDivisionError` at
+[lexical.py:274](../proseview/lexical.py#L274) — `dlg_words / words` with no
+guard on `words == 0`. Empty, whitespace-only, and frontmatter-only scenes all
+hit it, and because the analysis runs for every scene on every build, one blank
+file takes down the entire dashboard rather than that one scene.
+
+Today you would have to create a blank scene to hit it. After item 5 it becomes
+routine: any real Obsidian vault contains empty notes.
+
+Fixed: the dialogue share is now guarded the same way the neighbouring
+`dialogue_pct` on the next line always was.
+
+### 13. Build cost and page weight at book length — PARTLY DONE
+
+Measured against the real repo at `~/github/book`: 48 scenes, 62k words.
+
+**Fixed.** `build_dashboard` indexed the manuscript twice — once directly, and
+once inside `working_copy_delta`, which wanted nothing but the word total. The
+second pass ran the full lexical analysis of every scene and threw it away.
+Passing the already-computed scenes through took the real book from **1.69s to
+1.08s (-36%)**. `tests/test_scale.py` guards it; the guard is only meaningful
+against a git repo, because the duplicate sat behind `is_git_repo`.
+
+That gate is also why the synthetic fixture looked *faster* than the real book
+despite having six times the scenes — it is not a git repo, so it never paid
+the duplicate.
+
+**Page weight turned out not to matter — do not fix it.** Measured end to end
+on the real book, the 3.04 MB page costs 8 ms to download over loopback and
+3 ms to `JSON.parse` (contents 1 ms, highlights 2 ms). Deferring both blobs to
+a lazy fetch would save about **3 ms** while adding a load-order race. The
+earlier "inlined manuscript is the likely cause of slowness" call was wrong;
+it reasoned about bytes without measuring a local server, where transfer is
+free.
+
+Recorded for scale awareness only:
 
 | Measure | Value |
 | --- | --- |
@@ -165,13 +254,51 @@ The whole manuscript is inlined into the page as a JSON string literal
 over the bytes on disk. The browser downloads and parses all of it on every
 load — and again on every live reload.
 
-Server-side cost is fine. This is the likely answer to "it feels slow", and it
-is worth confirming against a real manuscript before optimising. Serving the
-contents map as a separate cached fetch, or lazily per scene, is the obvious
-direction.
+The real book measures 7.2x (0.42 MB on disk to 3.04 MB of page). Note that
+`highlightsByPath` (0.94 MB) is the largest blob, not `contents` (0.36 MB).
+`tests/test_scale.py` pins the ratio at 8.0x so it cannot quietly get worse.
 
-`tests/test_scale.py` pins the current ratio at 8.0x so it cannot quietly get
-worse.
+### Where the time actually goes
+
+On the real book, a page load costs **~1.7 s** when the dashboard is stale,
+which during a writing session is after every save:
+
+| Stage | Cost |
+| --- | --- |
+| Server regenerates the dashboard | ~1080 ms (was 1690 ms) |
+| Request to first byte, cached | 3 ms |
+| Download 3.04 MB over loopback | 8 ms |
+| Browser DOM parse + scripts | 581 ms |
+| — of which `JSON.parse` of both data blobs | 3 ms |
+| — of which ProseMirror from esm.sh | ~170 ms (see item 15) |
+
+The two real targets are the server rebuild and the CDN fetch. Bytes are not a
+target at all.
+
+Remaining server-side cost is dominated by `analyze_style_shape` (~42k
+`re.findall` calls per build) and the git subprocesses in `working_copy_delta`.
+The bigger structural win is to re-analyse only the scenes that changed instead
+of the whole manuscript on every invalidation.
+
+### 15. ProseMirror is fetched from a CDN on every load
+
+[index.html.j2:405-412](../proseview/templates/index.html.j2) imports seven
+ProseMirror modules from `https://esm.sh/` at runtime. Each measured 160–172 ms
+against the live CDN, and the browser e2e tier has to stub `esm.sh` to be
+deterministic at all.
+
+Three problems, in increasing order of importance:
+
+1. It is the largest single component of browser-side load time.
+2. Proseview does not work offline, on a plane, or behind a restrictive
+   network — for a tool whose pitch is that it is local.
+3. It quietly contradicts the README's "vendored front-end dependencies" and
+   the privacy framing: every page load tells a third party that someone opened
+   their manuscript.
+
+Vendoring these the way `chart.js`, `marked.js`, and `xterm.js` are already
+vendored fixes all three. Cheap, and it is the highest-value performance work
+available.
 
 ### 14. A flaky Discuss test
 

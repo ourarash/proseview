@@ -271,7 +271,11 @@ def analyze_style_shape(text: str, sw: set[str]) -> dict[str, object]:
         sensory_count += sum(len(re.findall(rf"\b{v}\b", text, re.IGNORECASE)) for v in cat)
 
     avg_sent = sum(sent_counts) / len(sent_counts) if sent_counts else 0.0
-    energy = 10.0 + (dlg_words / words * 5.0) - (avg_sent / 2.0)
+    # An empty, whitespace-only, or frontmatter-only scene has no words. Without
+    # this guard one blank file takes down the whole dashboard build, not just
+    # its own row.
+    dialogue_share = (dlg_words / words) if words else 0.0
+    energy = 10.0 + (dialogue_share * 5.0) - (avg_sent / 2.0)
 
     dlg_text = " ".join(m.group(1) for m in dlg_matches)
     dlg_toks = [t for t in lexical_tokens(dlg_text) if t not in sw and len(t) > 3]

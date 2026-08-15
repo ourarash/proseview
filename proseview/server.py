@@ -38,7 +38,10 @@ except ImportError:
 from .config import Config
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
-from .generator import TEMPLATE_DIR, _load_app_css, _load_asset, build_dashboard, build_scene_data
+from .generator import (
+    TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
+    build_scene_data,
+)
 from .lexical import paragraph_blocks
 from .repo import _file_node as _repo_file_node, resolve_visible_repository_path
 from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
@@ -859,6 +862,7 @@ class _Handler(BaseHTTPRequestHandler):
     """Bound HTTP handler; concrete attributes injected by :func:`_make_handler`."""
 
     get_html: Callable[[], str]
+    get_analysis_json: Callable[[], bytes]
     invalidate: Callable[[], None]
     subscribe: Callable[[], "queue.Queue[str]"]
     unsubscribe: Callable[["queue.Queue[str]"], None]
@@ -1032,7 +1036,12 @@ class _Handler(BaseHTTPRequestHandler):
         major upstream bumps can't break the dashboard mid-session.
         """
         rel = urlparse(self.path).path[len("/vendor/"):]
-        if not rel or "/" in rel or ".." in rel:
+        # One nested directory is allowed so the ProseMirror ESM graph can live
+        # in vendor/pm/ rather than scattering 36 files beside chart.js. Deeper
+        # nesting stays refused, and containment is still enforced below by
+        # resolving the path and checking it lands inside vendor/ -- which also
+        # rejects a symlink pointing out of the tree.
+        if not rel or ".." in rel or rel.count("/") > 1:
             self.send_response(404)
             self.end_headers()
             return
@@ -1276,6 +1285,21 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 self.unsubscribe(q)
             return
+        if self.path == "/analysis.json":
+            try:
+                body = self.get_analysis_json()
+            except Exception as exc:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(exc).encode())
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path == "/data.json":
             try:
                 root = Path(self.repo_root)
@@ -1763,6 +1787,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def _make_handler(
     get_html: Callable[[], str],
+    get_analysis_json: Callable[[], bytes],
     invalidate: Callable[[], None],
     subscribe: Callable[[], "queue.Queue[str]"],
     unsubscribe: Callable[["queue.Queue[str]"], None],
@@ -1774,6 +1799,7 @@ def _make_handler(
     class BoundHandler(_Handler):
         pass
     BoundHandler.get_html = staticmethod(get_html)  # type: ignore[method-assign]
+    BoundHandler.get_analysis_json = staticmethod(get_analysis_json)  # type: ignore[method-assign]
     BoundHandler.invalidate = staticmethod(invalidate)  # type: ignore[method-assign]
     BoundHandler.subscribe = staticmethod(subscribe)  # type: ignore[method-assign]
     BoundHandler.unsubscribe = staticmethod(unsubscribe)  # type: ignore[method-assign]
@@ -1794,6 +1820,8 @@ def serve(
     lock = threading.Lock()
     _cache: list[str] = []
     _stale = [True]
+    _analysis_cache: list[bytes] = []
+    _analysis_stale = [True]
     _sse_clients: list[queue.Queue[str]] = []
     _sse_lock = threading.Lock()
     discuss_manager = DiscussManager(root)
@@ -1812,6 +1840,24 @@ def serve(
                 print(f"[{stamp}] regenerated dashboard in {elapsed:.2f}s")
             return _cache[0]
 
+    def get_analysis_json() -> bytes:
+        """Serve the Analysis tab's payload, built on first request and cached.
+
+        This is the expensive lexical/style pass. It shares the HTML cache's
+        staleness flag, so a file change drops both, but it is only ever
+        recomputed if someone actually opens the Analysis tab.
+        """
+        with lock:
+            if _analysis_stale[0] or not _analysis_cache:
+                started = perf_counter()
+                cfg = Config.load(root)
+                payload = build_analysis_payload(root, cfg)
+                _analysis_cache[:] = [json.dumps(payload).encode("utf-8")]
+                _analysis_stale[0] = False
+                stamp = datetime.now().strftime("%H:%M:%S")
+                print(f"[{stamp}] built analysis payload in {perf_counter() - started:.2f}s")
+            return _analysis_cache[0]
+
     def invalidate(kind: str = "content", changed_paths: tuple[str, ...] = ()) -> None:
         """Invalidate the cached HTML and notify SSE clients.
 
@@ -1827,6 +1873,7 @@ def serve(
         """
         with lock:
             _stale[0] = True
+            _analysis_stale[0] = True
         if kind == "content" and changed_paths:
             msg = json.dumps({"type": "reload", "paths": list(changed_paths)})
         else:
@@ -1924,6 +1971,7 @@ def serve(
 
     handler_cls = _make_handler(
         get_html,
+        get_analysis_json,
         invalidate,
         subscribe,
         unsubscribe,

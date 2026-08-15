@@ -249,12 +249,29 @@ def iter_scene_paths(manuscript_dir: Path) -> list[Path]:
     return paths
 
 
+#: Placeholder used when ``collect_scene_stats(lexical=False)`` skips the
+#: MATTR/MTLD pass. Same shape as the real result, zeroed, so ``SceneStats``
+#: keeps one field layout regardless of how it was built.
+_EMPTY_LEXICAL = LexicalStats(tokens=0, types=0, ttr=0.0, mattr=0.0, mtld=0.0)
+
+
 def collect_scene_stats(
     root: Path,
     manuscript_subdir: str | Config = "manuscript",
     *,
     characters_dir: str = "story-bible/characters",
+    lexical: bool = True,
 ) -> list[SceneStats]:
+    """Index the manuscript, optionally skipping the MATTR/MTLD pass.
+
+    With ``lexical=False`` the type-token measures come back zeroed. Only the
+    Analysis tab reads them -- the scatter chart and the table's Variety column
+    -- so a dashboard build skips them.
+
+    The style pass always runs: the reading view's stat grid and the ``repeats``
+    highlight pass are built from it, and both are wanted on every scene the
+    reader opens.
+    """
     if isinstance(manuscript_subdir, Config):
         cfg = manuscript_subdir
         manuscript_subdir = cfg.manuscript_subdir
@@ -278,7 +295,8 @@ def collect_scene_stats(
 
     for p, fm, txt, toks, txt_line_offset in temp_scenes:
         words = count_words(txt)
-        lex, st = calculate_lexical_stats(txt), analyze_style_shape(txt, sw)
+        lex = calculate_lexical_stats(txt) if lexical else _EMPTY_LEXICAL
+        st = analyze_style_shape(txt, sw)
         scene_counts = Counter(toks)
         distinctive = []
         for word, count in scene_counts.most_common(20):

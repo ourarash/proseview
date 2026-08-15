@@ -155,8 +155,11 @@
             }
         });
 
-        function sortTable(n) {
-            var t = document.getElementById("sceneTable"), r = t.rows, s = true, d = "asc", c = 0;
+        function sortTable(n) { sortTableEl(document.getElementById("sceneTable"), n); }
+
+        function sortTableEl(t, n) {
+            if (!t) return;
+            var r = t.rows, s = true, d = "asc", c = 0;
             while (s) {
                 s = false;
                 for (var i = 1; i < (r.length - 1); i++) {

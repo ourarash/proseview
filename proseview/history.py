@@ -23,7 +23,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
+
+if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
+    from .scenes import SceneStats
 
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
@@ -322,20 +325,27 @@ def _parse_since_to_iso(since: str) -> str:
 
 
 def working_copy_delta(root: Path, cfg: Config,
-                       history: list[HistoryRow]) -> WorkingCopyDelta:
+                       history: list[HistoryRow],
+                       scenes: list[SceneStats] | None = None) -> WorkingCopyDelta:
     """Compute "today" numbers from the working tree against the last commit
     from before today.
 
     words_added_today = max(0, current working-tree word total - baseline)
     scenes_touched_today = files changed in commits since midnight PLUS files
                            dirty in the working tree
+
+    Pass *scenes* when the caller has already indexed the manuscript. Only the
+    word total is needed here, and re-indexing runs the full lexical analysis of
+    every scene a second time -- about half the cost of a dashboard build.
     """
     if not is_git_repo(root):
         return WorkingCopyDelta(0, 0)
 
-    from .scenes import collect_scene_stats
+    if scenes is None:
+        from .scenes import collect_scene_stats
 
-    current_total = sum(s.words for s in collect_scene_stats(root, cfg.manuscript_subdir))
+        scenes = collect_scene_stats(root, cfg.manuscript_subdir)
+    current_total = sum(s.words for s in scenes)
 
     today = date.today().isoformat()
     baseline = 0

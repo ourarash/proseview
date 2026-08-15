@@ -234,10 +234,12 @@ def build_dashboard(
 ) -> str:
     """Produce the full HTML dashboard for the repo at ``root``."""
     cfg = cfg or Config.load(root)
-    scenes = collect_scene_stats(root, cfg.manuscript_subdir)
+    # MATTR/MTLD are read only by the Analysis tab, which fetches them on
+    # demand, so a dashboard rebuild no longer pays for that pass.
+    scenes = collect_scene_stats(root, cfg.manuscript_subdir, lexical=False)
     display_scenes = sort_scenes(filter_scenes(scenes, "all", cfg), "path", False)
     history = load_history(root, cfg) if history_rows is None else history_rows
-    delta = working_copy_delta(root, cfg, history)
+    delta = working_copy_delta(root, cfg, history, scenes)
     goals = compute_goals(history, cfg, delta) if history or delta.words_added_today else None
     tree_nodes = build_tree(root, cfg)
     sidebar_nodes = build_sidebar_tree(root, cfg)
@@ -331,6 +333,180 @@ def build_scene_data(
     return {"contents": contents, "meta": meta, "highlightsByPath": highlights}
 
 
+def _scene_table_body(
+    display_scenes: list[SceneStats],
+    root: Path,
+    cfg: Config,
+    editor_label: str,
+    *,
+    analysis: bool,
+) -> str:
+    """Render the Scene Deep Dive rows.
+
+    With ``analysis=False`` the four analysis-derived columns (Variety, Top
+    Repeat, Dlg%, Sent) and their filter data attributes are omitted, so the
+    table can be built from a scan that never ran the lexical passes. The
+    Analysis tab asks for the full form.
+    """
+    manuscript_prefix = cfg.manuscript_subdir + "/"
+
+    def clean_path(path: Path) -> str:
+        text = str(path)
+        return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
+
+    span = 8 if analysis else 4
+    body = ""
+    last_chapter = None
+    for scene in display_scenes:
+        if scene.chapter != last_chapter:
+            chapter_total = sum(
+                current.words for current in display_scenes if current.chapter == scene.chapter
+            )
+            body += (
+                f'<tr class="ch-row chapter-row">'
+                f'<td colspan="2">{scene.chapter}</td><td>{chapter_total:,}</td>'
+                f'<td colspan="{span - 3}"></td></tr>'
+            )
+            last_chapter = scene.chapter
+
+        display_path = clean_path(scene.path)
+        editor_url = _editor_url(cfg, str((root / scene.path).resolve()))
+        todo_count = len(scene.todos)
+        note_count = len(scene.notes)
+        status_slug = re.sub(r'[^a-z0-9]+', '-', scene.status.lower()) if scene.status else 'unknown'
+        status_badge = f'<span class="badge status-badge status-{status_slug}">{scene.status}</span> '
+        todo_badge = (
+            f'<span class="badge todo-badge" title="{todo_count} TODO(s)">{todo_count} todo</span> '
+            if todo_count else ''
+        )
+        note_badge = (
+            f'<span class="badge note-badge" title="{note_count} note(s)">{note_count} note</span> '
+            if note_count else ''
+        )
+
+        style_attrs = (
+            f'data-dlg="{scene.dialogue_pct}" data-sent="{scene.avg_sentence_words}" '
+            f'data-rep="{scene.repetition_score}" '
+            if analysis else ""
+        )
+        body += (
+            f'<tr class="scene-row" {style_attrs}'
+            f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
+            f'<td><span style="color:var(--primary); font-weight:600; cursor:pointer;" '
+            f'onclick="openSceneModal(\'{display_path}\')">{display_path}</span>'
+            f'{status_badge}{todo_badge}{note_badge}'
+            f'<a class="editor-btn" href="{editor_url}" title="Open in {editor_label}" '
+            f'onclick="event.stopPropagation()">↗ {editor_label}</a></td>'
+            f'<td><span style="font-size:11px; opacity:0.7;">{scene.chapter}</span></td>'
+            f'<td style="font-weight:600;">{scene.words:,}</td>'
+        )
+        if analysis:
+            m_pos = goal_position(scene.mattr, cfg.mattr_band)
+            l_pos = goal_position(scene.mtld, cfg.mtld_band)
+            body += (
+                f'<td><span class="badge badge-{m_pos}">{scene.mattr:.3f}</span> '
+                f'<span class="badge badge-{l_pos}">{scene.mtld:.1f}</span></td>'
+            )
+        body += (
+            f'<td><span style="font-size:10px; color:var(--text-muted); font-style:italic;">'
+            f'{", ".join(scene.flavor_words)}</span></td>'
+        )
+        if analysis:
+            body += (
+                f'<td><span class="badge {"badge-danger" if scene.repetition_score > 25 else ""}">'
+                f'{scene.repetition_examples[0] if scene.repetition_examples else ""}</span></td>'
+                f'<td><span class="badge {"badge-danger" if scene.dialogue_pct > 45 else ("badge-low" if scene.dialogue_pct < 8 else "")}">'
+                f"{scene.dialogue_pct:.1f}%</span></td>"
+                f'<td><span class="badge {"badge-high" if scene.avg_sentence_words > 19 else ("badge-low" if scene.avg_sentence_words < 8 else "")}">'
+                f"{scene.avg_sentence_words:.1f}</span></td>"
+            )
+        body += "</tr>"
+    return body
+
+
+def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, object]:
+    """Everything the Analysis tab needs, computed on demand.
+
+    This is the expensive half of the old dashboard: the lexical and style
+    passes over every scene, which cost roughly 60% of a full build. Nothing on
+    the Overview tab reads any of it, so it is no longer paid on every rebuild.
+    """
+    cfg = cfg or Config.load(root)
+    scenes = collect_scene_stats(root, cfg.manuscript_subdir, lexical=True)
+    display_scenes = sort_scenes(filter_scenes(scenes, "all", cfg), "path", False)
+
+    manuscript_prefix = cfg.manuscript_subdir + "/"
+
+    def clean_path(path: Path) -> str:
+        text = str(path)
+        return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
+
+    chapters = sorted({scene.chapter for scene in scenes})
+    rhythm_vals = [
+        sum(s.sent_len_stdev for s in scenes if s.chapter == chapter)
+        / max(1, len([s for s in scenes if s.chapter == chapter]))
+        for chapter in chapters
+    ]
+
+    flagged = sort_scenes(
+        [scene for scene in scenes if scene_is_outlier(scene, cfg)], "severity", True, cfg
+    )
+    alerts_html = (
+        "".join(
+            f'<div class="alert-item" onclick="openSceneModal(\'{clean_path(scene.path)}\')">'
+            f'<div class="alert-path">{clean_path(scene.path)}</div>'
+            f'<div class="alert-msg">{revision_signal(scene, cfg)}</div></div>'
+            for scene in flagged[:8]
+        )
+        if flagged
+        else "<p>No urgent issues detected.</p>"
+    )
+
+    lexical = calculate_lexical_stats("\n\n".join(scene.text for scene in scenes))
+
+    def get_pct(value: float, minimum: float, maximum: float) -> float:
+        return max(0, min(100, (value - minimum) / (maximum - minimum) * 100))
+
+    m_start = get_pct(cfg.mattr_band[0], 0.65, 0.85)
+    l_start = get_pct(cfg.mtld_band[0], 50, 180)
+
+    return {
+        "alertsHtml": alerts_html,
+        "tableBody": _scene_table_body(
+            display_scenes, root, cfg, _editor_label(cfg), analysis=True
+        ),
+        # Same shapes the template used to inject, so the existing Chart.js
+        # setup in 70-terminal.js builds them without changes.
+        "rhythmChart": {
+            "labels": chapters,
+            "datasets": [
+                {"label": "Sentence Var (Stdev)", "data": rhythm_vals, "fill": False, "tension": 0.4}
+            ],
+        },
+        "scatterChart": {
+            "datasets": [
+                {
+                    "data": [
+                        {"x": scene.mattr, "y": scene.mtld, "label": clean_path(scene.path)}
+                        for scene in scenes
+                    ]
+                }
+            ],
+            "bands": {"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)},
+        },
+        "lexical": {
+            "mattrText": f"{lexical.mattr:.3f}",
+            "mattrZoneLeft": f"{m_start:.1f}",
+            "mattrZoneWidth": f"{get_pct(cfg.mattr_band[1], 0.65, 0.85) - m_start:.1f}",
+            "mattrMarkerLeft": f"{get_pct(lexical.mattr, 0.65, 0.85):.1f}",
+            "mtldText": f"{lexical.mtld:.1f}",
+            "mtldZoneLeft": f"{l_start:.1f}",
+            "mtldZoneWidth": f"{get_pct(cfg.mtld_band[1], 50, 180) - l_start:.1f}",
+            "mtldMarkerLeft": f"{get_pct(lexical.mtld, 50, 180):.1f}",
+        },
+    }
+
+
 def render_html_report(
     scenes: list[SceneStats],
     display_scenes: list[SceneStats],
@@ -364,8 +540,6 @@ def render_html_report(
     target_words = cfg.target_words
     daily_target = cfg.daily_target
     total_words = sum(s.words for s in scenes)
-    all_text = "\n".join(s.text for s in scenes)
-    lexical = calculate_lexical_stats(all_text)
     percent_target = (total_words / target_words * 100) if target_words else 0.0
     days_to_finish = math.ceil(max(0, target_words - total_words) / daily_target) if daily_target else 0
 
@@ -411,11 +585,6 @@ def render_html_report(
             presence_data.append({"label": name, "data": chapter_mentions, "fill": False, "tension": 0.3})
     presence_data = sorted(presence_data, key=lambda row: sum(row["data"]), reverse=True)[:12]
 
-    rhythm_vals = [
-        sum(s.sent_len_stdev for s in scenes if s.chapter == chapter)
-        / max(1, len([s for s in scenes if s.chapter == chapter]))
-        for chapter in chapters
-    ]
     location_counts: Counter[str] = Counter()
     for scene in scenes:
         location_counts[scene.location] += scene.words
@@ -433,22 +602,6 @@ def render_html_report(
                 co_occur[tuple(sorted((first, second)))] += 1
     top_pairs = sorted(co_occur.items(), key=lambda item: item[1], reverse=True)[:15]
 
-    flagged = sort_scenes(
-        [scene for scene in scenes if scene_is_outlier(scene, cfg)],
-        "severity",
-        True,
-        cfg,
-    )
-    scatter_data = [{"x": scene.mattr, "y": scene.mtld, "label": clean_path(scene.path)} for scene in scenes]
-
-    def get_pct(value: float, minimum: float, maximum: float) -> float:
-        return max(0, min(100, (value - minimum) / (maximum - minimum) * 100))
-
-    m_start = get_pct(cfg.mattr_band[0], 0.65, 0.85)
-    m_width = get_pct(cfg.mattr_band[1], 0.65, 0.85) - m_start
-    l_start = get_pct(cfg.mtld_band[0], 50, 180)
-    l_width = get_pct(cfg.mtld_band[1], 50, 180) - l_start
-
     editor_label = _editor_label(cfg)
     goals_banner_html, goals_card_html = _render_goals_sections(goals, cfg)
     goals_card_wrapper = (
@@ -457,70 +610,7 @@ def render_html_report(
         else ""
     )
 
-    alerts_html = (
-        "".join(
-            [
-                f'<div class="alert-item" onclick="openSceneModal(\'{clean_path(scene.path)}\')">'
-                f'<div class="alert-path">{clean_path(scene.path)}</div>'
-                f'<div class="alert-msg">{revision_signal(scene, cfg)}</div></div>'
-                for scene in flagged[:8]
-            ]
-        )
-        if flagged
-        else "<p>No urgent issues detected.</p>"
-    )
-
-    table_body = ""
-    last_chapter = None
-    for scene in display_scenes:
-        if scene.chapter != last_chapter:
-            chapter_total = sum(current.words for current in display_scenes if current.chapter == scene.chapter)
-            table_body += (
-                f'<tr class="ch-row chapter-row">'
-                f'<td colspan="2">{scene.chapter}</td><td>{chapter_total:,}</td><td colspan="5"></td></tr>'
-            )
-            last_chapter = scene.chapter
-        m_pos = goal_position(scene.mattr, cfg.mattr_band)
-        l_pos = goal_position(scene.mtld, cfg.mtld_band)
-        display_path = clean_path(scene.path)
-        editor_url = _editor_url(cfg, str((root / scene.path).resolve()))
-        variety = (
-            f'<span class="badge badge-{m_pos}">{scene.mattr:.3f}</span> '
-            f'<span class="badge badge-{l_pos}">{scene.mtld:.1f}</span>'
-        )
-        todo_count = len(scene.todos)
-        note_count = len(scene.notes)
-        status_slug = re.sub(r'[^a-z0-9]+', '-', scene.status.lower()) if scene.status else 'unknown'
-        status_badge = f'<span class="badge status-badge status-{status_slug}">{scene.status}</span> '
-        todo_badge = (
-            f'<span class="badge todo-badge" title="{todo_count} TODO(s)">{todo_count} todo</span> '
-            if todo_count else ''
-        )
-        note_badge = (
-            f'<span class="badge note-badge" title="{note_count} note(s)">{note_count} note</span> '
-            if note_count else ''
-        )
-        table_body += (
-            f'<tr class="scene-row" data-dlg="{scene.dialogue_pct}" '
-            f'data-sent="{scene.avg_sentence_words}" data-rep="{scene.repetition_score}" '
-            f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
-            f'<td><span style="color:var(--primary); font-weight:600; cursor:pointer;" '
-            f'onclick="openSceneModal(\'{display_path}\')">{display_path}</span>'
-            f'{status_badge}{todo_badge}{note_badge}'
-            f'<a class="editor-btn" href="{editor_url}" title="Open in {editor_label}" '
-            f'onclick="event.stopPropagation()">\u2197 {editor_label}</a></td>'
-            f'<td><span style="font-size:11px; opacity:0.7;">{scene.chapter}</span></td>'
-            f'<td style="font-weight:600;">{scene.words:,}</td>'
-            f"<td>{variety}</td>"
-            f'<td><span style="font-size:10px; color:var(--text-muted); font-style:italic;">'
-            f'{", ".join(scene.flavor_words)}</span></td>'
-            f'<td><span class="badge {"badge-danger" if scene.repetition_score > 25 else ""}">'
-            f'{scene.repetition_examples[0] if scene.repetition_examples else ""}</span></td>'
-            f'<td><span class="badge {"badge-danger" if scene.dialogue_pct > 45 else ("badge-low" if scene.dialogue_pct < 8 else "")}">'
-            f"{scene.dialogue_pct:.1f}%</span></td>"
-            f'<td><span class="badge {"badge-high" if scene.avg_sentence_words > 19 else ("badge-low" if scene.avg_sentence_words < 8 else "")}">'
-            f"{scene.avg_sentence_words:.1f}</span></td></tr>"
-        )
+    table_body = _scene_table_body(display_scenes, root, cfg, editor_label, analysis=False)
 
     context = {
         "app_css": _load_app_css(),
@@ -534,15 +624,6 @@ def render_html_report(
         "goals_banner_html": goals_banner_html,
         "goals_card_wrapper": goals_card_wrapper,
         "recent_changes_card": recent_card,
-        "alerts_html": alerts_html,
-        "lexical_mattr_text": f"{lexical.mattr:.3f}",
-        "lexical_mattr_zone_left": f"{m_start:.1f}",
-        "lexical_mattr_zone_width": f"{m_width:.1f}",
-        "lexical_mattr_marker_left": f"{get_pct(lexical.mattr, 0.65, 0.85):.1f}",
-        "lexical_mtld_text": f"{lexical.mtld:.1f}",
-        "lexical_mtld_zone_left": f"{l_start:.1f}",
-        "lexical_mtld_zone_width": f"{l_width:.1f}",
-        "lexical_mtld_marker_left": f"{get_pct(lexical.mtld, 50, 180):.1f}",
         "table_body": table_body,
         "editor_label": editor_label,
         "contents_json": _js_json(scene_content_map),
@@ -559,12 +640,6 @@ def render_html_report(
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),
-        "rhythm_chart_json": _js_json(
-            {
-                "labels": chapters,
-                "datasets": [{"label": "Sentence Var (Stdev)", "data": rhythm_vals, "fill": False, "tension": 0.4}],
-            }
-        ),
         "location_chart_json": _js_json(
             {"labels": [name for name, _ in top_locs], "datasets": [{"data": [words for _, words in top_locs]}]}
         ),
@@ -572,12 +647,6 @@ def render_html_report(
             {
                 "labels": [f"{pair[0]}+{pair[1]}" for pair, _ in top_pairs],
                 "datasets": [{"label": "Shared Scenes", "data": [count for _, count in top_pairs]}],
-            }
-        ),
-        "scatter_chart_json": _js_json(
-            {
-                "datasets": [{"data": scatter_data}],
-                "bands": {"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)},
             }
         ),
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),

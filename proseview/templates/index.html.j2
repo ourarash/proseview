@@ -77,6 +77,7 @@
     <div class="app-toolbar">
         <nav class="tab-nav">
             <button class="active" data-tab="overview" onclick="showTab('overview')">Overview</button>
+            <button data-tab="analysis" onclick="showTab('analysis')">Analysis</button>
             <button data-tab="timeline" onclick="showTab('timeline')">Timeline</button>
             <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
             <button data-tab="notes" onclick="showTab('notes')">Notes</button>
@@ -133,44 +134,57 @@
         {{ recent_changes_card | safe }}
 
         <div class="dashboard-grid">
-            <div class="card"><div class="card-header"><span class="card-title">Editorial Alerts</span></div>
-                <div class="scroll-panel">
-                    {{ alerts_html | safe }}
-                </div>
-            </div>
-            <div class="card"><div class="card-header"><span class="card-title">Book-Wide Lexical Health</span></div>
-                <div class="health-section"><div>Local Variety (MATTR): <strong>{{ lexical_mattr_text }}</strong></div><div class="range-bar"><div class="target-zone" style="left:{{ lexical_mattr_zone_left }}%; width:{{ lexical_mattr_zone_width }}%;"></div><div class="current-marker" style="left:{{ lexical_mattr_marker_left }}%;"></div></div></div>
-                <div class="health-section"><div>Whole-Scene Variety (MTLD): <strong>{{ lexical_mtld_text }}</strong></div><div class="range-bar"><div class="target-zone" style="left:{{ lexical_mtld_zone_left }}%; width:{{ lexical_mtld_zone_width }}%;"></div><div class="current-marker" style="left:{{ lexical_mtld_marker_left }}%;"></div></div></div>
-            </div>
-        </div>
-
-        <div class="dashboard-grid">
             <div class="card"><div class="card-header"><span class="card-title">Character Presence Timeline</span></div><div class="chart-frame"><canvas id="presenceChart"></canvas></div></div>
-            <div class="card"><div class="card-header"><span class="card-title">Rhythm &amp; Pacing (Sentence length variety)</span></div>
-                <div class="section-note">
-                    Measures the "pulse" of your prose.
-                    <br>&bull; <b>Static (0-4):</b> Monotonous drone.
-                    <br>&bull; <b>Rhythmic (5-12):</b> Healthy pulse. <b>Your current target.</b>
-                    <br>&bull; <b>Dynamic (13+):</b> High contrast/tension.
-                </div>
-                <div class="chart-frame"><canvas id="rhythmChart"></canvas></div>
-            </div>
+            <div class="card"><div class="card-header"><span class="card-title">Setting Stickiness (Words per Location)</span></div><div class="chart-frame"><canvas id="locationChart"></canvas></div></div>
         </div>
 
-        <div class="dashboard-grid">
-            <div class="card"><div class="card-header"><span class="card-title">Setting Stickiness (Words per Location)</span></div><div class="chart-frame"><canvas id="locationChart"></canvas></div></div>
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
             <div class="card"><div class="card-header"><span class="card-title">Character Co-Occurrence</span></div><div class="chart-frame"><canvas id="coOccurChart"></canvas></div></div>
         </div>
 
-        <div class="stats-layout">
-            <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scene Deep Dive</span>
-                <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
-                    <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
-                </select></div>
-                <table id="sceneTable"><thead><tr><th onclick="sortTable(0)">Scene</th><th onclick="sortTable(1)">Chapter</th><th onclick="sortTable(2)">Words</th><th onclick="sortTable(3)">Variety</th><th onclick="sortTable(4)">Flavor</th><th onclick="sortTable(5)">Top Repeat</th><th onclick="sortTable(6)">Dlg%</th><th onclick="sortTable(7)">Sent</th></tr></thead><tbody>
-                    {{ table_body | safe }}
-                </tbody></table></div>
-            <div class="sticky-sidebar"><div class="card"><div class="card-header"><span class="card-title">Lexical Health Map</span></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart"></canvas></div></div></div>
+        <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scenes</span>
+            <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
+                <option value="all">All Scenes</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
+            </select>
+            <span class="section-note" style="margin-left:12px;">Prose metrics live in the <a href="#" onclick="showTab('analysis'); return false;">Analysis</a> tab.</span></div>
+            <table id="sceneTable"><thead><tr><th onclick="sortTable(0)">Scene</th><th onclick="sortTable(1)">Chapter</th><th onclick="sortTable(2)">Words</th><th onclick="sortTable(3)">Flavor</th></tr></thead><tbody>
+                {{ table_body | safe }}
+            </tbody></table></div>
+    </div>
+
+    <div id="tab-analysis" class="tab-panel">
+        <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Analysing the manuscript…</p>
+        <div id="analysisContent" hidden>
+            <div class="dashboard-grid">
+                <div class="card"><div class="card-header"><span class="card-title">Editorial Alerts</span></div>
+                    <div class="scroll-panel" id="analysisAlerts"></div>
+                </div>
+                <div class="card"><div class="card-header"><span class="card-title">Book-Wide Lexical Health</span></div>
+                    <div class="health-section"><div>Local Variety (MATTR): <strong id="analysisMattrText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMattrZone"></div><div class="current-marker" id="analysisMattrMarker"></div></div></div>
+                    <div class="health-section"><div>Whole-Scene Variety (MTLD): <strong id="analysisMtldText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMtldZone"></div><div class="current-marker" id="analysisMtldMarker"></div></div></div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+                <div class="card"><div class="card-header"><span class="card-title">Rhythm &amp; Pacing (Sentence length variety)</span></div>
+                    <div class="section-note">
+                        Measures the "pulse" of your prose.
+                        <br>&bull; <b>Static (0-4):</b> Monotonous drone.
+                        <br>&bull; <b>Rhythmic (5-12):</b> Healthy pulse. <b>Your current target.</b>
+                        <br>&bull; <b>Dynamic (13+):</b> High contrast/tension.
+                    </div>
+                    <div class="chart-frame"><canvas id="rhythmChart"></canvas></div>
+                </div>
+            </div>
+
+            <div class="stats-layout">
+                <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scene Deep Dive</span>
+                    <select id="analysisIssueFilter" class="issue-filter" onchange="applyAnalysisIssueFilter()">
+                        <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option>
+                    </select></div>
+                    <table id="analysisSceneTable"><thead><tr><th onclick="sortAnalysisTable(0)">Scene</th><th onclick="sortAnalysisTable(1)">Chapter</th><th onclick="sortAnalysisTable(2)">Words</th><th onclick="sortAnalysisTable(3)">Variety</th><th onclick="sortAnalysisTable(4)">Flavor</th><th onclick="sortAnalysisTable(5)">Top Repeat</th><th onclick="sortAnalysisTable(6)">Dlg%</th><th onclick="sortAnalysisTable(7)">Sent</th></tr></thead><tbody id="analysisTableBody"></tbody></table></div>
+                <div class="sticky-sidebar"><div class="card"><div class="card-header"><span class="card-title">Lexical Health Map</span></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart"></canvas></div></div></div>
+            </div>
         </div>
     </div>
 
@@ -388,10 +402,8 @@
         const PASS_ORDER = {{ pass_order_json | safe }};
         const SKILLS = {{ skills_json | safe }};
         const presenceChartData = {{ presence_chart_json | safe }};
-        const rhythmChartData = {{ rhythm_chart_json | safe }};
         const locationChartData = {{ location_chart_json | safe }};
         const coOccurChartData = {{ cooccur_chart_json | safe }};
-        const lexicalScatterChartData = {{ scatter_chart_json | safe }};
     </script>
     <script id="proseview-app">
 {{ app_js | safe }}

@@ -791,8 +791,13 @@
               options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
           });
 
-          chartRefs.rhythmChart = makeChart('rhythmChart', 250, {
-              type: 'line', data: rhythmChartData,
+          // Built on demand by the Analysis tab -- see 19-analysis.js. Kept in
+          // this closure so it still has makeChart and the theme helpers.
+          window.buildAnalysisCharts = function(data) {
+            if (chartRefs.rhythmChart) { chartRefs.rhythmChart.destroy(); }
+            if (chartRefs.lexicalScatterChart) { chartRefs.lexicalScatterChart.destroy(); }
+            chartRefs.rhythmChart = makeChart('rhythmChart', 250, {
+              type: 'line', data: data.rhythmChart,
               options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { min: 0, max: 20, title: { display: true, text: 'Length Variety (Stdev)' } } },
               plugins: { legend: { display: false }, annotation: { annotations: {
                   staticZone: { type: 'box', yMin: 0, yMax: 4.5 },
@@ -811,11 +816,12 @@
               options: { indexAxis: 'y', plugins: { legend: { display: false } } }
           });
 
-          chartRefs.lexicalScatterChart = makeChart('lexicalScatterChart', 350, {
-              type: 'scatter', data: { datasets: lexicalScatterChartData.datasets },
+            chartRefs.lexicalScatterChart = makeChart('lexicalScatterChart', 350, {
+              type: 'scatter', data: { datasets: data.scatterChart.datasets },
               options: { scales: { x: { min:0.65, max:0.85, title: { display: true, text: 'Local Variety (MATTR)' } }, y: { min:50, max:180, title: { display: true, text: 'Whole-Scene Variety (MTLD)' } } },
-              plugins: { legend: { display: false }, annotation: { annotations: { target: { type: 'box', xMin: lexicalScatterChartData.bands.mattr[0], xMax: lexicalScatterChartData.bands.mattr[1], yMin: lexicalScatterChartData.bands.mtld[0], yMax: lexicalScatterChartData.bands.mtld[1], borderWidth: 2 } } } } }
-          });
+              plugins: { legend: { display: false }, annotation: { annotations: { target: { type: 'box', xMin: data.scatterChart.bands.mattr[0], xMax: data.scatterChart.bands.mattr[1], yMin: data.scatterChart.bands.mtld[0], yMax: data.scatterChart.bands.mtld[1], borderWidth: 2 } } } } }
+            });
+          };
 
         });
 
@@ -1126,6 +1132,7 @@
             const btn = document.querySelector('.tab-nav button[data-tab="' + name + '"]');
             if (btn) btn.classList.add('active');
             currentTab = name;
+            if (name === 'analysis') buildAnalysisTab();
             if (name === 'timeline') buildTimelineTab();
             if (name === 'notes') buildNotesTab();
             if (name === 'todos') buildTodosTab();

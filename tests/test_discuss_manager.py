@@ -34,6 +34,9 @@ class _FakeClient:
         self.max_active = 0
         self.turn_start_attempts = 0
         self.finish_delay = 0.04
+        self.hold_next_turn = False
+        self.interrupt_error: BaseException | None = None
+        self.complete_turn_before_interrupt_error = False
         self.reject_turn_starts = False
         self.invalid_continuity_result = False
         self.continuity_file = "manuscript/one.md"
@@ -52,7 +55,7 @@ class _FakeClient:
     def start(self):
         return None
 
-    def request(self, method, params):
+    def request(self, method, params, *, timeout=None):
         if method == "skills/list":
             return {"data": [{"cwd": params["cwds"][0], "skills": [{
                 "name": "scene-review", "path": "/skills/scene-review/SKILL.md", "enabled": True,
@@ -82,6 +85,10 @@ class _FakeClient:
             with self._lock:
                 self.active += 1
                 self.max_active = max(self.max_active, self.active)
+
+            if self.hold_next_turn:
+                self.hold_next_turn = False
+                return {"turn": {"id": turn_id, "status": "inProgress"}}
 
             def finish():
                 self.callback({
@@ -150,6 +157,19 @@ class _FakeClient:
             return {"turn": {"id": turn_id, "status": "inProgress"}}
         if method == "turn/interrupt":
             self.interrupts.append(dict(params))
+            if self.complete_turn_before_interrupt_error:
+                self.callback({
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": params["threadId"],
+                        "turn": {"id": params["turnId"], "status": "interrupted"},
+                    },
+                })
+                deadline = time.monotonic() + 1.0
+                while self.next_turn < 2 and time.monotonic() < deadline:
+                    time.sleep(0.001)
+            if self.interrupt_error is not None:
+                raise self.interrupt_error
             return {}
         raise AssertionError(method)
 
@@ -1210,6 +1230,62 @@ def test_new_conversation_fails_safely_when_conversation_lock_stays_busy(tmp_pat
         manager.close()
 
 
+def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    conversation = manager._get(cid)
+    restored_thread = manager._start_thread(conversation, clients[0])
+    read_started = threading.Event()
+    release_read = threading.Event()
+    original_request = clients[0].request
+
+    def blocking_request(method, params, *, timeout=None):
+        if method == "thread/read":
+            read_started.set()
+            release_read.wait(timeout=2)
+        return original_request(method, params, timeout=timeout)
+
+    monkeypatch.setattr(clients[0], "request", blocking_request)
+    restore = threading.Thread(
+        target=manager.open,
+        args=({"kind": "scene", "path": "one.md"},),
+        daemon=True,
+    )
+    restore.start()
+    assert read_started.wait(timeout=1)
+
+    submitted: list[dict] = []
+    submit = threading.Thread(
+        target=lambda: submitted.append(manager.submit(
+            cid,
+            client_request_id="critique-during-restore",
+            question="",
+            selection="First document.",
+            action_id="quick_critique",
+        )),
+        daemon=True,
+    )
+    submit.start()
+    try:
+        assert submit.join(timeout=0.25) is None and submitted, (
+            "selection action enqueue waited for the external thread/read request"
+        )
+    finally:
+        release_read.set()
+        restore.join(timeout=2)
+        submit.join(timeout=2)
+        _wait_for(lambda: any(
+            task.get("action_id") == "quick_critique" and task.get("status") == "ready"
+            for task in manager.get_snapshot(cid)["tasks"]
+        ))
+        manager.close()
+
+
 def test_dequeued_question_blocks_reset_and_history_switch_until_it_finishes(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
@@ -1439,6 +1515,90 @@ def test_pending_queue_item_can_be_removed_individually(tmp_path: Path, monkeypa
     assert manager.cancel_queued(cid, "remove-me")["status"] == "cancelled"
     assert manager.get_snapshot(cid)["queue"] == []
     _wait_for(lambda: len(clients[0].prompts) == 1, timeout=1.0)
+    manager.close()
+
+
+def test_stop_recovers_when_codex_has_unloaded_the_active_thread(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    client = clients[0]
+    client.hold_next_turn = True
+    client.interrupt_error = CodexRequestError("thread not loaded: thread-1", code=-32000)
+
+    continuity = manager.submit(
+        cid,
+        client_request_id="continuity-held",
+        question="",
+        action_id="scene_continuity",
+    )
+    _wait_for(lambda: bool(manager.get_snapshot(cid)["active_turn_id"]))
+    rewrite = manager.submit(
+        cid,
+        client_request_id="rewrite-queued",
+        question="",
+        selection="First document.",
+        action_id="custom_rewrite",
+        custom_instruction="Make this more direct.",
+    )
+
+    active_turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    assert active_turn_id
+    manager.stop(cid, active_turn_id)
+    _wait_for(
+        lambda: next(
+            task for task in manager.get_snapshot(cid)["tasks"] if task["id"] == rewrite["task_id"]
+        )["status"] == "ready"
+    )
+
+    snapshot = manager.get_snapshot(cid)
+    tasks = {task["id"]: task for task in snapshot["tasks"]}
+    assert tasks[continuity["task_id"]]["status"] == "cancelled"
+    assert tasks[continuity["task_id"]]["error"] == "Stopped by writer"
+    assert tasks[rewrite["task_id"]]["status"] == "ready"
+    assert client.next_thread == 2
+    assert snapshot["connection"] == "Live"
+    assert snapshot["unavailable_reason"] == ""
+    assert snapshot["active_turn_id"] is None
+    assert snapshot["queue"] == []
+    manager.close()
+
+
+def test_delayed_stop_error_cannot_detach_the_next_queued_turn(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    client = clients[0]
+    client.hold_next_turn = True
+    client.complete_turn_before_interrupt_error = True
+    client.interrupt_error = CodexRequestError("thread not loaded: thread-1", code=-32000)
+
+    manager.submit(cid, client_request_id="held", question="First turn")
+    _wait_for(lambda: bool(manager.get_snapshot(cid)["active_turn_id"]))
+    manager.submit(cid, client_request_id="next", question="Second turn")
+    stopped_turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    assert stopped_turn_id
+
+    manager.stop(cid, stopped_turn_id)
+    _wait_for(lambda: len([
+        message for message in manager.get_snapshot(cid)["messages"]
+        if message["role"] == "assistant"
+    ]) == 1)
+
+    snapshot = manager.get_snapshot(cid)
+    assert client.next_thread == 1
+    assert manager._conversations[cid].thread_id == "thread-1"
+    assert snapshot["active_turn_id"] is None
+    assert snapshot["queue"] == []
+    assert snapshot["connection"] == "Live"
     manager.close()
 
 

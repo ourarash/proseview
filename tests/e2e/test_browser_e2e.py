@@ -175,6 +175,13 @@ def open_scene(page: Page, server: ProseviewServer, rel: str = SCENE_REL) -> Non
     page.wait_for_selector("#sceneProseHost .ProseMirror")
 
 
+def open_scene_appearance(page: Page) -> None:
+    if not page.locator("#sceneAppearanceMenu").is_visible():
+        page.locator("#sceneAppearanceBtn").focus()
+        page.keyboard.press("Enter")
+    page.wait_for_selector("#sceneAppearanceMenu", state="visible")
+
+
 def enter_edit_mode(page: Page) -> None:
     page.click("#sceneEditBtn")
     page.wait_for_function("() => window._pmEditMode === true")
@@ -421,9 +428,43 @@ def test_discuss_scene_continuity_starts_without_an_optional_focus(
     assert page.locator("#discussInput").input_value() == ""
     page.locator("#discussSend").click()
 
-    page.wait_for_selector(".discuss-refactor-finding", state="visible")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-task-status')]"
+        ".some(node => ['Ready', 'Failed'].includes(node.innerText))"
+    )
     report = page.locator(".discuss-task", has_text="Check this scene's continuity")
     assert "Read-only scan complete" in report.inner_text()
+    assert report.locator(".discuss-refactor-finding").is_visible()
+    assert server.scene_path().read_bytes() == before
+
+
+def test_discuss_scene_continuity_bounds_large_repository_context(
+    page: Page, server: ProseviewServer
+):
+    plans = server.root / "plans"
+    plans.mkdir(exist_ok=True)
+    for index in range(4):
+        (plans / f"large-continuity-context-{index}.md").write_text(
+            f"# Large continuity context {index}\n\n" + ("A configured story fact.\n" * 15_000),
+            encoding="utf-8",
+        )
+    before = server.scene_path().read_bytes()
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
+    page.locator("#discussSend").click()
+
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-task-status')]"
+        ".some(node => ['Ready', 'Failed'].includes(node.innerText))"
+    )
+    report = page.locator(".discuss-task", has_text="Check this scene's continuity")
+    assert "Read-only scan complete" in report.inner_text()
+    assert report.locator(".discuss-refactor-finding").is_visible()
+    assert "Codex input limit" in report.inner_text()
+    assert "files were omitted" in report.inner_text()
+    assert "Input exceeds the maximum length" not in page.locator("#discussPanel").inner_text()
     assert server.scene_path().read_bytes() == before
 
 
@@ -476,11 +517,125 @@ def test_discuss_scene_continuity_reports_that_a_scan_is_starting_and_recovers_o
     assert page.get_by_text("Continuity scan could not start.", exact=True).is_visible()
 
 
+def test_discuss_send_times_out_and_recovers_from_a_stalled_request(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Why is the opening quiet?")
+    page.evaluate(
+        """
+        () => {
+            window._discussRequestTimeoutMs = 100;
+            window.__discussOriginalFetch = window.fetch;
+            window.fetch = function(input, options) {
+                if (!String(input).includes('/questions')) {
+                    return window.__discussOriginalFetch(input, options);
+                }
+                return new Promise(function(_resolve, reject) {
+                    options.signal.addEventListener('abort', function() {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    }, {once: true});
+                });
+            };
+        }
+        """
+    )
+
+    page.locator("#discussSend").click()
+
+    assert page.locator("#discussSend").is_disabled()
+    assert page.locator("#discussSend").inner_text() == "Sending…"
+    assert page.locator("#discussSend").evaluate("node => getComputedStyle(node).cursor") != "wait"
+    page.wait_for_function(
+        "() => !document.getElementById('discussSend').disabled "
+        "&& document.getElementById('discussSend').innerText === 'Send'",
+        timeout=2_000,
+    )
+    assert page.get_by_text(
+        "Request timed out. Check the connection and try again.", exact=True
+    ).is_visible()
+    assert page.locator("#discussInput").input_value() == "Why is the opening quiet?"
+
+
+def test_discuss_open_times_out_with_an_operable_retry(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate(
+        """
+        () => {
+            window._discussRequestTimeoutMs = 100;
+            window.__discussOriginalFetch = window.fetch;
+            window.__stallDiscussOpen = true;
+            window.fetch = function(input, options) {
+                if (!window.__stallDiscussOpen || !String(input).includes('/conversations/open')) {
+                    return window.__discussOriginalFetch(input, options);
+                }
+                window.__stallDiscussOpen = false;
+                return new Promise(function(_resolve, reject) {
+                    options.signal.addEventListener('abort', function() {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    }, {once: true});
+                });
+            };
+        }
+        """
+    )
+
+    page.locator("#sceneModal .discuss-open-btn").click()
+
+    page.wait_for_function(
+        "() => !document.getElementById('discussSend').disabled "
+        "&& document.getElementById('discussSend').innerText === 'Try again'",
+        timeout=2_000,
+    )
+    assert page.locator("#discussConnection").inner_text().startswith("Unavailable")
+    assert page.get_by_text(
+        "Request timed out. Check the connection and try again.", exact=True
+    ).is_visible()
+    page.locator("#discussSend").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert page.locator("#discussSend").inner_text() == "Send"
+    assert not page.locator("#discussSend").is_disabled()
+
+
+def test_discuss_detects_a_server_restart_and_recovers_by_reload(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    draft = "What do you think about this scene?"
+    page.fill("#discussInput", draft)
+
+    server.restart()
+
+    page.wait_for_function(
+        "() => document.getElementById('discussConnection').innerText.startsWith('Reload required')",
+        timeout=15_000,
+    )
+    assert page.get_by_text(
+        "Proseview restarted. Reload this page to reconnect.", exact=True
+    ).is_visible()
+    assert page.locator("#discussSend").is_disabled()
+    assert page.locator("#discussInput").input_value() == draft
+
+    page.get_by_role("button", name="Reload page").click()
+    page.wait_for_function("() => !!window._PM")
+    page.wait_for_selector("#sceneModal", state="visible")
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert page.locator("#discussInput").input_value() == draft
+
+
 def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zoom(
     page: Page, server: ProseviewServer
 ):
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     page.locator("#sceneModal .discuss-open-btn").click()
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
@@ -706,6 +861,7 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     box = page.locator("#discussPanel").bounding_box()
     assert box and box["x"] + box["width"] <= 1401
 
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     page.set_viewport_size({"width": 1024, "height": 768})
     page.evaluate("document.body.style.zoom = '2'")
@@ -762,6 +918,26 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
     wait_for_discuss_answer(page, "Fake answer")
     assert page.locator(".discuss-message.user").count() == 2
     page.wait_for_selector("#discussStop", state="hidden")
+
+
+def test_discuss_stop_recovers_when_codex_unloads_thread(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_UNLOAD_ON_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussStop", state="visible")
+
+    page.fill("#discussInput", "Continue in a fresh conversation")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('item queued')")
+    page.click("#discussStop")
+
+    wait_for_discuss_answer(page, "Fake answer")
+    page.wait_for_selector("#discussStop", state="hidden")
+    connection = page.locator("#discussConnection").inner_text()
+    assert connection == "Live"
+    assert "thread not loaded" not in connection
 
 
 def test_discuss_pending_queue_item_can_be_removed(page: Page, server: ProseviewServer):
@@ -935,6 +1111,7 @@ def test_new_conversation_dialog_announces_pending_and_recovers_from_failure(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     page.click("#sceneModal .discuss-open-btn")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
@@ -1015,6 +1192,7 @@ def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
 ):
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     page.click("#sceneModal .discuss-open-btn")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
@@ -1121,6 +1299,7 @@ def test_scene_table_sorts_by_column(page: Page, server: ProseviewServer):
 def test_theme_choice_survives_a_reload(page: Page, server: ProseviewServer):
     """Theme is written to localStorage and re-applied on load."""
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     _wait_until(lambda: page.evaluate("document.documentElement.dataset.theme") == "dark")
 
@@ -1129,6 +1308,213 @@ def test_theme_choice_survives_a_reload(page: Page, server: ProseviewServer):
 
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     assert page.locator("#modalThemeSelect").input_value() == "dark"
+
+
+def test_scene_toolbar_is_compact_and_exposes_grouped_actions(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+
+    header = page.locator("#sceneModal .modal-header")
+    box = header.bounding_box()
+    assert box and box["height"] <= 52
+    assert page.locator("#modalTitle").bounding_box()["width"] > 0
+    assert page.get_by_role("button", name="Discuss").is_visible()
+    assert page.get_by_role("button", name="Edit scene").is_visible()
+
+    page.locator("#sceneAppearanceBtn").click()
+    appearance = page.locator("#sceneAppearanceMenu")
+    assert appearance.is_visible()
+    assert page.locator("#modalFontSize").is_visible()
+    assert page.locator("#modalFontSelect").is_visible()
+    assert page.locator("#modalThemeSelect").is_visible()
+    assert page.locator("#modalLineNumbersBtn").is_visible()
+
+    page.locator("#sceneMoreBtn").click()
+    more = page.locator("#sceneMoreMenu")
+    assert more.is_visible()
+    assert page.locator("#modalRefreshBtn").is_visible()
+    assert page.locator("#modalEditorBtn").is_visible()
+    assert page.locator("#agentMenuSceneBtn").is_visible()
+    assert more.get_by_role("button", name="Open shell").is_visible()
+    page.keyboard.press("Escape")
+    assert more.is_hidden()
+    assert page.evaluate("document.activeElement.id") == "sceneMoreBtn"
+
+
+def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    header = page.locator("#sceneModal .modal-header")
+
+    page.locator("#sceneAppearanceBtn").click()
+    page.locator("input[name='sceneToolbarMode'][value='hidden']").check()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
+    )
+    assert page.evaluate("localStorage.getItem('proseview-scene-toolbar-mode')") == "hidden"
+
+    page.reload(wait_until="load")
+    page.wait_for_function("() => !!window._PM")
+    page.wait_for_selector("#sceneModal", state="visible")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
+    )
+    stats_box = page.locator("#modalStats").bounding_box()
+    assert stats_box and stats_box["y"] <= 2
+
+    reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
+    assert reveal_box
+    page.mouse.move(
+        reveal_box["x"] + reveal_box["width"] / 2,
+        reveal_box["y"] + reveal_box["height"] / 2,
+    )
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
+    )
+    page.mouse.move(500, 500)
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
+    )
+
+    page.locator("#sceneToolbarReveal").focus()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
+    )
+    assert page.evaluate("document.activeElement.id") == "sceneToolbarReveal"
+    assert header.get_attribute("data-toolbar-mode") == "hidden"
+
+
+def test_scene_toolbar_auto_hides_on_scroll_and_reveals_on_reverse_scroll(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server, LARGE_SCENE_REL)
+    scroller = page.locator("#sceneModal .modal-content")
+    # Route scroll restoration retries for 260ms while the editor settles.
+    page.wait_for_timeout(350)
+    scroller.hover(position={"x": 400, "y": 500})
+    page.mouse.wheel(0, 1400)
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
+    )
+
+    page.mouse.wheel(0, -500)
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
+    )
+
+
+def test_scene_toolbar_auto_mode_does_not_move_with_reduced_motion(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.emulate_media(reduced_motion="reduce")
+    open_scene(page, server, LARGE_SCENE_REL)
+    scroller = page.locator("#sceneModal .modal-content")
+    page.wait_for_timeout(350)
+    scroller.evaluate(
+        "node => { node.style.scrollBehavior = 'auto'; "
+        "node.scrollTop = node.scrollHeight - node.clientHeight; "
+        "node.dispatchEvent(new Event('scroll')); }"
+    )
+
+    assert page.locator("#sceneModal .modal-header").get_attribute("data-toolbar-hidden") == "false"
+
+
+def test_focus_layout_uses_the_toolbar_visibility_state(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+
+    page.keyboard.press("f")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
+    )
+    assert page.locator("#modalStats").is_hidden()
+    assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "true"
+
+    page.keyboard.press("f")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
+    )
+    assert page.locator("#modalStats").is_visible()
+    assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "false"
+
+
+def test_scene_toolbar_mode_change_invalidates_temporary_hide_timer(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    page.evaluate("setSceneToolbarMode('hidden'); revealSceneToolbar(true)")
+    page.locator("#sceneAppearanceBtn").focus()
+    page.keyboard.press("Enter")
+    page.locator("input[name='sceneToolbarMode'][value='pinned']").check()
+    page.locator("#sceneProseHost .ProseMirror").focus()
+    page.wait_for_timeout(2000)
+
+    header = page.locator("#sceneModal .modal-header")
+    assert header.get_attribute("data-toolbar-mode") == "pinned"
+    assert header.get_attribute("data-toolbar-hidden") == "false"
+
+
+def test_scene_toolbar_stays_single_row_with_dock_and_at_two_hundred_percent_zoom(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1400, "height": 800})
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+
+    header = page.locator("#sceneModal .modal-header")
+    box = header.bounding_box()
+    assert box and box["height"] <= 52
+    assert page.locator("#modalTitle").bounding_box()["width"] > 0
+
+    page.evaluate("document.body.style.zoom = '2'")
+    page.wait_for_function("() => document.documentElement.dataset.cssZoom === 'true'")
+    box = header.bounding_box()
+    assert box and box["height"] <= 104
+    assert page.evaluate(
+        "() => { const h = document.querySelector('#sceneModal .modal-header'); "
+        "return h.scrollWidth <= h.clientWidth; }"
+    )
+    for selector in ("#sceneMoreBtn", "#sceneAppearanceBtn", "#sceneEditBtn"):
+        action = page.locator(selector).bounding_box()
+        assert action
+        assert action["x"] >= 0 and action["x"] + action["width"] <= 1400
+
+    for trigger, menu in (
+        ("#sceneAppearanceBtn", "#sceneAppearanceMenu"),
+        ("#sceneMoreBtn", "#sceneMoreMenu"),
+    ):
+        page.locator(trigger).click()
+        menu_box = page.locator(menu).bounding_box()
+        assert menu_box
+        assert menu_box["x"] >= 0
+        assert menu_box["x"] + menu_box["width"] <= 1400
+        assert menu_box["y"] >= 0
+        assert menu_box["y"] + menu_box["height"] <= 800
+        page.keyboard.press("Escape")
+
+
+def test_scene_toolbar_actions_remain_clickable_beside_compact_dock(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+
+    header = page.locator("#sceneModal .modal-header")
+    assert header.bounding_box()["height"] <= 52
+    assert page.evaluate(
+        "() => { const h = document.querySelector('#sceneModal .modal-header'); "
+        "return h.scrollWidth <= h.clientWidth; }"
+    )
+    page.locator("#sceneAppearanceBtn").click()
+    assert page.locator("#sceneAppearanceMenu").is_visible()
 
 
 def test_switching_theme_does_not_raise(page: Page, server: ProseviewServer):
@@ -1142,6 +1528,7 @@ def test_switching_theme_does_not_raise(page: Page, server: ProseviewServer):
     page.on("pageerror", lambda exc: errors.append(str(exc)))
 
     open_scene(page, server)
+    open_scene_appearance(page)
     for theme in ("dark", "docsify", "hopscotch", "light"):
         page.select_option("#modalThemeSelect", theme)
         _wait_until(lambda t=theme: page.evaluate("document.documentElement.dataset.theme") == t)
@@ -1164,6 +1551,7 @@ def test_every_font_choice_survives_a_reload(page: Page, server: ProseviewServer
     localStorage, then silently rejected on load and reset to Reader.
     """
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalFontSelect", font)
     _wait_until(lambda: page.evaluate("document.documentElement.dataset.font") == font)
 
@@ -2391,6 +2779,7 @@ def test_selection_menu_and_managed_dock_stay_inside_the_visual_viewport(
 ):
     page.set_viewport_size({"width": width, "height": height})
     open_scene(page, server)
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", theme)
     page.evaluate("zoom => { document.body.style.zoom = String(zoom); }", zoom)
     if zoom > 1:
@@ -2478,7 +2867,8 @@ def open_shell_terminal(page: Page) -> None:
     has finished starting up and drawn a prompt, anything typed is swallowed
     and the test hangs waiting for output that will never come.
     """
-    page.click("#sceneModal button:has-text('$ Shell')")
+    page.click("#sceneMoreBtn")
+    page.get_by_role("button", name="Open shell").click()
     page.wait_for_selector("#terminalPanel", state="visible")
     page.wait_for_selector(".terminal-tab-mount .xterm", timeout=20_000)
     page.click(".terminal-tab-mount .xterm-screen")
@@ -2522,6 +2912,7 @@ def test_scene_agent_menu_launches_the_agent(page: Page, server: ProseviewServer
     proves the click reaches an actual process.
     """
     open_scene(page, server)
+    page.click("#sceneMoreBtn")
     page.click("#agentMenuSceneBtn")
     page.wait_for_selector("#agentMenuScene", state="visible")
     page.click(f"#agentMenuScene button:has-text('{label}')")
@@ -2929,6 +3320,7 @@ def test_proposal_review_fits_beside_dock_at_200_percent_zoom(
     page.click("#selectionRewriteBtn")
     page.click("[data-selection-action='tighten']")
     page.wait_for_selector("#aiProposalPanel", state="visible")
+    open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
     page.evaluate("document.body.style.zoom = '2'")
     page.wait_for_timeout(150)
@@ -2954,6 +3346,134 @@ def test_managed_critique_is_evidence_linked_and_can_transition_to_a_revision(
     task.get_by_role("button", name="Propose a revision").click()
     assert "Rephrase selection" in page.locator("#discussTaskMode").inner_text()
     assert "Address the critique" in page.input_value("#discussInput")
+
+
+def test_quick_critique_queues_while_another_tab_restores_history(
+    page: Page, server: ProseviewServer
+):
+    """A slow thread/read must not hold the queue endpoint past its deadline."""
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Prime this conversation")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+
+    other = page.context.new_page()
+    _install_esm_cache(other)
+    try:
+        with server.hold_codex_request("thread/read") as restore_reached:
+            open_scene(other, server)
+            other.click("#sceneModal .discuss-open-btn")
+            _wait_until(
+                restore_reached.exists,
+                message="the second tab never began restoring Codex history",
+            )
+
+            # Keep this shorter than the held restore. Before the lock fix, the
+            # browser aborts this POST and renders the same timeout users saw.
+            page.evaluate("window._discussRequestTimeoutMs = 500")
+            open_selection_menu(page, quote)
+            page.click("#selectionCritiqueBtn")
+            page.click("[data-selection-action='quick_critique']")
+            page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+            assert page.locator("#discussError", has_text="Request timed out").count() == 0
+    finally:
+        other.close()
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        timeout=15_000,
+    )
+
+
+def test_quick_critique_queues_before_a_slow_codex_turn_starts(
+    page: Page, server: ProseviewServer
+):
+    """Queue acknowledgement is independent of Codex accepting the turn."""
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+
+    with server.hold_codex_request("turn/start") as turn_start_reached:
+        page.evaluate("window._discussRequestTimeoutMs = 500")
+        open_selection_menu(page, quote)
+        page.click("#selectionCritiqueBtn")
+        page.click("[data-selection-action='quick_critique']")
+        _wait_until(
+            turn_start_reached.exists,
+            message="Quick Critique never reached the Codex turn boundary",
+        )
+        page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+        assert page.locator("#discussError", has_text="Request timed out").count() == 0
+        assert page.locator(".discuss-task-status").inner_text() in {"Queued", "Running"}
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        timeout=15_000,
+    )
+
+
+def test_quick_critique_runs_immediately_after_restart_with_retained_history(
+    page: Page, server: ProseviewServer
+):
+    """A fresh process must retain history without delaying the next action."""
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Prime retained history")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+
+    server.restart()
+    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
+    page.goto("about:blank")
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        timeout=15_000,
+    )
+    assert page.locator("#discussConnection").inner_text().startswith("Live")
+    assert page.locator("#discussError").count() == 0
+    assert "Fake answer" in page.locator("#discussLog").inner_text()
+
+
+def test_quick_critique_queues_while_an_active_turn_is_stopping(
+    page: Page, server: ProseviewServer
+):
+    """Stopping one request must not make the next managed action disappear."""
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussStop", state="visible")
+
+    with server.hold_codex_request("turn/interrupt") as interrupt_reached:
+        page.click("#discussStop")
+        _wait_until(
+            interrupt_reached.exists,
+            message="the stop request never reached Codex",
+        )
+        assert page.locator("#discussStop").inner_text() == "Stopping…"
+        page.evaluate("window._discussRequestTimeoutMs = 500")
+        open_selection_menu(page, quote)
+        page.click("#selectionCritiqueBtn")
+        page.click("[data-selection-action='quick_critique']")
+        page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+        assert page.locator("#discussError", has_text="Request timed out").count() == 0
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        timeout=15_000,
+    )
+    page.wait_for_selector("#discussStop", state="hidden")
 
 
 def test_failed_critique_retry_shows_the_bad_citation_and_groups_attempts(
@@ -3281,3 +3801,16 @@ def test_scene_card_omits_story_rows_when_the_scene_has_none(page: Page, shared_
     assert thread_field not in card
     # The rows that were always there are untouched.
     assert "pov" in card and "when" in card and "goal" in card
+
+
+def test_timeline_names_a_bare_chapter_number(page: Page, shared_server: ProseviewServer):
+    """A frontmatter `chapter: 2` renders as "Chapter 2", while a value that
+    already names itself is left alone."""
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    labels = page.evaluate(
+        "() => ['2', 2, 'ch00-prolog', 'Chapter 3', ''].map(v => _storyChapterLabel(v))")
+
+    assert labels == ["Chapter 2", "Chapter 2", "ch00-prolog", "Chapter 3", ""]

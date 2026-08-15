@@ -1,0 +1,186 @@
+/* Graphite themes — a light and dark pair in the Obsidian "Red Graphite"
+   register: a near-neutral graphite surface carrying a single warm accent.
+
+   Base values come from Red Graphite for Obsidian (theme.css):
+     light   surface hsl(204, 6%)    accent hsl(2, 56%, 54%)   — red
+     dark    surface hsl(222, 22%)   accent hsl(41, 88%, 71%)  — amber
+
+   Chart and highlight-pass hues are inherited from the stock light and dark
+   themes on purpose: those are tuned for legibility and for what each pass
+   means, and a near-neutral graphite surface does not disturb them.
+
+   This file sits outside app.css and is concatenated at load time, so a theme
+   can be added without touching the main stylesheet. */
+
+        /* Graphite Light */
+        [data-theme="graphite-light"] {
+            color-scheme: light;
+            --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Bookman", Georgia, serif;
+            --primary: #cb4c48;
+            --secondary: #506a7c;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #dc2626;
+            --accent-pink: #ec4899;
+            --accent-cyan: #06b6d4;
+            --accent-neutral: #71717a;
+            --bg-app: #f4f5f5;
+            --surface-card: #fcfcfd;
+            --surface-muted: #eff0f1;
+            --surface-soft: #e9ebec;
+            --surface-overlay: hsla(204, 6%, 20%, 0.42);
+            --surface-field: #fcfcfd;
+            --surface-code: #eff0f1;
+            --surface-selection: #f3dedd;
+            --surface-note: #f7f7f8;
+            --surface-danger: #fef2f2;
+            --surface-success: #dcfce7;
+            --surface-warn: #fef3c7;
+            --surface-char: #f4f5f5;
+            --surface-tooltip: #2f3437;
+            --text-main: #292c2e;
+            --text-muted: #697277;
+            --text-soft: #484d51;
+            --text-reading: #303436;
+            --text-inverse: #ffffff;
+            --text-success: #166534;
+            --text-warning: #92400e;
+            --text-danger: #991b1b;
+            --border: #d9dcdd;
+            --border-strong: #b9bdc1;
+            --shadow-card: 0 10px 30px hsla(204, 6%, 20%, 0.10);
+            --button-hover: #ecedee;
+            --button-active: #f1dbda;
+            --banner-progress-fill: #ffffff;
+            --chart-grid: rgba(148, 163, 184, 0.28);
+            --chart-text: #64748b;
+            --chart-primary: #2563eb;
+            --chart-secondary: #8b5cf6;
+            --chart-success: #10b981;
+            --chart-warning: #f59e0b;
+            --chart-danger: #ef4444;
+            --chart-pink: #ec4899;
+            --chart-cyan: #06b6d4;
+            --chart-neutral: #71717a;
+            --chart-zone-danger: rgba(239, 68, 68, 0.08);
+            --chart-zone-success: rgba(34, 197, 94, 0.08);
+            --chart-zone-secondary: rgba(139, 92, 246, 0.08);
+            --chart-target-fill: rgba(34, 197, 94, 0.12);
+            --chart-target-border: rgba(34, 197, 94, 0.35);
+            --hl-repeat-bg: #fecaca;
+            --hl-repeat-text: #991b1b;
+            --hl-short-bg: #fef3c7;
+            --hl-short-border: #f59e0b;
+            --hl-long-bg: #dcfce7;
+            --hl-long-border: #22c55e;
+            --hl-filter-bg: #f5f3ff;
+            --hl-filter-text: #6d28d9;
+            --hl-filter-border: #8b5cf6;
+            --hl-passive-bg: #d1fae5;
+            --hl-passive-text: #065f46;
+            --hl-passive-border: #10b981;
+            --hl-crutch-bg: #ffedd5;
+            --hl-crutch-text: #9a3412;
+            --hl-crutch-border: #f97316;
+            --hl-sensory-bg: #e0f2fe;
+            --hl-sensory-text: #0369a1;
+            --hl-sensory-border: #0ea5e9;
+            --hl-lyrical-bg: #fdf4ff;
+            --hl-lyrical-text: #701a75;
+            --hl-lyrical-border: #a21caf;
+            --hl-hyperbole-bg: #fff1f2;
+            --hl-hyperbole-text: #9f1239;
+            --hl-hyperbole-border: #e11d48;
+            --hl-comedy-bg: #ecfdf5;
+            --hl-comedy-text: #065f46;
+            --hl-comedy-border: #10b981;
+            --hl-first-person-bg: #fef9c3;
+            --hl-first-person-text: #713f12;
+            --hl-first-person-border: #ca8a04;
+        }
+
+        /* Graphite Dark */
+        [data-theme="graphite-dark"] {
+            color-scheme: dark;
+            --primary: #f6cd74;
+            --secondary: #a2afcd;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --accent-pink: #f472b6;
+            --accent-cyan: #22d3ee;
+            --accent-neutral: #94a3b8;
+            --bg-app: #161a22;
+            --surface-card: #1e232f;
+            --surface-muted: #262c3b;
+            --surface-soft: #2a3141;
+            --surface-overlay: hsla(222, 22%, 7%, 0.82);
+            --surface-field: #1a1e28;
+            --surface-code: #1a1e28;
+            --surface-selection: #5d4c28;
+            --surface-note: #1a1e28;
+            --surface-danger: #3b1419;
+            --surface-success: #0f2d23;
+            --surface-warn: #3b2a13;
+            --surface-char: #1a1e28;
+            --surface-tooltip: #12151c;
+            --text-main: #dcdfe5;
+            --text-muted: #9299aa;
+            --text-soft: #c0c4ce;
+            --text-reading: #cccfd7;
+            --text-inverse: #171b24;
+            --text-success: #86efac;
+            --text-warning: #fcd34d;
+            --text-danger: #fca5a5;
+            --border: #323a4e;
+            --border-strong: #444f6a;
+            --shadow-card: 0 10px 30px hsla(222, 22%, 4%, 0.5);
+            --button-hover: #2c3344;
+            --button-active: #564625;
+            --banner-progress-fill: rgba(23, 27, 36, 0.78);
+            --chart-grid: rgba(148, 163, 184, 0.18);
+            --chart-text: #94a3b8;
+            --chart-primary: #60a5fa;
+            --chart-secondary: #a78bfa;
+            --chart-success: #34d399;
+            --chart-warning: #fbbf24;
+            --chart-danger: #f87171;
+            --chart-pink: #f472b6;
+            --chart-cyan: #22d3ee;
+            --chart-neutral: #94a3b8;
+            --chart-zone-danger: rgba(248, 113, 113, 0.12);
+            --chart-zone-success: rgba(52, 211, 153, 0.12);
+            --chart-zone-secondary: rgba(167, 139, 250, 0.12);
+            --chart-target-fill: rgba(52, 211, 153, 0.18);
+            --chart-target-border: rgba(134, 239, 172, 0.4);
+            --hl-repeat-bg: #431a22;
+            --hl-repeat-text: #fca5a5;
+            --hl-short-bg: #3b2a13;
+            --hl-short-border: #fbbf24;
+            --hl-long-bg: #0f2d23;
+            --hl-long-border: #34d399;
+            --hl-filter-bg: #2a1d4b;
+            --hl-filter-text: #c4b5fd;
+            --hl-filter-border: #a78bfa;
+            --hl-passive-bg: #123529;
+            --hl-passive-text: #a7f3d0;
+            --hl-passive-border: #34d399;
+            --hl-crutch-bg: #3b2414;
+            --hl-crutch-text: #fdba74;
+            --hl-crutch-border: #fb923c;
+            --hl-sensory-bg: #102a3b;
+            --hl-sensory-text: #7dd3fc;
+            --hl-sensory-border: #38bdf8;
+            --hl-lyrical-bg: #32123b;
+            --hl-lyrical-text: #e9d5ff;
+            --hl-lyrical-border: #c084fc;
+            --hl-hyperbole-bg: #451423;
+            --hl-hyperbole-text: #fda4af;
+            --hl-hyperbole-border: #fb7185;
+            --hl-comedy-bg: #113226;
+            --hl-comedy-text: #a7f3d0;
+            --hl-comedy-border: #34d399;
+            --hl-first-person-bg: #403014;
+            --hl-first-person-text: #fde68a;
+            --hl-first-person-border: #fbbf24;
+        }

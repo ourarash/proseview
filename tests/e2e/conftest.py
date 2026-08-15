@@ -295,7 +295,7 @@ def _write_agent_stubs(bin_dir: Path) -> Path:
     codex = bin_dir / "codex"
     codex.write_text(
         """#!/usr/bin/env python3
-import html, json, os, pathlib, sys
+import html, json, os, pathlib, sys, time
 
 if len(sys.argv) >= 3 and sys.argv[1:3] == ['app-server', 'generate-json-schema']:
     out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1]) / 'v2'
@@ -329,6 +329,7 @@ threads = saved_state.get('threads') if isinstance(saved_state.get('threads'), d
 next_thread = int(saved_state.get('next_thread') or 0)
 next_turn = int(saved_state.get('next_turn') or 0)
 pending = {}
+unload_on_interrupt = set()
 record = pathlib.Path(os.environ['HOME']) / 'fake-codex-received.jsonl'
 
 def emit(value):
@@ -340,11 +341,28 @@ def save_state():
         'threads': threads, 'next_thread': next_thread, 'next_turn': next_turn,
     }), encoding='utf-8')
 
+def wait_at_barrier(method):
+    slug = ''.join(char if char.isalnum() else '-' for char in str(method)).strip('-')
+    hold = pathlib.Path.cwd() / '.proseview' / ('hold-codex-' + slug)
+    reached = pathlib.Path.cwd() / '.proseview' / ('codex-' + slug + '-reached')
+    if not hold.exists():
+        return
+    reached.parent.mkdir(parents=True, exist_ok=True)
+    reached.touch()
+    deadline = time.monotonic() + 5
+    while hold.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    try:
+        reached.unlink()
+    except FileNotFoundError:
+        pass
+
 for line in sys.stdin:
     message = json.loads(line)
     method = message.get('method')
     request_id = message.get('id')
     params = message.get('params') or {}
+    wait_at_barrier(method)
     if method == 'initialize':
         emit({'id': request_id, 'result': {'userAgent': 'proseview-fake-codex/1', 'codexHome': '/isolated', 'platformFamily': 'unix', 'platformOs': 'test'}})
     elif method == 'initialized':
@@ -377,6 +395,9 @@ for line in sys.stdin:
         if thread_id not in threads:
             emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found: ' + thread_id}})
             continue
+        if len(prompt) > 1048576:
+            emit({'id': request_id, 'error': {'code': -32602, 'message': 'Input exceeds the maximum length of 1048576 characters.'}})
+            continue
         record.parent.mkdir(parents=True, exist_ok=True)
         with record.open('a', encoding='utf-8') as handle:
             handle.write(json.dumps({'threadId': thread_id, 'turnId': turn_id, 'params': params}) + '\\n')
@@ -396,6 +417,9 @@ for line in sys.stdin:
         emit({'method': 'item/reasoning/summaryTextDelta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'delta': 'Reviewing the attached document'}})
         emit({'method': 'turn/plan/updated', 'params': {'threadId': thread_id, 'turnId': turn_id, 'plan': [{'step': 'Read context', 'status': 'completed'}, {'step': 'Answer question', 'status': 'inProgress'}]}})
         emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'tool-' + turn_id, 'type': 'commandExecution', 'command': 'printf inspect', 'cwd': os.getcwd(), 'status': 'inProgress'}}})
+        if 'HOLD_UNLOAD_ON_STOP' in prompt:
+            unload_on_interrupt.add(turn_id)
+            continue
         if 'HOLD_FOR_STOP' in prompt:
             continue
         if 'REQUEST_APPROVAL' in prompt:
@@ -453,6 +477,12 @@ for line in sys.stdin:
             threads.pop(thread_id, None)
             save_state()
     elif method == 'turn/interrupt':
+        if params['turnId'] in unload_on_interrupt:
+            unload_on_interrupt.discard(params['turnId'])
+            threads.pop(params['threadId'], None)
+            save_state()
+            emit({'id': request_id, 'error': {'code': -32000, 'message': 'thread not loaded: ' + params['threadId']}})
+            continue
         emit({'id': request_id, 'result': {}})
         emit({'method': 'turn/completed', 'params': {'threadId': params['threadId'], 'turn': {'id': params['turnId'], 'status': 'interrupted'}}})
     elif request_id in pending and ('result' in message or 'error' in message):
@@ -607,6 +637,24 @@ class ProseviewServer:
         replacement = _start_server(self.root, self.bin_dir, self.home, port=self.port)
         self.proc = replacement.proc
         self.env = replacement.env
+
+    @contextmanager
+    def hold_codex_request(self, method: str) -> Iterator[Path]:
+        """Pause one fake-Codex request type until the test leaves this block."""
+        slug = "".join(char if char.isalnum() else "-" for char in method).strip("-")
+        if not slug:
+            raise ValueError("Codex request method must not be empty")
+        runtime = self.root / ".proseview"
+        runtime.mkdir(parents=True, exist_ok=True)
+        hold = runtime / f"hold-codex-{slug}"
+        reached = runtime / f"codex-{slug}-reached"
+        reached.unlink(missing_ok=True)
+        hold.write_text("hold\n", encoding="utf-8")
+        try:
+            yield reached
+        finally:
+            hold.unlink(missing_ok=True)
+            reached.unlink(missing_ok=True)
 
     # -- paths -------------------------------------------------------------
 

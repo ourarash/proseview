@@ -20,8 +20,16 @@
             return seen;
         }
 
+        // A frontmatter `chapter: 2` is just "2", which reads as noise beside
+        // the other facts. Name it, unless the value already names itself.
+        function _storyChapterLabel(value) {
+            const text = String(value == null ? '' : value).trim();
+            if (!text) return '';
+            return /^\d+$/.test(text) ? 'Chapter ' + text : text;
+        }
+
         function _storyCardHtml(scene) {
-            const bits = [_storyEsc(scene.chapter)];
+            const bits = [_storyEsc(_storyChapterLabel(scene.chapter))];
             if (scene.day != null) bits.push(_storyEsc(storyModel.day_field + ' ' + scene.day));
             if (scene.thread) bits.push(_storyEsc(scene.thread));
             bits.push(scene.words.toLocaleString() + ' words');
@@ -84,7 +92,7 @@
                 + 'background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"></div></div>').join('');
 
             const ticks = storyModel.bands.map(b =>
-                '<div class="story-tick" style="flex:' + b.scenes + '"><span>' + _storyEsc(b.chapter)
+                '<div class="story-tick" style="flex:' + b.scenes + '"><span>' + _storyEsc(_storyChapterLabel(b.chapter))
                 + (b.day_span ? ' · ' + _storyEsc(b.day_span) : '') + '</span></div>').join('');
 
             return '<h3 class="story-h">Proportion of the book</h3>'

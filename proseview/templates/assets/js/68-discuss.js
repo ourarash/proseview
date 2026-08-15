@@ -25,6 +25,12 @@
         var _discussAutoReviewedTasks = Object.create(null);
         var _discussAutoReviewRequests = Object.create(null);
         var _prosviewRepositoryRootCache = null;
+        var _discussRequestTimeoutMs = 15000;
+        var _discussOpenFailed = false;
+        var _discussLocalError = '';
+        var _discussLocalErrorKind = '';
+        var _discussLocalErrorReload = false;
+        var _discussReconnectTimer = null;
 
         function discussDraftKey(doc) {
             return 'proseview-codex-draft:' + discussDocumentKey(doc);
@@ -68,15 +74,35 @@
         }
 
         function discussApi(path, body) {
+            var controller = typeof AbortController === 'function' ? new AbortController() : null;
+            var timedOut = false;
+            var timeoutMs = Math.max(1, Number(_discussRequestTimeoutMs) || 15000);
+            var timeout = controller ? setTimeout(function() {
+                timedOut = true;
+                controller.abort();
+            }, timeoutMs) : null;
             return fetch(path, {
                 method: 'POST',
                 headers: pvHeaders(),
-                body: JSON.stringify(body || {})
+                body: JSON.stringify(body || {}),
+                signal: controller ? controller.signal : undefined
             }).then(function(response) {
                 return response.json().catch(function() { return {}; }).then(function(data) {
                     if (!response.ok) throw new Error(data.error || ('Request failed (' + response.status + ')'));
                     return data;
                 });
+            }).catch(function(error) {
+                if (timedOut || (error && error.name === 'AbortError')) {
+                    throw new Error('Request timed out. Check the connection and try again.');
+                }
+                if (error && (error.name === 'TypeError' || /failed to fetch|network error/i.test(error.message || ''))) {
+                    var networkError = new Error('Proseview server is not responding. It will keep trying to reconnect.');
+                    networkError.name = 'NetworkError';
+                    throw networkError;
+                }
+                throw error;
+            }).finally(function() {
+                if (timeout !== null) clearTimeout(timeout);
             });
         }
 
@@ -95,6 +121,7 @@
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
+            clearTimeout(_discussReconnectTimer);
             saveDiscussDraft();
             var sceneBack = document.querySelector('#sceneModal .scene-back-btn');
             _discussReturnFocus = (trigger && trigger.getClientRects && trigger.getClientRects().length) ? trigger : sceneBack;
@@ -116,9 +143,12 @@
             var requestedSelectionRange = _discussSelectionRange;
             var requestedLiveDocument = _discussLiveDocument;
             closeDiscussContextPicker();
+            clearDiscussError();
             var panel = document.getElementById('discussPanel');
             panel.hidden = false;
             document.getElementById('discussSend').disabled = true;
+            _discussOpenFailed = false;
+            _discussConversationId = null;
             document.body.classList.add('discuss-open');
             if (typeof _termDock !== 'undefined' && _termDock === 'right') {
                 var terminal = document.getElementById('terminalPanel');
@@ -139,6 +169,7 @@
                 _discussSnapshot = data.snapshot;
                 renderDiscussSnapshot();
                 connectDiscussEvents();
+                renderDiscussTaskMode();
                 document.getElementById('discussSend').disabled = false;
                 if (options.showSkills) loadDiscussSkills();
                 else if (requestedAutoRun && requestedAction) {
@@ -146,8 +177,13 @@
                 }
                 else input.focus();
             }).catch(function(error) {
+                _discussOpenFailed = true;
                 setDiscussConnection('Unavailable', error.message);
-                renderDiscussError(error.message);
+                renderDiscussError(error.message, {kind: error.name === 'NetworkError' ? 'transport' : 'request'});
+                var button = document.getElementById('discussSend');
+                button.textContent = 'Try again';
+                button.disabled = false;
+                document.getElementById('discussAnnouncement').textContent = 'Discuss could not open. ' + error.message;
             });
         }
 
@@ -187,6 +223,7 @@
             document.body.classList.remove('discuss-open');
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
+            clearTimeout(_discussReconnectTimer);
             var focus = _discussReturnFocus;
             _discussReturnFocus = null;
             if (focus && focus.isConnected && typeof focus.focus === 'function') focus.focus();
@@ -223,17 +260,21 @@
 
         function connectDiscussEvents() {
             if (_discussEventSource) _discussEventSource.close();
+            clearTimeout(_discussReconnectTimer);
             if (!_discussConversationId) return;
             var cid = _discussConversationId;
             var source = new EventSource('/api/discuss/conversations/' + encodeURIComponent(cid) + '/events');
             _discussEventSource = source;
             source.onopen = function() {
                 if (_discussConversationId === cid && (!_discussSnapshot || _discussSnapshot.connection !== 'Unavailable')) {
+                    clearDiscussTransportError();
                     setDiscussConnection('Live', '');
                 }
             };
             source.onerror = function() {
-                if (_discussConversationId === cid && source.readyState !== EventSource.CLOSED) setDiscussConnection('Reconnecting', '');
+                if (_discussConversationId !== cid || _discussEventSource !== source) return;
+                setDiscussConnection('Reconnecting', 'Proseview server unavailable');
+                scheduleDiscussReconnectProbe(cid, source);
             };
             source.addEventListener('snapshot', function(event) {
                 setDiscussConnection('Restoring conversation', '');
@@ -269,6 +310,53 @@
                 var detail = JSON.parse(event.data);
                 appendDiscussStreamDelta(detail.text || '');
             });
+        }
+
+        function scheduleDiscussReconnectProbe(cid, source) {
+            clearTimeout(_discussReconnectTimer);
+            _discussReconnectTimer = setTimeout(function() {
+                var panel = document.getElementById('discussPanel');
+                if (!panel || panel.hidden || _discussConversationId !== cid || _discussEventSource !== source) return;
+                fetch('/api/discuss/conversations/' + encodeURIComponent(cid) + '/snapshot', {cache: 'no-store'})
+                    .then(function(response) {
+                        if (response.status === 404) {
+                            showDiscussReloadRequired(source);
+                            return null;
+                        }
+                        if (!response.ok) throw new Error('Request failed (' + response.status + ')');
+                        return response.json();
+                    })
+                    .then(function(data) {
+                        if (!data || !data.snapshot || _discussConversationId !== cid) return;
+                        _discussSnapshot = data.snapshot;
+                        clearDiscussTransportError();
+                        renderDiscussSnapshot();
+                        if (source.readyState === EventSource.CLOSED) connectDiscussEvents();
+                    })
+                    .catch(function() {
+                        if (_discussConversationId !== cid) return;
+                        renderDiscussError(
+                            'Proseview server is not responding. It will keep trying to reconnect.',
+                            {kind: 'transport'}
+                        );
+                    });
+            }, 900);
+        }
+
+        function showDiscussReloadRequired(source) {
+            clearTimeout(_discussReconnectTimer);
+            if (source) source.close();
+            if (_discussEventSource === source) _discussEventSource = null;
+            saveDiscussDraft();
+            setDiscussConnection('Reload required', 'Proseview server restarted');
+            renderDiscussError(
+                'Proseview restarted. Reload this page to reconnect.',
+                {kind: 'transport', reload: true}
+            );
+            var button = document.getElementById('discussSend');
+            button.disabled = true;
+            button.textContent = 'Reload';
+            document.getElementById('discussAnnouncement').textContent = 'Proseview restarted. Reload the page to reconnect; your question draft is saved.';
         }
 
         function scheduleDiscussSnapshot() {
@@ -632,6 +720,7 @@
             (snapshot.notices || []).forEach(function(notice) {
                 log.appendChild(elementWith(notice.kind === 'error' ? 'discuss-error' : 'discuss-queue', notice.message || ''));
             });
+            appendDiscussLocalError(log);
             if ((snapshot.queue || []).length) {
                 var queueCard = elementWith('discuss-queue');
                 var queueTitle = document.createElement('strong'); queueTitle.textContent = snapshot.queue.length + ' item' + (snapshot.queue.length === 1 ? '' : 's') + ' queued'; queueCard.appendChild(queueTitle);
@@ -811,8 +900,16 @@
             var scope = task.scope || {};
             var scopeCopy = String(scope.files_scanned || 0) + ' files · ' + Math.ceil(Number(scope.bytes_scanned || 0) / 1024) + ' KB';
             fragment.appendChild(elementWith('discuss-refactor-scope', '✓ Read-only scan complete · ' + scopeCopy + ' · no manuscript files changed'));
+            if (Number(scope.files_omitted || 0) > 0) {
+                fragment.appendChild(elementWith(
+                    'discuss-queue',
+                    'Codex input limit · scanned ' + String(scope.files_scanned || 0)
+                    + ' of ' + String(scope.files_available || 0) + ' configured files; '
+                    + String(scope.files_omitted) + ' files were omitted. Narrow repo_tab.folders for a complete scan.'
+                ));
+            }
             var scopeDetails = document.createElement('details'); scopeDetails.className = 'discuss-refactor-scope-details';
-            var scopeSummary = document.createElement('summary'); scopeSummary.textContent = 'Scanned folders'; scopeDetails.appendChild(scopeSummary);
+            var scopeSummary = document.createElement('summary'); scopeSummary.textContent = Number(scope.files_omitted || 0) > 0 ? 'Configured folders' : 'Scanned folders'; scopeDetails.appendChild(scopeSummary);
             var scopeList = document.createElement('ul');
             (scope.roots || []).forEach(function(root) { var item = document.createElement('li'); item.textContent = root; scopeList.appendChild(item); });
             scopeDetails.appendChild(scopeList); fragment.appendChild(scopeDetails);
@@ -1127,9 +1224,44 @@
                 .finally(function() { document.getElementById('discussInput').focus(); });
         }
 
-        function renderDiscussError(message) {
+        function appendDiscussLocalError(log) {
+            if (!_discussLocalError) return;
+            var node = elementWith('discuss-error discuss-local-error');
+            node.appendChild(elementWith('discuss-local-error-message', _discussLocalError));
+            if (_discussLocalErrorReload) {
+                var reload = document.createElement('button');
+                reload.type = 'button'; reload.className = 'discuss-secondary'; reload.textContent = 'Reload page';
+                reload.onclick = function() { saveDiscussDraft(); location.reload(); };
+                node.appendChild(reload);
+            }
+            log.appendChild(node);
+            return node;
+        }
+
+        function renderDiscussError(message, options) {
+            options = options || {};
+            _discussLocalError = String(message || 'Something went wrong');
+            _discussLocalErrorKind = String(options.kind || (
+                _discussLocalError.indexOf('Proseview server is not responding.') === 0 ? 'transport' : 'request'
+            ));
+            _discussLocalErrorReload = !!options.reload;
             var log = document.getElementById('discussLog');
-            var node = elementWith('discuss-error', message); log.appendChild(node); node.scrollIntoView({block: 'nearest'});
+            var existing = log.querySelector('.discuss-local-error');
+            if (existing) existing.remove();
+            var node = appendDiscussLocalError(log);
+            if (node) node.scrollIntoView({block: 'nearest'});
+        }
+
+        function clearDiscussError() {
+            _discussLocalError = '';
+            _discussLocalErrorKind = '';
+            _discussLocalErrorReload = false;
+            var existing = document.querySelector('#discussLog .discuss-local-error');
+            if (existing) existing.remove();
+        }
+
+        function clearDiscussTransportError() {
+            if (_discussLocalErrorKind === 'transport') clearDiscussError();
         }
 
         function discussAfterActivity(wasAtBottom) {
@@ -1525,11 +1657,15 @@
             var input = document.getElementById('discussInput');
             var question = input.value.trim();
             var button = document.getElementById('discussSend');
+            if (_discussOpenFailed) { openDiscuss(_discussReturnFocus); return; }
             if (_discussPendingAction) { runDiscussSelectionAction(); return; }
             if (_discussRepositoryAction) { runDiscussRepositoryAction(); return; }
             if (!question || !_discussConversationId || button.disabled) return;
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            clearDiscussError();
             button.disabled = true;
+            button.textContent = 'Sending…';
+            document.getElementById('discussAnnouncement').textContent = 'Sending question…';
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: question,
@@ -1545,8 +1681,12 @@
                 document.getElementById('discussAnnouncement').textContent = _discussSelection
                     ? 'Question queued. Selection remains attached for follow-up questions.'
                     : 'Question queued';
-            }).catch(function(error) { renderDiscussError(error.message); }).finally(function() {
+            }).catch(function(error) {
+                renderDiscussError(error.message, {kind: error.name === 'NetworkError' ? 'transport' : 'request'});
+                document.getElementById('discussAnnouncement').textContent = 'Question was not confirmed. ' + error.message;
+            }).finally(function() {
                 button.disabled = false;
+                renderDiscussTaskMode();
                 var active = document.activeElement;
                 if (active === input || active === button || active === document.body) input.focus();
             });
@@ -1584,6 +1724,7 @@
                 return;
             }
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            clearDiscussError();
             button.disabled = true;
             button.textContent = 'Starting…';
             document.getElementById('discussAnnouncement').textContent = 'Starting ' + selectionActionLabel(actionId).toLowerCase();
@@ -1633,6 +1774,7 @@
             }
             var custom = input.value.trim();
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            clearDiscussError();
             _discussAutoReviewRequests[requestId] = true;
             button.disabled = true;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {

@@ -115,7 +115,13 @@ class CodexAppServer:
                 self.close()
                 raise
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def request(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         if method != "initialize" and not self.alive:
             if self._fatal is not None:
                 raise self._fatal
@@ -128,7 +134,7 @@ class CodexAppServer:
         try:
             self._send({"id": request_id, "method": method, "params": params or {}})
             try:
-                response = response_queue.get(timeout=self.request_timeout)
+                response = response_queue.get(timeout=self.request_timeout if timeout is None else timeout)
             except queue.Empty as exc:
                 raise CodexProtocolError(f"Codex request timed out: {method}") from exc
             if isinstance(response, BaseException):

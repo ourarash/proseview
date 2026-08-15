@@ -144,6 +144,31 @@ def test_context_builder_enforces_total_limit_without_truncating(tmp_path: Path)
         )
 
 
+def test_context_builder_can_fit_whole_files_under_an_agent_prompt_limit(tmp_path: Path):
+    root = _repo(tmp_path)
+    (root / "plans" / "a-large.md").write_text("a" * 180, encoding="utf-8")
+    (root / "plans" / "b-small.md").write_text("b" * 20, encoding="utf-8")
+    builder = ContextBuilder(
+        root,
+        max_file_bytes=300,
+        max_total_bytes=1_000,
+        max_prompt_chars=950,
+        allow_partial=True,
+    )
+
+    bundle = builder.build(
+        {"kind": "scene", "path": "ch01/opening.md"},
+        "Check continuity.",
+        attachments=[{"kind": "folder", "path": "plans"}],
+    )
+
+    assert len(bundle.prompt) <= 950
+    assert bundle.items[0].path == "manuscript/ch01/opening.md"
+    assert "plans/a-large.md" in bundle.omitted_paths
+    assert "plans/b-small.md" in [item.path for item in bundle.items]
+    assert "CONTEXT LIMIT NOTICE" in bundle.prompt
+
+
 def test_context_builder_rejects_malformed_utf8_and_deduplicates_overlap(tmp_path: Path):
     root = _repo(tmp_path)
     (root / "plans" / "bad.txt").write_bytes(b"\xff\xfe")

@@ -497,9 +497,12 @@
         }
 
         function closeAgentMenus() {
-            ['agentMenuFile', 'agentMenuScene'].forEach(function(id) {
+            [['agentMenuFile', 'agentMenuFileBtn'], ['agentMenuScene', 'agentMenuSceneBtn']].forEach(function(pair) {
+                var id = pair[0], btnId = pair[1];
                 var m = document.getElementById(id);
                 if (m) m.style.display = 'none';
+                var btn = document.getElementById(btnId);
+                if (btn) btn.setAttribute('aria-expanded', 'false');
             });
         }
 
@@ -512,10 +515,13 @@
             closeAgentMenus();
             if (open) return;
             menu.style.display = 'block';
+            var btn = document.getElementById(btnId);
+            if (btn) btn.setAttribute('aria-expanded', 'true');
             setTimeout(function() {
                 document.addEventListener('click', function close(e) {
                     if (!e.target.closest('#' + id) && e.target.id !== btnId) {
                         menu.style.display = 'none';
+                        if (btn) btn.setAttribute('aria-expanded', 'false');
                         document.removeEventListener('click', close);
                     }
                 });

@@ -37,12 +37,14 @@ let currentTab = 'overview';
         };
 
         const THEME_STORAGE_KEY = 'proseview-theme';
-        const THEME_ORDER = ['light', 'dark', 'docsify', 'hopscotch'];
+        const THEME_ORDER = ['light', 'dark', 'docsify', 'hopscotch', 'graphite-light', 'graphite-dark'];
         const THEME_LABELS = {
             light: 'Light',
             dark: 'Dark',
             docsify: 'Docsify',
-            hopscotch: 'Hopscotch'
+            hopscotch: 'Hopscotch',
+            'graphite-light': 'Graphite Light',
+            'graphite-dark': 'Graphite Dark'
         };
         const FONT_STORAGE_KEY = 'proseview-font';
         const MODAL_FONT_SIZE_STORAGE_KEY = 'proseview-modal-font-size';
@@ -68,16 +70,23 @@ let currentTab = 'overview';
             if (zoom <= 1) {
                 delete root.dataset.cssZoom;
                 root.style.removeProperty('--css-zoom-body-width');
+                root.style.removeProperty('--css-zoom-dock-width');
                 return;
             }
             const logicalViewportWidth = window.innerWidth / zoom;
-            const sidebarWidth = root.dataset.sidebar === 'closed'
-                ? 0
-                : (parseFloat(getComputedStyle(root).getPropertyValue('--sidebar-w')) || 0) + 10;
+            // At browser text zoom the sidebar is responsively retracted in
+            // CSS, so the reader owns the full logical viewport. Subtracting
+            // the hidden sidebar here made the scene toolbar wrap into three
+            // rows at 200% zoom.
+            const sidebarWidth = 0;
             root.dataset.cssZoom = 'true';
             root.style.setProperty(
                 '--css-zoom-body-width',
                 Math.max(220, logicalViewportWidth - sidebarWidth) + 'px'
+            );
+            root.style.setProperty(
+                '--css-zoom-dock-width',
+                Math.max(220, logicalViewportWidth < 700 ? logicalViewportWidth : logicalViewportWidth / 2) + 'px'
             );
         }
 

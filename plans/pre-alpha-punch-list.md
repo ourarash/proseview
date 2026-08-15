@@ -8,9 +8,21 @@ because distribution is broken. Stability comes before reach.
 
 ---
 
+## Status, 2026-08-15
+
+Landed: **1** (by you, in `51a53c8`), **2**, **3**, **7** (the 5xx half; the
+console-error half also arrived in `51a53c8`), and **8**.
+
+Test counts moved from 280 unit / 164 browser to **312 unit / 165 browser**.
+
+Two things surfaced while doing the work, both recorded below as new items:
+the dashboard's page weight (item 13) and a flaky Discuss test (item 14).
+
+---
+
 ## P0 — before inviting anyone
 
-### 1. Land the in-flight Discuss work
+### 1. Land the in-flight Discuss work — DONE
 
 `HEAD` is green (280 unit/integration tests). The working tree is not:
 `test_selection_action_queues_while_thread_history_is_still_restoring`
@@ -135,6 +147,42 @@ The same pandoc call as EPUB with a different writer, plus a PDF engine.
 Writers send `.docx` to editors.
 
 **Effort:** ~1 day.
+
+### 13. Page weight at book length
+
+Found by item 8. Against a synthetic 300-scene, 98k-word novel:
+
+| Measure | Value |
+| --- | --- |
+| Manuscript on disk | 0.66 MB |
+| Dashboard HTML | 3.97 MB (**6.0x**) |
+| Largest single script | 3.06 MB |
+| `build_dashboard` | 1.43 s |
+| Scaling | 2.9x time for 3x scenes — linear, no hidden O(n²) |
+
+The whole manuscript is inlined into the page as a JSON string literal
+(`let contents = JSON.parse('…')`), and JSON escaping inflates it roughly 4.5x
+over the bytes on disk. The browser downloads and parses all of it on every
+load — and again on every live reload.
+
+Server-side cost is fine. This is the likely answer to "it feels slow", and it
+is worth confirming against a real manuscript before optimising. Serving the
+contents map as a separate cached fetch, or lazily per scene, is the obvious
+direction.
+
+`tests/test_scale.py` pins the current ratio at 8.0x so it cannot quietly get
+worse.
+
+### 14. A flaky Discuss test
+
+`test_new_conversation_clears_projection_and_uses_a_new_thread` failed once in
+roughly ten full-suite runs and has not reproduced since — 3/3 isolated, 6/6
+full-suite. Timing-sensitive, like its neighbours in that file, which
+coordinate real threads.
+
+Not urgent, but flaky tests are how a suite stops being believed, and this one
+is in the tier that guards a headline feature. Worth pinning down before CI
+becomes the thing you trust for Windows (item 4).
 
 ---
 

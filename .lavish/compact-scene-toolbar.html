@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en" data-theme="graphite-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Proseview compact scene toolbar proposal</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #171c27;
+      --panel: #1d2330;
+      --panel-2: #222a39;
+      --panel-3: #293244;
+      --line: #39445a;
+      --line-soft: #2c3546;
+      --text: #e8ebf1;
+      --soft: #b6bdca;
+      --muted: #8993a5;
+      --gold: #f2c45e;
+      --gold-soft: rgba(242,196,94,.13);
+      --blue: #8aafff;
+      --danger: #ff8b82;
+      --shadow: 0 18px 50px rgba(0,0,0,.25);
+      --radius: 12px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+    body { line-height: 1.45; }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    a { color: var(--blue); }
+    img { max-width: 100%; height: auto; display: block; }
+    h1, h2, h3, p { margin-top: 0; }
+    p, li, td, th, label, figcaption { overflow-wrap: anywhere; }
+    .shell { width: min(1440px, 100%); margin: 0 auto; padding: 28px clamp(16px, 3vw, 44px) 70px; }
+    .eyebrow { color: var(--gold); font-weight: 760; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 8px 0 12px; max-width: 900px; font-size: clamp(32px, 5vw, 60px); line-height: 1.02; letter-spacing: -.045em; }
+    .lead { max-width: 820px; color: var(--soft); font-size: clamp(16px, 2vw, 20px); }
+    .verdict { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .7fr); gap: 18px; align-items: stretch; margin-top: 24px; }
+    .panel { background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .verdict-copy { padding: 22px 24px; }
+    .verdict-copy h2 { margin-bottom: 7px; font-size: 20px; letter-spacing: -.02em; }
+    .verdict-copy p { margin: 0; color: var(--soft); }
+    .measure { padding: 18px 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .metric { min-width: 0; }
+    .metric strong { display: block; color: var(--gold); font-size: 25px; line-height: 1; }
+    .metric span { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    .section { margin-top: 42px; }
+    .section-head { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 15px; }
+    .section-head h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
+    .section-head p { margin: 0; max-width: 650px; color: var(--muted); }
+    .compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+    figure { margin: 0; min-width: 0; overflow: hidden; }
+    figure img { width: 100%; aspect-ratio: 14 / 9; object-fit: cover; object-position: top; background: white; }
+    figcaption { padding: 13px 15px; border-top: 1px solid var(--line-soft); color: var(--soft); font-size: 13px; }
+    figcaption strong { color: var(--text); }
+
+    .prototype { overflow: hidden; }
+    .prototype-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: #151a24; }
+    .segmented { display: inline-flex; gap: 3px; padding: 3px; background: #0f141d; border: 1px solid var(--line-soft); border-radius: 8px; }
+    .segmented button { border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 7px 11px; cursor: pointer; font-size: 12px; font-weight: 680; }
+    .segmented button.active { background: var(--panel-3); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    .prototype-hint { align-self: center; color: var(--muted); font-size: 12px; }
+    .viewport-wrap { padding: 18px; overflow: auto; background: #111620; }
+    .viewport { --vp-width: 100%; position: relative; width: var(--vp-width); max-width: 100%; height: 520px; margin: 0 auto; overflow: hidden; border: 1px solid #3b465a; background: #f5f6f8; color: #202839; box-shadow: 0 12px 32px rgba(0,0,0,.28); transition: width .2s ease; }
+    .viewport[data-width="dock"] { --vp-width: 760px; }
+    .viewport[data-width="compact"] { --vp-width: 540px; }
+    .scene-scroll { position: absolute; inset: 0; overflow-y: auto; scrollbar-color: #667085 transparent; scroll-padding-top: 58px; }
+    .mock-toolbar { position: sticky; top: 0; z-index: 20; height: 48px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 0 9px; color: #e9edf5; background: rgba(29,35,48,.97); border-bottom: 1px solid #3a4559; box-shadow: 0 1px 0 rgba(255,255,255,.035), 0 8px 24px rgba(0,0,0,.14); transition: transform .18s ease, box-shadow .18s ease; }
+    .mock-toolbar.is-hidden { transform: translateY(calc(-100% + 3px)); box-shadow: none; }
+    .toolbar-leading, .toolbar-actions, .scene-nav { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .toolbar-title { min-width: 0; display: flex; align-items: baseline; gap: 8px; padding-left: 4px; }
+    .toolbar-title strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .toolbar-title span { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #929bad; font-size: 11px; }
+    .tool { min-width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 7px; padding: 0 9px; background: transparent; color: #b8c0ce; cursor: pointer; white-space: nowrap; }
+    .tool:hover, .tool:focus-visible { color: #fff; background: #30394b; outline: none; }
+    .tool:focus-visible { box-shadow: 0 0 0 2px #9db9ff inset; }
+    .tool.primary { color: var(--gold); background: var(--gold-soft); }
+    .tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .tool-label { font-size: 12px; font-weight: 680; }
+    .reveal-strip { position: absolute; z-index: 30; top: 0; left: 0; right: 0; height: 7px; border: 0; opacity: 0; cursor: n-resize; background: linear-gradient(to bottom, rgba(242,196,94,.65), transparent); }
+    .viewport[data-mode="hidden"] .reveal-strip, .mock-toolbar.is-hidden + .reveal-strip { opacity: .65; }
+    .appearance-menu { position: absolute; top: 43px; right: 45px; z-index: 40; width: 248px; padding: 12px; border: 1px solid #48546a; border-radius: 10px; background: #202736; color: #e9edf5; box-shadow: 0 18px 45px rgba(0,0,0,.38); }
+    .appearance-menu[hidden] { display: none; }
+    .appearance-menu h3 { margin-bottom: 10px; font-size: 13px; }
+    .field { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; gap: 9px; margin-top: 8px; font-size: 11px; color: #aeb7c6; }
+    .field select, .field input { width: 100%; min-width: 0; accent-color: var(--gold); }
+    .mock-stats { display: grid; grid-template-columns: repeat(4, 1fr); padding: 16px 18px; background: #edf0f5; border-bottom: 1px solid #d7dde7; }
+    .mock-stat { text-align: center; }
+    .mock-stat strong { display: block; color: #c28d13; font-size: 16px; }
+    .mock-stat span { font-size: 8px; color: #687386; text-transform: uppercase; }
+    .mock-content { width: min(720px, calc(100% - 38px)); margin: 28px auto 120px; font-family: Georgia, serif; font-size: 17px; line-height: 1.75; }
+    .mock-content h2 { margin: 0 0 18px; font-family: Inter, sans-serif; font-size: 12px; color: #6b7485; text-transform: uppercase; letter-spacing: .08em; }
+    .mock-content p { margin-bottom: 1.2em; }
+    .viewport[data-width="dock"] .optional-wide,
+    .viewport[data-width="compact"] .optional-wide { display: none; }
+    .viewport[data-width="compact"] .tool-label,
+    .viewport[data-width="compact"] .toolbar-title span,
+    .viewport[data-width="compact"] .scene-nav { display: none; }
+    .viewport[data-width="compact"] .mock-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (prefers-reduced-motion: reduce) {
+      .mock-toolbar, .viewport { transition: none; }
+    }
+
+    .options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .option { position: relative; padding: 18px; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 10px; }
+    .option.recommended { border-color: rgba(242,196,94,.7); box-shadow: 0 0 0 1px rgba(242,196,94,.15) inset; }
+    .badge { display: inline-flex; padding: 3px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); font-size: 10px; font-weight: 760; text-transform: uppercase; letter-spacing: .06em; }
+    .option h3 { margin: 12px 0 6px; font-size: 17px; }
+    .option p { color: var(--soft); font-size: 13px; }
+    .option ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+    .decision { margin-top: 16px; padding: 18px; }
+    .decision fieldset { border: 0; padding: 0; margin: 0; }
+    .decision legend { font-weight: 760; margin-bottom: 10px; }
+    .radio-row { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+    .radio-row label { display: flex; gap: 7px; align-items: center; color: var(--soft); cursor: pointer; }
+    .radio-row input { accent-color: var(--gold); }
+    .queue-btn { margin-top: 14px; padding: 9px 13px; border: 1px solid #d1a543; border-radius: 7px; background: var(--gold); color: #241b08; cursor: pointer; font-weight: 760; }
+    .queue-note { margin-left: 9px; color: var(--muted); font-size: 12px; }
+    .plan-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; }
+    .step { padding: 17px; background: var(--panel); border-right: 1px solid var(--line-soft); }
+    .step:last-child { border-right: 0; }
+    .step-num { color: var(--gold); font: 700 12px ui-monospace, monospace; }
+    .step h3 { margin: 7px 0 5px; font-size: 14px; }
+    .step p { margin: 0; color: var(--muted); font-size: 12px; }
+    .research { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .research-item { padding: 16px; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 9px; }
+    .research-item strong { display: block; margin-bottom: 5px; }
+    .research-item p { margin: 0; color: var(--muted); font-size: 12px; }
+    .implementation-note { margin-top: 14px; padding: 14px 16px; border-left: 3px solid var(--gold); background: var(--gold-soft); color: var(--soft); font-size: 13px; }
+    @media (max-width: 880px) {
+      .verdict, .compare { grid-template-columns: 1fr; }
+      .options { grid-template-columns: 1fr; }
+      .plan-grid { grid-template-columns: 1fr 1fr; }
+      .step:nth-child(2) { border-right: 0; }
+      .step:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+      .section-head { display: block; }
+      .section-head p { margin-top: 8px; }
+    }
+    @media (max-width: 600px) {
+      .shell { padding-inline: 12px; }
+      .measure, .research, .plan-grid { grid-template-columns: 1fr; }
+      .step { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+      .viewport-wrap { padding: 8px; }
+      .viewport { height: 480px; }
+      .prototype-hint { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="eyebrow">Focused UI review · scene header</div>
+    <h1>Make the toolbar disappear from the writing—not from the writer.</h1>
+    <p class="lead">Replace the current wrap-prone control shelf with one 48px desktop toolbar, progressive disclosure, and a three-mode visibility preference. Auto-hide should be the default; pinned and hidden remain explicit writer choices.</p>
+
+    <section class="verdict">
+      <div class="panel verdict-copy">
+        <h2>Recommendation: compact + adaptive, not merely smaller</h2>
+        <p>The main defect is hierarchy. Fourteen controls compete at once, presentation settings sit beside core actions, and the flex layout wraps exactly when the Discuss dock reduces width. A smaller font would preserve the underlying problem. The right fix is to keep location and frequent actions visible, move appearance and developer actions into two menus, and make visibility behavior a preference.</p>
+      </div>
+      <div class="panel measure" aria-label="Observed header measurements">
+        <div class="metric"><strong>60px</strong><span>normal header</span></div>
+        <div class="metric"><strong>178px</strong><span>with dock at 1400px</span></div>
+        <div class="metric"><strong>503px</strong><span>200% audit state</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>What is actually going wrong</h2>
+        <p>These are screenshots from the isolated live E2E fixture, not a redrawn approximation.</p>
+      </div>
+      <div class="compare">
+        <figure class="panel">
+          <img src="header-current-discuss.png" alt="Current light scene view with Discuss dock open and toolbar wrapped across three rows">
+          <figcaption><strong>1400px + Discuss:</strong> the header grows to 178px and repeats equally weighted outlined buttons across multiple rows.</figcaption>
+        </figure>
+        <figure class="panel">
+          <img src="header-current-compact-dark.png" alt="Current dark scene view at compact desktop width with the main content squeezed between sidebar and Discuss dock">
+          <figcaption><strong>1024px + both docks:</strong> controls and title become unreachable or clipped while the reading column collapses.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Interactive target</h2>
+        <p>Change width and visibility, then scroll inside the scene. The prototype intentionally uses Proseview’s graphite palette and gold action color.</p>
+      </div>
+      <div class="panel prototype">
+        <div class="prototype-controls">
+          <div class="segmented" aria-label="Mock viewport width">
+            <button type="button" class="active" data-width-choice="wide">Wide</button>
+            <button type="button" data-width-choice="dock">Discuss open</button>
+            <button type="button" data-width-choice="compact">Compact</button>
+          </div>
+          <div class="segmented" aria-label="Toolbar visibility behavior">
+            <button type="button" class="active" data-mode-choice="auto">Auto-hide</button>
+            <button type="button" data-mode-choice="pinned">Always shown</button>
+            <button type="button" data-mode-choice="hidden">Hidden</button>
+          </div>
+          <span class="prototype-hint" id="modeHint">Scroll down to hide; reverse direction to reveal.</span>
+        </div>
+        <div class="viewport-wrap">
+          <div class="viewport" id="viewport" data-width="wide" data-mode="auto">
+            <div class="scene-scroll" id="sceneScroll" tabindex="0" aria-label="Scrollable scene prototype">
+              <header class="mock-toolbar" id="mockToolbar">
+                <div class="toolbar-leading">
+                  <button class="tool" aria-label="Back to dashboard" title="Dashboard">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                  </button>
+                  <button class="tool optional-wide" aria-label="Toggle file sidebar" title="Files">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+                  </button>
+                </div>
+                <div class="toolbar-title">
+                  <strong>03-cafe.md</strong><span>ch02 / Scene 3</span>
+                  <div class="scene-nav">
+                    <button class="tool" aria-label="Previous scene" title="Previous scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 17-5-5 5-5"/></svg></button>
+                    <button class="tool" aria-label="Next scene" title="Next scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 17 5-5-5-5"/></svg></button>
+                  </div>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="tool optional-wide" aria-label="Search" title="Search (⌘K)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+                  <button class="tool" id="appearanceBtn" aria-expanded="false" aria-controls="appearanceMenu" title="Reading appearance"><span class="tool-label">Aa</span></button>
+                  <button class="tool primary" title="Discuss this scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H9l-4 4Z"/></svg><span class="tool-label">Discuss</span></button>
+                  <button class="tool" title="Edit scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.5-1L19 8.5 15.5 5 5 15.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg><span class="tool-label">Edit</span></button>
+                  <button class="tool" aria-label="More scene actions" title="More"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+                </div>
+              </header>
+              <button class="reveal-strip" id="revealStrip" aria-label="Reveal hidden scene toolbar" title="Reveal toolbar"></button>
+              <div class="appearance-menu" id="appearanceMenu" hidden>
+                <h3>Reading appearance</h3>
+                <label class="field"><span>Font</span><select><option>Literary</option><option>Reader</option><option>Inter</option></select></label>
+                <label class="field"><span>Size</span><input type="range" min="12" max="36" value="18"></label>
+                <label class="field"><span>Theme</span><select><option>Graphite Dark</option><option>Graphite Light</option><option>Light</option></select></label>
+                <label class="field"><span>Toolbar</span><select id="menuMode"><option value="auto">Auto-hide</option><option value="pinned">Always shown</option><option value="hidden">Hidden</option></select></label>
+              </div>
+              <div class="mock-stats" aria-label="Scene statistics">
+                <div class="mock-stat"><strong>1,932</strong><span>Words</span></div>
+                <div class="mock-stat"><strong>29.2%</strong><span>Dialogue</span></div>
+                <div class="mock-stat"><strong>Internal</strong><span>Tone</span></div>
+                <div class="mock-stat"><strong>5.2</strong><span>Sensory density</span></div>
+              </div>
+              <article class="mock-content">
+                <h2>Scene 3 · Café</h2>
+                <p>The coffee had gone cold before Mira admitted she had been watching the door. Outside, rain combed the avenue into silver lines.</p>
+                <p>She turned the cup by its handle. “I got here early enough to regret it.”</p>
+                <p>The chair opposite stayed empty. Her notes waited beneath one palm, the revised address written once in ink and twice in pencil.</p>
+                <p>At the end of the bar, someone laughed too loudly. Mira looked up, then away, and the toolbar slipped out of the reading space with the motion.</p>
+                <p>When she reversed direction, it returned—not as a shelf of settings, but as a quiet way home.</p>
+                <p>She read the first paragraph again. The work was still the work; the interface had finally stopped insisting otherwise.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>The three modes</h2>
+        <p>One component, one preference, three predictable behaviors. No separate focus-mode implementation is needed.</p>
+      </div>
+      <div class="options">
+        <article class="option recommended">
+          <span class="badge">Recommended default</span>
+          <h3>Auto-hide</h3>
+          <p>Pinned at the top until the writer scrolls down; reveals on upward scroll, keyboard focus, top-edge hover, or a shortcut.</p>
+          <ul><li>Best reading-space/action-access balance</li><li>Freeze while a menu is open</li><li>Disable animation with reduced motion</li></ul>
+        </article>
+        <article class="option">
+          <span class="badge">Predictable</span>
+          <h3>Always shown</h3>
+          <p>A 48px sticky bar remains visible. Ideal for editing, keyboard-heavy navigation, and writers who dislike moving chrome.</p>
+          <ul><li>Stable target positions</li><li>No motion or rediscovery cost</li><li>Still far smaller than today</li></ul>
+        </article>
+        <article class="option">
+          <span class="badge">Maximum focus</span>
+          <h3>Hidden</h3>
+          <p>The bar retracts to a quiet top-edge reveal strip. The same shortcut and top-edge interaction restore it temporarily.</p>
+          <ul><li>Maximum manuscript space</li><li>Must remain an explicit opt-in</li><li>Never hide while focus is inside</li></ul>
+        </article>
+      </div>
+      <form class="panel decision" data-lavish-question="toolbar-mode" onsubmit="queueDecision(event)">
+        <fieldset>
+          <legend>Which default should implementation use?</legend>
+          <div class="radio-row">
+            <label><input type="radio" name="default-mode" value="auto-hide" checked> Auto-hide</label>
+            <label><input type="radio" name="default-mode" value="always-shown"> Always shown</label>
+            <label><input type="radio" name="default-mode" value="hidden"> Hidden</label>
+          </div>
+          <button class="queue-btn" type="submit">Queue this choice</button><span class="queue-note" id="queueNote">Nothing is sent until you queue it.</span>
+        </fieldset>
+      </form>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Implementation shape</h2>
+        <p>This is deliberately a small redesign of one owner—not a new component framework.</p>
+      </div>
+      <div class="plan-grid">
+        <div class="step"><div class="step-num">01</div><h3>Restructure</h3><p>Replace the current flat control list with leading location, compact primary actions, Appearance, and More.</p></div>
+        <div class="step"><div class="step-num">02</div><h3>Responsive priority</h3><p>Keep one row. Move actions into overflow by priority instead of wrapping. Never shrink the title to zero.</p></div>
+        <div class="step"><div class="step-num">03</div><h3>Visibility state</h3><p>Persist <code>auto | pinned | hidden</code>. Use scroll direction, focus-within, menu-open, and reduced-motion guards.</p></div>
+        <div class="step"><div class="step-num">04</div><h3>Prove it live</h3><p>Test docks, long paths, light/dark, 1024px, 200% zoom, keyboard focus, reload persistence, and scroll recovery.</p></div>
+      </div>
+      <div class="implementation-note"><strong>Important:</strong> the existing Focus button currently hides only the extra controls while leaving the 59px bar. It should become a shortcut into the same toolbar visibility model, or be retired after migration; maintaining two competing “focus” systems would create state drift.</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Why this is the “right way”</h2>
+        <p>The proposal follows current platform and accessibility guidance rather than copying a fashionable screenshot.</p>
+      </div>
+      <div class="research">
+        <article class="research-item"><strong>Prioritize, then overflow</strong><p>Apple’s toolbar guidance says to choose items deliberately and move lower-priority actions into overflow as width narrows. That maps directly to the Discuss-dock failure.</p></article>
+        <article class="research-item"><strong>Dense desktop bars are legitimate</strong><p>Material documents dense desktop top bars and scroll behavior that hides on downward movement and reveals on reverse movement.</p></article>
+        <article class="research-item"><strong>Sticky cannot obscure focus</strong><p>WCAG 2.2 requires keyboard focus not be entirely hidden by sticky content. Use scroll padding/margins and force reveal on focus.</p></article>
+        <article class="research-item"><strong>Zoom changes the strategy</strong><p>W3C recommends making sticky regions static or user-toggleable in constrained reflow. At high zoom, default to pinned/static and consolidate aggressively.</p></article>
+      </div>
+      <p style="margin-top:14px;color:var(--muted);font-size:12px">Sources: <a href="https://developer.apple.com/design/human-interface-guidelines/toolbars">Apple HIG — Toolbars</a> · <a href="https://m2.material.io/components/app-bars-top">Material Design — Top app bars</a> · <a href="https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html">WCAG 2.2 — Focus Not Obscured</a> · <a href="https://www.w3.org/WAI/WCAG22/Understanding/reflow">WCAG 2.2 — Reflow</a> · <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/position">MDN — CSS position</a></p>
+    </section>
+  </main>
+
+  <script>
+    const viewport = document.getElementById('viewport');
+    const scroller = document.getElementById('sceneScroll');
+    const toolbar = document.getElementById('mockToolbar');
+    const hint = document.getElementById('modeHint');
+    const menu = document.getElementById('appearanceMenu');
+    const appearanceBtn = document.getElementById('appearanceBtn');
+    let lastScroll = 0;
+    let revealTimer = null;
+
+    function setWidth(width) {
+      viewport.dataset.width = width;
+      document.querySelectorAll('[data-width-choice]').forEach(button => button.classList.toggle('active', button.dataset.widthChoice === width));
+    }
+    function revealToolbar(temporary = false) {
+      toolbar.classList.remove('is-hidden');
+      if (temporary && viewport.dataset.mode === 'hidden') {
+        clearTimeout(revealTimer);
+        revealTimer = setTimeout(() => {
+          if (!toolbar.matches(':focus-within') && menu.hidden) toolbar.classList.add('is-hidden');
+        }, 2600);
+      }
+    }
+    function setMode(mode) {
+      viewport.dataset.mode = mode;
+      document.getElementById('menuMode').value = mode;
+      document.querySelectorAll('[data-mode-choice]').forEach(button => button.classList.toggle('active', button.dataset.modeChoice === mode));
+      if (mode === 'pinned') {
+        revealToolbar();
+        hint.textContent = 'The toolbar remains visible while the scene scrolls.';
+      } else if (mode === 'hidden') {
+        toolbar.classList.add('is-hidden');
+        hint.textContent = 'Use the top edge or press Shift+H to reveal temporarily.';
+      } else {
+        revealToolbar();
+        hint.textContent = 'Scroll down to hide; reverse direction to reveal.';
+      }
+    }
+    document.querySelectorAll('[data-width-choice]').forEach(button => button.addEventListener('click', () => setWidth(button.dataset.widthChoice)));
+    document.querySelectorAll('[data-mode-choice]').forEach(button => button.addEventListener('click', () => setMode(button.dataset.modeChoice)));
+    scroller.addEventListener('scroll', () => {
+      const current = scroller.scrollTop;
+      if (viewport.dataset.mode === 'auto' && menu.hidden && !toolbar.matches(':focus-within')) {
+        if (current > 64 && current > lastScroll + 3) toolbar.classList.add('is-hidden');
+        if (current < lastScroll - 3 || current < 12) revealToolbar();
+      }
+      lastScroll = current;
+    }, {passive: true});
+    toolbar.addEventListener('focusin', () => revealToolbar());
+    document.getElementById('revealStrip').addEventListener('click', () => revealToolbar(true));
+    document.getElementById('revealStrip').addEventListener('mouseenter', () => revealToolbar(true));
+    appearanceBtn.addEventListener('click', () => {
+      menu.hidden = !menu.hidden;
+      appearanceBtn.setAttribute('aria-expanded', String(!menu.hidden));
+      revealToolbar();
+    });
+    document.getElementById('menuMode').addEventListener('change', event => setMode(event.target.value));
+    document.addEventListener('keydown', event => {
+      if (event.shiftKey && event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        revealToolbar(true);
+        toolbar.querySelector('button').focus();
+      }
+      if (event.key === 'Escape' && !menu.hidden) {
+        menu.hidden = true;
+        appearanceBtn.setAttribute('aria-expanded', 'false');
+        appearanceBtn.focus();
+      }
+    });
+    function queueDecision(event) {
+      event.preventDefault();
+      const choice = new FormData(event.currentTarget).get('default-mode');
+      if (!choice) return;
+      const prompt = `Use the compact scene toolbar proposal with ${choice} as the default visibility mode. Keep all three modes available and follow the responsive/accessibility behavior shown in the artifact.`;
+      if (window.lavish && window.lavish.queuePrompt) {
+        window.lavish.queuePrompt(prompt, {tag: 'toolbar-choice', text: `Default toolbar mode: ${choice}`, element: event.currentTarget, queueKey: 'toolbar-mode', data: {mode: choice}});
+        document.getElementById('queueNote').textContent = `Queued: ${choice}. Use Send to Agent when ready.`;
+      } else {
+        document.getElementById('queueNote').textContent = `Selected: ${choice}. Lavish review controls appear when opened through lavish-axi.`;
+      }
+    }
+  </script>
+</body>
+</html>

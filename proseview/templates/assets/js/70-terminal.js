@@ -1231,7 +1231,7 @@
                         body.innerHTML = '<div class="repo-warn">This file is ' + sizeKb + ' KB \u2014 too large for inline rendering. <a class="editor-btn" href="' + editorBtn.href + '" target="_blank">\u2197 Open in ' + escHtml(editorLabel) + '</a></div>';
                     } else {
                         body.replaceChildren();
-                        renderSafeMarkdown(body, node.body);
+                        renderSafeMarkdown(body, node.body, {basePath: node.path});
                     }
                 } else {
                     body.innerHTML = '';

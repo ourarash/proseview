@@ -11,6 +11,7 @@ top of these same fixtures.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import queue
@@ -46,10 +47,12 @@ SCENE_REL = "ch01/01-opening.md"
 ANNOTATED_SCENE_REL = "ch01/03-annotated.md"
 #: Generated ~10k-word scene used by the large-file cases.
 LARGE_SCENE_REL = "ch03/01-long-haul.md"
-#: Manuscript Markdown nested below a chapter dir, so outside the scene index.
-#: Repo-relative (it is not a scene, so it has no scene path). The name is
-#: deliberately unlike any scene's: search matches files on path substring, and
-#: folders sort above files, so a shared prefix would outrank the real scene.
+#: Manuscript Markdown nested two levels below the manuscript root. It *is* a
+#: scene now -- scene discovery accepts any depth -- but it is still reachable
+#: as a repo file, which is what the search and sidebar tests here exercise.
+#: The name is deliberately unlike any scene's: search matches files on path
+#: substring, and folders sort above files, so a shared prefix would outrank
+#: the real scene.
 NESTED_MANUSCRIPT_NOTE = "manuscript/ch01/review/reader-pass-notes.md"
 
 #: Scenes carrying story-layer fields, so the Timeline tab has threads and a
@@ -229,8 +232,6 @@ def _build_repo(dest: Path) -> Path:
     _seed_skills(dest)
     _seed_annotated_scene(dest)
     _seed_large_scene(dest)
-    # Manuscript Markdown that ``iter_scene_paths`` does not index: it is a
-    # plain repository file the reader must still be able to open.
     for rel, thread, day in STORY_SCENES:
         scene = dest / "manuscript" / rel
         scene.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +248,40 @@ def _build_repo(dest: Path) -> Path:
         "# Opening review\n\nThe safe reveal lands too early in this draft.\n",
         encoding="utf-8",
     )
+    # An image plus a document exercising every path the renderer takes:
+    # a relative Markdown reference, a raw <img> carrying an event handler, and
+    # a remote URL.
+    (dest / "img").mkdir(parents=True, exist_ok=True)
+    (dest / "img" / "cover.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk+M+ACzDiVDBUFAAAxgQDAeVX6gYAAAAASUVORK5CYII="
+        )
+    )
+    images_doc = dest / "plans" / "images-demo.md"
+    images_doc.parent.mkdir(parents=True, exist_ok=True)
+    images_doc.write_text(
+        "# Images\n\n"
+        "![The cover](../img/cover.png)\n\n"
+        '<img src="../img/cover.png" alt="Raw tag" width="10" onerror="window.__pwned = true">\n\n'
+        "![Remote](https://example.invalid/remote.png)\n",
+        encoding="utf-8",
+    )
+
+    # A non-scene document with block Markdown the preview has to render:
+    # a GFM table and a horizontal rule. Both used to be dumped as raw source.
+    notes = dest / "plans" / "structure-notes.md"
+    notes.parent.mkdir(parents=True, exist_ok=True)
+    notes.write_text(
+        "# Structure Notes\n\n"
+        "| Chapter | Status | Words |\n"
+        "| --- | --- | ---: |\n"
+        "| ch01 | Drafted | 1200 |\n"
+        "| ch02 | Revising | 900 |\n\n"
+        "---\n\n"
+        "Prose after the rule.\n",
+        encoding="utf-8",
+    )
+
     scripts = dest / "scripts"
     scripts.mkdir(exist_ok=True)
     (scripts / "check_continuity.py").write_text(

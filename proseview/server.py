@@ -44,9 +44,11 @@ from .generator import (
 )
 from .lexical import paragraph_blocks
 from .repo import _file_node as _repo_file_node, resolve_visible_repository_path
-from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
+from .scenes import (
+    collect_scene_stats, extract_scene_text, resolve_manuscript_dir, split_frontmatter,
+)
 from .watch import watch as _watch
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import unquote, urlparse, parse_qs
 import time as _time
 
 DEFAULT_PORT = 7842
@@ -112,13 +114,13 @@ def _normalize_ai_scene_file(repo_root: str, value: str) -> str:
         raise PermissionError("file must be a safe repo-relative manuscript path")
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
+    manuscript_root = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
     manuscript = cfg.manuscript_subdir.rstrip("/")
     if rel.startswith(manuscript + "/"):
         scene_rel = rel[len(manuscript) + 1:]
     else:
         scene_rel = rel
-    target = (root / manuscript / scene_rel).resolve()
-    manuscript_root = (root / manuscript).resolve()
+    target = (manuscript_root / scene_rel).resolve()
     if not target.is_relative_to(manuscript_root):
         raise PermissionError("file outside manuscript directory")
     if not target.is_file():
@@ -487,7 +489,10 @@ def save_scene_content(
     recomputes the prose boundary from the live file, and writes atomically.
     """
     resolved = Path(abs_path).resolve()
-    manuscript_root = (Path(repo_root) / manuscript_subdir).resolve()
+    # Resolved, not joined: when the repo has no manuscript/ directory the whole
+    # repo is the manuscript, and joining blindly would reject every save in a
+    # flat vault as "outside the manuscript".
+    manuscript_root = resolve_manuscript_dir(Path(repo_root), manuscript_subdir).resolve()
     if not resolved.is_relative_to(manuscript_root):
         raise PermissionError(f"Path outside manuscript directory: {abs_path}")
 
@@ -1028,6 +1033,70 @@ class _Handler(BaseHTTPRequestHandler):
         ".woff2": "font/woff2",
     }
 
+    #: Image types this server will hand back. Anything else 404s rather than
+    #: being sniffed, so a stray binary cannot be coaxed into executing.
+    _ASSET_MIME: dict[str, str] = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".avif": "image/avif",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+    }
+
+    def _handle_repo_asset(self) -> None:
+        """Serve an image from inside the served repository at ``/repo-asset/*``.
+
+        Markdown can reference a cover or a diagram sitting next to the prose,
+        and nothing else in the app hands back repository bytes, so this is the
+        one route that does. It is deliberately narrow:
+
+        - the path must resolve inside the repo, and must not be reached through
+          a symlink, matching ``_contained_abs_path``
+        - only the image extensions above are served; no sniffing
+        - ``default-src 'none'`` means an SVG opened directly cannot fetch or
+          execute anything, and ``nosniff`` stops type confusion
+        """
+        raw = unquote(urlparse(self.path).path[len("/repo-asset/"):])
+        if not raw or raw.startswith("/") or ".." in Path(raw).parts:
+            self.send_response(404)
+            self.end_headers()
+            return
+        root = Path(self.repo_root).resolve()
+        candidate = root / raw
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            self.send_response(404)
+            self.end_headers()
+            return
+        mime = self._ASSET_MIME.get(resolved.suffix.lower())
+        if (
+            mime is None
+            or not resolved.is_relative_to(root)
+            or candidate.is_symlink()
+            or not resolved.is_file()
+        ):
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            data = resolved.read_bytes()
+        except OSError:
+            self.send_response(500)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle_vendor(self) -> None:
         """Serve files under ``proseview/templates/vendor/`` at ``/vendor/*``.
 
@@ -1408,6 +1477,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/vendor/"):
             self._handle_vendor()
+            return
+        if self.path.startswith("/repo-asset/"):
+            self._handle_repo_asset()
             return
         if self.path not in ("/", "/index.html"):
             self.send_response(404)

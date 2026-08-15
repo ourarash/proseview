@@ -20,6 +20,7 @@ TODO_RE = re.compile(r'<!--\s*TODO\s*:(.*?)-->', re.DOTALL | re.IGNORECASE)
 NOTE_RE = re.compile(r'<!--\s*NOTE(?:\[(\w+)\])?\s*:(.*?)-->', re.DOTALL | re.IGNORECASE)
 
 from .config import Config
+from .repo import CONTEXT_SKIP_DIRS
 from .lexical import (
     FRONTMATTER_RE,
     analyze_style_shape,
@@ -240,13 +241,56 @@ def extract_scene_text(text: str) -> str:
     return "\n".join(lines[start:])
 
 
+def resolve_manuscript_dir(root: Path, manuscript_subdir: str) -> Path:
+    """Return the directory scenes are read from.
+
+    Normally ``root/manuscript``. When that does not exist the whole repo is
+    treated as the manuscript, which is what makes Proseview usable against an
+    Obsidian vault or any other flat folder of Markdown: point it at the folder
+    and the scenes are simply the ``.md`` files in it.
+    """
+    subdir = manuscript_subdir.strip("/")
+    if not subdir or subdir == ".":
+        return root
+    candidate = root / subdir
+    return candidate if candidate.is_dir() else root
+
+
 def iter_scene_paths(manuscript_dir: Path) -> list[Path]:
-    paths = []
-    for d in sorted(p for p in manuscript_dir.iterdir() if p.is_dir()):
-        for p in sorted(d.glob("*.md")):
-            if p.name.lower() != "readme.md":
-                paths.append(p)
+    """Every Markdown file under *manuscript_dir*, at any depth.
+
+    The old rule was exactly two levels -- ``manuscript/<chapter>/<scene>.md``
+    -- which meant a flat folder or a nested one indexed as nothing at all, and
+    the dashboard came up empty with no explanation. Any depth is accepted now,
+    including files sitting directly in the manuscript root.
+
+    Hidden directories and tool directories are skipped, so pointing at a repo
+    root or an Obsidian vault does not sweep in ``.git`` or ``.obsidian``.
+    """
+    if not manuscript_dir.is_dir():
+        return []
+
+    paths: list[Path] = []
+    for path in sorted(manuscript_dir.rglob("*.md")):
+        relative = path.relative_to(manuscript_dir)
+        if any(part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in relative.parts[:-1]):
+            continue
+        if path.name.startswith(".") or path.name.lower() == "readme.md":
+            continue
+        paths.append(path)
     return paths
+
+
+def scene_chapter(path: Path, manuscript_dir: Path) -> str:
+    """Default chapter label for a scene, when frontmatter does not name one.
+
+    The first directory below the manuscript root, so the conventional
+    ``manuscript/ch01/01-opening.md`` still groups under ``ch01`` and a deeper
+    ``manuscript/ch01/drafts/01.md`` groups with it rather than splitting off.
+    Files directly in the root fall back to the root's own name.
+    """
+    relative = path.relative_to(manuscript_dir)
+    return relative.parts[0] if len(relative.parts) > 1 else manuscript_dir.name
 
 
 #: Placeholder used when ``collect_scene_stats(lexical=False)`` skips the
@@ -276,7 +320,7 @@ def collect_scene_stats(
         cfg = manuscript_subdir
         manuscript_subdir = cfg.manuscript_subdir
         characters_dir = cfg.characters_dir
-    man_dir = root / manuscript_subdir
+    man_dir = resolve_manuscript_dir(root, manuscript_subdir)
     sw = build_content_stopwords(root, characters_dir)
     scenes: list[SceneStats] = []
     global_counts: Counter[str] = Counter()
@@ -309,7 +353,7 @@ def collect_scene_stats(
             loc = p.parent.name
 
         scenes.append(SceneStats(
-            p.relative_to(root), str(fm.get("chapter", p.parent.name)).strip(),
+            p.relative_to(root), str(fm.get("chapter", scene_chapter(p, man_dir))).strip(),
             str(fm.get("title", p.stem.replace("-", " ").title())).strip(),
             str(fm.get("status", "unknown")).strip() or "unknown",
             txt, words, len(paragraph_blocks(txt)),

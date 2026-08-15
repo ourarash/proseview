@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .config import Config
 from .repo import CONTEXT_SKIP_DIRS, resolve_visible_repository_path
-from .scenes import extract_scene_text, iter_scene_paths, split_frontmatter
+from .scenes import resolve_manuscript_dir, scene_chapter, extract_scene_text, iter_scene_paths, split_frontmatter
 
 #: pandoc targets this module knows how to ask for. EPUB is the one wired to a
 #: CLI flag today; the others are here because the pandoc call is identical
@@ -97,7 +97,7 @@ def collect_scene_documents(root: Path, cfg: Config) -> list[SceneDocument]:
     Titles and chapters fall back exactly as the dashboard's scene table does:
     frontmatter first, then the filename stem and the chapter folder name.
     """
-    manuscript_dir = root / cfg.manuscript_subdir
+    manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
     if not manuscript_dir.is_dir():
         raise ExportError(f"No manuscript directory at {manuscript_dir}")
 
@@ -108,7 +108,7 @@ def collect_scene_documents(root: Path, cfg: Config) -> list[SceneDocument]:
         documents.append(
             SceneDocument(
                 path=path.relative_to(root),
-                chapter=str(fm.get("chapter", path.parent.name)).strip(),
+                chapter=str(fm.get("chapter", scene_chapter(path, manuscript_dir))).strip(),
                 title=str(fm.get("title", path.stem.replace("-", " ").title())).strip(),
                 markdown=extract_scene_text(body).strip(),
             )

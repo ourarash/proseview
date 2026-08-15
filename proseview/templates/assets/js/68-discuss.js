@@ -549,6 +549,105 @@
             } catch(e) { return null; }
         }
 
+        // ── Images ──────────────────────────────────────────────────────────
+        //
+        // `imagesConfig.mode` is 'all' | 'local' | 'off'. Remote images inside
+        // agent output are gated separately: in Discuss the model chooses the
+        // URL, so loading it would report the reader's IP and the fact that the
+        // document was opened to a host neither of us picked.
+
+        function repoAssetUrl(src, basePath) {
+            // Resolve a Markdown src against the document that referenced it and
+            // return a /repo-asset/ URL, or null if it escapes the repository.
+            var raw = String(src || '').trim();
+            if (!raw) return null;
+            var parts = [];
+            if (raw.charAt(0) !== '/') {
+                var baseDir = String(basePath || '').split('/');
+                baseDir.pop();
+                parts = baseDir;
+            }
+            // A `..` with nothing left to pop is an escape attempt, not a
+            // no-op. Array.pop() on an empty array returns undefined silently,
+            // which would quietly rewrite ../../../../etc/passwd into a
+            // different in-repo path instead of refusing it.
+            var escaped = false;
+            raw.split('/').forEach(function(segment) {
+                if (!segment || segment === '.') return;
+                if (segment === '..') {
+                    if (!parts.length) escaped = true;
+                    else parts.pop();
+                    return;
+                }
+                parts.push(segment);
+            });
+            if (escaped || !parts.length) return null;
+            return '/repo-asset/' + parts.map(encodeURIComponent).join('/');
+        }
+
+        function resolveImageSrc(src, ctx) {
+            var mode = (typeof imagesConfig === 'object' && imagesConfig ? imagesConfig.mode : 'all');
+            if (mode === 'off') return null;
+            var raw = String(src || '').trim();
+
+            if (/^data:image\//i.test(raw)) return raw;   // inline bytes reach nobody
+            if (/^(?:https?:)?\/\//i.test(raw)) {
+                if (mode !== 'all') return null;
+                if (ctx && ctx.agentOutput
+                    && !(imagesConfig && imagesConfig.remoteInAgentOutput)) return null;
+                return safeDiscussUrl(raw);
+            }
+            return repoAssetUrl(raw, ctx && ctx.basePath);
+        }
+
+        function imageNode(src, alt, title, ctx) {
+            var resolved = resolveImageSrc(src, ctx);
+            if (!resolved) {
+                var placeholder = document.createElement('span');
+                placeholder.className = 'md-image-placeholder';
+                placeholder.textContent = decodeMarkdownText(alt || title || 'image');
+                placeholder.title = 'Image not shown: ' + String(src || '');
+                return placeholder;
+            }
+            var img = document.createElement('img');
+            img.className = 'md-image';
+            img.src = resolved;
+            img.alt = decodeMarkdownText(alt || '');
+            if (title) img.title = decodeMarkdownText(title);
+            img.loading = 'lazy';
+            // A referrer would leak the local URL, and the page it came from, to
+            // any remote host.
+            img.referrerPolicy = 'no-referrer';
+            return img;
+        }
+
+        //: Attributes copied off a raw <img> tag. Everything else -- onerror and
+        //: friends especially -- is dropped, so the tag cannot carry script.
+        var IMG_ATTR_ALLOWLIST = ['src', 'alt', 'title', 'width', 'height'];
+
+        function rawImgNode(html, ctx) {
+            // Parse a literal <img> tag out of an `html` token without ever
+            // handing the markup to innerHTML.
+            var match = /^\s*<img\b([^>]*)>\s*$/i.exec(String(html || ''));
+            if (!match) return null;
+            var attrs = {};
+            var pattern = /([a-zA-Z-]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g;
+            var found;
+            while ((found = pattern.exec(match[1])) !== null) {
+                var name = found[1].toLowerCase();
+                if (IMG_ATTR_ALLOWLIST.indexOf(name) < 0) continue;
+                attrs[name] = found[3] !== undefined ? found[3]
+                    : found[4] !== undefined ? found[4] : found[5];
+            }
+            if (!attrs.src) return null;
+            var node = imageNode(attrs.src, attrs.alt, attrs.title, ctx);
+            if (node.tagName === 'IMG') {
+                if (attrs.width && /^\d+$/.test(attrs.width)) node.width = parseInt(attrs.width, 10);
+                if (attrs.height && /^\d+$/.test(attrs.height)) node.height = parseInt(attrs.height, 10);
+            }
+            return node;
+        }
+
         function decodeMarkdownText(value) {
             var named = {amp: '&', lt: '<', gt: '>', quot: '"', apos: "'"};
             var decoded = String(value || '');
@@ -569,16 +668,21 @@
             return decoded;
         }
 
-        function appendMarkdownTokens(parent, tokens) {
+        function appendMarkdownTokens(parent, tokens, ctx) {
             (tokens || []).forEach(function(token) {
                 var node;
                 if (token.type === 'space') return;
                 if (token.type === 'text' || token.type === 'escape') {
-                    if (token.tokens) appendMarkdownTokens(parent, token.tokens);
+                    if (token.tokens) appendMarkdownTokens(parent, token.tokens, ctx);
                     else parent.appendChild(document.createTextNode(decodeMarkdownText(token.text || token.raw || '')));
                     return;
                 }
-                if (token.type === 'html') { parent.appendChild(document.createTextNode(token.raw || token.text || '')); return; }
+                if (token.type === 'html') {
+                    var rawImg = rawImgNode(token.raw || token.text || '', ctx);
+                    if (rawImg) { parent.appendChild(rawImg); return; }
+                    parent.appendChild(document.createTextNode(token.raw || token.text || ''));
+                    return;
+                }
                 if (token.type === 'paragraph') node = document.createElement('p');
                 else if (token.type === 'heading') node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
                 else if (token.type === 'strong') node = document.createElement('strong');
@@ -610,24 +714,68 @@
                         if (node.protocol !== 'mailto:') node.target = '_blank';
                     }
                 } else if (token.type === 'br') node = document.createElement('br');
+                else if (token.type === 'hr') node = document.createElement('hr');
+                else if (token.type === 'image') {
+                    parent.appendChild(imageNode(token.href, token.text, token.title, ctx));
+                    return;
+                }
+                else if (token.type === 'del') node = document.createElement('del');
+                else if (token.type === 'table') {
+                    // Built cell by cell rather than via innerHTML: this same
+                    // renderer draws agent output in Discuss, so every node here
+                    // has to be safe for untrusted text.
+                    node = document.createElement('table');
+                    var align = token.align || [];
+                    var thead = document.createElement('thead');
+                    var headRow = document.createElement('tr');
+                    (token.header || []).forEach(function(cell, i) {
+                        var th = document.createElement('th');
+                        if (align[i]) th.style.textAlign = align[i];
+                        appendMarkdownTokens(th, cell.tokens || [], ctx);
+                        headRow.appendChild(th);
+                    });
+                    thead.appendChild(headRow);
+                    node.appendChild(thead);
+                    var tbody = document.createElement('tbody');
+                    (token.rows || []).forEach(function(row) {
+                        var tr = document.createElement('tr');
+                        (row || []).forEach(function(cell, i) {
+                            var td = document.createElement('td');
+                            if (align[i]) td.style.textAlign = align[i];
+                            appendMarkdownTokens(td, cell.tokens || [], ctx);
+                            tr.appendChild(td);
+                        });
+                        tbody.appendChild(tr);
+                    });
+                    node.appendChild(tbody);
+                    // Wrap so a wide table scrolls itself instead of the page.
+                    var scroller = document.createElement('div');
+                    scroller.className = 'md-table-scroll';
+                    scroller.appendChild(node);
+                    parent.appendChild(scroller);
+                    return;
+                }
                 else { parent.appendChild(document.createTextNode(token.raw || token.text || '')); return; }
                 if (token.type === 'list') {
-                    (token.items || []).forEach(function(item) { appendMarkdownTokens(node, [item]); });
-                } else if (token.type !== 'code' && token.type !== 'codespan' && token.type !== 'br') {
-                    if (token.tokens) appendMarkdownTokens(node, token.tokens);
+                    (token.items || []).forEach(function(item) { appendMarkdownTokens(node, [item], ctx); });
+                } else if (token.type !== 'code' && token.type !== 'codespan'
+                           && token.type !== 'br' && token.type !== 'hr') {
+                    if (token.tokens) appendMarkdownTokens(node, token.tokens, ctx);
                     else if (token.text) node.textContent = decodeMarkdownText(token.text);
                 }
                 parent.appendChild(node);
             });
         }
 
-        function renderSafeMarkdown(parent, text) {
-            try { appendMarkdownTokens(parent, marked.lexer(String(text || ''), {gfm: true})); }
+        function renderSafeMarkdown(parent, text, ctx) {
+            try { appendMarkdownTokens(parent, marked.lexer(String(text || ''), {gfm: true}), ctx || {}); }
             catch(e) { parent.textContent = String(text || ''); }
         }
 
         function renderDiscussMarkdown(parent, text) {
-            renderSafeMarkdown(parent, text);
+            // Agent output: relative paths have no document to resolve against,
+            // and remote ones obey images.remote_in_agent_output.
+            renderSafeMarkdown(parent, text, {agentOutput: true});
         }
 
         function elementWith(className, text) {

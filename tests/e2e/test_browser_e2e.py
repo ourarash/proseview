@@ -2168,7 +2168,7 @@ def test_scene_search_pointer_entry_reflows_for_compact_css_viewport(
     page.wait_for_selector("#searchPalette", state="visible")
 
 
-def test_lazy_markdown_preview_treats_hostile_html_and_links_as_text(
+def test_lazy_markdown_preview_strips_script_from_hostile_html_and_links(
     page: Page,
     shared_server: ProseviewServer,
 ):
@@ -2176,13 +2176,28 @@ def test_lazy_markdown_preview_treats_hostile_html_and_links_as_text(
     page.wait_for_function(
         "() => document.getElementById('filePreviewTitle').innerText === 'scripts/hostile-preview.md'"
     )
-    page.wait_for_function("() => document.getElementById('filePreviewBody').innerText.includes('<img src=x')")
+    # `attached`, not `visible`: the src deliberately 404s, so the element has
+    # no intrinsic size and never satisfies a visibility check.
+    page.wait_for_selector("#filePreviewBody img", state="attached")
 
     body = page.locator("#filePreviewBody")
-    assert "<img src=x" in body.inner_text()
-    assert body.locator("img").count() == 0
-    assert body.locator("a").count() == 0
+
+    # The <img> now renders -- images are a supported feature -- but only its
+    # allowlisted attributes survive. Previously the whole tag stayed as text,
+    # which was safe but also meant no images at all.
+    assert body.locator("img").count() == 1
+    assert body.locator("img").get_attribute("onerror") is None
+    assert body.locator("img").get_attribute("src") == "/repo-asset/scripts/x"
+
+    # The src 404s, so the browser fires an error event. Nothing must be
+    # listening for it.
     assert page.evaluate("window.__previewPwned === true") is False
+
+    # Everything else hostile is untouched: a javascript: URL yields no anchor,
+    # and the URL itself is discarded rather than shown.
+    assert body.locator("a").count() == 0
+    assert "Unsafe link" in body.inner_text()
+    assert "javascript:" not in body.inner_text()
 
 
 def test_hidden_repository_deep_link_never_displays_its_contents(
@@ -2923,6 +2938,123 @@ def test_stale_selection_reports_an_error_instead_of_annotating_the_wrong_paragr
     assert result["status"] == 500
     assert "Could not find the selected passage" in result["body"]["error"]
     assert path.read_text(encoding="utf-8") == before, "a rejected annotation must not touch the file"
+
+
+def test_file_preview_renders_tables_and_rules_rather_than_raw_source(
+    page: Page, server: ProseviewServer
+):
+    """Block Markdown in a non-scene document must actually render.
+
+    ``renderSafeMarkdown`` walks an allowlist of token types and falls back to
+    dumping ``token.raw`` for anything it does not know. ``table`` and ``hr``
+    were missing, so a planning document showed its tables as one run-on line of
+    pipes and its rules as literal ``---``.
+    """
+    page.goto(f"{server.base_url}#/file/plans/structure-notes.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody", state="visible")
+    page.wait_for_selector("#filePreviewBody table")
+
+    body = page.locator("#filePreviewBody")
+    assert body.locator("hr").count() == 1
+    assert body.locator("table thead th").count() == 3
+    assert body.locator("table tbody tr").count() == 2
+    assert "ch01" in body.locator("table tbody tr").first.inner_text()
+
+    # Nothing may remain as raw pipe-table source.
+    assert "| --- |" not in body.inner_text()
+    assert "\n---\n" not in body.inner_text()
+
+    # Right-aligned column from the `---:` marker survives.
+    assert "right" in body.locator("table thead th").last.get_attribute("style")
+
+
+def test_repo_images_render_and_raw_img_tags_cannot_carry_script(
+    page: Page, server: ProseviewServer
+):
+    """Markdown and raw ``<img>`` both render, through the contained route.
+
+    The raw-tag path is the sharp one: the token is literal HTML, so it is
+    parsed attribute by attribute against an allowlist rather than handed to
+    ``innerHTML``. An ``onerror`` must not survive that.
+    """
+    page.goto(f"{server.base_url}#/file/plans/images-demo.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody img")
+
+    images = page.locator("#filePreviewBody img")
+    assert images.count() == 3, "markdown, raw tag, and remote should all produce an <img>"
+
+    # The relative reference resolved against the document's own directory.
+    markdown_img = images.nth(0)
+    assert markdown_img.get_attribute("src") == "/repo-asset/img/cover.png"
+    assert markdown_img.get_attribute("alt") == "The cover"
+    # It actually decoded, so the route really served the bytes.
+    assert page.evaluate(
+        "() => { const i = document.querySelectorAll('#filePreviewBody img')[0];"
+        " return i.complete && i.naturalWidth > 0; }"
+    )
+
+    raw_img = images.nth(1)
+    assert raw_img.get_attribute("src") == "/repo-asset/img/cover.png"
+    assert raw_img.get_attribute("alt") == "Raw tag"
+    assert raw_img.get_attribute("width") == "10", "allowlisted attribute should survive"
+    assert raw_img.get_attribute("onerror") is None, "event handler must be stripped"
+    assert page.evaluate("() => window.__pwned === undefined"), "no handler may have fired"
+
+    # Remote images load at the default `images: all`, with no referrer leak.
+    assert images.nth(2).get_attribute("src") == "https://example.invalid/remote.png"
+    assert images.nth(2).get_attribute("referrerpolicy") == "no-referrer"
+
+
+@pytest.mark.allow_js_errors("__pv_images_off")
+def test_images_off_falls_back_to_alt_text(page: Page, server: ProseviewServer):
+    """With ``images: off`` nothing loads and the alt text shows instead."""
+    page.goto(f"{server.base_url}#/file/plans/images-demo.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody img")
+
+    rendered = page.evaluate(
+        """() => {
+            imagesConfig.mode = 'off';
+            const host = document.createElement('div');
+            renderSafeMarkdown(host, '![The cover](../img/cover.png)',
+                               {basePath: 'plans/images-demo.md'});
+            return {imgs: host.querySelectorAll('img').length,
+                    text: host.innerText.trim()};
+        }"""
+    )
+    assert rendered["imgs"] == 0
+    assert "The cover" in rendered["text"]
+
+
+def test_remote_images_stay_blocked_inside_agent_output(page: Page, server: ProseviewServer):
+    """Discuss renders text a model wrote, so it does not get to pick hosts.
+
+    A repo-relative image is still fine there; only the remote one is refused.
+    """
+    page.goto(f"{server.base_url}#/file/plans/images-demo.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody img")
+
+    rendered = page.evaluate(
+        """() => {
+            const host = document.createElement('div');
+            renderDiscussMarkdown(host, '![shot](https://example.invalid/tracker.png)');
+            return {imgs: host.querySelectorAll('img').length,
+                    placeholders: host.querySelectorAll('.md-image-placeholder').length};
+        }"""
+    )
+    assert rendered["imgs"] == 0, "a model-chosen remote URL must not be fetched"
+    assert rendered["placeholders"] == 1
+
+
+def test_image_paths_cannot_escape_the_repository(page: Page, server: ProseviewServer):
+    """Client-side resolution refuses what the server would refuse anyway."""
+    page.goto(f"{server.base_url}#/file/plans/images-demo.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody img")
+
+    escaped = page.evaluate(
+        """() => ['../../../../etc/passwd', '../../outside.png', '..']
+                  .map(src => repoAssetUrl(src, 'plans/images-demo.md'))"""
+    )
+    assert escaped == [None, None, None], f"a path escaped containment: {escaped}"
 
 
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):

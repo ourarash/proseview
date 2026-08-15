@@ -90,7 +90,7 @@ def test_dashboard_inlines_concatenated_bundle():
     # From 80-sidebar-init.js
     assert "function previewRepoFile(path, options)" in html
     assert "body.innerHTML = marked.parse(node.body)" not in html
-    assert "renderSafeMarkdown(body, node.body)" in html
+    assert "renderSafeMarkdown(body, node.body, {basePath: node.path})" in html
 
 
 # ── Item 7: build_scene_data is the data source ──────────────────────────────

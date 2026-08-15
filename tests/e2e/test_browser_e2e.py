@@ -10,20 +10,18 @@ Opt-in -- excluded from the default ``pytest`` run by the ``e2e_browser`` marker
     python -m playwright install chromium
     pytest -m e2e_browser
 
-ProseMirror is imported from esm.sh at fixed versions. Rather than hit the
-network on every run, requests are served from ``tests/e2e/_esm_cache/`` and
-populated on first miss. To refresh after changing the pins in
-``index.html.j2``, delete that directory and run the suite once with network
-access.
+ProseMirror is vendored under ``proseview/templates/vendor/pm/`` and served
+from the app's own origin, so this tier needs no network access at all. The
+36-module graph is cached in-process to keep page loads cheap; see
+``_install_esm_cache``.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import re
 import time
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -45,12 +43,6 @@ from .conftest import (
 
 pytestmark = pytest.mark.e2e_browser
 
-ESM_CACHE = Path(__file__).parent / "_esm_cache"
-#: Maps cache filenames back to their esm.sh URLs, so a human can see which
-#: pinned modules are vendored here.
-ESM_INDEX = ESM_CACHE / "index.json"
-
-
 # ── browser plumbing ────────────────────────────────────────────────────────
 
 
@@ -64,44 +56,41 @@ def browser() -> Iterator[Browser]:
             instance.close()
 
 
+#: Vendored ProseMirror modules, cached in-process across the whole session.
+_VENDOR_MODULE_CACHE: dict[str, bytes] = {}
+
+
 def _install_esm_cache(page: Page) -> None:
-    """Serve esm.sh from disk, populating the cache on first miss.
+    """Serve ``/vendor/pm/*`` from memory instead of the test server.
 
-    Set ``PROSEVIEW_ESM_OFFLINE=1`` to make a miss fatal instead of fetching --
-    useful in CI, where a silent network fallback would hide a stale cache.
+    ProseMirror is vendored as a 36-module ES graph, so every page load would
+    otherwise make 36 round trips to a thread-per-request server -- hundreds of
+    page loads into a full run, that is enough extra load to lose timing races
+    in unrelated tests.
+
+    Keyed by path rather than URL: each test gets its own server on its own
+    port, and the bytes are identical across them.
+
+    (Named for the esm.sh cache it replaced, which became dead the moment
+    ProseMirror stopped being fetched from a CDN.)
     """
-    ESM_CACHE.mkdir(parents=True, exist_ok=True)
-    offline = os.environ.get("PROSEVIEW_ESM_OFFLINE") == "1"
-
     def handler(route: Route) -> None:
-        url = route.request.url
-        cached = ESM_CACHE / f"{hashlib.sha256(url.encode()).hexdigest()[:32]}.js"
-        if cached.exists():
-            route.fulfill(
-                status=200,
-                body=cached.read_bytes(),
-                headers={"content-type": "application/javascript"},
-            )
-            return
-        if offline:
-            raise AssertionError(
-                f"esm cache miss for {url} with PROSEVIEW_ESM_OFFLINE=1.\n"
-                "The pinned ProseMirror versions in index.html.j2 changed; "
-                "re-run without that variable to repopulate tests/e2e/_esm_cache/."
-            )
-        fetched = route.fetch()
-        body = fetched.body()
-        cached.write_bytes(body)
-        index = json.loads(ESM_INDEX.read_text()) if ESM_INDEX.exists() else {}
-        index[cached.name] = url
-        ESM_INDEX.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+        key = urlparse(route.request.url).path
+        body = _VENDOR_MODULE_CACHE.get(key)
+        if body is None:
+            fetched = route.fetch()
+            if fetched.status != 200:
+                route.fulfill(status=fetched.status, body=fetched.body())
+                return
+            body = fetched.body()
+            _VENDOR_MODULE_CACHE[key] = body
         route.fulfill(
-            status=fetched.status,
+            status=200,
             body=body,
-            headers={"content-type": "application/javascript"},
+            headers={"content-type": "application/javascript; charset=utf-8"},
         )
 
-    page.route("https://esm.sh/**", handler)
+    page.route("**/vendor/pm/*", handler)
 
 
 #: Console noise that is not a JavaScript fault. A 409 from the save conflict

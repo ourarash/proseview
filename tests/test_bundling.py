@@ -254,23 +254,68 @@ def test_template_loads_vendored_assets_from_local_paths():
         "jsDelivr URLs should be vendored locally"
 
 
-def test_prosemirror_imports_pin_specific_versions():
-    """ESM imports for ProseMirror must specify a non-floating version
-    so a major bump on esm.sh can't break the editor.
+PM_PACKAGES = [
+    "prosemirror-model", "prosemirror-markdown", "prosemirror-state",
+    "prosemirror-view", "prosemirror-history", "prosemirror-keymap",
+    "prosemirror-commands",
+]
+
+
+def test_prosemirror_is_served_from_this_origin():
+    """The editor must not fetch code from a CDN at page load.
+
+    It used to import seven packages from esm.sh, which cost real load time,
+    made the app unusable offline, and disclosed manuscript-opening activity to
+    a third party. They are vendored under ``vendor/pm/`` now.
     """
     template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
-    pm_packages = [
-        "prosemirror-model", "prosemirror-markdown", "prosemirror-state",
-        "prosemirror-view", "prosemirror-history", "prosemirror-keymap",
-        "prosemirror-commands",
+    imports = re.findall(r"^\s*import\s.*?from\s+'([^']+)'", template, re.M)
+    assert imports, "expected the ProseMirror import block"
+    for spec in imports:
+        assert spec.startswith("/vendor/"), f"{spec} is not served from this origin"
+
+    for pkg in PM_PACKAGES:
+        assert f"'/vendor/pm/{pkg}.js'" in template, f"{pkg} is not imported from vendor/pm"
+
+
+def test_vendored_prosemirror_graph_is_complete_and_local():
+    """Every vendored module must resolve inside the vendor directory.
+
+    A missed rewrite would still load -- from the CDN -- and only show up as a
+    slow page, so this checks the graph rather than trusting the download.
+    """
+    pm_dir = REPO_ROOT / "proseview" / "templates" / "vendor" / "pm"
+    files = sorted(pm_dir.glob("*.js"))
+    assert len(files) > 20, f"expected the full ESM graph, found {len(files)} files"
+
+    names = {f.name for f in files}
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        # The `/* esm.sh - pkg@version */` provenance banner is fine and worth
+        # keeping; anything the browser would actually fetch is not.
+        assert "sourceMappingURL" not in source, \
+            f"{path.name} points at an un-vendored source map"
+        for spec in re.findall(r"""(?:from|import)\s*['"]([^'"]+)['"]""", source):
+            if spec.startswith("data:"):
+                continue
+            assert spec.startswith("./"), f"{path.name} has a non-local import: {spec}"
+            assert spec[2:] in names, f"{path.name} imports missing module {spec}"
+
+
+def test_prosemirror_model_is_deduplicated():
+    """One copy only.
+
+    Two copies would mean two ``Schema`` classes, and ``instanceof`` checks
+    across the boundary would fail in ways that surface as confusing parser
+    errors rather than an obvious import problem.
+    """
+    pm_dir = REPO_ROOT / "proseview" / "templates" / "vendor" / "pm"
+    implementations = [
+        p for p in pm_dir.glob("*prosemirror-model*.js")
+        if len(p.read_text(encoding="utf-8")) > 5000
     ]
-    for pkg in pm_packages:
-        # Match `https://esm.sh/<pkg>@<major>.<minor>.<patch>` (no
-        # bare `@1` style).
-        assert re.search(
-            r"https://esm\.sh/" + re.escape(pkg) + r"@\d+\.\d+\.\d+",
-            template,
-        ), f"{pkg} must be pinned to a full version"
+    assert len(implementations) == 1, \
+        f"expected exactly one prosemirror-model implementation, got {[p.name for p in implementations]}"
 
 
 # ── Repo-wide search palette (plan item 20) ──────────────────────────────────

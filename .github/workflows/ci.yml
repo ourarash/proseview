@@ -40,5 +40,3 @@ jobs:
       - run: pip install -e ".[e2e]"
       - run: python -m playwright install --with-deps chromium
       - run: pytest -m e2e_browser -q
-        env:
-          PROSEVIEW_ESM_OFFLINE: "1"

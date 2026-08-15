@@ -11,9 +11,10 @@ because distribution is broken. Stability comes before reach.
 ## Status, 2026-08-15
 
 Landed: **1** (by you, in `51a53c8`), **2**, **3**, **7** (the 5xx half; the
-console-error half also arrived in `51a53c8`), **8**, **12b**, and **13**.
+console-error half also arrived in `51a53c8`), **8**, **12b**, **13**, **15**, and **16**.
 
-Test counts moved from 280 unit / 164 browser to **315 unit / 167 browser**.
+Test counts moved from 280 unit / 164 browser to **317 unit / 167 browser**
+(plus 47 in the stdlib HTTP tier).
 
 ### The headline: the dashboard rebuild is 75% faster
 
@@ -31,9 +32,10 @@ deleting the dead computation both left behind.
 
 ### Still open
 
-Browser-side load is untouched at ~600 ms, and the page is still ~2.9 MB.
-Item 15 (vendoring ProseMirror) is now the largest single remaining win.
-Item 17 records the next structural one.
+The page is still ~2.9 MB, which measurement showed does not matter (item 13).
+Item 15 is now done too: browser-side load went from ~600 ms to 124 ms and the
+page makes no external requests at all. Item 17 records the next structural
+win; item 14 records three load-sensitive tests worth pinning down.
 
 ---
 
@@ -50,7 +52,15 @@ the next feature.
 
 **Effort:** unknown, it is your branch.
 
-### 2. Atomic writes + mtime guard on TODO/NOTE mutations
+### 2. Atomic writes on TODO/NOTE mutations — DONE (mtime guard still open)
+
+All six mutators now route through `_atomic_write_text`, the same tmp-file and
+`os.replace` pattern `save_scene_content` uses; the refactor also removed the
+duplication between the TODO and NOTE variants. `tests/test_annotations.py`
+covers it — these six functions previously had no unit tests at all.
+
+**Still open:** the mtime guard. The client does not send `open_mtime` on these
+calls, so wiring it up means a frontend change as well.
 
 Scene save is correct: mtime conflict check, then tmp file and `os.replace`
 ([proseview/server.py:452-491](../proseview/server.py#L452-L491)).
@@ -67,7 +77,11 @@ Reuse the `save_scene` pattern. It is already written.
 
 **Effort:** ~1 day.
 
-### 3. Fail loudly when annotation targeting misses
+### 3. Fail loudly when annotation targeting misses — DONE
+
+The `para_idx = 0` fallback is gone: a selection that no longer matches now
+raises, and the client's existing error path surfaces it. Covered in
+`tests/test_annotations.py` and by a browser regression test.
 
 `add_todo` and `add_note` locate the paragraph by the selection's first 50
 characters. When that string is not found they fall back to `para_idx = 0`
@@ -280,27 +294,53 @@ Remaining server-side cost is dominated by `analyze_style_shape` (~42k
 The bigger structural win is to re-analyse only the scenes that changed instead
 of the whole manuscript on every invalidation.
 
-### 15. ProseMirror is fetched from a CDN on every load
+### 15. ProseMirror is fetched from a CDN on every load — DONE
 
-[index.html.j2:405-412](../proseview/templates/index.html.j2) imports seven
-ProseMirror modules from `https://esm.sh/` at runtime. Each measured 160–172 ms
-against the live CDN, and the browser e2e tier has to stub `esm.sh` to be
-deterministic at all.
+Vendored under `templates/vendor/pm/` and served from the app's own origin.
+Browser-side load on the real book went from **600 ms to 124 ms**, and the page
+now issues **zero external requests**.
 
-Three problems, in increasing order of importance:
+The win was far larger than the ~170 ms estimated, because the seven CDN
+imports resolved as a *serial* dependency chain rather than in parallel.
 
-1. It is the largest single component of browser-side load time.
-2. Proseview does not work offline, on a plane, or behind a restrictive
-   network — for a tool whose pitch is that it is local.
-3. It quietly contradicts the README's "vendored front-end dependencies" and
-   the privacy framing: every page load tells a third party that someone opened
-   their manuscript.
+The old objection in the template — that vendoring needs a build step — was
+worth taking seriously and turned out not to hold.
+[scripts/vendor_prosemirror.py](../scripts/vendor_prosemirror.py) walks the
+esm.sh graph, downloads all 36 reachable modules, and rewrites the import
+specifiers to point at each other on disk. No bundler, no build step; run it to
+change versions and commit what it writes. Shared packages dedupe by resolved
+URL, so there is exactly one `prosemirror-model` and `Schema` identity holds.
 
-Vendoring these the way `chart.js`, `marked.js`, and `xterm.js` are already
-vendored fixes all three. Cheap, and it is the highest-value performance work
-available.
+Two consequences worth knowing:
 
-### 14. A flaky Discuss test
+- **36 module requests per page load.** Free for a real user after the first
+  visit, but in the browser tier every test gets a fresh context, and the extra
+  round trips against a thread-per-request server were enough to lose timing
+  races elsewhere. `_install_esm_cache` — which used to cache esm.sh and became
+  dead the moment the CDN went away — now caches `/vendor/pm/*` in-process
+  instead. The tier runs in 108 s, slightly faster than before this work.
+- `tests/e2e/_esm_cache/` and the `PROSEVIEW_ESM_OFFLINE` CI flag are gone; the
+  browser tier needs no network at all now.
+
+
+### 14. Load-sensitive tests
+
+`test_new_conversation_clears_projection_and_uses_a_new_thread` failed once in
+roughly ten full-suite runs and has not reproduced since — 3/3 isolated, 6/6
+full-suite. Timing-sensitive, like its neighbours in that file, which
+coordinate real threads.
+
+Two browser tests behave the same way. Under heavy machine load,
+`test_proposal_review_fits_beside_dock_at_200_percent_zoom` and
+`test_selection_action_started_from_dirty_editor_uses_live_target` each failed
+once, both passing 3/3 alone and in repeated clean full runs. They sit in the
+same cluster: selection actions driving the AI proposal panel.
+
+Not urgent, but this is three tests in two tiers that pass or fail on machine
+load, and flaky tests are how a suite stops being believed. Worth pinning down
+before CI becomes the thing you trust for Windows (item 4).
+
+### 14a. Original note
 
 `test_new_conversation_clears_projection_and_uses_a_new_thread` failed once in
 roughly ten full-suite runs and has not reproduced since — 3/3 isolated, 6/6

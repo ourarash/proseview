@@ -71,4 +71,5 @@ addopts = "-m 'not e2e_browser'"
 markers = [
     "e2e_browser: end-to-end test driving a real browser via Playwright",
     "allow_js_errors(*substrings): tolerate matching console/page errors in a browser test",
+    "allow_http_errors(*substrings): tolerate 5xx responses from matching URLs in a browser test",
 ]

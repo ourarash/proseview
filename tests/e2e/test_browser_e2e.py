@@ -116,20 +116,29 @@ _CONSOLE_NOISE = (
 
 @pytest.fixture
 def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
-    """A page wired to the esm cache that fails the test on any JS error.
+    """A page wired to the esm cache that fails the test on any JS or server error.
 
     A test may declare known-buggy output with
     ``@pytest.mark.allow_js_errors("substring")`` -- used to keep a regression
-    documented rather than silently tolerated everywhere.
+    documented rather than silently tolerated everywhere. A test that drives an
+    endpoint's failure path on purpose declares it with
+    ``@pytest.mark.allow_http_errors("/endpoint")``.
+
+    The HTTP half matters because the mutating endpoints answer with status 500
+    and ``{"ok": false}``, which the app reports through an ``alert()``. Without
+    this guard a server-side regression looks exactly like a passing test.
     """
     marker = request.node.get_closest_marker("allow_js_errors")
     allowed = tuple(marker.args) if marker else ()
+    http_marker = request.node.get_closest_marker("allow_http_errors")
+    allowed_http = tuple(http_marker.args) if http_marker else ()
 
     context = browser.new_context(viewport={"width": 1500, "height": 1200})
     pg = context.new_page()
     _install_esm_cache(pg)
 
     errors: list[str] = []
+    server_errors: list[str] = []
 
     def record(text: str) -> None:
         if any(noise in text for noise in _CONSOLE_NOISE):
@@ -138,8 +147,16 @@ def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
             return
         errors.append(text)
 
+    def record_response(response) -> None:
+        if response.status < 500:
+            return
+        if any(ok in response.url for ok in allowed_http):
+            return
+        server_errors.append(f"{response.status} {response.request.method} {response.url}")
+
     pg.on("pageerror", lambda exc: record(str(exc)))
     pg.on("console", lambda msg: record(msg.text) if msg.type == "error" else None)
+    pg.on("response", record_response)
 
     try:
         yield pg
@@ -147,6 +164,7 @@ def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
         context.close()
 
     assert not errors, "uncaught JavaScript errors:\n" + "\n".join(errors)
+    assert not server_errors, "server returned 5xx:\n" + "\n".join(server_errors)
 
 
 # ── page helpers ────────────────────────────────────────────────────────────
@@ -2832,6 +2850,47 @@ def test_selection_add_note_writes_a_tagged_comment(page: Page, server: Prosevie
         in path.read_text(encoding="utf-8"),
         message="tagged note never reached the file",
     )
+
+
+@pytest.mark.allow_http_errors("/insert-todo")
+def test_stale_selection_reports_an_error_instead_of_annotating_the_wrong_paragraph(
+    page: Page, server: ProseviewServer
+):
+    """A selection that no longer matches the file must not silently relocate.
+
+    The annotation used to fall back to the first paragraph of the scene, so a
+    passage edited in another editor since the page loaded put the comment at
+    the top of the file with a success message. Now the endpoint answers 500 and
+    the page surfaces it -- hence the ``allow_http_errors`` marker, which also
+    proves the fixture's 5xx guard fires.
+    """
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+    open_scene(page, server)
+
+    # Post the selection the page would send if its anchor paragraph had been
+    # rewritten in another editor. Editing the file on disk instead would trip
+    # live reload and tear the selection down before the request went out.
+    result = page.evaluate(
+        """async (absPath) => {
+            const r = await fetch('/insert-todo', {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify({
+                    abs_path: absPath,
+                    selection_text: 'a paragraph that no longer exists in this scene',
+                    txt_line_offset: 0,
+                    todo_text: 'should never land',
+                }),
+            });
+            return {status: r.status, body: await r.json()};
+        }""",
+        str(path),
+    )
+
+    assert result["status"] == 500
+    assert "Could not find the selected passage" in result["body"]["error"]
+    assert path.read_text(encoding="utf-8") == before, "a rejected annotation must not touch the file"
 
 
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):

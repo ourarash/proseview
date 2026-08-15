@@ -698,6 +698,10 @@
         [data-view="scene"] .modal { display: block; }
         #file-preview-panel { display: none; }
         [data-view="file"] #file-preview-panel { display: block; }
+        /* One gutter for the whole panel. The body used to carry an inline
+           `padding: 0` that beat .modal-body's 60px, so the header and the prose
+           sat flush against the sidebar with no breathing room at all. */
+        #file-preview-panel { padding: 0 60px; }
         /* Hide dashboard chrome while reading a scene or browsing a file
            so the routed view fills the available space. */
         [data-view="scene"] .top-banner,
@@ -734,8 +738,45 @@
         .repo-preview-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .repo-preview-path { font-size: 14px; color: var(--text-main); font-weight: 600; word-break: break-all; }
         .repo-preview-sub { font-size: 11px; color: var(--text-muted); }
-        .repo-preview-body { padding: 20px 30px; overflow-y: auto; overflow-x: hidden; word-break: break-word; overflow-wrap: break-word; font-family: var(--font-reading); font-size: 15px; line-height: 1.75; color: var(--text-reading); max-width: 860px; }
+        .repo-preview-body { padding: 0 0 60px 0; overflow-y: auto; overflow-x: hidden; word-break: break-word; overflow-wrap: break-word; font-family: var(--font-reading); font-size: 15px; line-height: 1.75; color: var(--text-reading); max-width: 860px; }
         .repo-preview-body h1, .repo-preview-body h2, .repo-preview-body h3 { font-family: Inter, system-ui, sans-serif; color: var(--text-main); }
+        /* Markdown tables and rules, for every surface that renders Markdown
+           through renderSafeMarkdown: repo file previews and Discuss output.
+           The global `table { width: 100% }` above is for the scene table, so
+           these need their own borders and spacing. */
+        .md-table-scroll { overflow-x: auto; margin: 1.4em 0; }
+        .repo-preview-body .md-table-scroll table,
+        .discuss-message .md-table-scroll table {
+            width: auto; min-width: 100%; border-collapse: collapse;
+            font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.5;
+        }
+        .repo-preview-body .md-table-scroll th,
+        .repo-preview-body .md-table-scroll td,
+        .discuss-message .md-table-scroll th,
+        .discuss-message .md-table-scroll td {
+            border: 1px solid var(--border); padding: 7px 12px; text-align: left;
+            vertical-align: top; white-space: normal;
+        }
+        .repo-preview-body .md-table-scroll th,
+        .discuss-message .md-table-scroll th {
+            background: var(--surface-muted); color: var(--text-main); font-weight: 600;
+        }
+        .repo-preview-body .md-table-scroll tbody tr:nth-child(even),
+        .discuss-message .md-table-scroll tbody tr:nth-child(even) {
+            background: var(--surface-muted);
+        }
+        .repo-preview-body hr, .discuss-message hr {
+            border: 0; border-top: 1px solid var(--border); margin: 2em 0;
+        }
+        .repo-preview-body del, .discuss-message del { color: var(--text-muted); }
+        .md-image { max-width: 100%; height: auto; border-radius: 6px; margin: 0.6em 0; }
+        .repo-preview-body p > .md-image:only-child, .discuss-message p > .md-image:only-child { display: block; }
+        .md-image-placeholder {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 1px 8px; border: 1px dashed var(--border); border-radius: 5px;
+            color: var(--text-muted); font-size: 0.9em; font-style: italic;
+        }
+        .md-image-placeholder::before { content: "\1F5BC"; font-style: normal; opacity: 0.7; }
         .repo-preview-body pre { background: var(--surface-code); padding: 12px 16px; border-radius: 8px; overflow-x: auto; border: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
         .repo-preview-body code { background: var(--surface-code); padding: 2px 6px; border-radius: 4px; font-size: 0.87em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--border); color: var(--primary); }
         .repo-preview-body pre > code { background: transparent; padding: 0; border: none; color: inherit; font-size: inherit; }
@@ -764,6 +805,7 @@
             .scene-card-related { border-left: none; border-top: 1px solid var(--border-strong); padding-left: 0; padding-top: 20px; }
             .goals-grid { grid-template-columns: 1fr; }
             .modal-body { padding: 28px; }
+            #file-preview-panel { padding: 0 20px; }
             .scene-stat-grid { grid-template-columns: repeat(2, 1fr); }
         }
         /* Status badges */

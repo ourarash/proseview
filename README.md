@@ -17,7 +17,7 @@ proseview --root /path/to/your/novel
 ```
 
 Already writing in Obsidian, Vim, or another Markdown editor? Keep doing that.
-Proseview reads the same `.md` files once they follow the scene layout below.
+Proseview reads the same `.md` files, in whatever layout you already use.
 
 [![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
@@ -126,8 +126,8 @@ proseview --root /path/to/your/novel
 
 ## 📁 What proseview expects
 
-A Proseview scene is a lowercase `.md` file exactly one folder below the
-configured manuscript directory. The default layout is:
+A Proseview scene is any `.md` file under the manuscript directory, at any
+depth. The conventional layout is:
 
 ```text
 my-novel/
@@ -140,12 +140,28 @@ my-novel/
 └── .proseview.yaml          # optional
 ```
 
-Chapter folder names are up to you; folders and files are read in name order.
-Root-level manuscript files, deeper nested files, `README.md`, and other
-extensions such as `.markdown` are not indexed as scenes. You can change the
-manuscript folder with `manuscript_path`, but the one-folder-deep scene layout
-still applies. Git is optional for the core dashboard, but revision history,
-goals, streaks, and recent changes require the root to be a Git worktree.
+**Already have a folder of Markdown?** Point Proseview at it. If there is no
+`manuscript/` directory, the whole folder is the manuscript — so an Obsidian
+vault, a flat pile of chapter files, or any nesting you already use works with
+no configuration and no reorganising:
+
+```text
+my-vault/                    my-novel/
+├── daily.md                 ├── 01-opening.md
+├── chapters/                ├── 02-meeting.md
+│   └── one.md               └── 03-aftermath.md
+└── .obsidian/   (skipped)
+```
+
+Scenes group into chapters by their first folder below the manuscript root, and
+a `chapter:` in frontmatter always overrides that. Folders and files are read in
+name order. `README.md`, dotfiles, hidden folders, and tool directories such as
+`.obsidian/`, `.git/`, and `node_modules/` are never indexed; nor are extensions
+other than `.md`. Set `manuscript_path` to point somewhere else, or to `./` to
+force the repo root.
+
+Git is optional for the core dashboard, but revision history, goals, streaks,
+and recent changes require the root to be a Git worktree.
 
 Scene files use simple frontmatter:
 
@@ -271,12 +287,20 @@ it, and the export command explains how to install it when it is missing.
 
 ## ⚙️ Configuration
 
-`proseview` works with zero config when your files match the default
-`manuscript/<chapter>/<scene>.md` layout. Drop a `.proseview.yaml` at the repo
-root if you want to customize:
+`proseview` works with zero config against any folder of Markdown. Drop a
+`.proseview.yaml` at the repo root if you want to customize:
 
 ```yaml
-# Where the manuscript lives. Default: manuscript/
+# Whether rendered Markdown may load images: all | local | off.
+# `local` serves only files inside this repo; `off` shows alt text instead.
+# Remote images inside AI replies are refused unless you opt in, because
+# there the URL is the model's choice, not yours.
+images:
+  mode: all
+  remote_in_agent_output: false
+
+# Where the manuscript lives. Default: manuscript/, falling back to the
+# repo root when that folder does not exist. Use ./ to force the root.
 manuscript_path: manuscript/
 
 # Where character bios live. Default: story-bible/characters

@@ -56,6 +56,17 @@ editor:
 # Folders shown in the file tree alongside the manuscript.
 repo_tab:
   folders: [plans, continuity, outline, story-bible, docs, templates]
+
+# Whether rendered Markdown may load images.
+#   all   - repo images and remote URLs (default)
+#   local - only files inside this repo, served by this server
+#   off   - none; alt text is shown instead
+images:
+  mode: all
+  # Remote images inside AI replies stay off even at `all`: there the URL is
+  # chosen by the model, and loading it would tell that host you opened the
+  # document.
+  remote_in_agent_output: false
 """
 
 

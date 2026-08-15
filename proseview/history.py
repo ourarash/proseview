@@ -31,6 +31,8 @@ if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
 from .lexical import calculate_lexical_stats, count_words
+from .repo import CONTEXT_SKIP_DIRS
+from .scenes import resolve_manuscript_dir
 
 
 HISTORY_CACHE_PATH = Path(".proseview") / "history-cache.json"
@@ -112,7 +114,7 @@ def iter_manuscript_commits(root: Path, cfg: Config) -> Iterable[CommitInfo]:
         "log", "--first-parent", "--reverse", "--date=iso-strict",
         "--pretty=format:__PV__ %H %cI",
         "--name-only",
-        "--", cfg.manuscript_path,
+        "--", manuscript_pathspec(root, cfg),
     ])
     if code != 0:
         return []
@@ -152,20 +154,29 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
     # importable even if scenes changes shape later.
     from .scenes import extract_scene_text, split_frontmatter
 
-    manuscript_prefix = cfg.manuscript_subdir + "/"
+    manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
+    at_root = manuscript_dir.resolve() == root.resolve()
+    manuscript_prefix = "" if at_root else cfg.manuscript_subdir + "/"
     code, out, _ = _run_git(root, [
-        "ls-tree", "-r", "--name-only", sha, "--", cfg.manuscript_path,
+        "ls-tree", "-r", "--name-only", sha, "--", manuscript_pathspec(root, cfg),
     ])
     if code != 0:
         return _empty_row(sha, _committed_at_for(root, sha))
 
+    # Mirrors iter_scene_paths: any depth, no README, no tool directories. The
+    # old `len(parts) >= 3` here was the two-level assumption again, and would
+    # have reported zero words for every flat or deeply nested manuscript.
     paths = [
         p for p in out.splitlines()
         if p.endswith(".md")
         and Path(p).name.lower() != "readme.md"
+        and not Path(p).name.startswith(".")
         and p.startswith(manuscript_prefix)
-        and len(Path(p).parts) >= 3  # manuscript/<chapter>/<scene>.md
+        and not any(
+            part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in Path(p).parts[:-1]
+        )
     ]
+    strip = 0 if at_root else len(Path(manuscript_prefix.rstrip("/")).parts)
 
     total_words = 0
     scene_count = 0
@@ -179,7 +190,8 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
         text = extract_scene_text(body)
         total_words += count_words(text)
         scene_count += 1
-        chapters.add(Path(p).parts[-2])
+        rel_parts = Path(p).parts[strip:]
+        chapters.add(rel_parts[0] if len(rel_parts) > 1 else manuscript_dir.name)
         pieces.append(text)
 
     lex = calculate_lexical_stats("\n".join(pieces)) if pieces else None
@@ -324,6 +336,19 @@ def _parse_since_to_iso(since: str) -> str:
     return since
 
 
+def manuscript_pathspec(root: Path, cfg: Config) -> str:
+    """Git pathspec limiting a query to the manuscript.
+
+    ``cfg.manuscript_path`` is wrong for a repo with no ``manuscript/``
+    directory -- the whole repo is the manuscript there, and the literal
+    pathspec would match nothing, silently emptying history and the Goals panel.
+    """
+    manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
+    if manuscript_dir.resolve() == root.resolve():
+        return "."
+    return cfg.manuscript_path
+
+
 def working_copy_delta(root: Path, cfg: Config,
                        history: list[HistoryRow],
                        scenes: list[SceneStats] | None = None) -> WorkingCopyDelta:
@@ -357,7 +382,7 @@ def working_copy_delta(root: Path, cfg: Config,
     touched: set[str] = set()
     code, out, _ = _run_git(root, [
         "log", "--since=midnight", "--pretty=format:", "--name-only",
-        "--", cfg.manuscript_path,
+        "--", manuscript_pathspec(root, cfg),
     ])
     if code == 0:
         for line in out.splitlines():
@@ -365,7 +390,7 @@ def working_copy_delta(root: Path, cfg: Config,
             if s.endswith(".md") and s.startswith(cfg.manuscript_subdir + "/"):
                 touched.add(s)
 
-    code, out, _ = _run_git(root, ["status", "--porcelain", "--", cfg.manuscript_path])
+    code, out, _ = _run_git(root, ["status", "--porcelain", "--", manuscript_pathspec(root, cfg)])
     if code == 0:
         for line in out.splitlines():
             # Format: "XY PATH" (X and Y are status codes, path starts at col 3)

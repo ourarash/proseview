@@ -45,6 +45,28 @@ class RepoTabConfig:
     preview_max_bytes: int = DEFAULT_REPO_TAB_PREVIEW_MAX_BYTES
 
 
+#: Accepted values for ``images``, loosest first.
+IMAGE_MODES: tuple[str, ...] = ("all", "local", "off")
+
+
+@dataclass(frozen=True)
+class ImagesConfig:
+    """Whether rendered Markdown may load images, and from where.
+
+    ``all``   -- repo images and remote URLs both load.
+    ``local`` -- only files inside this repository, served by this server. A
+                 remote URL cannot report back who opened a document.
+    ``off``   -- nothing loads; every image shows its alt text.
+
+    ``remote_in_agent_output`` is separate on purpose. Discuss renders text an
+    agent produced, so a remote image there is chosen by the model rather than
+    by you; leaving this off keeps that surface quiet even at ``images: all``.
+    """
+
+    mode: str = "all"
+    remote_in_agent_output: bool = False
+
+
 @dataclass(frozen=True)
 class StoryConfig:
     """Which frontmatter keys carry the story-layer fields.
@@ -72,6 +94,7 @@ class Config:
     locations: tuple[str, ...] = ()
     editor: EditorConfig = field(default_factory=EditorConfig)
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
+    images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
 
     @property
@@ -137,6 +160,7 @@ class Config:
             locations=_coerce_str_tuple(raw.get("locations", ()), "locations"),
             editor=_coerce_editor(raw.get("editor")),
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
+            images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
         )
 
@@ -156,7 +180,7 @@ def _config_field_names() -> tuple[str, ...]:
         "manuscript_path", "characters_path", "skills_path",
         "target_words", "daily_target",
         "mattr_band", "mtld_band", "chapter_pattern",
-        "characters", "locations", "editor", "repo_tab", "story",
+        "characters", "locations", "editor", "repo_tab", "story", "images",
     )
 
 
@@ -237,6 +261,30 @@ def _coerce_repo_tab(v: Any) -> RepoTabConfig:
     if preview_max_bytes <= 0:
         raise ConfigError("'repo_tab.preview_max_bytes' must be a positive integer")
     return RepoTabConfig(folders=folders, preview_max_bytes=preview_max_bytes)
+
+
+def _coerce_images(v: Any) -> ImagesConfig:
+    defaults = ImagesConfig()
+    if v is None:
+        return defaults
+    # `images: off` is the shorthand people will reach for first.
+    if isinstance(v, str):
+        return ImagesConfig(mode=_validated_image_mode(v))
+    if isinstance(v, bool):
+        return ImagesConfig(mode="all" if v else "off")
+    if not isinstance(v, dict):
+        raise ConfigError(f"'images' must be a mapping, string, or boolean, got {v!r}")
+    mode = _validated_image_mode(v.get("mode", defaults.mode))
+    remote_raw = v.get("remote_in_agent_output", defaults.remote_in_agent_output)
+    if not isinstance(remote_raw, bool):
+        raise ConfigError("'images.remote_in_agent_output' must be true or false")
+    return ImagesConfig(mode=mode, remote_in_agent_output=remote_raw)
+
+
+def _validated_image_mode(v: Any) -> str:
+    if not isinstance(v, str) or v.strip().lower() not in IMAGE_MODES:
+        raise ConfigError(f"'images.mode' must be one of {', '.join(IMAGE_MODES)}; got {v!r}")
+    return v.strip().lower()
 
 
 def _parse_yaml(text: str) -> dict[str, Any]:

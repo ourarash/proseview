@@ -638,6 +638,9 @@ def render_html_report(
         "sidebar_tree_json": _js_json(sidebar_nodes),
         "repository_tree_json": _js_json(repository_nodes),
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
+        "images_config_json": _js_json(
+            {"mode": cfg.images.mode, "remoteInAgentOutput": cfg.images.remote_in_agent_output}
+        ),
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),
         "location_chart_json": _js_json(

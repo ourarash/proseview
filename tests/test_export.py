@@ -84,13 +84,27 @@ def test_compiled_markdown_nests_scenes_under_chapter_headings(tmp_path: Path):
     assert "The ledger balanced." in markdown
 
 
-def test_missing_manuscript_and_empty_manuscript_fail_clearly(tmp_path: Path):
-    with pytest.raises(ExportError, match="No manuscript directory"):
+def test_a_folder_with_no_markdown_fails_clearly(tmp_path: Path):
+    """A missing ``manuscript/`` is no longer an error by itself.
+
+    The whole folder is treated as the manuscript in that case, so the honest
+    complaint is that there is nothing to export -- not that a directory the
+    user never had is absent.
+    """
+    with pytest.raises(ExportError, match="No scenes found"):
         collect_scene_documents(tmp_path, Config())
 
     (tmp_path / "manuscript").mkdir()
     with pytest.raises(ExportError, match="No scenes found"):
         collect_scene_documents(tmp_path, Config())
+
+
+def test_export_reads_a_flat_folder_with_no_manuscript_directory(tmp_path: Path):
+    (tmp_path / "one.md").write_text("---\ntitle: One\n---\n\n# One\n\nProse.\n", encoding="utf-8")
+
+    documents = collect_scene_documents(tmp_path, Config())
+
+    assert [d.title for d in documents] == ["One"]
 
 
 def test_missing_pandoc_explains_how_to_install_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -238,7 +238,7 @@
                 <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="openDiscuss(this)" style="flex-shrink:0; cursor:pointer;">Discuss</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
             </div>
         </div>
-        <div id="filePreviewBody" class="modal-body repo-preview-body" style="padding:0 0 60px 0;"></div>
+        <div id="filePreviewBody" class="modal-body repo-preview-body"></div>
     </div>
 
     <dialog id="searchPalette" class="search-palette" aria-labelledby="searchPaletteTitle"></dialog>
@@ -380,6 +380,7 @@
         const sidebarTree = {{ sidebar_tree_json | safe }};
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
+        const imagesConfig = {{ images_config_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
         const storyModel = {{ story_json | safe }};
         const repoFileByPath = {};

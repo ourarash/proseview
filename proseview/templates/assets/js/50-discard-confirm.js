@@ -13,8 +13,10 @@
         }
 
         var _unsavedDialog = null;
-        function showUnsavedDialog() {
+        function showUnsavedDialog(options) {
             if (_unsavedDialog) return;
+            options = options || {};
+            var returnFocus = document.activeElement;
             var overlay = document.createElement('div');
             overlay.className = 'unsaved-dialog-overlay';
             overlay.innerHTML =
@@ -29,20 +31,33 @@
                 '</div>';
             document.body.appendChild(overlay);
             _unsavedDialog = overlay;
+            var inerted = Array.from(document.body.children).filter(function(el) {
+                return el !== overlay && !el.inert;
+            });
+            inerted.forEach(function(el) { el.inert = true; });
             function close() {
                 if (!_unsavedDialog) return;
                 document.removeEventListener('keydown', onKey, true);
                 _unsavedDialog.remove();
                 _unsavedDialog = null;
+                inerted.forEach(function(el) { el.inert = false; });
+                if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+                    returnFocus.focus({preventScroll: true});
+                }
             }
             function onKey(e) {
                 if (e.key === 'Escape') {
                     e.preventDefault(); e.stopPropagation();
                     close();
-                } else if (e.key === 'Enter') {
-                    e.preventDefault(); e.stopPropagation();
-                    close();
-                    saveSceneEdit();
+                } else if (e.key === 'Tab') {
+                    var controls = Array.from(overlay.querySelectorAll('button:not([disabled])'));
+                    if (!controls.length) return;
+                    var first = controls[0], last = controls[controls.length - 1];
+                    if (e.shiftKey && document.activeElement === first) {
+                        last.focus(); e.preventDefault(); e.stopPropagation();
+                    } else if (!e.shiftKey && document.activeElement === last) {
+                        first.focus(); e.preventDefault(); e.stopPropagation();
+                    }
                 }
             }
             overlay.addEventListener('click', function(e) {
@@ -52,9 +67,11 @@
                 var action = btn.dataset.action;
                 close();
                 if (action === 'save') {
-                    saveSceneEdit();
+                    saveSceneEdit(options.onContinue);
                 } else if (action === 'discard') {
-                    cancelSceneEdit();
+                    if (cancelSceneEdit() !== false && typeof options.onContinue === 'function') {
+                        options.onContinue();
+                    }
                 }
             });
             document.addEventListener('keydown', onKey, true);

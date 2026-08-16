@@ -628,6 +628,7 @@
         function rawImgNode(html, ctx) {
             // Parse a literal <img> tag out of an `html` token without ever
             // handing the markup to innerHTML.
+            if (ctx && ctx.allowRawImages === false) return null;
             var match = /^\s*<img\b([^>]*)>\s*$/i.exec(String(html || ''));
             if (!match) return null;
             var attrs = {};
@@ -2008,7 +2009,36 @@
         });
         (function initDiscussResize() {
             var handle = document.getElementById('discussResizeHandle'); var dragging = false; var startX = 0; var startWidth = 0;
-            handle.addEventListener('mousedown', function(event) { dragging = true; startX = event.clientX; startWidth = document.getElementById('discussPanel').offsetWidth; handle.classList.add('is-dragging'); document.body.style.userSelect = 'none'; event.preventDefault(); });
-            document.addEventListener('mousemove', function(event) { if (!dragging) return; var width = Math.max(340, Math.min(window.innerWidth - 180, startWidth + startX - event.clientX)); document.documentElement.style.setProperty('--utility-dock-w', width + 'px'); });
+            function setWidth(width) {
+                var bounds = workspaceDockWidthBounds(340);
+                width = Math.max(bounds.min, Math.min(bounds.max, width));
+                var zoomed = document.documentElement.dataset.cssZoom === 'true';
+                document.documentElement.style.setProperty(zoomed ? '--css-zoom-dock-width' : '--utility-dock-w', width + 'px');
+                var zoom = workspaceZoomFactor();
+                updateSeparatorValue(handle, width * zoom, bounds.min * zoom, bounds.max * zoom);
+            }
+            function currentWidth() {
+                var rendered = document.getElementById('discussPanel').getBoundingClientRect().width;
+                if (rendered > 0) return rendered / workspaceZoomFactor();
+                return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 504;
+            }
+            handle.addEventListener('mousedown', function(event) { dragging = true; startX = event.clientX; startWidth = currentWidth(); handle.classList.add('is-dragging'); document.body.style.userSelect = 'none'; event.preventDefault(); });
+            document.addEventListener('mousemove', function(event) { if (!dragging) return; setWidth(startWidth + (startX - event.clientX) / workspaceZoomFactor()); });
             document.addEventListener('mouseup', function() { if (!dragging) return; dragging = false; handle.classList.remove('is-dragging'); document.body.style.userSelect = ''; });
+            handle.addEventListener('keydown', function(event) {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                var bounds = workspaceDockWidthBounds(340);
+                var current = currentWidth();
+                var next = current;
+                if (event.key === 'Home') next = bounds.min;
+                else if (event.key === 'End') next = bounds.max;
+                else next += (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 50 : 20);
+                setWidth(next);
+                event.preventDefault();
+            });
+            var initialBounds = workspaceDockWidthBounds(340);
+            var initialWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 504;
+            setWidth(Math.min(initialBounds.max, Math.max(initialBounds.min, initialWidth)));
+            window.addEventListener('resize', function() { setWidth(currentWidth()); });
+            window.addEventListener('proseview:workspace-metrics', function() { setWidth(currentWidth()); });
         })();

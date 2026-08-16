@@ -125,6 +125,10 @@
             // Guard against a path that is not in the scene index: rendering
             // meta[undefined] throws and leaves the user on a dead click.
             if (paths.indexOf(p) === -1) return;
+            if (guardDirtySceneNavigation()) {
+                showUnsavedDialog({onContinue: function() { openSceneModal(p); }});
+                return false;
+            }
             saveActiveScrollPosition();
             curIdx = paths.indexOf(p);
             hls = _loadHighlightPrefs();
@@ -138,16 +142,30 @@
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
+            return true;
         }
 
         function openRelatedDoc(path) {
-            closeSceneModal();
+            if (guardDirtySceneNavigation()) {
+                showUnsavedDialog({onContinue: function() { openRelatedDoc(path); }});
+                return false;
+            }
+            if (!closeSceneModal({route: false})) return false;
             previewRepoFile(path);
+            return true;
         }
 
         function updateModal() {
             const p = paths[curIdx], m = meta[p], b = document.getElementById('modalBody'), a = document.getElementById('modalAlerts'), s = document.getElementById('modalStats');
-            document.getElementById('modalTitle').innerText = p;
+            const modalTitle = document.getElementById('modalTitle');
+            modalTitle.replaceChildren();
+            const literaryTitle = document.createElement('span');
+            literaryTitle.className = 'scene-literary-title';
+            literaryTitle.textContent = m.title || p.split('/').pop().replace(/\.md$/i, '').replace(/[-_]+/g, ' ');
+            const technicalPath = document.createElement('span');
+            technicalPath.className = 'scene-technical-path';
+            technicalPath.textContent = p;
+            modalTitle.append(literaryTitle, technicalPath);
             const _modalEditorBtn = document.getElementById('modalEditorBtn');
             _modalEditorBtn.style.display = 'flex';
             _modalEditorBtn.href = buildEditorUrl(m.abs_path);
@@ -183,11 +201,13 @@
             allBtn.className = 'alert-tag-all';
             allBtn.type = 'button';
             allBtn.textContent = 'All';
+            allBtn.setAttribute('aria-pressed', 'false');
             allBtn.onclick = toggleAllHighlights;
             row.appendChild(allBtn);
             PASS_ORDER.forEach(name => addTag(row, name, PASS_LABELS[name]));
             a.appendChild(row);
             render();
+            syncSceneDisclosureState(true);
         }
 
         function updateFontSize(v) {
@@ -382,31 +402,41 @@
             t.innerText = "Character Bible: " + name;
             document.getElementById('modalEditorBtn').style.display = 'none';
             s.innerHTML = "";
-            a.innerHTML = '<div class="alert-tag alert-tag-active" onclick="updateModal()">\u2190 Back to Scene</div>';
-            b.innerHTML = '<div class="bio-card">' + marked.parse(bio) + '</div>';
+            a.innerHTML = '<button type="button" class="alert-tag alert-tag-active" onclick="updateModal()" aria-label="Back to scene">\u2190 Back to Scene</button>';
+            const analysisDetails = document.getElementById('sceneAnalysisDetails');
+            if (analysisDetails) analysisDetails.open = true;
+            b.replaceChildren();
+            const bioCard = document.createElement('div');
+            bioCard.className = 'bio-card';
+            renderSafeMarkdown(bioCard, bio, {basePath: '', allowRawImages: false});
+            b.appendChild(bioCard);
             document.querySelector('.modal-content').scrollTop = 0;
         }
 
         function addTag(a, id, txt) {
-            const t = document.createElement('div');
+            const t = document.createElement('button');
+            t.type = 'button';
             t.className = 'alert-tag';
             t.id = 'tag-' + id;
             t.innerText = txt;
+            t.setAttribute('aria-pressed', hls[id] ? 'true' : 'false');
             if (hls[id]) t.classList.add('alert-tag-active');
             t.onclick = () => toggleHighlight(id);
             a.appendChild(t);
         }
         function toggleHighlight(id) {
             hls[id] = !hls[id];
-            document.getElementById('tag-'+id).classList.toggle('alert-tag-active', hls[id]);
+            const toggle = document.getElementById('tag-'+id);
+            toggle.classList.toggle('alert-tag-active', hls[id]);
+            toggle.setAttribute('aria-pressed', hls[id] ? 'true' : 'false');
             _saveHighlightPrefs();
             syncAllBtn();
             if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
         }
-        function syncAllBtn() { const btn = document.getElementById('tag-all'); if (!btn) return; const anyOn = PASS_ORDER.some(k => hls[k]); btn.textContent = anyOn ? 'Clear' : 'All'; }
+        function syncAllBtn() { const btn = document.getElementById('tag-all'); if (!btn) return; const anyOn = PASS_ORDER.some(k => hls[k]); btn.textContent = anyOn ? 'Clear' : 'All'; btn.setAttribute('aria-pressed', anyOn ? 'true' : 'false'); }
         function toggleAllHighlights() {
             const anyOn = PASS_ORDER.some(k => hls[k]);
-            PASS_ORDER.forEach(k => { hls[k] = !anyOn; const el = document.getElementById('tag-'+k); if (el) el.classList.toggle('alert-tag-active', hls[k]); });
+            PASS_ORDER.forEach(k => { hls[k] = !anyOn; const el = document.getElementById('tag-'+k); if (el) { el.classList.toggle('alert-tag-active', hls[k]); el.setAttribute('aria-pressed', hls[k] ? 'true' : 'false'); } });
             _saveHighlightPrefs();
             syncAllBtn();
             if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
@@ -418,11 +448,11 @@
 
         function renderCharacterTags(chars) {
             return chars.map(function(c) {
-                return '<div class="sc-char-tag" data-char-name="' +
+                return '<button type="button" class="sc-char-tag" data-char-name="' +
                     attrEscape(c) +
                     '" onclick="openBio(this.dataset.charName)" title="Read bio">' +
                     escHtml(c) +
-                    '</div>';
+                    '</button>';
             }).join('');
         }
 
@@ -459,7 +489,7 @@
                     const docHref = buildEditorUrl(doc.abs_path || '');
                     relatedHtml += '<li class="related-doc-item">' +
                                    '<button type="button" class="related-doc-link" data-path="' + attrEscape(doc.path || '') + '" onclick="openRelatedDoc(this.dataset.path)">' + escHtml(doc.path || '') + '</button>' +
-                                   '<a class="related-doc-editor-icon" href="' + docHref + '" target="_blank" title="Open in ' + attrEscape(editorLabel) + '">\u2197</a>' +
+                                   '<a class="related-doc-editor-icon" href="' + attrEscape(docHref) + '" target="_blank" title="Open in ' + attrEscape(editorLabel) + '">\u2197</a>' +
                                    '</li>';
                 });
                 relatedHtml += '</ul>';
@@ -486,20 +516,20 @@
                            '<div class="scene-card-meta">' +
                            '<div class="sc-row scene-card-top">' +
                            '<span class="sc-label">Scene File</span>' +
-                           '<a class="editor-btn" href="' + editorHref + '" target="_blank">\u2197 Open in ' + editorLabel + '</a>' +
+                           '<a class="editor-btn" href="' + attrEscape(editorHref) + '" target="_blank">\u2197 Open in ' + escHtml(editorLabel) + '</a>' +
                            '</div>' +
-                           '<div class="sc-row"><span class="sc-label">POV</span><span class="sc-value">' + (fm.pov || "Unknown") + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">POV</span><span class="sc-value">' + escHtml(String(fm.pov || "Unknown")) + '</span></div>' +
                            storyRow(threadKey, fm[threadKey]) +
-                           '<div class="sc-row"><span class="sc-label">When</span><span class="sc-value">' + (fm.when || "Unknown") + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">When</span><span class="sc-value">' + escHtml(String(fm.when || "Unknown")) + '</span></div>' +
                            storyRow(dayKey, fm[dayKey]) +
-                           '<div class="sc-row"><span class="sc-label">Where</span><span class="sc-value">' + (fm.where || fm.location || "Unknown") + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">Where</span><span class="sc-value">' + escHtml(String(fm.where || fm.location || "Unknown")) + '</span></div>' +
                            '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
                            renderCharacterTags(chars) + '</div></div>' +
                            '</div>' +
                            '<div class="scene-card-arc">' +
-                           '<div class="sc-row"><span class="sc-label">Goal</span><span class="sc-value">' + (fm.goal || "Not defined") + '</span></div>' +
-                           '<div class="sc-row"><span class="sc-label">Conflict</span><span class="sc-value">' + (fm.conflict || "Not defined") + '</span></div>' +
-                           '<div class="sc-row"><span class="sc-label">Outcome</span><span class="sc-value">' + (fm.outcome || "Not defined") + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">Goal</span><span class="sc-value">' + escHtml(String(fm.goal || "Not defined")) + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">Conflict</span><span class="sc-value">' + escHtml(String(fm.conflict || "Not defined")) + '</span></div>' +
+                           '<div class="sc-row"><span class="sc-label">Outcome</span><span class="sc-value">' + escHtml(String(fm.outcome || "Not defined")) + '</span></div>' +
                            '</div>' +
                            relatedHtml +
                            '</div>';
@@ -536,12 +566,50 @@
             // ProseMirror is the only renderer. If the module is still
             // loading, the inline ESM bootstrap at the bottom of the
             // template re-invokes render() once window._PM is ready.
-            b.innerHTML = cardHtml + tasksHtml + '<div id="sceneProseHost"></div>';
+            b.innerHTML = '<details id="sceneContextDetails" class="scene-secondary-details">' +
+                '<summary>Scene context and tasks</summary><div class="scene-secondary-body">' +
+                cardHtml + tasksHtml + '</div></details><div id="sceneProseHost"></div>';
             if (window._PM) mountProseView(p);
             b.scrollTop = 0;
         }
 
+        function guardDirtySceneNavigation() {
+            return document.documentElement.dataset.view === 'scene' && _pmEditMode && _pmDirty;
+        }
+
+        var _lastSceneDisclosureCompact = null;
+        function syncSceneDisclosureState(force) {
+            const sceneContent = document.querySelector('#sceneModal .modal-content');
+            const contentWidth = sceneContent ? sceneContent.getBoundingClientRect().width : window.innerWidth;
+            const compact = window.innerWidth <= 1100 || contentWidth <= 760 || document.documentElement.dataset.cssZoom === 'true';
+            if (!force && compact === _lastSceneDisclosureCompact) return;
+            _lastSceneDisclosureCompact = compact;
+            const analysis = document.getElementById('sceneAnalysisDetails');
+            const context = document.getElementById('sceneContextDetails');
+            if (compact) {
+                if (analysis) analysis.open = false;
+                if (context) context.open = false;
+            }
+        }
+
+        window.addEventListener('resize', function() { syncSceneDisclosureState(false); });
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', function() { syncSceneDisclosureState(false); });
+        }
+        new MutationObserver(function() { syncSceneDisclosureState(false); }).observe(
+            document.documentElement,
+            {attributes: true, attributeFilter: ['data-css-zoom']}
+        );
+        if (window.ResizeObserver) {
+            const sceneContent = document.querySelector('#sceneModal .modal-content');
+            if (sceneContent) new ResizeObserver(function() { syncSceneDisclosureState(false); }).observe(sceneContent);
+        }
+
         function navigateScene(d) {
+            if (guardDirtySceneNavigation()) {
+                showUnsavedDialog({onContinue: function() { navigateScene(d); }});
+                return false;
+            }
             _pmEditMode = false;
             saveActiveScrollPosition();
             curIdx = Math.max(0, Math.min(paths.length - 1, curIdx + d));
@@ -552,8 +620,14 @@
                 restoreActiveScrollPosition();
                 if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             }
+            return true;
         }
-        function closeSceneModal() {
+        function closeSceneModal(options) {
+            options = options || {};
+            if (guardDirtySceneNavigation()) {
+                showUnsavedDialog({onContinue: closeSceneModal});
+                return false;
+            }
             saveActiveScrollPosition();
             hideSelectionPill();
             clearSceneSelectionMemory();
@@ -565,10 +639,11 @@
             if (editBar) editBar.hidden = true;
             exitFocusMode();
             delete document.documentElement.dataset.view;
-            routeToHash('/tab/' + currentTab, true);
+            if (options.route !== false) routeToHash('/tab/' + currentTab, true);
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             restoreActiveScrollPosition();
+            return true;
         }
 
         function toggleFocusMode() {

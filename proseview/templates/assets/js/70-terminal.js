@@ -13,6 +13,7 @@
         var _termSend = null;
         var _termContextFile = null;
         var _termContextSel = null;
+        var _termReturnFocus = null;
         // Hash hydration runs before the preview function's source position, so
         // lifecycle state used by it must be initialized at bundle entry.
         var _repoPreviewRequestVersion = 0;
@@ -39,19 +40,42 @@
         function _renderTabs() {
             var bar = document.getElementById('terminalTabs');
             if (!bar) return;
+            bar.setAttribute('role', 'tablist');
+            bar.setAttribute('aria-label', 'Terminal sessions');
             bar.innerHTML = '';
-            _termSessions.forEach(function(s) {
+            _termSessions.forEach(function(s, sessionIndex) {
                 var tab = document.createElement('div');
                 tab.className = 'terminal-tab' + (s.id === _termActiveId ? ' active' : '');
                 tab.title = s.contextFile ? (s.label + ' — ' + s.contextFile) : s.label;
-                var label = document.createElement('span');
+                var label = document.createElement('button');
+                label.type = 'button';
                 label.className = 'terminal-tab-label';
+                label.dataset.sessionId = s.id;
+                label.setAttribute('role', 'tab');
+                label.setAttribute('aria-selected', s.id === _termActiveId ? 'true' : 'false');
+                label.tabIndex = s.id === _termActiveId ? 0 : -1;
                 label.textContent = s.label;
                 label.onclick = function() { _setActiveSession(s.id); };
+                label.onkeydown = function(event) {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    var next = sessionIndex;
+                    if (event.key === 'Home') next = 0;
+                    else if (event.key === 'End') next = _termSessions.length - 1;
+                    else if (event.key === 'ArrowRight') next = (sessionIndex + 1) % _termSessions.length;
+                    else next = (sessionIndex - 1 + _termSessions.length) % _termSessions.length;
+                    var nextId = _termSessions[next].id;
+                    _setActiveSession(nextId);
+                    var nextLabel = Array.from(bar.querySelectorAll('.terminal-tab-label')).find(function(candidate) {
+                        return candidate.dataset.sessionId === nextId;
+                    });
+                    if (nextLabel) nextLabel.focus();
+                };
                 var closeBtn = document.createElement('button');
                 closeBtn.className = 'terminal-tab-close';
                 closeBtn.innerHTML = '&times;';
                 closeBtn.title = 'Close ' + s.label;
+                closeBtn.setAttribute('aria-label', 'Close ' + s.label);
                 closeBtn.onclick = function(e) { e.stopPropagation(); _closeSession(s.id); };
                 tab.appendChild(label);
                 tab.appendChild(closeBtn);
@@ -170,6 +194,11 @@
             for (var i = 0; i < _termSessions.length; i++) if (_termSessions[i].id === id) { idx = i; break; }
             if (idx < 0) return;
             var s = _termSessions[idx];
+            var closingTab = Array.from(document.querySelectorAll('.terminal-tab')).find(function(tab) {
+                var label = tab.querySelector('.terminal-tab-label');
+                return label && label.dataset.sessionId === id;
+            });
+            var restoreTabFocus = !!(closingTab && closingTab.contains(document.activeElement));
             if (s.termId) {
                 fetch('/terminal-kill', {
                     method: 'POST', headers: pvHeaders(),
@@ -187,6 +216,16 @@
                 _renderTabs();
                 document.getElementById('terminalPanel').hidden = true;
                 document.body.classList.remove('terminal-right-open');
+                var returnTarget = _termReturnFocus;
+                if (!returnTarget || !returnTarget.isConnected || returnTarget.getClientRects().length === 0) {
+                    returnTarget = document.querySelector('#sceneMoreBtn:not([hidden])') ||
+                        document.querySelector('#filePreviewRefreshBtn:not([hidden])') ||
+                        document.querySelector('#sidebarOpenBtn:not([hidden])');
+                }
+                if (returnTarget && typeof returnTarget.focus === 'function') {
+                    returnTarget.focus({preventScroll: true});
+                }
+                _termReturnFocus = null;
                 if (_pendingReload) { _pendingReload = false; location.reload(); }
                 return;
             }
@@ -196,10 +235,17 @@
             } else {
                 _renderTabs();
             }
+            if (restoreTabFocus) {
+                var activeLabel = Array.from(document.querySelectorAll('.terminal-tab-label')).find(function(label) {
+                    return label.dataset.sessionId === _termActiveId;
+                });
+                if (activeLabel) activeLabel.focus({preventScroll: true});
+            }
         }
 
         function _spawnSession(type, command, contextFile, contextSel, initialPrompt) {
             var panel = document.getElementById('terminalPanel');
+            if (panel.hidden) _termReturnFocus = document.activeElement;
             panel.hidden = false;
             _applyTerminalDock();
             var seq = ++_termSeq[type];
@@ -300,6 +346,20 @@
             var fitAddon = (typeof FitAddon !== 'undefined') ? new FitAddon.FitAddon() : null;
             if (fitAddon) { term.loadAddon(fitAddon); session.fit = fitAddon; }
             term.open(mount);
+            var terminalInput = mount.querySelector('.xterm-helper-textarea');
+            if (terminalInput) {
+                terminalInput.setAttribute('aria-describedby', 'terminalKeyboardHelp');
+                terminalInput.setAttribute('aria-keyshortcuts', 'Shift+Tab');
+                mount.addEventListener('keydown', function(event) {
+                    if (event.target !== terminalInput || event.key !== 'Tab' || !event.shiftKey) return;
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    var activeTab = Array.from(document.querySelectorAll('.terminal-tab-label')).find(function(label) {
+                        return label.dataset.sessionId === session.id;
+                    });
+                    if (activeTab) activeTab.focus({preventScroll: true});
+                }, true);
+            }
             if (fitAddon) {
                 requestAnimationFrame(function() { try { fitAddon.fit(); } catch(e) {} });
                 var ro = new ResizeObserver(function() { try { fitAddon.fit(); } catch(e) {} });
@@ -377,6 +437,8 @@
             var rightOpen = (_termDock === 'right') && !panel.hidden;
             if (rightOpen && typeof hideDiscussForTerminal === 'function') hideDiscussForTerminal();
             document.body.classList.toggle('terminal-right-open', rightOpen);
+            if (panel.hidden) _syncTerminalResizeHandle();
+            else _setTerminalPanelSize(_terminalCurrentSize());
             // Refit every session — orientation change resizes both axes.
             _termSessions.forEach(function(s) {
                 if (s.fit) requestAnimationFrame(function() { try { s.fit.fit(); } catch(e) {} });
@@ -387,6 +449,46 @@
             _termDock = (_termDock === 'bottom') ? 'right' : 'bottom';
             try { localStorage.setItem('proseview-terminal-dock', _termDock); } catch(e) {}
             _applyTerminalDock();
+        }
+
+        function _terminalResizeBounds() {
+            var zoom = workspaceZoomFactor();
+            var logicalHeight = window.innerHeight / zoom;
+            return _termDock === 'right'
+                ? workspaceDockWidthBounds(320)
+                : {min: 200, max: Math.max(200, logicalHeight - 240)};
+        }
+
+        function _terminalCurrentSize() {
+            var panel = document.getElementById('terminalPanel');
+            var measured = _termDock === 'right' ? panel.getBoundingClientRect().width : panel.getBoundingClientRect().height;
+            if (measured > 0) return measured / workspaceZoomFactor();
+            return _termDock === 'right' ? Math.min(504, _terminalResizeBounds().max) : Math.min(520, _terminalResizeBounds().max);
+        }
+
+        function _syncTerminalResizeHandle() {
+            var handle = document.getElementById('terminalResizeHandle');
+            if (!handle) return;
+            var bounds = _terminalResizeBounds();
+            handle.setAttribute('aria-orientation', _termDock === 'right' ? 'vertical' : 'horizontal');
+            var zoom = workspaceZoomFactor();
+            updateSeparatorValue(handle, _terminalCurrentSize() * zoom, bounds.min * zoom, bounds.max * zoom);
+        }
+
+        function _setTerminalPanelSize(size) {
+            var bounds = _terminalResizeBounds();
+            size = Math.max(bounds.min, Math.min(bounds.max, size));
+            var handle = document.getElementById('terminalResizeHandle');
+            if (handle) handle.setAttribute('aria-orientation', _termDock === 'right' ? 'vertical' : 'horizontal');
+            var zoomedRight = _termDock === 'right' && document.documentElement.dataset.cssZoom === 'true';
+            document.documentElement.style.setProperty(
+                _termDock === 'right' ? (zoomedRight ? '--css-zoom-dock-width' : '--utility-dock-w') : '--terminal-h',
+                size + 'px'
+            );
+            var zoom = workspaceZoomFactor();
+            updateSeparatorValue(handle, size * zoom, bounds.min * zoom, bounds.max * zoom);
+            var active = _activeSession();
+            if (active && active.fit) requestAnimationFrame(function() { try { active.fit.fit(); } catch(e) {} });
         }
         _applyTerminalDock();  // restore from localStorage on load
         // Try to rebuild terminal tabs that were live before this page load.
@@ -405,10 +507,10 @@
                 var panel = document.getElementById('terminalPanel');
                 if (axis === 'y') {
                     startCoord = e.clientY;
-                    startSize = panel.offsetHeight;
+                    startSize = _terminalCurrentSize();
                 } else {
                     startCoord = e.clientX;
-                    startSize = panel.offsetWidth;
+                    startSize = _terminalCurrentSize();
                 }
                 handle.classList.add('is-dragging');
                 document.body.style.userSelect = 'none';
@@ -418,11 +520,9 @@
                 if (!dragging) return;
                 var html = document.documentElement;
                 if (axis === 'y') {
-                    var newH = Math.max(150, Math.min(window.innerHeight - 80, startSize + (startCoord - e.clientY)));
-                    html.style.setProperty('--terminal-h', newH + 'px');
+                    _setTerminalPanelSize(startSize + (startCoord - e.clientY) / workspaceZoomFactor());
                 } else {
-                    var newW = Math.max(320, Math.min(window.innerWidth - 200, startSize + (startCoord - e.clientX)));
-                    html.style.setProperty('--utility-dock-w', newW + 'px');
+                    _setTerminalPanelSize(startSize + (startCoord - e.clientX) / workspaceZoomFactor());
                 }
             });
             document.addEventListener('mouseup', function() {
@@ -435,6 +535,27 @@
                     if (s && s.fit) try { s.fit.fit(); } catch(e) {}
                 }
             });
+            handle.addEventListener('keydown', function(e) {
+                var keys = _termDock === 'right'
+                    ? ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+                    : ['ArrowUp', 'ArrowDown', 'Home', 'End'];
+                if (!keys.includes(e.key)) return;
+                var bounds = _terminalResizeBounds();
+                var next = _terminalCurrentSize();
+                if (e.key === 'Home') next = bounds.min;
+                else if (e.key === 'End') next = bounds.max;
+                else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next += e.shiftKey ? 50 : 20;
+                else next -= e.shiftKey ? 50 : 20;
+                _setTerminalPanelSize(next);
+                e.preventDefault();
+            });
+            function resyncTerminalSize() {
+                var panel = document.getElementById('terminalPanel');
+                if (panel && !panel.hidden) _setTerminalPanelSize(_terminalCurrentSize());
+                else _syncTerminalResizeHandle();
+            }
+            window.addEventListener('resize', resyncTerminalSize);
+            window.addEventListener('proseview:workspace-metrics', resyncTerminalSize);
         })();
 
         function openSceneInCodex() {
@@ -466,15 +587,18 @@
         }
 
         function openShellTerminal() {
+            if (!terminalAvailable) return null;
             _spawnSession('shell', [], null, null, null);
         }
 
         function openCodexTerminal(prompt, absPath, autoApprove, relPath) {
+            if (!terminalAvailable) return null;
             var command = autoApprove ? ['codex', '--full-auto'] : ['codex'];
             _spawnSession('codex', command, relPath || null, currentSelectionText || null, prompt);
         }
 
         function openClaudeTerminal(prompt, absPath, relPath) {
+            if (!terminalAvailable) return null;
             _spawnSession('claude', ['claude'], relPath || null, currentSelectionText || null, prompt);
         }
 
@@ -493,6 +617,7 @@
         }
 
         function openGeminiTerminal(prompt, absPath, relPath) {
+            if (!terminalAvailable) return null;
             _spawnSession('gemini', ['gemini'], relPath || null, currentSelectionText || null, prompt);
         }
 
@@ -772,6 +897,78 @@
         requestAnimationFrame(function() {
           // responsive:false avoids the ResizeObserver setter cycle (Object.set
           // ↔ Object.set infinite recursion) in Electron/Chromium WebViews.
+          function renderChartData(id, cfg) {
+            var canvas = document.getElementById(id);
+            var figure = canvas && canvas.closest('.chart-figure');
+            var mount = figure && figure.querySelector('.chart-data');
+            if (!mount) return;
+            mount.replaceChildren();
+            var details = document.createElement('details');
+            var summary = document.createElement('summary');
+            summary.textContent = 'View chart data';
+            details.appendChild(summary);
+            var table = document.createElement('table');
+            table.className = 'chart-data-table';
+            var labels = (cfg.data && cfg.data.labels) || [];
+            var datasets = (cfg.data && cfg.data.datasets) || [];
+            var scatter = datasets.some(function(ds) {
+              return (ds.data || []).some(function(point) {
+                return point && typeof point === 'object' && point.x !== undefined;
+              });
+            });
+            var head = document.createElement('thead');
+            var headRow = document.createElement('tr');
+            var xAxisName = cfg.options && cfg.options.scales && cfg.options.scales.x &&
+              cfg.options.scales.x.title && cfg.options.scales.x.title.text || 'X';
+            var yAxisName = cfg.options && cfg.options.scales && cfg.options.scales.y &&
+              cfg.options.scales.y.title && cfg.options.scales.y.title.text || 'Y';
+            (scatter ? ['Point', 'Series', xAxisName, yAxisName] : ['Category', 'Series', 'Value']).forEach(function(label) {
+              var th = document.createElement('th');
+              th.scope = 'col';
+              th.textContent = label;
+              headRow.appendChild(th);
+            });
+            head.appendChild(headRow);
+            table.appendChild(head);
+            var body = document.createElement('tbody');
+            datasets.forEach(function(ds, datasetIndex) {
+              (ds.data || []).forEach(function(value, index) {
+                var row = document.createElement('tr');
+                var cells;
+                if (scatter && value && typeof value === 'object') {
+                  cells = [value.label || labels[index] || 'Point ' + (index + 1), ds.label || 'Value', value.x, value.y];
+                } else {
+                  cells = [labels[index] || 'Item ' + (index + 1), ds.label || 'Value', value];
+                }
+                cells.forEach(function(value, cellIndex) {
+                  var cell = document.createElement(cellIndex === 0 ? 'th' : 'td');
+                  if (cellIndex === 0) cell.scope = 'row';
+                  var displayed = value;
+                  if (typeof value === 'number' && !Number.isInteger(value)) {
+                    displayed = Number(value.toFixed(3));
+                  }
+                  cell.textContent = displayed === null || displayed === undefined ? '—' : String(displayed);
+                  row.appendChild(cell);
+                });
+                body.appendChild(row);
+              });
+            });
+            table.appendChild(body);
+            var annotations = cfg.options && cfg.options.plugins && cfg.options.plugins.annotation &&
+              cfg.options.plugins.annotation.annotations;
+            var target = annotations && annotations.target;
+            if (target && target.xMin !== undefined && target.xMax !== undefined &&
+                target.yMin !== undefined && target.yMax !== undefined) {
+              var context = document.createElement('p');
+              context.className = 'chart-data-context';
+              context.textContent = 'Target range: ' + xAxisName + ' ' + target.xMin + ' to ' + target.xMax +
+                '; ' + yAxisName + ' ' + target.yMin + ' to ' + target.yMax + '.';
+              details.appendChild(context);
+            }
+            details.appendChild(table);
+            mount.appendChild(details);
+          }
+
           function makeChart(id, h, cfg) {
             var canvas = document.getElementById(id);
             if (!canvas) return null;
@@ -782,6 +979,7 @@
             // render path and the ResizeObserver setter cycle in Electron WebViews.
             cfg.options = Object.assign({responsive: false, maintainAspectRatio: false, animation: false}, cfg.options || {});
             applyThemeToConfig(id, cfg, getThemePalette());
+            renderChartData(id, cfg);
             try { return new Chart(canvas, cfg); }
             catch(e) { console.error('proseview: chart init failed (' + id + ')', e); return null; }
           }
@@ -789,6 +987,16 @@
           chartRefs.presenceChart = makeChart('presenceChart', 250, {
               type: 'line', data: presenceChartData,
               options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
+          });
+
+          chartRefs.locationChart = makeChart('locationChart', 250, {
+              type: 'doughnut', data: locationChartData,
+              options: { scales: { }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
+          });
+
+          chartRefs.coOccurChart = makeChart('coOccurChart', 250, {
+              type: 'bar', data: coOccurChartData,
+              options: { indexAxis: 'y', plugins: { legend: { display: false } } }
           });
 
           // Built on demand by the Analysis tab -- see 19-analysis.js. Kept in
@@ -806,16 +1014,6 @@
               } } } }
           });
 
-          chartRefs.locationChart = makeChart('locationChart', 250, {
-              type: 'doughnut', data: locationChartData,
-              options: { scales: { }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
-          });
-
-          chartRefs.coOccurChart = makeChart('coOccurChart', 250, {
-              type: 'bar', data: coOccurChartData,
-              options: { indexAxis: 'y', plugins: { legend: { display: false } } }
-          });
-
             chartRefs.lexicalScatterChart = makeChart('lexicalScatterChart', 350, {
               type: 'scatter', data: { datasets: data.scatterChart.datasets },
               options: { scales: { x: { min:0.65, max:0.85, title: { display: true, text: 'Local Variety (MATTR)' } }, y: { min:50, max:180, title: { display: true, text: 'Whole-Scene Variety (MTLD)' } } },
@@ -824,6 +1022,16 @@
           };
 
         });
+
+        function _mtimeForAbsPath(absPath) {
+            // The annotation endpoints refuse a write when the file changed
+            // since this page rendered it. meta is keyed by display path, so
+            // find the entry whose abs_path matches.
+            for (const p in meta) {
+                if (meta[p] && meta[p].abs_path === absPath) return meta[p].mtime;
+            }
+            return undefined;
+        }
 
         const NOTE_TAGS = ['note', 'continuity', 'character', 'theme', 'question'];
 
@@ -1072,11 +1280,11 @@
                     const newText = noteEntry.querySelector('.note-edit-textarea').value.trim();
                     const newTag = noteEntry.querySelector('.note-edit-tag').value;
                     if (!newText) return;
-                    postAndReload('/edit-note', {abs_path: noteEntry.dataset.absPath, old_note_text: noteEntry.dataset.noteText, old_tag: noteEntry.dataset.noteTag, new_note_text: newText, new_tag: newTag}, 'Could not save note', btn);
+                    postAndReload('/edit-note', {abs_path: noteEntry.dataset.absPath, old_note_text: noteEntry.dataset.noteText, old_tag: noteEntry.dataset.noteTag, new_note_text: newText, new_tag: newTag, open_mtime: _mtimeForAbsPath(noteEntry.dataset.absPath)}, 'Could not save note', btn);
                     return;
                 }
                 if (e.target.closest('.note-delete-btn')) {
-                    postAndReload('/delete-note', {abs_path: noteEntry.dataset.absPath, note_text: noteEntry.dataset.noteText, tag: noteEntry.dataset.noteTag}, 'Could not delete note', e.target.closest('.note-delete-btn'));
+                    postAndReload('/delete-note', {abs_path: noteEntry.dataset.absPath, note_text: noteEntry.dataset.noteText, tag: noteEntry.dataset.noteTag, open_mtime: _mtimeForAbsPath(noteEntry.dataset.absPath)}, 'Could not delete note', e.target.closest('.note-delete-btn'));
                     return;
                 }
                 return;
@@ -1101,11 +1309,11 @@
                     const btn = e.target.closest('.todo-save-btn');
                     const newText = todoEntry.querySelector('.note-edit-textarea').value.trim();
                     if (!newText) return;
-                    postAndReload('/edit-todo', {abs_path: todoEntry.dataset.absPath, old_todo_text: todoEntry.dataset.todoText, new_todo_text: newText}, 'Could not save TODO', btn);
+                    postAndReload('/edit-todo', {abs_path: todoEntry.dataset.absPath, old_todo_text: todoEntry.dataset.todoText, new_todo_text: newText, open_mtime: _mtimeForAbsPath(todoEntry.dataset.absPath)}, 'Could not save TODO', btn);
                     return;
                 }
                 if (e.target.closest('.todo-delete-btn')) {
-                    postAndReload('/delete-todo', {abs_path: todoEntry.dataset.absPath, todo_text: todoEntry.dataset.todoText}, 'Could not delete TODO', e.target.closest('.todo-delete-btn'));
+                    postAndReload('/delete-todo', {abs_path: todoEntry.dataset.absPath, todo_text: todoEntry.dataset.todoText, open_mtime: _mtimeForAbsPath(todoEntry.dataset.absPath)}, 'Could not delete TODO', e.target.closest('.todo-delete-btn'));
                     return;
                 }
                 return;
@@ -1126,11 +1334,17 @@
             saveActiveScrollPosition();
             name = VALID_TABS.includes(name) ? name : 'overview';
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-nav button').forEach(function(b) {
+                b.classList.remove('active');
+                b.removeAttribute('aria-current');
+            });
             const panel = document.getElementById('tab-' + name);
             if (panel) panel.classList.add('active');
             const btn = document.querySelector('.tab-nav button[data-tab="' + name + '"]');
-            if (btn) btn.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+                btn.setAttribute('aria-current', 'page');
+            }
             currentTab = name;
             if (name === 'analysis') buildAnalysisTab();
             if (name === 'timeline') buildTimelineTab();
@@ -1140,14 +1354,28 @@
             restoreActiveScrollPosition();
         }
 
+        const ROUTE_HISTORY_INDEX = 'proseviewRouteIndex';
+        let routeHistoryIndex = Number.isInteger(history.state && history.state[ROUTE_HISTORY_INDEX])
+            ? history.state[ROUTE_HISTORY_INDEX]
+            : 0;
+        if (!Number.isInteger(history.state && history.state[ROUTE_HISTORY_INDEX])) {
+            history.replaceState(
+                Object.assign({}, history.state || {}, {[ROUTE_HISTORY_INDEX]: routeHistoryIndex}),
+                '',
+                window.location.href
+            );
+        }
+        let restoringGuardedTraversal = null;
+
         function routeToHash(fragment, push) {
             if (suppressHashWrite) return;
             const full = '#' + fragment;
             if (window.location.hash === full) return;
             if (push) {
-                history.pushState(null, '', full);
+                routeHistoryIndex += 1;
+                history.pushState({[ROUTE_HISTORY_INDEX]: routeHistoryIndex}, '', full);
             } else {
-                history.replaceState(null, '', full);
+                history.replaceState({[ROUTE_HISTORY_INDEX]: routeHistoryIndex}, '', full);
             }
         }
 
@@ -1165,6 +1393,50 @@
 
         function applyHashRoute() {
             const route = parseHashRoute();
+            if (restoringGuardedTraversal) {
+                const pending = restoringGuardedTraversal;
+                restoringGuardedTraversal = null;
+                routeHistoryIndex = pending.activeIndex;
+                showUnsavedDialog({onContinue: function() {
+                    history.go(pending.delta);
+                }});
+                return;
+            }
+            if (typeof guardDirtySceneNavigation === 'function' && guardDirtySceneNavigation()) {
+                const activeScene = paths[curIdx];
+                const sameScene = route && route.kind === 'scene' && route.arg === activeScene;
+                if (!sameScene) {
+                    const targetIndex = history.state && history.state[ROUTE_HISTORY_INDEX];
+                    const delta = Number.isInteger(targetIndex) ? targetIndex - routeHistoryIndex : 0;
+                    if (delta) {
+                        restoringGuardedTraversal = {
+                            activeIndex: routeHistoryIndex,
+                            delta: delta,
+                        };
+                        history.go(-delta);
+                    } else {
+                        // A manually assigned hash has no indexed History API
+                        // entry. Keep the active route visible without adding
+                        // synthetic entries, then replay the pending URL only
+                        // after the writer confirms.
+                        const pendingUrl = window.location.href;
+                        const activeHash = '#/scene/' + encodeURIComponent(activeScene).replace(/%2F/gi, '/');
+                        history.replaceState(
+                            {[ROUTE_HISTORY_INDEX]: routeHistoryIndex}, '', activeHash
+                        );
+                        showUnsavedDialog({onContinue: function() {
+                            history.replaceState(
+                                {[ROUTE_HISTORY_INDEX]: routeHistoryIndex}, '', pendingUrl
+                            );
+                            applyHashRoute();
+                        }});
+                    }
+                    return;
+                }
+                return;
+            }
+            const targetIndex = history.state && history.state[ROUTE_HISTORY_INDEX];
+            if (Number.isInteger(targetIndex)) routeHistoryIndex = targetIndex;
             suppressHashWrite = true;
             routeHydrating = true;
             try {
@@ -1192,7 +1464,6 @@
         }
 
         window.addEventListener('popstate', applyHashRoute);
-        window.addEventListener('hashchange', applyHashRoute);
         if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
         if (window.location.hash && window.location.hash !== '#' && window.location.hash !== '#/') {
             applyHashRoute();
@@ -1251,6 +1522,10 @@
 
         function previewRepoFile(path, options) {
             options = options || {};
+            if (typeof guardDirtySceneNavigation === 'function' && guardDirtySceneNavigation()) {
+                showUnsavedDialog({onContinue: function() { previewRepoFile(path, options); }});
+                return Promise.resolve(null);
+            }
             const requestVersion = ++_repoPreviewRequestVersion;
             const cached = repoFileByPath[path];
             if (cached) return Promise.resolve(renderRepoFile(cached, options));

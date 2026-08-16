@@ -3,13 +3,14 @@
         (function initSidebarResize() {
             var handle = document.getElementById('sidebarResizeHandle');
             if (!handle) return;
-            var MIN_W = 160, MAX_W = 520;
             var startX, startW;
             var html = document.documentElement;
 
             function setSidebarWidth(w) {
-                w = Math.max(MIN_W, Math.min(MAX_W, w));
+                var bounds = workspaceSidebarWidthBounds();
+                w = Math.max(bounds.min, Math.min(bounds.max, w));
                 html.style.setProperty('--sidebar-w', w + 'px');
+                updateSeparatorValue(handle, w, bounds.min, bounds.max);
                 try { localStorage.setItem('proseview-sidebar-w', w); } catch(e) {}
             }
 
@@ -23,6 +24,18 @@
                 document.body.style.cursor = 'col-resize';
             });
 
+            handle.addEventListener('keydown', function(e) {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+                var current = document.getElementById('repoSidebar').getBoundingClientRect().width;
+                var next = current;
+                var bounds = workspaceSidebarWidthBounds();
+                if (e.key === 'Home') next = bounds.min;
+                else if (e.key === 'End') next = bounds.max;
+                else next += (e.key === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 50 : 20);
+                setSidebarWidth(next);
+                e.preventDefault();
+            });
+
             function onMove(e) { setSidebarWidth(startW + (e.clientX - startX)); }
             function onUp() {
                 document.removeEventListener('mousemove', onMove);
@@ -33,8 +46,15 @@
 
             try {
                 var saved = localStorage.getItem('proseview-sidebar-w');
-                if (saved) html.style.setProperty('--sidebar-w', Math.max(MIN_W, Math.min(MAX_W, +saved)) + 'px');
+                if (saved) setSidebarWidth(+saved);
+                else setSidebarWidth(document.getElementById('repoSidebar').getBoundingClientRect().width);
             } catch(e) {}
+            window.addEventListener('resize', function() {
+                setSidebarWidth(document.getElementById('repoSidebar').getBoundingClientRect().width / workspaceZoomFactor());
+            });
+            window.addEventListener('proseview:workspace-metrics', function() {
+                setSidebarWidth(parseFloat(getComputedStyle(html).getPropertyValue('--sidebar-w')) || 260);
+            });
         })();
 
         function setSidebarOpen(open) {
@@ -52,13 +72,18 @@
                 html.dataset.sidebar = 'closed';
                 try { localStorage.setItem('proseview-sidebar', 'closed'); } catch(e) {}
             }
+            if (typeof syncSidebarInteractiveState === 'function') syncSidebarInteractiveState();
         }
 
         function renderSidebarTree() {
             const container = document.getElementById('sidebarTree');
             if (!container || !sidebarTree.length) return;
+            container.setAttribute('role', 'tree');
+            container.setAttribute('aria-label', 'Repository files');
             container.innerHTML = '';
             container.appendChild(buildSidebarList(sidebarTree, 0));
+            const first = container.querySelector('[role="treeitem"]');
+            if (first) first.tabIndex = 0;
             // The tree is rendered lazily (first open) and rebuilt wholesale,
             // so re-apply whatever the active document is.
             applySidebarReveal();
@@ -66,15 +91,21 @@
 
         function buildSidebarList(nodes, depth) {
             const ul = document.createElement('ul');
+            if (depth > 0) ul.setAttribute('role', 'group');
             for (const node of nodes) ul.appendChild(buildSidebarItem(node, depth));
             return ul;
         }
 
         function buildSidebarItem(node, depth) {
             const li = document.createElement('li');
+            li.setAttribute('role', 'none');
             if (node.is_file) {
-                const a = document.createElement('span');
+                const a = document.createElement('button');
+                a.type = 'button';
                 a.className = 'file-link';
+                a.setAttribute('role', 'treeitem');
+                a.setAttribute('aria-level', String(depth + 1));
+                a.tabIndex = -1;
                 a.dataset.path = node.path;
                 if (node.is_scene) {
                     a.dataset.scenePath = node.scene_path || '';
@@ -91,10 +122,18 @@
                 }
                 li.appendChild(a);
             } else {
-                const tog = document.createElement('span');
+                const tog = document.createElement('button');
+                tog.type = 'button';
                 tog.className = 'dir-toggle';
+                tog.setAttribute('role', 'treeitem');
+                tog.setAttribute('aria-level', String(depth + 1));
+                tog.setAttribute('aria-expanded', depth === 0 ? 'true' : 'false');
+                tog.tabIndex = -1;
                 tog.appendChild(document.createTextNode(node.name));
-                tog.onclick = () => li.classList.toggle('expanded');
+                tog.onclick = () => {
+                    const expanded = li.classList.toggle('expanded');
+                    tog.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                };
                 li.appendChild(tog);
                 if (node.children && node.children.length)
                     li.appendChild(buildSidebarList(node.children, depth + 1));
@@ -102,6 +141,52 @@
             }
             return li;
         }
+
+        function visibleSidebarTreeItems(tree) {
+            return Array.from(tree.querySelectorAll('[role="treeitem"]')).filter(function(item) {
+                return item.getClientRects().length > 0;
+            });
+        }
+
+        function focusSidebarTreeItem(tree, item) {
+            tree.querySelectorAll('[role="treeitem"]').forEach(function(candidate) {
+                candidate.tabIndex = candidate === item ? 0 : -1;
+            });
+            item.focus();
+        }
+
+        document.getElementById('sidebarTree').addEventListener('keydown', function(event) {
+            const tree = event.currentTarget;
+            const current = event.target.closest('[role="treeitem"]');
+            if (!current) return;
+            const items = visibleSidebarTreeItems(tree);
+            const index = items.indexOf(current);
+            if (event.key === 'ArrowDown' && index < items.length - 1) {
+                focusSidebarTreeItem(tree, items[index + 1]);
+            } else if (event.key === 'ArrowUp' && index > 0) {
+                focusSidebarTreeItem(tree, items[index - 1]);
+            } else if (event.key === 'Home' && items.length) {
+                focusSidebarTreeItem(tree, items[0]);
+            } else if (event.key === 'End' && items.length) {
+                focusSidebarTreeItem(tree, items[items.length - 1]);
+            } else if (event.key === 'ArrowRight' && current.classList.contains('dir-toggle')) {
+                if (current.getAttribute('aria-expanded') === 'false') current.click();
+                else if (index < items.length - 1) focusSidebarTreeItem(tree, items[index + 1]);
+            } else if (event.key === 'ArrowLeft') {
+                if (current.classList.contains('dir-toggle') && current.getAttribute('aria-expanded') === 'true') {
+                    current.click();
+                } else {
+                    const parent = current.closest('ul[role="group"]');
+                    const parentItem = parent && parent.parentElement && parent.parentElement.querySelector(':scope > .dir-toggle');
+                    if (parentItem) focusSidebarTreeItem(tree, parentItem);
+                }
+            } else if ((event.key === 'Enter' || event.key === ' ') && current) {
+                current.click();
+            } else {
+                return;
+            }
+            event.preventDefault();
+        });
 
         // The document the sidebar should point at, as {path} or {scenePath}.
         // Kept outside the DOM so a tree that has not been rendered yet (the
@@ -129,6 +214,8 @@
                     (!!target.scenePath && el.dataset.scenePath === target.scenePath)
                 );
                 el.classList.toggle('active', hit);
+                if (hit) el.setAttribute('aria-current', 'page');
+                else el.removeAttribute('aria-current');
                 if (hit) match = el;
             });
             // Files outside the sidebar's folders (search reaches the whole
@@ -138,6 +225,8 @@
             for (var li = match.closest('li'); li && tree.contains(li);
                  li = li.parentElement && li.parentElement.closest('li')) {
                 li.classList.add('expanded');
+                var toggle = li.querySelector(':scope > .dir-toggle');
+                if (toggle) toggle.setAttribute('aria-expanded', 'true');
             }
             match.scrollIntoView({ block: 'nearest' });
         }
@@ -155,6 +244,21 @@
             }
         });
 
+        // Windows has no pty, so the shell cannot exist there. Hide its entry
+        // points rather than offering a button that fails when clicked.
+        function _hideTerminalEntryPointsWhenUnavailable(available) {
+            const enabled = available === undefined
+                ? (typeof terminalAvailable === 'undefined' || terminalAvailable)
+                : !!available;
+            if (enabled) return;
+            document.querySelectorAll('[onclick*="openShellTerminal"]').forEach(function(el) {
+                el.hidden = true;
+            });
+            document.querySelectorAll('.agent-menu-wrap').forEach(function(el) { el.hidden = true; });
+            document.querySelectorAll('[onclick*="showRightTerminal"]').forEach(function(el) { el.hidden = true; });
+        }
+        document.addEventListener('DOMContentLoaded', _hideTerminalEntryPointsWhenUnavailable);
+
         function sortTable(n) { sortTableEl(document.getElementById("sceneTable"), n); }
 
         function sortTableEl(t, n) {
@@ -171,4 +275,7 @@
                 }
                 if (should) { r[i].parentNode.insertBefore(r[i+1], r[i]); s = true; c++; } else if (c == 0 && d == "asc") { d = "desc"; s = true; }
             }
+            Array.from(t.tHead ? t.tHead.rows[0].cells : []).forEach(function(header, index) {
+                header.setAttribute('aria-sort', index === n ? (d === 'asc' ? 'ascending' : 'descending') : 'none');
+            });
         }

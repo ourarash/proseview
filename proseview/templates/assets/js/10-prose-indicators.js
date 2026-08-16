@@ -118,6 +118,7 @@
             _pmDirty = !!dirty;
             var bar = document.getElementById('sceneEditBar');
             var saveBtn = bar ? bar.querySelector('.scene-edit-save') : null;
+            var cancelBtn = bar ? bar.querySelector('.scene-edit-cancel') : null;
             var stateEl = document.getElementById('sceneEditState');
             var title = document.getElementById('modalTitle');
             if (bar) {
@@ -127,6 +128,7 @@
                 }
             }
             if (saveBtn) saveBtn.disabled = !_pmDirty;
+            if (cancelBtn) cancelBtn.disabled = _pmSaveInFlight;
             if (stateEl) stateEl.textContent = _pmDirty ? 'Editing • unsaved' : 'Editing';
             if (title) title.classList.toggle('is-modified', _pmDirty);
             if (_pmSavedFlashTimer) {
@@ -139,6 +141,10 @@
             var bar = document.getElementById('sceneEditBar');
             var stateEl = document.getElementById('sceneEditState');
             if (bar) bar.classList.add('is-saving');
+            var saveBtn = bar ? bar.querySelector('.scene-edit-save') : null;
+            var cancelBtn = bar ? bar.querySelector('.scene-edit-cancel') : null;
+            if (saveBtn) saveBtn.disabled = true;
+            if (cancelBtn) cancelBtn.disabled = true;
             if (stateEl) stateEl.textContent = 'Saving…';
         }
 
@@ -154,7 +160,9 @@
             if (title) title.classList.remove('is-modified');
             _pmDirty = false;
             var saveBtn = bar ? bar.querySelector('.scene-edit-save') : null;
+            var cancelBtn = bar ? bar.querySelector('.scene-edit-cancel') : null;
             if (saveBtn) saveBtn.disabled = true;
+            if (cancelBtn) cancelBtn.disabled = false;
             if (_pmSavedFlashTimer) clearTimeout(_pmSavedFlashTimer);
             _pmSavedFlashTimer = setTimeout(function() {
                 if (!bar) return;

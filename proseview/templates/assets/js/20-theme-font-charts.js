@@ -162,6 +162,7 @@
                 if (menu && !menu.contains(e.target)) closeThemeMenu(false);
             };
             document.addEventListener('mousedown', themeMenuDocHandler);
+            focusAppearanceOption('themeMenuList', currentTheme(), 'themeValue');
         }
 
         function closeThemeMenu(commit) {
@@ -231,6 +232,7 @@
                 if (!menu.contains(e.target)) closeFontMenu(false);
             };
             setTimeout(() => document.addEventListener('click', fontMenuDocHandler), 0);
+            focusAppearanceOption('fontMenuList', currentFont(), 'fontValue');
         }
 
         function closeFontMenu(commit) {
@@ -273,6 +275,80 @@
             closeFontMenu(true);
         }
 
+        function focusAppearanceOption(listId, value, dataKey) {
+            const list = document.getElementById(listId);
+            if (!list) return;
+            const options = Array.from(list.querySelectorAll('[role="option"]'));
+            const selected = options.find(option => option.dataset[dataKey] === value) || options[0];
+            options.forEach(option => { option.tabIndex = option === selected ? 0 : -1; });
+            if (selected) selected.focus({preventScroll: true});
+        }
+
+        function moveAppearanceOption(list, event, preview, select, close, toggle) {
+            const options = Array.from(list.querySelectorAll('[role="option"]'));
+            if (!options.length) return;
+            let index = Math.max(0, options.indexOf(document.activeElement));
+            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') index = (index + 1) % options.length;
+            else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') index = (index - 1 + options.length) % options.length;
+            else if (event.key === 'Home') index = 0;
+            else if (event.key === 'End') index = options.length - 1;
+            else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                select(document.activeElement.dataset);
+                toggle.focus({preventScroll: true});
+                return;
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                close(false);
+                toggle.focus({preventScroll: true});
+                return;
+            } else if (event.key === 'Tab') {
+                event.preventDefault();
+                select(document.activeElement.dataset);
+                toggle.focus({preventScroll: true});
+                return;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            options.forEach((option, optionIndex) => { option.tabIndex = optionIndex === index ? 0 : -1; });
+            options[index].focus({preventScroll: true});
+            preview(options[index].dataset);
+        }
+
+        (function initAppearanceListboxKeyboard() {
+            const fontList = document.getElementById('fontMenuList');
+            const themeList = document.getElementById('themeMenuList');
+            const fontToggle = document.getElementById('fontToggle');
+            const themeToggle = document.getElementById('themeToggle');
+            if (fontList && fontToggle) {
+                fontList.addEventListener('keydown', function(event) {
+                    moveAppearanceOption(fontList, event,
+                        data => previewFont(data.fontValue),
+                        data => selectFont(data.fontValue),
+                        closeFontMenu, fontToggle);
+                });
+                fontToggle.addEventListener('keydown', function(event) {
+                    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                    event.preventDefault();
+                    if (!fontMenuIsOpen()) openFontMenu();
+                });
+            }
+            if (themeList && themeToggle) {
+                themeList.addEventListener('keydown', function(event) {
+                    moveAppearanceOption(themeList, event,
+                        data => previewTheme(data.themeValue),
+                        data => selectTheme(data.themeValue),
+                        closeThemeMenu, themeToggle);
+                });
+                themeToggle.addEventListener('keydown', function(event) {
+                    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                    event.preventDefault();
+                    if (!themeMenuIsOpen()) openThemeMenu();
+                });
+            }
+        })();
+
         function normalizeModalFontSize(value) {
             const parsed = parseInt(value, 10);
             if (Number.isNaN(parsed)) return MODAL_FONT_SIZE_DEFAULT;
@@ -295,4 +371,3 @@
             if (slider) slider.value = String(size);
             return size;
         }
-

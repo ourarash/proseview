@@ -371,3 +371,48 @@
             if (slider) slider.value = String(size);
             return size;
         }
+
+        // ── Reading measure ─────────────────────────────────────────────────
+
+        function normalizeReadingMeasure(value) {
+            // parseInt, not Number: Number(null) is 0, which then clamps to the
+            // minimum and makes an unset preference look like a deliberate
+            // choice of the narrowest measure.
+            const parsed = parseInt(value, 10);
+            if (Number.isNaN(parsed)) return READING_MEASURE_DEFAULT;
+            return Math.min(READING_MEASURE_MAX, Math.max(READING_MEASURE_MIN, parsed));
+        }
+
+        function storedReadingMeasure() {
+            try {
+                return normalizeReadingMeasure(localStorage.getItem(READING_MEASURE_STORAGE_KEY));
+            } catch (err) {
+                return READING_MEASURE_DEFAULT;
+            }
+        }
+
+        function _charsPerLine(px) {
+            // Rough but honest: average glyph advance is ~0.5em for the reading
+            // faces here, so characters ~= width / (fontSize * 0.5).
+            const size = (typeof loadModalFontSize === 'function' ? loadModalFontSize() : 18) || 18;
+            return Math.round(px / (size * 0.5));
+        }
+
+        function applyReadingMeasure(px) {
+            const measure = normalizeReadingMeasure(px);
+            document.documentElement.style.setProperty('--reading-measure', measure + 'px');
+            const slider = document.getElementById('modalMeasure');
+            if (slider && Number(slider.value) !== measure) slider.value = String(measure);
+            const out = document.getElementById('modalMeasureOut');
+            if (out) out.textContent = _charsPerLine(measure) + ' chars';
+            return measure;
+        }
+
+        function updateReadingMeasure(value) {
+            const measure = applyReadingMeasure(value);
+            try { localStorage.setItem(READING_MEASURE_STORAGE_KEY, String(measure)); } catch (err) {}
+        }
+
+        function syncReadingMeasure() { applyReadingMeasure(storedReadingMeasure()); }
+
+        document.addEventListener('DOMContentLoaded', syncReadingMeasure);

@@ -190,3 +190,84 @@ def test_chapter_tick_labels_ellipsize_rather_than_clip():
     block = css.split(".story-tick > span")[1].split("}")[0]
     for rule in ("text-overflow: ellipsis", "overflow: hidden", "white-space: nowrap"):
         assert rule in block, f"tick label needs {rule}"
+
+
+def _theme_block(name: str) -> str:
+    css = (REPO_ROOT / "proseview" / "templates" / "assets" / "themes" / "graphite.css").read_text(
+        encoding="utf-8"
+    )
+    return css.split(f'[data-theme="{name}"]')[1].split("}")[0]
+
+
+def _var(block: str, name: str) -> str:
+    import re
+
+    match = re.search(rf"{name}:\s*([^;]+);", block)
+    assert match, f"{name} is not set"
+    return match.group(1).strip()
+
+
+def _hsl(hex_colour: str) -> tuple[float, float, float]:
+    import colorsys
+
+    h = hex_colour.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    hue, light, sat = colorsys.rgb_to_hls(r, g, b)
+    return hue * 360, sat * 100, light * 100
+
+
+def test_both_graphite_variants_set_the_reading_font():
+    """Switching light to dark must not change the prose typeface.
+
+    Graphite Light set ``--font-reading`` and Graphite Dark did not, so the
+    reader's serif silently became whatever the base theme used.
+    """
+    light = _var(_theme_block("graphite-light"), "--font-reading")
+    dark = _var(_theme_block("graphite-dark"), "--font-reading")
+    assert light == dark
+
+
+def test_both_graphite_variants_share_one_register():
+    """A pair, not two unrelated themes.
+
+    The dark variant used to sit at hsl(222, 22%) with an amber accent -- a
+    navy-and-gold theme carrying the Red Graphite name. Both surfaces are now
+    near-neutral and both accents are the same red.
+    """
+    for name in ("graphite-light", "graphite-dark"):
+        _, saturation, _ = _hsl(_var(_theme_block(name), "--bg-app"))
+        assert saturation <= 12, f"{name} surface is {saturation:.0f}% saturated, not graphite"
+
+    light_hue = _hsl(_var(_theme_block("graphite-light"), "--primary"))[0]
+    dark_hue = _hsl(_var(_theme_block("graphite-dark"), "--primary"))[0]
+    delta = min(abs(light_hue - dark_hue), 360 - abs(light_hue - dark_hue))
+    assert delta <= 12, f"accents are {delta:.0f}° apart; the variants disagree on the accent"
+
+
+def test_graphite_banner_is_a_card_not_a_slab_of_accent():
+    """Obsidian's chrome is the same surface as its content.
+
+    ``.top-banner`` fills itself with var(--primary). At Red Graphite's muted
+    brick red that reads orange once it covers the whole header, and no accent
+    hue fixes it -- the shape is the problem. Scoped to graphite so the other
+    themes keep their own identity.
+    """
+    css = (REPO_ROOT / "proseview" / "templates" / "assets" / "themes" / "graphite.css").read_text(
+        encoding="utf-8"
+    )
+    assert '[data-theme="graphite-dark"] .top-banner' in css
+    block = css.split('[data-theme="graphite-dark"] .top-banner')[1].split("}")[0]
+    assert "var(--surface-card)" in block, "banner should sit on the card surface"
+
+    app = (REPO_ROOT / "proseview" / "templates" / "assets" / "app.css").read_text(encoding="utf-8")
+    assert "background: var(--primary)" in app.split(".top-banner {")[1].split("}")[0], \
+        "the base rule this override exists to correct has moved; re-check the override"
+
+
+def test_graphite_progress_fill_reads_against_a_card():
+    """The fill was white, which only worked on top of the accent block."""
+    for name in ("graphite-light", "graphite-dark"):
+        fill = _var(_theme_block(name), "--banner-progress-fill")
+        assert fill.startswith("#"), f"{name} progress fill is {fill}"
+        assert fill.lower() not in ("#ffffff", "#fff"), \
+            f"{name} still fills the progress bar with white"

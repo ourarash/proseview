@@ -115,3 +115,78 @@ def test_graphite_declares_its_colour_scheme(name: str):
 
     expected = "dark" if name.endswith("dark") else "light"
     assert f"color-scheme: {expected};" in body
+
+
+def test_bootstrap_theme_allowlist_matches_theme_order():
+    """The pre-paint bootstrap and THEME_ORDER must list the same themes.
+
+    The bootstrap runs before the bundle, so it cannot read ``THEME_ORDER`` and
+    keeps its own copy. When Graphite was added the copy was not updated, so
+    picking it worked until the next reload and then silently reverted to light
+    -- the theme was effectively unusable while looking like it worked.
+    """
+    import re
+
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    state = (REPO_ROOT / "proseview" / "templates" / "assets" / "js" / "00-state.js").read_text(
+        encoding="utf-8"
+    )
+
+    bootstrap = re.search(
+        r"const allowed = \[([^\]]+)\];\s*\n\s*const stored = localStorage\.getItem\(storedKey\)",
+        template,
+    )
+    assert bootstrap, "could not find the theme bootstrap allowlist"
+    allowed = set(re.findall(r"'([^']+)'", bootstrap.group(1)))
+
+    order = re.search(r"const THEME_ORDER = \[([^\]]+)\];", state)
+    assert order, "could not find THEME_ORDER"
+    themes = set(re.findall(r"'([^']+)'", order.group(1)))
+
+    assert allowed == themes, (
+        "bootstrap allowlist and THEME_ORDER have drifted; a theme missing from "
+        f"the bootstrap resets to light on reload. Difference: {allowed ^ themes}"
+    )
+
+
+def test_every_theme_is_offered_in_the_toolbar_menu():
+    """The toolbar picker must list what THEME_ORDER supports.
+
+    Graphite shipped in THEME_ORDER and in both <select> menus but never in the
+    toolbar list, so the main picker did not offer it.
+    """
+    import re
+
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    state = (REPO_ROOT / "proseview" / "templates" / "assets" / "js" / "00-state.js").read_text(
+        encoding="utf-8"
+    )
+    offered = set(re.findall(r'data-theme-value="([^"]+)"', template))
+    order = set(re.findall(r"'([^']+)'", re.search(r"const THEME_ORDER = \[([^\]]+)\];", state).group(1)))
+    assert offered == order, f"toolbar menu and THEME_ORDER differ: {offered ^ order}"
+
+
+def test_theme_css_is_declared_as_package_data():
+    """``templates/assets/*`` does not recurse, so themes need their own entry.
+
+    Without it the wheel ships no theme CSS at all and an installed Proseview
+    renders Graphite unstyled -- the same trap that hid ``vendor/pm/``.
+    """
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"templates/assets/themes/*"' in pyproject, \
+        "theme CSS would not ship in the wheel"
+
+
+def test_chapter_tick_labels_ellipsize_rather_than_clip():
+    """Twelve chapters with real titles used to run together.
+
+    ``overflow: hidden`` with no ``text-overflow`` produced
+    "I. Down the RabII. The Pool of TIII. A Caucus-Ra" under the shape chart.
+    The span is the overflow context because a flex item cannot ellipsize its
+    own text node.
+    """
+    css = (REPO_ROOT / "proseview" / "templates" / "assets" / "app.css").read_text(encoding="utf-8")
+    assert ".story-tick > span" in css
+    block = css.split(".story-tick > span")[1].split("}")[0]
+    for rule in ("text-overflow: ellipsis", "overflow: hidden", "white-space: nowrap"):
+        assert rule in block, f"tick label needs {rule}"

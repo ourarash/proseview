@@ -8,8 +8,15 @@
             const storedKey = 'proseview-theme';
             let theme = 'light';
             try {
+                // Must stay in step with THEME_ORDER in 00-state.js. This runs
+                // before any other script so the theme is set before first
+                // paint, so it cannot read THEME_ORDER directly -- a value
+                // missing here is silently rejected on load and the reader's
+                // choice resets to light. test_themes.py guards the pair.
+                const allowed = ['light', 'dark', 'docsify', 'hopscotch',
+                                 'graphite-light', 'graphite-dark'];
                 const stored = localStorage.getItem(storedKey);
-                if (stored === 'light' || stored === 'dark' || stored === 'docsify' || stored === 'hopscotch') {
+                if (allowed.indexOf(stored) >= 0) {
                     theme = stored;
                 } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
                     theme = 'dark';
@@ -57,16 +64,18 @@
     </style>
 </head>
 <body>
-    <nav id="repoSidebar" class="repo-sidebar">
+    <nav id="repoSidebar" class="repo-sidebar" aria-label="Repository files">
         <div class="sidebar-header">
             <span class="sidebar-title">Files</span>
             <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar" aria-label="Close sidebar">&times;</button>
         </div>
         <div id="sidebarTree" class="repo-tree sidebar-tree"></div>
-        <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+        <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" tabindex="0" aria-label="Resize file browser" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="520" aria-valuenow="260"></div>
     </nav>
 
+    <main id="mainContent">
     <header class="top-banner">
+        <div class="dashboard-identity"><h1>Proseview</h1><span>Your manuscript at a glance</span></div>
         <div class="banner-stat"><span class="label">Total Words</span><span class="value">{{ total_words_text }} / {{ target_words_text }}</span></div>
         <div class="banner-stat banner-progress"><span class="label">Goal Progress: {{ percent_target_text }}%</span><div class="range-bar" style="margin-top:8px;"><div class="target-zone" style="background:var(--banner-progress-fill); width:{{ percent_target_width }}%;"></div></div></div>
         <div class="banner-stat"><span class="label">Scenes</span><span class="value">{{ scene_count }}</span></div>
@@ -75,8 +84,8 @@
     </header>
 
     <div class="app-toolbar">
-        <nav class="tab-nav">
-            <button class="active" data-tab="overview" onclick="showTab('overview')">Overview</button>
+        <nav class="tab-nav" aria-label="Dashboard sections">
+            <button class="active" data-tab="overview" aria-current="page" onclick="showTab('overview')">Overview</button>
             <button data-tab="analysis" onclick="showTab('analysis')">Analysis</button>
             <button data-tab="timeline" onclick="showTab('timeline')">Timeline</button>
             <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
@@ -104,13 +113,13 @@
                     <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
                 </button>
                 <ul id="fontMenuList" class="font-menu-list" role="listbox" aria-label="Reading font">
-                    <li class="font-menu-item" role="option" data-font-value="reader" onmouseenter="previewFont('reader')" onclick="selectFont('reader')">Reader</li>
-                    <li class="font-menu-item" role="option" data-font-value="literary" onmouseenter="previewFont('literary')" onclick="selectFont('literary')">Literary</li>
-                    <li class="font-menu-item" role="option" data-font-value="inter" onmouseenter="previewFont('inter')" onclick="selectFont('inter')">Inter</li>
-                    <li class="font-menu-item" role="option" data-font-value="georgia" onmouseenter="previewFont('georgia')" onclick="selectFont('georgia')">Georgia</li>
-                    <li class="font-menu-item" role="option" data-font-value="baskerville" onmouseenter="previewFont('baskerville')" onclick="selectFont('baskerville')">Baskerville</li>
-                    <li class="font-menu-item" role="option" data-font-value="sans" onmouseenter="previewFont('sans')" onclick="selectFont('sans')">Sans</li>
-                    <li class="font-menu-item" role="option" data-font-value="mono" onmouseenter="previewFont('mono')" onclick="selectFont('mono')">Mono</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="reader" onmouseenter="previewFont('reader')" onclick="selectFont('reader')">Reader</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="literary" onmouseenter="previewFont('literary')" onclick="selectFont('literary')">Literary</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="inter" onmouseenter="previewFont('inter')" onclick="selectFont('inter')">Inter</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="georgia" onmouseenter="previewFont('georgia')" onclick="selectFont('georgia')">Georgia</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="baskerville" onmouseenter="previewFont('baskerville')" onclick="selectFont('baskerville')">Baskerville</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="sans" onmouseenter="previewFont('sans')" onclick="selectFont('sans')">Sans</li>
+                    <li class="font-menu-item" role="option" tabindex="-1" data-font-value="mono" onmouseenter="previewFont('mono')" onclick="selectFont('mono')">Mono</li>
                 </ul>
             </div>
             <div id="themeMenu" class="theme-menu">
@@ -120,10 +129,12 @@
                     <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
                 </button>
                 <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
-                    <li class="theme-menu-item" role="option" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
-                    <li class="theme-menu-item" role="option" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
-                    <li class="theme-menu-item" role="option" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
-                    <li class="theme-menu-item" role="option" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
+                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
                 </ul>
             </div>
         </div>
@@ -134,20 +145,20 @@
         {{ recent_changes_card | safe }}
 
         <div class="dashboard-grid">
-            <div class="card"><div class="card-header"><span class="card-title">Character Presence Timeline</span></div><div class="chart-frame"><canvas id="presenceChart"></canvas></div></div>
-            <div class="card"><div class="card-header"><span class="card-title">Setting Stickiness (Words per Location)</span></div><div class="chart-frame"><canvas id="locationChart"></canvas></div></div>
+            <figure class="card chart-figure" aria-labelledby="presenceChartTitle"><div class="card-header"><h2 class="card-title" id="presenceChartTitle">Character Presence Timeline</h2></div><div class="chart-frame"><canvas id="presenceChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+            <figure class="card chart-figure" aria-labelledby="locationChartTitle"><div class="card-header"><h2 class="card-title" id="locationChartTitle">Setting Stickiness (Words per Location)</h2></div><div class="chart-frame"><canvas id="locationChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
         </div>
 
         <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-            <div class="card"><div class="card-header"><span class="card-title">Character Co-Occurrence</span></div><div class="chart-frame"><canvas id="coOccurChart"></canvas></div></div>
+            <figure class="card chart-figure" aria-labelledby="coOccurChartTitle"><div class="card-header"><h2 class="card-title" id="coOccurChartTitle">Character Co-Occurrence</h2></div><div class="chart-frame"><canvas id="coOccurChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
         </div>
 
-        <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scenes</span>
+        <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scenes</h2>
             <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
                 <option value="all">All Scenes</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
             </select>
             <span class="section-note" style="margin-left:12px;">Prose metrics live in the <a href="#" onclick="showTab('analysis'); return false;">Analysis</a> tab.</span></div>
-            <table id="sceneTable"><thead><tr><th onclick="sortTable(0)">Scene</th><th onclick="sortTable(1)">Chapter</th><th onclick="sortTable(2)">Words</th><th onclick="sortTable(3)">Flavor</th></tr></thead><tbody>
+            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(3)" aria-label="Sort by Flavor">Flavor</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
             </tbody></table></div>
     </div>
@@ -156,34 +167,34 @@
         <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Analysing the manuscript…</p>
         <div id="analysisContent" hidden>
             <div class="dashboard-grid">
-                <div class="card"><div class="card-header"><span class="card-title">Editorial Alerts</span></div>
+                <section class="card"><div class="card-header"><h2 class="card-title">Editorial Alerts</h2></div>
                     <div class="scroll-panel" id="analysisAlerts"></div>
-                </div>
-                <div class="card"><div class="card-header"><span class="card-title">Book-Wide Lexical Health</span></div>
+                </section>
+                <section class="card"><div class="card-header"><h2 class="card-title">Book-Wide Lexical Health</h2></div>
                     <div class="health-section"><div>Local Variety (MATTR): <strong id="analysisMattrText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMattrZone"></div><div class="current-marker" id="analysisMattrMarker"></div></div></div>
                     <div class="health-section"><div>Whole-Scene Variety (MTLD): <strong id="analysisMtldText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMtldZone"></div><div class="current-marker" id="analysisMtldMarker"></div></div></div>
-                </div>
+                </section>
             </div>
 
             <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-                <div class="card"><div class="card-header"><span class="card-title">Rhythm &amp; Pacing (Sentence length variety)</span></div>
+                <figure class="card chart-figure" aria-labelledby="rhythmChartTitle"><div class="card-header"><h2 class="card-title" id="rhythmChartTitle">Rhythm &amp; Pacing (Sentence length variety)</h2></div>
                     <div class="section-note">
                         Measures the "pulse" of your prose.
                         <br>&bull; <b>Static (0-4):</b> Monotonous drone.
                         <br>&bull; <b>Rhythmic (5-12):</b> Healthy pulse. <b>Your current target.</b>
                         <br>&bull; <b>Dynamic (13+):</b> High contrast/tension.
                     </div>
-                    <div class="chart-frame"><canvas id="rhythmChart"></canvas></div>
-                </div>
+                    <div class="chart-frame"><canvas id="rhythmChart" aria-hidden="true"></canvas></div><div class="chart-data"></div>
+                </figure>
             </div>
 
             <div class="stats-layout">
-                <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><span class="card-title">Scene Deep Dive</span>
+                <section class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scene Deep Dive</h2>
                     <select id="analysisIssueFilter" class="issue-filter" onchange="applyAnalysisIssueFilter()">
                         <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option>
                     </select></div>
-                    <table id="analysisSceneTable"><thead><tr><th onclick="sortAnalysisTable(0)">Scene</th><th onclick="sortAnalysisTable(1)">Chapter</th><th onclick="sortAnalysisTable(2)">Words</th><th onclick="sortAnalysisTable(3)">Variety</th><th onclick="sortAnalysisTable(4)">Flavor</th><th onclick="sortAnalysisTable(5)">Top Repeat</th><th onclick="sortAnalysisTable(6)">Dlg%</th><th onclick="sortAnalysisTable(7)">Sent</th></tr></thead><tbody id="analysisTableBody"></tbody></table></div>
-                <div class="sticky-sidebar"><div class="card"><div class="card-header"><span class="card-title">Lexical Health Map</span></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart"></canvas></div></div></div>
+                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Variety">Variety</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Flavor">Flavor</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Top Repeat">Top Repeat</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Dialogue percent">Dlg%</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(7)" aria-label="Sort by Sentence length">Sent</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table></section>
+                <div class="sticky-sidebar"><figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Lexical Health Map</h2></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure></div>
             </div>
         </div>
     </div>
@@ -214,7 +225,7 @@
         <div class="file-preview-header">
             <button class="back-btn" onclick="closeFilePreview()">&#8592; Overview</button>
             <div style="min-width:0; flex:1;">
-                <div id="filePreviewTitle" class="repo-preview-path" tabindex="-1"></div>
+                <h1 id="filePreviewTitle" class="repo-preview-path" tabindex="-1"></h1>
                 <div id="filePreviewMeta" class="repo-preview-sub"></div>
             </div>
             <div class="file-preview-controls">
@@ -240,6 +251,7 @@
         </div>
         <div id="filePreviewBody" class="modal-body repo-preview-body"></div>
     </div>
+    </main>
 
     <dialog id="searchPalette" class="search-palette" aria-labelledby="searchPaletteTitle"></dialog>
 
@@ -247,9 +259,9 @@
         Deep-link URLs: <code>#/tab/&lt;name&gt;</code>, <code>#/scene/&lt;path&gt;</code>, <code>#/file/&lt;path&gt;</code>. Paths are URL-encoded. Copy the address bar to share the current view.
     </footer>
 
-        <div id="sceneModal" class="modal"><div class="modal-content"><header class="modal-header" data-toolbar-mode="auto" data-toolbar-hidden="false"><div class="modal-header-inner">
+        <div id="sceneModal" class="modal" role="main" aria-labelledby="modalTitle"><div class="modal-content"><header class="modal-header" data-toolbar-mode="auto" data-toolbar-hidden="false"><div class="modal-header-inner">
             <div class="scene-toolbar-leading"><button type="button" class="scene-back-btn scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Return to dashboard"><span aria-hidden="true">&#8592;</span><span class="scene-toolbar-button-label">Dashboard</span></button><button id="modalSidebarBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" aria-label="Toggle file browser" aria-keyshortcuts="B" title="Toggle file browser (B)">&#9776;</button></div>
-            <h3 id="modalTitle" tabindex="-1"></h3>
+            <h1 id="modalTitle" tabindex="-1"></h1>
             <div class="modal-header-controls">
                 <div class="scene-toolbar-nav" aria-label="Scene navigation"><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(-1)" aria-label="Previous scene" title="Previous scene">&#8592;</button><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(1)" aria-label="Next scene" title="Next scene">&#8594;</button></div>
                 <button type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="focusSearch()" aria-label="Search files" aria-keyshortcuts="Meta+K Control+K" title="Search files">&#8981;</button>
@@ -273,14 +285,22 @@
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
         </div><button id="sceneToolbarReveal" type="button" aria-label="Show scene toolbar" title="Show scene toolbar" onclick="revealSceneToolbar(true)"><span aria-hidden="true">&#8964;</span></button></header>
-        <div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+        <details id="sceneAnalysisDetails" class="scene-secondary-details"><summary>Scene analysis</summary><div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div></details><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+
+    <dialog id="sceneConflictDialog" class="scene-conflict-dialog" role="alertdialog" aria-labelledby="sceneConflictTitle" aria-describedby="sceneConflictDescription">
+        <h2 id="sceneConflictTitle">Scene changed on disk</h2>
+        <p id="sceneConflictDescription">Your draft has not been saved or discarded. Choose whether to keep editing it, copy it for safekeeping, or reload the newer disk version.</p>
+        <p id="sceneConflictStatus" class="scene-conflict-status" role="status" aria-live="polite"></p>
+        <div class="scene-conflict-actions"><button type="button" onclick="keepEditingAfterConflict()">Keep editing</button><button type="button" onclick="copyConflictDraft()">Copy draft</button><button type="button" class="scene-conflict-reload" onclick="reloadConflictDiskVersion()">Reload disk version</button></div>
+    </dialog>
 
     <div id="pmInsertAffordance" class="pm-insert-affordance" hidden title="Insert annotation">+</div>
     <div id="terminalPanel" class="terminal-panel dock-bottom" hidden>
-        <div id="terminalResizeHandle" class="terminal-resize-handle"></div>
+        <div id="terminalResizeHandle" class="terminal-resize-handle" role="separator" tabindex="0" aria-label="Resize Terminal" aria-orientation="horizontal" aria-valuemin="150" aria-valuemax="920" aria-valuenow="520"></div>
         <div class="terminal-inner">
+            <p id="terminalKeyboardHelp" class="sr-only">Press Shift+Tab to leave terminal input and return to the active terminal tab.</p>
             <div class="terminal-header">
-                <div id="terminalTabs" class="terminal-tabs"></div>
+                <div id="terminalTabs" class="terminal-tabs" role="tablist" aria-label="Terminal sessions"></div>
                 <div class="utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="openDiscuss(this)">Discuss</button><button type="button" class="utility-tab active" role="tab" aria-selected="true">Terminal</button></div>
                 <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
                 <div class="terminal-header-spacer"></div>
@@ -311,7 +331,7 @@
     </div>
 
     <aside id="discussPanel" class="discuss-panel" aria-labelledby="discussTitle" hidden>
-        <div id="discussResizeHandle" class="discuss-resize-handle" aria-hidden="true"></div>
+        <div id="discussResizeHandle" class="discuss-resize-handle" role="separator" tabindex="0" aria-label="Resize Discuss" aria-orientation="vertical" aria-valuemin="340" aria-valuemax="620" aria-valuenow="504"></div>
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
@@ -381,6 +401,7 @@
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
         const imagesConfig = {{ images_config_json | safe }};
+        const terminalAvailable = {{ terminal_available_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
         const storyModel = {{ story_json | safe }};
         const repoFileByPath = {};

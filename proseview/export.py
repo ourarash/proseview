@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .config import Config
 from .repo import CONTEXT_SKIP_DIRS, resolve_visible_repository_path
+from .repo import read_repo_text
 from .scenes import resolve_manuscript_dir, scene_chapter, extract_scene_text, iter_scene_paths, split_frontmatter
 
 #: pandoc targets this module knows how to ask for. EPUB is the one wired to a
@@ -83,7 +84,7 @@ def collect_appendix_documents(root: Path, folder: str, cfg: Config) -> Appendix
     for path in sorted(target.glob("*.md")):
         if path.name.lower() == "readme.md":
             continue
-        text = path.read_text(encoding="utf-8")
+        text = read_repo_text(path)
         body = split_frontmatter(text)[1] if text.startswith("---") else text
         documents.append((path.stem.replace("-", " ").title(), body.strip()))
     if not documents:
@@ -103,7 +104,7 @@ def collect_scene_documents(root: Path, cfg: Config) -> list[SceneDocument]:
 
     documents: list[SceneDocument] = []
     for path in iter_scene_paths(manuscript_dir):
-        raw = path.read_text(encoding="utf-8")
+        raw = read_repo_text(path)
         fm, body = split_frontmatter(raw)
         documents.append(
             SceneDocument(

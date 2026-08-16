@@ -224,7 +224,9 @@ def _scan_characters_at_head(root: Path, characters_dir: str = "story-bible/char
     char_dir = root / characters_dir
     if not char_dir.exists():
         return []
-    return [p.stem.capitalize() for p in sorted(char_dir.glob("*.md"))]
+    from .generator import character_name_from_file
+
+    return [character_name_from_file(p) for p in sorted(char_dir.glob("*.md"))]
 
 
 def _empty_row(sha: str, committed_at: str) -> HistoryRow:

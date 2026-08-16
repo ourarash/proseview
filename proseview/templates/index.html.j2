@@ -164,7 +164,7 @@
     </div>
 
     <div id="tab-analysis" class="tab-panel">
-        <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Analysing the manuscript…</p>
+        <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Preparing the analysis…</p>
         <div id="analysisContent" hidden>
             <div class="dashboard-grid">
                 <section class="card"><div class="card-header"><h2 class="card-title">Editorial Alerts</h2></div>
@@ -246,7 +246,7 @@
                     <option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option>
                 </select>
                 <a id="filePreviewEditorBtn" class="editor-btn" href="#" target="_blank" style="flex-shrink:0;" title=""></a>
-                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="openDiscuss(this)" style="flex-shrink:0; cursor:pointer;">Discuss</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
+                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="toggleScenePanel(this)" style="flex-shrink:0; cursor:pointer;" title="Show or hide the scene panel">&#9707; Panel</button><div class="agent-menu-wrap" style="position:relative;display:inline-block;flex-shrink:0;"><button type="button" class="editor-btn" id="agentMenuFileBtn" onclick="toggleAgentMenu('file')" style="cursor:pointer;">Agents &#x25BE;</button><div id="agentMenuFile" class="skills-dropdown" style="display:none;right:0;left:auto;top:calc(100% + 6px);bottom:auto;"><button type="button" class="skills-dropdown-item" onclick="openFileInCodex();closeAgentMenus()">&#x26A1; Codex</button><button type="button" class="skills-dropdown-item" onclick="openFileInClaude();closeAgentMenus()">&#x2728; Claude</button><button type="button" class="skills-dropdown-item" onclick="openFileInGemini();closeAgentMenus()">&#x2756; Gemini</button></div></div><button type="button" class="editor-btn" onclick="openShellTerminal()" style="flex-shrink:0; cursor:pointer;">$ Shell</button>
             </div>
         </div>
         <div id="filePreviewBody" class="modal-body repo-preview-body"></div>
@@ -255,9 +255,6 @@
 
     <dialog id="searchPalette" class="search-palette" aria-labelledby="searchPaletteTitle"></dialog>
 
-    <footer class="deep-link-help">
-        Deep-link URLs: <code>#/tab/&lt;name&gt;</code>, <code>#/scene/&lt;path&gt;</code>, <code>#/file/&lt;path&gt;</code>. Paths are URL-encoded. Copy the address bar to share the current view.
-    </footer>
 
         <div id="sceneModal" class="modal" role="main" aria-labelledby="modalTitle"><div class="modal-content"><header class="modal-header" data-toolbar-mode="auto" data-toolbar-hidden="false"><div class="modal-header-inner">
             <div class="scene-toolbar-leading"><button type="button" class="scene-back-btn scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Return to dashboard"><span aria-hidden="true">&#8592;</span><span class="scene-toolbar-button-label">Dashboard</span></button><button id="modalSidebarBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" aria-label="Toggle file browser" aria-keyshortcuts="B" title="Toggle file browser (B)">&#9776;</button></div>
@@ -270,6 +267,7 @@
                 <div class="scene-toolbar-menu-wrap"><button id="sceneAppearanceBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('sceneAppearanceMenu', this)" aria-label="Appearance and toolbar settings" aria-haspopup="dialog" aria-controls="sceneAppearanceMenu" aria-expanded="false" title="Appearance and toolbar settings">Aa</button><section id="sceneAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Appearance and toolbar settings" hidden>
                     <div class="scene-toolbar-menu-heading">Reading appearance</div>
                     <label class="scene-toolbar-field scene-toolbar-size-field" for="modalFontSize"><span>Text size</span><input id="modalFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)"></label>
+                    <label class="scene-toolbar-field scene-toolbar-size-field" for="modalMeasure"><span>Line width</span><input id="modalMeasure" type="range" min="480" max="1100" step="20" value="760" oninput="updateReadingMeasure(this.value)"><output id="modalMeasureOut" for="modalMeasure"></output></label>
                     <label class="scene-toolbar-field" for="modalFontSelect"><span>Font</span><select class="font-select-inline" id="modalFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></label>
                     <label class="scene-toolbar-field" for="modalThemeSelect"><span>Theme</span><select class="font-select-inline" id="modalThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option></select></label>
                     <button id="modalLineNumbersBtn" type="button" class="scene-toolbar-menu-action" onclick="toggleLineNumbers()" aria-pressed="false" title="Show source line numbers"><span aria-hidden="true">#</span> Source line numbers</button>
@@ -285,7 +283,7 @@
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
         </div><button id="sceneToolbarReveal" type="button" aria-label="Show scene toolbar" title="Show scene toolbar" onclick="revealSceneToolbar(true)"><span aria-hidden="true">&#8964;</span></button></header>
-        <details id="sceneAnalysisDetails" class="scene-secondary-details"><summary>Scene analysis</summary><div class="scene-stat-grid" id="modalStats"></div><div id="modalAlerts" class="modal-alerts"></div></details><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
 
     <dialog id="sceneConflictDialog" class="scene-conflict-dialog" role="alertdialog" aria-labelledby="sceneConflictTitle" aria-describedby="sceneConflictDescription">
         <h2 id="sceneConflictTitle">Scene changed on disk</h2>
@@ -335,12 +333,13 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" class="utility-tab active" role="tab" aria-selected="true">Codex</button>
+                    <button type="button" id="utilityTabDetails" class="utility-tab" role="tab" aria-selected="false" onclick="showSceneDetailsTab()" title="Counts, frontmatter, links and tasks for this scene">Details</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab()">Codex</button>
                     <button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
                 <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
                 <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Codex panel">&times;</button>
             </header>
+            <div id="sceneDetailsPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabDetails" hidden></div>
             <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>

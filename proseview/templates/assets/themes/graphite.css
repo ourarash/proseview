@@ -3,7 +3,12 @@
 
    Base values come from Red Graphite for Obsidian (theme.css):
      light   surface hsl(204, 6%)    accent hsl(2, 56%, 54%)   — red
-     dark    surface hsl(222, 22%)   accent hsl(41, 88%, 71%)  — amber
+     dark    surface hsl(200, 6%)    accent hsl(2, 65%, 62%)   — red
+
+   Both variants share one register: a near-neutral graphite surface at ~6%
+   saturation carrying the same red accent, lifted in the dark variant for
+   contrast. The dark surface used to sit at hsl(222, 22%) with an amber
+   accent, which is a navy-and-gold theme rather than a Red Graphite one.
 
    Chart and highlight-pass hues are inherited from the stock light and dark
    themes on purpose: those are tuned for legibility and for what each pass
@@ -51,7 +56,7 @@
             --shadow-card: 0 10px 30px hsla(204, 6%, 20%, 0.10);
             --button-hover: #ecedee;
             --button-active: #f1dbda;
-            --banner-progress-fill: #ffffff;
+            --banner-progress-fill: #cb4c48;
             --chart-grid: rgba(148, 163, 184, 0.28);
             --chart-text: #64748b;
             --chart-primary: #2563eb;
@@ -102,42 +107,43 @@
         /* Graphite Dark */
         [data-theme="graphite-dark"] {
             color-scheme: dark;
-            --primary: #f6cd74;
-            --secondary: #a2afcd;
+            --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Bookman", Georgia, serif;
+            --primary: #dd635f;
+            --secondary: #91a0ac;
             --success: #34d399;
             --warning: #fbbf24;
             --danger: #f87171;
             --accent-pink: #f472b6;
             --accent-cyan: #22d3ee;
             --accent-neutral: #94a3b8;
-            --bg-app: #161a22;
-            --surface-card: #1e232f;
-            --surface-muted: #262c3b;
-            --surface-soft: #2a3141;
-            --surface-overlay: hsla(222, 22%, 7%, 0.82);
-            --surface-field: #1a1e28;
-            --surface-code: #1a1e28;
-            --surface-selection: #5d4c28;
-            --surface-note: #1a1e28;
+            --bg-app: #1a1d1e;
+            --surface-card: #242729;
+            --surface-muted: #2e3133;
+            --surface-soft: #35393b;
+            --surface-overlay: hsla(200, 6%, 6%, 0.82);
+            --surface-field: #1f2223;
+            --surface-code: #1f2223;
+            --surface-selection: #543231;
+            --surface-note: #1f2223;
             --surface-danger: #3b1419;
             --surface-success: #0f2d23;
             --surface-warn: #3b2a13;
-            --surface-char: #1a1e28;
-            --surface-tooltip: #12151c;
-            --text-main: #dcdfe5;
-            --text-muted: #9299aa;
-            --text-soft: #c0c4ce;
-            --text-reading: #cccfd7;
-            --text-inverse: #171b24;
+            --surface-char: #1f2223;
+            --surface-tooltip: #161718;
+            --text-main: #dfe1e2;
+            --text-muted: #8f9699;
+            --text-soft: #c4c8ca;
+            --text-reading: #d6dadb;
+            --text-inverse: #1a1d1e;
             --text-success: #86efac;
             --text-warning: #fcd34d;
             --text-danger: #fca5a5;
-            --border: #323a4e;
-            --border-strong: #444f6a;
-            --shadow-card: 0 10px 30px hsla(222, 22%, 4%, 0.5);
-            --button-hover: #2c3344;
-            --button-active: #564625;
-            --banner-progress-fill: rgba(23, 27, 36, 0.78);
+            --border: #414649;
+            --border-strong: #596064;
+            --shadow-card: 0 10px 30px hsla(200, 6%, 4%, 0.5);
+            --button-hover: #323739;
+            --button-active: #633736;
+            --banner-progress-fill: #dd635f;
             --chart-grid: rgba(148, 163, 184, 0.18);
             --chart-text: #94a3b8;
             --chart-primary: #60a5fa;
@@ -183,4 +189,32 @@
             --hl-first-person-bg: #403014;
             --hl-first-person-text: #fde68a;
             --hl-first-person-border: #fbbf24;
+        }
+
+        /* The banner is a card, not a slab of accent.
+           `.top-banner` fills itself with var(--primary), which is the least
+           Obsidian thing on the page: Obsidian's chrome is the same surface as
+           its content, and the accent appears only on small interactive parts.
+           A muted brick red also reads distinctly orange once it covers that
+           much area. Scoped to the graphite pair so other themes keep their
+           own identity. */
+        [data-theme="graphite-light"] .top-banner,
+        [data-theme="graphite-dark"] .top-banner {
+            background: var(--surface-card);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+        }
+        [data-theme="graphite-light"] .dashboard-identity h1,
+        [data-theme="graphite-dark"] .dashboard-identity h1 { color: var(--primary); }
+        [data-theme="graphite-light"] .banner-stat .label,
+        [data-theme="graphite-dark"] .banner-stat .label,
+        [data-theme="graphite-light"] .dashboard-identity span,
+        [data-theme="graphite-dark"] .dashboard-identity span {
+            color: var(--text-muted); opacity: 1;
+        }
+        /* The track was a translucent white on the accent block; on a card it
+           needs its own surface to sit in. */
+        [data-theme="graphite-light"] .top-banner .range-bar,
+        [data-theme="graphite-dark"] .top-banner .range-bar {
+            background: var(--surface-muted); border: 1px solid var(--border);
         }

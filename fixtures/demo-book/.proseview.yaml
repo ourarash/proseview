@@ -2,5 +2,24 @@
 target_words: 30000
 daily_target: 500
 
+# The cast as the prose names it. Without this, names are derived from the
+# story-bible filenames, and "the Queen" would never match a file called
+# queen-of-hearts.md.
+characters:
+  - Alice
+  - White Rabbit
+  - Cheshire Cat
+  - Duchess
+  - Queen
+  - King
+  - Hatter
+  - March Hare
+  - Dormouse
+  - Gryphon
+  - Mock Turtle
+  - Caterpillar
+  - Mouse
+  - Dodo
+
 repo_tab:
   folders: [plans, story-bible]

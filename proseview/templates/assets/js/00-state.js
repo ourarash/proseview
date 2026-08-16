@@ -1,6 +1,6 @@
 let currentTab = 'overview';
         let suppressHashWrite = false;
-        const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes'];
+        const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];
 
         // Headers for every state-changing request. The session token is the
         // only thing separating this page from any other site the user has
@@ -34,6 +34,48 @@ let currentTab = 'overview';
             comedy_beats: 'hl-comedy',
             repeats: 'hl-repeat',
             first_person: 'hl-first-person'
+        };
+        // Every pass carries a line of examples rather than a definition:
+        // "felt, saw, heard, noticed" says what Filter Verbs are faster than a
+        // sentence can, and it survives on a touch screen where a tooltip does
+        // not. Two of these names mislead on their own -- Comedy Beats is
+        // punctuation, Lyrical is simile markers -- which is the case for
+        // showing the vocabulary rather than the label alone.
+        const PASS_EXAMPLES = {
+            repeats: 'words this scene leans on',
+            first_person: 'I, me, my, myself',
+            comedy_beats: '! ... ?! and dashes',
+            crutch_words: 'just, really, quite, actually',
+            lyrical: 'like, as, seemed, became',
+            filter_verbs: 'felt, saw, heard, noticed',
+            hyperbole: 'always, never, everything',
+            sensory: 'sight, sound, smell, touch, taste',
+            passive_voice: 'was written, is known'
+        };
+        // The second layer: what the pass counts, and why it might matter.
+        // Shown on hover and on keyboard focus, never required to read the row.
+        const PASS_NOTES = {
+            repeats: "The scene's own most-repeated content words. Repetition you chose reads as rhythm; repetition you did not is the commonest revision note.",
+            first_person: 'First-person pronouns. A high rate in close third can mean the narration has drifted into the character’s head.',
+            comedy_beats: 'Exclamation marks, ellipses, interrobangs and em dashes: the punctuation of timing. Clustered, they can make prose read as arch.',
+            crutch_words: 'Fifteen hedging words. Each one softens a sentence; together they make prose apologise for itself.',
+            lyrical: 'Simile and transformation markers. The vocabulary of figurative writing, useful when you want to know how much of it a scene is carrying.',
+            filter_verbs: 'Twenty perception verbs. They put the character between the reader and the thing: “she saw the door open” rather than “the door opened”.',
+            hyperbole: 'Fourteen absolutes. Overstatement spends the reader’s trust faster than it buys emphasis.',
+            sensory: 'Sixty-seven words across the five senses. The tooltip on each match in the prose names its category.',
+            passive_voice: 'A form of “to be” followed by a past participle. Passive is not a fault, but a scene made mostly of it loses its actors.'
+        };
+
+        const PASS_INLINE_TIPS = {
+            passive_voice: 'A form of "to be" followed by a past participle. Consider if making the subject perform the action fits the scene better (e.g., "the ball was thrown by him" vs "he threw the ball").',
+            filter_verbs: 'The verb "{word}" can put distance between the reader and the action. Consider if it is necessary (e.g., "she saw the door open" vs "the door opened").',
+            crutch_words: '"{word}" is a hedging word that softens the sentence. The prose might be stronger without it (e.g., "it was really cold" vs "it was freezing").',
+            hyperbole: 'Absolute words like "{word}" can sometimes weaken emphasis if overused in a scene (e.g., "he always forgot" vs "he frequently forgot").',
+            repeats: 'The word "{word}" is repeated {para} times in this paragraph and {scene} times in the entire scene. Consider if it provides intentional rhythm or if it should be varied.',
+            first_person: 'First-person pronouns (I, me, my). A high rate in a scene written in close third person can mean the narration has drifted into the character’s head.',
+            lyrical: 'Simile or transformation markers used for figurative writing (e.g., "like", "as", "seemed").',
+            sensory: 'Words related to the five senses (e.g., "whisper", "rough", "aroma").',
+            comedy_beats: 'Punctuation marks often used for timing (e.g., "!", "...", "?!"). Clustered together, they can affect the rhythm of the prose.'
         };
 
         const THEME_STORAGE_KEY = 'proseview-theme';
@@ -70,6 +112,29 @@ let currentTab = 'overview';
         let scrollSaveQueued = false;
         let routeHydrating = false;
 
+        // The dock and the reading column compete for the same pixels. Rather
+        // than pick a breakpoint, ask whether the prose can still hold the
+        // measure the reader chose: if splitting the viewport would squeeze it
+        // below that, the dock overlays instead of docking. A reader on a
+        // 1280px laptop who has asked for a wide measure gets the overlay; one
+        // on the same screen reading narrow keeps the split view.
+        const OVERLAY_MIN_PROSE_WIDTH = 420;
+
+        function _dockWouldCrushTheProse(logicalViewportWidth) {
+            if (!document.body.classList.contains('discuss-open')
+                && !document.body.classList.contains('terminal-right-open')) return false;
+            const dock = Math.min(
+                parseFloat(getComputedStyle(document.documentElement)
+                    .getPropertyValue('--utility-dock-w')) || 504,
+                logicalViewportWidth / 2
+            );
+            const measure = typeof storedReadingMeasure === 'function'
+                ? storedReadingMeasure() : READING_MEASURE_DEFAULT;
+            // 48px of gutter is the least the reading column looks deliberate in.
+            const wanted = Math.min(measure, OVERLAY_MIN_PROSE_WIDTH) + 48;
+            return logicalViewportWidth - dock < wanted;
+        }
+
         function syncCssZoomViewport() {
             const root = document.documentElement;
             const body = document.body;
@@ -77,9 +142,16 @@ let currentTab = 'overview';
             const zoom = parseFloat(getComputedStyle(body).zoom) || 1;
             if (zoom <= 1) {
                 delete root.dataset.cssZoom;
-                delete root.dataset.utilityOverlay;
-                root.style.removeProperty('--css-zoom-body-width');
-                root.style.removeProperty('--css-zoom-dock-width');
+                const width = window.innerWidth;
+                if (_dockWouldCrushTheProse(width)) {
+                    root.dataset.utilityOverlay = 'true';
+                    root.style.setProperty('--css-zoom-body-width', Math.max(220, width) + 'px');
+                    root.style.setProperty('--css-zoom-dock-width', Math.max(220, width) + 'px');
+                } else {
+                    delete root.dataset.utilityOverlay;
+                    root.style.removeProperty('--css-zoom-body-width');
+                    root.style.removeProperty('--css-zoom-dock-width');
+                }
                 window.dispatchEvent(new Event('proseview:workspace-metrics'));
                 return;
             }
@@ -107,9 +179,11 @@ let currentTab = 'overview';
             syncCssZoomViewport();
             window.addEventListener('resize', syncCssZoomViewport);
             if (window.visualViewport) window.visualViewport.addEventListener('resize', syncCssZoomViewport);
+            // "class" is in here because opening the dock is a class change on
+            // body, and whether the dock overlays depends on it being open.
             new MutationObserver(syncCssZoomViewport).observe(document.body, {
                 attributes: true,
-                attributeFilter: ['style'],
+                attributeFilter: ['style', 'class'],
             });
             new MutationObserver(syncCssZoomViewport).observe(document.documentElement, {
                 attributes: true,

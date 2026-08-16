@@ -45,7 +45,7 @@ from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
     build_scene_data,
 )
-from .lexical import paragraph_blocks
+from .lexical import paragraph_blocks, calculate_lexical_stats
 from .repo import read_repo_text, _file_node as _repo_file_node, resolve_visible_repository_path
 from .scenes import (
     collect_scene_stats, extract_scene_text, resolve_manuscript_dir, split_frontmatter,
@@ -82,6 +82,7 @@ def _write_runtime_file(root: Path, port: int, session_token: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "url": f"http://localhost:{port}",
+        "port": port,
         "repo_root": str(root.resolve()),
         "started_at": datetime.now().isoformat(timespec="seconds"),
         # How `proseview propose` and friends authenticate. A browser cannot
@@ -853,6 +854,23 @@ def delete_todo(abs_path: str, todo_text: str, open_mtime: float | None = None) 
     print(f"[{stamp}] deleted TODO from {path.name}")
 
 
+def delete_fm_todo(abs_path: str, todo_text: str, open_mtime: float | None = None) -> None:
+    """Remove a list item from the frontmatter `todos` block."""
+    path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
+    target_idx = -1
+    for i, line in enumerate(lines[:100]):
+        if re.match(r"^\s*-\s*[\"']?" + re.escape(todo_text) + r"[\"']?\s*$", line):
+            target_idx = i
+            break
+    if target_idx >= 0:
+        lines.pop(target_idx)
+        _atomic_write_text(path, "".join(lines))
+        stamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{stamp}] deleted frontmatter TODO from {path.name}")
+    else:
+        raise ValueError(f"Frontmatter TODO not found: {todo_text!r}")
+
+
 def _note_comment(note_text: str, tag: str) -> str:
     """Render the NOTE comment for *note_text*, tagged unless the tag is the default."""
     tag = tag.strip().lower() if tag and tag.strip() else "note"
@@ -1468,6 +1486,29 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path.startswith("/api/scene/lexical?"):
+            try:
+                query = parse_qs(urlparse(self.path).query)
+                rel = query.get("path", [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                root = Path(self.repo_root)
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                if not scene_path.is_relative_to(manuscript_root) or not scene_path.exists():
+                    self._send_json({"ok": False, "error": "invalid scene path"}, 403)
+                    return
+                raw = scene_path.read_text("utf-8")
+                from proseview.scenes import split_frontmatter, extract_scene_text
+                _, body = split_frontmatter(raw)
+                txt = extract_scene_text(body)
+                lex = calculate_lexical_stats(txt)
+                self._send_json({"ok": True, "mattr": lex.mattr, "mtld": lex.mtld})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
         if self.path.startswith("/repo-file"):
             self._handle_repo_file()
             return
@@ -1777,6 +1818,15 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/delete-todo":
             try:
                 delete_todo(body["abs_path"], body["todo_text"], _annotation_open_mtime(body))
+                self.invalidate()
+                self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+        elif self.path == "/delete-fm-todo":
+            try:
+                delete_fm_todo(body["abs_path"], body["todo_text"], _annotation_open_mtime(body))
                 self.invalidate()
                 self._send_json({"ok": True})
             except _FileConflictError as exc:
@@ -2122,6 +2172,7 @@ def serve(
             super().handle_error(request, client_address)
 
     httpd = _Server(("localhost", port), handler_cls)
+    port = httpd.server_address[1]
 
     url = f"http://localhost:{port}"
     print(f"proseview serving at {url}")

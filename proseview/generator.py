@@ -11,22 +11,24 @@ split into a Jinja template plus inlined CSS and JavaScript assets under
 
 from __future__ import annotations
 
+import dataclasses
 import html
 import json
 import math
 import re
+import statistics
 from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .config import Config
+from .config import GENRE_LABELS, Config
 from .editor import build_url as _editor_url, label as _editor_label
 from .goals import Goals, compute_goals
 from .highlights import PASS_NAMES, compute_scene_highlights
 from .history import HistoryRow, load_history, working_copy_delta
-from .lexical import FILTER_VERBS, calculate_lexical_stats
+from .lexical import QUOTE_RE, FILTER_VERBS, calculate_lexical_stats
 from .related import find_related
 from .repo import build_repository_tree, build_sidebar_tree, build_tree, read_repo_text, recent_changes
 from .story import story_payload
@@ -38,6 +40,8 @@ from .scenes import (
     goal_position,
     revision_signal,
     scene_is_outlier,
+    scene_mattr_median,
+    scene_mtld_median,
     sort_scenes,
 )
 
@@ -320,6 +324,37 @@ def build_scene_data(
         text = str(path)
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
+    def _compute_char_mentions(scene: SceneStats) -> dict[str, dict[str, int]]:
+        chars = scene.frontmatter.get("characters") if isinstance(scene.frontmatter, dict) else None
+        if not chars:
+            return {}
+        if not isinstance(chars, (list, tuple)):
+            chars = [chars]
+
+        dlg_spans = [(m.start(), m.end()) for m in QUOTE_RE.finditer(scene.text)]
+        mentions: dict[str, dict[str, int]] = {}
+
+        for c in chars:
+            if not isinstance(c, str) or not c.strip():
+                continue
+            c_name = c.strip()
+            c_pattern = re.compile(rf"\b{re.escape(c_name)}\b", re.IGNORECASE)
+            
+            dlg_count = 0
+            prose_count = 0
+            
+            for m in c_pattern.finditer(scene.text):
+                start = m.start()
+                is_dlg = any(ds <= start < de for ds, de in dlg_spans)
+                if is_dlg:
+                    dlg_count += 1
+                else:
+                    prose_count += 1
+            
+            mentions[c_name] = {"dialogue": dlg_count, "prose": prose_count}
+            
+        return mentions
+
     contents = {clean_path(s.path): s.text for s in scenes}
     highlights = {
         clean_path(s.path): compute_scene_highlights(s.text, repeat_terms=s.repetition_examples)
@@ -330,6 +365,7 @@ def build_scene_data(
             "title": scene.title,
             "repeats": scene.repetition_examples,
             "avg_sent": scene.avg_sentence_words,
+            "sent_stdev": scene.sent_len_stdev,
             "dlg_pct": scene.dialogue_pct,
             "first_person": scene.first_person_per_1k,
             "italics": scene.italics_per_1k,
@@ -350,7 +386,10 @@ def build_scene_data(
                 * 1000 / scene.words
                 if scene.words else 0
             ),
+            "char_mentions": _compute_char_mentions(scene),
             "related_docs": find_related(scene, cfg, tree_nodes),
+            "mattr": scene.mattr,
+            "mtld": scene.mtld,
             "todos": scene.todos,
             "notes": scene.notes,
             "txt_line_offset": scene.txt_line_offset,
@@ -358,9 +397,18 @@ def build_scene_data(
         }
         for scene in scenes
     }
+    medians = {
+        "words": statistics.median([s.words for s in scenes]) if scenes else 0,
+        "avg_sent": statistics.median([s.avg_sentence_words for s in scenes]) if scenes else 0.0,
+        "sent_stdev": statistics.median([s.sent_len_stdev for s in scenes]) if scenes else 0.0,
+        "dlg_pct": statistics.median([s.dialogue_pct for s in scenes]) if scenes else 0.0,
+        "sensory": statistics.median([s.sensory_density for s in scenes]) if scenes else 0.0,
+        "first_person": statistics.median([s.first_person_per_1k for s in scenes]) if scenes else 0.0,
+        "passive": statistics.median([s.passive_per_1k for s in scenes]) if scenes else 0.0,
+        "crutch": statistics.median([s.crutch_per_1k for s in scenes]) if scenes else 0.0,
+    }
 
-    return {"contents": contents, "meta": meta, "highlightsByPath": highlights}
-
+    return {"contents": contents, "meta": meta, "highlightsByPath": highlights, "medians": medians}
 
 def _scene_table_body(
     display_scenes: list[SceneStats],
@@ -414,6 +462,11 @@ def _scene_table_body(
             f'<span class="badge note-badge" title="{note_count} note(s)">{note_count} note</span> '
             if note_count else ''
         )
+        
+        alert_badge = ""
+        if analysis and scene_is_outlier(scene, cfg):
+            msg = html.escape(revision_signal(scene, cfg), quote=True)
+            alert_badge = f'<span class="badge badge-danger" title="{msg}" style="cursor:help;">Review</span> '
 
         style_attrs = (
             f'data-dlg="{scene.dialogue_pct}" data-sent="{scene.avg_sentence_words}" '
@@ -425,7 +478,7 @@ def _scene_table_body(
             f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
             f'<td><button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
             f'onclick="openSceneModal(this.dataset.scenePath)">{display_path_html}</button>'
-            f'{status_badge}{todo_badge}{note_badge}'
+            f'{alert_badge}{status_badge}{todo_badge}{note_badge}'
             f'<a class="editor-btn" href="{html.escape(editor_url, quote=True)}" title="Open in {html.escape(editor_label, quote=True)}" '
             f'onclick="event.stopPropagation()">↗ {html.escape(editor_label)}</a></td>'
             f'<td><span style="font-size:11px; opacity:0.7;">{html.escape(scene.chapter)}</span></td>'
@@ -473,26 +526,8 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     chapters = sorted({scene.chapter for scene in scenes})
-    rhythm_vals = [
-        sum(s.sent_len_stdev for s in scenes if s.chapter == chapter)
-        / max(1, len([s for s in scenes if s.chapter == chapter]))
-        for chapter in chapters
-    ]
 
-    flagged = sort_scenes(
-        [scene for scene in scenes if scene_is_outlier(scene, cfg)], "severity", True, cfg
-    )
-    alerts_html = (
-        "".join(
-            f'<button type="button" class="alert-item" data-scene-path="{html.escape(clean_path(scene.path), quote=True)}" '
-            f'onclick="openSceneModal(this.dataset.scenePath)">'
-            f'<div class="alert-path">{html.escape(clean_path(scene.path))}</div>'
-            f'<div class="alert-msg">{html.escape(revision_signal(scene, cfg))}</div></button>'
-            for scene in flagged[:8]
-        )
-        if flagged
-        else "<p>No urgent issues detected.</p>"
-    )
+
 
     lexical = calculate_lexical_stats("\n\n".join(scene.text for scene in scenes))
 
@@ -503,18 +538,11 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
     l_start = get_pct(cfg.mtld_band[0], 50, 180)
 
     return {
-        "alertsHtml": alerts_html,
         "tableBody": _scene_table_body(
             display_scenes, root, cfg, _editor_label(cfg), analysis=True
         ),
         # Same shapes the template used to inject, so the existing Chart.js
         # setup in 70-terminal.js builds them without changes.
-        "rhythmChart": {
-            "labels": chapters,
-            "datasets": [
-                {"label": "Sentence Var (Stdev)", "data": rhythm_vals, "fill": False, "tension": 0.4}
-            ],
-        },
         "scatterChart": {
             "datasets": [
                 {
@@ -527,14 +555,24 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
             "bands": {"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)},
         },
         "lexical": {
-            "mattrText": f"{lexical.mattr:.3f}",
+            "mattrText": f"{lexical.mattr * 100:.1f}%",
             "mattrZoneLeft": f"{m_start:.1f}",
             "mattrZoneWidth": f"{get_pct(cfg.mattr_band[1], 0.65, 0.85) - m_start:.1f}",
             "mattrMarkerLeft": f"{get_pct(lexical.mattr, 0.65, 0.85):.1f}",
-            "mtldText": f"{lexical.mtld:.1f}",
+            "mtldText": f"{int(lexical.mtld)} words",
             "mtldZoneLeft": f"{l_start:.1f}",
             "mtldZoneWidth": f"{get_pct(cfg.mtld_band[1], 50, 180) - l_start:.1f}",
             "mtldMarkerLeft": f"{get_pct(lexical.mtld, 50, 180):.1f}",
+            # The manuscript's own median, which the code has always computed
+            # and always discarded. It is the more useful of the two references
+            # for revision: it says which scenes are unusual *for this book*,
+            # which is a question the genre band cannot answer.
+            "mtldMedian": scene_mtld_median(scenes),
+            "mattrMedian": scene_mattr_median(scenes),
+            "mtldMedianText": f"{int(scene_mtld_median(scenes))} words",
+            "mattrMedianText": f"{scene_mattr_median(scenes) * 100:.1f}%",
+            "mtldBand": [cfg.mtld_band[0], cfg.mtld_band[1]],
+            "genreLabel": GENRE_LABELS.get(cfg.genre, cfg.genre),
         },
     }
 
@@ -585,6 +623,7 @@ def render_html_report(
     scene_content_map = scene_data["contents"]
     highlights_map = scene_data["highlightsByPath"]
     scene_meta_map = scene_data["meta"]
+    medians_map = scene_data["medians"]
     ordered_paths = [clean_path(s.path) for s in display_scenes]
 
     char_dir = root / cfg.characters_dir
@@ -661,6 +700,7 @@ def render_html_report(
         "contents_json": _js_json(scene_content_map),
         "bios_json": _js_json(char_bio_map),
         "meta_json": _js_json(scene_meta_map),
+        "medians_json": _js_json(medians_map),
         "paths_json": _js_json(ordered_paths),
         "highlights_json": _js_json(highlights_map),
         "editor_scheme_json": _js_json(cfg.editor.scheme),
@@ -674,6 +714,7 @@ def render_html_report(
         "images_config_json": _js_json(
             {"mode": cfg.images.mode, "remoteInAgentOutput": cfg.images.remote_in_agent_output}
         ),
+        "lexical_bands_json": _js_json({"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)}),
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),
         "location_chart_json": _js_json(
@@ -688,6 +729,8 @@ def render_html_report(
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),
         "story_json": _js_json(story_payload(scenes, cfg)),
         "session_token_json": json.dumps(session_token),
+        "config_json": _js_json(dataclasses.asdict(cfg)),
+        "cfg": cfg,
     }
     return _render_template("index.html.j2", **context)
 

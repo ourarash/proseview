@@ -67,10 +67,10 @@
     <nav id="repoSidebar" class="repo-sidebar" aria-label="Repository files">
         <div class="sidebar-header">
             <span class="sidebar-title">Files</span>
-            <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar" aria-label="Close sidebar">&times;</button>
+            <button class="sidebar-close-btn" onclick="setSidebarOpen(false)" title="Close sidebar" aria-label="Close sidebar"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
         </div>
         <div id="sidebarTree" class="repo-tree sidebar-tree"></div>
-        <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" tabindex="0" aria-label="Resize file browser" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="520" aria-valuenow="260"></div>
+        <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" tabindex="0" aria-label="Resize file browser" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="520" aria-valuenow="280"></div>
     </nav>
 
     <main id="mainContent">
@@ -90,9 +90,10 @@
             <button data-tab="timeline" onclick="showTab('timeline')">Timeline</button>
             <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
             <button data-tab="notes" onclick="showTab('notes')">Notes</button>
+            <button data-tab="settings" onclick="showTab('settings')">Settings</button>
         </nav>
         <div class="toolbar-actions">
-            <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser">&#9776; Files</button>
+            <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg><span>Files</span></button>
             <div id="dashboardSearchMount" class="dashboard-search-mount">
                 <div id="searchMenu" class="search-menu">
                     <div class="search-palette-header">
@@ -144,21 +145,14 @@
         {{ goals_card_wrapper | safe }}
         {{ recent_changes_card | safe }}
 
-        <div class="dashboard-grid">
-            <figure class="card chart-figure" aria-labelledby="presenceChartTitle"><div class="card-header"><h2 class="card-title" id="presenceChartTitle">Character Presence Timeline</h2></div><div class="chart-frame"><canvas id="presenceChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
-            <figure class="card chart-figure" aria-labelledby="locationChartTitle"><div class="card-header"><h2 class="card-title" id="locationChartTitle">Setting Stickiness (Words per Location)</h2></div><div class="chart-frame"><canvas id="locationChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
-        </div>
 
-        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-            <figure class="card chart-figure" aria-labelledby="coOccurChartTitle"><div class="card-header"><h2 class="card-title" id="coOccurChartTitle">Character Co-Occurrence</h2></div><div class="chart-frame"><canvas id="coOccurChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
-        </div>
 
         <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scenes</h2>
             <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
                 <option value="all">All Scenes</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
             </select>
             <span class="section-note" style="margin-left:12px;">Prose metrics live in the <a href="#" onclick="showTab('analysis'); return false;">Analysis</a> tab.</span></div>
-            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(3)" aria-label="Sort by Flavor">Flavor</button></th></tr></thead><tbody>
+            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(3)" aria-label="Sort by Keywords" title="The 3 most distinctive words in this scene compared to the rest of the manuscript.">Keywords</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
             </tbody></table></div>
     </div>
@@ -167,34 +161,55 @@
         <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Preparing the analysis…</p>
         <div id="analysisContent" hidden>
             <div class="dashboard-grid">
-                <section class="card"><div class="card-header"><h2 class="card-title">Editorial Alerts</h2></div>
-                    <div class="scroll-panel" id="analysisAlerts"></div>
-                </section>
-                <section class="card"><div class="card-header"><h2 class="card-title">Book-Wide Lexical Health</h2></div>
-                    <div class="health-section"><div>Local Variety (MATTR): <strong id="analysisMattrText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMattrZone"></div><div class="current-marker" id="analysisMattrMarker"></div></div></div>
-                    <div class="health-section"><div>Whole-Scene Variety (MTLD): <strong id="analysisMtldText"></strong></div><div class="range-bar"><div class="target-zone" id="analysisMtldZone"></div><div class="current-marker" id="analysisMtldMarker"></div></div></div>
-                </section>
+                <figure class="card chart-figure" aria-labelledby="presenceChartTitle"><div class="card-header"><h2 class="card-title" id="presenceChartTitle">Character Presence Timeline</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows the pacing of character appearances throughout the manuscript by counting literal name mentions in each chapter. Use this to identify if a main character vanishes for long stretches.</p></div><div class="chart-frame"><canvas id="presenceChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+                <figure class="card chart-figure" aria-labelledby="locationChartTitle"><div class="card-header"><h2 class="card-title" id="locationChartTitle">Word Count per Location</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows which locations dominate the manuscript. Location data is read strictly from the <code>where:</code> or <code>location:</code> tags in each scene's frontmatter, or defaults to its parent folder name.</p></div><div class="chart-frame"><canvas id="locationChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
             </div>
 
             <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-                <figure class="card chart-figure" aria-labelledby="rhythmChartTitle"><div class="card-header"><h2 class="card-title" id="rhythmChartTitle">Rhythm &amp; Pacing (Sentence length variety)</h2></div>
-                    <div class="section-note">
-                        Measures the "pulse" of your prose.
-                        <br>&bull; <b>Static (0-4):</b> Monotonous drone.
-                        <br>&bull; <b>Rhythmic (5-12):</b> Healthy pulse. <b>Your current target.</b>
-                        <br>&bull; <b>Dynamic (13+):</b> High contrast/tension.
+                <figure class="card chart-figure" aria-labelledby="coOccurChartTitle"><div class="card-header"><h2 class="card-title" id="coOccurChartTitle">Character Co-Occurrence</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows which characters share the most "screen time" by counting the number of scenes where both are mentioned together. Use this to identify your strongest character pairings and isolated subplots.</p></div><div class="chart-frame"><canvas id="coOccurChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+            </div>
+
+            <div class="stats-layout" style="margin-bottom: 24px;">
+                <section class="card"><div class="card-header"><h2 class="card-title">Book-Wide Lexical Health</h2></div>
+                    <p class="section-note" style="margin-bottom: 24px; margin-top:0;">These metrics check if your vocabulary is rich and varied, or if you are over-repeating words.</p>
+
+                    <div class="health-section" style="margin-bottom: 24px;">
+                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Unique Words % (Local): <strong id="analysisMattrText" style="font-weight: 700;"></strong></div>
+                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">Checks if you are echoing the same words too closely together. This explicitly tells you that, on average, <strong id="analysisMattrExplanationText"></strong> of your words in a local window are unique.<br><span style="opacity: 0.85;"><em>Example of a low score: "He opened the <b>door</b> and walked through the <b>door</b>, closing the <b>door</b>."</em></span></p>
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 500;">
+                            <span>Repetitive</span>
+                            <div class="range-bar" style="flex: 1;"><div class="target-zone" id="analysisMattrZone"></div><div class="current-marker" id="analysisMattrMarker"></div></div>
+                            <span>Varied</span>
+                        </div>
                     </div>
-                    <div class="chart-frame"><canvas id="rhythmChart" aria-hidden="true"></canvas></div><div class="chart-data"></div>
+
+                    <div class="health-section">
+                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Words Before Repetition (Scene): <strong id="analysisMtldText" style="font-weight: 700;"></strong></div>
+                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">Checks the overall size of your vocabulary across a scene. This explicitly tells you that, on average, you write <strong id="analysisMtldExplanationText"></strong> before you start heavily repeating yourself.<br><span style="opacity: 0.85;"><em>Example of a low score: A 1,000 word dialogue scene where characters only say "Yes", "No", and "Okay".</em></span></p>
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 500;">
+                            <span>Limited Vocab</span>
+                            <div class="range-bar" style="flex: 1;"><div class="target-zone" id="analysisMtldZone"></div><div class="current-marker" id="analysisMtldMarker"></div></div>
+                            <span>Rich Vocab</span>
+                        </div>
+                        <p class="health-refs" id="analysisMtldRefs"></p>
+                    </div>
+                </section>
+
+                <figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Lexical Health Map</h2></div>
+                    <div class="section-note" style="margin-top: 4px; margin-bottom: 12px; line-height: 1.4;">
+                        Plots every scene's vocabulary diversity. <strong>The green outlined box represents your Genre Target.</strong> Scenes falling below the green box are highly repetitive. Scenes inside or above the green box have excellent vocabulary range.
+                    </div>
+                    <div class="chart-frame-lg"><canvas id="lexicalScatterChart" aria-hidden="true"></canvas></div><div class="chart-data"></div>
                 </figure>
             </div>
 
-            <div class="stats-layout">
+
+            <div class="dashboard-grid" style="grid-template-columns: 1fr;">
                 <section class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scene Deep Dive</h2>
                     <select id="analysisIssueFilter" class="issue-filter" onchange="applyAnalysisIssueFilter()">
                         <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option>
                     </select></div>
-                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Variety">Variety</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Flavor">Flavor</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Top Repeat">Top Repeat</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Dialogue percent">Dlg%</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(7)" aria-label="Sort by Sentence length">Sent</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table></section>
-                <div class="sticky-sidebar"><figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Lexical Health Map</h2></div><div class="chart-frame-lg"><canvas id="lexicalScatterChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure></div>
+                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Lexical Health" title="Unique Words % (Local) and Words Before Repetition (Scene)">Lexical Health</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Keywords" title="The 3 most distinctive words in this scene compared to the rest of the manuscript.">Keywords</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Top Repeat">Top Repeat</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Dialogue percent">Dialogue %</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(7)" aria-label="Sort by Sentence length" title="Average sentence length in words">Avg Sent Length</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table></section>
             </div>
         </div>
     </div>
@@ -219,6 +234,47 @@
             </select>
         </div>
         <div id="notesTabContent"></div>
+    </div>
+
+    <div id="tab-settings" class="tab-panel">
+        <section class="card" style="max-width: 800px; margin: 0 auto; margin-top: 24px;">
+            <div class="card-header">
+                <h2 class="card-title">Project Configuration</h2>
+                <p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">
+                    Proseview is configured entirely by a plain text file: <code>.proseview.yaml</code>. 
+                    <br>Open this file in your editor to change these settings.
+                </p>
+            </div>
+            
+            <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; padding: 24px;">
+                
+                <div class="settings-group">
+                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">General Goals</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Target Words:</span> <strong style="font-size: 13px;">{{ '{:,}'.format(cfg.target_words) }}</strong></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Daily Target:</span> <strong style="font-size: 13px;">{{ '{:,}'.format(cfg.daily_target) }}</strong></div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Analysis Targets</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Genre Profile:</span> <strong style="font-size: 13px;">{{ cfg.genre }}</strong></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Unique Words % (Local):</span> <strong style="font-size: 13px;">{{ cfg.mattr_band[0]*100 }}% – {{ cfg.mattr_band[1]*100 }}%</strong></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Words Before Repetition:</span> <strong style="font-size: 13px;">{{ cfg.mtld_band[0] }} – {{ cfg.mtld_band[1] }}</strong></div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Story Elements</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Characters:</span> <strong style="font-size: 13px;">{{ cfg.characters|length if cfg.characters else 'Auto-discovered' }}</strong></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Locations:</span> <strong style="font-size: 13px;">{{ cfg.locations|length if cfg.locations else 'Auto-discovered' }}</strong></div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
     </div>
 
     <div id="file-preview-panel">
@@ -257,12 +313,12 @@
 
 
         <div id="sceneModal" class="modal" role="main" aria-labelledby="modalTitle"><div class="modal-content"><header class="modal-header" data-toolbar-mode="auto" data-toolbar-hidden="false"><div class="modal-header-inner">
-            <div class="scene-toolbar-leading"><button type="button" class="scene-back-btn scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Return to dashboard"><span aria-hidden="true">&#8592;</span><span class="scene-toolbar-button-label">Dashboard</span></button><button id="modalSidebarBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" aria-label="Toggle file browser" aria-keyshortcuts="B" title="Toggle file browser (B)">&#9776;</button></div>
+            <div class="scene-toolbar-leading"><button type="button" class="scene-back-btn scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Return to dashboard"><span aria-hidden="true">&#8592;</span><span class="scene-toolbar-button-label">Dashboard</span></button><button id="modalSidebarBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" aria-label="Toggle file browser" aria-keyshortcuts="B" title="Toggle file browser (B)"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg></button></div>
             <h1 id="modalTitle" tabindex="-1"></h1>
             <div class="modal-header-controls">
                 <div class="scene-toolbar-nav" aria-label="Scene navigation"><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(-1)" aria-label="Previous scene" title="Previous scene">&#8592;</button><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(1)" aria-label="Next scene" title="Next scene">&#8594;</button></div>
                 <button type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="focusSearch()" aria-label="Search files" aria-keyshortcuts="Meta+K Control+K" title="Search files">&#8981;</button>
-                <button type="button" class="scene-toolbar-button discuss-open-btn" onclick="openDiscuss(this)" aria-label="Discuss"><span aria-hidden="true">&#9671;</span><span class="scene-toolbar-action-label">Discuss</span></button>
+                <button type="button" class="scene-toolbar-button discuss-open-btn" onclick="toggleScenePanel(this)" aria-label="Show or hide the scene panel" title="Show or hide the scene panel"><span aria-hidden="true">&#9707;</span><span class="scene-toolbar-action-label">Panel</span></button>
                 <button id="sceneEditBtn" type="button" class="scene-toolbar-button" onclick="toggleSceneEdit()" aria-label="Edit scene" aria-keyshortcuts="E"><span aria-hidden="true">&#9998;</span><span class="scene-toolbar-action-label">Edit</span></button>
                 <div class="scene-toolbar-menu-wrap"><button id="sceneAppearanceBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('sceneAppearanceMenu', this)" aria-label="Appearance and toolbar settings" aria-haspopup="dialog" aria-controls="sceneAppearanceMenu" aria-expanded="false" title="Appearance and toolbar settings">Aa</button><section id="sceneAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Appearance and toolbar settings" hidden>
                     <div class="scene-toolbar-menu-heading">Reading appearance</div>
@@ -297,9 +353,13 @@
         <div id="terminalResizeHandle" class="terminal-resize-handle" role="separator" tabindex="0" aria-label="Resize Terminal" aria-orientation="horizontal" aria-valuemin="150" aria-valuemax="920" aria-valuenow="520"></div>
         <div class="terminal-inner">
             <p id="terminalKeyboardHelp" class="sr-only">Press Shift+Tab to leave terminal input and return to the active terminal tab.</p>
+            <!-- The dock tabs get their own row. Sharing the header with the
+                 session chips meant that opening two shells could push "Scene"
+                 and "Analysis" out of a right-docked terminal entirely, and
+                 there was no way back to them. -->
+            <div class="terminal-dock-tabs utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" id="termUtilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')">Scene</button><button type="button" id="termUtilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')">Analysis</button><button type="button" id="termUtilityTabDiscuss" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussTab(this)">Codex</button><button type="button" id="termUtilityTabTerminal" class="utility-tab active" role="tab" aria-selected="true" onclick="showRightTerminal()">Terminal</button></div>
             <div class="terminal-header">
                 <div id="terminalTabs" class="terminal-tabs" role="tablist" aria-label="Terminal sessions"></div>
-                <div class="utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="openDiscuss(this)">Discuss</button><button type="button" class="utility-tab active" role="tab" aria-selected="true">Terminal</button></div>
                 <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
                 <div class="terminal-header-spacer"></div>
                 <div class="terminal-shortcuts">
@@ -333,13 +393,13 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" id="utilityTabDetails" class="utility-tab" role="tab" aria-selected="false" onclick="showSceneDetailsTab()" title="Counts, frontmatter, links and tasks for this scene">Details</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab()">Codex</button>
-                    <button type="button" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
+                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab(this)">Codex</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
                 <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
                 <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Codex panel">&times;</button>
             </header>
-            <div id="sceneDetailsPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabDetails" hidden></div>
+            <div id="sceneDetailsPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabScene" hidden></div>
+            <div id="sceneAnalysisPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabAnalysis" hidden></div>
             <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
@@ -403,6 +463,8 @@
         const terminalAvailable = {{ terminal_available_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
         const storyModel = {{ story_json | safe }};
+        const lexicalBands = {{ lexical_bands_json | safe }};
+        const medians = {{ medians_json | safe }};
         const repoFileByPath = {};
         const repositoryFileByPath = {};
         (function indexRepo(nodes) {

@@ -1001,45 +1001,40 @@
               if (chartRefs[id]) { chartRefs[id].destroy(); delete chartRefs[id]; }
           }
 
-          chartRefs.presenceChart = makeChart('presenceChart', 250, {
-              type: 'line', data: presenceChartData,
-              options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
-          });
 
-          chartRefs.locationChart = makeChart('locationChart', 250, {
-              type: 'doughnut', data: locationChartData,
-              options: { scales: { }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
-          });
-
-          chartRefs.coOccurChart = makeChart('coOccurChart', 250, {
-              type: 'bar', data: coOccurChartData,
-              options: { indexAxis: 'y', plugins: { legend: { display: false } } }
-          });
-
-          const NO_CAST = 'No characters yet. Add a <code>characters:</code> list to '
-              + '<code>.proseview.yaml</code>, or put one Markdown file per character in '
-              + '<code>story-bible/characters/</code>. A character file\u2019s '
-              + '<code>name:</code> is matched against the prose, so multi-word names work.';
-          noteIfEmpty('presenceChart', presenceChartData, NO_CAST);
-          noteIfEmpty('coOccurChart', coOccurChartData, NO_CAST);
-          noteIfEmpty('locationChart', locationChartData,
-              'No settings yet. Add <code>where:</code> to a scene\u2019s frontmatter, or '
-              + 'group scenes into folders by location.');
 
           // Built on demand by the Analysis tab -- see 19-analysis.js. Kept in
           // this closure so it still has makeChart and the theme helpers.
           window.buildAnalysisCharts = function(data) {
-            if (chartRefs.rhythmChart) { chartRefs.rhythmChart.destroy(); }
             if (chartRefs.lexicalScatterChart) { chartRefs.lexicalScatterChart.destroy(); }
-            chartRefs.rhythmChart = makeChart('rhythmChart', 250, {
-              type: 'line', data: data.rhythmChart,
-              options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { min: 0, max: 20, title: { display: true, text: 'Length Variety (Stdev)' } } },
-              plugins: { legend: { display: false }, annotation: { annotations: {
-                  staticZone: { type: 'box', yMin: 0, yMax: 4.5 },
-                  rhythmicZone: { type: 'box', yMin: 4.5, yMax: 12.5 },
-                  dynamicZone: { type: 'box', yMin: 12.5, yMax: 20 }
-              } } } }
-          });
+            if (chartRefs.presenceChart) { chartRefs.presenceChart.destroy(); }
+            if (chartRefs.locationChart) { chartRefs.locationChart.destroy(); }
+            if (chartRefs.coOccurChart) { chartRefs.coOccurChart.destroy(); }
+
+            chartRefs.presenceChart = makeChart('presenceChart', 250, {
+                type: 'line', data: presenceChartData,
+                options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
+            });
+
+            chartRefs.locationChart = makeChart('locationChart', 250, {
+                type: 'bar', data: locationChartData,
+                options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+            });
+
+            chartRefs.coOccurChart = makeChart('coOccurChart', 250, {
+                type: 'bar', data: coOccurChartData,
+                options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+            });
+
+            const NO_CAST = 'No characters yet. Add a <code>characters:</code> list to '
+                + '<code>.proseview.yaml</code>, or put one Markdown file per character in '
+                + '<code>story-bible/characters/</code>. A character file\u2019s '
+                + '<code>name:</code> is matched against the prose, so multi-word names work.';
+            noteIfEmpty('presenceChart', presenceChartData, NO_CAST);
+            noteIfEmpty('coOccurChart', coOccurChartData, NO_CAST);
+            noteIfEmpty('locationChart', locationChartData,
+                'No settings yet. Add <code>where:</code> to a scene\u2019s frontmatter, or '
+                + 'group scenes into folders by location.');
 
             chartRefs.lexicalScatterChart = makeChart('lexicalScatterChart', 350, {
               type: 'scatter', data: { datasets: data.scatterChart.datasets },

@@ -817,13 +817,12 @@ def _server_env(bin_dir: Path, home: Path) -> dict[str, str]:
 
 
 def _start_server(root: Path, bin_dir: Path, home: Path, *, port: int | None = None) -> ProseviewServer:
-    port = port or _free_port()
     env = _server_env(bin_dir, home)
     proc = subprocess.Popen(
         [
             sys.executable, "-m", "proseview",
             "--root", str(root),
-            "--port", str(port),
+            "--port", str(port) if port is not None else "0",
             "--interval", str(WATCH_INTERVAL),
             "--no-open",
         ],
@@ -833,9 +832,31 @@ def _start_server(root: Path, bin_dir: Path, home: Path, *, port: int | None = N
         stderr=subprocess.STDOUT,
         text=True,
     )
+
+    # Wait for the server to write its runtime file so we know what port it bound.
+    runtime = root / ".proseview" / "server.json"
+    deadline = time.monotonic() + BOOT_TIMEOUT
+    port = None
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            output = proc.stdout.read() if proc.stdout else ""
+            raise AssertionError(f"server exited during boot ({proc.returncode}):\n{output}")
+        try:
+            if runtime.exists():
+                data = json.loads(runtime.read_text(encoding="utf-8"))
+                if "port" in data:
+                    port = int(data["port"])
+                    break
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.05)
+
+    if port is None:
+        proc.kill()
+        raise AssertionError(f"server did not write port within {BOOT_TIMEOUT}s")
+
     server = ProseviewServer(root, port, proc, env, bin_dir, home)
 
-    deadline = time.monotonic() + BOOT_TIMEOUT
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             output = proc.stdout.read() if proc.stdout else ""

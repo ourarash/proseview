@@ -58,8 +58,7 @@
         }
 
         function renderAnalysis(data) {
-            const alerts = document.getElementById('analysisAlerts');
-            if (alerts) alerts.innerHTML = data.alertsHtml || '';
+
 
             const body = document.getElementById('analysisTableBody');
             if (body) body.innerHTML = data.tableBody || '';
@@ -77,12 +76,47 @@
             };
             setText('analysisMattrText', lex.mattrText);
             setText('analysisMtldText', lex.mtldText);
+            setText('analysisMattrExplanationText', lex.mattrText);
+            setText('analysisMtldExplanationText', lex.mtldText);
             setLeftWidth('analysisMattrZone', lex.mattrZoneLeft, lex.mattrZoneWidth);
             setLeftWidth('analysisMattrMarker', lex.mattrMarkerLeft);
             setLeftWidth('analysisMtldZone', lex.mtldZoneLeft, lex.mtldZoneWidth);
             setLeftWidth('analysisMtldMarker', lex.mtldMarkerLeft);
+            renderMtldReferences(lex);
 
-            buildAnalysisCharts(data);
+            // Yield to the browser so offsetWidth is updated after unhiding
+            requestAnimationFrame(function() {
+                buildAnalysisCharts(data);
+            });
+        }
+
+        // Two reference points, and they answer different questions. The book's
+        // own median says which scenes are unlike the rest of this book -- the
+        // question a writer revising actually has. The genre range says whether
+        // the book sits anywhere normal at all.
+        //
+        // The wording is deliberate: "typical range" and not "benchmark". The
+        // 0.72 factor threshold behind MTLD has a citation (McCarthy & Jarvis,
+        // 2010); these genre ranges are consensus figures, not something
+        // measured here, and the label should not claim otherwise.
+        function renderMtldReferences(lex) {
+            const el = document.getElementById('analysisMtldRefs');
+            if (!el) return;
+            el.replaceChildren();
+            if (!lex.mtldMedian) return;
+            const band = Array.isArray(lex.mtldBand) ? lex.mtldBand : null;
+            const median = document.createElement('span');
+            median.className = 'health-ref';
+            const formattedMedian = typeof lex.mtldMedian === 'number' ? Math.round(lex.mtldMedian) + ' words' : lex.mtldMedian;
+            median.textContent = 'Your Book\'s Average: ' + formattedMedian;
+            median.title = 'The average vocabulary diversity score across all scenes in your manuscript.';
+            el.appendChild(median);
+            if (!band) return;
+            const genre = document.createElement('span');
+            genre.className = 'health-ref';
+            genre.textContent = 'Genre Target: ' + band[0] + '–' + band[1] + ' words (' + (lex.genreLabel || 'Genre') + ')';
+            genre.title = 'The typical vocabulary diversity score for published books in your genre. You can change your target genre in .proseview.yaml.';
+            el.appendChild(genre);
         }
 
         function applyAnalysisIssueFilter() {

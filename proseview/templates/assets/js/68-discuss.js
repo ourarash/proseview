@@ -112,6 +112,24 @@
             node.dataset.state = state;
         }
 
+        // Where focus lands when the dock closes. A trigger inside the dock --
+        // one of the tabs -- is no use: closing hides the subtree it lives in,
+        // so focusing it silently fails and focus falls to the document. Prefer
+        // the toolbar button that owns the panel, then the back button.
+        function _returnFocusTarget(trigger) {
+            const outside = trigger
+                && trigger.getClientRects && trigger.getClientRects().length
+                && !trigger.closest('#discussPanel, #terminalPanel');
+            if (outside) return trigger;
+            const modal = document.querySelector('#sceneModal .discuss-open-btn');
+            const preview = document.querySelector('#file-preview-panel .discuss-open-btn');
+            const visible = function(el) {
+                return el && el.getClientRects && el.getClientRects().length ? el : null;
+            };
+            return visible(modal) || visible(preview)
+                || document.querySelector('#sceneModal .scene-back-btn');
+        }
+
         function openDiscuss(trigger, options) {
             options = options || {};
             var doc = discussDocument();
@@ -123,8 +141,7 @@
             clearTimeout(_discussRefreshTimer);
             clearTimeout(_discussReconnectTimer);
             saveDiscussDraft();
-            var sceneBack = document.querySelector('#sceneModal .scene-back-btn');
-            _discussReturnFocus = (trigger && trigger.getClientRects && trigger.getClientRects().length) ? trigger : sceneBack;
+            _discussReturnFocus = _returnFocusTarget(trigger);
             _discussSelection = options.selection !== undefined ? String(options.selection || '') : captureDiscussSelection();
             _discussSelectionRange = options.selectionRange && typeof options.selectionRange.start === 'number'
                 ? {start: options.selectionRange.start, end: options.selectionRange.end}
@@ -146,6 +163,10 @@
             clearDiscussError();
             var panel = document.getElementById('discussPanel');
             panel.hidden = false;
+            // Whatever the dock was showing, it is showing Codex now. Doing
+            // this here rather than in showDiscussTab keeps every route in --
+            // the tab, a selection action, a keyboard shortcut -- agreeing.
+            _showDiscussBody();
             document.getElementById('discussSend').disabled = true;
             _discussOpenFailed = false;
             _discussConversationId = null;
@@ -178,6 +199,27 @@
                 else input.focus();
             }).catch(function(error) {
                 _discussOpenFailed = true;
+                
+                var msg = error.message || '';
+                if (msg.includes('Codex') || msg.includes('API key') || msg.includes('app-server')) {
+                    setDiscussConnection('AI Not Connected', '');
+                    document.getElementById('discussLog').innerHTML = `
+                        <div style="padding: 24px; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                            <div style="font-size: 32px; margin-bottom: 16px;">🤖</div>
+                            <h3 style="color: var(--text-primary); margin-bottom: 8px;">Bring Your Own AI</h3>
+                            <p style="max-width: 300px; line-height: 1.5; margin-bottom: 16px;">
+                                Proseview runs entirely locally, but you can connect an AI agent like Codex to discuss your manuscript, fix continuity errors, and review pacing.
+                            </p>
+                            <p style="font-size: 13px;">
+                                <em>Install the Codex CLI and set up an API key to unlock this feature.</em>
+                            </p>
+                        </div>
+                    `;
+                    document.getElementById('discussComposerArea').hidden = true;
+                    document.getElementById('discussAnnouncement').textContent = 'AI is not connected.';
+                    return;
+                }
+
                 setDiscussConnection('Unavailable', error.message);
                 renderDiscussError(error.message, {kind: error.name === 'NetworkError' ? 'transport' : 'request'});
                 var button = document.getElementById('discussSend');
@@ -239,24 +281,53 @@
 
         // ── Scene panel tabs ────────────────────────────────────────────
         //
-        // Details is deterministic: counts, frontmatter, links and tasks, all
-        // derived from the file. Discuss is the only surface that calls a
-        // model. Keeping that boundary legible is the point of the split.
+        // Four tabs in one dock, ordered by how much they can surprise you.
+        // Scene and Analysis are deterministic -- frontmatter, counts, and the
+        // highlight passes, all derived from the file on disk. Codex is the
+        // only surface that calls a model. Terminal is a shell. Keeping that
+        // boundary legible is the point of the split.
+        const SCENE_PANEL_TABS = ['scene', 'analysis', 'discuss', 'terminal'];
+        const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
+
+        function _readScenePanelTab() {
+            var saved = null;
+            try { saved = localStorage.getItem(SCENE_PANEL_TAB_KEY); } catch (e) {}
+            // "details" was this tab's name before it split into Scene and
+            // Analysis; a stored value from then must not leave the dock blank.
+            if (saved === 'details') saved = 'scene';
+            return SCENE_PANEL_TABS.indexOf(saved) >= 0 ? saved : 'scene';
+        }
+
+        // Both copies of the tab row -- the panel's and the terminal's -- are
+        // driven from here, so whichever one you are looking at agrees with
+        // what the dock is actually showing.
+        const UTILITY_TAB_IDS = {
+            scene: ['utilityTabScene', 'termUtilityTabScene'],
+            analysis: ['utilityTabAnalysis', 'termUtilityTabAnalysis'],
+            discuss: ['utilityTabDiscuss', 'termUtilityTabDiscuss'],
+            terminal: ['utilityTabTerminal', 'termUtilityTabTerminal']
+        };
 
         function _setUtilityTab(name) {
-            [['utilityTabDetails', 'details'], ['utilityTabDiscuss', 'discuss']].forEach(function(pair) {
-                const el = document.getElementById(pair[0]);
-                if (!el) return;
-                const on = pair[1] === name;
-                el.classList.toggle('active', on);
-                el.setAttribute('aria-selected', on ? 'true' : 'false');
+            SCENE_PANEL_TABS.forEach(function(tab) {
+                UTILITY_TAB_IDS[tab].forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const on = tab === name;
+                    el.classList.toggle('active', on);
+                    el.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
             });
-            try { localStorage.setItem('proseview-scene-panel-tab', name); } catch (e) {}
+            // Terminal is a destination, not a scene view: reopening the panel
+            // on it would show a shell where the reader expected their scene.
+            if (name === 'terminal') return;
+            try { localStorage.setItem(SCENE_PANEL_TAB_KEY, name); } catch (e) {}
         }
 
         function _setDockHeading(text, showConnection) {
             const title = document.getElementById('discussTitle');
             const conn = document.getElementById('discussConnection');
+            const heading = document.querySelector('.discuss-heading');
             if (title && text !== null) {
                 if (!title.dataset.discussLabel) title.dataset.discussLabel = title.textContent;
                 title.textContent = text;
@@ -264,37 +335,69 @@
                 title.textContent = title.dataset.discussLabel;
             }
             if (conn) conn.hidden = !showConnection;
+            // The scene tabs are already named by the tab that is lit. Repeating
+            // the name underneath is the duplication that made the old header
+            // read as two competing sets of controls. Codex keeps its heading
+            // because the connection state hangs off it.
+            if (heading) heading.hidden = !showConnection;
         }
 
+        // Everything a scene pane has to cover, and -- separately -- the parts
+        // that come back when Codex returns. "New activity" is not in the
+        // second list: it earns its visibility from the log, so restoring it
+        // blind would announce activity that had already been read.
         function _discussBodyEls() {
             return ['discussContext', 'discussLog', 'discussComposerArea', 'discussNewActivity']
                 .map(function(id) { return document.getElementById(id); }).filter(Boolean);
         }
 
-        function showSceneDetailsTab() {
+        function _discussVisibleEls() {
+            return ['discussContext', 'discussLog', 'discussComposerArea']
+                .map(function(id) { return document.getElementById(id); }).filter(Boolean);
+        }
+
+        const SCENE_PANEL_PANES = {
+            scene: {id: 'sceneDetailsPane', heading: 'Scene', render: renderSceneDetailsPane},
+            analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane}
+        };
+
+        function showScenePanelTab(name) {
+            const spec = SCENE_PANEL_PANES[name];
             const panel = document.getElementById('discussPanel');
-            const pane = document.getElementById('sceneDetailsPane');
-            if (!panel || !pane) return;
+            if (!spec || !panel) return;
+            const pane = document.getElementById(spec.id);
+            if (!pane) return;
             hideRightTerminalForPanel();
             panel.hidden = false;
             document.body.classList.add('discuss-open');
             _discussBodyEls().forEach(function(el) { el.hidden = true; });
+            Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
+                const other = document.getElementById(SCENE_PANEL_PANES[key].id);
+                if (other) other.hidden = key !== name;
+            });
             // "Codex / Live" names the Discuss connection; it has no business
             // sitting above a pane of counts and frontmatter.
-            _setDockHeading('Scene details', false);
-            pane.hidden = false;
-            renderSceneDetailsPane();
-            _setUtilityTab('details');
+            _setDockHeading(spec.heading, false);
+            spec.render();
+            _setUtilityTab(name);
         }
 
-        function showDiscussTab() {
-            const pane = document.getElementById('sceneDetailsPane');
-            if (pane) pane.hidden = true;
-            _discussBodyEls().forEach(function(el) { el.hidden = false; });
+        // Kept as a named seam: it is the entry point the scene modal and the
+        // tests reach for, and it now means "the deterministic scene tab".
+        function showSceneDetailsTab() { showScenePanelTab('scene'); }
+        function showSceneAnalysisTab() { showScenePanelTab('analysis'); }
+
+        function _showDiscussBody() {
+            Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
+                const pane = document.getElementById(SCENE_PANEL_PANES[key].id);
+                if (pane) pane.hidden = true;
+            });
+            _discussVisibleEls().forEach(function(el) { el.hidden = false; });
             _setDockHeading(null, true);
             _setUtilityTab('discuss');
-            openDiscuss(_discussReturnFocus);
         }
+
+        function showDiscussTab(trigger) { openDiscuss(trigger || _discussReturnFocus); }
 
         function hideRightTerminalForPanel() {
             const term = document.getElementById('terminalPanel');
@@ -303,33 +406,165 @@
 
         function toggleScenePanel(trigger) {
             const panel = document.getElementById('discussPanel');
-            if (panel && !panel.hidden) { closeDiscuss(); return; }
-            let tab = 'details';
-            try { tab = localStorage.getItem('proseview-scene-panel-tab') || 'details'; } catch (e) {}
-            if (tab === 'discuss') { openDiscuss(trigger); showDiscussTab(); }
-            else showSceneDetailsTab();
+            const term = document.getElementById('terminalPanel');
+            const termInDock = term && !term.hidden
+                && typeof _termDock !== 'undefined' && _termDock === 'right';
+            if ((panel && !panel.hidden) || termInDock) { closeScenePanel(); return; }
+            const tab = _readScenePanelTab();
+            // One call, not two: openDiscuss opens a conversation on the
+            // server, and doing it twice queued a second thread/read behind the
+            // first for every reader whose last tab was Codex.
+            if (tab === 'discuss') showDiscussTab(trigger);
+            else showScenePanelTab(tab);
+        }
+
+        // The Panel button owns the whole dock, so closing has to cover the
+        // right-docked terminal too -- otherwise pressing it while a shell was
+        // showing did nothing visible.
+        function closeScenePanel() {
+            const term = document.getElementById('terminalPanel');
+            if (term && typeof _termDock !== 'undefined' && _termDock === 'right') term.hidden = true;
+            const panel = document.getElementById('discussPanel');
+            if (panel && !panel.hidden) closeDiscuss();
         }
 
         function renderSceneDetailsPane() {
             const pane = document.getElementById('sceneDetailsPane');
             if (!pane) return;
-            // Cache the nodes on first sight. replaceChildren() detaches them,
-            // so a second render could not find them through getElementById and
-            // the panel silently lost its stat grid.
-            if (!window._sceneDetailsNodes) {
-                window._sceneDetailsNodes = {
-                    stats: document.getElementById('modalStats'),
-                };
-            }
-            const nodes = window._sceneDetailsNodes;
             pane.replaceChildren();
-            // The two former disclosures, in one place: analysis first, then
-            // context and tasks. They start hidden in the template so nothing
-            // flashes above the prose before the pane claims them.
-            [nodes.stats, window._sceneContextBody || null].forEach(function(el) {
-                if (!el) return;
-                el.hidden = false;
-                pane.appendChild(el);
+            // The context body starts life detached, built by the scene
+            // renderer. It carries frontmatter, story fields, characters,
+            // related documents and tasks.
+            const body = window._sceneContextBody;
+            if (body) { body.hidden = false; pane.appendChild(body); }
+            else pane.appendChild(_scenePanelEmpty('Open a scene to see its frontmatter, links and tasks.'));
+        }
+
+        function _scenePanelEmpty(text) {
+            const p = document.createElement('p');
+            p.className = 'scene-panel-empty';
+            p.textContent = text;
+            return p;
+        }
+
+        function renderSceneAnalysisPane() {
+            const pane = document.getElementById('sceneAnalysisPane');
+            if (!pane) return;
+            pane.replaceChildren();
+            // Cache the stat grid on first sight. replaceChildren() detaches
+            // it, so a second render could not find it through getElementById
+            // and the pane silently lost its numbers.
+            if (!window._sceneDetailsNodes) {
+                window._sceneDetailsNodes = {stats: document.getElementById('modalStats')};
+            }
+            const stats = window._sceneDetailsNodes.stats;
+            const path = (typeof paths !== 'undefined' && typeof curIdx !== 'undefined')
+                ? paths[curIdx] : null;
+            if (!path) {
+                pane.appendChild(_scenePanelEmpty('Open a scene to see its measures and highlight passes.'));
+                return;
+            }
+            pane.appendChild(_scenePanelHeading('Measures'));
+            if (stats) { stats.hidden = false; pane.appendChild(stats); }
+            const passHeading = _scenePanelHeading('Highlight passes');
+            const allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.id = 'scenePassAllBtn';
+            allBtn.className = 'scene-pass-all';
+            allBtn.textContent = 'All';
+            allBtn.setAttribute('aria-pressed', 'false');
+            allBtn.title = 'Turn every pass on, or clear them all';
+            allBtn.onclick = toggleAllHighlights;
+            passHeading.appendChild(allBtn);
+            pane.appendChild(passHeading);
+            pane.appendChild(_scenePassList(path));
+            syncAllBtn();
+
+            const m = (typeof meta !== 'undefined' && meta[path]) || {};
+            const dlg = (m.top_dlg && m.top_dlg.length) ? m.top_dlg.join(', ') : null;
+            if (dlg) {
+                const note = document.createElement('p');
+                note.className = 'scene-panel-note';
+                note.append('Top dialogue keywords: ');
+                const strong = document.createElement('strong');
+                strong.textContent = dlg;
+                note.appendChild(strong);
+                pane.appendChild(note);
+            }
+        }
+
+        function _scenePanelHeading(text) {
+            const h = document.createElement('p');
+            h.className = 'scene-panel-heading';
+            h.textContent = text;
+            return h;
+        }
+
+        // One row per pass: a switch, the name, its examples, and how many
+        // matches this scene actually has. The count is the reason the list is
+        // ordered by it -- a pass with nothing to show should not sit above one
+        // with thirty hits, and a zero row says "nothing here" without being
+        // clicked.
+        function _scenePassList(path) {
+            const list = document.createElement('div');
+            list.className = 'scene-pass-list';
+            list.id = 'scenePassList';
+            const byPass = ((typeof highlightsByPath !== 'undefined' && highlightsByPath[path])
+                || {}).highlights || {};
+            PASS_ORDER.map(function(name) {
+                const hits = byPass[name];
+                return {name: name, count: Array.isArray(hits) ? hits.length : 0};
+            }).sort(function(a, b) {
+                return b.count - a.count || PASS_ORDER.indexOf(a.name) - PASS_ORDER.indexOf(b.name);
+            }).forEach(function(entry) {
+                list.appendChild(_scenePassRow(entry.name, entry.count));
+            });
+            return list;
+        }
+
+        function _scenePassRow(name, count) {
+            const on = !!hls[name];
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'scene-pass-row' + (on ? ' is-on' : '') + (count ? '' : ' is-empty');
+            row.id = 'pass-row-' + name;
+            row.dataset.pass = name;
+            row.setAttribute('aria-pressed', on ? 'true' : 'false');
+            // The examples are always visible; the note is the hover and
+            // keyboard-focus layer, never something you must reach to read the row.
+            if (PASS_NOTES[name]) row.title = PASS_NOTES[name];
+            row.onclick = function() { toggleHighlight(name); };
+
+            const sw = document.createElement('span');
+            sw.className = 'scene-pass-switch';
+            sw.setAttribute('aria-hidden', 'true');
+
+            const label = document.createElement('span');
+            label.className = 'scene-pass-label';
+            const title = document.createElement('span');
+            title.className = 'scene-pass-name';
+            title.textContent = PASS_LABELS[name] || name;
+            const example = document.createElement('span');
+            example.className = 'scene-pass-example';
+            example.textContent = PASS_EXAMPLES[name] || '';
+            label.append(title, example);
+
+            const n = document.createElement('span');
+            n.className = 'scene-pass-count';
+            n.textContent = String(count);
+            n.title = count === 1 ? '1 match in this scene' : count + ' matches in this scene';
+
+            row.append(sw, label, n);
+            return row;
+        }
+
+        // Called whenever a pass is toggled from anywhere, so the list agrees
+        // with the prose without being rebuilt.
+        function syncScenePassRows() {
+            document.querySelectorAll('#scenePassList .scene-pass-row').forEach(function(row) {
+                const on = !!hls[row.dataset.pass];
+                row.classList.toggle('is-on', on);
+                row.setAttribute('aria-pressed', on ? 'true' : 'false');
             });
         }
 
@@ -337,6 +572,7 @@
             hideDiscussForTerminal();
             if (typeof _termDock !== 'undefined') _termDock = 'right';
             try { localStorage.setItem('proseview-terminal-dock', 'right'); } catch(e) {}
+            _setUtilityTab('terminal');
             var panel = document.getElementById('terminalPanel');
             if (typeof _termSessions !== 'undefined' && _termSessions.length) {
                 panel.hidden = false;

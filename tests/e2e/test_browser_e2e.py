@@ -329,7 +329,7 @@ def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silen
 ):
     before = server.scene_path().read_bytes()
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
     trace = page.get_by_role("button", name=re.compile("Trace a canon change"))
@@ -405,7 +405,7 @@ def test_discuss_canon_refactor_marks_a_proposal_resolved_only_after_scene_save(
 ):
     before = server.scene_path().read_bytes()
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.get_by_role("button", name=re.compile("Trace a canon change")).click()
     page.fill("#discussInput", "Rena changed the safe code this spring.")
@@ -431,7 +431,7 @@ def test_discuss_scene_continuity_starts_without_an_optional_focus(
 ):
     before = server.scene_path().read_bytes()
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
@@ -463,7 +463,7 @@ def test_discuss_scene_continuity_bounds_large_repository_context(
         )
     before = server.scene_path().read_bytes()
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
     page.locator("#discussSend").click()
@@ -485,7 +485,7 @@ def test_discuss_scene_continuity_reports_that_a_scan_is_starting_and_recovers_o
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
     page.evaluate(
@@ -534,7 +534,7 @@ def test_discuss_send_times_out_and_recovers_from_a_stalled_request(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Why is the opening quiet?")
     page.evaluate(
@@ -597,7 +597,7 @@ def test_discuss_open_times_out_with_an_operable_retry(
         """
     )
 
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
 
     page.wait_for_function(
         "() => !document.getElementById('discussSend').disabled "
@@ -618,7 +618,7 @@ def test_discuss_detects_a_server_restart_and_recovers_by_reload(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     draft = "What do you think about this scene?"
     page.fill("#discussInput", draft)
@@ -638,7 +638,7 @@ def test_discuss_detects_a_server_restart_and_recovers_by_reload(
     page.get_by_role("button", name="Reload page").click()
     page.wait_for_function("() => !!window._PM")
     page.wait_for_selector("#sceneModal", state="visible")
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussInput").input_value() == draft
 
@@ -650,7 +650,7 @@ def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zo
     open_scene(page, server)
     open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.evaluate("document.body.style.zoom = '2'")
 
@@ -825,7 +825,7 @@ def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, s
     page.goto(f"{server.base_url}#/file/plans/book-plan.md", wait_until="load")
     page.wait_for_function("() => !!window._PM")
     page.wait_for_selector("#file-preview-panel", state="visible")
-    page.click("#file-preview-panel .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
 
@@ -856,20 +856,57 @@ def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, s
     page.click(".terminal-tab-mount .xterm-screen")
     _wait_until(lambda: any(ch in _terminal_text(page) for ch in ("$", "%", "#")), timeout=25)
     run_in_terminal(page, "echo discuss-terminal-alive", "discuss-terminal-alive")
-    page.click("#terminalPanel button:text-is('Discuss')")
+    page.click("#terminalPanel button:text-is('Codex')")
     page.wait_for_selector("#discussPanel", state="visible")
     assert "Approval resolved" in page.locator("#discussLog").inner_text()
     page.click("#discussPanel .utility-tab:text-is('Terminal')")
     assert "discuss-terminal-alive" in _terminal_text(page)
 
 
+def test_the_terminal_never_buries_the_way_back_to_the_other_tabs(
+    page: Page, server: ProseviewServer
+):
+    """Session chips used to share a row with the dock tabs.
+
+    Open two shells in a right-docked terminal and "Scene" and "Analysis" were
+    pushed off the end of the header, with no way back to them. The dock tabs
+    have a row of their own now, and they survive any number of sessions.
+    """
+    open_scene(page, server)
+    open_discuss(page)
+    page.click("#discussPanel .utility-tab:text-is('Terminal')")
+    page.wait_for_selector("#terminalPanel", state="visible")
+    page.wait_for_selector(".terminal-tab-mount .xterm", timeout=20_000)
+    page.evaluate("() => { openShellTerminal(); openShellTerminal(); }")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#terminalTabs .terminal-tab').length >= 3"
+    )
+
+    tabs = page.locator("#terminalPanel .terminal-dock-tabs .utility-tab")
+    assert tabs.count() == 4
+    for name in ("Scene", "Analysis", "Codex", "Terminal"):
+        tab = page.locator(f"#terminalPanel .terminal-dock-tabs button:text-is('{name}')")
+        assert tab.is_visible(), f"{name} is unreachable from a terminal with two shells"
+        box = tab.bounding_box()
+        assert box and box["x"] >= 0 and box["width"] > 0
+
+    # And the way back actually works.
+    page.click("#terminalPanel .terminal-dock-tabs button:text-is('Analysis')")
+    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+    assert page.locator("#terminalPanel").is_hidden()
+
+
 def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: ProseviewServer):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
+    # The toolbar button opens the dock from the keyboard; the tab row then
+    # takes you to Codex, also from the keyboard.
     button = page.locator("#sceneModal .discuss-open-btn")
     button.focus()
     page.keyboard.press("Enter")
     page.wait_for_selector("#discussPanel", state="visible")
+    page.locator("#utilityTabDiscuss").focus()
+    page.keyboard.press("Enter")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     box = page.locator("#discussPanel").bounding_box()
     assert box and box["x"] + box["width"] <= 1401
@@ -906,12 +943,15 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
 
     page.keyboard.press("Escape")
     page.wait_for_selector("#discussPanel", state="hidden")
+    # Focus lands on the toolbar button, not on the tab that opened Codex: the
+    # tab lives inside the panel that just closed, so focusing it would do
+    # nothing and drop the keyboard user back to the document.
     assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "HOLD_FOR_STOP")
     page.press("#discussInput", "Enter")
@@ -924,7 +964,7 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
     page.reload(wait_until="load")
     page.wait_for_function("() => !!window._PM")
     page.wait_for_selector("#sceneModal", state="visible")
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelectorAll('.discuss-message.user').length === 2")
     page.wait_for_selector("#discussStop", state="visible")
     page.click("#discussStop")
@@ -935,7 +975,7 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
 
 def test_discuss_stop_recovers_when_codex_unloads_thread(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "HOLD_UNLOAD_ON_STOP")
     page.press("#discussInput", "Enter")
@@ -955,7 +995,7 @@ def test_discuss_stop_recovers_when_codex_unloads_thread(page: Page, server: Pro
 
 def test_discuss_pending_queue_item_can_be_removed(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "HOLD_FOR_STOP")
     page.press("#discussInput", "Enter")
@@ -975,7 +1015,7 @@ def test_active_codex_turn_explains_new_conversation_and_has_explicit_stop(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "HOLD_FOR_STOP")
     page.press("#discussInput", "Enter")
@@ -1011,7 +1051,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     server: ProseviewServer,
 ):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "FORGET_THREAD_AFTER_TURN")
     page.press("#discussInput", "Enter")
@@ -1020,7 +1060,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     page.reload(wait_until="load")
     page.wait_for_function("() => !!window._PM")
     page.wait_for_selector("#sceneModal", state="visible")
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     panel_text = page.locator("#discussPanel").inner_text()
     assert "next question will start a new conversation" in panel_text.lower()
@@ -1061,7 +1101,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
 
 def test_conversation_history_reopens_a_previous_thread(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Why is the opening quiet?")
     page.press("#discussInput", "Enter")
@@ -1126,7 +1166,7 @@ def test_new_conversation_dialog_announces_pending_and_recovers_from_failure(
     open_scene(page, server)
     open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.click("#discussNewConversation")
     page.wait_for_selector("#discussNewConversationDialog", state="visible")
@@ -1207,7 +1247,7 @@ def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
     open_scene(page, server)
     open_scene_appearance(page)
     page.select_option("#modalThemeSelect", "dark")
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.evaluate("document.body.style.zoom = '2'")
     page.click("#discussNewConversation")
@@ -1221,15 +1261,40 @@ def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
 
 
 def open_scene_details(page: Page) -> None:
-    """Open the scene panel on its Details tab.
+    """Open the scene panel on its Scene tab.
 
     Replaces the two ``<details>`` disclosures that used to sit above the prose.
-    Their contents now live in the dock, so a test that wants the stat grid or
-    the scene card opens the panel rather than expanding a summary.
+    Frontmatter, story fields, links and tasks now live in the dock, so a test
+    that wants the scene card opens the panel rather than expanding a summary.
     """
-    if page.locator("#sceneDetailsPane").is_hidden():
-        page.evaluate("() => toggleScenePanel()")
+    page.evaluate("() => showScenePanelTab('scene')")
     page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+
+
+def open_scene_analysis(page: Page) -> None:
+    """Open the scene panel on its Analysis tab: measures and highlight passes."""
+    page.evaluate("() => showScenePanelTab('analysis')")
+    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+
+
+def open_discuss(page: Page) -> None:
+    """Open the dock on its Codex tab.
+
+    The toolbar button owns the whole dock now rather than Discuss alone, so
+    reaching Codex is "open the panel, choose the tab". Tests go through this
+    helper so the tab order can change again without touching thirty of them.
+    """
+    if page.locator("#discussPanel").is_hidden():
+        scene_btn = page.locator("#sceneModal .discuss-open-btn")
+        button = scene_btn if scene_btn.is_visible() else page.locator(
+            "#file-preview-panel .discuss-open-btn"
+        )
+        button.click()
+    # The button may have landed on Codex already, and clicking the tab again
+    # would open a second conversation. Only click when it is not the live tab.
+    if page.locator("#utilityTabDiscuss").get_attribute("aria-selected") != "true":
+        page.locator("#utilityTabDiscuss").click()
+    page.wait_for_selector("#discussLog:not([hidden])")
 
 
 def open_selection_menu(page: Page, needle: str) -> None:
@@ -1272,6 +1337,10 @@ def test_dashboard_renders_the_scene_table_and_charts(page: Page, server: Prosev
         box = page.locator(f"#{chart_id}").bounding_box()
         assert box and box["width"] > 0, f"{chart_id} did not render"
 
+    dashboard_text = page.locator("#dashboard").inner_text()
+    assert "Derived from 'who:' frontmatter" in dashboard_text
+    assert "Derived from 'where:' frontmatter" in dashboard_text
+
 
 def test_overview_initializes_every_owned_chart_before_analysis_is_visited(
     page: Page,
@@ -1308,7 +1377,7 @@ def test_every_chart_exposes_its_values_without_reading_canvas_pixels(
 
     page.click('.tab-nav button[data-tab="analysis"]')
     page.wait_for_selector("#analysisContent:not([hidden])")
-    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart", "lexicalScatterChart"):
         figure = page.locator(f"figure:has(#{chart_id})")
         assert figure.get_attribute("aria-labelledby")
         figure.get_by_text("View chart data", exact=True).click()
@@ -1328,6 +1397,28 @@ def test_lexical_chart_alternative_names_axes_and_target_ranges(
     assert "Local Variety (MATTR)" in alternative
     assert "Whole-Scene Variety (MTLD)" in alternative
     assert "Target range" in alternative
+
+
+def test_dashboard_lexical_health_cards_format_values_as_percentages_and_words(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    page.click('.tab-nav button[data-tab="analysis"]')
+    page.wait_for_selector("#analysisContent:not([hidden])")
+    
+    # Wait for the lexical cards to populate
+    page.wait_for_function("() => document.querySelector('#mattrCard').innerText.includes('%')")
+    
+    mattr_text = page.locator("#mattrCard").inner_text()
+    mtld_text = page.locator("#mtldCard").inner_text()
+    
+    # Should be formatted as 69.5% instead of 0.695
+    assert "%" in mattr_text
+    assert "." in mattr_text  # Should have decimal precision, e.g. 69.5%
+    
+    # Should be formatted as "75 words" instead of just "75.6"
+    assert "words" in mtld_text
 
 
 def test_dashboard_has_landmarks_headings_and_no_horizontal_page_overflow(
@@ -1379,6 +1470,47 @@ def test_dashboard_tabs_announce_the_current_route(page: Page, server: Proseview
     timeline.click()
     assert timeline.get_attribute("aria-current") == "page"
     assert overview.get_attribute("aria-current") is None
+
+
+def test_dashboard_settings_tab_renders_and_reads_config(page: Page, server: ProseviewServer):
+    open_dashboard(page, server)
+    settings = page.locator('.tab-nav button[data-tab="settings"]')
+    settings.click()
+    assert settings.get_attribute("aria-current") == "page"
+    assert page.locator("#tab-settings").is_visible()
+    
+    settings_text = page.locator("#tab-settings").inner_text()
+    assert "Project Configuration" in settings_text
+    assert "Target Words:" in settings_text
+
+
+@pytest.mark.allow_http_errors("/api/discuss/conversations/open")
+def test_discuss_tab_shows_ai_not_connected_empty_state_without_codex(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+
+    # Mock the API to simulate Codex not being installed/reachable
+    def handle_route(route):
+        route.fulfill(
+            status=503,
+            content_type="application/json",
+            body='{"ok": false, "error": "Codex CLI is not installed or is not on PATH"}'
+        )
+
+    page.route("**/api/discuss/conversations/open", handle_route)
+
+    # Click the discuss/panel button
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    
+    # Verify the empty state renders
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.includes('AI Not Connected')")
+    
+    log_text = page.locator("#discussLog").inner_text()
+    assert "Bring Your Own AI" in log_text
+    assert "Proseview runs entirely locally" in log_text
+    
+    # Verify the composer is hidden
+    assert page.locator("#discussComposerArea").is_hidden()
 
 
 def test_repository_metadata_and_bios_render_as_content_not_executable_html(
@@ -1461,8 +1593,8 @@ def test_overview_does_not_ship_the_lexical_analysis(page: Page, server: Prosevi
 
     # The header row is upper-cased by CSS, so compare case-insensitively.
     headers = [h.strip().lower() for h in page.locator("#sceneTable thead th").all_inner_texts()]
-    assert headers == ["scene", "chapter", "words", "flavor"]
-    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+    assert headers == ["scene", "chapter", "words", "keywords"]
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart", "lexicalScatterChart"):
         assert page.locator(f"#{chart_id}").bounding_box() is None, \
             f"{chart_id} should not be laid out before the Analysis tab is opened"
 
@@ -1484,7 +1616,7 @@ def test_analysis_tab_loads_on_demand_and_renders_every_panel(page: Page, server
     assert page.locator("#analysisMtldText").inner_text().strip()
     assert page.locator("#analysisAlerts").inner_text().strip()
 
-    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart", "lexicalScatterChart"):
         box = page.locator(f"#{chart_id}").bounding_box()
         assert box and box["width"] > 0, f"{chart_id} did not render on the Analysis tab"
 
@@ -1599,7 +1731,7 @@ def test_scene_toolbar_is_compact_and_exposes_grouped_actions(page: Page, server
     box = header.bounding_box()
     assert box and box["height"] <= 52
     assert page.locator("#modalTitle").bounding_box()["width"] > 0
-    assert page.get_by_role("button", name="Discuss").is_visible()
+    assert page.get_by_role("button", name="Show or hide the scene panel").is_visible()
     assert page.get_by_role("button", name="Edit scene").is_visible()
 
     page.locator("#sceneAppearanceBtn").click()
@@ -1642,8 +1774,10 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
     )
-    analysis_box = page.locator("#sceneDetailsPane").bounding_box()
-    assert analysis_box and analysis_box["y"] <= 2
+    # With the toolbar hidden the prose owns the top of the window -- 60px is
+    # the reading column's own gutter, and nothing else sits above it.
+    prose_box = page.locator("#sceneProseHost").bounding_box()
+    assert prose_box and prose_box["y"] <= 80
 
     reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
     assert reveal_box
@@ -1711,15 +1845,44 @@ def test_focus_layout_uses_the_toolbar_visibility_state(page: Page, server: Pros
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
     )
-    assert page.locator("#modalStats").is_hidden()
     assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "true"
 
     page.keyboard.press("f")
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
     )
-    assert page.locator("#modalAlerts").is_visible(), "the pass row belongs with the prose"
     assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "false"
+
+
+def test_focus_mode_closes_the_dock_and_gives_it_back(page: Page, server: ProseviewServer):
+    """Focus mode used to hide the two disclosures above the prose.
+
+    They live in the dock now, so focus mode closes the dock -- and reopens it
+    on the way out, on the tab it was showing. A reading mode that quietly
+    discards your panel is a mode you stop using.
+    """
+    open_scene(page, server)
+    open_scene_analysis(page)
+
+    page.keyboard.press("f")
+    page.wait_for_selector("#discussPanel", state="hidden")
+
+    page.keyboard.press("f")
+    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+
+
+def test_focus_mode_leaves_a_closed_dock_closed(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    assert page.locator("#discussPanel").is_hidden()
+
+    page.keyboard.press("f")
+    page.keyboard.press("f")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
+    )
+    assert page.locator("#discussPanel").is_hidden(), (
+        "leaving focus mode must not conjure a panel the reader never opened"
+    )
 
 
 def test_scene_toolbar_mode_change_invalidates_temporary_hide_timer(
@@ -1745,7 +1908,7 @@ def test_scene_toolbar_stays_single_row_with_dock_and_at_two_hundred_percent_zoo
 ):
     page.set_viewport_size({"width": 1400, "height": 800})
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
 
     header = page.locator("#sceneModal .modal-header")
@@ -1786,7 +1949,7 @@ def test_scene_toolbar_actions_remain_clickable_beside_compact_dock(
 ):
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
 
     header = page.locator("#sceneModal .modal-header")
@@ -1805,7 +1968,7 @@ def test_compact_right_dock_never_covers_scene_content_or_toolbar_controls(
 ):
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
 
     geometry = page.evaluate(
@@ -1830,18 +1993,27 @@ def test_compact_right_dock_never_covers_scene_content_or_toolbar_controls(
     assert all(control["ownsHit"] for control in geometry["controls"])
 
 
-def test_dock_reduced_scene_width_collapses_secondary_content_at_wide_viewport(
+def test_one_dock_shows_one_thing_at_a_time(
     page: Page,
     server: ProseviewServer,
 ):
+    """Switching to Codex puts the scene panes away, and the prose stays put.
+
+    The dock is a single surface with four tabs. Two of them showing at once
+    was the confusion that made the old disclosures unreadable.
+    """
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
     open_scene_details(page)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
-    page.wait_for_function(
-        "() => document.getElementById('sceneDetailsPane').hidden"
-    )
+    assert page.locator("#sceneDetailsPane").is_hidden()
+    assert page.locator("#sceneAnalysisPane").is_hidden()
+
+    open_scene_analysis(page)
+    assert page.locator("#sceneDetailsPane").is_hidden()
+    assert page.locator("#discussLog").is_hidden()
+
     prose = page.locator("#sceneProseHost").bounding_box()
     assert prose and prose["y"] < 400
 
@@ -1851,7 +2023,7 @@ def test_unavailable_terminal_hides_every_terminal_backed_entry_point(
     server: ProseviewServer,
 ):
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
     page.evaluate("_hideTerminalEntryPointsWhenUnavailable(false)")
 
@@ -1871,31 +2043,69 @@ def test_compact_scene_leads_with_prose_and_context_reflows_beside_the_dock(
     assert prose and prose["y"] < 400, "secondary UI still pushes prose out of the opening viewport"
 
     open_scene_details(page)
-    page.locator("#sceneModal .discuss-open-btn").click()
     page.wait_for_selector("#discussPanel", state="visible")
-    assert page.evaluate(
-        "() => getComputedStyle(document.querySelector('.scene-card')).gridTemplateColumns.split(' ').length === 1"
+    # The card's three columns stack in a dock this narrow: same left edge,
+    # descending down the pane rather than squeezed side by side.
+    columns = page.evaluate(
+        "() => ['.scene-card-meta', '.scene-card-arc', '.scene-card-related']"
+        ".map(sel => document.querySelector(sel))"
+        ".filter(Boolean)"
+        ".map(el => el.getBoundingClientRect())"
+        ".map(r => ({left: Math.round(r.left), top: Math.round(r.top)}))"
     )
+    assert len(columns) >= 2
+    assert len({c["left"] for c in columns}) == 1, "the card is still laid out in columns"
+    assert [c["top"] for c in columns] == sorted(c["top"] for c in columns)
     assert page.evaluate(
         "() => Array.from(document.querySelectorAll('.scene-card .sc-value')).every(el => "
         "el.getBoundingClientRect().width > 120 && el.scrollWidth <= el.clientWidth + 1)"
     )
 
 
-def test_scene_secondary_content_tracks_a_live_compact_viewport(
+def test_the_dock_overlays_rather_than_squeezing_the_prose_to_a_ribbon(
     page: Page,
     server: ProseviewServer,
 ):
-    page.set_viewport_size({"width": 1400, "height": 1000})
+    """At a wide viewport the dock splits the screen; at a narrow one it covers it.
+
+    The rule is not a breakpoint but a question: can the reading column still
+    hold the measure the reader chose? Splitting an 820px window would leave
+    prose too narrow to read, so the dock overlays until it is closed.
+    """
+    page.set_viewport_size({"width": 1600, "height": 1000})
     open_scene(page, server)
     open_scene_details(page)
+    page.wait_for_selector("#discussPanel", state="visible")
 
-    page.set_viewport_size({"width": 1024, "height": 768})
+    assert page.evaluate("() => document.documentElement.dataset.utilityOverlay") != "true"
+    wide = page.evaluate(
+        "() => ({prose: document.getElementById('sceneProseHost').getBoundingClientRect(),"
+        " dock: document.getElementById('discussPanel').getBoundingClientRect()})"
+    )
+    assert wide["prose"]["right"] <= wide["dock"]["left"] + 1, "the dock and the prose share the width"
+
+    page.set_viewport_size({"width": 820, "height": 900})
     page.wait_for_function(
-        "() => document.getElementById('sceneDetailsPane').hidden"
+        "() => document.documentElement.dataset.utilityOverlay === 'true'"
+    )
+    narrow = page.evaluate(
+        "() => document.getElementById('discussPanel').getBoundingClientRect().width"
+    )
+    assert narrow > 700, "the dock takes the window rather than halving it"
+
+    # The point of overlaying: the prose underneath keeps its measure instead of
+    # reflowing to a ribbon, so closing the dock costs no relayout.
+    covered = page.locator("#sceneProseHost").bounding_box()
+    assert covered and covered["width"] >= 700
+
+    page.evaluate("() => closeScenePanel()")
+    page.wait_for_selector("#discussPanel", state="hidden")
+    page.wait_for_function(
+        "() => document.documentElement.dataset.utilityOverlay !== 'true'"
     )
     prose = page.locator("#sceneProseHost").bounding_box()
-    assert prose and prose["y"] < 400
+    assert prose and prose["y"] < 400 and prose["width"] > 400
+    assert page.evaluate("() => getComputedStyle(document.body).marginRight") == "0px"
 
 
 def test_switching_theme_does_not_raise(page: Page, server: ProseviewServer):
@@ -1976,15 +2186,6 @@ def _scene_with_hits(server: ProseviewServer, pass_name: str) -> str:
     return best[0]
 
 
-def open_scene_analysis(page: Page) -> None:
-    """The pass row lives with the prose, so there is nothing to expand.
-
-    Kept as a seam: several tests call it before toggling a pass, and the
-    disclosure it used to open no longer exists.
-    """
-    page.wait_for_selector("#modalAlerts .alert-tag")
-
-
 @pytest.mark.parametrize("pass_name", list(PASS_CLASSES))
 def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: ProseviewServer, pass_name: str):
     """All nine passes, each on a scene that actually triggers it."""
@@ -1996,15 +2197,15 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
     marks = page.locator(f"#sceneProseHost .{css}")
     assert marks.count() == 0, f"{pass_name} marks rendered before the pass was enabled"
 
-    toggle = page.locator(f"#tag-{pass_name}")
+    toggle = page.locator(f"#pass-row-{pass_name}")
     toggle.wait_for(state="visible")
     toggle.click()
 
     _wait_until(
-        lambda: "alert-tag-active" in (toggle.get_attribute("class") or ""),
-        message=f"{pass_name} chip did not activate",
+        lambda: toggle.get_attribute("aria-pressed") == "true",
+        message=f"{pass_name} row did not activate",
     )
-    # The chip lighting up is not the feature; the marks are.
+    # The row lighting up is not the feature; the marks are.
     _wait_until(
         lambda: marks.count() > 0,
         message=f"{pass_name} enabled but no .{css} marks rendered in {scene}",
@@ -2014,13 +2215,14 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
 def test_highlight_pass_choice_persists_across_a_reload(page: Page, shared_server: ProseviewServer):
     open_scene(page, shared_server)
     open_scene_analysis(page)
-    page.click("#tag-repeats")
+    page.click("#pass-row-repeats")
     _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
 
     page.reload(wait_until="load")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
 
-    assert "alert-tag-active" in (page.locator("#tag-repeats").get_attribute("class") or "")
+    open_scene_analysis(page)
+    assert page.locator("#pass-row-repeats").get_attribute("aria-pressed") == "true"
     _wait_until(
         lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0,
         message="pass was remembered but its marks were not re-rendered",
@@ -2030,13 +2232,13 @@ def test_highlight_pass_choice_persists_across_a_reload(page: Page, shared_serve
 def test_clear_all_turns_every_active_pass_off(page: Page, shared_server: ProseviewServer):
     open_scene(page, shared_server)
     open_scene_analysis(page)
-    page.click("#tag-repeats")
-    page.click("#tag-sensory")
+    page.click("#pass-row-repeats")
+    page.click("#pass-row-sensory")
     _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
 
-    # #tag-all reads "All" when everything is off and "Clear" once any pass is on.
-    assert page.locator("#tag-all").inner_text().strip() == "Clear"
-    page.click("#tag-all")
+    # The button reads "All" when everything is off, "Clear" once any pass is on.
+    assert page.locator("#scenePassAllBtn").inner_text().strip() == "Clear"
+    page.click("#scenePassAllBtn")
 
     _wait_until(
         lambda: page.locator("#sceneProseHost .hl-repeat").count() == 0
@@ -2048,7 +2250,7 @@ def test_clear_all_turns_every_active_pass_off(page: Page, shared_server: Prosev
 def test_highlight_passes_are_keyboard_toggle_buttons(page: Page, shared_server: ProseviewServer):
     open_scene(page, shared_server, _scene_with_hits(shared_server, "repeats"))
     open_scene_analysis(page)
-    toggle = page.get_by_role("button", name="Repeats")
+    toggle = page.locator("#pass-row-repeats")
     assert toggle.get_attribute("aria-pressed") == "false"
     toggle.focus()
     page.keyboard.press("Space")
@@ -2094,6 +2296,79 @@ def test_repo_tree_auto_reveal_keeps_expansion_semantics_in_sync(
     assert all(value == "true" for value in expanded.evaluate_all(
         "items => items.map(item => item.getAttribute('aria-expanded'))"
     ))
+
+
+def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
+    page: Page,
+    server: ProseviewServer,
+):
+    """The file tree belongs beside the manuscript, not in a 20px code gutter."""
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_dashboard(page, server)
+    tree = page.get_by_role("tree", name="Repository files")
+    tree.locator(".dir-toggle:visible").filter(has_text=re.compile(r"^ch01$")).click()
+    tree.locator(f'.file-link[data-scene-path="{SCENE_REL}"]').click()
+    page.wait_for_selector("#sceneModal", state="visible")
+    page.wait_for_selector("#sidebarTree .file-link.active", state="visible")
+
+    measurements = page.evaluate(
+        """() => {
+            const rows = [...document.querySelectorAll('#sidebarTree [role="treeitem"]')]
+                .filter(el => el.getClientRects().length);
+            const nodeIcons = [...document.querySelectorAll('#sidebarTree .sidebar-node-icon')]
+                .filter(el => el.getClientRects().length);
+            const firstStyle = getComputedStyle(rows[0]);
+            const active = document.querySelector('#sidebarTree .file-link.active');
+            const activeStyle = getComputedStyle(active);
+            const activeMarker = getComputedStyle(active, '::before');
+            const close = document.querySelector('.sidebar-close-btn').getBoundingClientRect();
+            const title = getComputedStyle(document.querySelector('.sidebar-title'));
+            return {
+                rowHeights: rows.map(el => el.getBoundingClientRect().height),
+                fontFamily: firstStyle.fontFamily,
+                fontSize: parseFloat(firstStyle.fontSize),
+                iconCount: nodeIcons.length,
+                iconSizes: nodeIcons.map(el => {
+                    const box = el.getBoundingClientRect();
+                    return [box.width, box.height];
+                }),
+                iconsDecorative: nodeIcons.every(el => el.getAttribute('aria-hidden') === 'true'),
+                close: [close.width, close.height],
+                titleFont: title.fontFamily,
+                titleSize: parseFloat(title.fontSize),
+                activeBackground: activeStyle.backgroundColor,
+                activeWeight: parseInt(activeStyle.fontWeight, 10),
+                activeMarkerWidth: parseFloat(activeMarker.width),
+                activeMarkerContent: activeMarker.content,
+                horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            };
+        }"""
+    )
+
+    assert min(measurements["rowHeights"]) >= 32
+    assert measurements["fontSize"] >= 13
+    assert "mono" not in measurements["fontFamily"].lower()
+    assert measurements["iconCount"] >= len(measurements["rowHeights"])
+    assert all(width >= 18 and height >= 18 for width, height in measurements["iconSizes"]), measurements["iconSizes"]
+    assert measurements["iconsDecorative"]
+    assert min(measurements["close"]) >= 34
+    assert measurements["titleSize"] >= 16
+    assert any(name in measurements["titleFont"] for name in ("Iowan", "Palatino", "Georgia"))
+    assert measurements["activeBackground"] not in ("rgba(0, 0, 0, 0)", "transparent")
+    assert measurements["activeWeight"] >= 600
+    assert measurements["activeMarkerWidth"] >= 3
+    assert measurements["activeMarkerContent"] != "none"
+    assert not measurements["horizontalOverflow"]
+
+    assert page.locator(".sidebar-close-btn .sidebar-chrome-icon").count() == 1
+    assert page.locator("#sidebarOpenBtn .sidebar-chrome-icon").count() == 1
+    assert page.locator("#modalSidebarBtn .sidebar-chrome-icon").count() == 1
+
+    page.evaluate("selectTheme('dark')")
+    assert page.locator("#sidebarTree .file-link.active").is_visible()
+    assert not page.evaluate(
+        "document.documentElement.scrollWidth > document.documentElement.clientWidth"
+    )
 
 
 # ── editor round-trip fidelity ──────────────────────────────────────────────
@@ -2551,7 +2826,7 @@ def test_workspace_resizers_are_keyboard_operable_and_preserve_writing_space(
     page.keyboard.press("ArrowRight")
     assert page.locator("#repoSidebar").bounding_box()["width"] > before_sidebar
 
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     discuss = page.get_by_role("separator", name="Resize Discuss")
     discuss.focus()
     page.keyboard.press("End")
@@ -2591,7 +2866,7 @@ def test_resizer_values_match_rendered_bounds_at_compact_and_zoom(
     assert page.locator("#sceneModal .modal-content").bounding_box()["width"] >= 360
 
     page.set_viewport_size({"width": 1024, "height": 768})
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     discuss = page.get_by_role("separator", name="Resize Discuss")
     discuss.focus()
     page.keyboard.press("End")
@@ -2628,7 +2903,7 @@ def test_compact_utility_docks_remove_retracted_sidebar_from_keyboard_order(
 ):
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
-    page.locator("#sceneModal .discuss-open-btn").click()
+    open_discuss(page)
     sidebar = page.locator("#repoSidebar")
     assert sidebar.get_attribute("inert") is not None
     assert sidebar.get_attribute("aria-hidden") == "true"
@@ -4068,7 +4343,12 @@ def test_line_width_control_resizes_the_reading_column_and_persists(
     The reading column is centred, so its width is the only real variable; the
     margins are whatever is left, split evenly. The readout is in characters
     because that is the number a reader is actually choosing.
+
+    Wide viewport on purpose: this is about clamping the *preference*, and at
+    the default 1280 the sidebar leaves less room than the 1100px maximum, so
+    the container would do the clamping and the assertion would prove nothing.
     """
+    page.set_viewport_size({"width": 1700, "height": 900})
     open_scene(page, server)
 
     width = lambda: page.evaluate(
@@ -4129,37 +4409,106 @@ def test_stat_tiles_are_readouts_not_a_second_set_of_controls(
     echo which pass is on; they do not switch it.
     """
     open_scene(page, server)
-    page.evaluate("() => toggleScenePanel()")
-    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+    open_scene_analysis(page)
 
-    tiles = page.locator("#sceneDetailsPane .scene-stat-box")
+    tiles = page.locator("#sceneAnalysisPane .scene-stat-box")
     assert tiles.count() == 8
     assert page.evaluate(
-        "() => [...document.querySelectorAll('#sceneDetailsPane .scene-stat-box')]"
+        "() => [...document.querySelectorAll('#sceneAnalysisPane .scene-stat-box')]"
         ".every(el => el.tagName === 'DIV')"
     ), "no tile should be a button"
 
     # Turning a pass on from its own row tints the matching tile.
     page.evaluate("() => toggleHighlight('sensory')")
     page.wait_for_function(
-        "() => document.querySelector('#sceneDetailsPane [data-pass=\"sensory\"]')"
+        "() => document.querySelector('#sceneAnalysisPane [data-pass=\"sensory\"]')"
         ".classList.contains('scene-stat-on')"
     )
 
 
-def test_the_details_tab_does_not_wear_the_discuss_heading(
+def test_the_scene_tabs_do_not_wear_the_discuss_heading(
     page: Page, server: ProseviewServer
 ):
     """"Codex / Live" names the agent connection, not a pane of counts."""
     open_scene(page, server)
-    page.evaluate("() => toggleScenePanel()")
-    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+    open_scene_details(page)
 
-    assert page.locator("#discussTitle").inner_text().strip() == "Scene details"
+    assert page.locator("#discussTitle").inner_text().strip() == "Scene"
+    assert page.locator("#discussConnection").is_hidden()
+
+    open_scene_analysis(page)
+    assert page.locator("#discussTitle").inner_text().strip() == "Analysis"
     assert page.locator("#discussConnection").is_hidden()
 
     page.evaluate("() => showDiscussTab()")
-    page.wait_for_function("() => document.getElementById('discussTitle').innerText.trim() !== 'Scene details'")
+    page.wait_for_function(
+        "() => !['Scene', 'Analysis'].includes("
+        "document.getElementById('discussTitle').innerText.trim())"
+    )
+    assert page.locator("#discussConnection").is_visible()
+
+
+def test_every_pass_is_listed_with_its_count_and_an_example(
+    page: Page, server: ProseviewServer
+):
+    """The pass list is the one place a pass can be switched on.
+
+    Each row carries a line of examples, because "felt, saw, heard, noticed"
+    identifies Filter Verbs faster than a definition does, and a tooltip with
+    the longer note for anyone who wants it. A pass with no matches still
+    appears, so "nothing here" costs no click.
+    """
+    open_scene(page, server)
+    open_scene_analysis(page)
+
+    rows = page.locator("#scenePassList .scene-pass-row")
+    assert rows.count() == 9, "every pass is listed, including the empty ones"
+
+    for row in rows.all():
+        assert row.locator(".scene-pass-example").inner_text().strip(), (
+            "a pass row without examples is a label the reader has to guess at"
+        )
+        assert (row.get_attribute("title") or "").strip(), "the longer note is the hover layer"
+        assert row.locator(".scene-pass-count").inner_text().strip().isdigit()
+
+    # Ordered by how much there is to look at.
+    counts = [
+        int(n)
+        for n in page.evaluate(
+            "() => [...document.querySelectorAll('#scenePassList .scene-pass-count')]"
+            ".map(el => el.textContent)"
+        )
+    ]
+    assert counts == sorted(counts, reverse=True)
+
+    filter_row = page.locator("#pass-row-filter_verbs")
+    assert "felt" in filter_row.locator(".scene-pass-example").inner_text()
+    assert filter_row.get_attribute("aria-pressed") == "false"
+    filter_row.click()
+    assert filter_row.get_attribute("aria-pressed") == "true"
+    page.wait_for_selector("#sceneProseHost .hl-filter")
+
+
+def test_clicking_a_pass_row_is_the_only_way_its_state_changes(
+    page: Page, server: ProseviewServer
+):
+    """All / Clear drives the rows, and the rows drive the prose."""
+    open_scene(page, server)
+    open_scene_analysis(page)
+
+    page.click("#scenePassAllBtn")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('#scenePassList .scene-pass-row')]"
+        ".every(el => el.getAttribute('aria-pressed') === 'true')"
+    )
+    assert page.locator("#scenePassAllBtn").inner_text().strip() == "Clear"
+
+    page.click("#scenePassAllBtn")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('#scenePassList .scene-pass-row')]"
+        ".every(el => el.getAttribute('aria-pressed') === 'false')"
+    )
+    assert page.locator("#scenePassAllBtn").inner_text().strip() == "All"
 
 
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):
@@ -4742,7 +5091,7 @@ def test_quick_critique_queues_while_another_tab_restores_history(
     """A slow thread/read must not hold the queue endpoint past its deadline."""
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Prime this conversation")
     page.press("#discussInput", "Enter")
@@ -4753,7 +5102,7 @@ def test_quick_critique_queues_while_another_tab_restores_history(
     try:
         with server.hold_codex_request("thread/read") as restore_reached:
             open_scene(other, server)
-            other.click("#sceneModal .discuss-open-btn")
+            open_discuss(other)
             _wait_until(
                 restore_reached.exists,
                 message="the second tab never began restoring Codex history",
@@ -4808,7 +5157,7 @@ def test_quick_critique_runs_immediately_after_restart_with_retained_history(
     """A fresh process must retain history without delaying the next action."""
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Prime retained history")
     page.press("#discussInput", "Enter")
@@ -4837,7 +5186,7 @@ def test_quick_critique_queues_while_an_active_turn_is_stopping(
     """Stopping one request must not make the next managed action disappear."""
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
-    page.click("#sceneModal .discuss-open-btn")
+    open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "HOLD_FOR_STOP")
     page.press("#discussInput", "Enter")

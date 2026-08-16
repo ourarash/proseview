@@ -90,6 +90,7 @@ def find_related(scene: SceneStats, cfg: Config, repo_tree: list[dict[str, Any]]
             "path": path,
             "abs_path": node.get("abs_path"),
             "score": score,
+            "preview_text": (str(body)[:250] + "...") if isinstance(body, str) and len(str(body)) > 250 else str(body) if isinstance(body, str) else "",
         })
 
     matches.sort(key=lambda item: (-int(item["score"]), str(item["path"])))

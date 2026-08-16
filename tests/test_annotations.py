@@ -189,3 +189,49 @@ def test_atomic_write_replaces_contents_in_place(tmp_path: Path):
 
     assert target.read_text(encoding="utf-8") == "new\n"
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+# ── Concurrent-edit guard ────────────────────────────────────────────────────
+
+def test_a_scene_edited_since_the_page_loaded_refuses_the_annotation(scene: Path):
+    """The other half of the atomic-write work.
+
+    Annotations anchor to a paragraph the reader could see. If the scene changed
+    in another editor since the page rendered it, that anchor may no longer mean
+    what they selected, so the write is refused rather than guessed at.
+    """
+    from proseview.server import _FileConflictError
+
+    stale = scene.stat().st_mtime - 5
+    before = scene.read_text(encoding="utf-8")
+
+    with pytest.raises(_FileConflictError, match="changed on disk"):
+        insert_todo(str(scene), "counted the boats", OFFSET, "late", stale)
+
+    assert scene.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("call", [
+    lambda p, mt: insert_todo(str(p), "counted the boats", OFFSET, "x", mt),
+    lambda p, mt: edit_todo(str(p), "a", "b", mt),
+    lambda p, mt: delete_todo(str(p), "a", mt),
+    lambda p, mt: add_note(str(p), "counted the boats", OFFSET, "x", "note", mt),
+    lambda p, mt: edit_note(str(p), "a", "note", "b", "note", mt),
+    lambda p, mt: delete_note(str(p), "a", "note", mt),
+])
+def test_every_mutator_honours_the_guard(scene: Path, call):
+    from proseview.server import _FileConflictError
+
+    with pytest.raises(_FileConflictError):
+        call(scene, scene.stat().st_mtime - 5)
+
+
+def test_a_matching_mtime_lets_the_write_through(scene: Path):
+    insert_todo(str(scene), "counted the boats", OFFSET, "fine", scene.stat().st_mtime)
+    assert "<!-- TODO: fine -->" in scene.read_text(encoding="utf-8")
+
+
+def test_omitting_the_mtime_keeps_the_old_unguarded_behaviour(scene: Path):
+    """The CLI does not track page state, so the guard stays opt-in."""
+    insert_todo(str(scene), "counted the boats", OFFSET, "cli")
+    assert "<!-- TODO: cli -->" in scene.read_text(encoding="utf-8")

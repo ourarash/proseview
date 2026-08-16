@@ -723,7 +723,7 @@ def test_discuss_new_conversation_refuses_to_discard_active_work(server: Prosevi
 
 def test_data_json_carries_contents_meta_and_highlights(shared_server: ProseviewServer):
     data = shared_server.get_json("/data.json")
-    assert set(data) == {"contents", "meta", "highlightsByPath"}
+    assert set(data) == {"contents", "meta", "highlightsByPath", "medians"}
 
     meta = data["meta"][SCENE_REL]
     assert meta["words"] > 0

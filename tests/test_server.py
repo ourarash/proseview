@@ -35,7 +35,7 @@ def test_build_scene_data_returns_data_json_payload():
     scenes = collect_scene_stats(FIXTURE, cfg)
     data = build_scene_data(scenes, FIXTURE, cfg)
 
-    assert set(data) == {"contents", "meta", "highlightsByPath"}
+    assert set(data) == {"contents", "meta", "highlightsByPath", "medians"}
     assert "ch01/01-opening.md" in data["contents"]
     assert data["meta"]["ch01/01-opening.md"]["words"] > 0
     assert data["highlightsByPath"]["ch01/01-opening.md"]["paragraphs"]

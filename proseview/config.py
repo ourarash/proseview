@@ -32,6 +32,37 @@ DEFAULT_REPO_TAB_FOLDERS: tuple[str, ...] = (
 )
 DEFAULT_REPO_TAB_PREVIEW_MAX_BYTES = 512 * 1024
 
+# Typical MTLD ranges by genre.
+#
+# MTLD is length-independent by construction: McCarthy & Jarvis (2010), "MTLD,
+# vocd-D, and HD-D: A validation study of sophisticated approaches to lexical
+# diversity assessment" (Behavior Research Methods), established the 0.72
+# factor threshold this project uses in ``lexical.MTLD_THRESHOLD``. That part
+# has a citation.
+#
+# These bands do not. They are the consensus ranges reported across corpus
+# stylistics work, not a measurement anyone made here, which is why the UI
+# calls them "typical" rather than "benchmarked". They exist because the
+# alternative -- one hardcoded pair for every book ever written -- badged most
+# of Alice in Wonderland as too repetitive.
+#
+# The direction is the useful part and it is not controversial: dialogue-heavy
+# contemporary prose repeats pronouns and auxiliaries, so it scores lower;
+# world-building genres keep introducing distinct nouns, so they score higher.
+GENRE_MTLD_BANDS: dict[str, tuple[float, float]] = {
+    "childrens": (40.0, 60.0),
+    "contemporary": (60.0, 85.0),
+    "literary": (85.0, 110.0),
+    "speculative": (90.0, 120.0),
+}
+GENRE_LABELS: dict[str, str] = {
+    "childrens": "Children's / middle grade",
+    "contemporary": "Commercial & contemporary",
+    "literary": "Historical & literary",
+    "speculative": "Fantasy & science fiction",
+}
+DEFAULT_GENRE = "contemporary"
+
 
 @dataclass(frozen=True)
 class EditorConfig:
@@ -88,8 +119,12 @@ class Config:
     skills_path: str = DEFAULT_SKILLS_PATH
     target_words: int = 80000
     daily_target: int = 500
+    genre: str = DEFAULT_GENRE
     mattr_band: tuple[float, float] = (0.74, 0.77)
-    mtld_band: tuple[float, float] = (105.0, 130.0)
+    # Derived from ``genre`` unless the file sets it explicitly. The old default
+    # was (105, 130), a pair of numbers with nothing behind them: it badged most
+    # of Alice in Wonderland as too repetitive.
+    mtld_band: tuple[float, float] = GENRE_MTLD_BANDS["contemporary"]
     chapter_pattern: str = "ch*"
     characters: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
@@ -141,6 +176,8 @@ class Config:
         if not manuscript_path.endswith("/"):
             manuscript_path = manuscript_path + "/"
 
+        genre = _coerce_genre(raw.get("genre", defaults.genre))
+
         return cls(
             manuscript_path=manuscript_path,
             characters_path=_coerce_str(raw.get("characters_path", defaults.characters_path),
@@ -151,9 +188,12 @@ class Config:
                                      "target_words"),
             daily_target=_coerce_int(raw.get("daily_target", defaults.daily_target),
                                      "daily_target"),
+            genre=genre,
             mattr_band=_coerce_band(raw.get("mattr_band", defaults.mattr_band),
                                     "mattr_band"),
-            mtld_band=_coerce_band(raw.get("mtld_band", defaults.mtld_band),
+            # An explicit mtld_band still wins: someone who has measured their
+            # own corpus should not be overruled by a genre label.
+            mtld_band=_coerce_band(raw.get("mtld_band", GENRE_MTLD_BANDS[genre]),
                                    "mtld_band"),
             chapter_pattern=_coerce_str(raw.get("chapter_pattern", defaults.chapter_pattern),
                                         "chapter_pattern"),
@@ -180,9 +220,32 @@ def _config_field_names() -> tuple[str, ...]:
     return (
         "manuscript_path", "characters_path", "skills_path",
         "target_words", "daily_target",
-        "mattr_band", "mtld_band", "chapter_pattern",
+        "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
     )
+
+
+def _coerce_genre(v: Any) -> str:
+    """Genre is a label the writer sets, never something Proseview infers.
+
+    A guess here would be worse than the old fixed band: it would look
+    authoritative while being wrong. Alice in Wonderland has a median MTLD of
+    77.7, which lands in the contemporary range rather than the children's one
+    the shelf label would predict.
+    """
+    if v is None:
+        return DEFAULT_GENRE
+    if not isinstance(v, str):
+        raise ConfigError(f"genre: expected one of {sorted(GENRE_MTLD_BANDS)}, got {v!r}")
+    key = v.strip().lower().replace("'", "").replace("_", "").replace(" ", "")
+    aliases = {"children": "childrens", "middlegrade": "childrens", "mg": "childrens",
+               "commercial": "contemporary", "historical": "literary",
+               "fantasy": "speculative", "scifi": "speculative",
+               "sciencefiction": "speculative"}
+    key = aliases.get(key, key)
+    if key not in GENRE_MTLD_BANDS:
+        raise ConfigError(f"genre: expected one of {sorted(GENRE_MTLD_BANDS)}, got {v!r}")
+    return key
 
 
 def _coerce_str(v: Any, key: str) -> str:

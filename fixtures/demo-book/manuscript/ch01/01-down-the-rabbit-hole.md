@@ -1,19 +1,3 @@
----
-title: Down the Rabbit-Hole
-chapter: I. Down the Rabbit-Hole
-status: drafted
-thread: rabbit
-where: The riverbank
-when: A hot afternoon
-goal: Alice wants something to happen
-conflict: Nothing is happening and the book has no pictures
-outcome: She follows a talking rabbit down a hole
-day: 1
-pov: Alice
-characters:
-  - Alice
-  - White Rabbit
----
 
 # Down the Rabbit-Hole
 

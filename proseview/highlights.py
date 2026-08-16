@@ -89,6 +89,23 @@ def split_paragraphs(text: str) -> list[str]:
     return [block.strip() for block in _PARAGRAPH_SPLIT_RE.split(text) if block.strip()]
 
 
+def strip_markdown_for_offsets(text: str) -> str:
+    """Remove markdown syntax to match ProseMirror's plain text content."""
+    # Block markers
+    text = re.sub(r'^#{1,6}\s+', '', text)
+    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[-*+]\s+', '', text)
+    text = re.sub(r'^\d+\.\s+', '', text)
+    
+    # Inline formatting
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
+    text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    return text
+
+
 def _word_list_pass(
     paragraphs: list[str],
     words: Iterable[str],
@@ -164,29 +181,46 @@ def repeats_pass(paragraphs: list[str], repeat_terms: Iterable[str]) -> list[Hig
     the stemming-aware ``top_repeated_content_words`` produces. All surface forms
     in a group are highlighted with the group's total count as the note.
     """
-    word_count: dict[str, str] = {}
+    word_to_group: dict[str, str] = {}
+    group_scene_count: dict[str, str] = {}
+    
     for term in repeat_terms:
         if not term:
             continue
         m = _REPEAT_TERM_RE.match(term)
         raw = m.group(1) if m else term
         count_m = re.search(r"x(\d+)$", term)
-        note = f"{count_m.group(1)}×" if count_m else None
+        note = count_m.group(1) if count_m else ""
+        group_scene_count[raw] = note
         for w in raw.split("/"):
-            word_count[w.lower()] = note or ""
+            word_to_group[w.lower()] = raw
 
-    if not word_count:
+    if not word_to_group:
         return []
 
     pattern = re.compile(
-        r"\b(?:" + "|".join(re.escape(w) for w in word_count) + r")\b",
+        r"\b(?:" + "|".join(re.escape(w) for w in word_to_group) + r")\b",
         re.IGNORECASE,
     )
     out: list[HighlightInstance] = []
     for idx, para in enumerate(paragraphs):
-        for match in pattern.finditer(para):
-            note = word_count.get(match.group(0).lower(), "") or None
-            out.append(HighlightInstance(idx, (match.start(), match.end()), match.group(0), note))
+        matches = list(pattern.finditer(para))
+        
+        group_para_count = {}
+        for match in matches:
+            w_lower = match.group(0).lower()
+            grp = word_to_group.get(w_lower)
+            if grp:
+                group_para_count[grp] = group_para_count.get(grp, 0) + 1
+                
+        for match in matches:
+            w_lower = match.group(0).lower()
+            grp = word_to_group.get(w_lower)
+            if grp:
+                p_c = group_para_count[grp]
+                s_c = group_scene_count.get(grp, "")
+                note = f"{p_c}/{s_c}" if s_c else str(p_c)
+                out.append(HighlightInstance(idx, (match.start(), match.end()), match.group(0), note))
     return out
 
 
@@ -211,17 +245,20 @@ def compute_scene_highlights(
     scene's own top-repeated words; pass ``SceneStats.repetition_examples``.
     """
     paragraphs = split_paragraphs(text)
+    plain_paragraphs = [strip_markdown_for_offsets(p) for p in paragraphs]
+    
     return {
         "paragraphs": paragraphs,
         "highlights": {
-            "passive_voice": [h.to_dict() for h in passive_voice_pass(paragraphs)],
-            "filter_verbs": [h.to_dict() for h in filter_verbs_pass(paragraphs)],
-            "crutch_words": [h.to_dict() for h in crutch_words_pass(paragraphs)],
-            "hyperbole": [h.to_dict() for h in hyperbole_pass(paragraphs)],
-            "lyrical": [h.to_dict() for h in lyrical_pass(paragraphs)],
-            "sensory": [h.to_dict() for h in sensory_pass(paragraphs)],
-            "comedy_beats": [h.to_dict() for h in comedy_beats_pass(paragraphs)],
-            "repeats": [h.to_dict() for h in repeats_pass(paragraphs, repeat_terms)],
-            "first_person": [h.to_dict() for h in first_person_pass(paragraphs)],
+            "passive_voice": [h.to_dict() for h in passive_voice_pass(plain_paragraphs)],
+            "filter_verbs": [h.to_dict() for h in filter_verbs_pass(plain_paragraphs)],
+            "crutch_words": [h.to_dict() for h in crutch_words_pass(plain_paragraphs)],
+            "hyperbole": [h.to_dict() for h in hyperbole_pass(plain_paragraphs)],
+            "lyrical": [h.to_dict() for h in lyrical_pass(plain_paragraphs)],
+            "sensory": [h.to_dict() for h in sensory_pass(plain_paragraphs)],
+            "comedy_beats": [h.to_dict() for h in comedy_beats_pass(plain_paragraphs)],
+            "repeats": [h.to_dict() for h in repeats_pass(plain_paragraphs, repeat_terms)],
+            "first_person": [h.to_dict() for h in first_person_pass(plain_paragraphs)],
         },
     }
+

@@ -388,6 +388,23 @@ def collect_scene_stats(
     return scenes
 
 
+def scene_mtld_median(scenes: list[SceneStats]) -> float:
+    """The manuscript's own MTLD median.
+
+    Computed per chapter and per baseline for a long time, and read by nothing:
+    ``build_dashboard`` opened with ``del baseline``. It is the reference that
+    needs no corpus, and the one that answers the question a writer revising
+    actually has -- which scene is unlike the rest of my book.
+    """
+    vals = [s.mtld for s in scenes if s.mtld]
+    return statistics.median(vals) if vals else 0.0
+
+
+def scene_mattr_median(scenes: list[SceneStats]) -> float:
+    vals = [s.mattr for s in scenes if s.mattr]
+    return statistics.median(vals) if vals else 0.0
+
+
 def goal_position(v: float, g: tuple[float, float]) -> str:
     if v < g[0]:
         return "below"
@@ -415,25 +432,25 @@ def scene_severity(s: SceneStats, cfg: Config) -> float:
 def revision_signal(s: SceneStats, cfg: Config) -> str:
     m_p, l_p = goal_position(s.mattr, cfg.mattr_band), goal_position(s.mtld, cfg.mtld_band)
     p = []
-    if m_p == "below" and l_p == "below":
-        p.append("repetition is probably showing at both levels")
-    elif m_p == "above" and l_p == "above":
-        p.append("lexical variety may be outrunning the scene's pressure")
-    elif m_p == "below":
-        p.append("local phrasing may be looping")
-    elif l_p == "below":
-        p.append("the scene may keep circling the same ground")
-    else:
-        p.append("lexical range looks healthy")
+    if m_p == "below":
+        p.append("Local variety (MATTR) is below target")
+    elif m_p == "above":
+        p.append("Local variety (MATTR) is above target")
+
+    if l_p == "below":
+        p.append("Whole-scene variety (MTLD) is below target")
+    elif l_p == "above":
+        p.append("Whole-scene variety (MTLD) is above target")
+
     if s.dialogue_pct > 45:
-        p.append("dialogue is doing most of the work")
+        p.append(f"High dialogue ({int(s.dialogue_pct)}%)")
     if s.avg_sentence_words < 8:
-        p.append("sentence rhythm is very clipped")
+        p.append(f"Short sentences (Avg {s.avg_sentence_words} words)")
     if s.short_paragraph_pct > 65:
-        p.append("paragraphing is unusually staccato")
+        p.append(f"Many short paragraphs ({int(s.short_paragraph_pct)}%)")
     if s.repetition_examples:
-        p.append(f"watch: {', '.join(s.repetition_examples)}")
-    return ". ".join(p) + "."
+        p.append(f"Top repeated words: {', '.join(s.repetition_examples)}")
+    return " • ".join(p)
 
 
 def chapter_summaries(scenes: list[SceneStats]) -> list[ChapterSummary]:

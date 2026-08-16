@@ -43,11 +43,19 @@ target_words: 80000
 # Daily word goal (drives the "days to finish" estimate).
 daily_target: 500
 
+# Genre. Sets the typical MTLD range your scenes are compared against:
+#   childrens     40-60    contemporary  60-85
+#   literary      85-110   speculative   90-120
+# Dialogue-heavy prose repeats pronouns and scores lower; world-building
+# genres keep introducing distinct nouns and score higher.
+genre: contemporary
+
 # Healthy band for local lexical variety (MATTR).
 mattr_band: [0.74, 0.77]
 
-# Healthy band for whole-scene lexical variety (MTLD).
-mtld_band: [105, 130]
+# Healthy band for whole-scene lexical variety (MTLD). Uncomment to override
+# the genre range above -- worth doing if you have measured your own corpus.
+# mtld_band: [60, 85]
 
 # Editor URL handler. One of: vscode, cursor, zed, positron, custom.
 editor:

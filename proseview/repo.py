@@ -321,9 +321,10 @@ def recent_changes(
             [
                 "git", "log",
                 "--since", since,
+                "-z",
                 "--name-only",
                 "--diff-filter=AM",
-                "--pretty=format:__PV_DATE__ %ai",
+                "--pretty=format:__PV_DATE__ %ai%x00",
                 "--first-parent",
                 "--",
                 *content_dirs,
@@ -340,12 +341,17 @@ def recent_changes(
     if result.returncode != 0:
         return [], False
 
-    # Sentinel lines supply the date; all other non-empty lines are file paths.
-    # Deduplicate by path, keeping the first occurrence (most-recent commit).
+    # NUL delimiters preserve filenames exactly. Git's default newline format
+    # C-quotes names containing quotes, tabs, or newlines; treating that quoted
+    # representation as a real path both breaks navigation and makes correct
+    # destination-specific escaping impossible.
+    #
+    # Sentinel records supply the date; all other non-empty records are file
+    # paths. Deduplicate by path, keeping the first (most-recent) occurrence.
     entries: dict[str, dict[str, Any]] = {}
     current_date = ""
-    for raw in result.stdout.splitlines():
-        line = raw.strip()
+    for raw in result.stdout.split("\0"):
+        line = raw.lstrip("\n")
         if not line:
             continue
         if line.startswith("__PV_DATE__ "):

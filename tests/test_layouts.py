@@ -246,3 +246,30 @@ def test_export_collects_scenes_from_a_flat_vault(tmp_path: Path):
     documents = collect_scene_documents(vault, Config.load(vault))
 
     assert {d.path.name for d in documents} == {"one.md", "two.md"}
+
+
+# ── Opting a file out ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("value", ["false", "no", "off", "False"])
+def test_scene_false_keeps_a_file_out_of_the_index(tmp_path: Path, value: str):
+    """Accepting any Markdown at any depth swept in auxiliary files.
+
+    A `review/` folder or a per-chapter outline living inside the manuscript
+    would otherwise count toward scene and word totals.
+    """
+    write(tmp_path / "manuscript" / "ch01" / "01.md")
+    write(
+        tmp_path / "manuscript" / "ch01" / "review" / "notes.md",
+        SCENE.replace("title: A Scene", f"title: Notes\nscene: {value}"),
+    )
+
+    scenes = collect_scene_stats(tmp_path, "manuscript")
+
+    assert [s.path.name for s in scenes] == ["01.md"]
+
+
+def test_files_without_the_key_are_still_scenes(tmp_path: Path):
+    write(tmp_path / "manuscript" / "ch01" / "01.md")
+    write(tmp_path / "manuscript" / "ch01" / "review" / "notes.md")
+
+    assert len(collect_scene_stats(tmp_path, "manuscript")) == 2

@@ -241,6 +241,16 @@ def extract_scene_text(text: str) -> str:
     return "\n".join(lines[start:])
 
 
+def _is_scene(fm: dict[str, object]) -> bool:
+    """False when frontmatter opts the file out with ``scene: false``."""
+    raw = fm.get("scene")
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"false", "no", "off", "0"}
+
+
 def resolve_manuscript_dir(root: Path, manuscript_subdir: str) -> Path:
     """Return the directory scenes are read from.
 
@@ -335,6 +345,12 @@ def collect_scene_stats(
         prefix = txt.lstrip("\n")[:60]
         raw_idx = raw.find(prefix) if prefix else -1
         txt_line_offset = raw[:raw_idx].count("\n") if raw_idx >= 0 else 0
+        # `scene: false` opts a file out of the index. Accepting any Markdown
+        # at any depth means review notes and per-chapter outlines living inside
+        # the manuscript now count toward scene and word totals; this is how a
+        # writer says "that one is not prose".
+        if not _is_scene(fm):
+            continue
         temp_scenes.append((p, fm, txt, toks, txt_line_offset))
 
     for p, fm, txt, toks, txt_line_offset in temp_scenes:

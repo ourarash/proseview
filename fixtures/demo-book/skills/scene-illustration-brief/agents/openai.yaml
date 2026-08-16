@@ -1,0 +1,4 @@
+interface:
+  display_name: "Illustration brief"
+  short_description: "A brief an illustrator could work from, for the whole scene"
+  default_prompt: "Write an illustration brief for this scene."

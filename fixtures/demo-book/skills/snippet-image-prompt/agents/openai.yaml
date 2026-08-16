@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image prompt"
+  short_description: "Turn the selected passage into an image-generation prompt"
+  default_prompt: "Write an image-generation prompt for the selected passage."

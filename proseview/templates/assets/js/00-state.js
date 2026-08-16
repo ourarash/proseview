@@ -51,6 +51,14 @@ let currentTab = 'overview';
         const MODAL_FONT_SIZE_DEFAULT = 18;
         const MODAL_FONT_SIZE_MIN = 12;
         const MODAL_FONT_SIZE_MAX = 36;
+        // Measure, not margins: the reading column is centred, so the only
+        // real variable is how wide the text is. Stored in px but shown to the
+        // reader as characters per line, which is the number that means
+        // something when choosing a comfortable measure.
+        const READING_MEASURE_STORAGE_KEY = 'proseview-reading-measure';
+        const READING_MEASURE_DEFAULT = 760;
+        const READING_MEASURE_MIN = 480;
+        const READING_MEASURE_MAX = 1100;
         const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';
         const HIGHLIGHTS_STORAGE_KEY = 'proseview-highlights';
         const FONT_ORDER = ['reader', 'literary', 'inter', 'georgia', 'baskerville', 'sans', 'mono'];

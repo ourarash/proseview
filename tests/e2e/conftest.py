@@ -907,6 +907,34 @@ def repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def bare_repo(tmp_path: Path) -> Path:
+    """A manuscript with no frontmatter, no story bible, no config.
+
+    The Obsidian case: someone points Proseview at a folder of prose. Every
+    metadata-driven panel has nothing to work with, which is exactly the state
+    a silently-empty chart is indistinguishable from.
+    """
+    root = tmp_path / "bare"
+    root.mkdir()
+    for name, text in [
+        ("one.md", "She counted the boats twice, and then a third time.\n"),
+        ("two.md", "The tide went out without her, and the quay went quiet.\n"),
+        ("three.md", "He said nothing, which was his way of saying a great deal.\n"),
+    ]:
+        (root / name).write_text(text, encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def bare_server(bare_repo: Path, agent_bin: Path, fake_home: Path) -> Iterator[ProseviewServer]:
+    srv = _start_server(bare_repo, agent_bin, fake_home)
+    try:
+        yield srv
+    finally:
+        _stop_server(srv)
+
+
+@pytest.fixture
 def server(repo: Path, agent_bin: Path, fake_home: Path) -> Iterator[ProseviewServer]:
     """Function-scoped server for tests that write to the repo."""
     srv = _start_server(repo, agent_bin, fake_home)

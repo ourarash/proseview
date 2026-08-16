@@ -134,8 +134,10 @@ def test_tone_label_replaces_pensive_emoji():
     assert "Talky" in bundle
     assert "Internal" in bundle
     assert "Mixed" in bundle
-    # Stat-grid label is now Tone, not Energy.
-    assert ">Tone</span>" in bundle
+    # Stat-grid label is now Tone, not Energy. The grid is built as DOM nodes
+    # rather than concatenated markup, so the label lives in the tile spec.
+    assert "label: 'Tone'" in bundle
+    assert "label: 'Energy'" not in bundle
 
 
 # ── Item 6: dead CSS removed ─────────────────────────────────────────────────
@@ -460,3 +462,42 @@ def test_task_jump_button_resolves_against_prosemirror_dom():
         "Stale .prose-para query (the wrapper is no longer rendered)"
     # Headings are filtered so the index lines up with paragraph_blocks().
     assert "/^H[1-6]$/i.test(el.tagName)" in bundle
+
+
+def test_scene_and_file_views_hide_the_dashboard_chrome():
+    """The banner and toolbar must collapse when a routed view takes over.
+
+    These selectors once shared a rule with ``.deep-link-help``; removing that
+    footer took the ``display: none`` declaration with it and silently left the
+    chrome on screen in scene view. The rule is worth pinning.
+    """
+    css = APP_CSS.read_text(encoding="utf-8")
+    block = css.split('[data-view="scene"] .top-banner,')[1].split("}")[0]
+    assert "display: none" in block
+    for selector in ('[data-view="scene"] .app-toolbar',
+                     '[data-view="file"] .top-banner',
+                     '[data-view="file"] .app-toolbar'):
+        assert selector in block, f"{selector} no longer shares the hide rule"
+
+
+def test_the_deep_link_help_footer_is_gone():
+    """It documented URL syntax on every dashboard tab; the README covers it."""
+    template = (TEMPLATES / "index.html.j2").read_text(encoding="utf-8")
+    assert "deep-link-help" not in template
+    assert "Deep-link URLs" not in template
+
+
+def test_empty_character_charts_explain_themselves():
+    """A chart with no rows must say why, not show a bare axis.
+
+    "No characters configured" and "the name matching is broken" looked
+    identical on screen, which is how the ``stem.capitalize()`` bug survived:
+    an empty co-occurrence chart is what a frontmatter-free manuscript looks
+    like too.
+    """
+    bundle = _load_app_js()
+    assert "function noteIfEmpty(" in bundle
+    for chart in ("presenceChart", "coOccurChart", "locationChart"):
+        assert f"noteIfEmpty('{chart}'" in bundle, f"{chart} has no empty state"
+    assert "No characters yet" in bundle
+    assert "No settings yet" in bundle

@@ -28,7 +28,7 @@ from .highlights import PASS_NAMES, compute_scene_highlights
 from .history import HistoryRow, load_history, working_copy_delta
 from .lexical import FILTER_VERBS, calculate_lexical_stats
 from .related import find_related
-from .repo import build_repository_tree, build_sidebar_tree, build_tree, recent_changes
+from .repo import build_repository_tree, build_sidebar_tree, build_tree, read_repo_text, recent_changes
 from .story import story_payload
 from .scenes import (
     BaselineStats,
@@ -140,6 +140,27 @@ def _render_goals_sections(goals: Goals | None, cfg: Config) -> tuple[str, str]:
         </div>
     </div>"""
     return banner, card
+
+
+def character_name_from_file(path: Path) -> str:
+    """The character's name, preferring what the file declares.
+
+    A character file usually carries ``name: White Rabbit`` in frontmatter.
+    Deriving the name from the filename instead gave ``White-rabbit``, which
+    matches nothing in the prose -- so multi-word characters were silently
+    absent from presence and co-occurrence, and the charts came back empty
+    without saying why.
+    """
+    try:
+        head = read_repo_text(path)[:400]
+    except OSError:
+        head = ""
+    match = re.search(r"^name:\s*(.+?)\s*$", head, re.M)
+    if match:
+        declared = match.group(1).strip().strip("\"'")
+        if declared:
+            return declared
+    return path.stem.replace("-", " ").replace("_", " ").title()
 
 
 def _terminal_available() -> bool:
@@ -570,13 +591,13 @@ def render_html_report(
     char_bio_map: dict[str, str] = {}
     if char_dir.exists():
         for path in char_dir.glob("*.md"):
-            char_bio_map[path.stem.lower()] = path.read_text(encoding="utf-8")
+            char_bio_map[path.stem.lower()] = read_repo_text(path)
 
     chapters = sorted({s.chapter for s in scenes})
     if cfg.characters:
         char_names = [c.strip() for c in cfg.characters if c.strip()]
     elif char_dir.exists():
-        char_names = [path.stem.capitalize() for path in sorted(char_dir.glob("*.md"))]
+        char_names = [character_name_from_file(p) for p in sorted(char_dir.glob("*.md"))]
     else:
         char_names = []
 
@@ -702,7 +723,7 @@ def _load_skills(root: Path, skills_subdir: str = "skills") -> list[dict]:
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.exists():
             continue
-        raw = skill_md.read_text(encoding="utf-8")
+        raw = read_repo_text(skill_md)
         fm_match = re.match(r'^---\n(.*?)\n---', raw, re.DOTALL)
         name = skill_dir.name
         if fm_match:
@@ -714,7 +735,7 @@ def _load_skills(root: Path, skills_subdir: str = "skills") -> list[dict]:
         default_prompt = ""
         openai_yaml = skill_dir / "agents" / "openai.yaml"
         if openai_yaml.exists():
-            oy = _parse_yaml_block(openai_yaml.read_text(encoding="utf-8"))
+            oy = _parse_yaml_block(read_repo_text(openai_yaml))
             iface = oy.get("interface", {})
             if isinstance(iface, dict):
                 display_name = iface.get("display_name", display_name)

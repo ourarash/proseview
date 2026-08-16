@@ -41,3 +41,5 @@ Patel considered the ceiling, then Rena, then the ceiling again. "Three days," h
 "On Friday you take the paper to the riverfront group," Rena agreed.
 
 He stood. He did not shake her hand. He did not need to. The paper stayed on the table when he left, which was itself a kind of argument.
+
+The Harbour Master had said as much to Rena that morning, and she had not listened.

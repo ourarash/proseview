@@ -24,9 +24,14 @@
         function buildAnalysisTab() {
             if (_analysisLoaded || _analysisLoading) return;
             _analysisLoading = true;
-            setAnalysisStatus('Analysing the manuscript…');
+            setAnalysisStatus('Analysing the manuscript\u2026');
 
-            fetch('/analysis.json', { headers: pvHeaders() })
+            // Without a deadline a stalled request leaves the tab saying
+            // "Analysing…" forever, which is indistinguishable from working.
+            const controller = new AbortController();
+            const deadline = setTimeout(function() { controller.abort(); }, 30000);
+
+            fetch('/analysis.json', { headers: pvHeaders(), signal: controller.signal })
                 .then(function(r) {
                     if (!r.ok) throw new Error('analysis failed (' + r.status + ')');
                     return r.json();
@@ -42,9 +47,14 @@
                     _analysisLoaded = true;
                 })
                 .catch(function(err) {
-                    setAnalysisStatus('Could not analyse the manuscript: ' + err.message);
+                    setAnalysisStatus(err.name === 'AbortError'
+                        ? 'The analysis timed out. Reload to try again.'
+                        : 'Could not analyse the manuscript: ' + err.message);
                 })
-                .finally(function() { _analysisLoading = false; });
+                .finally(function() {
+                    clearTimeout(deadline);
+                    _analysisLoading = false;
+                });
         }
 
         function renderAnalysis(data) {

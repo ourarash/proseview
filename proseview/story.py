@@ -77,14 +77,40 @@ class ChapterBand:
     words: int
     day_high: int | None = None
     day_low: int | None = None
+    #: True when the manuscript counts down, so the label reads high to low.
+    descending: bool = False
 
     @property
     def day_span(self) -> str:
+        """The chapter's day range, written the way the manuscript runs.
+
+        A countdown manuscript reads "day 99 -> 94"; one that counts up reads
+        "day 1 -> 2". Rendering high-to-low unconditionally made every ordinary
+        ascending manuscript look like it ran backwards.
+        """
         if self.day_high is None or self.day_low is None:
             return ""
         if self.day_high == self.day_low:
             return f"day {self.day_high}"
-        return f"day {self.day_high} → {self.day_low}"
+        first, second = (
+            (self.day_high, self.day_low) if self.descending else (self.day_low, self.day_high)
+        )
+        return f"day {first} → {second}"
+
+
+def _counts_down(days: list[int]) -> bool:
+    """True when most steps between consecutive days fall rather than rise.
+
+    Compared against the number of *steps*, not the number of days. Against the
+    day count, a two-scene countdown could never qualify -- one fall is not more
+    than one -- so ``day 99`` followed by ``day 94`` read as ascending and was
+    sorted, and labelled, backwards.
+    """
+    steps = len(days) - 1
+    if steps < 1:
+        return False
+    falls = sum(1 for a, b in zip(days, days[1:]) if b < a)
+    return falls * 2 > steps
 
 
 @dataclass(frozen=True)
@@ -117,11 +143,7 @@ class StoryModel:
         A countdown is a real convention, and sorting it ascending would invert
         the story order it encodes.
         """
-        days = [s.day for s in self.dated if s.day is not None]
-        if len(days) < 2:
-            return False
-        falls = sum(1 for a, b in zip(days, days[1:]) if b < a)
-        return falls > len(days) / 2
+        return _counts_down([s.day for s in self.dated if s.day is not None])
 
     def chronological(self) -> list[StoryScene]:
         """Dated scenes in the order events happen.
@@ -218,6 +240,7 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
         threads = threads + ["other"]
 
     bands: list[ChapterBand] = []
+    descending = _counts_down([r.day for r in rows if r.day is not None])
     for row in rows:
         if bands and bands[-1].chapter == row.chapter:
             prev = bands[-1]
@@ -229,6 +252,7 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
                 words=prev.words + row.words,
                 day_high=max(days) if days else None,
                 day_low=min(days) if days else None,
+                descending=descending,
             )
         else:
             bands.append(ChapterBand(
@@ -238,6 +262,7 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
                 words=row.words,
                 day_high=row.day,
                 day_low=row.day,
+                descending=descending,
             ))
 
     return StoryModel(

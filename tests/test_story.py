@@ -215,3 +215,34 @@ def test_empty_manuscript_does_not_crash(tmp_path: Path):
 
     assert model.scenes == [] and model.bands == []
     assert untagged_summary(model) == "No scenes found."
+
+
+def test_chapter_day_span_follows_the_manuscript_direction(tmp_path: Path):
+    """An ascending manuscript must not be labelled as if it ran backwards.
+
+    ``day_span`` used to render ``high → low`` unconditionally, which is right
+    for a countdown but made every ordinary manuscript's Timeline read
+    ``day 2 → 1``.
+    """
+    for i, day in enumerate([1, 2, 3], start=1):
+        _write(tmp_path, "ch01", f"0{i}-s.md", fm=f"day: {day}\n")
+
+    model = _model(tmp_path)
+
+    assert model.descending_days is False
+    assert model.bands[0].day_span == "day 1 → 3"
+
+
+def test_a_countdown_manuscript_still_reads_high_to_low(tmp_path: Path):
+    for i, day in enumerate([99, 98, 97], start=1):
+        _write(tmp_path, "ch01", f"0{i}-s.md", fm=f"day: {day}\n")
+
+    model = _model(tmp_path)
+
+    assert model.descending_days is True
+    assert model.bands[0].day_span == "day 99 → 97"
+
+
+def test_a_single_dated_scene_has_no_arrow(tmp_path: Path):
+    _write(tmp_path, "ch01", "01-s.md", fm="day: 4\n")
+    assert _model(tmp_path).bands[0].day_span == "day 4"

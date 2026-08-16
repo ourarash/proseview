@@ -1,6 +1,6 @@
 # Proseview: pre-alpha punch list
 
-**Date:** 2026-08-15
+**Date:** 2026-08-15 (updated 2026-08-16)
 **Scope:** what to fix before recruiting alpha users. Successor to
 [public-launch-review.md](public-launch-review.md), reordered around a
 correction: the product has one user because it has not been advertised, not
@@ -8,12 +8,13 @@ because distribution is broken. Stability comes before reach.
 
 ---
 
-## Status, 2026-08-15
+## Status, 2026-08-16
 
 Landed: **1** (by you, in `51a53c8`), **2**, **3**, **7** (the 5xx half; the
-console-error half also arrived in `51a53c8`), **5**, **8**, **12b**, **13**, **15**, and **16**.
+console-error half also arrived in `51a53c8`), **5**, **8**, **10**, **12b**,
+**13**, **15**, and **16**.
 
-Test counts moved from 280 unit / 164 browser to **337 unit / 167 browser**
+Test counts moved from 280 unit / 164 browser to **435 unit / 224 browser**
 (plus 47 in the stdlib HTTP tier).
 
 ### The headline: the dashboard rebuild is 75% faster
@@ -35,7 +36,34 @@ deleting the dead computation both left behind.
 The page is still ~2.9 MB, which measurement showed does not matter (item 13).
 Item 15 is now done too: browser-side load went from ~600 ms to 124 ms and the
 page makes no external requests at all. Item 17 records the next structural
-win; item 14 records three load-sensitive tests worth pinning down.
+win, now with the payload measurements that make the case.
+
+**The one to fix first is 14b.** With random ordering the browser tier reports
+24 failures; with `-p no:randomly`, zero. Same code. Until that is understood, a
+red run cannot be told apart from a seed artefact — which makes item 9's
+cross-platform CI leg worth less than it looks, and is how the last round of
+embarrassing bugs got through.
+
+### The scene panel replaced the two disclosures
+
+The `<details>` blocks above the prose are gone. The right dock now carries
+four tabs — **Scene** (frontmatter, story fields, characters, links, tasks),
+**Analysis** (measures and the nine highlight passes), **Codex**, **Terminal** —
+with one control surface per pass and an example line on every row, because
+"felt, saw, heard, noticed" identifies Filter Verbs faster than a definition
+can. Two of the pass names mislead on their own: Comedy Beats is punctuation,
+Lyrical is simile markers.
+
+Three bugs fell out of building it: opening the panel fired **two** Codex
+`thread/read` requests when the last tab was Codex; focus returning to a tab
+inside the closing panel silently failed; and focus mode's three CSS rules all
+targeted elements that had moved into the dock, so it had been hiding nothing.
+
+### Item 10 turned out to be a bug, not a feature
+
+Details in item 10. Short version: the lexical bands every scene was judged
+against were invented, and the honest reference was already computed and
+discarded at `del baseline`. Half a day, not the 5–8 estimated.
 
 ---
 
@@ -170,17 +198,57 @@ full book.
 
 ### 9. Green browser tier in CI, all platforms
 
-137 browser tests exist. Confirm they pass on macOS, Linux, and Windows before
+224 browser tests exist. Confirm they pass on macOS, Linux, and Windows before
 advertising anywhere.
 
-### 10. Benchmarked analytics
+### 10. Benchmarked analytics — DONE, without the corpus
 
-"Your MTLD versus published literary fiction." This is AutoCrit's entire moat
-and the reason someone picks Proseview over novelWriter. Everything else on
-these lists is table stakes; this is the differentiator. Deferred behind
-stability, not behind features.
+Originally scoped as "compute MTLD across a few hundred novels": 5–8 days.
+That estimate was wrong, because it answered the wrong question first.
 
-**Effort:** 5–8 days.
+**The actual bug.** Every scene was compared against
+`mtld_band = (105.0, 130.0)` — two numbers that arrived in `1abafe9`, the
+initial commit, with no corpus, no data file, and no derivation. Alice in
+Wonderland has a median MTLD of **77.7**, so the shipped default badged most of
+Lewis Carroll as too repetitive. There was no way for a writer to tell that the
+yardstick, not the prose, was the problem.
+
+**The other half.** `ChapterSummary.scene_mtld_median` and
+`BaselineStats.scene_mtld_median` were computed on every build and read by
+nothing — `build_dashboard` opened with `del baseline`. The honest reference
+was already in the code and being thrown away.
+
+**What shipped instead:**
+
+| Reference | Answers | Source |
+| --- | --- | --- |
+| The manuscript's own median | "Which scenes are unlike the rest of *my* book?" | Already computed; the wire was just cut |
+| Genre range, set by `genre:` in config | "Does this book sit anywhere normal?" | Consensus figures from corpus stylistics |
+
+Both appear under the MTLD gauge on the Analysis tab, each with a tooltip
+naming its provenance. The genre one says "typical range", never
+"benchmarked" — the 0.72 factor threshold has a citation (McCarthy & Jarvis,
+2010, *Behavior Research Methods*, pinned by a test against
+`lexical.MTLD_THRESHOLD`); the genre ranges do not, and the label must not
+imply otherwise.
+
+Genres: `childrens` 40–60, `contemporary` 60–85, `literary` 85–110,
+`speculative` 90–120, with aliases for the names people actually write. An
+explicit `mtld_band` still wins, so anyone who has measured their own corpus is
+not overruled by a label.
+
+**Genre is set, never inferred.** Alice would be shelved as children's fiction
+and scores as contemporary. A guess here would look authoritative while being
+wrong, which is worse than the fixed band it replaced.
+
+**Effort:** ~half a day, against 5–8 days estimated. `tests/test_genre_bands.py`
+covers it (21 tests).
+
+**Still open, if the differentiator is ever wanted:** an actual corpus — 15
+public-domain novels through Proseview's own tokenizer, roughly an afternoon,
+which would replace the consensus ranges with measured ones in the right genre.
+Judged not worth it for now: the manuscript's own median does the revision
+work, and the genre range does the sanity check.
 
 ### 11. Discuss beyond Codex
 
@@ -233,6 +301,35 @@ Computing it for the one scene being opened rather than all of them is the next
 structural win, and it would take the rebuild close to the ~26 ms that a
 metadata-only scan costs. Bigger job than item 16: the scene modal and
 `build_scene_data` both assume the fields are already populated.
+
+**Measured on the demo book (39 scenes), which sharpens the case:**
+
+| Payload | Bytes |
+| --- | --- |
+| Prose itself (`contents`) | 162,415 |
+| Scene metadata (`meta`) | 54,842 |
+| Highlight spans (`highlightsByPath`) | **510,652** |
+
+Highlights are 70% of the scene payload and **3x the prose they annotate** —
+precomputed for every scene, embedded in the HTML, to serve the one scene the
+reader is about to open. This is the same blob item 13 found dominating the
+real book (0.94 MB of 3.04 MB).
+
+**Do it in three steps, and stop after the first if the win is enough:**
+
+1. **Move highlights behind an endpoint** — `/api/scene-highlights?path=…`,
+   computed on open and cached the way `build_analysis_payload` already is.
+   This is most of the win and touches the style pass not at all.
+2. **Then the stat grid** — `meta` needs `dlg_pct`, `sensory`, `passive`,
+   `crutch`, `avg_sent`. Same endpoint, same cache.
+3. **Then** `collect_scene_stats` can take `style=False` the way it already
+   takes `lexical=False`.
+
+The dashboard table needs `repetition_examples` and `dialogue_pct`, but only on
+the Analysis tab, which is already on demand — so once 1 and 2 land the eager
+path has no remaining consumer.
+
+**Effort:** step 1 is ~half a day. The full three, 1–2 days.
 
 ### 12b. An empty scene file crashes the whole dashboard — DONE
 
@@ -357,6 +454,26 @@ same cluster: selection actions driving the AI proposal panel.
 Not urgent, but this is three tests in two tiers that pass or fail on machine
 load, and flaky tests are how a suite stops being believed. Worth pinning down
 before CI becomes the thing you trust for Windows (item 4).
+
+**Confirmed since.** Both browser tests named above failed again during the
+scene-panel work, each passing alone and in clean full runs immediately after.
+The item predicted them correctly, which is the argument for fixing rather than
+re-observing them.
+
+### 14b. Test ordering, which is the same disease at a larger scale
+
+With random ordering the browser tier reported **24 failures**; with
+`-p no:randomly`, **zero**. Same code, same machine, same commit. Every green
+run recorded in this document used the fixed order.
+
+That is worse than the three flaky tests, because it makes a red run
+uninformative: a genuine regression and a seed artefact look identical, so the
+reflex becomes "re-run it" rather than "read it". Playwright gives each test a
+fresh context, so shared `localStorage` is not the mechanism and the actual
+cause is still unfound.
+
+Fix this before item 9. A Windows CI leg is only worth having if a red result
+means something.
 
 ### 14a. Original note
 

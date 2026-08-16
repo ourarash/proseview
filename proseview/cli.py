@@ -63,9 +63,9 @@ repo_tab:
 #   off   - none; alt text is shown instead
 images:
   mode: all
-  # Remote images inside AI replies stay off even at `all`: there the URL is
-  # chosen by the model, and loading it would tell that host you opened the
-  # document.
+  # Remote images inside AI replies are blocked by default: there the URL is
+  # chosen by the model, and fetching it tells that host you opened the
+  # document. Set true only when that network disclosure is acceptable.
   remote_in_agent_output: false
 """
 

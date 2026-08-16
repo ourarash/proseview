@@ -97,6 +97,26 @@ def test_custom_editor_accepts_url_template(tmp_path: Path):
     assert cfg.editor.url_template == "emacsclient:{abs_path}#L{line}"
 
 
+@pytest.mark.parametrize("scheme", ["javascript", "data", "vbscript", " JAVASCRIPT"])
+def test_custom_editor_rejects_browser_executable_url_schemes(tmp_path: Path, scheme: str):
+    (tmp_path / ".proseview.yaml").write_text(
+        f'editor:\n  scheme: custom\n  url_template: "{scheme}:{{abs_path}}"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="browser-executable"):
+        Config.load(tmp_path)
+
+
+@pytest.mark.parametrize("scheme", [r"java\tscript", r"java\nscript", r"java\rscript"])
+def test_custom_editor_rejects_controls_inside_url_schemes(tmp_path: Path, scheme: str):
+    (tmp_path / ".proseview.yaml").write_text(
+        f'editor:\n  scheme: custom\n  url_template: "{scheme}:{{abs_path}}"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="controls"):
+        Config.load(tmp_path)
+
+
 def test_unknown_editor_scheme_rejected(tmp_path: Path):
     (tmp_path / ".proseview.yaml").write_text(
         "editor:\n  scheme: nano\n", encoding="utf-8",

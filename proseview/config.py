@@ -58,9 +58,10 @@ class ImagesConfig:
                  remote URL cannot report back who opened a document.
     ``off``   -- nothing loads; every image shows its alt text.
 
-    ``remote_in_agent_output`` is separate on purpose. Discuss renders text an
+    ``remote_in_agent_output`` stays separate so it can be explicitly enabled
+    without weakening the default local-first boundary. Discuss renders text an
     agent produced, so a remote image there is chosen by the model rather than
-    by you; leaving this off keeps that surface quiet even at ``images: all``.
+    by you: loading it tells that host your IP and that you opened the document.
     """
 
     mode: str = "all"
@@ -245,6 +246,17 @@ def _coerce_editor(v: Any) -> EditorConfig:
         raise ConfigError("'editor.url_template' must be a string or null")
     if scheme == "custom" and not url_template:
         raise ConfigError("'editor.scheme: custom' requires 'editor.url_template'")
+    if scheme == "custom" and url_template:
+        candidate_prefix = url_template.lstrip().split(":", 1)[0]
+        if any(ord(char) < 0x20 or ord(char) == 0x7f for char in candidate_prefix):
+            raise ConfigError(
+                "'editor.url_template' must not contain controls in its URL scheme"
+            )
+        candidate_scheme = candidate_prefix.lower()
+        if candidate_scheme in {"javascript", "data", "vbscript"}:
+            raise ConfigError(
+                "'editor.url_template' must not use a browser-executable URL scheme"
+            )
     return EditorConfig(scheme=scheme, url_template=url_template)
 
 

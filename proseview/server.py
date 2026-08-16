@@ -46,7 +46,7 @@ from .generator import (
     build_scene_data,
 )
 from .lexical import paragraph_blocks
-from .repo import _file_node as _repo_file_node, resolve_visible_repository_path
+from .repo import read_repo_text, _file_node as _repo_file_node, resolve_visible_repository_path
 from .scenes import (
     collect_scene_stats, extract_scene_text, resolve_manuscript_dir, split_frontmatter,
 )
@@ -377,7 +377,7 @@ def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
     scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
-    raw = scene_path.read_text(encoding="utf-8")
+    raw = read_repo_text(scene_path)
     start = _line_col_to_offset(raw, int(loc["start_line"]), int(loc["start_col"]))
     end = _line_col_to_offset(raw, int(loc["end_line"]), int(loc["end_col"]))
     if end <= start:
@@ -420,7 +420,7 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
         root = Path(repo_root).resolve()
         cfg = Config.load(root)
         scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
-        raw = scene_path.read_text(encoding="utf-8")
+        raw = read_repo_text(scene_path)
         _fm, body = split_frontmatter(raw)
         editor_text = _browser_editor_text(extract_scene_text(body))
         if end > len(editor_text):
@@ -435,7 +435,7 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
     scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
-    raw = scene_path.read_text(encoding="utf-8")
+    raw = read_repo_text(scene_path)
     _fm, body = split_frontmatter(raw)
     if _HTML_COMMENT_RE.search(quote):
         raise ValueError("quote includes NOTE/TODO annotations; target visible prose only")
@@ -503,7 +503,7 @@ def save_scene_content(
     if abs(current_mtime - open_mtime) > 0.01:
         raise _FileConflictError("File was modified since editor opened")
 
-    raw = resolved.read_text(encoding="utf-8")
+    raw = read_repo_text(resolved)
     _fm, body = split_frontmatter(raw)
     txt = extract_scene_text(body)
     prefix = txt.lstrip("\n")[:60]
@@ -732,7 +732,7 @@ def _resolve_annotation_target(
         raise _FileConflictError(
             "This scene changed on disk since the page loaded it. Reload and try again"
         )
-    raw = path.read_text(encoding="utf-8")
+    raw = read_repo_text(path)
     return path, raw, raw.splitlines(keepends=True)
 
 

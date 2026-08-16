@@ -122,7 +122,7 @@ class Config:
         path = repo_root / ".proseview.yaml"
         if not path.exists():
             return cls()
-        raw = _parse_yaml(path.read_text(encoding="utf-8"))
+        raw = _parse_yaml(path.read_text(encoding="utf-8-sig"))
         return cls._from_raw(raw, source=path)
 
     @classmethod

@@ -20,7 +20,7 @@ TODO_RE = re.compile(r'<!--\s*TODO\s*:(.*?)-->', re.DOTALL | re.IGNORECASE)
 NOTE_RE = re.compile(r'<!--\s*NOTE(?:\[(\w+)\])?\s*:(.*?)-->', re.DOTALL | re.IGNORECASE)
 
 from .config import Config
-from .repo import CONTEXT_SKIP_DIRS
+from .repo import CONTEXT_SKIP_DIRS, read_repo_text
 from .lexical import (
     FRONTMATTER_RE,
     analyze_style_shape,
@@ -336,7 +336,7 @@ def collect_scene_stats(
     global_counts: Counter[str] = Counter()
     temp_scenes = []
     for p in iter_scene_paths(man_dir):
-        raw = p.read_text(encoding="utf-8")
+        raw = read_repo_text(p)
         fm, body = split_frontmatter(raw)
         txt = extract_scene_text(body)
         toks = [t for t in lexical_tokens(txt) if t not in sw and len(t) > 3]

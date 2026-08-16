@@ -44,7 +44,7 @@ def _read_utf8_text(path: Path, max_bytes: int) -> str | None:
     if b"\x00" in payload:
         return None
     try:
-        return payload.decode("utf-8")
+        return payload.decode("utf-8-sig")
     except UnicodeDecodeError:
         return None
 
@@ -67,6 +67,20 @@ def _iso_mtime(path: Path) -> str:
         .astimezone()
         .isoformat(timespec="seconds")
     )
+
+
+def read_repo_text(path: Path) -> str:
+    """Read a file that came from the user's repository.
+
+    ``utf-8-sig``, not ``utf-8``: a byte-order mark is invisible but it sits
+    *before* the ``---`` that opens frontmatter, so the block fails to match and
+    every field is silently lost -- the title falls back to the filename and the
+    metadata leaks into the prose, inflating word counts and polluting search.
+    Files exported from Word or written by Windows editors carry one routinely.
+
+    Identical to ``utf-8`` when no BOM is present.
+    """
+    return path.read_text(encoding="utf-8-sig")
 
 
 def _is_hidden(name: str) -> bool:

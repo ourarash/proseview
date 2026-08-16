@@ -273,3 +273,44 @@ def test_files_without_the_key_are_still_scenes(tmp_path: Path):
     write(tmp_path / "manuscript" / "ch01" / "review" / "notes.md")
 
     assert len(collect_scene_stats(tmp_path, "manuscript")) == 2
+
+
+# ── Manuscripts with no frontmatter at all ───────────────────────────────────
+
+def test_a_manuscript_with_no_frontmatter_still_works(tmp_path: Path):
+    """The Obsidian case: a plain folder of prose, no metadata anywhere.
+
+    Everything driven by frontmatter degrades, but nothing may break: titles
+    fall back to the filename, chapters to the folder, and the dashboard builds.
+    """
+    from proseview.generator import build_dashboard
+
+    (tmp_path / "one.md").write_text("She counted the boats twice.\n", encoding="utf-8")
+    (tmp_path / "two.md").write_text("The tide went out without her.\n", encoding="utf-8")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "idea.md").write_text("A thought.\n", encoding="utf-8")
+
+    scenes = collect_scene_stats(tmp_path, "manuscript")
+
+    assert len(scenes) == 3
+    assert {s.title for s in scenes} == {"One", "Two", "Idea"}
+    assert {s.chapter for s in scenes} == {tmp_path.name, "notes"}
+    assert all(s.status == "unknown" for s in scenes)
+    assert all(s.words > 0 for s in scenes)
+
+    html = build_dashboard(tmp_path, Config.load(tmp_path))
+    assert "one.md" in html
+
+
+def test_frontmatter_free_scenes_have_no_story_fields_but_do_not_raise(tmp_path: Path):
+    """The Timeline's own layers already say what to add; nothing may crash."""
+    from proseview.story import build_story_model
+
+    (tmp_path / "one.md").write_text("Prose.\n", encoding="utf-8")
+    (tmp_path / "two.md").write_text("More prose.\n", encoding="utf-8")
+
+    model = build_story_model(collect_scene_stats(tmp_path, "manuscript"), Config())
+
+    assert model.bands, "the shape layer works from word counts alone"
+    assert not model.threads, "no thread: means no storylines"
+    assert model.has_chronology is False

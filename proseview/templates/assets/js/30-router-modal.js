@@ -179,14 +179,51 @@
             const toneTitle = 'Tone (energy ' + m.energy.toFixed(1) + '). '
                 + 'Talky: high dialogue, short sentences. '
                 + 'Internal: sparse dialogue, longer sentences.';
-            s.innerHTML = '<div class="scene-stat-box"><span class="val">' + m.words.toLocaleString() + '</span><span class="lbl">Words</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.dlg_pct.toFixed(1) + '%</span><span class="lbl">Dialogue %</span></div>' +
-                        '<div class="scene-stat-box"><span class="val" title="' + toneTitle + '">' + toneLabel + '</span><span class="lbl">Tone</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.sensory.toFixed(1) + '</span><span class="lbl">Sensory Density</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.first_person.toFixed(1) + '</span><span class="lbl">1st Person</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.passive.toFixed(1) + '</span><span class="lbl">Passive Rate</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.avg_sent.toFixed(1) + '</span><span class="lbl">Avg. Sentence</span></div>' +
-                        '<div class="scene-stat-box"><span class="val">' + m.crutch.toFixed(1) + '</span><span class="lbl">Crutch Rate</span></div>';
+            // Built as nodes rather than a string: several of these tiles are
+            // buttons that toggle the highlight pass they were computed from,
+            // so the reader can see which words produced the number instead of
+            // being asked to trust it.
+            s.replaceChildren();
+            [
+                {value: m.words.toLocaleString(), label: 'Words', unit: 'in this scene'},
+                {value: m.dlg_pct.toFixed(1) + '%', label: 'Dialogue',
+                 unit: 'of all words', hint: 'Share of words inside quotation marks.'},
+                {value: toneLabel, label: 'Tone', unit: 'dialogue vs sentence length', hint: toneTitle},
+                {value: m.sensory.toFixed(1), label: 'Sensory', unit: 'per 1,000 words', pass: 'sensory',
+                 hint: 'Sight, sound, smell, touch and taste words per thousand. '
+                     + 'The Sensory pass marks them in the prose.'},
+                {value: m.first_person.toFixed(1), label: '1st Person', unit: 'per 1,000 words',
+                 pass: 'first_person',
+                 hint: 'First-person pronouns per thousand words. The First Person pass marks them.'},
+                {value: m.passive.toFixed(1), label: 'Passive', unit: 'per 1,000 words',
+                 pass: 'passive_voice',
+                 hint: 'Passive constructions per thousand words. The Passive Voice pass marks them.'},
+                {value: m.avg_sent.toFixed(1), label: 'Avg. Sentence', unit: 'words'},
+                {value: m.crutch.toFixed(1), label: 'Crutch', unit: 'per 1,000 words',
+                 pass: 'crutch_words',
+                 hint: 'Hedging words -- just, really, quite, actually and similar -- per thousand '
+                     + 'words. The Crutch Words pass marks them.'},
+            ].forEach(function(stat) {
+                const box = document.createElement('div');
+                box.className = 'scene-stat-box';
+                if (stat.pass) box.dataset.pass = stat.pass;
+                if (stat.hint) box.title = stat.hint;
+
+                const val = document.createElement('span');
+                val.className = 'val';
+                val.textContent = stat.value;
+                const lbl = document.createElement('span');
+                lbl.className = 'lbl';
+                lbl.textContent = stat.label;
+                box.append(val, lbl);
+                if (stat.unit) {
+                    const unit = document.createElement('span');
+                    unit.className = 'unit';
+                    unit.textContent = stat.unit;
+                    box.appendChild(unit);
+                }
+                s.appendChild(box);
+            });
 
             const dlgKeywords = (m.top_dlg && m.top_dlg.length) ? m.top_dlg.join(', ') : 'None found';
             a.innerHTML = '<div class="modal-note">' +
@@ -403,14 +440,21 @@
             document.getElementById('modalEditorBtn').style.display = 'none';
             s.innerHTML = "";
             a.innerHTML = '<button type="button" class="alert-tag alert-tag-active" onclick="updateModal()" aria-label="Back to scene">\u2190 Back to Scene</button>';
-            const analysisDetails = document.getElementById('sceneAnalysisDetails');
-            if (analysisDetails) analysisDetails.open = true;
             b.replaceChildren();
             const bioCard = document.createElement('div');
             bioCard.className = 'bio-card';
             renderSafeMarkdown(bioCard, bio, {basePath: '', allowRawImages: false});
             b.appendChild(bioCard);
             document.querySelector('.modal-content').scrollTop = 0;
+        }
+
+        function _syncStatTiles() {
+            // A pass can be toggled from its stat tile or from the tag row, so
+            // both have to reflect the same state.
+            // Tiles are readouts, not controls: they only echo which pass is on.
+            document.querySelectorAll('#modalStats [data-pass]').forEach(function(box) {
+                box.classList.toggle('scene-stat-on', !!hls[box.dataset.pass]);
+            });
         }
 
         function addTag(a, id, txt) {
@@ -427,7 +471,8 @@
         function toggleHighlight(id) {
             hls[id] = !hls[id];
             const toggle = document.getElementById('tag-'+id);
-            toggle.classList.toggle('alert-tag-active', hls[id]);
+            if (toggle) toggle.classList.toggle('alert-tag-active', hls[id]);
+            _syncStatTiles();
             toggle.setAttribute('aria-pressed', hls[id] ? 'true' : 'false');
             _saveHighlightPrefs();
             syncAllBtn();
@@ -566,9 +611,17 @@
             // ProseMirror is the only renderer. If the module is still
             // loading, the inline ESM bootstrap at the bottom of the
             // template re-invokes render() once window._PM is ready.
-            b.innerHTML = '<details id="sceneContextDetails" class="scene-secondary-details">' +
-                '<summary>Scene context and tasks</summary><div class="scene-secondary-body">' +
-                cardHtml + tasksHtml + '</div></details><div id="sceneProseHost"></div>';
+            // Context and tasks live in the scene panel, not above the prose:
+            // a disclosure here pushed the reading column down and reflowed it
+            // on every toggle. The prose starts at the top and stays there.
+            b.innerHTML = '<div id="sceneProseHost"></div>';
+            if (!window._sceneContextBody) {
+                window._sceneContextBody = document.createElement('div');
+                window._sceneContextBody.id = 'sceneContextBody';
+                window._sceneContextBody.className = 'scene-secondary-body';
+            }
+            window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
+            if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
             if (window._PM) mountProseView(p);
             b.scrollTop = 0;
         }
@@ -577,19 +630,9 @@
             return document.documentElement.dataset.view === 'scene' && _pmEditMode && _pmDirty;
         }
 
-        var _lastSceneDisclosureCompact = null;
-        function syncSceneDisclosureState(force) {
-            const sceneContent = document.querySelector('#sceneModal .modal-content');
-            const contentWidth = sceneContent ? sceneContent.getBoundingClientRect().width : window.innerWidth;
-            const compact = window.innerWidth <= 1100 || contentWidth <= 760 || document.documentElement.dataset.cssZoom === 'true';
-            if (!force && compact === _lastSceneDisclosureCompact) return;
-            _lastSceneDisclosureCompact = compact;
-            const analysis = document.getElementById('sceneAnalysisDetails');
-            const context = document.getElementById('sceneContextDetails');
-            if (compact) {
-                if (analysis) analysis.open = false;
-                if (context) context.open = false;
-            }
+        function syncSceneDisclosureState() {
+            // Kept as a no-op seam: the disclosures it used to collapse are gone,
+            // and the panel handles narrow widths itself.
         }
 
         window.addEventListener('resize', function() { syncSceneDisclosureState(false); });

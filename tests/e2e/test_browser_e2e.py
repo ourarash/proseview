@@ -1220,6 +1220,18 @@ def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
     page.wait_for_selector("#discussNewConversationDialog", state="hidden")
 
 
+def open_scene_details(page: Page) -> None:
+    """Open the scene panel on its Details tab.
+
+    Replaces the two ``<details>`` disclosures that used to sit above the prose.
+    Their contents now live in the dock, so a test that wants the stat grid or
+    the scene card opens the panel rather than expanding a summary.
+    """
+    if page.locator("#sceneDetailsPane").is_hidden():
+        page.evaluate("() => toggleScenePanel()")
+    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+
+
 def open_selection_menu(page: Page, needle: str) -> None:
     select_prose(page, needle)
     page.click("#selectionPillBtn")
@@ -1391,7 +1403,7 @@ def test_repository_metadata_and_bios_render_as_content_not_executable_html(
     assert payload in page.locator("#sceneTable").inner_text()
 
     open_scene(page, server)
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
     assert payload in page.locator(".scene-card").inner_text()
     assert page.locator(".scene-card img[data-pv-xss]").count() == 0
     page.locator(".sc-char-tag", has_text="Rena").click()
@@ -1630,7 +1642,7 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
     )
-    analysis_box = page.locator("#sceneAnalysisDetails").bounding_box()
+    analysis_box = page.locator("#sceneDetailsPane").bounding_box()
     assert analysis_box and analysis_box["y"] <= 2
 
     reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
@@ -1706,8 +1718,7 @@ def test_focus_layout_uses_the_toolbar_visibility_state(page: Page, server: Pros
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
     )
-    assert page.locator("#sceneAnalysisDetails summary").is_visible()
-    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
+    assert page.locator("#modalAlerts").is_visible(), "the pass row belongs with the prose"
     assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "false"
 
 
@@ -1825,15 +1836,11 @@ def test_dock_reduced_scene_width_collapses_secondary_content_at_wide_viewport(
 ):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
-    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
-    assert page.locator("#sceneContextDetails").get_attribute("open") is None
-    page.locator("#sceneAnalysisDetails summary").click()
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
     page.locator("#sceneModal .discuss-open-btn").click()
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function(
-        "() => !document.querySelector('#sceneAnalysisDetails').open "
-        "&& !document.querySelector('#sceneContextDetails').open"
+        "() => document.getElementById('sceneDetailsPane').hidden"
     )
     prose = page.locator("#sceneProseHost").bounding_box()
     assert prose and prose["y"] < 400
@@ -1860,12 +1867,10 @@ def test_compact_scene_leads_with_prose_and_context_reflows_beside_the_dock(
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
 
-    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
-    assert page.locator("#sceneContextDetails").get_attribute("open") is None
     prose = page.locator("#sceneProseHost").bounding_box()
     assert prose and prose["y"] < 400, "secondary UI still pushes prose out of the opening viewport"
 
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
     page.locator("#sceneModal .discuss-open-btn").click()
     page.wait_for_selector("#discussPanel", state="visible")
     assert page.evaluate(
@@ -1883,15 +1888,11 @@ def test_scene_secondary_content_tracks_a_live_compact_viewport(
 ):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
-    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
-    assert page.locator("#sceneContextDetails").get_attribute("open") is None
-    page.locator("#sceneAnalysisDetails summary").click()
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
 
     page.set_viewport_size({"width": 1024, "height": 768})
     page.wait_for_function(
-        "() => !document.querySelector('#sceneAnalysisDetails').open "
-        "&& !document.querySelector('#sceneContextDetails').open"
+        "() => document.getElementById('sceneDetailsPane').hidden"
     )
     prose = page.locator("#sceneProseHost").bounding_box()
     assert prose and prose["y"] < 400
@@ -1976,9 +1977,12 @@ def _scene_with_hits(server: ProseviewServer, pass_name: str) -> str:
 
 
 def open_scene_analysis(page: Page) -> None:
-    details = page.locator("#sceneAnalysisDetails")
-    if details.get_attribute("open") is None:
-        details.locator("summary").click()
+    """The pass row lives with the prose, so there is nothing to expand.
+
+    Kept as a seam: several tests call it before toggling a pass, and the
+    disclosure it used to open no longer exists.
+    """
+    page.wait_for_selector("#modalAlerts .alert-tag")
 
 
 @pytest.mark.parametrize("pass_name", list(PASS_CLASSES))
@@ -2513,8 +2517,8 @@ def test_scene_analysis_and_character_controls_are_keyboard_operable(
     page.keyboard.press("Enter")
     page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
 
-    context = page.locator("#sceneContextDetails")
-    context.locator("summary").click()
+    open_scene_details(page)
+    context = page.locator("#sceneDetailsPane")
     character = context.locator(".sc-char-tag").first
     assert character.count() == 1
     character.focus()
@@ -2654,8 +2658,6 @@ def test_compact_utility_docks_remove_retracted_sidebar_from_keyboard_order(
 def test_wide_scene_defaults_to_manuscript_first(page: Page, server: ProseviewServer):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
-    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
-    assert page.locator("#sceneContextDetails").get_attribute("open") is None
     prose = page.locator("#sceneProseHost").bounding_box()
     assert prose and prose["y"] < 300
     assert prose["width"] <= 780
@@ -3980,6 +3982,186 @@ def test_chronology_boxes_never_overlap_their_slot(page: Page, server: Proseview
         "without an explicit width the SVG scales to fit instead of scrolling"
 
 
+def test_character_charts_render_multi_word_names(page: Page, server: ProseviewServer):
+    """The gap that let the empty co-occurrence chart ship.
+
+    Character names came from ``path.stem.capitalize()``, so ``harbour-master.md``
+    became ``Harbour-master`` and matched nothing in the prose. Presence and
+    co-occurrence then rendered as empty axes with no explanation. The fixture's
+    other characters are all single words, so nothing here could catch it.
+    """
+    open_dashboard(page, server)
+
+    counts = page.evaluate(
+        """() => {
+            const rows = (id) => {
+                const c = chartRefs[id];
+                if (!c) return 0;
+                return (c.data.datasets || []).reduce((n, d) => n + (d.data || []).length, 0);
+            };
+            return {presence: rows('presenceChart'), coOccur: rows('coOccurChart'),
+                    labels: (chartRefs.presenceChart || {data: {}}).data.datasets
+                        ? chartRefs.presenceChart.data.datasets.map(d => d.label) : []};
+        }"""
+    )
+    assert counts["presence"] > 0, "character presence chart is empty"
+    assert "Harbour Master" in counts["labels"], \
+        f"multi-word character missing from presence: {counts['labels']}"
+
+
+def test_no_panel_is_ever_silently_empty(page: Page, bare_server: ProseviewServer):
+    """The invariant behind a whole class of bugs.
+
+    Against a manuscript with no metadata, every chart has nothing to plot. Each
+    one must either draw rows or say why it cannot -- an empty axis box looks
+    identical whether the data is absent or the code is broken, which is exactly
+    how the character-name derivation bug survived review and the test suite.
+    """
+    page.goto(bare_server.base_url, wait_until="load")
+    page.wait_for_selector("#sceneTable tbody tr")
+    page.wait_for_function("() => typeof chartRefs === 'object'")
+    page.wait_for_timeout(600)
+
+    verdicts = page.evaluate(
+        """() => {
+            const out = {};
+            ['presenceChart', 'locationChart', 'coOccurChart'].forEach(function(id) {
+                const chart = chartRefs[id];
+                const rows = chart
+                    ? (chart.data.datasets || []).reduce((n, d) => n + (d.data || []).length, 0)
+                    : 0;
+                // The note replaces the canvas, so look for either.
+                const canvas = document.getElementById(id);
+                const frame = canvas ? canvas.parentElement : null;
+                const note = document.querySelectorAll('.chart-empty');
+                out[id] = {rows: rows, explained: !canvas && note.length > 0};
+            });
+            return out;
+        }"""
+    )
+    for chart, verdict in verdicts.items():
+        assert verdict["rows"] > 0 or verdict["explained"], \
+            f"{chart} rendered empty with no explanation"
+
+
+def test_a_manuscript_with_no_frontmatter_is_still_usable(
+    page: Page, bare_server: ProseviewServer
+):
+    """Reading, searching, and the scene table work on prose alone."""
+    page.goto(bare_server.base_url, wait_until="load")
+    page.wait_for_selector("#sceneTable tbody tr")
+
+    assert page.locator("#sceneTable tbody tr.scene-row").count() == 3
+    table = page.locator("#sceneTable").inner_text()
+    assert "one.md" in table
+
+    page.goto(f"{bare_server.base_url}#/scene/one.md", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    assert "counted the boats" in page.locator("#sceneProseHost .ProseMirror").inner_text()
+
+
+def test_line_width_control_resizes_the_reading_column_and_persists(
+    page: Page, server: ProseviewServer
+):
+    """One control for measure, not two for margins.
+
+    The reading column is centred, so its width is the only real variable; the
+    margins are whatever is left, split evenly. The readout is in characters
+    because that is the number a reader is actually choosing.
+    """
+    open_scene(page, server)
+
+    width = lambda: page.evaluate(
+        "() => Math.round(document.getElementById('sceneProseHost').getBoundingClientRect().width)"
+    )
+    assert width() == 760, "an unset preference must not clamp to the minimum"
+    assert "chars" in page.locator("#modalMeasureOut").inner_text()
+
+    page.evaluate("() => updateReadingMeasure(1000)")
+    assert width() == 1000
+
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    assert width() == 1000, "the choice did not survive a reload"
+
+    # Out-of-range values clamp rather than throwing.
+    page.evaluate("() => updateReadingMeasure(99999)")
+    assert width() == 1100
+    page.evaluate("() => updateReadingMeasure('nonsense')")
+    assert width() == 760
+
+
+def test_the_file_preview_uses_the_same_measure(page: Page, server: ProseviewServer):
+    """Scenes and documents must not disagree about line length."""
+    page.goto(f"{server.base_url}#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.evaluate("() => updateReadingMeasure(620)")
+
+    page.goto(f"{server.base_url}#/file/plans/structure-notes.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody")
+
+    assert page.evaluate(
+        "() => Math.round(document.getElementById('filePreviewBody').getBoundingClientRect().width)"
+    ) == 620
+
+
+def test_scene_stats_carry_their_units(page: Page, server: ProseviewServer):
+    """A rate with no denominator cannot be read.
+
+    "Sensory 1.4" says nothing; "1.4 per 1,000 words" says what was counted.
+    """
+    open_scene(page, server)
+    page.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)")
+
+    units = page.evaluate(
+        "() => [...document.querySelectorAll('#modalStats .unit')].map(u => u.textContent)"
+    )
+    assert units.count("per 1,000 words") == 4, f"rate units missing: {units}"
+
+
+def test_stat_tiles_are_readouts_not_a_second_set_of_controls(
+    page: Page, server: ProseviewServer
+):
+    """One surface toggles a pass, and it is the pass row.
+
+    Making four of the eight tiles clickable put the same state behind two
+    controls, and left tiles that looked alike behaving differently. The tiles
+    echo which pass is on; they do not switch it.
+    """
+    open_scene(page, server)
+    page.evaluate("() => toggleScenePanel()")
+    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+
+    tiles = page.locator("#sceneDetailsPane .scene-stat-box")
+    assert tiles.count() == 8
+    assert page.evaluate(
+        "() => [...document.querySelectorAll('#sceneDetailsPane .scene-stat-box')]"
+        ".every(el => el.tagName === 'DIV')"
+    ), "no tile should be a button"
+
+    # Turning a pass on from its own row tints the matching tile.
+    page.evaluate("() => toggleHighlight('sensory')")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneDetailsPane [data-pass=\"sensory\"]')"
+        ".classList.contains('scene-stat-on')"
+    )
+
+
+def test_the_details_tab_does_not_wear_the_discuss_heading(
+    page: Page, server: ProseviewServer
+):
+    """"Codex / Live" names the agent connection, not a pane of counts."""
+    open_scene(page, server)
+    page.evaluate("() => toggleScenePanel()")
+    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+
+    assert page.locator("#discussTitle").inner_text().strip() == "Scene details"
+    assert page.locator("#discussConnection").is_hidden()
+
+    page.evaluate("() => showDiscussTab()")
+    page.wait_for_function("() => document.getElementById('discussTitle').innerText.trim() !== 'Scene details'")
+
+
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_selection_menu(page, "the slow algebra")
@@ -5020,7 +5202,7 @@ def test_scene_card_shows_the_story_fields_when_present(page: Page, shared_serve
     Timeline, and are labelled with the keys this repo actually uses."""
     rel, thread, day = STORY_SCENES[0]
     open_scene(page, shared_server, rel.split("manuscript/")[-1] if "manuscript/" in rel else rel)
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
 
     card = page.locator(".scene-card").inner_text().lower()
     assert thread in card
@@ -5033,7 +5215,7 @@ def test_scene_card_omits_story_rows_when_the_scene_has_none(page: Page, shared_
     """A manuscript that does not use these fields sees no row at all, rather
     than a line of 'Unknown' for something it never opted into."""
     open_scene(page, shared_server, SCENE_REL)
-    page.locator("#sceneContextDetails summary").click()
+    open_scene_details(page)
 
     card = page.locator(".scene-card").inner_text().lower()
     thread_field = page.evaluate("() => storyModel.thread_field")

@@ -541,3 +541,44 @@ def _extract_script_block(html: str, script_id: str) -> str:
     start = html.index(start_marker) + len(start_marker)
     end = html.index("</script>", start)
     return html[start:end]
+
+
+def test_character_names_come_from_frontmatter_not_the_filename(tmp_path: Path):
+    """Multi-word characters were invisible to presence and co-occurrence.
+
+    ``white-rabbit.md`` became ``White-rabbit`` via ``stem.capitalize()``, which
+    matches nothing in prose that says "White Rabbit" — so those charts came
+    back empty without explaining why.
+    """
+    from proseview.generator import character_name_from_file
+
+    chars = tmp_path / "characters"
+    chars.mkdir()
+    declared = chars / "white-rabbit.md"
+    declared.write_text("---\nname: White Rabbit\n---\n\n# White Rabbit\n", encoding="utf-8")
+    bare = chars / "mock-turtle.md"
+    bare.write_text("# Mock Turtle\n", encoding="utf-8")
+
+    assert character_name_from_file(declared) == "White Rabbit"
+    # No frontmatter: de-hyphenate rather than leaving "Mock-turtle".
+    assert character_name_from_file(bare) == "Mock Turtle"
+
+
+def test_co_occurrence_finds_pairs_for_multi_word_characters(tmp_path: Path):
+    from proseview.generator import build_dashboard
+
+    scene = tmp_path / "manuscript" / "ch01"
+    scene.mkdir(parents=True)
+    (scene / "01.md").write_text(
+        "---\ntitle: Tea\n---\n\n# Tea\n\n"
+        "The White Rabbit spoke to the Mock Turtle, and the Mock Turtle wept.\n",
+        encoding="utf-8",
+    )
+    chars = tmp_path / "story-bible" / "characters"
+    chars.mkdir(parents=True)
+    (chars / "white-rabbit.md").write_text("---\nname: White Rabbit\n---\n", encoding="utf-8")
+    (chars / "mock-turtle.md").write_text("---\nname: Mock Turtle\n---\n", encoding="utf-8")
+
+    html = build_dashboard(tmp_path, Config.load(tmp_path))
+
+    assert "White Rabbit+Mock Turtle" in html or "Mock Turtle+White Rabbit" in html

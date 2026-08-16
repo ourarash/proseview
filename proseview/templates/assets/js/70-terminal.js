@@ -984,6 +984,23 @@
             catch(e) { console.error('proseview: chart init failed (' + id + ')', e); return null; }
           }
 
+          // A chart with no rows renders as an empty axis box, which looks
+          // identical whether the manuscript has no characters configured or
+          // the name matching is broken. Say which.
+          function noteIfEmpty(id, data, message) {
+              const rows = (data.datasets || []).reduce(function(n, d) {
+                  return n + ((d.data || []).length);
+              }, 0);
+              if (rows) return;
+              const canvas = document.getElementById(id);
+              if (!canvas || !canvas.parentElement) return;
+              const note = document.createElement('p');
+              note.className = 'story-empty chart-empty';
+              note.innerHTML = message;
+              canvas.parentElement.replaceChildren(note);
+              if (chartRefs[id]) { chartRefs[id].destroy(); delete chartRefs[id]; }
+          }
+
           chartRefs.presenceChart = makeChart('presenceChart', 250, {
               type: 'line', data: presenceChartData,
               options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
@@ -998,6 +1015,16 @@
               type: 'bar', data: coOccurChartData,
               options: { indexAxis: 'y', plugins: { legend: { display: false } } }
           });
+
+          const NO_CAST = 'No characters yet. Add a <code>characters:</code> list to '
+              + '<code>.proseview.yaml</code>, or put one Markdown file per character in '
+              + '<code>story-bible/characters/</code>. A character file\u2019s '
+              + '<code>name:</code> is matched against the prose, so multi-word names work.';
+          noteIfEmpty('presenceChart', presenceChartData, NO_CAST);
+          noteIfEmpty('coOccurChart', coOccurChartData, NO_CAST);
+          noteIfEmpty('locationChart', locationChartData,
+              'No settings yet. Add <code>where:</code> to a scene\u2019s frontmatter, or '
+              + 'group scenes into folders by location.');
 
           // Built on demand by the Analysis tab -- see 19-analysis.js. Kept in
           // this closure so it still has makeChart and the theme helpers.

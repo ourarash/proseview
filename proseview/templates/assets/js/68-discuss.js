@@ -237,6 +237,102 @@
             }
         }
 
+        // ── Scene panel tabs ────────────────────────────────────────────
+        //
+        // Details is deterministic: counts, frontmatter, links and tasks, all
+        // derived from the file. Discuss is the only surface that calls a
+        // model. Keeping that boundary legible is the point of the split.
+
+        function _setUtilityTab(name) {
+            [['utilityTabDetails', 'details'], ['utilityTabDiscuss', 'discuss']].forEach(function(pair) {
+                const el = document.getElementById(pair[0]);
+                if (!el) return;
+                const on = pair[1] === name;
+                el.classList.toggle('active', on);
+                el.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            try { localStorage.setItem('proseview-scene-panel-tab', name); } catch (e) {}
+        }
+
+        function _setDockHeading(text, showConnection) {
+            const title = document.getElementById('discussTitle');
+            const conn = document.getElementById('discussConnection');
+            if (title && text !== null) {
+                if (!title.dataset.discussLabel) title.dataset.discussLabel = title.textContent;
+                title.textContent = text;
+            } else if (title && title.dataset.discussLabel) {
+                title.textContent = title.dataset.discussLabel;
+            }
+            if (conn) conn.hidden = !showConnection;
+        }
+
+        function _discussBodyEls() {
+            return ['discussContext', 'discussLog', 'discussComposerArea', 'discussNewActivity']
+                .map(function(id) { return document.getElementById(id); }).filter(Boolean);
+        }
+
+        function showSceneDetailsTab() {
+            const panel = document.getElementById('discussPanel');
+            const pane = document.getElementById('sceneDetailsPane');
+            if (!panel || !pane) return;
+            hideRightTerminalForPanel();
+            panel.hidden = false;
+            document.body.classList.add('discuss-open');
+            _discussBodyEls().forEach(function(el) { el.hidden = true; });
+            // "Codex / Live" names the Discuss connection; it has no business
+            // sitting above a pane of counts and frontmatter.
+            _setDockHeading('Scene details', false);
+            pane.hidden = false;
+            renderSceneDetailsPane();
+            _setUtilityTab('details');
+        }
+
+        function showDiscussTab() {
+            const pane = document.getElementById('sceneDetailsPane');
+            if (pane) pane.hidden = true;
+            _discussBodyEls().forEach(function(el) { el.hidden = false; });
+            _setDockHeading(null, true);
+            _setUtilityTab('discuss');
+            openDiscuss(_discussReturnFocus);
+        }
+
+        function hideRightTerminalForPanel() {
+            const term = document.getElementById('terminalPanel');
+            if (term && typeof _termDock !== 'undefined' && _termDock === 'right') term.hidden = true;
+        }
+
+        function toggleScenePanel(trigger) {
+            const panel = document.getElementById('discussPanel');
+            if (panel && !panel.hidden) { closeDiscuss(); return; }
+            let tab = 'details';
+            try { tab = localStorage.getItem('proseview-scene-panel-tab') || 'details'; } catch (e) {}
+            if (tab === 'discuss') { openDiscuss(trigger); showDiscussTab(); }
+            else showSceneDetailsTab();
+        }
+
+        function renderSceneDetailsPane() {
+            const pane = document.getElementById('sceneDetailsPane');
+            if (!pane) return;
+            // Cache the nodes on first sight. replaceChildren() detaches them,
+            // so a second render could not find them through getElementById and
+            // the panel silently lost its stat grid.
+            if (!window._sceneDetailsNodes) {
+                window._sceneDetailsNodes = {
+                    stats: document.getElementById('modalStats'),
+                };
+            }
+            const nodes = window._sceneDetailsNodes;
+            pane.replaceChildren();
+            // The two former disclosures, in one place: analysis first, then
+            // context and tasks. They start hidden in the template so nothing
+            // flashes above the prose before the pane claims them.
+            [nodes.stats, window._sceneContextBody || null].forEach(function(el) {
+                if (!el) return;
+                el.hidden = false;
+                pane.appendChild(el);
+            });
+        }
+
         function showRightTerminal() {
             hideDiscussForTerminal();
             if (typeof _termDock !== 'undefined') _termDock = 'right';

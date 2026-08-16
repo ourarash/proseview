@@ -102,7 +102,7 @@
 
             var paraNodes = [];
             doc.descendants(function(node, pos) {
-                if (node.type.name === 'paragraph') paraNodes.push(pos);
+                if (node.isTextblock) paraNodes.push(pos);
             });
 
             var decorations = [];
@@ -119,9 +119,24 @@
                     if (from >= to || to > doc.content.size) return;
                     var cls = PASS_CLASSES[name] || '';
                     var title = PASS_LABELS[name] || name;
-                    if (inst.note) title += ' (' + inst.note + ')';
-                    var attrs = { class: cls, title: title };
-                    if (name === 'repeats' && inst.note) attrs['data-count'] = inst.note;
+                    if (name === 'sensory' && inst.note) title += ' (' + inst.note + ')';
+                    
+                    var desc = PASS_INLINE_TIPS ? (PASS_INLINE_TIPS[name] || '') : '';
+                    if (desc.indexOf('{word}') !== -1) desc = desc.split('{word}').join(inst.text);
+                    
+                    var attrs = { class: cls };
+                    if (name === 'repeats') {
+                        var parts = (inst.note || '').split('/');
+                        var paraCount = parts[0] || '?';
+                        var sceneCount = parts[1] || '?';
+                        if (desc.indexOf('{para}') !== -1) desc = desc.split('{para}').join(paraCount);
+                        if (desc.indexOf('{scene}') !== -1) desc = desc.split('{scene}').join(sceneCount);
+                        attrs['data-count'] = paraCount + ' / ' + sceneCount;
+                    }
+                    
+                    attrs['data-hl-title'] = title;
+                    attrs['data-hl-desc'] = desc;
+                    
                     decorations.push(PM.Decoration.inline(from, to, attrs));
                 });
             });
@@ -302,4 +317,67 @@
             if (!_pmEditMode || !_pmDirty) return;
             event.preventDefault();
             event.returnValue = '';
+        });
+
+        var _hlTooltip = null;
+        var _hlTooltipTimeout = null;
+
+        function getHlTooltip() {
+            if (!_hlTooltip) {
+                _hlTooltip = document.createElement('div');
+                _hlTooltip.className = 'hl-custom-tooltip';
+                _hlTooltip.style.opacity = '0';
+                document.body.appendChild(_hlTooltip);
+            }
+            return _hlTooltip;
+        }
+
+        document.addEventListener('mouseover', function(e) {
+            var target = e.target;
+            // Ignore prose view widgets and other things that aren't highlight spans
+            if (target && target.classList && target.classList.contains('ProseMirror-widget')) return;
+            
+            var isHl = false;
+            if (target && target.classList) {
+                for (var i = 0; i < target.classList.length; i++) {
+                    if (target.classList[i].startsWith('hl-')) {
+                        isHl = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!isHl) {
+                if (_hlTooltip && _hlTooltip.style.opacity !== '0') {
+                    clearTimeout(_hlTooltipTimeout);
+                    _hlTooltipTimeout = setTimeout(function() { _hlTooltip.style.opacity = '0'; }, 100);
+                }
+                return;
+            }
+
+            clearTimeout(_hlTooltipTimeout);
+            var title = target.getAttribute('data-hl-title');
+            var desc = target.getAttribute('data-hl-desc');
+            if (!title) return;
+
+            var tt = getHlTooltip();
+            tt.innerHTML = '<div class="hl-title">' + title + '</div>' + 
+                           (desc ? '<div class="hl-desc">' + desc + '</div>' : '') +
+                           '<div class="hl-disable">To disable this highlight, go to the Analysis tab.</div>';
+            
+            tt.style.display = 'block';
+            var rect = target.getBoundingClientRect();
+            
+            requestAnimationFrame(function() {
+                var ttRect = tt.getBoundingClientRect();
+                var top = rect.top - ttRect.height - 8;
+                if (top < 0) top = rect.bottom + 8;
+                var left = rect.left + (rect.width / 2) - (ttRect.width / 2);
+                if (left < 10) left = 10;
+                if (left + ttRect.width > window.innerWidth - 10) left = window.innerWidth - ttRect.width - 10;
+                
+                tt.style.top = top + window.scrollY + 'px';
+                tt.style.left = left + window.scrollX + 'px';
+                tt.style.opacity = '1';
+            });
         });

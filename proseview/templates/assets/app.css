@@ -357,22 +357,23 @@
         }
         * { box-sizing: border-box; }
         body { font-family: Inter, system-ui, sans-serif; color: var(--text-main); max-width: 1400px; margin: 0 auto; padding: 30px; background: var(--bg-app); }
-        html { --sidebar-w: 260px; }
+        html { --sidebar-w: 280px; }
         html:not([data-sidebar="closed"]) body { margin-left: calc(var(--sidebar-w) + 10px); margin-right: 0; width: calc(100vw - var(--sidebar-w) - 10px); max-width: none; }
         html[data-css-zoom="true"] body { width: var(--css-zoom-body-width); max-width: none; margin-right: 0; }
-        .repo-sidebar { width: var(--sidebar-w); height: 100vh; position: fixed; left: 0; top: 0; z-index: 200; overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface-card); box-shadow: 2px 0 12px rgba(0,0,0,0.15); }
+        .repo-sidebar { width: var(--sidebar-w); height: 100vh; position: fixed; left: 0; top: 0; z-index: 200; display: flex; flex-direction: column; overflow: visible; border-right: 1px solid var(--border); background: var(--surface-card); box-shadow: 2px 0 12px rgba(0,0,0,0.15); }
         [data-sidebar="closed"] .repo-sidebar { transform: translateX(calc(-1 * var(--sidebar-w))); pointer-events: none; }
         .sidebar-resize-handle { position: absolute; top: 0; right: -10px; width: 24px; height: 100%; cursor: col-resize; z-index: 10; }
         .sidebar-resize-handle::after { content: ''; position: absolute; inset: 0 auto 0 10px; width: 4px; background: transparent; }
         .sidebar-resize-handle:hover::after, .sidebar-resize-handle:active::after, .sidebar-resize-handle:focus-visible::after { background: var(--primary); opacity: 0.5; }
-        .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface-card); z-index: 1; }
-        .sidebar-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
-        .sidebar-close-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 2px 5px; border-radius: 4px; font-size: 15px; line-height: 1; }
+        .sidebar-header { display: flex; flex: 0 0 auto; min-height: 52px; justify-content: space-between; align-items: center; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface-card); z-index: 1; }
+        .sidebar-title { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 17px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-main); }
+        .sidebar-close-btn { width: 34px; height: 34px; display: grid; place-items: center; background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 0; border-radius: 9px; line-height: 1; }
         .sidebar-close-btn:hover { background: var(--surface-muted); color: var(--text-main); }
-        .sidebar-open-btn { display: none; background: none; border: 1px solid var(--border); cursor: pointer; color: var(--text-muted); padding: 6px 10px; border-radius: 6px; font-size: 12px; align-items: center; gap: 5px; }
+        .sidebar-close-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 1px; }
+        .sidebar-open-btn { display: none; min-height: 34px; background: none; border: 1px solid var(--border); cursor: pointer; color: var(--text-muted); padding: 6px 10px; border-radius: 8px; font-size: 12px; align-items: center; gap: 6px; }
         [data-sidebar="closed"] .sidebar-open-btn { display: inline-flex; }
-        .sidebar-scene-icon { color: var(--primary); opacity: 0.7; font-size: 10px; }
-        .sidebar-tree { padding: 6px 0; }
+        .sidebar-chrome-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+        .sidebar-tree { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; }
         a { color: var(--primary); }
         button, select, input { font: inherit; color: inherit; }
         .scene-table-link { border: 0; padding: 0; background: transparent; color: var(--primary); font-weight: 600; cursor: pointer; text-align: left; }
@@ -682,6 +683,7 @@
         .scene-stat-box { text-align: center; padding: 6px 4px; border: 1px solid transparent;
                           border-radius: 8px; background: none; font: inherit; }
         .scene-stat-box .val { font-weight: 800; font-size: 15px; display: block; color: var(--primary); }
+        .scene-stat-box.scene-stat-warn .val { color: var(--danger); }
         .scene-stat-box .lbl { font-size: 9px; text-transform: uppercase; color: var(--text-muted); display: block; }
         /* A rate is meaningless without its denominator: "1.4" says nothing,
            "1.4 per 1,000 words" says what was measured. */
@@ -756,21 +758,29 @@
         .file-preview-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .font-select-inline { font-size: 12px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-card); color: var(--text-main); cursor: pointer; }
         .theme-toggle-sm { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-card); font-size: 12px; }
-        .repo-tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-        .repo-tree ul { list-style: none; padding-left: 16px; margin: 0; }
+        .repo-tree { font-family: Inter, system-ui, sans-serif; font-size: 13px; }
+        .repo-tree ul { list-style: none; padding-left: 17px; margin: 0; }
         .repo-tree > ul { padding-left: 0; }
-        .repo-tree li { margin: 2px 0; }
-        .repo-tree .dir-toggle { width: 100%; border: 0; background: transparent; cursor: pointer; user-select: none; font: inherit; font-weight: 600; color: var(--text-main); display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; text-align: left; }
+        .repo-tree li { margin: 0; }
+        .repo-tree .dir-toggle,
+        .repo-tree .file-link { position: relative; width: 100%; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: var(--text-main); font: inherit; display: grid; grid-template-columns: 14px 18px minmax(0, 1fr); align-items: center; gap: 7px; padding: 2px 8px; border-radius: 8px; text-align: left; }
+        .repo-tree .dir-toggle { user-select: none; font-weight: 600; }
         .repo-tree .dir-toggle:hover { background: var(--surface-muted); }
-        .repo-tree .dir-toggle::before { content: "\25B8"; display: inline-block; width: 10px; color: var(--text-muted); transition: transform 120ms ease; }
-        .repo-tree li.expanded > .dir-toggle::before { transform: rotate(90deg); }
+        .repo-tree .sidebar-disclosure-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--text-muted); transition: transform 120ms ease; }
+        .repo-tree li.expanded > .dir-toggle .sidebar-disclosure-icon { transform: rotate(90deg); }
         .repo-tree li > ul { display: none; }
         .repo-tree li.expanded > ul { display: block; }
-        .repo-tree .file-link { width: 100%; border: 0; background: transparent; cursor: pointer; color: var(--text-main); font: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 4px; text-align: left; }
         .repo-tree .file-link:hover { background: var(--button-hover); color: var(--primary); }
-        .repo-tree .file-link.active { background: var(--surface-selection); color: var(--primary); font-weight: 600; }
+        .repo-tree .file-link.active { background: var(--surface-selection); color: var(--primary); font-weight: 650; }
+        .repo-tree .file-link.active::before { content: ""; position: absolute; left: 2px; top: 6px; bottom: 6px; width: 3px; border-radius: 999px; background: currentColor; }
         .repo-tree [role="treeitem"]:focus-visible { outline: 2px solid var(--primary); outline-offset: -1px; }
-        .repo-tree .file-icon { opacity: 0.45; font-size: 11px; }
+        .repo-tree .sidebar-icon-spacer { width: 14px; height: 1px; }
+        .repo-tree .sidebar-node-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; color: var(--text-muted); }
+        .repo-tree .sidebar-scene-icon { color: var(--primary); opacity: 0.78; }
+        .repo-tree .sidebar-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        @media (prefers-reduced-motion: reduce) {
+            .repo-tree .sidebar-disclosure-icon { transition: none; }
+        }
         .repo-preview-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
         .repo-preview-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .repo-preview-path { margin: 0; font-size: 14px; color: var(--text-main); font-weight: 600; word-break: break-all; }
@@ -1269,14 +1279,18 @@
         .terminal-header-btn:hover { border-color: #58a6ff; color: #58a6ff; }
         .terminal-close-btn { font-size: 15px; padding: 0 7px; }
         .terminal-resize-handle {
-            flex-shrink: 0; background: #30363d;
-            transition: background 0.15s; user-select: none;
+            position: absolute; z-index: 2205; background: transparent;
+            transition: none; user-select: none;
         }
-        .dock-bottom > .terminal-resize-handle { height: 24px; cursor: ns-resize; border-top: 10px solid #0d1117; border-bottom: 10px solid #0d1117; }
-        .dock-right > .terminal-resize-handle { width: 24px; cursor: ew-resize; border-left: 10px solid #0d1117; border-right: 10px solid #0d1117; }
-        .terminal-resize-handle:hover,
-        .terminal-resize-handle.is-dragging,
-        .terminal-resize-handle:focus-visible { background: #58a6ff; outline: none; }
+        .terminal-resize-handle::after { content: ''; position: absolute; background: transparent; transition: background 0.15s, opacity 0.15s; }
+        .dock-bottom > .terminal-resize-handle { height: 24px; width: 100%; top: -12px; left: 0; cursor: ns-resize; }
+        .dock-bottom > .terminal-resize-handle::after { inset: 10px 0 auto 0; height: 4px; }
+        .dock-right > .terminal-resize-handle { width: 24px; height: 100%; left: -12px; top: 0; cursor: ew-resize; }
+        .dock-right > .terminal-resize-handle::after { inset: 0 auto 0 10px; width: 4px; }
+        .terminal-resize-handle:hover::after,
+        .terminal-resize-handle.is-dragging::after,
+        .terminal-resize-handle:focus-visible::after { background: #58a6ff; opacity: 0.5; }
+        .terminal-resize-handle:focus-visible { outline: none; }
         .terminal-inner {
             flex: 1; min-width: 0; min-height: 0;
             display: flex; flex-direction: column;
@@ -1302,8 +1316,10 @@
             box-shadow: -10px 0 32px rgba(15, 23, 42, 0.16);
         }
         .discuss-panel[hidden] { display: none; }
-        .discuss-resize-handle { width: 24px; cursor: ew-resize; flex: 0 0 auto; background: transparent; border-left: 10px solid transparent; border-right: 10px solid transparent; }
-        .discuss-resize-handle:hover, .discuss-resize-handle.is-dragging, .discuss-resize-handle:focus-visible { background: var(--primary); outline: none; }
+        .discuss-resize-handle { width: 24px; cursor: ew-resize; flex: 0 0 auto; background: transparent; position: relative; }
+        .discuss-resize-handle::after { content: ''; position: absolute; inset: 0 auto 0 10px; width: 4px; background: transparent; transition: background 0.15s, opacity 0.15s; }
+        .discuss-resize-handle:hover::after, .discuss-resize-handle.is-dragging::after, .discuss-resize-handle:focus-visible::after { background: var(--primary); opacity: 0.5; }
+        .discuss-resize-handle:focus-visible { outline: none; }
         .discuss-shell { min-width: 0; flex: 1; display: flex; flex-direction: column; }
         .discuss-header { padding: 10px 12px 9px; border-bottom: 1px solid var(--border); background: var(--surface-card); display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; }
         .utility-tabs { display: flex; gap: 3px; grid-column: 1 / 2; }
@@ -1313,6 +1329,9 @@
         .terminal-header .utility-tab { color: #8b949e; }
         .terminal-header .utility-tab.active { background: #1f242c; color: #58a6ff; }
         .discuss-heading { min-width: 0; }
+        .discuss-heading[hidden] { display: none; }
+        /* With the heading gone the close button has one row to sit in. */
+        .discuss-header:has(.discuss-heading[hidden]) .discuss-close { grid-row: 1; }
         .discuss-heading h2 { font-size: 15px; margin: 0 0 2px; }
         .discuss-connection { color: var(--text-muted); font-size: 11px; }
         .discuss-connection[data-state="Live"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #22a06b; }
@@ -1587,9 +1606,11 @@
             padding: 4px 0 2px; user-select: none;
         }
         /* ── Modal focus mode ──────────────────────────────────────────── */
-        #sceneModal .modal-content.modal-focus #modalStats { display: none; }
+        /* Scene chrome that has not moved into the dock. The stat grid, the
+           pass list and the task rows live in the panel now, and focus mode
+           closes the panel outright. */
+        #sceneModal .modal-content.modal-focus #modalStats,
         #sceneModal .modal-content.modal-focus #modalAlerts { display: none; }
-        #sceneModal .modal-content.modal-focus .scene-tasks-section { display: none; }
 
         @media (max-width: 700px) {
             html:not([data-sidebar="closed"]) body { margin-left: 0; }
@@ -2145,10 +2166,162 @@
            and close button with Discuss, so opening one never competes with the
            other for the right edge. */
         .scene-details-pane { flex: 1; overflow-y: auto; padding: 14px 14px 22px; min-height: 0; }
-        .scene-details-pane .scene-stat-grid { display: grid; grid-template-columns: 1fr 1fr;
-                                               gap: 10px 8px; margin-bottom: 18px; }
-        .scene-details-pane .scene-card { display: block; margin: 0; border: none; background: none; padding: 0; }
+        .scene-details-pane[hidden] { display: none; }
+        /* In the dock the grid is a readout, not a banner: no card, no centring,
+           and the labels line up with everything else in the column. */
+        .scene-details-pane .scene-stat-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px;
+            padding: 0; margin: 0; background: none; border-bottom: 0;
+        }
+        .scene-details-pane .scene-stat-box { text-align: left; padding: 4px 6px; }
+        .scene-details-pane .scene-stat-box .val { font-size: 14px; }
+        .scene-details-pane .scene-card { display: block; grid-template-columns: none;
+                                          margin: 0; border: none; background: none; padding: 0; }
         .scene-details-pane .scene-card-meta,
         .scene-details-pane .scene-card-related { border: none; padding: 0; }
         .scene-details-pane .modal-alerts:empty { display: none; }
         .utility-tab[aria-selected="true"] { font-weight: 700; }
+
+        /* Reference points under the MTLD gauge: the book's own median and the
+           genre range. Both carry a tooltip saying where the number comes from. */
+        .health-refs { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0 0; }
+        /* Before the Analysis tab is opened this is empty. Left taking space it
+           grew the page past the viewport, and the scrollbar that appeared cost
+           the reading column 11px. */
+        .health-refs:empty { display: none; margin: 0; }
+        .health-ref {
+            font-size: 10.5px; color: var(--text-muted); cursor: help;
+            border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+        }
+        .health-ref:hover { color: var(--text-main); border-color: var(--text-muted); }
+
+        /* ── The Analysis tab ────────────────────────────────────────────── */
+        .scene-panel-heading {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+            text-transform: uppercase; color: var(--text-muted);
+            margin: 18px 0 8px;
+        }
+        .scene-panel-heading:first-child { margin-top: 0; }
+        .scene-panel-empty { color: var(--text-muted); font-size: 12px; line-height: 1.6; margin: 0; }
+        .scene-panel-note {
+            margin: 14px 0 0; font-size: 11px; line-height: 1.6; color: var(--text-muted);
+        }
+        .scene-panel-note strong { color: var(--primary); }
+        .scene-pass-all {
+            margin-left: auto; border: 1px solid var(--border); border-radius: 5px;
+            background: transparent; color: var(--text-muted);
+            font: inherit; font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+            padding: 2px 7px; cursor: pointer;
+        }
+        .scene-pass-all:hover { color: var(--text-main); border-color: var(--text-muted); }
+        .scene-pass-list { display: flex; flex-direction: column; gap: 1px; }
+        /* One control surface per pass. The row is the button -- switch, name,
+           examples and count all toggle the same thing, so there is nothing to
+           aim at and nothing that looks clickable but is not. */
+        .scene-pass-row {
+            display: flex; align-items: center; gap: 9px; width: 100%;
+            padding: 6px; border: 1px solid transparent; border-radius: 7px;
+            background: transparent; color: var(--text-soft);
+            font: inherit; text-align: left; cursor: pointer;
+        }
+        .scene-pass-row:hover { background: var(--surface-muted); }
+        .scene-pass-row.is-on { background: var(--surface-selection); }
+        /* A pass with no matches still shows, so "nothing here" costs no click. */
+        .scene-pass-row.is-empty { opacity: 0.45; }
+        .scene-pass-row:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+        .scene-pass-switch {
+            position: relative; flex: 0 0 auto; width: 24px; height: 14px;
+            border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface-muted); transition: background 0.12s, border-color 0.12s;
+        }
+        .scene-pass-switch::after {
+            content: ""; position: absolute; top: 2px; left: 2px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted); transition: left 0.12s, background 0.12s;
+        }
+        .scene-pass-row.is-on .scene-pass-switch { background: var(--primary); border-color: var(--primary); }
+        .scene-pass-row.is-on .scene-pass-switch::after { left: 12px; background: #fff; }
+        .scene-pass-label { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .scene-pass-name { font-size: 11.5px; font-weight: 600; color: var(--text-main); }
+        .scene-pass-example {
+            font-size: 9.5px; color: var(--text-muted);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .scene-pass-count {
+            flex: 0 0 auto; font-size: 10.5px; color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .scene-pass-switch, .scene-pass-switch::after { transition: none; }
+        }
+
+        /* The dock tabs get a row of their own inside the terminal so the
+           session chips cannot crowd them out of a narrow right dock. */
+        .terminal-dock-tabs {
+            flex-shrink: 0; padding: 6px 12px; background: #161b22;
+            border-bottom: 1px solid #30363d;
+        }
+.hl-custom-tooltip {
+    position: absolute;
+    z-index: 10000;
+    background: var(--surface-tooltip);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-width: 250px;
+    font-size: 13px;
+    color: var(--text-main);
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+.hl-custom-tooltip .hl-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.hl-custom-tooltip .hl-desc {
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+.hl-custom-tooltip .hl-disable {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.scene-card-context-header {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    justify-content: space-between;
+    cursor: help;
+}
+
+.editor-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    margin-left: 6px;
+    transition: all 0.15s ease;
+}
+
+.editor-icon-btn:hover {
+    color: var(--text);
+    border-color: var(--border-active);
+    background: var(--surface-hover);
+}

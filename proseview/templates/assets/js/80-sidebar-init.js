@@ -53,7 +53,7 @@
                 setSidebarWidth(document.getElementById('repoSidebar').getBoundingClientRect().width / workspaceZoomFactor());
             });
             window.addEventListener('proseview:workspace-metrics', function() {
-                setSidebarWidth(parseFloat(getComputedStyle(html).getPropertyValue('--sidebar-w')) || 260);
+                setSidebarWidth(parseFloat(getComputedStyle(html).getPropertyValue('--sidebar-w')) || 280);
             });
         })();
 
@@ -96,6 +96,35 @@
             return ul;
         }
 
+        function sidebarIcon(kind, extraClass) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
+            svg.classList.add(kind === 'chevron' ? 'sidebar-disclosure-icon' : 'sidebar-node-icon');
+            if (extraClass) svg.classList.add(extraClass);
+
+            const paths = {
+                chevron: ['M9 18l6-6-6-6'],
+                folder: ['M3.5 8h17v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z', 'M3.5 8V6.5a2 2 0 0 1 2-2h4l2.2 3.5'],
+                file: ['M6 3.5h7l5 5v12H6z', 'M13 3.5v5h5'],
+                scene: ['M6 3.5h7l5 5v12H6z', 'M13 3.5v5h5', 'M9 13h6M9 17h5']
+            };
+            for (const data of paths[kind]) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', data);
+                svg.appendChild(path);
+            }
+            return svg;
+        }
+
+        function sidebarLabel(name) {
+            const label = document.createElement('span');
+            label.className = 'sidebar-row-label';
+            label.textContent = name;
+            return label;
+        }
+
         function buildSidebarItem(node, depth) {
             const li = document.createElement('li');
             li.setAttribute('role', 'none');
@@ -107,13 +136,19 @@
                 a.setAttribute('aria-level', String(depth + 1));
                 a.tabIndex = -1;
                 a.dataset.path = node.path;
+                const iconSpacer = document.createElement('span');
+                iconSpacer.className = 'sidebar-icon-spacer';
+                iconSpacer.setAttribute('aria-hidden', 'true');
+                a.appendChild(iconSpacer);
                 if (node.is_scene) {
                     a.dataset.scenePath = node.scene_path || '';
-                    a.innerHTML = '<span class="file-icon sidebar-scene-icon">\u25A0</span>' + escHtml(node.name);
+                    a.appendChild(sidebarIcon('scene', 'sidebar-scene-icon'));
+                    a.appendChild(sidebarLabel(node.name));
                     // openSceneModal reveals the scene in the sidebar itself.
                     a.onclick = () => openSceneModal(node.scene_path);
                 } else {
-                    a.innerHTML = '<span class="file-icon">\u25A1</span>' + escHtml(node.name);
+                    a.appendChild(sidebarIcon('file'));
+                    a.appendChild(sidebarLabel(node.name));
                     // No cache guard: previewRepoFile serves from
                     // repoFileByPath when present and fetches otherwise, which
                     // is the only way to open files outside the preview
@@ -129,7 +164,9 @@
                 tog.setAttribute('aria-level', String(depth + 1));
                 tog.setAttribute('aria-expanded', depth === 0 ? 'true' : 'false');
                 tog.tabIndex = -1;
-                tog.appendChild(document.createTextNode(node.name));
+                tog.appendChild(sidebarIcon('chevron'));
+                tog.appendChild(sidebarIcon('folder'));
+                tog.appendChild(sidebarLabel(node.name));
                 tog.onclick = () => {
                     const expanded = li.classList.toggle('expanded');
                     tog.setAttribute('aria-expanded', expanded ? 'true' : 'false');

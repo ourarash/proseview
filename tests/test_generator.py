@@ -37,17 +37,18 @@ def test_dashboard_contains_structural_markers():
         '<html lang="en" data-theme="light">',
         'class="top-banner"',
         'id="themeToggle"',
-        "Editorial Alerts",
         "Book-Wide Lexical Health",
         "Character Presence Timeline",
-        "Rhythm &amp; Pacing",
-        "Setting Stickiness",
         "Character Co-Occurrence",
         "Scene Deep Dive",
         "Lexical Health Map",
+        "Project Configuration",
         'id="sceneModal"',
+        'id="utilityTabScene"',
+        'id="utilityTabAnalysis"',
+        'id="utilityTabDiscuss"',
+        'id="utilityTabTerminal"',
         'id="presenceChart"',
-        'id="rhythmChart"',
         'id="locationChart"',
         'id="coOccurChart"',
         'id="lexicalScatterChart"',
@@ -87,7 +88,7 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
         "let contents = JSON.parse(",
         "const repoTree = JSON.parse(",
         "const presenceChartData = JSON.parse(",
-        "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes'];",
+        "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];",
         "const MODAL_FONT_SIZE_STORAGE_KEY = 'proseview-modal-font-size';",
         "const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';",
         "if ('scrollRestoration' in history) history.scrollRestoration = 'manual';",
@@ -99,7 +100,8 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
     ]:
         assert marker in html, f"missing asset marker: {marker!r}"
     assert 'content: "\\u25B8"' not in html
-    assert 'content: "\\25B8"' in html
+    assert ".repo-tree .sidebar-disclosure-icon {" in html
+    assert 'class="sidebar-chrome-icon"' in html
     assert "\\U0001f9e0" not in html
 
 
@@ -112,7 +114,6 @@ def test_dashboard_routes_chart_theming_through_runtime_helpers():
         "function applyThemeToChart(chart)",
         "function updateChartsForTheme()",
         "chartRefs.presenceChart = makeChart(",
-        "chartRefs.rhythmChart = makeChart(",
         "chartRefs.locationChart = makeChart(",
         "chartRefs.coOccurChart = makeChart(",
         "chartRefs.lexicalScatterChart = makeChart(",
@@ -332,10 +333,10 @@ def test_overview_build_skips_the_lexical_passes():
 def test_analysis_payload_carries_every_panel_the_tab_renders():
     payload = build_analysis_payload(FIXTURE, Config.load(FIXTURE))
 
-    assert set(payload) == {"alertsHtml", "tableBody", "rhythmChart", "scatterChart", "lexical"}
-    assert payload["rhythmChart"]["datasets"], "rhythm chart needs a dataset"
+    assert set(payload) == {"tableBody", "scatterChart", "lexical"}
     assert payload["scatterChart"]["datasets"][0]["data"], "scatter chart needs points"
-    for key in ("mattrText", "mtldText", "mattrMarkerLeft", "mtldMarkerLeft"):
+    for key in ("mattrText", "mtldText", "mattrMarkerLeft", "mtldMarkerLeft",
+                "mattrMedianText", "mtldMedianText", "mtldBand", "genreLabel"):
         assert payload["lexical"][key], f"missing lexical field {key!r}"
     # The Analysis table keeps the four analysis columns and their filter hooks.
     assert "data-dlg=" in payload["tableBody"] and "data-rep=" in payload["tableBody"]

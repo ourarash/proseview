@@ -171,41 +171,67 @@
             _modalEditorBtn.href = buildEditorUrl(m.abs_path);
             _modalEditorBtn.title = 'Open in ' + editorLabel;
 
-            // Tone is derived from dialogue density and sentence length:
-            //   energy = 10 + (dlg_words/words * 5) - (avg_sent / 2)
-            // High energy = lots of short dialogue lines (Talky).
-            // Low energy = sparse dialogue, longer sentences (Internal).
-            const toneLabel = m.energy > 12 ? 'Talky' : (m.energy < 7 ? 'Internal' : 'Mixed');
-            const toneTitle = 'Tone (energy ' + m.energy.toFixed(1) + '). '
-                + 'Talky: high dialogue, short sentences. '
-                + 'Internal: sparse dialogue, longer sentences.';
             // Built as nodes rather than a string: several of these tiles are
             // buttons that toggle the highlight pass they were computed from,
             // so the reader can see which words produced the number instead of
             // being asked to trust it.
             s.replaceChildren();
+            let mattrBox = null;
+            let mtldBox = null;
+            const mBand = window.lexicalBands ? window.lexicalBands.mattr : [0.65, 0.85];
+            const lBand = window.lexicalBands ? window.lexicalBands.mtld : [50, 180];
+            const mTarget = 'Typical: ' + mBand[0] + ' - ' + mBand[1];
+            const lTarget = 'Typical: ' + lBand[0] + ' - ' + lBand[1];
+
+            const md = window.medians || {};
+            const hintAvg = function(key, formatFn) {
+                if (md[key] === undefined) return '';
+                return `\n\nBook median: ${formatFn(md[key])}`;
+            };
+            const isOutlier = function(val, med, threshold = 0.5) {
+                if (!val || !med) return false;
+                return val > med * (1 + threshold) || val < med * (1 - threshold);
+            };
+
             [
-                {value: m.words.toLocaleString(), label: 'Words', unit: 'in this scene'},
+                {value: m.words.toLocaleString(), label: 'Words', unit: 'in this scene',
+                 warn: isOutlier(m.words, md.words),
+                 hint: 'Total word count of the prose in this scene.' + hintAvg('words', v => Math.round(v).toLocaleString())},
                 {value: m.dlg_pct.toFixed(1) + '%', label: 'Dialogue',
-                 unit: 'of all words', hint: 'Share of words inside quotation marks.'},
-                {value: toneLabel, label: 'Tone', unit: 'dialogue vs sentence length', hint: toneTitle},
+                 warn: isOutlier(m.dlg_pct, md.dlg_pct),
+                 unit: 'of all words', hint: 'Ratio of words in quotes to all words.' + hintAvg('dlg_pct', v => v.toFixed(1) + '%')},
+                {value: m.sent_stdev ? m.sent_stdev.toFixed(1) : '0.0', label: 'Sent. Variation', unit: 'standard deviation', 
+                 warn: isOutlier(m.sent_stdev, md.sent_stdev),
+                 hint: 'Mathematical standard deviation of your sentence lengths.\n\n• High: good variation between short punchy sentences and long flowing ones.\n• Low: monotonous pacing where all sentences are a similar length.' + hintAvg('sent_stdev', v => v.toFixed(1))},
                 {value: m.sensory.toFixed(1), label: 'Sensory', unit: 'per 1,000 words', pass: 'sensory',
-                 hint: 'Sight, sound, smell, touch and taste words per thousand. '
-                     + 'The Sensory pass marks them in the prose.'},
+                 warn: isOutlier(m.sensory, md.sensory),
+                 hint: 'Sight, sound, smell, touch and taste words per thousand.\n\n• The Sensory pass marks them in the prose.' + hintAvg('sensory', v => v.toFixed(1))},
                 {value: m.first_person.toFixed(1), label: '1st Person', unit: 'per 1,000 words',
                  pass: 'first_person',
-                 hint: 'First-person pronouns per thousand words. The First Person pass marks them.'},
+                 warn: isOutlier(m.first_person, md.first_person),
+                 hint: 'First-person pronouns per thousand words.\n\n• The First Person pass marks them.' + hintAvg('first_person', v => v.toFixed(1))},
                 {value: m.passive.toFixed(1), label: 'Passive', unit: 'per 1,000 words',
                  pass: 'passive_voice',
-                 hint: 'Passive constructions per thousand words. The Passive Voice pass marks them.'},
-                {value: m.avg_sent.toFixed(1), label: 'Avg. Sentence', unit: 'words'},
+                 warn: isOutlier(m.passive, md.passive),
+                 hint: 'Passive constructions per thousand words.\n\n• The Passive Voice pass marks them.' + hintAvg('passive', v => v.toFixed(1))},
+                {value: m.avg_sent.toFixed(1), label: 'Avg. Sentence', unit: 'words',
+                 warn: isOutlier(m.avg_sent, md.avg_sent),
+                 hint: 'Average number of words per sentence.' + hintAvg('avg_sent', v => v.toFixed(1))},
                 {value: m.crutch.toFixed(1), label: 'Crutch', unit: 'per 1,000 words',
                  pass: 'crutch_words',
-                 hint: 'Hedging words -- just, really, quite, actually and similar -- per thousand '
-                     + 'words. The Crutch Words pass marks them.'},
+                 warn: isOutlier(m.crutch, md.crutch),
+                 hint: 'Hedging words per thousand words.\n\n• Examples: just, really, quite, actually, and similar.\n• The Crutch Words pass marks them.' + hintAvg('crutch', v => v.toFixed(1))},
+                {id: 'sceneMattrBox', value: m.mattr ? m.mattr.toFixed(3) : '-', label: 'Variety (MATTR)', unit: 'Local • ' + mTarget,
+                 warn: m.mattr ? (m.mattr < mBand[0] || m.mattr > mBand[1]) : false,
+                 hint: 'Moving-Average Type-Token Ratio.\n\n• Local lexical variety.\n• A measure of vocabulary richness over a moving window of 100 words.\n• Typical range: ' + mBand[0] + ' to ' + mBand[1] + '.'},
+                {id: 'sceneMtldBox', value: m.mtld ? m.mtld.toFixed(1) : '-', label: 'Variety (MTLD)', unit: 'Scene • ' + lTarget,
+                 warn: m.mtld ? (m.mtld < lBand[0] || m.mtld > lBand[1]) : false,
+                 hint: 'Measure of Textual Lexical Diversity.\n\n• Whole-scene lexical variety.\n• A measure of vocabulary richness taking the entire scene length into account.\n• Typical range: ' + lBand[0] + ' to ' + lBand[1] + '.'},
             ].forEach(function(stat) {
                 const box = document.createElement('div');
                 box.className = 'scene-stat-box';
+                if (stat.warn) box.classList.add('scene-stat-warn');
+                if (stat.id) box.id = stat.id;
                 if (stat.pass) box.dataset.pass = stat.pass;
                 if (stat.hint) box.title = stat.hint;
 
@@ -223,27 +249,38 @@
                     box.appendChild(unit);
                 }
                 s.appendChild(box);
+                
+                if (stat.id === 'sceneMattrBox') mattrBox = box;
+                if (stat.id === 'sceneMtldBox') mtldBox = box;
             });
 
-            const dlgKeywords = (m.top_dlg && m.top_dlg.length) ? m.top_dlg.join(', ') : 'None found';
-            a.innerHTML = '<div class="modal-note">' +
-                        'Toggle a pass to highlight its matches in the scene below. ' +
-                        'Each color marks one pass; sensory hits include a category in the tooltip. ' +
-                        'Top dialogue keywords this scene: <span style="color:var(--primary); font-weight:bold;">' + dlgKeywords + '</span>' +
-                        '</div>';
-            const row = document.createElement('div');
-            row.className = 'alert-tag-row';
-            const allBtn = document.createElement('button');
-            allBtn.id = 'tag-all';
-            allBtn.className = 'alert-tag-all';
-            allBtn.type = 'button';
-            allBtn.textContent = 'All';
-            allBtn.setAttribute('aria-pressed', 'false');
-            allBtn.onclick = toggleAllHighlights;
-            row.appendChild(allBtn);
-            PASS_ORDER.forEach(name => addTag(row, name, PASS_LABELS[name]));
-            a.appendChild(row);
+            if (!m.mattr && mattrBox && mtldBox) {
+                mattrBox.querySelector('.val').textContent = '...';
+                mtldBox.querySelector('.val').textContent = '...';
+                fetch('/api/scene/lexical?path=' + encodeURIComponent(p))
+                    .then(function(res) { return res.json(); })
+                    .then(function(lex) {
+                        if (lex.ok && paths[curIdx] === p) {
+                            m.mattr = lex.mattr;
+                            m.mtld = lex.mtld;
+                            mattrBox.querySelector('.val').textContent = m.mattr.toFixed(3);
+                            mtldBox.querySelector('.val').textContent = m.mtld.toFixed(1);
+                            if (m.mattr < mBand[0] || m.mattr > mBand[1]) mattrBox.classList.add('scene-stat-warn');
+                            if (m.mtld < lBand[0] || m.mtld > lBand[1]) mtldBox.classList.add('scene-stat-warn');
+                        }
+                    })
+                    .catch(function(err) { console.error('Failed to fetch scene lexical stats', err); });
+            }
+
+            // The pass toggles live in the panel's Analysis tab now. This row
+            // is kept only for the Character Bible's "Back to Scene" button,
+            // which has nowhere else to go.
+            a.replaceChildren();
             render();
+            if (typeof renderSceneAnalysisPane === 'function'
+                && !(document.getElementById('sceneAnalysisPane') || {hidden: true}).hidden) {
+                renderSceneAnalysisPane();
+            }
             syncSceneDisclosureState(true);
         }
 
@@ -449,53 +486,56 @@
         }
 
         function _syncStatTiles() {
-            // A pass can be toggled from its stat tile or from the tag row, so
+            // A stat tile and its pass row are two readouts of one fact, so
             // both have to reflect the same state.
             // Tiles are readouts, not controls: they only echo which pass is on.
             document.querySelectorAll('#modalStats [data-pass]').forEach(function(box) {
                 box.classList.toggle('scene-stat-on', !!hls[box.dataset.pass]);
             });
+            if (typeof syncScenePassRows === 'function') syncScenePassRows();
         }
 
-        function addTag(a, id, txt) {
-            const t = document.createElement('button');
-            t.type = 'button';
-            t.className = 'alert-tag';
-            t.id = 'tag-' + id;
-            t.innerText = txt;
-            t.setAttribute('aria-pressed', hls[id] ? 'true' : 'false');
-            if (hls[id]) t.classList.add('alert-tag-active');
-            t.onclick = () => toggleHighlight(id);
-            a.appendChild(t);
+        function _applyHighlightChange() {
+            _syncStatTiles();
+            _saveHighlightPrefs();
+            syncAllBtn();
+            if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
         }
+
         function toggleHighlight(id) {
             hls[id] = !hls[id];
-            const toggle = document.getElementById('tag-'+id);
-            if (toggle) toggle.classList.toggle('alert-tag-active', hls[id]);
-            _syncStatTiles();
-            toggle.setAttribute('aria-pressed', hls[id] ? 'true' : 'false');
-            _saveHighlightPrefs();
-            syncAllBtn();
-            if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
+            _applyHighlightChange();
         }
-        function syncAllBtn() { const btn = document.getElementById('tag-all'); if (!btn) return; const anyOn = PASS_ORDER.some(k => hls[k]); btn.textContent = anyOn ? 'Clear' : 'All'; btn.setAttribute('aria-pressed', anyOn ? 'true' : 'false'); }
+
+        function syncAllBtn() {
+            const btn = document.getElementById('scenePassAllBtn');
+            if (!btn) return;
+            const anyOn = PASS_ORDER.some(k => hls[k]);
+            btn.textContent = anyOn ? 'Clear' : 'All';
+            btn.setAttribute('aria-pressed', anyOn ? 'true' : 'false');
+        }
+
         function toggleAllHighlights() {
             const anyOn = PASS_ORDER.some(k => hls[k]);
-            PASS_ORDER.forEach(k => { hls[k] = !anyOn; const el = document.getElementById('tag-'+k); if (el) { el.classList.toggle('alert-tag-active', hls[k]); el.setAttribute('aria-pressed', hls[k] ? 'true' : 'false'); } });
-            _saveHighlightPrefs();
-            syncAllBtn();
-            if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
+            PASS_ORDER.forEach(k => { hls[k] = !anyOn; });
+            _applyHighlightChange();
         }
 
         function attrEscape(s) {
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        function renderCharacterTags(chars) {
+        function renderCharacterTags(chars, charMentions) {
+            charMentions = charMentions || {};
             return chars.map(function(c) {
+                const metrics = charMentions[c];
+                let title = 'Read bio';
+                if (metrics) {
+                    title = 'Mentions: ' + metrics.dialogue + ' dialogue, ' + metrics.prose + ' prose\nClick to read bio';
+                }
                 return '<button type="button" class="sc-char-tag" data-char-name="' +
                     attrEscape(c) +
-                    '" onclick="openBio(this.dataset.charName)" title="Read bio">' +
+                    '" onclick="openBio(this.dataset.charName)" title="' + attrEscape(title) + '">' +
                     escHtml(c) +
                     '</button>';
             }).join('');
@@ -505,6 +545,7 @@
             const p = paths[curIdx], b = document.getElementById('modalBody'), m = meta[p];
             const fm = m.fm || {};
             const chars = Array.isArray(fm.characters) ? fm.characters : (typeof fm.characters === 'string' ? [fm.characters] : []);
+            const charMentions = m.char_mentions || {};
             const relatedDocs = Array.isArray(m.related_docs) ? m.related_docs : [];
             const sceneTodos = Array.isArray(m.todos) ? m.todos : [];
             const todosByPara = {};
@@ -532,8 +573,9 @@
                 relatedHtml += '<ul class="related-doc-list">';
                 relatedDocs.forEach(doc => {
                     const docHref = buildEditorUrl(doc.abs_path || '');
+                    const preview = doc.preview_text ? doc.preview_text.replace(/"/g, '&quot;') : '';
                     relatedHtml += '<li class="related-doc-item">' +
-                                   '<button type="button" class="related-doc-link" data-path="' + attrEscape(doc.path || '') + '" onclick="openRelatedDoc(this.dataset.path)">' + escHtml(doc.path || '') + '</button>' +
+                                   '<button type="button" class="related-doc-link" data-path="' + attrEscape(doc.path || '') + '" onclick="openRelatedDoc(this.dataset.path)" title="' + attrEscape(preview) + '">' + escHtml(doc.path || '') + '</button>' +
                                    '<a class="related-doc-editor-icon" href="' + attrEscape(docHref) + '" target="_blank" title="Open in ' + attrEscape(editorLabel) + '">\u2197</a>' +
                                    '</li>';
                 });
@@ -559,9 +601,10 @@
 
             let cardHtml = '<div class="scene-card">' +
                            '<div class="scene-card-meta">' +
+                           '<div class="scene-card-context-header" title="These fields are extracted from the YAML frontmatter block at the top of your markdown file.">Data from YAML Frontmatter &#x24D8;</div>' +
                            '<div class="sc-row scene-card-top">' +
-                           '<span class="sc-label">Scene File</span>' +
-                           '<a class="editor-btn" href="' + attrEscape(editorHref) + '" target="_blank">\u2197 Open in ' + escHtml(editorLabel) + '</a>' +
+                           '<span class="sc-label">Scene File <a class="editor-icon-btn" href="' + attrEscape(editorHref) + '" target="_blank" title="Open in ' + escHtml(editorLabel) + '">\u2197</a></span>' +
+                           '<span class="sc-value">' + escHtml(p) + '</span>' +
                            '</div>' +
                            '<div class="sc-row"><span class="sc-label">POV</span><span class="sc-value">' + escHtml(String(fm.pov || "Unknown")) + '</span></div>' +
                            storyRow(threadKey, fm[threadKey]) +
@@ -569,7 +612,7 @@
                            storyRow(dayKey, fm[dayKey]) +
                            '<div class="sc-row"><span class="sc-label">Where</span><span class="sc-value">' + escHtml(String(fm.where || fm.location || "Unknown")) + '</span></div>' +
                            '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
-                           renderCharacterTags(chars) + '</div></div>' +
+                           renderCharacterTags(chars, charMentions) + '</div></div>' +
                            '</div>' +
                            '<div class="scene-card-arc">' +
                            '<div class="sc-row"><span class="sc-label">Goal</span><span class="sc-value">' + escHtml(String(fm.goal || "Not defined")) + '</span></div>' +
@@ -603,9 +646,13 @@
 
             if (fmTodos.length) {
                 const lineItems = fmTodos.map(function(t) {
-                    return '<li class="scene-todo-item">' + escHtml(t.text) + '</li>';
+                    return '<li class="scene-todo-item">' +
+                           '<label class="fm-todo-label" style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">' +
+                           '<input type="checkbox" class="fm-todo-cb" style="margin-top:4px;" onchange="completeFmTodo(this, \'' + attrEscape(m.abs_path) + '\', \'' + attrEscape(t.text) + '\', \'' + m.mtime + '\')">' +
+                           '<span>' + escHtml(t.text) + '</span>' +
+                           '</label></li>';
                 }).join('');
-                cardHtml += '<div class="scene-todos-section"><div class="scene-todos-label">Scene TODOs (frontmatter)</div><ul class="scene-todos-list">' + lineItems + '</ul></div>';
+                cardHtml += '<div class="scene-todos-section"><div class="scene-todos-label">Scene TODOs (frontmatter)</div><ul class="scene-todos-list" style="list-style:none; padding:0; margin:0;">' + lineItems + '</ul></div>';
             }
 
             // ProseMirror is the only renderer. If the module is still
@@ -689,6 +736,12 @@
             return true;
         }
 
+        // Focus mode used to hide the stat grid and the pass row where they sat
+        // above the prose. Both live in the dock now, so what it hides is the
+        // dock -- and it puts it back on the way out, because a reading mode
+        // that quietly discards your panel is a mode you stop using.
+        var _focusClosedTheDock = false;
+
         function toggleFocusMode() {
             var mc = document.querySelector('#sceneModal .modal-content');
             if (!mc) return;
@@ -700,19 +753,40 @@
                 btn.classList.toggle('is-active', entering);
                 btn.setAttribute('aria-pressed', entering ? 'true' : 'false');
             }
+            if (entering) _closeDockForFocus();
+            else _restoreDockAfterFocus();
             closeSceneToolbarMenus();
             setSceneToolbarHidden(entering || _sceneToolbarMode === 'hidden');
+        }
+
+        function _closeDockForFocus() {
+            var panel = document.getElementById('discussPanel');
+            var term = document.getElementById('terminalPanel');
+            var open = (panel && !panel.hidden)
+                || (term && !term.hidden && typeof _termDock !== 'undefined' && _termDock === 'right');
+            _focusClosedTheDock = !!open;
+            if (open && typeof closeScenePanel === 'function') closeScenePanel();
+        }
+
+        function _restoreDockAfterFocus() {
+            if (!_focusClosedTheDock) return;
+            _focusClosedTheDock = false;
+            if (typeof toggleScenePanel === 'function') toggleScenePanel();
         }
 
         function exitFocusMode() {
             clearSceneToolbarHideTimer();
             var mc = document.querySelector('#sceneModal .modal-content');
+            var wasFocused = mc && mc.classList.contains('modal-focus');
             if (mc) mc.classList.remove('modal-focus');
             var btn = document.getElementById('modalFocusBtn');
             if (btn) {
                 btn.classList.remove('is-active');
                 btn.setAttribute('aria-pressed', 'false');
             }
+            // Closing the scene leaves focus mode too; the dock belongs to the
+            // scene, so there is nothing to restore in that direction.
+            if (wasFocused) _focusClosedTheDock = false;
             setSceneToolbarHidden(_sceneToolbarMode === 'hidden');
         }
 
@@ -741,3 +815,37 @@
         });
 
         initSceneToolbar();
+
+window.completeFmTodo = function(checkbox, absPath, text, openMtime) {
+    if (!checkbox.checked) return;
+    checkbox.disabled = true;
+    const originalText = checkbox.nextElementSibling.textContent;
+    checkbox.nextElementSibling.textContent = 'Removing...';
+    
+    fetch('/delete-fm-todo', {
+        method: 'POST',
+        headers: pvHeaders(),
+        body: JSON.stringify({
+            abs_path: absPath,
+            todo_text: text,
+            open_mtime: parseFloat(openMtime) || 0
+        })
+    }).then(function(r) {
+        if (!r.ok) throw new Error('Failed to delete frontmatter TODO');
+        return r.json();
+    }).then(function(data) {
+        if (data.ok) {
+            checkbox.closest('.scene-todo-item').remove();
+            // Invalidate analysis to fetch updated data
+            if (typeof markAnalysisStale === 'function') markAnalysisStale();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    }).catch(function(err) {
+        checkbox.disabled = false;
+        checkbox.checked = false;
+        checkbox.nextElementSibling.textContent = originalText;
+        console.error(err);
+        alert('Could not complete TODO: ' + err.message);
+    });
+};

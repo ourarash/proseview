@@ -80,7 +80,7 @@ def test_dashboard_inlines_concatenated_bundle():
     """
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     # From 00-state.js
-    assert "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes'];" in html
+    assert "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];" in html
     # From 19-analysis.js
     assert "function buildAnalysisTab()" in html
     # From 30-router-modal.js
@@ -130,14 +130,10 @@ def test_tone_label_replaces_pensive_emoji():
     assert "Pensive" not in bundle, "Old Pensive label should be gone"
     assert "Action ⚡" not in bundle
     assert "Balanced ⚖️" not in bundle
-    # Replacement vocabulary documents what the metric actually measures.
-    assert "Talky" in bundle
-    assert "Internal" in bundle
-    assert "Mixed" in bundle
-    # Stat-grid label is now Tone, not Energy. The grid is built as DOM nodes
-    # rather than concatenated markup, so the label lives in the tile spec.
-    assert "label: 'Tone'" in bundle
-    assert "label: 'Energy'" not in bundle
+    # Pass metadata documents what each pass measures.
+    assert "PASS_EXAMPLES" in bundle
+    assert "PASS_NOTES" in bundle
+    assert "PASS_INLINE_TIPS" in bundle
 
 
 # ── Item 6: dead CSS removed ─────────────────────────────────────────────────

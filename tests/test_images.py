@@ -32,11 +32,11 @@ PNG = base64.b64decode(
 
 # ── The setting ──────────────────────────────────────────────────────────────
 
-def test_default_allows_images_but_not_remote_ones_in_agent_output():
+def test_images_render_by_default_but_agent_remote_images_require_opt_in():
+    """Authored images render while model-chosen remote requests stay quiet."""
     images = Config().images
     assert images.mode == "all"
-    assert images.remote_in_agent_output is False, \
-        "a model-chosen remote URL must not load by default"
+    assert images.remote_in_agent_output is False
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -46,6 +46,7 @@ def test_default_allows_images_but_not_remote_ones_in_agent_output():
     (False, ImagesConfig(mode="off")),
     (True, ImagesConfig(mode="all")),
     (None, ImagesConfig()),
+    ({"remote_in_agent_output": False}, ImagesConfig(remote_in_agent_output=False)),
     ({"mode": "local"}, ImagesConfig(mode="local")),
     ({"mode": "all", "remote_in_agent_output": True},
      ImagesConfig(mode="all", remote_in_agent_output=True)),

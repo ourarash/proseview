@@ -445,6 +445,7 @@
                         selection_text: currentSelectionText,
                         txt_line_offset: m.txt_line_offset || 0,
                         todo_text: todoText,
+                        open_mtime: m.mtime,
                     })
                 }).then(function(r) { return r.json(); }).then(function(data) {
                     if (data.ok) {
@@ -503,6 +504,7 @@
                         txt_line_offset: m.txt_line_offset || 0,
                         note_text: noteText,
                         tag: tag,
+                        open_mtime: m.mtime,
                     })
                 }).then(function(r) { return r.json(); }).then(function(data) {
                     if (data.ok) {
@@ -821,25 +823,41 @@
             const modalBody = document.getElementById('modalBody');
             if (!modalBody) return;
 
+            function exposeCurrentSceneSelection() {
+                const sel = window.getSelection();
+                if (!rememberSceneSelection(sel)) return false;
+                clearPinnedSelectionHighlight();
+                const rect = currentSelectionRange.getBoundingClientRect();
+                showSelectionPill(rect.right, rect.bottom, currentSelectionText);
+                return true;
+            }
+
             modalBody.addEventListener('mouseup', function(e) {
                 const pill = document.getElementById('selectionPill');
                 if (pill && pill.contains(e.target)) return;
                 setTimeout(function() {
-                    const sel = window.getSelection();
-                    if (!rememberSceneSelection(sel)) {
+                    if (!exposeCurrentSceneSelection()) {
                         hideSelectionPill();
                         clearSceneSelectionMemory();
-                        return;
                     }
-                    // The live browser selection is what the user sees right
-                    // now; drop any old pinned highlight so we don't paint
-                    // two ranges. We re-pin only when focus is about to
-                    // leave the prose (e.g., user clicks into the terminal).
-                    clearPinnedSelectionHighlight();
-                    const range = currentSelectionRange;
-                    const rect = range.getBoundingClientRect();
-                    showSelectionPill(rect.right, rect.bottom, currentSelectionText);
                 }, 10);
+            });
+
+            // Keyboard selection does not emit mouseup. Keyup fires after the
+            // browser has extended the native selection, so expose the exact
+            // same action trigger without inventing a second interaction path.
+            modalBody.addEventListener('keyup', function(event) {
+                const selectionNavigation = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+                const mayChangeSelection = selectionNavigation.includes(event.key) || (
+                    (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a'
+                );
+                if (!mayChangeSelection) return;
+                setTimeout(function() {
+                    if (!exposeCurrentSceneSelection()) {
+                        hideSelectionPill();
+                        clearSceneSelectionMemory();
+                    }
+                }, 0);
             });
 
             document.addEventListener('mousedown', function(e) {

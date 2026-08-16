@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import time
 from urllib.parse import urlparse
 from pathlib import Path
@@ -245,7 +246,12 @@ def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
             }
             if (!node) throw new Error('text not found in prose: ' + needle);
             if (node.parentElement) {
-                node.parentElement.scrollIntoView({ block });
+                // A writer can only start a drag selection after the target is
+                // on screen. Make that precondition synchronous: inheriting
+                // the app's smooth-scroll CSS let the helper create a Range
+                // while the prose was still moving, intermittently anchoring
+                // the action menu outside the viewport under full-suite load.
+                node.parentElement.scrollIntoView({ behavior: 'instant', block });
             }
             const range = document.createRange();
             range.setStart(node, idx);
@@ -1255,6 +1261,184 @@ def test_dashboard_renders_the_scene_table_and_charts(page: Page, server: Prosev
         assert box and box["width"] > 0, f"{chart_id} did not render"
 
 
+def test_overview_initializes_every_owned_chart_before_analysis_is_visited(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart"):
+        page.wait_for_function(
+            "chartId => !!window.Chart.getChart(document.getElementById(chartId))",
+            arg=chart_id,
+        )
+        assert page.evaluate(
+            "chartId => { const chart = Chart.getChart(document.getElementById(chartId)); "
+            "return chart.data.labels.length > 0 && chart.data.datasets.length > 0; }",
+            chart_id,
+        ), f"{chart_id} initialized without its fixture data"
+
+    assert page.locator("#tab-analysis").is_hidden(), "proof must not visit Analysis"
+
+
+def test_every_chart_exposes_its_values_without_reading_canvas_pixels(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+
+    for chart_id in ("presenceChart", "locationChart", "coOccurChart"):
+        figure = page.locator(f"figure:has(#{chart_id})")
+        assert figure.get_attribute("aria-labelledby")
+        details = figure.get_by_text("View chart data", exact=True)
+        details.click()
+        assert figure.get_by_role("table").locator("tbody tr").count() > 0
+
+    page.click('.tab-nav button[data-tab="analysis"]')
+    page.wait_for_selector("#analysisContent:not([hidden])")
+    for chart_id in ("rhythmChart", "lexicalScatterChart"):
+        figure = page.locator(f"figure:has(#{chart_id})")
+        assert figure.get_attribute("aria-labelledby")
+        figure.get_by_text("View chart data", exact=True).click()
+        assert figure.get_by_role("table").locator("tbody tr").count() > 0
+
+
+def test_lexical_chart_alternative_names_axes_and_target_ranges(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    page.click('.tab-nav button[data-tab="analysis"]')
+    page.wait_for_selector("#analysisContent:not([hidden])")
+    figure = page.locator("figure:has(#lexicalScatterChart)")
+    figure.get_by_text("View chart data", exact=True).click()
+    alternative = figure.locator(".chart-data").inner_text()
+    assert "Local Variety (MATTR)" in alternative
+    assert "Whole-Scene Variety (MTLD)" in alternative
+    assert "Target range" in alternative
+
+
+def test_dashboard_has_landmarks_headings_and_no_horizontal_page_overflow(
+    page: Page,
+    server: ProseviewServer,
+):
+    for viewport in ({"width": 1400, "height": 1000}, {"width": 1024, "height": 768}):
+        page.set_viewport_size(viewport)
+        open_dashboard(page, server)
+        assert page.get_by_role("main").count() == 1
+        assert page.get_by_role("heading", level=1).count() == 1
+        assert page.get_by_role("heading", level=2).count() >= 4
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        ), f"dashboard overflowed at {viewport}"
+        assert_fully_inside_viewport(page, "#themeToggle")
+
+
+def test_dashboard_charts_remain_contained_after_resize_and_css_zoom(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_dashboard(page, server)
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.evaluate("document.body.style.zoom = '2'")
+    page.wait_for_function("() => document.documentElement.dataset.cssZoom === 'true'")
+
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+    )
+    assert page.evaluate(
+        """() => Array.from(document.querySelectorAll('#tab-overview .chart-frame')).every(frame => {
+            const canvas = frame.querySelector('canvas');
+            const outer = frame.getBoundingClientRect();
+            const inner = canvas.getBoundingClientRect();
+            return inner.left >= outer.left - 1 && inner.right <= outer.right + 1;
+        })"""
+    )
+
+
+def test_dashboard_tabs_announce_the_current_route(page: Page, server: ProseviewServer):
+    open_dashboard(page, server)
+    overview = page.locator('.tab-nav button[data-tab="overview"]')
+    timeline = page.locator('.tab-nav button[data-tab="timeline"]')
+    assert overview.get_attribute("aria-current") == "page"
+    assert timeline.get_attribute("aria-current") is None
+
+    timeline.click()
+    assert timeline.get_attribute("aria-current") == "page"
+    assert overview.get_attribute("aria-current") is None
+
+
+def test_repository_metadata_and_bios_render_as_content_not_executable_html(
+    page: Page,
+    server: ProseviewServer,
+):
+    payload = '<img data-pv-xss src=x onerror="window.__pvXss=true">'
+    scene = server.scene_path()
+    scene_text = scene.read_text().replace("chapter: Chapter 1", f"chapter: '{payload}'")
+    scene_text = scene_text.replace(
+        "goal: Rena needs to clear a weekly ledger before the shop opens.",
+        f"goal: '{payload}'",
+    )
+    scene.write_text(scene_text, encoding="utf-8")
+    bio = server.root / "story-bible" / "characters" / "rena.md"
+    bio.write_text(bio.read_text(encoding="utf-8") + "\n\n" + payload + "\n", encoding="utf-8")
+    server.restart()
+
+    page.goto(server.base_url, wait_until="load")
+    assert page.locator("img[data-pv-xss]").count() == 0
+    assert page.evaluate("window.__pvXss !== true")
+    assert payload in page.locator("#sceneTable").inner_text()
+
+    open_scene(page, server)
+    page.locator("#sceneContextDetails summary").click()
+    assert payload in page.locator(".scene-card").inner_text()
+    assert page.locator(".scene-card img[data-pv-xss]").count() == 0
+    page.locator(".sc-char-tag", has_text="Rena").click()
+    assert page.locator("img[data-pv-xss]").count() == 0
+    assert page.evaluate("window.__pvXss !== true")
+    assert payload in page.locator(".bio-card").inner_text()
+
+
+def test_repository_filenames_and_editor_config_cannot_escape_their_html_contexts(
+    page: Page,
+    server: ProseviewServer,
+):
+    filename = 'evil" autofocus onfocus="window.__pvRecentXss=true.md'
+    hostile = server.root / "plans" / filename
+    hostile.write_text("# Hostile filename\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=server.root, check=True)
+    subprocess.run(["git", "add", "--", f"plans/{filename}"], cwd=server.root, check=True)
+    subprocess.run(
+        [
+            "git", "-c", "user.name=Proseview E2E", "-c", "user.email=e2e@example.invalid",
+            "commit", "-qm", "hostile filename fixture",
+        ],
+        cwd=server.root,
+        check=True,
+    )
+    (server.root / ".proseview.yaml").write_text(
+        "editor:\n"
+        "  scheme: custom\n"
+        '  url_template: "safe</script><script>window.__pvConfigXss=true</script>:{abs_path}"\n',
+        encoding="utf-8",
+    )
+    server.restart()
+
+    page.goto(server.base_url, wait_until="load")
+    recent = page.locator(".recent-file-link", has_text=filename)
+    recent.wait_for(state="visible")
+    assert recent.get_attribute("onfocus") is None
+    assert recent.get_attribute("data-repo-path") == f"plans/{filename}"
+    assert page.evaluate("window.__pvRecentXss !== true && window.__pvConfigXss !== true")
+
+    recent.click()
+    page.wait_for_function(
+        "expected => document.getElementById('filePreviewTitle').innerText === expected",
+        arg=f"plans/{filename}",
+    )
+
+
 def test_overview_does_not_ship_the_lexical_analysis(page: Page, server: ProseviewServer):
     """The expensive pass must not be paid at first paint.
 
@@ -1298,8 +1482,7 @@ def test_analysis_tab_loads_on_demand_and_renders_every_panel(page: Page, server
 
 def test_deep_link_opens_a_scene_and_back_returns_to_the_dashboard(page: Page, server: ProseviewServer):
     open_dashboard(page, server)
-    # `openSceneModal` is bound to the path span inside the row, not the <tr>.
-    page.click(f"#sceneTable tr.scene-row span:text-is('{SCENE_REL}')")
+    page.locator("#sceneTable .scene-table-link", has_text=SCENE_REL).click()
     page.wait_for_selector("#sceneModal", state="visible")
     # The router percent-encodes the path segment, so compare decoded.
     assert page.evaluate("decodeURIComponent(location.hash)") == f"#/scene/{SCENE_REL}"
@@ -1310,6 +1493,24 @@ def test_deep_link_opens_a_scene_and_back_returns_to_the_dashboard(page: Page, s
     # And the URL alone is enough to restore the view.
     open_scene(page, server)
     assert SCENE_REL in page.locator("#modalTitle").inner_text()
+
+
+def test_routed_documents_expose_a_primary_literary_heading(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    assert page.get_by_role("main").count() == 1
+    scene_main = page.get_by_role("main", name=re.compile("Opening Ledger", re.I))
+    assert scene_main.count() == 1
+    scene_heading = scene_main.get_by_role("heading", level=1)
+    assert "Opening Ledger" in scene_heading.inner_text()
+    assert SCENE_REL in scene_heading.inner_text()
+
+    page.goto(f"{server.base_url}#/file/plans/book-plan.md", wait_until="load")
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    file_heading = page.get_by_role("heading", level=1, name=re.compile("book-plan", re.I))
+    assert file_heading.count() == 1
 
 
 def test_tab_routes_survive_navigation(page: Page, server: ProseviewServer):
@@ -1344,6 +1545,25 @@ def test_scene_table_sorts_by_column(page: Page, server: ProseviewServer):
 
     assert sorted(before) == sorted(after), "sorting must not add or drop rows"
     assert before != after, "clicking the header did not reorder the table"
+
+
+def test_scene_table_sorting_is_keyboard_operable_and_announces_direction(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    first_column = "#sceneTable tbody tr td:first-child"
+    before = page.locator(first_column).all_inner_texts()
+    button = page.get_by_role("button", name="Sort by Scene")
+    button.focus()
+    page.keyboard.press("Enter")
+
+    after = page.locator(first_column).all_inner_texts()
+    assert before != after
+    assert page.locator("#sceneTable thead th:first-child").get_attribute("aria-sort") in {
+        "ascending",
+        "descending",
+    }
 
 
 def test_theme_choice_survives_a_reload(page: Page, server: ProseviewServer):
@@ -1410,8 +1630,8 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
     )
-    stats_box = page.locator("#modalStats").bounding_box()
-    assert stats_box and stats_box["y"] <= 2
+    analysis_box = page.locator("#sceneAnalysisDetails").bounding_box()
+    assert analysis_box and analysis_box["y"] <= 2
 
     reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
     assert reveal_box
@@ -1486,7 +1706,8 @@ def test_focus_layout_uses_the_toolbar_visibility_state(page: Page, server: Pros
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'false'"
     )
-    assert page.locator("#modalStats").is_visible()
+    assert page.locator("#sceneAnalysisDetails summary").is_visible()
+    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
     assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "false"
 
 
@@ -1567,6 +1788,115 @@ def test_scene_toolbar_actions_remain_clickable_beside_compact_dock(
     assert page.locator("#sceneAppearanceMenu").is_visible()
 
 
+def test_compact_right_dock_never_covers_scene_content_or_toolbar_controls(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+
+    geometry = page.evaluate(
+        """() => {
+            const dock = document.querySelector('#discussPanel').getBoundingClientRect();
+            const content = document.querySelector('#sceneModal .modal-content').getBoundingClientRect();
+            const controls = ['sceneAppearanceBtn', 'sceneMoreBtn'].map(id => document.getElementById(id))
+                .concat([document.querySelector('#sceneModal .modal-close')]);
+            return {
+                dockLeft: dock.left,
+                contentRight: content.right,
+                controls: controls.map(control => {
+                    const rect = control.getBoundingClientRect();
+                    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                    return {id: control.id || 'close', right: rect.right, ownsHit: hit === control || control.contains(hit)};
+                })
+            };
+        }"""
+    )
+    assert geometry["contentRight"] <= geometry["dockLeft"] + 1
+    assert all(control["right"] <= geometry["dockLeft"] + 1 for control in geometry["controls"])
+    assert all(control["ownsHit"] for control in geometry["controls"])
+
+
+def test_dock_reduced_scene_width_collapses_secondary_content_at_wide_viewport(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_scene(page, server)
+    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
+    assert page.locator("#sceneContextDetails").get_attribute("open") is None
+    page.locator("#sceneAnalysisDetails summary").click()
+    page.locator("#sceneContextDetails summary").click()
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function(
+        "() => !document.querySelector('#sceneAnalysisDetails').open "
+        "&& !document.querySelector('#sceneContextDetails').open"
+    )
+    prose = page.locator("#sceneProseHost").bounding_box()
+    assert prose and prose["y"] < 400
+
+
+def test_unavailable_terminal_hides_every_terminal_backed_entry_point(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.evaluate("_hideTerminalEntryPointsWhenUnavailable(false)")
+
+    assert page.locator('[onclick*="openShellTerminal"]:visible').count() == 0
+    assert page.locator(".agent-menu-wrap:visible").count() == 0
+    assert page.locator('#discussPanel [onclick="showRightTerminal()"]:visible').count() == 0
+
+
+def test_compact_scene_leads_with_prose_and_context_reflows_beside_the_dock(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+
+    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
+    assert page.locator("#sceneContextDetails").get_attribute("open") is None
+    prose = page.locator("#sceneProseHost").bounding_box()
+    assert prose and prose["y"] < 400, "secondary UI still pushes prose out of the opening viewport"
+
+    page.locator("#sceneContextDetails summary").click()
+    page.locator("#sceneModal .discuss-open-btn").click()
+    page.wait_for_selector("#discussPanel", state="visible")
+    assert page.evaluate(
+        "() => getComputedStyle(document.querySelector('.scene-card')).gridTemplateColumns.split(' ').length === 1"
+    )
+    assert page.evaluate(
+        "() => Array.from(document.querySelectorAll('.scene-card .sc-value')).every(el => "
+        "el.getBoundingClientRect().width > 120 && el.scrollWidth <= el.clientWidth + 1)"
+    )
+
+
+def test_scene_secondary_content_tracks_a_live_compact_viewport(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_scene(page, server)
+    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
+    assert page.locator("#sceneContextDetails").get_attribute("open") is None
+    page.locator("#sceneAnalysisDetails summary").click()
+    page.locator("#sceneContextDetails summary").click()
+
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.wait_for_function(
+        "() => !document.querySelector('#sceneAnalysisDetails').open "
+        "&& !document.querySelector('#sceneContextDetails').open"
+    )
+    prose = page.locator("#sceneProseHost").bounding_box()
+    assert prose and prose["y"] < 400
+
+
 def test_switching_theme_does_not_raise(page: Page, server: ProseviewServer):
     """Re-theming the charts must not throw.
 
@@ -1645,6 +1975,12 @@ def _scene_with_hits(server: ProseviewServer, pass_name: str) -> str:
     return best[0]
 
 
+def open_scene_analysis(page: Page) -> None:
+    details = page.locator("#sceneAnalysisDetails")
+    if details.get_attribute("open") is None:
+        details.locator("summary").click()
+
+
 @pytest.mark.parametrize("pass_name", list(PASS_CLASSES))
 def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: ProseviewServer, pass_name: str):
     """All nine passes, each on a scene that actually triggers it."""
@@ -1652,6 +1988,7 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
     scene = _scene_with_hits(shared_server, pass_name)
 
     open_scene(page, shared_server, scene)
+    open_scene_analysis(page)
     marks = page.locator(f"#sceneProseHost .{css}")
     assert marks.count() == 0, f"{pass_name} marks rendered before the pass was enabled"
 
@@ -1672,6 +2009,7 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
 
 def test_highlight_pass_choice_persists_across_a_reload(page: Page, shared_server: ProseviewServer):
     open_scene(page, shared_server)
+    open_scene_analysis(page)
     page.click("#tag-repeats")
     _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
 
@@ -1687,6 +2025,7 @@ def test_highlight_pass_choice_persists_across_a_reload(page: Page, shared_serve
 
 def test_clear_all_turns_every_active_pass_off(page: Page, shared_server: ProseviewServer):
     open_scene(page, shared_server)
+    open_scene_analysis(page)
     page.click("#tag-repeats")
     page.click("#tag-sensory")
     _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
@@ -1702,12 +2041,55 @@ def test_clear_all_turns_every_active_pass_off(page: Page, shared_server: Prosev
     )
 
 
+def test_highlight_passes_are_keyboard_toggle_buttons(page: Page, shared_server: ProseviewServer):
+    open_scene(page, shared_server, _scene_with_hits(shared_server, "repeats"))
+    open_scene_analysis(page)
+    toggle = page.get_by_role("button", name="Repeats")
+    assert toggle.get_attribute("aria-pressed") == "false"
+    toggle.focus()
+    page.keyboard.press("Space")
+    _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
+    assert toggle.get_attribute("aria-pressed") == "true"
+
+
 def test_repo_tree_previews_a_non_manuscript_file(page: Page, server: ProseviewServer):
     page.goto(f"{server.base_url}#/file/plans/book-plan.md", wait_until="load")
     page.wait_for_selector("#file-preview-panel", state="visible")
 
     assert "book-plan.md" in page.locator("#filePreviewTitle").inner_text()
     assert page.locator("#filePreviewBody").inner_text().strip()
+
+
+def test_repo_tree_supports_keyboard_traversal_and_activation(page: Page, server: ProseviewServer):
+    open_dashboard(page, server)
+    tree = page.get_by_role("tree", name="Repository files")
+    first = tree.get_by_role("treeitem").first
+    first.focus()
+    first_text = first.inner_text()
+    page.keyboard.press("ArrowDown")
+    assert page.evaluate("document.activeElement.getAttribute('role')") == "treeitem"
+    assert page.evaluate("document.activeElement.innerText") != first_text
+
+    file_item = tree.locator(".file-link:visible").first
+    file_item.focus()
+    expected_path = file_item.get_attribute("data-scene-path") or file_item.get_attribute("data-path")
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => ['scene', 'file'].includes(document.documentElement.dataset.view)")
+    assert expected_path and expected_path in page.evaluate("decodeURIComponent(location.hash)")
+
+
+def test_repo_tree_auto_reveal_keeps_expansion_semantics_in_sync(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    tree = page.get_by_role("tree", name="Repository files")
+    tree.wait_for(state="visible")
+    expanded = tree.locator("li.expanded > .dir-toggle")
+    assert expanded.count() > 0
+    assert all(value == "true" for value in expanded.evaluate_all(
+        "items => items.map(item => item.getAttribute('aria-expanded'))"
+    ))
 
 
 # ── editor round-trip fidelity ──────────────────────────────────────────────
@@ -1829,6 +2211,454 @@ def test_conflicting_save_is_refused_in_the_browser(page: Page, server: Prosevie
 
     assert path.read_text(encoding="utf-8") == on_disk
     assert "Browser wins?" not in on_disk
+
+
+def test_conflict_recovery_preserves_draft_and_offers_explicit_disk_reload(
+    page: Page,
+    server: ProseviewServer,
+):
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    path.write_text(path.read_text(encoding="utf-8") + "\nExternal version.\n", encoding="utf-8")
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Browser draft.")
+    save_scene(page)
+
+    dialog = page.get_by_role("alertdialog", name="Scene changed on disk")
+    dialog.wait_for(state="visible")
+    assert "Browser draft." in _editor_text(page)
+    dialog.get_by_role("button", name="Keep editing").click()
+    assert "Browser draft." in _editor_text(page)
+    assert page.get_by_role("button", name="Resolve save conflict").is_visible()
+
+    page.get_by_role("button", name="Resolve save conflict").click()
+    dialog.get_by_role("button", name="Reload disk version").click()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('External version.')"
+    )
+    assert "Browser draft." not in _editor_text(page)
+    assert path.read_text(encoding="utf-8").endswith("External version.\n")
+
+
+def test_conflict_recovery_copies_the_latest_draft_and_guards_scene_exit(
+    page: Page,
+    server: ProseviewServer,
+):
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    path.write_text(path.read_text(encoding="utf-8") + "\nExternal version.\n", encoding="utf-8")
+    append_to_paragraph(page, "The loft smelled of cold coffee", " First browser draft.")
+    save_scene(page)
+
+    conflict = page.get_by_role("alertdialog", name="Scene changed on disk")
+    conflict.get_by_role("button", name="Keep editing").click()
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Latest browser draft.")
+
+    page.evaluate(
+        """() => Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: {writeText: text => { window.__copiedConflictDraft = text; return Promise.resolve(); }}
+        })"""
+    )
+    page.get_by_role("button", name="Resolve save conflict").click()
+    conflict.get_by_role("button", name="Copy draft").click()
+    page.wait_for_function("() => !!window.__copiedConflictDraft")
+    assert "Latest browser draft." in page.evaluate("window.__copiedConflictDraft")
+    conflict.get_by_role("button", name="Keep editing").click()
+
+    original_hash = page.evaluate("location.hash")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.get_by_role("dialog", name="Unsaved changes").wait_for(state="visible")
+    assert page.evaluate("location.hash") == original_hash
+    assert "Latest browser draft." in _editor_text(page)
+
+    page.get_by_role("dialog", name="Unsaved changes").get_by_role(
+        "button", name="Cancel", exact=True
+    ).click()
+    page.get_by_role("button", name="Close scene and return to dashboard").first.click()
+    page.get_by_role("dialog", name="Unsaved changes").wait_for(state="visible")
+    assert page.evaluate("location.hash") == original_hash
+    assert "Latest browser draft." in _editor_text(page)
+
+
+def test_dirty_scene_guards_history_file_routes_and_beforeunload(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Guarded browser draft.")
+    original_hash = page.evaluate("location.hash")
+
+    page.go_back(wait_until="commit")
+    dialog = page.get_by_role("dialog", name="Unsaved changes")
+    dialog.wait_for(state="visible")
+    assert page.evaluate("location.hash") == original_hash
+    assert "Guarded browser draft." in _editor_text(page)
+    dialog.get_by_role("button", name="Cancel").click()
+
+    file_item = page.get_by_role("tree", name="Repository files").locator(
+        ".file-link[data-path]:not([data-scene-path]):visible"
+    ).first
+    file_item.click()
+    dialog.wait_for(state="visible")
+    assert page.evaluate("document.documentElement.dataset.view") == "scene"
+    assert "Guarded browser draft." in _editor_text(page)
+    dialog.get_by_role("button", name="Cancel").click()
+
+    unload = page.evaluate(
+        """() => {
+            const event = new Event('beforeunload', {cancelable: true});
+            window.dispatchEvent(event);
+            return {prevented: event.defaultPrevented, returnValue: event.returnValue};
+        }"""
+    )
+    assert unload["prevented"] or unload["returnValue"] is False
+
+    file_item.click()
+    dialog.wait_for(state="visible")
+    dialog.get_by_role("button", name="Discard").click()
+    page.wait_for_function("() => document.documentElement.dataset.view === 'file'")
+    assert page.evaluate("location.hash").startswith("#/file/")
+
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Saved transition draft.")
+    file_item.click()
+    dialog.wait_for(state="visible")
+    dialog.get_by_role("button", name="Save").click()
+    page.wait_for_function("() => document.documentElement.dataset.view === 'file'")
+    assert "Saved transition draft." in server.scene_path().read_text()
+
+
+def test_unsaved_dialog_enter_activates_the_focused_action(
+    page: Page,
+    server: ProseviewServer,
+):
+    before = server.scene_path().read_text()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Discard-only draft.")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    dialog = page.get_by_role("dialog", name="Unsaved changes")
+    discard = dialog.get_by_role("button", name="Discard")
+    discard.focus()
+    page.keyboard.press("Enter")
+
+    page.wait_for_function("() => !document.querySelector('.unsaved-dialog')")
+    assert server.scene_path().read_text() == before
+    assert "Discard-only draft." not in _editor_text(page)
+
+
+def test_typing_during_a_delayed_save_remains_visible_and_dirty(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Saved snapshot.")
+    page.evaluate(
+        """() => {
+            const realFetch = window.fetch.bind(window);
+            let intercepted = false;
+            window.fetch = function(input, init) {
+                const url = typeof input === 'string' ? input : input.url;
+                if (!intercepted && url === '/save-scene') {
+                    intercepted = true;
+                    window.__saveStarted = true;
+                    return new Promise(resolve => {
+                        window.__releaseSave = () => realFetch(input, init).then(resolve);
+                    });
+                }
+                return realFetch(input, init);
+            };
+        }"""
+    )
+    page.locator(".scene-edit-save").click()
+    page.wait_for_function("() => window.__saveStarted === true")
+    append_to_paragraph(page, "Saved snapshot.", " Typed during save.")
+    assert page.locator(".scene-edit-cancel").is_disabled()
+    assert page.evaluate("cancelSceneEdit()") is False
+    assert page.evaluate("window._pmEditMode && window._pmDirty")
+    assert "Typed during save." in _editor_text(page)
+    page.evaluate("window.__releaseSave()")
+    page.wait_for_function("() => document.querySelector('#sceneEditState').textContent.includes('unsaved')")
+
+    assert "Typed during save." in _editor_text(page)
+    assert "Typed during save." not in server.scene_path().read_text()
+    assert page.locator(".scene-edit-save").is_enabled()
+
+    page.locator(".scene-edit-save").click()
+    page.wait_for_function("() => !window._pmEditMode")
+    assert "Typed during save." in server.scene_path().read_text()
+
+
+def test_guarded_browser_back_preserves_history_direction(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    page.locator('.tab-nav button[data-tab="analysis"]').click()
+    page.locator('.tab-nav button[data-tab="overview"]').click()
+    page.locator(f'.scene-table-link[data-scene-path="{SCENE_REL}"]').click()
+    page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Discarded history draft.")
+
+    page.go_back(wait_until="commit")
+    dialog = page.get_by_role("dialog", name="Unsaved changes")
+    dialog.get_by_role("button", name="Discard").click()
+    page.wait_for_function(
+        "() => !document.documentElement.dataset.view"
+        " && location.hash === '#/tab/overview'"
+    )
+
+    page.go_back(wait_until="commit")
+    page.wait_for_function("() => location.hash === '#/tab/analysis'")
+    assert page.locator("#tab-analysis").get_attribute("class").endswith("active")
+    assert page.evaluate("document.documentElement.dataset.view") is None
+
+    page.go_forward(wait_until="commit")
+    page.wait_for_function("() => location.hash === '#/tab/overview'")
+    page.go_forward(wait_until="commit")
+    page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
+    assert "Discarded history draft." not in _editor_text(page)
+
+
+def test_dirty_related_document_navigation_keeps_its_exact_destination(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    target = page.evaluate("Object.keys(repoFileByPath)[0]")
+    assert target
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Related-route draft.")
+    page.evaluate("path => openRelatedDoc(path)", target)
+    dialog = page.get_by_role("dialog", name="Unsaved changes")
+    dialog.get_by_role("button", name="Discard").click()
+    page.wait_for_function("() => document.documentElement.dataset.view === 'file'")
+    assert page.locator("#filePreviewTitle").inner_text() == target
+    page.go_back()
+    page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
+    assert page.evaluate("decodeURIComponent(location.hash)").startswith("#/scene/")
+
+
+def test_unsaved_dialog_traps_keyboard_focus(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Unsaved focus draft.")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    dialog = page.get_by_role("dialog", name="Unsaved changes")
+    dialog.wait_for(state="visible")
+    assert dialog.locator(":focus").count() == 1
+
+    for _ in range(5):
+        page.keyboard.press("Tab")
+        assert page.evaluate(
+            "document.querySelector('.unsaved-dialog').contains(document.activeElement)"
+        )
+
+
+def test_dashboard_appearance_listboxes_are_keyboard_operable_and_persist(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    font = page.get_by_role("button", name="Pick reading font")
+    font.focus()
+    page.keyboard.press("Enter")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    assert page.evaluate("document.documentElement.dataset.font") == "literary"
+    assert page.evaluate("document.activeElement.id") == "fontToggle"
+
+    font.focus()
+    page.keyboard.press("Enter")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Tab")
+    assert page.evaluate("localStorage.getItem('proseview-font')") == "inter"
+    page.reload(wait_until="load")
+    assert page.evaluate("document.documentElement.dataset.font") == "inter"
+
+    theme = page.locator("#themeToggle")
+    theme.focus()
+    page.keyboard.press("Enter")
+    page.keyboard.press("End")
+    page.keyboard.press("Enter")
+    assert page.evaluate("document.documentElement.dataset.theme") == "graphite-dark"
+    assert page.evaluate("document.activeElement.id") == "themeToggle"
+
+    page.reload(wait_until="load")
+    assert page.evaluate("document.documentElement.dataset.font") == "inter"
+    assert page.evaluate("document.documentElement.dataset.theme") == "graphite-dark"
+
+    font.focus()
+    page.keyboard.press("Enter")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Escape")
+    assert page.evaluate("document.documentElement.dataset.font") == "inter"
+    assert page.evaluate("document.activeElement.id") == "fontToggle"
+
+
+def test_scene_analysis_and_character_controls_are_keyboard_operable(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_dashboard(page, server)
+    scene_link = page.locator(".scene-table-link").first
+    scene_link.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
+
+    context = page.locator("#sceneContextDetails")
+    context.locator("summary").click()
+    character = context.locator(".sc-char-tag").first
+    assert character.count() == 1
+    character.focus()
+    page.keyboard.press("Enter")
+    back = page.get_by_role("button", name="Back to scene")
+    back.wait_for(state="visible")
+    back.focus()
+    page.keyboard.press("Enter")
+    page.locator("#sceneProseHost").wait_for(state="visible")
+
+    page.get_by_role("button", name="Close scene and return to dashboard").first.click()
+    page.get_by_role("button", name="Analysis").click()
+    page.wait_for_selector("#tab-analysis .alert-item")
+    alert = page.locator("#tab-analysis .alert-item").first
+    alert.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
+
+
+def test_workspace_resizers_are_keyboard_operable_and_preserve_writing_space(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_scene(page, server)
+
+    sidebar = page.get_by_role("separator", name="Resize file browser")
+    before_sidebar = page.locator("#repoSidebar").bounding_box()["width"]
+    sidebar.focus()
+    page.keyboard.press("ArrowRight")
+    assert page.locator("#repoSidebar").bounding_box()["width"] > before_sidebar
+
+    page.locator("#sceneModal .discuss-open-btn").click()
+    discuss = page.get_by_role("separator", name="Resize Discuss")
+    discuss.focus()
+    page.keyboard.press("End")
+    assert page.locator("#sceneModal .modal-content").bounding_box()["width"] >= 420
+    handle_box = discuss.bounding_box()
+    assert handle_box and handle_box["width"] >= 24
+    page.mouse.move(handle_box["x"] + handle_box["width"] / 2, 300)
+    page.mouse.down()
+    page.mouse.move(0, 300)
+    page.mouse.up()
+    assert page.locator("#sceneModal .modal-content").bounding_box()["width"] >= 420
+
+    page.evaluate("closeDiscuss(); _termDock = 'bottom'; document.getElementById('terminalPanel').hidden = false; _applyTerminalDock()")
+    terminal = page.get_by_role("separator", name="Resize Terminal")
+    before_height = page.locator("#terminalPanel").bounding_box()["height"]
+    terminal.focus()
+    page.keyboard.press("ArrowUp")
+    assert page.locator("#terminalPanel").bounding_box()["height"] > before_height
+    page.evaluate("toggleTerminalDock()")
+    assert terminal.get_attribute("aria-orientation") == "vertical"
+    terminal.focus()
+    page.keyboard.press("End")
+    assert page.locator("#sceneModal .modal-content").bounding_box()["width"] >= 420
+
+
+def test_resizer_values_match_rendered_bounds_at_compact_and_zoom(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 800, "height": 768})
+    open_scene(page, server)
+    sidebar = page.get_by_role("separator", name="Resize file browser")
+    sidebar.focus()
+    page.keyboard.press("End")
+    sidebar_width = page.locator("#repoSidebar").bounding_box()["width"]
+    assert abs(float(sidebar.get_attribute("aria-valuenow")) - sidebar_width) <= 1
+    assert page.locator("#sceneModal .modal-content").bounding_box()["width"] >= 360
+
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.locator("#sceneModal .discuss-open-btn").click()
+    discuss = page.get_by_role("separator", name="Resize Discuss")
+    discuss.focus()
+    page.keyboard.press("End")
+    discuss_width = page.locator("#discussPanel").bounding_box()["width"]
+    assert abs(float(discuss.get_attribute("aria-valuenow")) - discuss_width) <= 1
+
+    page.evaluate("document.body.style.zoom = '2'; syncCssZoomViewport()")
+    page.wait_for_function("() => document.documentElement.dataset.utilityOverlay === 'true'")
+    assert discuss.is_hidden()
+    zoom_width = page.locator("#discussPanel").bounding_box()["width"]
+    assert zoom_width >= 1020
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+
+    page.evaluate("closeDiscuss(); _termDock = 'bottom'; document.getElementById('terminalPanel').hidden = false; _applyTerminalDock()")
+    terminal = page.get_by_role("separator", name="Resize Terminal")
+    terminal.focus()
+    page.keyboard.press("End")
+    terminal_height = page.locator("#terminalPanel").bounding_box()["height"]
+    assert abs(float(terminal.get_attribute("aria-valuenow")) - terminal_height) <= 1
+    handle = terminal.bounding_box()
+    assert handle and handle["y"] >= 240
+
+    page.evaluate("toggleTerminalDock()")
+    page.wait_for_function("() => document.getElementById('terminalPanel').classList.contains('dock-right')")
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    assert terminal.is_hidden()
+    panel = page.locator("#terminalPanel").bounding_box()
+    assert panel and panel["x"] <= 1 and panel["width"] >= 1020
+
+
+def test_compact_utility_docks_remove_retracted_sidebar_from_keyboard_order(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    open_scene(page, server)
+    page.locator("#sceneModal .discuss-open-btn").click()
+    sidebar = page.locator("#repoSidebar")
+    assert sidebar.get_attribute("inert") is not None
+    assert sidebar.get_attribute("aria-hidden") == "true"
+
+    page.locator("#discussSend").focus()
+    for _ in range(20):
+        page.keyboard.press("Tab")
+        focused = page.evaluate(
+            """() => {
+                const el = document.activeElement;
+                const box = el && el.getBoundingClientRect();
+                return {
+                    inSidebar: !!(el && document.getElementById('repoSidebar').contains(el)),
+                    visible: !!(box && box.width > 0 && box.height > 0
+                        && box.right > 0 && box.bottom > 0
+                        && box.left < innerWidth && box.top < innerHeight),
+                };
+            }"""
+        )
+        assert not focused["inSidebar"]
+        assert focused["visible"]
+
+    page.evaluate("closeDiscuss()")
+    page.wait_for_function("() => !document.getElementById('repoSidebar').inert")
+
+
+def test_wide_scene_defaults_to_manuscript_first(page: Page, server: ProseviewServer):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    open_scene(page, server)
+    assert page.locator("#sceneAnalysisDetails").get_attribute("open") is None
+    assert page.locator("#sceneContextDetails").get_attribute("open") is None
+    prose = page.locator("#sceneProseHost").bounding_box()
+    assert prose and prose["y"] < 300
+    assert prose["width"] <= 780
 
 
 # ── repo-wide search ────────────────────────────────────────────────────────
@@ -2582,6 +3412,59 @@ def test_selection_pill_exposes_every_action(page: Page, server: ProseviewServer
         assert menu.locator(f"#{control}").is_visible(), f"{control} missing from the pill"
 
 
+def test_keyboard_selection_exposes_the_same_action_menu(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    page.evaluate(
+        """() => {
+            const text = document.querySelector('#sceneProseHost .ProseMirror p').firstChild;
+            const range = document.createRange();
+            range.setStart(text, 0);
+            range.collapse(true);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.querySelector('#sceneProseHost .ProseMirror').focus();
+        }"""
+    )
+    page.keyboard.press("Shift+ArrowRight")
+    assert page.evaluate("window.getSelection().toString().length") == 1
+    page.wait_for_selector("#selectionPillBtn", state="visible")
+    page.keyboard.press("ControlOrMeta+k")
+    page.wait_for_selector("#selectionPillMenu", state="visible")
+    assert page.get_by_role("menuitem", name="Add TODO").is_visible()
+
+
+def test_collapsing_a_keyboard_selection_clears_its_action_trigger(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    paragraph = page.locator("#sceneProseHost .ProseMirror p").first
+    paragraph.click(position={"x": 8, "y": 8})
+    page.keyboard.press("Shift+ArrowRight")
+    page.wait_for_selector("#selectionPillBtn", state="visible")
+
+    page.keyboard.press("ArrowRight")
+    assert page.evaluate("window.getSelection().isCollapsed")
+    page.wait_for_selector("#selectionPill", state="hidden")
+
+
+def test_page_navigation_keyboard_selection_exposes_the_action_trigger(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    editor = page.locator("#sceneProseHost .ProseMirror")
+    editor.focus()
+    page.keyboard.press("ControlOrMeta+Home")
+    page.keyboard.press("Shift+PageDown")
+    assert len(page.evaluate("window.getSelection().toString()")) > 0
+    page.wait_for_selector("#selectionPillBtn", state="visible")
+
+
 def test_selection_menu_has_keyboard_semantics_and_restores_focus(
     page: Page,
     server: ProseviewServer,
@@ -3025,24 +3908,34 @@ def test_images_off_falls_back_to_alt_text(page: Page, server: ProseviewServer):
     assert "The cover" in rendered["text"]
 
 
-def test_remote_images_stay_blocked_inside_agent_output(page: Page, server: ProseviewServer):
-    """Discuss renders text a model wrote, so it does not get to pick hosts.
+def test_agent_output_images_follow_the_remote_setting(page: Page, server: ProseviewServer):
+    """Remote images in Discuss require opt-in, and the switch really works.
 
-    A repo-relative image is still fine there; only the remote one is refused.
+    The gate exists so this one surface can be turned off on its own: there the
+    URL is the model's choice, and fetching it tells that host the reader opened
+    the document.
     """
     page.goto(f"{server.base_url}#/file/plans/images-demo.md", wait_until="load")
-    page.wait_for_selector("#filePreviewBody img")
+    page.wait_for_selector("#filePreviewBody img", state="attached")
 
     rendered = page.evaluate(
         """() => {
-            const host = document.createElement('div');
-            renderDiscussMarkdown(host, '![shot](https://example.invalid/tracker.png)');
-            return {imgs: host.querySelectorAll('img').length,
-                    placeholders: host.querySelectorAll('.md-image-placeholder').length};
+            const run = () => {
+                const host = document.createElement('div');
+                renderDiscussMarkdown(host, '![shot](https://example.invalid/tracker.png)');
+                return {imgs: host.querySelectorAll('img').length,
+                        placeholders: host.querySelectorAll('.md-image-placeholder').length};
+            };
+            imagesConfig.remoteInAgentOutput = false;
+            const defaultOff = run();
+            imagesConfig.remoteInAgentOutput = true;
+            const optedIn = run();
+            imagesConfig.remoteInAgentOutput = false;
+            return {defaultOff, optedIn};
         }"""
     )
-    assert rendered["imgs"] == 0, "a model-chosen remote URL must not be fetched"
-    assert rendered["placeholders"] == 1
+    assert rendered["defaultOff"] == {"imgs": 0, "placeholders": 1}
+    assert rendered["optedIn"] == {"imgs": 1, "placeholders": 0}
 
 
 def test_image_paths_cannot_escape_the_repository(page: Page, server: ProseviewServer):
@@ -3055,6 +3948,36 @@ def test_image_paths_cannot_escape_the_repository(page: Page, server: ProseviewS
                   .map(src => repoAssetUrl(src, 'plans/images-demo.md'))"""
     )
     assert escaped == [None, None, None], f"a path escaped containment: {escaped}"
+
+
+def test_chronology_boxes_never_overlap_their_slot(page: Page, server: ProseviewServer):
+    """The strip sizes boxes from the slot, and scrolls rather than squashing.
+
+    Box width used to be a fixed 58px while the step shrank with scene count.
+    At 39 scenes that gave a 29px step, so every box overlapped its neighbour
+    and all the labels were clipped mid-word.
+    """
+    page.goto(f"{server.base_url}#/tab/timeline", wait_until="load")
+    page.wait_for_selector("#timelineContent .story-section")
+
+    layout = page.evaluate(
+        """() => {
+            const svgs = [...document.querySelectorAll('#timelineContent .story-svg')];
+            const svg = svgs[svgs.length - 1];
+            if (!svg) return null;
+            const rects = [...svg.querySelectorAll('g.story-node rect')];
+            if (rects.length < 2) return null;
+            const xs = rects.map(r => parseFloat(r.getAttribute('x')));
+            const w = parseFloat(rects[0].getAttribute('width'));
+            const step = xs[1] - xs[0];
+            return {step, boxWidth: w, hasExplicitWidth: svg.hasAttribute('width')};
+        }"""
+    )
+    assert layout, "expected a chronology strip with at least two scenes"
+    assert layout["boxWidth"] <= layout["step"], \
+        f"box {layout['boxWidth']} is wider than its {layout['step']}px slot"
+    assert layout["hasExplicitWidth"], \
+        "without an explicit width the SVG scales to fit instead of scrolling"
 
 
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):
@@ -3125,6 +4048,66 @@ def test_shell_terminal_opens_and_runs_a_command(page: Page, server: ProseviewSe
     open_shell_terminal(page)
 
     run_in_terminal(page, "echo proseview-browser-marker", "proseview-browser-marker")
+
+    terminal_input = page.locator(".terminal-tab-mount:not([hidden]) .xterm-helper-textarea")
+    assert terminal_input.get_attribute("aria-describedby") == "terminalKeyboardHelp"
+    assert terminal_input.get_attribute("aria-keyshortcuts") == "Shift+Tab"
+    terminal_input.focus()
+    page.keyboard.press("Shift+Tab")
+    active_tab = page.locator('#terminalTabs [role="tab"][aria-selected="true"]')
+    assert active_tab.evaluate("el => el === document.activeElement")
+
+
+def test_terminal_session_tabs_are_named_and_keyboard_operable(
+    page: Page,
+    server: ProseviewServer,
+):
+    open_scene(page, server)
+    page.evaluate(
+        """() => {
+            const panel = document.getElementById('terminalPanel');
+            panel.hidden = false;
+            panel.style.display = 'flex';
+            const mounts = document.getElementById('terminalMounts');
+            const makeSession = (id, label) => {
+                const mountEl = document.createElement('div');
+                mountEl.className = 'terminal-tab-mount';
+                mounts.appendChild(mountEl);
+                return {id, label, type: 'shell', termId: null, xterm: null, fit: null,
+                        es: null, send: null, contextFile: null, contextSel: null, mountEl};
+            };
+            _termSessions = [makeSession('keyboard-one', 'Shell 1'),
+                             makeSession('keyboard-two', 'Shell 2')];
+            _termActiveId = 'keyboard-one';
+            _renderTabs();
+        }"""
+    )
+
+    tabs = page.locator("#terminalTabs").get_by_role("tab")
+    assert tabs.count() == 2
+    assert tabs.nth(0).get_attribute("aria-selected") == "true"
+    tabs.nth(0).focus()
+    page.keyboard.press("ArrowRight")
+    assert tabs.nth(1).get_attribute("aria-selected") == "true"
+    assert tabs.nth(1).evaluate("el => el === document.activeElement")
+
+    tabs.nth(0).locator("xpath=following-sibling::button").focus()
+    page.keyboard.press("Enter")
+    assert page.locator("#terminalTabs").get_by_role("tab").count() == 1
+    assert page.locator("#terminalTabs").get_by_role("tab").evaluate(
+        "el => el === document.activeElement"
+    )
+    close = page.locator("#terminalTabs .terminal-tab-close")
+    close_box = close.bounding_box()
+    assert close_box and close_box["width"] >= 24 and close_box["height"] >= 24
+    page.evaluate(
+        "_termReturnFocus = Array.from(document.querySelectorAll('#sceneMoreMenu button'))"
+        ".find(button => button.textContent.includes('Shell'))"
+    )
+    close.focus()
+    page.keyboard.press("Enter")
+    assert page.locator("#terminalPanel").is_hidden()
+    assert page.evaluate("document.activeElement.id") == "sceneMoreBtn"
 
 
 @pytest.mark.parametrize(("label", "agent"), [("Codex", "codex"), ("Claude", "claude"), ("Gemini", "gemini")])
@@ -3894,6 +4877,37 @@ def test_timeline_scene_click_opens_the_scene(page: Page, shared_server: Prosevi
     assert expected in page.locator("#modalTitle").inner_text()
 
 
+def test_every_timeline_scene_mark_is_named_and_keyboard_operable(
+    page: Page,
+    shared_server: ProseviewServer,
+):
+    open_dashboard(page, shared_server)
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.wait_for_selector("#tab-timeline.active")
+
+    marks = page.locator("#timelineContent [data-scene]")
+    assert marks.count() > 0
+    states = marks.evaluate_all(
+        """items => items.map(item => ({
+            role: item.getAttribute('role'),
+            name: item.getAttribute('aria-label'),
+            tabIndex: item.tabIndex
+        }))"""
+    )
+    assert all(state["role"] == "button" for state in states)
+    assert all(state["name"] for state in states)
+    assert all(state["tabIndex"] == 0 for state in states)
+    assert "percent of manuscript words" in page.locator(".story-seg[data-scene]").first.get_attribute("aria-label")
+    assert "words" in page.locator(".story-barwrap[data-scene]").first.get_attribute("aria-label")
+    assert "storyline" in page.locator(".story-slot[data-scene]").first.get_attribute("aria-label")
+    assert "order position" in page.locator(".story-node[data-scene]").first.get_attribute("aria-label")
+
+    first = marks.first
+    first.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#sceneModal", state="visible")
+
+
 def test_timeline_says_what_is_missing_rather_than_guessing(page: Page, shared_server: ProseviewServer):
     """A manuscript with no story fields still gets the shape view, and the
     other two layers name the field they would need instead of guessing."""
@@ -4006,6 +5020,7 @@ def test_scene_card_shows_the_story_fields_when_present(page: Page, shared_serve
     Timeline, and are labelled with the keys this repo actually uses."""
     rel, thread, day = STORY_SCENES[0]
     open_scene(page, shared_server, rel.split("manuscript/")[-1] if "manuscript/" in rel else rel)
+    page.locator("#sceneContextDetails summary").click()
 
     card = page.locator(".scene-card").inner_text().lower()
     assert thread in card
@@ -4018,6 +5033,7 @@ def test_scene_card_omits_story_rows_when_the_scene_has_none(page: Page, shared_
     """A manuscript that does not use these fields sees no row at all, rather
     than a line of 'Unknown' for something it never opted into."""
     open_scene(page, shared_server, SCENE_REL)
+    page.locator("#sceneContextDetails summary").click()
 
     card = page.locator(".scene-card").inner_text().lower()
     thread_field = page.evaluate("() => storyModel.thread_field")

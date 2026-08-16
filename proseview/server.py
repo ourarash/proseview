@@ -9,7 +9,6 @@ POST /insert-todo  Insert a TODO comment into a manuscript file.
 from __future__ import annotations
 
 import base64
-import fcntl
 import json
 import os
 import queue
@@ -29,10 +28,14 @@ from time import perf_counter
 from typing import Callable, Any
 
 try:
+    # All three are Unix-only and used solely by the in-browser terminal.
+    # `fcntl` used to be imported at module scope, so importing proseview at all
+    # failed on Windows -- the dashboard never got a chance to run without it.
+    import fcntl
     import pty
     import termios
     _PTY_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover - exercised on Windows
     _PTY_AVAILABLE = False
 
 from .config import Config
@@ -701,11 +704,34 @@ class _AnnotationAnchorError(ValueError):
     """The paragraph an annotation was anchored to could not be found."""
 
 
-def _resolve_annotation_target(abs_path: str) -> tuple[Path, str, list[str]]:
-    """Resolve *abs_path* and read it, returning the path, raw text, and lines."""
+def _annotation_open_mtime(body: dict[str, Any]) -> float | None:
+    """The mtime the page had when it rendered the scene, if it sent one.
+
+    Optional so the CLI and older pages keep working unguarded; the browser
+    always sends it.
+    """
+    raw = body.get("open_mtime")
+    return float(raw) if isinstance(raw, (int, float)) else None
+
+
+def _resolve_annotation_target(
+    abs_path: str, open_mtime: float | None = None
+) -> tuple[Path, str, list[str]]:
+    """Resolve *abs_path* and read it, returning the path, raw text, and lines.
+
+    When *open_mtime* is given, refuse the write if the file has changed since
+    the page loaded it. Annotations are anchored to a paragraph the reader could
+    see, so editing the scene in Obsidian or Vim first means the anchor may no
+    longer mean what they selected. Same guard, and same tolerance, as
+    ``save_scene_content``.
+    """
     path = Path(abs_path).resolve()
     if not path.exists():
         raise FileNotFoundError(f"File not found: {abs_path}")
+    if open_mtime is not None and abs(path.stat().st_mtime - open_mtime) > 0.01:
+        raise _FileConflictError(
+            "This scene changed on disk since the page loaded it. Reload and try again"
+        )
     raw = path.read_text(encoding="utf-8")
     return path, raw, raw.splitlines(keepends=True)
 
@@ -761,14 +787,15 @@ def _splice_annotation(lines: list[str], insert_at: int, comment: str) -> str:
     return "".join(spliced)
 
 
-def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_text: str) -> None:
+def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_text: str,
+                open_mtime: float | None = None) -> None:
     """Insert ``<!-- TODO: todo_text -->`` before the paragraph that contains *selection_text*.
 
     Uses *txt_line_offset* (frontmatter + heading line count) to locate the
     extracted prose within the raw file, then searches paragraph_blocks for the
     first block that contains the selection text and inserts the comment above it.
     """
-    path, _raw, lines = _resolve_annotation_target(abs_path)
+    path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
     insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
 
     _atomic_write_text(path, _splice_annotation(lines, insert_at, f"<!-- TODO: {todo_text} -->"))
@@ -807,9 +834,10 @@ def _remove_comment_line(path: Path, lines: list[str], comment: str, kind: str) 
     _atomic_write_text(path, "".join(collapsed))
 
 
-def edit_todo(abs_path: str, old_todo_text: str, new_todo_text: str) -> None:
+def edit_todo(abs_path: str, old_todo_text: str, new_todo_text: str,
+              open_mtime: float | None = None) -> None:
     """Replace an existing <!-- TODO: old_text --> comment with new text."""
-    path, raw, _lines = _resolve_annotation_target(abs_path)
+    path, raw, _lines = _resolve_annotation_target(abs_path, open_mtime)
     _replace_comment(
         path, raw, f"<!-- TODO: {old_todo_text} -->", f"<!-- TODO: {new_todo_text} -->", "TODO"
     )
@@ -817,9 +845,9 @@ def edit_todo(abs_path: str, old_todo_text: str, new_todo_text: str) -> None:
     print(f"[{stamp}] edited TODO in {path.name}")
 
 
-def delete_todo(abs_path: str, todo_text: str) -> None:
+def delete_todo(abs_path: str, todo_text: str, open_mtime: float | None = None) -> None:
     """Remove a <!-- TODO: todo_text --> comment from the file."""
-    path, _raw, lines = _resolve_annotation_target(abs_path)
+    path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
     _remove_comment_line(path, lines, f"<!-- TODO: {todo_text} -->", "TODO")
     stamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{stamp}] deleted TODO from {path.name}")
@@ -831,9 +859,10 @@ def _note_comment(note_text: str, tag: str) -> str:
     return f"<!-- NOTE: {note_text} -->" if tag == "note" else f"<!-- NOTE[{tag}]: {note_text} -->"
 
 
-def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text: str, tag: str) -> None:
+def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text: str, tag: str,
+             open_mtime: float | None = None) -> None:
     """Insert <!-- NOTE[tag]: note_text --> before the paragraph containing *selection_text*."""
-    path, _raw, lines = _resolve_annotation_target(abs_path)
+    path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
     insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
 
     _atomic_write_text(path, _splice_annotation(lines, insert_at, _note_comment(note_text, tag)))
@@ -841,9 +870,10 @@ def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text
     print(f"[{stamp}] inserted NOTE into {path.name} (line {insert_at + 1})")
 
 
-def edit_note(abs_path: str, old_note_text: str, old_tag: str, new_note_text: str, new_tag: str) -> None:
+def edit_note(abs_path: str, old_note_text: str, old_tag: str, new_note_text: str, new_tag: str,
+              open_mtime: float | None = None) -> None:
     """Replace an existing NOTE comment with updated text/tag in-place."""
-    path, raw, _lines = _resolve_annotation_target(abs_path)
+    path, raw, _lines = _resolve_annotation_target(abs_path, open_mtime)
     _replace_comment(
         path,
         raw,
@@ -855,9 +885,10 @@ def edit_note(abs_path: str, old_note_text: str, old_tag: str, new_note_text: st
     print(f"[{stamp}] edited NOTE in {path.name}")
 
 
-def delete_note(abs_path: str, note_text: str, tag: str) -> None:
+def delete_note(abs_path: str, note_text: str, tag: str,
+                open_mtime: float | None = None) -> None:
     """Remove the <!-- NOTE[tag]: note_text --> comment from the file."""
-    path, _raw, lines = _resolve_annotation_target(abs_path)
+    path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
     _remove_comment_line(path, lines, _note_comment(note_text, tag), "Note")
     stamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{stamp}] deleted NOTE from {path.name}")
@@ -1705,6 +1736,8 @@ class _Handler(BaseHTTPRequestHandler):
                 prop = _new_ai_proposal(self.repo_root, body)
                 self.publish_event(_proposal_payload(dict(prop), "created"))
                 self._send_json({"ok": True, "proposal": prop})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif path.startswith("/ai/proposals/"):
@@ -1723,23 +1756,31 @@ class _Handler(BaseHTTPRequestHandler):
                     body.get("selection_text", ""),
                     int(body.get("txt_line_offset", 0)),
                     body["todo_text"],
+                    _annotation_open_mtime(body),
                 )
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/edit-todo":
             try:
-                edit_todo(body["abs_path"], body["old_todo_text"], body["new_todo_text"])
+                edit_todo(body["abs_path"], body["old_todo_text"], body["new_todo_text"],
+                          _annotation_open_mtime(body))
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/delete-todo":
             try:
-                delete_todo(body["abs_path"], body["todo_text"])
+                delete_todo(body["abs_path"], body["todo_text"], _annotation_open_mtime(body))
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/add-note":
@@ -1750,9 +1791,12 @@ class _Handler(BaseHTTPRequestHandler):
                     int(body.get("txt_line_offset", 0)),
                     body["note_text"],
                     body.get("tag", "note"),
+                    _annotation_open_mtime(body),
                 )
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/edit-note":
@@ -1763,9 +1807,12 @@ class _Handler(BaseHTTPRequestHandler):
                     body.get("old_tag", "note"),
                     body["new_note_text"],
                     body.get("new_tag", "note"),
+                    _annotation_open_mtime(body),
                 )
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/delete-note":
@@ -1774,9 +1821,12 @@ class _Handler(BaseHTTPRequestHandler):
                     body["abs_path"],
                     body["note_text"],
                     body.get("tag", "note"),
+                    _annotation_open_mtime(body),
                 )
                 self.invalidate()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/save-scene":
@@ -1798,6 +1848,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, "mtime": new_mtime})
             except _FileConflictError:
                 self._send_json({"conflict": True}, 409)
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/terminal-spawn":
@@ -1817,6 +1869,8 @@ class _Handler(BaseHTTPRequestHandler):
                     label=t_label,
                 )
                 self._send_json({"ok": True, "id": session.id})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/terminal-input":
@@ -1828,6 +1882,8 @@ class _Handler(BaseHTTPRequestHandler):
                 if session:
                     session.write(data)
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/terminal-resize":
@@ -1840,6 +1896,8 @@ class _Handler(BaseHTTPRequestHandler):
                 if session:
                     session.resize(rows, cols)
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/terminal-kill":
@@ -1850,6 +1908,8 @@ class _Handler(BaseHTTPRequestHandler):
                 if session:
                     session.kill()
                 self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         else:

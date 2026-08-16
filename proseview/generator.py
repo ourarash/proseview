@@ -11,6 +11,7 @@ split into a Jinja template plus inlined CSS and JavaScript assets under
 
 from __future__ import annotations
 
+import html
 import json
 import math
 import re
@@ -141,6 +142,17 @@ def _render_goals_sections(goals: Goals | None, cfg: Config) -> tuple[str, str]:
     return banner, card
 
 
+def _terminal_available() -> bool:
+    """Whether this platform can host the in-browser terminal.
+
+    Windows has no ``pty``/``fcntl``, so the shell is hidden there rather than
+    offered and then failing when clicked.
+    """
+    from .server import _PTY_AVAILABLE
+
+    return bool(_PTY_AVAILABLE)
+
+
 def _js_json(data: object) -> str:
     """Return a JS expression ``JSON.parse('...')`` that evaluates to *data*.
 
@@ -166,11 +178,6 @@ def _html_esc(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def _js_attr(s: str) -> str:
-    """Escape ``s`` for use inside a single-quoted JS string in an HTML attribute."""
-    return str(s).replace("\\", "\\\\").replace("'", "\\'")
-
-
 def _render_recent_changes_card(
     entries: list[dict[str, object]],
     git_available: bool,
@@ -194,14 +201,14 @@ def _render_recent_changes_card(
                 f"&#x2197; {_html_esc(editor_label)}</a>"
             )
             if entry.get("is_scene") and entry.get("scene_path"):
-                sp = _js_attr(str(entry["scene_path"]))
-                onclick = f"openSceneModal('{sp}')"
+                data_attr = f'data-scene-path="{_html_esc(str(entry["scene_path"]))}"'
+                onclick = "openSceneModal(this.dataset.scenePath)"
             else:
-                pp = _js_attr(path)
-                onclick = f"previewRepoFile('{pp}')"
+                data_attr = f'data-repo-path="{_html_esc(path)}"'
+                onclick = "previewRepoFile(this.dataset.repoPath)"
             path_link = (
                 f'<button type="button" class="recent-file-link" '
-                f'onclick="{onclick}" title="Open {_html_esc(path)}">'
+                f'{data_attr} onclick="{onclick}" title="Open {_html_esc(path)}">'
                 f"{_html_esc(path)}</button>"
             )
             rows.append(
@@ -299,6 +306,7 @@ def build_scene_data(
     }
     meta = {
         clean_path(scene.path): {
+            "title": scene.title,
             "repeats": scene.repetition_examples,
             "avg_sent": scene.avg_sentence_words,
             "dlg_pct": scene.dialogue_pct,
@@ -364,17 +372,19 @@ def _scene_table_body(
             )
             body += (
                 f'<tr class="ch-row chapter-row">'
-                f'<td colspan="2">{scene.chapter}</td><td>{chapter_total:,}</td>'
+                f'<td colspan="2">{html.escape(scene.chapter)}</td><td>{chapter_total:,}</td>'
                 f'<td colspan="{span - 3}"></td></tr>'
             )
             last_chapter = scene.chapter
 
         display_path = clean_path(scene.path)
+        display_path_html = html.escape(display_path)
+        display_path_attr = html.escape(display_path, quote=True)
         editor_url = _editor_url(cfg, str((root / scene.path).resolve()))
         todo_count = len(scene.todos)
         note_count = len(scene.notes)
         status_slug = re.sub(r'[^a-z0-9]+', '-', scene.status.lower()) if scene.status else 'unknown'
-        status_badge = f'<span class="badge status-badge status-{status_slug}">{scene.status}</span> '
+        status_badge = f'<span class="badge status-badge status-{status_slug}">{html.escape(scene.status)}</span> '
         todo_badge = (
             f'<span class="badge todo-badge" title="{todo_count} TODO(s)">{todo_count} todo</span> '
             if todo_count else ''
@@ -392,12 +402,12 @@ def _scene_table_body(
         body += (
             f'<tr class="scene-row" {style_attrs}'
             f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
-            f'<td><span style="color:var(--primary); font-weight:600; cursor:pointer;" '
-            f'onclick="openSceneModal(\'{display_path}\')">{display_path}</span>'
+            f'<td><button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
+            f'onclick="openSceneModal(this.dataset.scenePath)">{display_path_html}</button>'
             f'{status_badge}{todo_badge}{note_badge}'
-            f'<a class="editor-btn" href="{editor_url}" title="Open in {editor_label}" '
-            f'onclick="event.stopPropagation()">↗ {editor_label}</a></td>'
-            f'<td><span style="font-size:11px; opacity:0.7;">{scene.chapter}</span></td>'
+            f'<a class="editor-btn" href="{html.escape(editor_url, quote=True)}" title="Open in {html.escape(editor_label, quote=True)}" '
+            f'onclick="event.stopPropagation()">↗ {html.escape(editor_label)}</a></td>'
+            f'<td><span style="font-size:11px; opacity:0.7;">{html.escape(scene.chapter)}</span></td>'
             f'<td style="font-weight:600;">{scene.words:,}</td>'
         )
         if analysis:
@@ -409,12 +419,12 @@ def _scene_table_body(
             )
         body += (
             f'<td><span style="font-size:10px; color:var(--text-muted); font-style:italic;">'
-            f'{", ".join(scene.flavor_words)}</span></td>'
+            f'{html.escape(", ".join(scene.flavor_words))}</span></td>'
         )
         if analysis:
             body += (
                 f'<td><span class="badge {"badge-danger" if scene.repetition_score > 25 else ""}">'
-                f'{scene.repetition_examples[0] if scene.repetition_examples else ""}</span></td>'
+                f'{html.escape(scene.repetition_examples[0] if scene.repetition_examples else "")}</span></td>'
                 f'<td><span class="badge {"badge-danger" if scene.dialogue_pct > 45 else ("badge-low" if scene.dialogue_pct < 8 else "")}">'
                 f"{scene.dialogue_pct:.1f}%</span></td>"
                 f'<td><span class="badge {"badge-high" if scene.avg_sentence_words > 19 else ("badge-low" if scene.avg_sentence_words < 8 else "")}">'
@@ -453,9 +463,10 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
     )
     alerts_html = (
         "".join(
-            f'<div class="alert-item" onclick="openSceneModal(\'{clean_path(scene.path)}\')">'
-            f'<div class="alert-path">{clean_path(scene.path)}</div>'
-            f'<div class="alert-msg">{revision_signal(scene, cfg)}</div></div>'
+            f'<button type="button" class="alert-item" data-scene-path="{html.escape(clean_path(scene.path), quote=True)}" '
+            f'onclick="openSceneModal(this.dataset.scenePath)">'
+            f'<div class="alert-path">{html.escape(clean_path(scene.path))}</div>'
+            f'<div class="alert-msg">{html.escape(revision_signal(scene, cfg))}</div></button>'
             for scene in flagged[:8]
         )
         if flagged
@@ -631,13 +642,14 @@ def render_html_report(
         "meta_json": _js_json(scene_meta_map),
         "paths_json": _js_json(ordered_paths),
         "highlights_json": _js_json(highlights_map),
-        "editor_scheme_json": json.dumps(cfg.editor.scheme),
-        "editor_url_template_json": json.dumps(cfg.editor.url_template),
-        "editor_label_json": json.dumps(editor_label),
+        "editor_scheme_json": _js_json(cfg.editor.scheme),
+        "editor_url_template_json": _js_json(cfg.editor.url_template),
+        "editor_label_json": _js_json(editor_label),
         "repo_tree_json": _js_json(tree_nodes),
         "sidebar_tree_json": _js_json(sidebar_nodes),
         "repository_tree_json": _js_json(repository_nodes),
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
+        "terminal_available_json": _js_json(_terminal_available()),
         "images_config_json": _js_json(
             {"mode": cfg.images.mode, "remoteInAgentOutput": cfg.images.remote_in_agent_output}
         ),

@@ -171,11 +171,13 @@
             return {content: serializeSceneEditorMarkdown(), base_mtime: _pmOpenMtime};
         }
 
-        function saveSceneEdit() {
+        function saveSceneEdit(onSaved) {
             if (!_pmView || !_pmEditMode) return;
             if (!_pmDirty) return;
+            if (_pmSaveInFlight) return;
             var p = paths[curIdx];
             var markdown = serializeSceneEditorMarkdown();
+            _pmSaveInFlight = true;
 
             // Stay in edit mode while the request is in flight; reflect
             // progress in the pill instead of yanking the bar away.
@@ -198,28 +200,87 @@
                 body: JSON.stringify({ abs_path: absPath, content: markdown, open_mtime: _pmOpenMtime })
             }).then(function(r) {
                 if (r.status === 409) {
+                    _pmSaveInFlight = false;
                     setPmDirty(true);
-                    alert('Conflict: the file was modified externally. Close and reopen to reload.');
+                    _pmConflictDraft = markdown;
+                    var conflictButton = document.getElementById('sceneConflictReopen');
+                    if (conflictButton) conflictButton.hidden = false;
+                    openSceneConflictDialog();
                     return null;
                 }
                 return r.json();
             }).then(function(data) {
                 if (!data) return;
+                _pmSaveInFlight = false;
                 if (!data.ok) { setPmDirty(true); return; }
                 if (data.mtime) _pmOpenMtime = data.mtime;
                 contents[p] = markdown;
+                var liveMarkdown = serializeSceneEditorMarkdown();
+                if (liveMarkdown !== markdown) {
+                    setPmDirty(true);
+                    return;
+                }
                 setPmSaved();
                 if (typeof aiMarkAppliedProposalsSaved === 'function') aiMarkAppliedProposalsSaved();
                 cancelSceneEdit();
+                if (typeof onSaved === 'function') onSaved();
             }).catch(function(err) {
+                _pmSaveInFlight = false;
                 setPmDirty(true);
                 alert('Save failed: ' + (err && err.message || 'unknown error'));
             });
         }
 
+        function openSceneConflictDialog() {
+            var dialog = document.getElementById('sceneConflictDialog');
+            if (!dialog || !_pmConflictDraft) return;
+            var status = document.getElementById('sceneConflictStatus');
+            if (status) status.textContent = '';
+            if (!dialog.open) dialog.showModal();
+            var keep = dialog.querySelector('button');
+            if (keep) keep.focus();
+        }
+
+        function keepEditingAfterConflict() {
+            var dialog = document.getElementById('sceneConflictDialog');
+            if (dialog && dialog.open) dialog.close('keep-editing');
+            if (_pmView) _pmView.focus();
+        }
+
+        function copyConflictDraft() {
+            var status = document.getElementById('sceneConflictStatus');
+            // The writer may continue editing after the first 409. Copy what
+            // is in the editor now, not the snapshot captured at conflict
+            // time, so the recovery action cannot silently omit later work.
+            var draft = (_pmEditMode && _pmView) ? serializeSceneEditorMarkdown() : (_pmConflictDraft || '');
+            var copied = function() { if (status) status.textContent = 'Draft copied to the clipboard.'; };
+            var failed = function() { if (status) status.textContent = 'Clipboard access was unavailable. Keep editing to preserve the draft.'; };
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draft).then(copied, failed);
+            else failed();
+        }
+
+        function reloadConflictDiskVersion() {
+            var p = paths[curIdx];
+            var dialog = document.getElementById('sceneConflictDialog');
+            if (dialog && dialog.open) dialog.close('reload-disk');
+            _pmConflictDraft = null;
+            var conflictButton = document.getElementById('sceneConflictReopen');
+            if (conflictButton) conflictButton.hidden = true;
+            cancelSceneEdit();
+            refreshContent([p]);
+        }
+
         function cancelSceneEdit() {
+            // The response still owns the acknowledged snapshot while a save
+            // is in flight. Exiting now would let it mutate hidden editor
+            // state and make the durable file disagree with the page.
+            if (_pmSaveInFlight) return false;
             if (typeof aiDiscardAppliedProposals === 'function') aiDiscardAppliedProposals();
             _pmEditMode = false;
+            _pmSaveInFlight = false;
+            _pmConflictDraft = null;
+            var conflictButton = document.getElementById('sceneConflictReopen');
+            if (conflictButton) conflictButton.hidden = true;
             setPmDirty(false);
             _applyEditingProseClass();
             hideInsertAffordance();
@@ -234,4 +295,11 @@
             if (btn) btn.textContent = '✏ Edit';
             var p = paths[curIdx];
             mountProseView(p);
+            return true;
         }
+
+        window.addEventListener('beforeunload', function(event) {
+            if (!_pmEditMode || !_pmDirty) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });

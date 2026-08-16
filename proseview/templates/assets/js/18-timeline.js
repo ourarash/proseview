@@ -70,6 +70,25 @@
             if (_storyCard) _storyCard.classList.remove('on');
         }
 
+        function _storySceneAccessibleName(scene, mark) {
+            const facts = ['Open scene ' + (scene.title || scene.path)];
+            if (scene.chapter) facts.push(_storyChapterLabel(scene.chapter));
+            facts.push(scene.words.toLocaleString() + ' words');
+            if (scene.thread) facts.push('storyline ' + scene.thread);
+            if (scene.day != null) facts.push(storyModel.day_field + ' ' + scene.day);
+            const view = mark.dataset.timelineView;
+            if (view === 'proportion') {
+                const share = storyModel.total_words ? (100 * scene.words / storyModel.total_words).toFixed(1) : '0.0';
+                facts.push(share + ' percent of manuscript words');
+            } else if (view === 'reading' || view === 'story') {
+                facts.push(
+                    (view === 'reading' ? 'reading order' : 'story order') +
+                    ' position ' + mark.dataset.orderPosition + ' of ' + mark.dataset.orderCount
+                );
+            }
+            return facts.join('. ');
+        }
+
         function _storyEmpty(message) {
             return '<p class="story-empty">' + message + '</p>';
         }
@@ -84,10 +103,10 @@
             const strip = scenes.map(s =>
                 '<div class="story-seg" style="flex:' + Math.max(s.words, 1)
                 + ';background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"'
-                + ' data-scene="' + s.index + '"></div>').join('');
+                + ' data-scene="' + s.index + '" data-timeline-view="proportion"></div>').join('');
 
             const bars = scenes.map(s =>
-                '<div class="story-barwrap" data-scene="' + s.index + '">'
+                '<div class="story-barwrap" data-scene="' + s.index + '" data-timeline-view="words">'
                 + '<div class="story-bar" style="height:' + (100 * s.words / max).toFixed(2) + '%;'
                 + 'background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"></div></div>').join('');
 
@@ -115,7 +134,7 @@
                 const lane = storyModel.scenes.map(function(s) {
                     const on = s.thread === name;
                     return '<div class="story-slot' + (on ? ' on' : '') + '"'
-                        + (on ? ' data-scene="' + s.index + '"' : '')
+                        + (on ? ' data-scene="' + s.index + '" data-timeline-view="thread"' : '')
                         + (on ? ' style="background:var(--story-c' + (row % STORY_HUES) + ')"' : '')
                         + '></div>';
                 }).join('');
@@ -135,7 +154,7 @@
                 const lane = storyModel.scenes.map(function(s) {
                     const on = !s.thread;
                     return '<div class="story-slot' + (on ? ' none' : '') + '"'
-                        + (on ? ' data-scene="' + s.index + '"' : '') + '></div>';
+                        + (on ? ' data-scene="' + s.index + '" data-timeline-view="thread"' : '') + '></div>';
                 }).join('');
                 untaggedRow = '<div class="story-lane-row story-lane-untagged">'
                     + '<div class="story-lane-name"><i class="story-swatch-none"></i>'
@@ -152,6 +171,25 @@
         }
 
         // ── Layer 3: chronology ─────────────────────────────────────────
+        function _chapterLabel(chapter, cx, cy, boxWidth) {
+            // ~5.2px per character at font-size 9. Below that the label is
+            // noise, so drop it and let the hover card carry the chapter.
+            const maxChars = Math.floor((boxWidth - 4) / 5.2);
+            if (maxChars < 2) return '';
+            let label = String(chapter || '');
+            if (label.length > maxChars) {
+                // "I. Do…" identifies nothing. A chapter written "I. Down the
+                // Rabbit-Hole" or "12 - Endgame" carries its number up front,
+                // so fall back to that rather than to a truncated phrase.
+                const head = label.split(/[.\u2014:-]/)[0].trim();
+                label = head && head.length <= maxChars
+                    ? head
+                    : label.slice(0, Math.max(1, maxChars - 1)) + '\u2026';
+            }
+            return '<text x="' + cx.toFixed(1) + '" y="' + cy + '" text-anchor="middle" '
+                + 'font-size="9" fill="#fff" opacity=".85">' + _storyEsc(label) + '</text>';
+        }
+
         function _renderChronology(chapterIndex) {
             if (!storyModel.has_chronology) {
                 return _storyEmpty('No chronology yet. Add <code>' + storyModel.day_field
@@ -164,8 +202,26 @@
             storyModel.scenes.forEach(s => { byIndex[s.index] = s; });
             const chrono = order.map(i => byIndex[i]).filter(Boolean);
 
-            const W = 1180, BW = 58, TOP = 26, BOT = 176, H = 250;
-            const step = (W - 40) / Math.max(dated.length, 1);
+            // Each scene gets a readable slot and the strip scrolls, rather than
+            // squashing every scene into a fixed 1180px. At 39 scenes the old
+            // maths gave a 29px step with 58px boxes, so every box overlapped
+            // its neighbour and all the text was clipped mid-word.
+            const SLOT = 46;
+            const step = SLOT;
+            const W = Math.max(1180, 40 + dated.length * SLOT);
+            const BW = SLOT - 6;
+            const TOP = 26;
+            // A book read in story order has nothing to show between the rows,
+            // so the band collapses instead of drawing parallel vertical lines.
+            const willMove = (function() {
+                const jb = Math.max(2, Math.ceil(dated.length * 0.15));
+                const rr = {}, sr = {};
+                dated.forEach((s, i) => { rr[s.index] = i; });
+                chrono.forEach((s, i) => { sr[s.index] = i; });
+                return dated.some(s => Math.abs(rr[s.index] - sr[s.index]) >= jb);
+            })();
+            const BOT = willMove ? 176 : 96;
+            const H = BOT + 74;
             const readAt = {}, storyAt = {}, readRank = {}, storyRank = {};
             dated.forEach((s, i) => { readAt[s.index] = 20 + i * step; readRank[s.index] = i; });
             chrono.forEach((s, i) => { storyAt[s.index] = 20 + i * step; storyRank[s.index] = i; });
@@ -175,13 +231,15 @@
             const jumpBy = Math.max(2, Math.ceil(dated.length * 0.15));
             const movedAway = s => Math.abs(readRank[s.index] - storyRank[s.index]) >= jumpBy;
 
-            let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="story-svg" role="img" '
+            let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" '
+                + 'class="story-svg" role="img" '
                 + 'aria-label="Reading order compared with story order">';
             dated.forEach(function(s) {
                 const x1 = readAt[s.index] + BW / 2, x2 = storyAt[s.index] + BW / 2;
                 const moved = movedAway(s);
-                svg += '<path d="M' + x1.toFixed(1) + ',74 C' + x1.toFixed(1) + ',130 '
-                    + x2.toFixed(1) + ',120 ' + x2.toFixed(1) + ',' + BOT + '" fill="none" '
+                const c1 = 74 + (BOT - 74) * 0.55, c2 = 74 + (BOT - 74) * 0.45;
+                svg += '<path d="M' + x1.toFixed(1) + ',74 C' + x1.toFixed(1) + ',' + c1.toFixed(1) + ' '
+                    + x2.toFixed(1) + ',' + c2.toFixed(1) + ' ' + x2.toFixed(1) + ',' + BOT + '" fill="none" '
                     + 'stroke="var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')" '
                     + 'stroke-width="' + (moved ? 2.4 : 1.2) + '" opacity="' + (moved ? 0.95 : 0.4) + '"/>';
             });
@@ -189,14 +247,14 @@
                 const arr = pair[0], y = pair[1];
                 arr.forEach(function(s, i) {
                     const x = 20 + i * step;
-                    svg += '<g data-scene="' + s.index + '" class="story-node">'
+                    svg += '<g data-scene="' + s.index + '" class="story-node" data-timeline-view="'
+                        + (y === TOP ? 'reading' : 'story') + '" data-order-position="' + (i + 1)
+                        + '" data-order-count="' + arr.length + '">'
                         + '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + BW + '" height="48" rx="5" '
                         + 'fill="var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"/>'
                         + '<text x="' + (x + BW / 2).toFixed(1) + '" y="' + (y + 20) + '" text-anchor="middle" '
                         + 'font-size="11" fill="#fff" font-weight="600">' + s.day + '</text>'
-                        + '<text x="' + (x + BW / 2).toFixed(1) + '" y="' + (y + 36) + '" text-anchor="middle" '
-                        + 'font-size="9" fill="#fff" opacity=".85">'
-                        + _storyEsc(String(s.chapter).slice(0, 9)) + '</text></g>';
+                        + _chapterLabel(s.chapter, x + BW / 2, y + 36, BW) + '</g>';
                 });
             });
             svg += '</svg>';
@@ -233,11 +291,19 @@
                 const scene = storyModel.scenes[+el.dataset.scene];
                 if (!scene) return;
                 el.style.cursor = 'pointer';
+                el.setAttribute('role', 'button');
+                el.setAttribute('tabindex', '0');
+                el.setAttribute('aria-label', _storySceneAccessibleName(scene, el));
                 el.addEventListener('mousemove', function(e) { _storyCardShow(scene, e); });
                 el.addEventListener('mouseleave', _storyCardHide);
                 el.addEventListener('click', function() {
                     _storyCardHide();
                     if (typeof openSceneModal === 'function') openSceneModal(scene.path);
+                });
+                el.addEventListener('keydown', function(event) {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    el.click();
                 });
             });
             // A scroll or a tab change must not strand the card on screen.

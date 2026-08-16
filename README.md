@@ -22,7 +22,7 @@ Proseview reads the same `.md` files, in whatever layout you already use.
 [![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
-![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 ![The Proseview dashboard: word-count goal, writing streak, and recently modified files](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
@@ -32,23 +32,39 @@ Proseview reads the same `.md` files, in whatever layout you already use.
 ### Read and revise, with editorial passes on
 
 Nine prose passes highlight repetition, passive voice, filter verbs and more,
-right on the page you are reading.
+right on the page you are reading. Toggle them one at a time.
 
-![A scene open in the reading view with four highlight passes enabled](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/scene-highlights.png)
+![Four editorial passes switching on over a scene, marking repeated words, filter verbs, sensory language, and passive voice](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-highlights.gif)
+
+### Write on the same surface
+
+Hit `Edit` and the page you were reading becomes the page you type into — same
+typography, same highlights. `Mod-S` saves to the file, and the stats update.
+
+![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
 ### Search the whole repository
 
 `Mod-K` from anywhere. File paths, scene metadata, TODOs, notes, and prose,
 grouped by kind.
 
-![The search palette open over a scene, showing file, scene, and prose matches](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/search.png)
+![The search palette open over a scene, showing file, scene, and prose matches grouped by kind](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-search.gif)
+
+### See the shape of the book
+
+Chapter proportion and words per scene, your storylines as lanes, and reading
+order against the order events actually happen — so a scene read far from where
+it happens is visible instead of inferred. Hover any scene for its card.
+
+![The Timeline tab showing chapter proportion, words per scene, three storyline lanes, and reading order against story order, with a scene card on hover](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-timeline.gif)
 
 ### Analytics that mean something
 
 ![Character presence, sentence-rhythm bands, setting stickiness, and character co-occurrence charts](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
 
-> Screenshots use the bundled `fixtures/demo-repo` (four scenes), so the charts
-> are deliberately small. Your book fills them in.
+> Clips use the bundled demo manuscript: *Alice's Adventures in Wonderland*
+> (public domain), split into 39 scenes across 12 chapters with story fields
+> filled in. See [fixtures/demo-book](fixtures/demo-book/README.md).
 
 ## ✨ What you get
 
@@ -103,8 +119,9 @@ installed.
 
 ## 🚀 Quick start
 
-**Requirements:** Python 3.11+ on macOS or Linux. The server uses Unix-only
-APIs (`fcntl`, and a real PTY for the terminal), so Windows needs WSL.
+**Requirements:** Python 3.11+ on macOS, Linux, or Windows. The in-browser
+terminal needs a real PTY, so it is hidden on Windows — everything else works.
+Use WSL if you want the terminal too.
 
 ```bash
 git clone https://github.com/ourarash/proseview.git
@@ -153,6 +170,10 @@ my-vault/                    my-novel/
 └── .obsidian/   (skipped)
 ```
 
+A file inside the manuscript that is not prose — a `review/` folder, a
+per-chapter outline — can opt out with `scene: false` in its frontmatter, so it
+stays browsable without counting toward scene or word totals.
+
 Scenes group into chapters by their first folder below the manuscript root, and
 a `chapter:` in frontmatter always overrides that. Folders and files are read in
 name order. `README.md`, dotfiles, hidden folders, and tool directories such as
@@ -167,25 +188,25 @@ Scene files use simple frontmatter:
 
 ```markdown
 ---
-title: Opening
+title: Opening Ledger
 chapter: Chapter 1
 status: draft
-where: A bar in the West Village
-when: Friday night, late
-pov: Nima
+where: River loft
+when: Day 1, before opening
+pov: Rena
 characters:
-  - Nima
-  - Mira
-goal: Nima needs to get the question on the table
-conflict: He's afraid she already has someone
-outcome: She agrees to dinner; he leaves rattled
+  - Rena
+  - Lowe
+goal: Rena needs to clear a weekly ledger before the shop opens
+conflict: The safe refuses a code she has used since spring
+outcome: She opens the shop in the red
 todos:
   - Tighten the opening paragraph
 ---
 
-# Opening
+# Opening Ledger
 
-The bar was loud and the music was bad...
+The loft smelled of cold coffee and the slow algebra of...
 ```
 
 Every field is optional. Proseview reads what's there and falls back
@@ -293,11 +314,11 @@ it, and the export command explains how to install it when it is missing.
 ```yaml
 # Whether rendered Markdown may load images: all | local | off.
 # `local` serves only files inside this repo; `off` shows alt text instead.
-# Remote images inside AI replies are refused unless you opt in, because
-# there the URL is the model's choice, not yours.
+# `remote_in_agent_output: false` stops remote images inside AI replies
+# from loading, since there the URL is the model's choice, not yours.
 images:
   mode: all
-  remote_in_agent_output: false
+  remote_in_agent_output: true
 
 # Where the manuscript lives. Default: manuscript/, falling back to the
 # repo root when that folder does not exist. Use ./ to force the root.

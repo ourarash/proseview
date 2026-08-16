@@ -8,12 +8,21 @@ on:
 
 jobs:
   test:
-    name: pytest (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    name: pytest (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        include:
+          # Windows has no pty/fcntl, so the terminal is unavailable there and
+          # the rest of the app has to work without it. Neither maintainer runs
+          # Windows, so without this leg the support silently rots.
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

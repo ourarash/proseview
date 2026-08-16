@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sensory pass"
+  short_description: "Which senses this passage uses, and which it leaves empty"
+  default_prompt: "Which senses does the selected passage use?"

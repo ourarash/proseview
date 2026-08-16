@@ -1,0 +1,84 @@
+---
+title: Advice from a Caterpillar
+chapter: V. Advice from a Caterpillar
+status: drafted
+thread: wonderland
+where: The mushroom
+when: Continuous
+goal: Alice wants sympathy about changing
+conflict: The Caterpillar finds three inches a fine height
+outcome: It tells her which side of the mushroom to eat
+day: 14
+pov: Alice
+characters:
+  - Alice
+  - Caterpillar
+---
+
+# Advice from a Caterpillar
+
+The Caterpillar and Alice looked at each other for some time in silence: at last the Caterpillar took the hookah out of its mouth, and addressed her in a languid, sleepy voice.
+
+“Who are *you?*” said the Caterpillar.
+
+This was not an encouraging opening for a conversation. Alice replied, rather shyly, “I—I hardly know, sir, just at present—at least I know who I *was* when I got up this morning, but I think I must have been changed several times since then.”
+
+“What do you mean by that?” said the Caterpillar sternly. “Explain yourself!”
+
+“I can’t explain *myself*, I’m afraid, sir,” said Alice, “because I’m not myself, you see.”
+
+“I don’t see,” said the Caterpillar.
+
+“I’m afraid I can’t put it more clearly,” Alice replied very politely, “for I can’t understand it myself to begin with; and being so many different sizes in a day is very confusing.”
+
+“It isn’t,” said the Caterpillar.
+
+“Well, perhaps you haven’t found it so yet,” said Alice; “but when you have to turn into a chrysalis—you will some day, you know—and then after that into a butterfly, I should think you’ll feel it a little queer, won’t you?”
+
+“Not a bit,” said the Caterpillar.
+
+“Well, perhaps your feelings may be different,” said Alice; “all I know is, it would feel very queer to *me*.”
+
+“You!” said the Caterpillar contemptuously. “Who are *you?*”
+
+Which brought them back again to the beginning of the conversation. Alice felt a little irritated at the Caterpillar’s making such *very* short remarks, and she drew herself up and said, very gravely, “I think, you ought to tell me who *you* are, first.”
+
+“Why?” said the Caterpillar.
+
+Here was another puzzling question; and as Alice could not think of any good reason, and as the Caterpillar seemed to be in a *very* unpleasant state of mind, she turned away.
+
+“Come back!” the Caterpillar called after her. “I’ve something important to say!”
+
+This sounded promising, certainly: Alice turned and came back again.
+
+“Keep your temper,” said the Caterpillar.
+
+“Is that all?” said Alice, swallowing down her anger as well as she could.
+
+“No,” said the Caterpillar.
+
+Alice thought she might as well wait, as she had nothing else to do, and perhaps after all it might tell her something worth hearing. For some minutes it puffed away without speaking, but at last it unfolded its arms, took the hookah out of its mouth again, and said, “So you think you’re changed, do you?”
+
+“I’m afraid I am, sir,” said Alice; “I can’t remember things as I used—and I don’t keep the same size for ten minutes together!”
+
+“Can’t remember *what* things?” said the Caterpillar.
+
+“Well, I’ve tried to say “How doth the little busy bee,” but it all came different!” Alice replied in a very melancholy voice.
+
+“Repeat, ‘*You are old, Father William*,’” said the Caterpillar.
+
+Alice folded her hands, and began:—
+
+“You are old, Father William,” the young man said, “And your hair has become very white; And yet you incessantly stand on your head— Do you think, at your age, it is right?”
+
+“In my youth,” Father William replied to his son, “I feared it might injure the brain; But, now that I’m perfectly sure I have none, Why, I do it again and again.”
+
+“You are old,” said the youth, “as I mentioned before, And have grown most uncommonly fat; Yet you turned a back-somersault in at the door— Pray, what is the reason of that?”
+
+“In my youth,” said the sage, as he shook his grey locks, “I kept all my limbs very supple By the use of this ointment—one shilling the box— Allow me to sell you a couple?”
+
+“You are old,” said the youth, “and your jaws are too weak For anything tougher than suet; Yet you finished the goose, with the bones and the beak— Pray, how did you manage to do it?”
+
+“In my youth,” said his father, “I took to the law, And argued each case with my wife; And the muscular strength, which it gave to my jaw, Has lasted the rest of my life.”
+
+“You are old,” said the youth, “one would hardly suppose That your eye was as steady as ever; Yet you balanced an eel on the end of your nose— What made you so awfully clever?”

@@ -18,7 +18,7 @@ Test counts moved from 280 unit / 164 browser to **337 unit / 167 browser**
 
 ### The headline: the dashboard rebuild is 75% faster
 
-Measured on the real repo at `~/github/book` — 48 scenes, 62k words:
+Measured on a real working manuscript — 48 scenes, 62k words:
 
 | | Start of day | Now |
 | --- | --- | --- |
@@ -250,7 +250,7 @@ Fixed: the dialogue share is now guarded the same way the neighbouring
 
 ### 13. Build cost and page weight at book length — PARTLY DONE
 
-Measured against the real repo at `~/github/book`: 48 scenes, 62k words.
+Measured against a real working manuscript: 48 scenes, 62k words.
 
 **Fixed.** `build_dashboard` indexed the manuscript twice — once directly, and
 once inside `working_copy_delta`, which wanted nothing but the word total. The

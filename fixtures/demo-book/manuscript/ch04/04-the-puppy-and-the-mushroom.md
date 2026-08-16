@@ -1,0 +1,25 @@
+---
+title: The Puppy and the Mushroom
+chapter: IV. The Rabbit Sends in a Little Bill
+status: drafted
+thread: size
+where: The wood
+when: After escaping
+goal: Alice wants to be her right size
+conflict: A puppy nearly tramples her
+outcome: A Caterpillar on a mushroom offers advice
+day: 13
+pov: Alice
+characters:
+  - Alice
+---
+
+# The Puppy and the Mushroom
+
+This seemed to Alice a good opportunity for making her escape; so she set off at once, and ran till she was quite tired and out of breath, and till the puppy’s bark sounded quite faint in the distance.
+
+“And yet what a dear little puppy it was!” said Alice, as she leant against a buttercup to rest herself, and fanned herself with one of the leaves: “I should have liked teaching it tricks very much, if—if I’d only been the right size to do it! Oh dear! I’d nearly forgotten that I’ve got to grow up again! Let me see—how *is* it to be managed? I suppose I ought to eat or drink something or other; but the great question is, what?”
+
+The great question certainly was, what? Alice looked all round her at the flowers and the blades of grass, but she did not see anything that looked like the right thing to eat or drink under the circumstances. There was a large mushroom growing near her, about the same height as herself; and when she had looked under it, and on both sides of it, and behind it, it occurred to her that she might as well look and see what was on the top of it.
+
+She stretched herself up on tiptoe, and peeped over the edge of the mushroom, and her eyes immediately met those of a large blue caterpillar, that was sitting on the top with its arms folded, quietly smoking a long hookah, and taking not the smallest notice of her or of anything else.

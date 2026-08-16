@@ -1,0 +1,6 @@
+# Demo manuscript used for Proseview's screenshots and docs.
+target_words: 30000
+daily_target: 500
+
+repo_tab:
+  folders: [plans, story-bible]

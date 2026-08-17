@@ -838,15 +838,32 @@
                 return true;
             }
 
+            // Both interaction paths defer reading the selection so the browser
+            // can settle. In edit mode ProseMirror rebuilds the DOM selection
+            // asynchronously, so that later read sometimes finds it collapsed
+            // and the pill never appears -- which a writer experiences as the
+            // action menu simply not opening, intermittently. Capturing
+            // synchronously first keeps the selection the reader actually made,
+            // and the deferred pass falls back to it.
+            function exposeSelectionAfterSettling(delayMs) {
+                const captured = rememberSceneSelection(window.getSelection());
+                setTimeout(function() {
+                    if (exposeCurrentSceneSelection()) return;
+                    if (captured && currentSelectionText && currentSelectionRange) {
+                        clearPinnedSelectionHighlight();
+                        const rect = currentSelectionRange.getBoundingClientRect();
+                        showSelectionPill(rect.right, rect.bottom, currentSelectionText);
+                        return;
+                    }
+                    hideSelectionPill();
+                    clearSceneSelectionMemory();
+                }, delayMs);
+            }
+
             modalBody.addEventListener('mouseup', function(e) {
                 const pill = document.getElementById('selectionPill');
                 if (pill && pill.contains(e.target)) return;
-                setTimeout(function() {
-                    if (!exposeCurrentSceneSelection()) {
-                        hideSelectionPill();
-                        clearSceneSelectionMemory();
-                    }
-                }, 10);
+                exposeSelectionAfterSettling(10);
             });
 
             // Keyboard selection does not emit mouseup. Keyup fires after the
@@ -858,12 +875,7 @@
                     (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a'
                 );
                 if (!mayChangeSelection) return;
-                setTimeout(function() {
-                    if (!exposeCurrentSceneSelection()) {
-                        hideSelectionPill();
-                        clearSceneSelectionMemory();
-                    }
-                }, 0);
+                exposeSelectionAfterSettling(0);
             });
 
             document.addEventListener('mousedown', function(e) {

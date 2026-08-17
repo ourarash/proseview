@@ -437,6 +437,12 @@
                 const m = meta[p];
                 if (!m) return;
                 btn.disabled = true;
+                let finalTodoText = todoText;
+                if (currentSelectionText && currentSelectionText.trim().length > 0) {
+                    let quote = currentSelectionText.trim().replace(/\s+/g, ' ');
+                    if (quote.length > 80) quote = quote.substring(0, 80) + '...';
+                    finalTodoText = todoText + ' | "' + quote + '"';
+                }
                 fetch('/insert-todo', {
                     method: 'POST',
                     headers: pvHeaders(),
@@ -444,7 +450,7 @@
                         abs_path: m.abs_path,
                         selection_text: currentSelectionText,
                         txt_line_offset: m.txt_line_offset || 0,
-                        todo_text: todoText,
+                        todo_text: finalTodoText,
                         open_mtime: m.mtime,
                     })
                 }).then(function(r) { return r.json(); }).then(function(data) {
@@ -1057,7 +1063,7 @@
                 if (data.meta && data.meta[scenePath]) meta[scenePath] = data.meta[scenePath];
                 if (data.highlightsByPath && data.highlightsByPath[scenePath]) highlightsByPath[scenePath] = data.highlightsByPath[scenePath];
                 refreshSucceeded = true;
-                updateModal();
+                updateModal(true);
             }).catch(function() {
                 _pendingReload = true;
                 setPendingIndicator(true);

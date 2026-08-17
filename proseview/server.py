@@ -1589,6 +1589,29 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 self.unsubscribe(q)
             return
+        elif self.path == "/assets/app.js":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            
+            root = Path(self.repo_root)
+            script_path = Path(__file__).parent / "templates" / "assets" / "js"
+            scripts = sorted(script_path.glob("*.js"))
+            for script in scripts:
+                with open(script, "r", encoding="utf-8") as f:
+                    self.wfile.write(f.read().encode("utf-8"))
+                    self.wfile.write(b"\n")
+            return
+            
+        elif self.path == "/assets/app.css":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            with open(Path(__file__).parent / "templates" / "assets" / "app.css", "rb") as f:
+                self.wfile.write(f.read())
+            return
         if self.path == "/analysis.json":
             try:
                 body = self.get_analysis_json()
@@ -1736,6 +1759,8 @@ class _Handler(BaseHTTPRequestHandler):
                     meta = json.load(f)
                 
                 mode = (qs.get("mode") or ["inline"])[0]
+                context_mode = (qs.get("context") or ["changes"])[0]
+                show_full = (context_mode == "full")
                 old_raw = meta["content"]
                 new_raw = read_repo_text(scene_path)
                 
@@ -1744,26 +1769,68 @@ class _Handler(BaseHTTPRequestHandler):
                 if mode == "side-by-side":
                     old_lines = old_raw.splitlines(keepends=True)
                     new_lines = new_raw.splitlines(keepends=True)
-                    html_diff = difflib.HtmlDiff().make_table(old_lines, new_lines, context=True, numlines=3)
+                    html_diff = difflib.HtmlDiff().make_table(old_lines, new_lines, context=not show_full, numlines=3)
+                    html_diff = re.sub(r"<colgroup.*?</colgroup>", "", html_diff, flags=re.DOTALL | re.IGNORECASE)
                     self._send_json({"ok": True, "diff_html": html_diff})
                     return
 
-                old_words = re.findall(r"\S+|\s+", old_raw)
-                new_words = re.findall(r"\S+|\s+", new_raw)
+                old_lines = old_raw.splitlines(keepends=True)
+                new_lines = new_raw.splitlines(keepends=True)
                 
                 diff_html = []
-                for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old_words, new_words).get_opcodes():
-                    if tag == 'equal':
-                        diff_html.append(''.join(old_words[i1:i2]))
-                    elif tag == 'delete':
-                        diff_html.append('<del class="diff-delete">' + ''.join(old_words[i1:i2]) + '</del>')
-                    elif tag == 'insert':
-                        diff_html.append('<ins class="diff-insert">' + ''.join(new_words[j1:j2]) + '</ins>')
-                    elif tag == 'replace':
-                        diff_html.append('<del class="diff-delete">' + ''.join(old_words[i1:i2]) + '</del>')
-                        diff_html.append('<ins class="diff-insert">' + ''.join(new_words[j1:j2]) + '</ins>')
+                diff_html.append('<table class="diff diff-inline">')
                 
-                self._send_json({"ok": True, "diff_html": ''.join(diff_html)})
+                sm = difflib.SequenceMatcher(None, old_lines, new_lines)
+                for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                    if tag == 'equal':
+                        if not show_full and (i2 - i1) > 6:
+                            for k in range(3):
+                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                            diff_html.append(f'<tr><td class="diff_header">...</td><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);">... {i2-i1-6} unchanged lines ...</td></tr>')
+                            for k in range(i2-i1-3, i2-i1):
+                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                        else:
+                            for k in range(i2 - i1):
+                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                    elif tag == 'delete':
+                        for k in range(i2 - i1):
+                            diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                    elif tag == 'insert':
+                        for k in range(j2 - j1):
+                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{j1+k+1}</td><td class="diff_add" style="white-space:pre-wrap">{html.escape(new_lines[j1+k])}</td></tr>')
+                    elif tag == 'replace':
+                        old_text = "".join(old_lines[i1:i2])
+                        new_text = "".join(new_lines[j1:j2])
+                        old_words = re.findall(r"\S+|[^\S\n]+|\n", old_text)
+                        new_words = re.findall(r"\S+|[^\S\n]+|\n", new_text)
+                        wsm = difflib.SequenceMatcher(None, old_words, new_words)
+                        
+                        old_html_lines = [[]]
+                        new_html_lines = [[]]
+                        
+                        for wtag, wi1, wi2, wj1, wj2 in wsm.get_opcodes():
+                            if wtag in ('equal', 'delete', 'replace'):
+                                for w in old_words[wi1:wi2]:
+                                    if w == '\n': old_html_lines.append([])
+                                    else:
+                                        if wtag == 'equal': old_html_lines[-1].append(html.escape(w))
+                                        else: old_html_lines[-1].append(f'<del class="diff-delete">{html.escape(w)}</del>')
+                            if wtag in ('equal', 'insert', 'replace'):
+                                for w in new_words[wj1:wj2]:
+                                    if w == '\n': new_html_lines.append([])
+                                    else:
+                                        if wtag == 'equal': new_html_lines[-1].append(html.escape(w))
+                                        else: new_html_lines[-1].append(f'<ins class="diff-insert">{html.escape(w)}</ins>')
+                        
+                        for k in range(i2 - i1):
+                            html_content = "".join(old_html_lines[k]) if k < len(old_html_lines) else ""
+                            diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{html_content}</td></tr>')
+                        for k in range(j2 - j1):
+                            html_content = "".join(new_html_lines[k]) if k < len(new_html_lines) else ""
+                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{j1+k+1}</td><td class="diff_add" style="white-space:pre-wrap">{html_content}</td></tr>')
+                
+                diff_html.append('</table>')
+                self._send_json({"ok": True, "diff_html": "".join(diff_html)})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
             return

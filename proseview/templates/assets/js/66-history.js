@@ -53,6 +53,15 @@ let currentDiffScene = null;
 let currentDiffTs = null;
 
 let currentDiffMode = 'inline';
+let currentDiffContext = 'changes';
+
+function toggleDiffContext() {
+    const showFull = document.getElementById("diffShowFull").checked;
+    currentDiffContext = showFull ? 'full' : 'changes';
+    if (currentDiffScene && currentDiffTs) {
+        openDiffModal(currentDiffScene, currentDiffTs);
+    }
+}
 
 function setDiffMode(mode) {
     if (currentDiffMode === mode) return;
@@ -73,7 +82,7 @@ function openDiffModal(scenePath, timestamp) {
     document.getElementById("diffModalContent").innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading diff...</div>';
     document.getElementById("diffModalOverlay").hidden = false;
     
-    fetch(`/api/scene/history/diff?path=${encodeURIComponent(scenePath)}&timestamp=${encodeURIComponent(timestamp)}&mode=${encodeURIComponent(currentDiffMode)}`)
+    fetch(`/api/scene/history/diff?path=${encodeURIComponent(scenePath)}&timestamp=${encodeURIComponent(timestamp)}&mode=${encodeURIComponent(currentDiffMode)}&context=${encodeURIComponent(currentDiffContext)}`)
         .then(res => res.json())
         .then(data => {
             if (!data.ok) {
@@ -90,6 +99,17 @@ function closeDiffModal() {
     currentDiffScene = null;
     currentDiffTs = null;
 }
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        const overlay = document.getElementById("diffModalOverlay");
+        if (overlay && !overlay.hidden) {
+            closeDiffModal();
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    }
+}, true);
 
 document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => {
     if (!currentDiffScene || !currentDiffTs) return;

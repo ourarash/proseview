@@ -27,23 +27,55 @@ QUOTE_RE = re.compile(r'["\u201c](.+?)["\u201d]', re.DOTALL)
 ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
 FIRST_PERSON_RE = re.compile(r"\b(?:i|me|my|mine|myself)\b", re.IGNORECASE)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+# Irregular past participles, which do not end in -ed and so have to be listed.
+_PARTICIPLES = (
+    "born|bought|broken|brought|built|caught|chosen|done|drawn|driven|eaten|"
+    "fallen|felt|fought|found|given|gone|grown|heard|held|hidden|hit|hurt|kept|"
+    "known|laid|led|left|lost|made|meant|met|paid|put|read|ridden|rung|risen|"
+    "said|seen|sold|sent|set|shaken|shot|shut|sung|sunk|spoken|spent|stood|"
+    "stolen|struck|swept|swum|taken|taught|thrown|torn|told|thought|"
+    "understood|woken|worn|won|written"
+)
+
 PASSIVE_VOICE_RE = re.compile(
     r"\b(am|are|is|was|were|be|been|being)\b\s+"
-    r"([a-z]+ed|born|bought|brought|built|chosen|done|drawn|driven|eaten|"
-    r"fallen|felt|found|given|gone|grown|heard|held|kept|known|left|lost|"
-    r"made|meant|met|paid|put|read|ridden|rung|risen|said|seen|sold|sent|"
-    r"shaken|shot|shut|sung|sunk|spoken|spent|stood|stolen|swum|taken|"
-    r"taught|torn|told|thought|thrown|understood|woken|worn|won|written)\b",
+    r"(\w+ed|" + _PARTICIPLES + r")\b"
+    r"(?P<agent>\s+by\b)?",
     re.IGNORECASE,
 )
-PASSIVE_VOICE_RE_STR = (
-    r"\b(am|are|is|was|were|be|been|being)\b\s+"
-    r"([a-z]+ed|born|bought|brought|built|chosen|done|drawn|driven|eaten|"
-    r"fallen|felt|found|given|gone|grown|heard|held|kept|known|left|lost|"
-    r"made|meant|met|paid|put|read|ridden|rung|risen|said|seen|sold|sent|"
-    r"shaken|shot|shut|sung|sunk|spoken|spent|stood|stolen|swum|taken|"
-    r"taught|torn|told|thought|thrown|understood|woken|worn|won|written)\b"
-)
+
+# "be + X" where X is nearly always describing a state rather than naming an
+# action done to the subject: "she was tired" is not passive voice, but
+# "he was surprised by the noise" is. The agent decides it, so these are
+# skipped only when no "by" follows.
+ADJECTIVAL_PARTICIPLES = {
+    "tired", "excited", "scared", "interested", "married", "worried",
+    "pleased", "annoyed", "bored", "confused", "frightened", "done",
+    "finished", "gone", "closed", "prepared", "determined", "concerned",
+    "satisfied", "disappointed", "embarrassed", "exhausted", "involved",
+    "known", "used", "supposed", "dressed", "seated", "armed", "surprised",
+    "ashamed", "amused", "delighted", "relieved", "alarmed", "puzzled",
+}
+
+
+def passive_spans(text: str) -> list[tuple[int, int]]:
+    """Return ``(start, end)`` offsets of likely passive-voice constructions.
+
+    The bare "be + participle" shape over-fires on predicate adjectives --
+    "she was tired", "he was excited" -- which are states, not passives. A
+    following "by" agent is what separates the two, so a participle on
+    :data:`ADJECTIVAL_PARTICIPLES` counts only when one is present.
+
+    The span stops at the participle so the "by" is not highlighted as part of
+    the construction.
+    """
+    spans: list[tuple[int, int]] = []
+    for match in PASSIVE_VOICE_RE.finditer(text):
+        participle = match.group(2).lower()
+        if participle in ADJECTIVAL_PARTICIPLES and not match.group("agent"):
+            continue
+        spans.append((match.start(), match.end(2)))
+    return spans
 
 MATTR_WINDOW = 100
 MTLD_THRESHOLD = 0.72
@@ -263,7 +295,7 @@ def analyze_style_shape(text: str, sw: set[str]) -> dict[str, object]:
     italics = len(ITALIC_RE.findall(text))
     questions = text.count("?")
     filter_count = sum(len(re.findall(rf"\b{v}\b", text, re.IGNORECASE)) for v in FILTER_VERBS)
-    passive_count = len(PASSIVE_VOICE_RE.findall(text))
+    passive_count = len(passive_spans(text))
     crutch_count = sum(len(re.findall(rf"\b{v}\b", text, re.IGNORECASE)) for v in CRUTCH_WORDS)
 
     sensory_count = 0

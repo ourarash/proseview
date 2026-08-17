@@ -615,6 +615,13 @@ def test_discuss_open_times_out_with_an_operable_retry(
     assert page.get_by_text(
         "Request timed out. Check the connection and try again.", exact=True
     ).is_visible()
+
+    # Restore a realistic budget before retrying. The 100ms above exists to
+    # force the *first* request to time out; leaving it in place also caps the
+    # retry at 100ms, so whether this test passed depended on how warm the
+    # machine was -- it passed inside a full run and failed run alone.
+    page.evaluate("() => { window._discussRequestTimeoutMs = 30000; }")
+
     page.locator("#discussSend").click()
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussSend").inner_text() == "Send"
@@ -1352,11 +1359,19 @@ def test_analysis_initializes_every_owned_chart(
             "chartId => !!window.Chart.getChart(document.getElementById(chartId))",
             arg=chart_id,
         )
-        assert page.evaluate(
-            "chartId => { const chart = Chart.getChart(document.getElementById(chartId)); "
-            "return chart.data.labels.length > 0 && chart.data.datasets.length > 0; }",
+        # Count plotted points, not labels. A scatter chart is built from
+        # {x, y} pairs and carries no labels at all, so a labels-based check
+        # reported the Lexical Health Map as empty while it was drawing 12
+        # scenes -- a red test that said nothing about the app.
+        chart = page.evaluate(
+            "chartId => { const c = Chart.getChart(document.getElementById(chartId)); "
+            "return {datasets: c.data.datasets.length, "
+            "points: c.data.datasets.reduce((n, d) => n + ((d.data || []).length), 0)}; }",
             chart_id,
-        ), f"{chart_id} initialized without its fixture data"
+        )
+        assert chart["datasets"] > 0 and chart["points"] > 0, (
+            f"{chart_id} initialized without its fixture data: {chart}"
+        )
 
 
 def test_every_chart_exposes_its_values_without_reading_canvas_pixels(
@@ -2911,7 +2926,10 @@ def test_compact_utility_docks_remove_retracted_sidebar_from_keyboard_order(
     open_discuss(page)
     sidebar = page.locator("#repoSidebar")
     assert sidebar.get_attribute("inert") is not None
-    assert sidebar.get_attribute("aria-hidden") == "true"
+    # `inert` already removes the subtree from the accessibility tree, so a
+    # second `aria-hidden="true"` is redundant -- and screen readers treat the
+    # pair inconsistently. Assert it is *absent*, not present.
+    assert sidebar.get_attribute("aria-hidden") is None
 
     page.locator("#discussSend").focus()
     for _ in range(20):
@@ -5816,3 +5834,4 @@ def test_timeline_names_a_bare_chapter_number(page: Page, shared_server: Prosevi
         "() => ['2', 2, 'ch00-prolog', 'Chapter 3', ''].map(v => _storyChapterLabel(v))")
 
     assert labels == ["Chapter 2", "Chapter 2", "ch00-prolog", "Chapter 3", ""]
+

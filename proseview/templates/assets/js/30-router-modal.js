@@ -142,7 +142,12 @@
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
-            if (typeof showSceneDetailsTab === 'function') showSceneDetailsTab();
+            // Deliberately does not open the dock. Forcing it open here made
+            // `body.discuss-open` -- and its `margin-right` -- apply to every
+            // scene, which silently narrowed the reading column, the file
+            // preview and the search reflow that eight tests measure. The dock
+            // is opened by the Panel button, a keyboard shortcut, or a
+            // selection action: all things the reader asked for.
             return true;
         }
 

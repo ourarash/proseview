@@ -293,10 +293,20 @@
                     </div>
                 </div>
 
+                <div class="settings-group">
+                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Backup Management</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <p class="section-note" style="margin-top: 0; margin-bottom: 8px; line-height: 1.4;">Proseview stores snapshots of your scenes locally to support undo/redo and file history.</p>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Total Backups Size:</label> <span id="setting_backup_size" style="font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums;">--</span></div>
+                        <button type="button" class="editor-btn" onclick="clearAllBackups()" style="margin-top: 8px; align-self: flex-start; color: var(--red);">Clear All Backups...</button>
+                    </div>
+                </div>
+
             </div>
         </section>
     </div>
 
+    <!-- Modals and Overlays -->
     <div id="file-preview-panel">
         <div class="file-preview-header">
             <button class="back-btn" onclick="closeFilePreview()">&#8592; Overview</button>
@@ -378,7 +388,7 @@
                  session chips meant that opening two shells could push "Scene"
                  and "Analysis" out of a right-docked terminal entirely, and
                  there was no way back to them. -->
-            <div class="terminal-dock-tabs utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" id="termUtilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')">Scene</button><button type="button" id="termUtilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')">Analysis</button><button type="button" id="termUtilityTabDiscuss" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussTab(this)">Codex</button><button type="button" id="termUtilityTabTerminal" class="utility-tab active" role="tab" aria-selected="true" onclick="showRightTerminal()">Terminal</button></div>
+            <div class="terminal-dock-tabs utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" id="termUtilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')">Scene</button><button type="button" id="termUtilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')">Analysis</button><button type="button" id="termUtilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')">History</button><button type="button" id="termUtilityTabDiscuss" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussTab(this)">Codex</button><button type="button" id="termUtilityTabTerminal" class="utility-tab active" role="tab" aria-selected="true" onclick="showRightTerminal()">Terminal</button></div>
             <div class="terminal-header">
                 <div id="terminalTabs" class="terminal-tabs" role="tablist" aria-label="Terminal sessions"></div>
                 <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
@@ -414,13 +424,21 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab(this)">Codex</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
+                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab(this)">Codex</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
                 <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
                 <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Codex panel">&times;</button>
             </header>
             <div id="sceneDetailsPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabScene" hidden></div>
             <div id="sceneAnalysisPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabAnalysis" hidden></div>
+            <div id="sceneHistoryPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabHistory" hidden style="display:flex; flex-direction:column; height: 100%;">
+                <div id="historyListContainer" style="flex: 1; overflow-y: auto;">
+                    <div id="historyListContent"></div>
+                </div>
+                <div style="padding: 16px; border-top: 1px solid var(--border-color); flex-shrink: 0;">
+                    <button type="button" class="editor-btn" onclick="clearSceneHistory()" style="width: 100%; color: var(--red);">Clear File History...</button>
+                </div>
+            </div>
             <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
@@ -801,5 +819,24 @@
             render();
         }
     </script>
+    <!-- Modals at the end of body to ensure they overlay everything -->
+    <div id="diffModalOverlay" class="modal-overlay" hidden>
+        <div class="diff-modal card" role="dialog" aria-modal="true" aria-labelledby="diffModalTitle">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 class="card-title" id="diffModalTitle">Review Changes</h2>
+                    <p class="section-note" id="diffModalSubtitle" style="margin-top: 4px; margin-bottom: 0;">Restoring this version will apply the following changes to the current file.</p>
+                </div>
+                <button type="button" class="close-btn" onclick="closeDiffModal()" aria-label="Close diff viewer">&times;</button>
+            </div>
+            <div id="diffModalContent" class="diff-modal-content">
+                <!-- Diff HTML injected here -->
+            </div>
+            <div class="diff-modal-footer">
+                <button type="button" class="editor-btn" onclick="closeDiffModal()">Cancel</button>
+                <button type="button" class="primary-button" id="diffModalRestoreBtn">Confirm Restore</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

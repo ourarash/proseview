@@ -132,6 +132,7 @@ class Config:
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
+    max_backups: int = 50
 
     @property
     def manuscript_subdir(self) -> str:
@@ -203,6 +204,7 @@ class Config:
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
+            max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
         )
 
     def with_overrides(self, **kwargs: Any) -> "Config":
@@ -239,6 +241,8 @@ class Config:
             data["target_words"] = self.target_words
         if self.daily_target != defaults.daily_target or "daily_target" in data:
             data["daily_target"] = self.daily_target
+        if self.max_backups != defaults.max_backups or "max_backups" in data:
+            data["max_backups"] = self.max_backups
         if self.genre != defaults.genre or "genre" in data:
             data["genre"] = self.genre
         if self.mattr_band != defaults.mattr_band or "mattr_band" in data:
@@ -262,6 +266,7 @@ def _config_field_names() -> tuple[str, ...]:
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
+        "max_backups",
     )
 
 

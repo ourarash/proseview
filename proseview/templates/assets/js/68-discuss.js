@@ -358,7 +358,8 @@
 
         const SCENE_PANEL_PANES = {
             scene: {id: 'sceneDetailsPane', heading: 'Scene', render: renderSceneDetailsPane},
-            analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane}
+            analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
+            history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(window.activeScenePath) loadSceneHistory(window.activeScenePath); }}
         };
 
         function showScenePanelTab(name) {

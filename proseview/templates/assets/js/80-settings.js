@@ -50,3 +50,55 @@ async function saveSettings() {
         }, 3000);
     }
 }
+
+function updateBackupStats() {
+    fetch('/api/backups/stats')
+        .then(res => res.json())
+        .then(data => {
+            const el = document.getElementById('setting_backup_size');
+            if (el) {
+                if (data.ok) {
+                    el.textContent = data.formatted;
+                } else {
+                    el.textContent = "Error";
+                }
+            }
+        })
+        .catch(err => console.error("Stats fetch error", err));
+}
+
+function clearAllBackups() {
+    if (!confirm("Are you sure you want to clear ALL backups for this project? This cannot be undone.")) return;
+    fetch('/api/backups', { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.ok) {
+                alert("Failed to clear backups: " + data.error);
+                return;
+            }
+            updateBackupStats();
+            // If history tab is open, refresh it
+            if (window.activeScenePath && document.getElementById('sceneHistoryPane') && !document.getElementById('sceneHistoryPane').hidden) {
+                if (typeof loadSceneHistory === "function") {
+                    loadSceneHistory(window.activeScenePath);
+                }
+            }
+        });
+}
+
+// Call updateBackupStats when settings tab is opened
+document.addEventListener('DOMContentLoaded', () => {
+    // Override showTab if it exists to hook into settings open
+    const originalShowTab = window.showTab;
+    if (typeof originalShowTab === "function") {
+        window.showTab = function(tabId) {
+            originalShowTab(tabId);
+            if (tabId === 'settings') {
+                updateBackupStats();
+            }
+        };
+    } else {
+        // Fallback polling or just initial load
+        updateBackupStats();
+    }
+});

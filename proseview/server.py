@@ -66,10 +66,15 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 #: POST endpoints that take an absolute file path from the page and write
 #: through it. Each one is containment-checked against the served repo.
+#: Every endpoint that takes a client-supplied ``abs_path``. Membership here is
+#: what routes a request through :meth:`_Handler._contained_abs_path`, so an
+#: omission is silent: the endpoint keeps working and simply stops being
+#: contained. ``/delete-fm-todo`` was missing for exactly that reason.
+#: ``tests/test_server.py`` reads the dispatch back and fails on a new gap.
 _ABS_PATH_ENDPOINTS: frozenset[str] = frozenset({
-    "/insert-todo", "/edit-todo", "/delete-todo",
+    "/insert-todo", "/edit-todo", "/delete-todo", "/delete-fm-todo",
     "/add-note", "/edit-note", "/delete-note",
-    "/save-scene",
+    "/save-scene", "/add-frontmatter",
 })
 
 
@@ -910,6 +915,45 @@ def delete_note(abs_path: str, note_text: str, tag: str,
     _remove_comment_line(path, lines, _note_comment(note_text, tag), "Note")
     stamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{stamp}] deleted NOTE from {path.name}")
+
+
+#: Keys written by :func:`add_frontmatter_scaffold`, in the order they appear.
+#: Deliberately the story fields the Scene tab shows, and no others -- ``title``
+#: and ``chapter`` already fall back to the H1 and the folder, so writing them
+#: would only duplicate what the file says.
+FRONTMATTER_SCAFFOLD_FIELDS: tuple[str, ...] = (
+    "characters", "where", "when", "goal", "conflict", "outcome",
+)
+
+
+class _FrontmatterExistsError(Exception):
+    pass
+
+
+def add_frontmatter_scaffold(abs_path: str, open_mtime: float | None = None) -> None:
+    """Prepend an empty YAML block to a scene that has none.
+
+    Every key is written blank. The values are the writer's to fill: a guessed
+    ``where:`` or ``characters:`` would read exactly like something they typed
+    themselves, and be wrong in their manuscript rather than in a panel. An
+    empty key is a prompt; a wrong value is a lie. Filling them in is the job
+    of a Codex skill, where the writer reviews a proposal before it lands.
+
+    Refuses when the file already opens with a ``---`` block, so this can never
+    clobber frontmatter someone is already using.
+    """
+    path, raw, _lines = _resolve_annotation_target(abs_path, open_mtime)
+
+    existing, _body = split_frontmatter(raw)
+    if existing or raw.lstrip("﻿").startswith("---"):
+        raise _FrontmatterExistsError(
+            f"{path.name} already has a frontmatter block; edit it in your editor"
+        )
+
+    block = "---\n" + "".join(f"{key}:\n" for key in FRONTMATTER_SCAFFOLD_FIELDS) + "---\n\n"
+    _atomic_write_text(path, block + raw.lstrip("\n"))
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] added frontmatter scaffold to {path.name}")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -1790,6 +1834,17 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404)
                 self.end_headers()
+        elif path == "/add-frontmatter":
+            try:
+                add_frontmatter_scaffold(body["abs_path"], _annotation_open_mtime(body))
+                self.invalidate()
+                self._send_json({"ok": True})
+            except _FileConflictError as exc:
+                self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
+            except _FrontmatterExistsError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 409)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
         elif self.path == "/insert-todo":
             try:
                 insert_todo(

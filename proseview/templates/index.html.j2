@@ -239,30 +239,56 @@
 
     <div id="tab-settings" class="tab-panel">
         <section class="card" style="max-width: 800px; margin: 0 auto; margin-top: 24px;">
-            <div class="card-header">
-                <h2 class="card-title">Project Configuration</h2>
-                <p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">
-                    Proseview is configured entirely by a plain text file: <code>.proseview.yaml</code>. 
-                    <br>Open this file in your editor to change these settings.
-                </p>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h2 class="card-title">Project Configuration</h2>
+                    <p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">
+                        Proseview is configured entirely by a plain text file: <code>.proseview.yaml</code>. 
+                        <br>You can edit these settings here, or open the file in your editor.
+                    </p>
+                </div>
+                <button type="button" id="settingsSaveBtn" class="primary-button" onclick="saveSettings()" disabled style="margin-top: 4px;">Save Changes</button>
             </div>
+            
+            {% if not config_exists %}
+            <div id="settingsEmptyBanner" style="margin: 0 24px; padding: 12px 16px; background: var(--surface-hover); border-radius: 6px; border-left: 3px solid var(--accent); font-size: 13px; color: var(--text-primary);">
+                <strong>Proseview is currently using default settings.</strong> Change a value below and save to create a <code>.proseview.yaml</code> file for your project.
+            </div>
+            {% endif %}
             
             <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; padding: 24px;">
                 
                 <div class="settings-group">
                     <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">General Goals</h3>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Target Words:</span> <strong style="font-size: 13px;">{{ '{:,}'.format(cfg.target_words) }}</strong></div>
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Daily Target:</span> <strong style="font-size: 13px;">{{ '{:,}'.format(cfg.daily_target) }}</strong></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Target Words:</label> <input type="number" id="setting_target_words" class="inline-edit-input" value="{{ cfg.target_words }}" oninput="markSettingsDirty()"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Daily Target:</label> <input type="number" id="setting_daily_target" class="inline-edit-input" value="{{ cfg.daily_target }}" oninput="markSettingsDirty()"></div>
                     </div>
                 </div>
 
                 <div class="settings-group">
                     <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Analysis Targets</h3>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Genre Profile:</span> <strong style="font-size: 13px;">{{ cfg.genre }}</strong></div>
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Unique Words % (Local):</span> <strong style="font-size: 13px;">{{ cfg.mattr_band[0]*100 }}% – {{ cfg.mattr_band[1]*100 }}%</strong></div>
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Words Before Repetition:</span> <strong style="font-size: 13px;">{{ cfg.mtld_band[0] }} – {{ cfg.mtld_band[1] }}</strong></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Genre Profile:</label> 
+                            <select id="setting_genre" class="inline-edit-input" onchange="markSettingsDirty()">
+                                <option value="contemporary" {% if cfg.genre == 'contemporary' %}selected{% endif %}>Commercial & contemporary</option>
+                                <option value="childrens" {% if cfg.genre == 'childrens' %}selected{% endif %}>Children's / middle grade</option>
+                                <option value="literary" {% if cfg.genre == 'literary' %}selected{% endif %}>Historical & literary</option>
+                                <option value="speculative" {% if cfg.genre == 'speculative' %}selected{% endif %}>Fantasy & science fiction</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Unique Words % (Local):</label> 
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <input type="number" step="1" id="setting_mattr_min" class="inline-edit-input" style="width: 40px;" value="{{ (cfg.mattr_band[0]*100)|int }}" oninput="markSettingsDirty()">% – 
+                                <input type="number" step="1" id="setting_mattr_max" class="inline-edit-input" style="width: 40px;" value="{{ (cfg.mattr_band[1]*100)|int }}" oninput="markSettingsDirty()">%
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Words Before Repetition:</label> 
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <input type="number" step="1" id="setting_mtld_min" class="inline-edit-input" style="width: 50px;" value="{{ cfg.mtld_band[0]|int }}" oninput="markSettingsDirty()"> – 
+                                <input type="number" step="1" id="setting_mtld_max" class="inline-edit-input" style="width: 50px;" value="{{ cfg.mtld_band[1]|int }}" oninput="markSettingsDirty()">
+                            </div>
+                        </div>
                     </div>
                 </div>
 

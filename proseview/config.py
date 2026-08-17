@@ -211,6 +211,46 @@ class Config:
         """
         return replace(self, **kwargs)
 
+    def save(self, repo_root: Path) -> None:
+        """Write the configuration back to ``.proseview.yaml``.
+        
+        Uses ruamel.yaml to preserve existing comments or formatting.
+        """
+        import ruamel.yaml
+        path = repo_root / ".proseview.yaml"
+        yaml = ruamel.yaml.YAML()
+        yaml.preserve_quotes = True
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        
+        if path.exists():
+            try:
+                data = yaml.load(path)
+            except Exception:
+                data = {}
+        else:
+            data = {}
+            
+        if data is None:
+            data = {}
+
+        defaults = Config()
+        
+        if self.target_words != defaults.target_words or "target_words" in data:
+            data["target_words"] = self.target_words
+        if self.daily_target != defaults.daily_target or "daily_target" in data:
+            data["daily_target"] = self.daily_target
+        if self.genre != defaults.genre or "genre" in data:
+            data["genre"] = self.genre
+        if self.mattr_band != defaults.mattr_band or "mattr_band" in data:
+            data["mattr_band"] = list(self.mattr_band)
+        
+        default_mtld = GENRE_MTLD_BANDS.get(self.genre, defaults.mtld_band)
+        if self.mtld_band != default_mtld or "mtld_band" in data:
+            data["mtld_band"] = list(self.mtld_band)
+
+        with path.open("w", encoding="utf-8") as f:
+            yaml.dump(data, f)
+
 
 class ConfigError(ValueError):
     """Raised when ``.proseview.yaml`` contains an invalid value for a known key."""

@@ -2352,3 +2352,38 @@
     border-color: var(--border-active);
     background: var(--surface-hover);
 }
+
+/* Settings Inline Edit */
+.inline-edit-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--text-primary);
+    font-weight: bold;
+    font-size: 13px;
+    text-align: right;
+    font-family: inherit;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    width: 100px;
+}
+.inline-edit-input:hover {
+    border-bottom: 1px dashed var(--border-color);
+    background: var(--surface-hover);
+}
+.inline-edit-input:focus {
+    outline: none;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--accent);
+}
+select.inline-edit-input {
+    appearance: none;
+    cursor: pointer;
+    text-align: right;
+    direction: rtl; /* For centering text effectively to the right */
+}
+select.inline-edit-input option {
+    direction: ltr; /* Reset for dropdown */
+}

@@ -1270,6 +1270,26 @@ class _Handler(BaseHTTPRequestHandler):
             }
         self._send_json({"ok": True, "client_id": client_id})
 
+    def _handle_settings_update(self, body: dict[str, Any]) -> None:
+        try:
+            cfg = Config.load(Path(self.repo_root))
+            kwargs = {}
+            for k, v in body.items():
+                if k in ["target_words", "daily_target"]:
+                    kwargs[k] = int(v)
+                elif k == "genre":
+                    kwargs[k] = str(v)
+                elif k in ["mattr_band", "mtld_band"]:
+                    kwargs[k] = (float(v[0]), float(v[1]))
+            
+            new_cfg = cfg.with_overrides(**kwargs)
+            new_cfg.save(Path(self.repo_root))
+            
+            self.invalidate()
+            self._send_json({"ok": True})
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+
     def _handle_ai_proposal_update(self, proposal_id: str, body: dict[str, Any]) -> None:
         try:
             with _ai_lock:
@@ -1624,6 +1644,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": f"Bad JSON: {exc}"}, 400)
             return
         path = urlparse(self.path).path
+        if path.startswith("/api/settings"):
+            self._handle_settings_update(body)
+            return
         if path.startswith("/ai/proposals/"):
             proposal_id = path.rstrip("/").split("/")[-1]
             self._handle_ai_proposal_update(proposal_id, body)

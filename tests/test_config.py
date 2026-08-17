@@ -198,3 +198,44 @@ characters:
     assert parsed["target_words"] == 42
     assert parsed["mattr_band"] == [0.70, 0.80]
     assert parsed["characters"] == ["Nima", "Mira"]
+
+def test_config_save_preserves_comments(tmp_path: Path):
+    import textwrap
+    yaml_path = tmp_path / ".proseview.yaml"
+    yaml_path.write_text(
+        textwrap.dedent(
+            """\
+            # This is my target
+            target_words: 80000
+            
+            # The band
+            mattr_band:
+              - 0.74
+              - 0.77
+            """
+        ),
+        encoding="utf-8"
+    )
+    
+    cfg = Config.load(tmp_path)
+    new_cfg = cfg.with_overrides(target_words=90000, mattr_band=(0.80, 0.90))
+    new_cfg.save(tmp_path)
+    
+    result = yaml_path.read_text(encoding="utf-8")
+    assert "# This is my target" in result
+    assert "target_words: 90000" in result
+    assert "# The band" in result
+    assert "- 0.8" in result
+    assert "- 0.9" in result
+
+def test_config_save_creates_new_file(tmp_path: Path):
+    yaml_path = tmp_path / ".proseview.yaml"
+    assert not yaml_path.exists()
+    
+    cfg = Config()
+    new_cfg = cfg.with_overrides(target_words=95000)
+    new_cfg.save(tmp_path)
+    
+    assert yaml_path.exists()
+    result = yaml_path.read_text(encoding="utf-8")
+    assert "target_words: 95000" in result

@@ -731,6 +731,7 @@ def render_html_report(
         "session_token_json": json.dumps(session_token),
         "config_json": _js_json(dataclasses.asdict(cfg)),
         "cfg": cfg,
+        "config_exists": (root / ".proseview.yaml").exists(),
     }
     return _render_template("index.html.j2", **context)
 

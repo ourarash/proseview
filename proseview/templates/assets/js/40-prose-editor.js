@@ -43,7 +43,7 @@
                     'Mod-Shift-z': PM.redo,
                     'Mod-b': PM.toggleMark(PM.mySchema.marks.strong),
                     'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
-                    'Mod-s': function() { saveSceneEdit(); return true; }
+                    'Mod-s': function() { saveSceneEdit(null, false); return true; }
                 }))
             ].filter(Boolean);
 
@@ -186,7 +186,7 @@
             return {content: serializeSceneEditorMarkdown(), base_mtime: _pmOpenMtime};
         }
 
-        function saveSceneEdit(onSaved) {
+        function saveSceneEdit(onSaved, exitEditMode) {
             if (!_pmView || !_pmEditMode) return;
             if (!_pmDirty) return;
             if (_pmSaveInFlight) return;
@@ -237,7 +237,7 @@
                 }
                 setPmSaved();
                 if (typeof aiMarkAppliedProposalsSaved === 'function') aiMarkAppliedProposalsSaved();
-                cancelSceneEdit();
+                if (exitEditMode !== false) cancelSceneEdit();
                 if (typeof onSaved === 'function') onSaved();
             }).catch(function(err) {
                 _pmSaveInFlight = false;
@@ -309,7 +309,10 @@
             var btn = document.getElementById('sceneEditBtn');
             if (btn) btn.textContent = '✏ Edit';
             var p = paths[curIdx];
+            var b = document.getElementById('modalBody');
+            var oldScroll = b ? b.scrollTop : 0;
             mountProseView(p);
+            if (b) b.scrollTop = oldScroll;
             return true;
         }
 

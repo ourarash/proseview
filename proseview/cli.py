@@ -8,6 +8,10 @@ Subcommands:
 ``proseview init``
     Drop a starter ``.proseview.yaml`` next to a manuscript folder, so a
     new repo gets working defaults without hand-editing config.
+
+``proseview roster``
+    Print likely character names found in the prose, for pasting into
+    ``characters:``. Suggestion only -- nothing is written.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .roster import DEFAULT_TOP_N, extract_roster
 from .server import DEFAULT_PORT, serve
 
 
@@ -124,6 +129,28 @@ def _build_parser() -> argparse.ArgumentParser:
     init_p.add_argument(
         "--force", action="store_true",
         help="Overwrite an existing .proseview.yaml.",
+    )
+
+    roster_p = sub.add_parser(
+        "roster",
+        help="Suggest character names found in the manuscript.",
+        description=(
+            "Scan the prose for likely character names and print them ranked "
+            "by mentions. Nothing is written; copy the ones you want into "
+            "characters: in .proseview.yaml, or into story-bible/characters/."
+        ),
+    )
+    roster_p.add_argument(
+        "--root", type=Path, default=Path.cwd(),
+        help="Path to the novel repo (default: current directory).",
+    )
+    roster_p.add_argument(
+        "--top", type=int, default=DEFAULT_TOP_N,
+        help=f"How many candidates to print (default: {DEFAULT_TOP_N}).",
+    )
+    roster_p.add_argument(
+        "--yaml", action="store_true",
+        help="Print as a characters: YAML block ready to paste into config.",
     )
 
     export_p = sub.add_parser(
@@ -233,6 +260,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.cmd is None:
         args.cmd = "serve"
     return args
+
+
+def suggest_roster(args: argparse.Namespace) -> int:
+    """Print ranked character-name candidates found in the prose.
+
+    Deliberately read-only. The candidates are a starting point a writer
+    prunes, not a detection the tool acts on by itself.
+    """
+    from .config import Config
+    from .scenes import collect_scene_stats
+
+    root = args.root.resolve()
+    cfg = Config.load(root)
+    scenes = collect_scene_stats(root, cfg, lexical=False)
+    if not scenes:
+        sys.stderr.write(f"no scenes found under {root}\n")
+        return 1
+
+    candidates = extract_roster([s.text for s in scenes], top_n=args.top)
+    if not candidates:
+        sys.stderr.write("no character-name candidates found.\n")
+        return 1
+
+    if args.yaml:
+        sys.stdout.write("characters:\n")
+        for name, _ in candidates:
+            sys.stdout.write(f"  - {name}\n")
+        return 0
+
+    width = max(len(name) for name, _ in candidates)
+    sys.stdout.write(f"{len(candidates)} candidates from {len(scenes)} scenes:\n\n")
+    for name, count in candidates:
+        sys.stdout.write(f"  {name:<{width}}  {count:>5} mentions\n")
+    sys.stdout.write(textwrap.dedent(f"""
+        These are guesses from capitalisation, so place names and stray words
+        will be mixed in. Keep the real characters and drop the rest.
+
+        To use them:
+          proseview roster --yaml >> .proseview.yaml   # then edit the list
+        or create one file per character under {cfg.characters_dir}/.
+    """))
+    return 0
 
 
 def init_repo(root: Path, *, force: bool = False) -> int:
@@ -439,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "init":
         return init_repo(args.root, force=args.force)
+    if args.cmd == "roster":
+        return suggest_roster(args)
     if args.cmd == "export":
         return export_manuscript(args)
     if args.cmd == "propose":

@@ -34,8 +34,8 @@ from .lexical import (
     FIRST_PERSON_RE,
     HYPERBOLE_WORDS,
     LYRICAL_MARKERS,
-    PASSIVE_VOICE_RE,
     SENSORY_WORDS,
+    passive_spans,
 )
 
 PASS_NAMES: tuple[str, ...] = (
@@ -130,9 +130,8 @@ def _word_list_pass(
 def passive_voice_pass(paragraphs: list[str]) -> list[HighlightInstance]:
     out: list[HighlightInstance] = []
     for idx, para in enumerate(paragraphs):
-        for match in PASSIVE_VOICE_RE.finditer(para):
-            out.append(HighlightInstance(idx, (match.start(), match.end()),
-                                         match.group(0)))
+        for start, end in passive_spans(para):
+            out.append(HighlightInstance(idx, (start, end), para[start:end]))
     return out
 
 

@@ -64,6 +64,54 @@ def test_passive_voice_pass_positives_and_negatives():
     assert all("she opened" not in m.lower() for m in matches)
 
 
+def test_passive_voice_pass_skips_predicate_adjectives():
+    """"She was tired" is a state, not something done to her.
+
+    The bare "be + participle" shape flagged these, and they are common enough
+    in fiction that they dominated the pass -- a writer opening the highlight
+    saw mostly false alarms and learned to distrust it.
+    """
+    paragraphs = [
+        "She was tired after the walk.",
+        "He was excited about the trip.",
+        "They were married for years.",
+        "I was scared of the dark.",
+        "He was interested in the book.",
+    ]
+    assert passive_voice_pass(paragraphs) == []
+
+
+def test_passive_voice_pass_keeps_an_adjectival_participle_with_an_agent():
+    """The "by" agent is what separates the two readings."""
+    hits = passive_voice_pass(["He was surprised by the noise."])
+    assert [h.text.lower() for h in hits] == ["was surprised"]
+
+
+def test_passive_voice_pass_excludes_the_agent_from_the_span():
+    """The highlight covers the construction, not the phrase that follows."""
+    hits = passive_voice_pass(["The tree was struck by lightning."])
+    assert [h.text for h in hits] == ["was struck"]
+
+
+def test_passive_voice_pass_catches_irregular_participles():
+    """"broken" and "struck" were missing from the participle list, so
+    textbook passives went unflagged."""
+    paragraphs = [
+        "The vase was broken by the cat.",
+        "The tree was struck by lightning.",
+        "The thief was caught near the gate.",
+    ]
+    matches = " | ".join(_matched_texts(passive_voice_pass(paragraphs))).lower()
+    assert "was broken" in matches
+    assert "was struck" in matches
+    assert "was caught" in matches
+
+
+def test_passive_voice_pass_ignores_past_continuous():
+    """"was thinking" is tense, not voice."""
+    assert passive_voice_pass(["I was thinking about her.", "She was going home."]) == []
+
+
 def test_filter_verbs_pass_picks_filter_verbs_only():
     paragraphs = ["She felt the cold floor and noticed the silence."]
     hits = filter_verbs_pass(paragraphs)

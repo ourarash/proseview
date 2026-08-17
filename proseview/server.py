@@ -1798,7 +1798,27 @@ class _Handler(BaseHTTPRequestHandler):
                             pass
                 
                 backups.sort(key=lambda x: x["timestamp"], reverse=True)
-                self._send_json({"ok": True, "history": backups})
+                
+                import subprocess
+                git_ignored = False
+                is_git_repo = False
+                try:
+                    res_repo = subprocess.run(
+                        ["git", "rev-parse", "--is-inside-work-tree"],
+                        cwd=root, capture_output=True, text=True
+                    )
+                    if res_repo.returncode == 0 and res_repo.stdout.strip() == "true":
+                        is_git_repo = True
+                        res_ignore = subprocess.run(
+                            ["git", "check-ignore", "-q", ".proseview/backups/"],
+                            cwd=root, capture_output=True
+                        )
+                        if res_ignore.returncode == 0:
+                            git_ignored = True
+                except Exception:
+                    pass
+                
+                self._send_json({"ok": True, "history": backups, "git_ignored": git_ignored, "is_git_repo": is_git_repo})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
             return

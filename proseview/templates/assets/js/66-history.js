@@ -9,12 +9,23 @@ function loadSceneHistory(scenePath) {
             const container = document.getElementById("historyListContent");
             if (!container) return;
             
-            if (data.history.length === 0) {
-                container.innerHTML = `<div style="padding: 16px; color: var(--text-muted); text-align: center;">No history available.</div>`;
-                return;
-            }
+            
             
             let html = "";
+            if (data.is_git_repo && !data.git_ignored) {
+                html += `<div style="padding: 12px 16px; color: var(--text-muted); font-size: 13px; font-style: italic;">
+                    Proseview creates local backups when you save. To keep your Git repository clean, we recommend adding <code>.proseview/backups/</code> to your <code>.gitignore</code>.
+                </div>`;
+            }
+            
+            if (data.history.length === 0) {
+                const gitNote = data.is_git_repo ? `<br><br><span style="font-size: 11px;">Note: These are temporary, local snapshots and do not replace Git commits.</span>` : ``;
+                container.innerHTML = html + `<div style="padding: 24px 16px; color: var(--text-muted); text-align: center; font-size: 13px; line-height: 1.5;">
+                    <div style="margin-bottom: 8px;">No local backups found.</div>
+                    File history is generated automatically when you save changes or apply AI edits.${gitNote}
+                </div>`;
+                return;
+            }
             data.history.forEach(item => {
                 const date = new Date(item.timestamp);
                 const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });

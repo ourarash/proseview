@@ -708,6 +708,19 @@
         .related-doc-editor-icon { color: var(--text-muted); font-size: 13px; text-decoration: none; flex-shrink: 0; line-height: 1; }
         .related-doc-editor-icon:hover { color: var(--primary); }
         .related-doc-empty { padding: 12px; background: var(--surface-card); border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+        /* Shown instead of the story rows when a scene has no frontmatter at
+           all, so an unused feature reads as optional rather than broken. */
+        .scene-card-fm-empty { padding: 14px; background: var(--surface-card); border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--text-muted); font-size: 12px; line-height: 1.6; align-self: start; }
+        .scene-card-fm-empty p { margin: 0 0 8px 0; }
+        .scene-card-fm-empty pre { margin: 0; padding: 10px; background: var(--surface-muted); border-radius: 8px; overflow-x: auto; }
+        .scene-card-fm-empty code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; color: var(--text-muted); white-space: pre; }
+        /* The inline `---` in the explanation, not the example block. */
+        .scene-card-fm-empty p code { padding: 1px 4px; background: var(--surface-muted); border-radius: 4px; }
+        .scene-card-fm-empty em { font-style: normal; font-weight: 600; color: var(--text); }
+        .scene-card-fm-hint { margin: 8px 0 0 0; font-style: italic; }
+        .scene-card-fm-add { margin-top: 10px; padding: 6px 12px; background: var(--surface-muted); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer; }
+        .scene-card-fm-add:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .scene-card-fm-add:disabled { opacity: 0.6; cursor: default; }
         .bio-card { background: var(--surface-card); padding: 30px; border-radius: 12px; border: 1px solid var(--border); }
         .modal-note { margin-bottom: 12px; padding: 12px; background: var(--surface-note); border-radius: 8px; border: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
         .sc-row { display: flex; flex-direction: column; }

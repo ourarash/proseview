@@ -35,6 +35,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7",
+    "pytest-xdist>=3.5",
 ]
 # Browser end-to-end tier. Required in CI, opt-in locally:
 # `pip install -e ".[e2e]" && playwright install chromium`.
@@ -43,6 +44,7 @@ e2e = [
     "pytest>=7",
     "playwright>=1.44",
     "pytest-playwright>=0.5",
+    "pytest-xdist>=3.5",
 ]
 
 [project.urls]
@@ -71,6 +73,20 @@ proseview = [
 testpaths = ["tests"]
 # The browser tier needs Playwright plus a Chromium download, so it is excluded
 # from the default run. Opt in with `pytest -m e2e_browser` (or `-m ""` for all).
+#
+# Both tiers run in parallel with pytest-xdist, which is worth using:
+#
+#     pytest -n 4                      # unit + HTTP, 18s -> 12s
+#     pytest -m e2e_browser -n 4       # browser tier, 144s -> 44s
+#
+# `-n` is deliberately not in addopts. A fixed number is wrong on a machine
+# with a different core count, and `-n auto` is actively worse here: every
+# worker starts its own server subprocess and Chromium, so on this 14-core
+# machine `auto` oversubscribes badly. Measured on 14 cores, `-n 4` was clean
+# across repeated runs while `-n 8` intermittently lost timing-sensitive tests
+# in the selection and conversation-history clusters. Pick the number for the
+# machine, and treat a failure that only appears at higher `-n` as a real
+# timing bug rather than a reason to lower it silently.
 addopts = "-m 'not e2e_browser'"
 markers = [
     "e2e_browser: end-to-end test driving a real browser via Playwright",

@@ -599,6 +599,46 @@
                       + '</span><span class="sc-value">' + escHtml(String(value)) + '</span></div>';
             };
 
+            // Every row below is optional. A manuscript written without
+            // frontmatter -- an Obsidian vault, an imported draft -- used to
+            // render seven rows of "Unknown" and "Not defined", which reads as
+            // a broken panel rather than an unused feature. Empty rows are
+            // dropped, and if nothing at all is set the block is replaced by
+            // one line saying what to add.
+            const contextRows =
+                storyRow('POV', fm.pov) +
+                storyRow(threadKey, fm[threadKey]) +
+                storyRow('When', fm.when) +
+                storyRow(dayKey, fm[dayKey]) +
+                storyRow('Where', fm.where || fm.location);
+            const hasCharacters = Array.isArray(chars) ? chars.length > 0 : !!chars;
+            const characterRow = hasCharacters
+                ? '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
+                  renderCharacterTags(chars, charMentions) + '</div></div>'
+                : '';
+
+            const arcRows =
+                storyRow('Goal', fm.goal) +
+                storyRow('Conflict', fm.conflict) +
+                storyRow('Outcome', fm.outcome);
+            const arcHtml = arcRows
+                ? '<div class="scene-card-arc">' + arcRows + '</div>'
+                : '';
+
+            const hasAnyFrontmatter = !!(contextRows || characterRow || arcRows);
+            const emptyHint = hasAnyFrontmatter ? '' :
+                '<div class="scene-card-fm-empty">' +
+                '<p>No scene details yet. These come from <em>frontmatter</em>: a small block ' +
+                'of notes about the scene, written in YAML between two <code>---</code> lines at ' +
+                'the very top of the file. It sits above your prose and never appears in the ' +
+                'finished text:</p>' +
+                '<pre><code>---\ncharacters:\nwhere:\nwhen:\ngoal:\nconflict:\noutcome:\n---</code></pre>' +
+                '<button type="button" class="scene-card-fm-add" ' +
+                'data-abs-path="' + attrEscape(m.abs_path || '') + '">Add this block</button>' +
+                '<p class="scene-card-fm-hint">The keys are written empty for you to fill in. ' +
+                'Every field is optional, and the rest of Proseview works without them.</p>' +
+                '</div>';
+
             let cardHtml = '<div class="scene-card">' +
                            '<div class="scene-card-meta">' +
                            '<div class="scene-card-context-header" title="These fields are extracted from the YAML frontmatter block at the top of your markdown file.">Data from YAML Frontmatter &#x24D8;</div>' +
@@ -606,19 +646,11 @@
                            '<span class="sc-label">Scene File <a class="editor-icon-btn" href="' + attrEscape(editorHref) + '" target="_blank" title="Open in ' + escHtml(editorLabel) + '">\u2197</a></span>' +
                            '<span class="sc-value">' + escHtml(p) + '</span>' +
                            '</div>' +
-                           '<div class="sc-row"><span class="sc-label">POV</span><span class="sc-value">' + escHtml(String(fm.pov || "Unknown")) + '</span></div>' +
-                           storyRow(threadKey, fm[threadKey]) +
-                           '<div class="sc-row"><span class="sc-label">When</span><span class="sc-value">' + escHtml(String(fm.when || "Unknown")) + '</span></div>' +
-                           storyRow(dayKey, fm[dayKey]) +
-                           '<div class="sc-row"><span class="sc-label">Where</span><span class="sc-value">' + escHtml(String(fm.where || fm.location || "Unknown")) + '</span></div>' +
-                           '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
-                           renderCharacterTags(chars, charMentions) + '</div></div>' +
+                           contextRows +
+                           characterRow +
                            '</div>' +
-                           '<div class="scene-card-arc">' +
-                           '<div class="sc-row"><span class="sc-label">Goal</span><span class="sc-value">' + escHtml(String(fm.goal || "Not defined")) + '</span></div>' +
-                           '<div class="sc-row"><span class="sc-label">Conflict</span><span class="sc-value">' + escHtml(String(fm.conflict || "Not defined")) + '</span></div>' +
-                           '<div class="sc-row"><span class="sc-label">Outcome</span><span class="sc-value">' + escHtml(String(fm.outcome || "Not defined")) + '</span></div>' +
-                           '</div>' +
+                           arcHtml +
+                           emptyHint +
                            relatedHtml +
                            '</div>';
 

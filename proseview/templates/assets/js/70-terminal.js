@@ -1258,6 +1258,21 @@
         }
 
         document.addEventListener('click', function(e) {
+            // "Add this block": write an empty frontmatter scaffold into a
+            // scene that has none. Every key lands blank on purpose -- a
+            // guessed value would read like something the writer typed.
+            const fmAddBtn = e.target.closest('.scene-card-fm-add');
+            if (fmAddBtn) {
+                const absPath = fmAddBtn.dataset.absPath;
+                if (!absPath) return;
+                postAndReload(
+                    '/add-frontmatter',
+                    {abs_path: absPath, open_mtime: _mtimeForAbsPath(absPath)},
+                    'Could not add the frontmatter block',
+                    fmAddBtn
+                );
+                return;
+            }
             // Note icon: toggle popover open/closed
             const noteIcon = e.target.closest('.note-marker-icon');
             if (noteIcon) {

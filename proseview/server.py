@@ -9,6 +9,7 @@ POST /insert-todo  Insert a TODO comment into a manuscript file.
 from __future__ import annotations
 
 import base64
+from html import escape as html_escape
 import json
 import os
 import queue
@@ -1781,23 +1782,41 @@ class _Handler(BaseHTTPRequestHandler):
                 diff_html.append('<table class="diff diff-inline">')
                 
                 sm = difflib.SequenceMatcher(None, old_lines, new_lines)
-                for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                opcodes = sm.get_opcodes()
+                
+                if not show_full and len(opcodes) == 1 and opcodes[0][0] == 'equal':
+                    diff_html.append('<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-muted); font-style: italic;">No Differences Found</td></tr>')
+                    opcodes = []
+                
+                for idx, (tag, i1, i2, j1, j2) in enumerate(opcodes):
                     if tag == 'equal':
-                        if not show_full and (i2 - i1) > 6:
-                            for k in range(3):
-                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
-                            diff_html.append(f'<tr><td class="diff_header">...</td><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);">... {i2-i1-6} unchanged lines ...</td></tr>')
-                            for k in range(i2-i1-3, i2-i1):
-                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                        if not show_full:
+                            is_first = (idx == 0)
+                            is_last = (idx == len(opcodes) - 1)
+                            show_top = not is_first
+                            show_bottom = not is_last
+                            top_ctx = 3 if show_top else 0
+                            bottom_ctx = 3 if show_bottom else 0
+                            
+                            if (i2 - i1) > (top_ctx + bottom_ctx):
+                                for k in range(top_ctx):
+                                    diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
+                                hidden = (i2 - i1) - top_ctx - bottom_ctx
+                                diff_html.append(f'<tr><td class="diff_header">...</td><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);">... {hidden} unchanged lines ...</td></tr>')
+                                for k in range(i2-i1-bottom_ctx, i2-i1):
+                                    diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
+                            else:
+                                for k in range(i2 - i1):
+                                    diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
                         else:
                             for k in range(i2 - i1):
-                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                                diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header">{j1+k+1}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
                     elif tag == 'delete':
                         for k in range(i2 - i1):
-                            diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{html.escape(old_lines[i1+k])}</td></tr>')
+                            diff_html.append(f'<tr><td class="diff_header">{i1+k+1}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
                     elif tag == 'insert':
                         for k in range(j2 - j1):
-                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{j1+k+1}</td><td class="diff_add" style="white-space:pre-wrap">{html.escape(new_lines[j1+k])}</td></tr>')
+                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{j1+k+1}</td><td class="diff_add" style="white-space:pre-wrap">{html_escape(new_lines[j1+k])}</td></tr>')
                     elif tag == 'replace':
                         old_text = "".join(old_lines[i1:i2])
                         new_text = "".join(new_lines[j1:j2])
@@ -1813,14 +1832,14 @@ class _Handler(BaseHTTPRequestHandler):
                                 for w in old_words[wi1:wi2]:
                                     if w == '\n': old_html_lines.append([])
                                     else:
-                                        if wtag == 'equal': old_html_lines[-1].append(html.escape(w))
-                                        else: old_html_lines[-1].append(f'<del class="diff-delete">{html.escape(w)}</del>')
+                                        if wtag == 'equal': old_html_lines[-1].append(html_escape(w))
+                                        else: old_html_lines[-1].append(f'<del class="diff-delete">{html_escape(w)}</del>')
                             if wtag in ('equal', 'insert', 'replace'):
                                 for w in new_words[wj1:wj2]:
                                     if w == '\n': new_html_lines.append([])
                                     else:
-                                        if wtag == 'equal': new_html_lines[-1].append(html.escape(w))
-                                        else: new_html_lines[-1].append(f'<ins class="diff-insert">{html.escape(w)}</ins>')
+                                        if wtag == 'equal': new_html_lines[-1].append(html_escape(w))
+                                        else: new_html_lines[-1].append(f'<ins class="diff-insert">{html_escape(w)}</ins>')
                         
                         for k in range(i2 - i1):
                             html_content = "".join(old_html_lines[k]) if k < len(old_html_lines) else ""

@@ -897,8 +897,8 @@ def test_the_terminal_never_buries_the_way_back_to_the_other_tabs(
     )
 
     tabs = page.locator("#terminalPanel .terminal-dock-tabs .utility-tab")
-    assert tabs.count() == 4
-    for name in ("Scene", "Analysis", "Codex", "Terminal"):
+    assert tabs.count() == 5
+    for name in ("Scene", "Analysis", "History", "Codex", "Terminal"):
         tab = page.locator(f"#terminalPanel .terminal-dock-tabs button:text-is('{name}')")
         assert tab.is_visible(), f"{name} is unreachable from a terminal with two shells"
         box = tab.bounding_box()

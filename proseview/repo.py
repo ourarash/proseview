@@ -96,7 +96,7 @@ def resolve_visible_repository_path(root: Path, value: str) -> Path:
         not raw
         or relative.is_absolute()
         or ".." in relative.parts
-        or any(part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in relative.parts)
+        or any((part.startswith(".") and part != ".proseview.yaml") or part in CONTEXT_SKIP_DIRS for part in relative.parts)
     ):
         raise ValueError("path must be a safe visible repository-relative path")
 
@@ -302,6 +302,15 @@ def build_sidebar_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
         if node is not None:
             nodes.append(node)
 
+    yaml_path = root / ".proseview.yaml"
+    if yaml_path.exists() and yaml_path.is_file():
+        nodes.append({
+            "name": ".proseview.yaml",
+            "path": ".proseview.yaml",
+            "is_file": True,
+            "is_scene": False,
+        })
+
     return nodes
 
 
@@ -498,7 +507,7 @@ def build_repository_tree(
         return []
     nodes: list[dict[str, Any]] = []
     for entry in entries:
-        if entry.name.startswith(".") or entry.name in CONTEXT_SKIP_DIRS:
+        if (entry.name.startswith(".") and entry.name != ".proseview.yaml") or entry.name in CONTEXT_SKIP_DIRS:
             continue
         if entry.is_dir():
             node = _repository_dir_node(entry, resolved_root, cfg, context_max_bytes)

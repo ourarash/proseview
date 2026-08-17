@@ -1571,6 +1571,11 @@
             highlightSidebarItem(path);
             if (options.route !== false) routeToHash('/file/' + encodeURIComponent(path), true);
             document.getElementById('filePreviewTitle').textContent = path;
+            const absPathForEditor = (typeof repoRoot !== 'undefined' ? repoRoot + '/' : '') + path;
+            const editorBtn = document.getElementById('filePreviewEditorBtn');
+            editorBtn.href = typeof buildEditorUrl === 'function' ? buildEditorUrl(absPathForEditor) : '#';
+            editorBtn.textContent = '\u2197';
+            editorBtn.title = 'Open in ' + (typeof editorLabel !== 'undefined' ? editorLabel : 'Editor');
             document.getElementById('filePreviewMeta').textContent = 'Loading preview…';
             document.getElementById('filePreviewBody').innerHTML = '<div class="repo-warn">Loading preview…</div>';
             document.documentElement.dataset.view = 'file';

@@ -17,20 +17,15 @@ async function saveSettings() {
         const payload = {
             target_words: document.getElementById("setting_target_words").value,
             daily_target: document.getElementById("setting_daily_target").value,
-            genre: document.getElementById("setting_genre").value,
-            mattr_band: [
-                parseInt(document.getElementById("setting_mattr_min").value) / 100,
-                parseInt(document.getElementById("setting_mattr_max").value) / 100
-            ],
-            mtld_band: [
-                parseInt(document.getElementById("setting_mtld_min").value),
-                parseInt(document.getElementById("setting_mtld_max").value)
-            ]
+            genre: document.getElementById("setting_genre").value
         };
 
+        // pvHeaders() is the single source of the session header name. Spelling
+        // it out here sent "X-Session-Token" while the server reads
+        // "X-Proseview-Session", so every save was rejected as unauthorized.
         const res = await fetch("/api/settings", {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: pvHeaders(),
             body: JSON.stringify(payload)
         });
 

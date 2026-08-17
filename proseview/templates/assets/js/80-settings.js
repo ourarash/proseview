@@ -78,9 +78,9 @@ function clearAllBackups() {
             }
             updateBackupStats();
             // If history tab is open, refresh it
-            if (window.activeScenePath && document.getElementById('sceneHistoryPane') && !document.getElementById('sceneHistoryPane').hidden) {
+            if (paths[curIdx] && document.getElementById('sceneHistoryPane') && !document.getElementById('sceneHistoryPane').hidden) {
                 if (typeof loadSceneHistory === "function") {
-                    loadSceneHistory(window.activeScenePath);
+                    loadSceneHistory(paths[curIdx]);
                 }
             }
         });

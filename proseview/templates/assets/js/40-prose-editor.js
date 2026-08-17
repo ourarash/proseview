@@ -237,6 +237,10 @@
                 }
                 setPmSaved();
                 if (typeof aiMarkAppliedProposalsSaved === 'function') aiMarkAppliedProposalsSaved();
+                var historyPane = document.getElementById('sceneHistoryPane');
+                if (historyPane && !historyPane.hidden && paths[curIdx] && typeof loadSceneHistory === 'function') {
+                    loadSceneHistory(paths[curIdx]);
+                }
                 if (exitEditMode !== false) cancelSceneEdit();
                 if (typeof onSaved === 'function') onSaved();
             }).catch(function(err) {

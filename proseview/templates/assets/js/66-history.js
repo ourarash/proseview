@@ -100,10 +100,10 @@ document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => 
 });
 
 function clearSceneHistory() {
-    if (!window.activeScenePath) return;
+    if (!paths[curIdx]) return;
     if (!confirm("Are you sure you want to clear all history for this file? This cannot be undone.")) return;
     
-    fetch(`/api/scene/history?path=${encodeURIComponent(window.activeScenePath)}`, {
+    fetch(`/api/scene/history?path=${encodeURIComponent(paths[curIdx])}`, {
         method: "DELETE"
     })
     .then(res => res.json())
@@ -112,7 +112,7 @@ function clearSceneHistory() {
             alert("Failed to clear history: " + data.error);
             return;
         }
-        loadSceneHistory(window.activeScenePath);
+        loadSceneHistory(paths[curIdx]);
     })
     .catch(err => console.error("Clear history error:", err));
 }

@@ -86,7 +86,7 @@ document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => 
     
     fetch(`/api/scene/history/restore`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: pvHeaders(),
         body: JSON.stringify({ path: currentDiffScene, timestamp: currentDiffTs })
     })
     .then(res => res.json())
@@ -115,7 +115,8 @@ function clearSceneHistory() {
     if (!confirm("Are you sure you want to clear all history for this file? This cannot be undone.")) return;
     
     fetch(`/api/scene/history?path=${encodeURIComponent(paths[curIdx])}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: pvHeaders()
     })
     .then(res => res.json())
     .then(data => {

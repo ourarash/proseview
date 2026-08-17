@@ -69,7 +69,7 @@ function updateBackupStats() {
 
 function clearAllBackups() {
     if (!confirm("Are you sure you want to clear ALL backups for this project? This cannot be undone.")) return;
-    fetch('/api/backups', { method: 'DELETE' })
+    fetch('/api/backups', { method: 'DELETE', headers: pvHeaders() })
         .then(res => res.json())
         .then(data => {
             if (!data.ok) {

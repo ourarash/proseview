@@ -4040,7 +4040,10 @@ def test_selection_add_todo_writes_the_comment_to_the_file(page: Page, server: P
     page.fill("#selectionTodoText", "Sharpen Lowe's entrance")
     page.click("#selectionTodoCopy")
 
-    _wait_until(lambda: "<!-- TODO: Sharpen Lowe's entrance -->" in path.read_text(encoding="utf-8"),
+    # The selected passage is appended to the note, so the TODO still reads as
+    # an instruction once the paragraph around it has moved on.
+    expected = '<!-- TODO: Sharpen Lowe\'s entrance | "It is sticking again" -->'
+    _wait_until(lambda: expected in path.read_text(encoding="utf-8"),
                 message="TODO from the selection menu never reached the file")
 
     text = path.read_text(encoding="utf-8")

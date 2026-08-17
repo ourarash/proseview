@@ -52,11 +52,28 @@ function loadSceneHistory(scenePath) {
 let currentDiffScene = null;
 let currentDiffTs = null;
 
+let currentDiffMode = 'inline';
+
+function setDiffMode(mode) {
+    if (currentDiffMode === mode) return;
+    currentDiffMode = mode;
+    
+    document.getElementById("diffToggleInline").classList.toggle("active", mode === "inline");
+    document.getElementById("diffToggleSideBySide").classList.toggle("active", mode === "side-by-side");
+    
+    if (currentDiffScene && currentDiffTs) {
+        openDiffModal(currentDiffScene, currentDiffTs);
+    }
+}
+
 function openDiffModal(scenePath, timestamp) {
     currentDiffScene = scenePath;
     currentDiffTs = timestamp;
     
-    fetch(`/api/scene/history/diff?path=${encodeURIComponent(scenePath)}&timestamp=${encodeURIComponent(timestamp)}`)
+    document.getElementById("diffModalContent").innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading diff...</div>';
+    document.getElementById("diffModalOverlay").hidden = false;
+    
+    fetch(`/api/scene/history/diff?path=${encodeURIComponent(scenePath)}&timestamp=${encodeURIComponent(timestamp)}&mode=${encodeURIComponent(currentDiffMode)}`)
         .then(res => res.json())
         .then(data => {
             if (!data.ok) {
@@ -64,7 +81,6 @@ function openDiffModal(scenePath, timestamp) {
                 return;
             }
             document.getElementById("diffModalContent").innerHTML = data.diff_html;
-            document.getElementById("diffModalOverlay").hidden = false;
         })
         .catch(err => console.error("Diff fetch error:", err));
 }

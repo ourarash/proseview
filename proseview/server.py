@@ -1735,10 +1735,19 @@ class _Handler(BaseHTTPRequestHandler):
                 with backup_file.open("r", encoding="utf-8") as f:
                     meta = json.load(f)
                 
+                mode = (qs.get("mode") or ["inline"])[0]
                 old_raw = meta["content"]
                 new_raw = read_repo_text(scene_path)
                 
                 import difflib
+                
+                if mode == "side-by-side":
+                    old_lines = old_raw.splitlines(keepends=True)
+                    new_lines = new_raw.splitlines(keepends=True)
+                    html_diff = difflib.HtmlDiff().make_table(old_lines, new_lines, context=True, numlines=3)
+                    self._send_json({"ok": True, "diff_html": html_diff})
+                    return
+
                 old_words = re.findall(r"\S+|\s+", old_raw)
                 new_words = re.findall(r"\S+|\s+", new_raw)
                 

@@ -827,7 +827,17 @@
                     <h2 class="card-title" id="diffModalTitle">Review Changes</h2>
                     <p class="section-note" id="diffModalSubtitle" style="margin-top: 4px; margin-bottom: 0;">Restoring this version will apply the following changes to the current file.</p>
                 </div>
-                <button type="button" class="close-btn" onclick="closeDiffModal()" aria-label="Close diff viewer">&times;</button>
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <div class="diff-toggle-group">
+                        <button type="button" class="diff-toggle-btn active" id="diffToggleInline" onclick="setDiffMode('inline')" aria-label="Inline Diff" title="Inline Diff">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
+                        </button>
+                        <button type="button" class="diff-toggle-btn" id="diffToggleSideBySide" onclick="setDiffMode('side-by-side')" aria-label="Side-by-Side Diff" title="Side-by-Side Diff">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="18" rx="1" ry="1"></rect><rect x="13" y="3" width="8" height="18" rx="1" ry="1"></rect><line x1="5" y1="8" x2="9" y2="8"></line><line x1="5" y1="12" x2="9" y2="12"></line><line x1="15" y1="8" x2="19" y2="8"></line><line x1="15" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
+                    <button type="button" class="close-btn" onclick="closeDiffModal()" aria-label="Close diff viewer">&times;</button>
+                </div>
             </div>
             <div id="diffModalContent" class="diff-modal-content">
                 <!-- Diff HTML injected here -->

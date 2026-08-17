@@ -732,6 +732,8 @@ def render_html_report(
         "config_json": _js_json(dataclasses.asdict(cfg)),
         "cfg": cfg,
         "config_exists": (root / ".proseview.yaml").exists(),
+        "repo_root_json": _js_json(str(root.resolve())),
+        "yaml_editor_url": _editor_url(cfg, str((root / ".proseview.yaml").resolve())),
     }
     return _render_template("index.html.j2", **context)
 

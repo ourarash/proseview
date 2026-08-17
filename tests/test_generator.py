@@ -164,8 +164,11 @@ def test_dashboard_reports_correct_word_and_scene_counts():
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     scenes = collect_scene_stats(FIXTURE)
     total_words = sum(s.words for s in scenes)
-    # Banner formats with thousands separator: "{total:,} / {target:,}".
-    assert f"{total_words:,} / 80,000" in html
+    # Banner formats with thousands separator: "{total:,} / {target:,}". The
+    # target is a button that jumps to Settings, so the two halves are no
+    # longer contiguous text and are asserted separately.
+    assert f"{total_words:,} / " in html
+    assert ">80,000</button>" in html
     assert f'<span class="value">{len(scenes)}</span>' in html
 
 

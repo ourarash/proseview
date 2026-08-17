@@ -188,6 +188,61 @@ def test_ai_target_resolution_rejects_line_columns_crossing_annotations(tmp_path
         )
 
 
+# ── abs_path containment coverage ────────────────────────────────────────────
+
+def test_every_endpoint_taking_an_abs_path_is_containment_checked():
+    """``_ABS_PATH_ENDPOINTS`` is what routes a request through
+    ``_contained_abs_path``, and nothing enforces that the list is complete.
+
+    An omission is silent -- the endpoint keeps working and simply stops being
+    contained, which is how ``/delete-fm-todo`` shipped able to write outside
+    the served repository. This reads the dispatch back and fails if a branch
+    reads ``body["abs_path"]`` without being on the list.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from proseview.server import _ABS_PATH_ENDPOINTS, _Handler
+
+    source = textwrap.dedent(inspect.getsource(_Handler.do_POST))
+    tree = ast.parse(source)
+
+    def literal_endpoint(test: ast.expr) -> str | None:
+        """The endpoint of a ``path == "/x"`` / ``self.path == "/x"`` test."""
+        if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+            return None
+        if not isinstance(test.ops[0], ast.Eq):
+            return None
+        right = test.comparators[0]
+        if not (isinstance(right, ast.Constant) and isinstance(right.value, str)):
+            return None
+        left = test.left
+        name = (
+            left.id if isinstance(left, ast.Name)
+            else left.attr if isinstance(left, ast.Attribute)
+            else None
+        )
+        return right.value if name == "path" else None
+
+    missing: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        endpoint = literal_endpoint(node.test)
+        if endpoint is None or endpoint in _ABS_PATH_ENDPOINTS:
+            continue
+        # Only this branch's own body -- not the trailing elif chain.
+        block = "\n".join(ast.unparse(stmt) for stmt in node.body)
+        if "abs_path" in block:
+            missing.append(endpoint)
+
+    assert not missing, (
+        f"these endpoints read a client abs_path but skip the containment "
+        f"check: {sorted(missing)}"
+    )
+
+
 # ── save_scene_content tests ─────────────────────────────────────────────────
 
 def test_save_scene_rejects_path_outside_manuscript(tmp_path):

@@ -47,6 +47,10 @@ SCENE_REL = "ch01/01-opening.md"
 ANNOTATED_SCENE_REL = "ch01/03-annotated.md"
 #: Generated ~10k-word scene used by the large-file cases.
 LARGE_SCENE_REL = "ch03/01-long-haul.md"
+#: Scene with no frontmatter at all -- what an Obsidian vault or an imported
+#: draft looks like. The Scene tab has to read as "these fields are optional"
+#: here, not as a broken panel full of "Unknown".
+BARE_SCENE_REL = "ch01/04-bare.md"
 #: Manuscript Markdown nested two levels below the manuscript root. It *is* a
 #: scene now -- scene discovery accepts any depth -- but it is still reachable
 #: as a repo file, which is what the search and sidebar tests here exercise.
@@ -157,6 +161,21 @@ def _seed_annotated_scene(root: Path) -> None:
     )
 
 
+def _seed_bare_scene(root: Path) -> None:
+    """A scene that is plain Markdown, with no YAML block of any kind."""
+    path = root / "manuscript" / BARE_SCENE_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# The Long Way Round\n"
+        "\n"
+        "The shop was shut by the time she reached it, and the lights in the "
+        "upstairs window had already gone out.\n"
+        "\n"
+        "She waited on the step anyway, counting the cars that did not stop.\n",
+        encoding="utf-8",
+    )
+
+
 def _seed_large_scene(root: Path) -> int:
     """Generate a ~10k-word scene and return its word count.
 
@@ -231,6 +250,7 @@ def _build_repo(dest: Path) -> Path:
     shutil.rmtree(dest / ".proseview", ignore_errors=True)
     _seed_skills(dest)
     _seed_annotated_scene(dest)
+    _seed_bare_scene(dest)
     _seed_large_scene(dest)
     for rel, thread, day in STORY_SCENES:
         scene = dest / "manuscript" / rel

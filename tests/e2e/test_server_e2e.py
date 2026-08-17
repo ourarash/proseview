@@ -21,6 +21,7 @@ import pytest
 from .conftest import (
     AGENT_MARKER,
     ANNOTATED_SCENE_REL,
+    BARE_SCENE_REL,
     LARGE_SCENE_REL,
     SCENE_REL,
     ProseviewServer,
@@ -810,6 +811,92 @@ def test_save_scene_refuses_paths_outside_the_manuscript(server: ProseviewServer
     })
     assert resp.status == 500
     assert outside.read_text(encoding="utf-8") == before
+
+
+# ── frontmatter scaffold ────────────────────────────────────────────────────
+
+
+def _bare_scene_meta(server: ProseviewServer) -> dict:
+    return server.get_json("/data.json")["meta"][BARE_SCENE_REL]
+
+
+def test_add_frontmatter_writes_an_empty_block_over_the_wire(server: ProseviewServer):
+    meta = _bare_scene_meta(server)
+    path = Path(meta["abs_path"])
+    before = path.read_text(encoding="utf-8")
+    assert not before.startswith("---")
+
+    resp = server.post_json("/add-frontmatter", {
+        "abs_path": meta["abs_path"],
+        "open_mtime": meta["mtime"],
+    })
+    assert resp.status == 200
+    assert resp.json()["ok"] is True
+
+    after = path.read_text(encoding="utf-8")
+    assert after.startswith("---\n")
+    # Keys only -- the writer fills the values.
+    assert "goal:\n" in after and "characters:\n" in after
+    assert "goal: " not in after
+    assert before.strip() in after
+
+
+def test_add_frontmatter_refuses_a_scene_that_already_has_one(server: ProseviewServer):
+    meta = server.scene_meta()
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+
+    resp = server.post_json("/add-frontmatter", {
+        "abs_path": meta["abs_path"],
+        "open_mtime": meta["mtime"],
+    })
+    assert resp.status == 409
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_add_frontmatter_refuses_paths_outside_the_repository(server: ProseviewServer):
+    """The endpoint takes an absolute path, so it needs the containment check."""
+    outside = server.root.parent / "escape.md"
+    outside.write_text("# Not part of the repo\n", encoding="utf-8")
+    try:
+        resp = server.post_json("/add-frontmatter", {"abs_path": str(outside)})
+        assert resp.status == 403
+        assert not outside.read_text(encoding="utf-8").startswith("---")
+    finally:
+        outside.unlink(missing_ok=True)
+
+
+def test_delete_fm_todo_refuses_paths_outside_the_repository(server: ProseviewServer):
+    """``/delete-fm-todo`` takes an ``abs_path`` like its siblings, but was left
+    out of ``_ABS_PATH_ENDPOINTS``, so it never got the containment check."""
+    outside = server.root.parent / "escape-fm-todo.md"
+    outside.write_text(
+        "---\ntodos:\n  - something\n---\n\n# Not part of the repo\n", encoding="utf-8"
+    )
+    try:
+        before = outside.read_text(encoding="utf-8")
+        resp = server.post_json("/delete-fm-todo", {
+            "abs_path": str(outside),
+            "todo_text": "something",
+        })
+        assert resp.status == 403
+        assert outside.read_text(encoding="utf-8") == before
+    finally:
+        outside.unlink(missing_ok=True)
+
+
+def test_add_frontmatter_conflicts_on_a_stale_mtime(server: ProseviewServer):
+    meta = _bare_scene_meta(server)
+    path = Path(meta["abs_path"])
+    before = path.read_text(encoding="utf-8")
+
+    resp = server.post_json("/add-frontmatter", {
+        "abs_path": meta["abs_path"],
+        "open_mtime": meta["mtime"] - 100,
+    })
+    assert resp.status == 409
+    assert resp.json().get("conflict") is True
+    assert path.read_text(encoding="utf-8") == before
 
 
 # ── TODOs and notes ─────────────────────────────────────────────────────────

@@ -405,16 +405,18 @@
         }
 
         // ── Dock scope ──────────────────────────────────────────────────────
-        // Three of the four tabs need an open document. Scene and Analysis
-        // describe one directly, and Codex refuses to start without one -- see
-        // the guard at the top of openDiscuss. Only Terminal stands alone.
+        // Leaving a scene closes the dock. Three of the four tabs describe the
+        // document that just closed -- Scene and Analysis directly, and Codex
+        // refuses to start without one, see the guard at the top of
+        // openDiscuss. Only Terminal stands alone, and switching to it would
+        // drop the reader into a shell they never asked for, spawning a fresh
+        // one when none was running: a process created as a side effect of
+        // clicking "Dashboard".
         //
-        // So on the dashboard the dock narrows to Terminal rather than closing:
-        // closing it would kill a running shell, which is the one thing here
-        // worth protecting. With no terminal on this platform nothing is left
-        // to show, and the dock closes instead of sitting there empty.
+        // Closing costs nothing. closeScenePanel only hides the terminal, so a
+        // live session keeps running and comes back intact when the dock is
+        // reopened; _termSessions is never touched.
         const SCENE_SCOPED_TABS = ['scene', 'analysis', 'discuss'];
-        let _scenePanelScopeFallback = false;
 
         function _terminalIsAvailable() {
             return typeof terminalAvailable === 'undefined' || !!terminalAvailable;
@@ -423,32 +425,6 @@
         function _sceneScopedViewIsOpen() {
             const view = document.documentElement.dataset.view;
             return view === 'scene' || view === 'file';
-        }
-
-        function _activeScenePanelTab() {
-            let active = null;
-            SCENE_PANEL_TABS.forEach(function(tab) {
-                UTILITY_TAB_IDS[tab].forEach(function(id) {
-                    const el = document.getElementById(id);
-                    if (!active && el && el.classList.contains('active')) active = tab;
-                });
-            });
-            return active;
-        }
-
-        function _storedScenePanelTab() {
-            try { return localStorage.getItem(SCENE_PANEL_TAB_KEY); } catch (e) { return null; }
-        }
-
-        // Switching tabs normally records the choice. A fallback the reader did
-        // not ask for must not overwrite it, or leaving a scene would quietly
-        // reset their preferred tab to Codex forever.
-        function _withoutRememberingTab(fn) {
-            const remembered = _storedScenePanelTab();
-            fn();
-            try {
-                if (remembered) localStorage.setItem(SCENE_PANEL_TAB_KEY, remembered);
-            } catch (e) {}
         }
 
         function syncScenePanelScope() {
@@ -464,26 +440,7 @@
             const dashBtn = document.getElementById('dashboardPanelBtn');
             if (dashBtn) dashBtn.hidden = !_terminalIsAvailable();
 
-            const panel = document.getElementById('discussPanel');
-            const term = document.getElementById('terminalPanel');
-            const termInDock = term && !term.hidden
-                && typeof _termDock !== 'undefined' && _termDock === 'right';
-            const open = (panel && !panel.hidden) || termInDock;
-            if (!open) { _scenePanelScopeFallback = false; return; }
-
-            if (!scoped) {
-                if (SCENE_SCOPED_TABS.indexOf(_activeScenePanelTab()) < 0) return;
-                if (!_terminalIsAvailable()) { closeScenePanel(); return; }
-                _scenePanelScopeFallback = true;
-                _withoutRememberingTab(function() { showRightTerminal(); });
-                return;
-            }
-            if (_scenePanelScopeFallback) {
-                _scenePanelScopeFallback = false;
-                const remembered = _readScenePanelTab();
-                if (remembered === 'discuss') showDiscussTab();
-                else if (SCENE_SCOPED_TABS.indexOf(remembered) >= 0) showScenePanelTab(remembered);
-            }
+            if (!scoped) closeScenePanel();
         }
 
         // Observed rather than called from each transition: `data-view` is set
@@ -501,14 +458,13 @@
             const termInDock = term && !term.hidden
                 && typeof _termDock !== 'undefined' && _termDock === 'right';
             if ((panel && !panel.hidden) || termInDock) { closeScenePanel(); return; }
-            let tab = _readScenePanelTab();
-            // Opening from the dashboard: every tab but Terminal needs an open
-            // document, so start there without forgetting the preference.
+            const tab = _readScenePanelTab();
+            // On the dashboard the Terminal is the only tab with anything to
+            // show. Opening it here is fine where falling into it on navigation
+            // was not: this is a button the reader pressed. `_setUtilityTab`
+            // never stores 'terminal', so their preferred tab survives.
             if (!_sceneScopedViewIsOpen() && SCENE_SCOPED_TABS.indexOf(tab) >= 0) {
-                if (!_terminalIsAvailable()) return;
-                _scenePanelScopeFallback = true;
-                _withoutRememberingTab(function() { showRightTerminal(); });
-                syncScenePanelScope();
+                if (_terminalIsAvailable()) showRightTerminal();
                 return;
             }
             // One call, not two: openDiscuss opens a conversation on the

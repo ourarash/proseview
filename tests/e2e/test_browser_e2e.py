@@ -5541,17 +5541,10 @@ def test_timeline_hides_the_untagged_lane_when_everything_is_tagged(page: Page, 
 # ── dock scope, dock seam, toolbar overflow ─────────────────────────────────
 
 
-@POSIX_ONLY_BROWSER
-def test_dock_narrows_to_the_terminal_on_the_dashboard(
-    page: Page, shared_server: ProseviewServer
-):
-    """Leaving a scene must not strand the dock on a scene you have left.
-
-    Three of the four tabs need an open document -- Scene and Analysis describe
-    one, and ``openDiscuss`` refuses to start without one. Only Terminal stands
-    alone, so the dock narrows to it rather than closing, which would kill a
-    running shell.
-    """
+def test_leaving_a_scene_closes_the_dock(page: Page, shared_server: ProseviewServer):
+    """Three of the four tabs describe the document that just closed, so there
+    is nothing left worth showing -- and closing costs nothing, because a
+    terminal session is hidden rather than killed."""
     open_scene(page, shared_server)
     open_scene_details(page)
     assert page.locator("#sceneDetailsPane").is_visible()
@@ -5559,21 +5552,55 @@ def test_dock_narrows_to_the_terminal_on_the_dashboard(
     page.click(".scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
 
-    # The tabs that need a document are gone.
+    page.wait_for_selector("#discussPanel", state="hidden")
+    assert page.locator("#terminalPanel").is_hidden()
     for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabDiscuss"):
         assert page.locator(tab).is_hidden(), tab
-    # The dock itself survived, showing the one tab that stands alone.
-    page.wait_for_selector("#terminalPanel:not([hidden])")
-    assert page.evaluate("() => _termDock") == "right"
 
 
 @POSIX_ONLY_BROWSER
-def test_the_dashboard_has_a_panel_button(page: Page, shared_server: ProseviewServer):
-    """Without it the dock could be left open with no way to close it."""
+def test_leaving_a_scene_never_spawns_a_terminal(page: Page, shared_server: ProseviewServer):
+    """The regression this replaces: falling back to the Terminal tab called
+    ``showRightTerminal``, which spawns a shell when none is running. Clicking
+    "Dashboard" created a PTY process nobody asked for."""
+    open_scene(page, shared_server)
+    open_scene_details(page)
+    assert page.evaluate("() => _termSessions.length") == 0
+
+    page.click(".scene-back-btn")
+    page.wait_for_selector("#discussPanel", state="hidden")
+
+    assert page.evaluate("() => _termSessions.length") == 0, "navigation spawned a shell"
+
+
+@POSIX_ONLY_BROWSER
+def test_closing_the_dock_hides_a_running_shell_rather_than_killing_it(
+    page: Page, shared_server: ProseviewServer
+):
+    """This is why closing is safe. The session survives and comes back."""
+    open_scene(page, shared_server)
+    page.evaluate("() => showRightTerminal()")
+    page.wait_for_function("() => _termSessions.length === 1")
+
+    page.click(".scene-back-btn")
+    page.wait_for_selector("#terminalPanel", state="hidden")
+    assert page.evaluate("() => _termSessions.length") == 1, "closing the dock killed the shell"
+
+    # The dashboard button brings the same session back, without spawning another.
+    page.click("#dashboardPanelBtn")
+    page.wait_for_selector("#terminalPanel:not([hidden])")
+    assert page.evaluate("() => _termSessions.length") == 1
+
+
+@POSIX_ONLY_BROWSER
+def test_the_dashboard_panel_button_opens_the_terminal_on_purpose(
+    page: Page, shared_server: ProseviewServer
+):
+    """An explicit click is consent, unlike navigation: opening -- and spawning
+    -- a shell here is exactly what was asked for."""
     open_dashboard(page, shared_server)
     button = page.locator("#dashboardPanelBtn")
-    assert button.count() == 1
-    assert button.is_visible()
+    assert button.count() == 1 and button.is_visible()
 
     button.click()
     page.wait_for_selector("#terminalPanel:not([hidden])")
@@ -5581,22 +5608,22 @@ def test_the_dashboard_has_a_panel_button(page: Page, shared_server: ProseviewSe
     page.wait_for_selector("#terminalPanel", state="hidden")
 
 
-@POSIX_ONLY_BROWSER
 def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
     page: Page, shared_server: ProseviewServer
 ):
-    """The Terminal fallback is imposed, not chosen, so it must not overwrite
-    the reader's stored tab -- otherwise one trip to the dashboard resets it."""
+    """Closing the dock is not a tab choice, so the stored tab is untouched and
+    the pane comes straight back on the next scene."""
     open_scene(page, shared_server)
     open_scene_details(page)
     assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
 
     page.click(".scene-back-btn")
-    page.wait_for_selector("#utilityTabScene", state="hidden")
+    page.wait_for_selector("#discussPanel", state="hidden")
     assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
 
-    # Reopening a scene brings the tab, and the pane, back.
+    # Reopening a scene and the dock brings the remembered tab back.
     open_scene(page, shared_server)
+    page.evaluate("() => toggleScenePanel(null)")
     page.wait_for_selector("#sceneDetailsPane:not([hidden])")
     assert page.locator("#utilityTabScene").is_visible()
 

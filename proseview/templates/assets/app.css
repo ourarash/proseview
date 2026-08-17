@@ -389,9 +389,15 @@
         .banner-stat .label { font-size: 12px; opacity: 0.8; text-transform: uppercase; }
         .banner-progress { flex: 1; margin: 0 50px; text-align: left; }
         .banner-finish { margin-left: 40px; }
-        .app-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
-        .toolbar-actions { display: flex; align-items: flex-end; gap: 10px; }
-        .font-menu { position: relative; }
+        /* Wraps rather than overflows. The stacking media queries below key off
+           the viewport, but the space this row actually has is the viewport
+           minus the sidebar minus the right dock -- so on a wide screen with
+           the dock open, no breakpoint fires while the row is badly squeezed,
+           and the theme toggle spilled past the body's padding. Wrapping is
+           driven by the real available width, so it holds in every combination. */
+        .app-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .toolbar-actions { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+        .font-menu { position: relative; flex: 0 0 auto; }
         .font-menu-chevron { font-size: 10px; color: var(--text-muted); margin-left: 2px; transition: transform 120ms ease; }
         .font-menu[data-open="true"] .font-menu-chevron { transform: rotate(180deg); }
         .font-menu-list { position: absolute; top: calc(100% + 6px); right: 0; min-width: 160px; margin: 0; padding: 6px; list-style: none; background: var(--surface-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-card); display: none; z-index: 500; }
@@ -399,7 +405,7 @@
         .font-menu-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--text-main); line-height: 1.3; }
         .font-menu-item:hover { background: var(--button-hover); color: var(--primary); }
         .font-menu-item[aria-selected="true"] { background: var(--button-active); color: var(--primary); font-weight: 600; }
-        .theme-menu { position: relative; }
+        .theme-menu { position: relative; flex: 0 0 auto; }
         .theme-menu[data-open="true"] .font-menu-chevron { transform: rotate(180deg); }
         .theme-menu-list { position: absolute; top: calc(100% + 6px); right: 0; min-width: 140px; margin: 0; padding: 6px; list-style: none; background: var(--surface-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-card); display: none; z-index: 500; }
         .theme-menu[data-open="true"] .theme-menu-list { display: block; }
@@ -739,7 +745,10 @@
         .tab-nav { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin: 0; flex: 1; }
         .tab-nav button { background: transparent; border: none; padding: 10px 18px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; font-family: inherit; }
         .tab-nav button.active { color: var(--primary); border-bottom-color: var(--primary); }
-        .theme-toggle { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--border); background: var(--surface-card); color: var(--text-main); padding: 8px 14px; border-radius: 9999px; cursor: pointer; box-shadow: var(--shadow-card); }
+        /* nowrap because the widest theme names ("Graphite Light") otherwise
+           break onto a second line as soon as the row tightens, which is what
+           the overflow looked like before it spilled. */
+        .theme-toggle { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--border); background: var(--surface-card); color: var(--text-main); padding: 8px 14px; border-radius: 9999px; cursor: pointer; box-shadow: var(--shadow-card); white-space: nowrap; }
         .theme-toggle:hover { background: var(--button-hover); border-color: var(--primary); }
         .theme-toggle-kicker { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
         .theme-toggle-label { font-size: 13px; font-weight: 700; }
@@ -1330,7 +1339,12 @@
         }
         .discuss-panel[hidden] { display: none; }
         .discuss-resize-handle { width: 24px; cursor: ew-resize; flex: 0 0 auto; background: transparent; position: relative; }
-        .discuss-resize-handle::after { content: ''; position: absolute; inset: 0 auto 0 10px; width: 4px; background: transparent; transition: background 0.15s, opacity 0.15s; }
+        /* Unlike the sidebar and terminal handles, this one is an in-flow flex
+           child, so its left edge already *is* the dock's edge -- there is no
+           negative offset to compensate for. Their `left: 10px` would push the
+           bar 10px inside the dock, away from the seam it is supposed to mark.
+           -2px straddles the 1px border instead, matching the terminal handle. */
+        .discuss-resize-handle::after { content: ''; position: absolute; inset: 0 auto 0 -2px; width: 4px; background: transparent; transition: background 0.15s, opacity 0.15s; }
         .discuss-resize-handle:hover::after, .discuss-resize-handle.is-dragging::after, .discuss-resize-handle:focus-visible::after { background: var(--primary); opacity: 0.5; }
         .discuss-resize-handle:focus-visible { outline: none; }
         .discuss-shell { min-width: 0; flex: 1; display: flex; flex-direction: column; }

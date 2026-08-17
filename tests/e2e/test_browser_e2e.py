@@ -19,6 +19,7 @@ from the app's own origin, so this tier needs no network access at all. The
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -44,6 +45,11 @@ from .conftest import (
 )
 
 pytestmark = pytest.mark.e2e_browser
+
+#: The dashboard dock can only offer the Terminal, which needs a PTY.
+POSIX_ONLY_BROWSER = pytest.mark.skipif(
+    os.name != "posix", reason="the dashboard dock is terminal-only, and PTYs are POSIX-only"
+)
 
 # ── browser plumbing ────────────────────────────────────────────────────────
 
@@ -5530,6 +5536,120 @@ def test_timeline_hides_the_untagged_lane_when_everything_is_tagged(page: Page, 
 
     assert page.locator(".story-lane-untagged").count() == 0
     assert "every scene belongs to a storyline" in page.locator("#timelineContent").inner_text().lower()
+
+
+# ── dock scope, dock seam, toolbar overflow ─────────────────────────────────
+
+
+@POSIX_ONLY_BROWSER
+def test_dock_narrows_to_the_terminal_on_the_dashboard(
+    page: Page, shared_server: ProseviewServer
+):
+    """Leaving a scene must not strand the dock on a scene you have left.
+
+    Three of the four tabs need an open document -- Scene and Analysis describe
+    one, and ``openDiscuss`` refuses to start without one. Only Terminal stands
+    alone, so the dock narrows to it rather than closing, which would kill a
+    running shell.
+    """
+    open_scene(page, shared_server)
+    open_scene_details(page)
+    assert page.locator("#sceneDetailsPane").is_visible()
+
+    page.click(".scene-back-btn")
+    page.wait_for_selector("#sceneModal", state="hidden")
+
+    # The tabs that need a document are gone.
+    for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabDiscuss"):
+        assert page.locator(tab).is_hidden(), tab
+    # The dock itself survived, showing the one tab that stands alone.
+    page.wait_for_selector("#terminalPanel:not([hidden])")
+    assert page.evaluate("() => _termDock") == "right"
+
+
+@POSIX_ONLY_BROWSER
+def test_the_dashboard_has_a_panel_button(page: Page, shared_server: ProseviewServer):
+    """Without it the dock could be left open with no way to close it."""
+    open_dashboard(page, shared_server)
+    button = page.locator("#dashboardPanelBtn")
+    assert button.count() == 1
+    assert button.is_visible()
+
+    button.click()
+    page.wait_for_selector("#terminalPanel:not([hidden])")
+    button.click()
+    page.wait_for_selector("#terminalPanel", state="hidden")
+
+
+@POSIX_ONLY_BROWSER
+def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
+    page: Page, shared_server: ProseviewServer
+):
+    """The Terminal fallback is imposed, not chosen, so it must not overwrite
+    the reader's stored tab -- otherwise one trip to the dashboard resets it."""
+    open_scene(page, shared_server)
+    open_scene_details(page)
+    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
+
+    page.click(".scene-back-btn")
+    page.wait_for_selector("#utilityTabScene", state="hidden")
+    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
+
+    # Reopening a scene brings the tab, and the pane, back.
+    open_scene(page, shared_server)
+    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+    assert page.locator("#utilityTabScene").is_visible()
+
+
+def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
+    page: Page, shared_server: ProseviewServer
+):
+    """The handle is an in-flow flex child, so the offset the absolutely
+    positioned handles use pushed its bar 10px inside the dock."""
+    open_scene(page, shared_server)
+    open_scene_details(page)
+
+    edges = page.evaluate("""() => {
+        const panel = document.getElementById('discussPanel');
+        const handle = document.getElementById('discussResizeHandle');
+        const bar = getComputedStyle(handle, '::after');
+        return {
+            panelLeft: panel.getBoundingClientRect().left,
+            handleLeft: handle.getBoundingClientRect().left,
+            barOffset: parseFloat(bar.left),
+            barWidth: parseFloat(bar.width),
+        };
+    }""")
+    bar_left = edges["handleLeft"] + edges["barOffset"]
+    bar_centre = bar_left + edges["barWidth"] / 2
+    # The bar straddles the dock's own left edge rather than sitting inside it.
+    assert abs(bar_centre - edges["panelLeft"]) <= 2.5, edges
+
+
+def test_the_dashboard_toolbar_never_overflows_its_container(
+    page: Page, shared_server: ProseviewServer
+):
+    """The stacking breakpoints key off the viewport, but the space this row
+    has is the viewport minus the sidebar minus the dock. Wrapping is driven by
+    the real width, so the theme toggle stays inside the body at every size."""
+    open_dashboard(page, shared_server)
+
+    for width, height in ((1600, 900), (1280, 900), (1100, 900), (1000, 900)):
+        page.set_viewport_size({"width": width, "height": height})
+        page.wait_for_timeout(120)
+        overflow = page.evaluate("""() => {
+            const body = document.body;
+            const limit = body.getBoundingClientRect().right
+                - parseFloat(getComputedStyle(body).paddingRight);
+            const toggle = document.getElementById('themeToggle');
+            return {
+                over: Math.round(toggle.getBoundingClientRect().right - limit),
+                pageScroll: document.documentElement.scrollWidth
+                    - document.documentElement.clientWidth,
+            };
+        }""")
+        assert overflow["over"] <= 1, f"theme toggle overflows at {width}px: {overflow}"
+        assert overflow["pageScroll"] <= 1, f"page scrolls sideways at {width}px: {overflow}"
 
 
 def test_scene_card_shows_the_story_fields_when_present(page: Page, shared_server: ProseviewServer):

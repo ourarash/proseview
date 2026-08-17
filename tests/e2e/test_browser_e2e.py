@@ -2362,6 +2362,23 @@ def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
 # ── editor round-trip fidelity ──────────────────────────────────────────────
 
 
+def test_cmd_s_saves_without_exiting_edit_mode(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " The kettle ticked.")
+    save_scene(page)
+
+    _wait_until(lambda: "The kettle ticked." in path.read_text(encoding="utf-8"),
+                message="Mod-S did not reach the file")
+                
+    # Check that it did NOT drop out of edit mode
+    assert page.evaluate("window._pmEditMode") is True, "Cmd+S exited edit mode"
+    page.wait_for_selector(".scene-edit-bar.is-saved")
+
+
 def test_typing_saves_the_edit_and_preserves_everything_else(page: Page, server: ProseviewServer):
     path = server.scene_path()
     before = path.read_text(encoding="utf-8")

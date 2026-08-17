@@ -142,6 +142,7 @@
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof updateTerminalShortcuts === 'function') updateTerminalShortcuts();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
+            if (typeof showSceneDetailsTab === 'function') showSceneDetailsTab();
             return true;
         }
 
@@ -155,7 +156,7 @@
             return true;
         }
 
-        function updateModal() {
+        function updateModal(preserveScroll) {
             const p = paths[curIdx], m = meta[p], b = document.getElementById('modalBody'), a = document.getElementById('modalAlerts'), s = document.getElementById('modalStats');
             const modalTitle = document.getElementById('modalTitle');
             modalTitle.replaceChildren();
@@ -276,7 +277,7 @@
             // is kept only for the Character Bible's "Back to Scene" button,
             // which has nowhere else to go.
             a.replaceChildren();
-            render();
+            render(preserveScroll);
             if (typeof renderSceneAnalysisPane === 'function'
                 && !(document.getElementById('sceneAnalysisPane') || {hidden: true}).hidden) {
                 renderSceneAnalysisPane();
@@ -499,7 +500,7 @@
             _syncStatTiles();
             _saveHighlightPrefs();
             syncAllBtn();
-            if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(); }
+            if (window._PM && _pmView) { updatePMHighlightDecorations(); } else { render(true); }
         }
 
         function toggleHighlight(id) {
@@ -541,8 +542,9 @@
             }).join('');
         }
 
-        function render() {
+        function render(preserveScroll) {
             const p = paths[curIdx], b = document.getElementById('modalBody'), m = meta[p];
+            const oldScroll = b ? b.scrollTop : 0;
             const fm = m.fm || {};
             const chars = Array.isArray(fm.characters) ? fm.characters : (typeof fm.characters === 'string' ? [fm.characters] : []);
             const charMentions = m.char_mentions || {};
@@ -702,7 +704,8 @@
             window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
             if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
             if (window._PM) mountProseView(p);
-            b.scrollTop = 0;
+            if (preserveScroll) b.scrollTop = oldScroll;
+            else b.scrollTop = 0;
         }
 
         function guardDirtySceneNavigation() {
@@ -822,11 +825,47 @@
             setSceneToolbarHidden(_sceneToolbarMode === 'hidden');
         }
 
+        function toggleFullscreen() {
+            var btn = document.getElementById('modalFullscreenBtn');
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(function() {
+                    if (btn) {
+                        btn.classList.add('is-active');
+                        btn.setAttribute('aria-pressed', 'true');
+                    }
+                }).catch(function(err) {
+                    console.warn('Error attempting to enable fullscreen: ' + err.message);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().then(function() {
+                        if (btn) {
+                            btn.classList.remove('is-active');
+                            btn.setAttribute('aria-pressed', 'false');
+                        }
+                    });
+                }
+            }
+        }
+
+        document.addEventListener('fullscreenchange', function() {
+            var btn = document.getElementById('modalFullscreenBtn');
+            if (!btn) return;
+            var isFs = !!document.fullscreenElement;
+            btn.classList.toggle('is-active', isFs);
+            btn.setAttribute('aria-pressed', isFs ? 'true' : 'false');
+        });
+
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey || e.altKey || e.metaKey) return;
             var tag = (e.target.tagName || '').toUpperCase();
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
             if (document.documentElement.dataset.view !== 'scene') return;
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                toggleFullscreen();
+                return;
+            }
             if ((e.key === 'f' || e.key === 'F') && !_pmEditMode) {
                 e.preventDefault();
                 toggleFocusMode();

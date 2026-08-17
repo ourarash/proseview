@@ -203,8 +203,6 @@ let currentTab = 'overview';
                 || compactDock;
             const hidden = root.dataset.sidebar === 'closed' || responsivelyRetracted;
             sidebar.inert = hidden;
-            if (hidden) sidebar.setAttribute('aria-hidden', 'true');
-            else sidebar.removeAttribute('aria-hidden');
         }
 
         (function observeSidebarInteractiveState() {

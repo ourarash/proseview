@@ -654,6 +654,13 @@
             aiSetProposalHighlight(null);
             var panel = document.getElementById('aiProposalPanel');
             if (panel) panel.hidden = true;
+            
+            var editorView = document.querySelector(".ProseMirror");
+            if (editorView) {
+                editorView.classList.add("codex-highlight");
+                setTimeout(function() { editorView.classList.remove("codex-highlight"); }, 3000);
+            }
+            
             if (save && !applied.hadDirtyBeforeApply && typeof saveSceneEdit === 'function') {
                 setTimeout(function() {
                     if (_pmEditMode && _pmDirty) saveSceneEdit();

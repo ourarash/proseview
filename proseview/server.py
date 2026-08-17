@@ -485,12 +485,85 @@ def _atomic_write_text(path: Path, text: str) -> None:
                 pass
 
 
+
+def _compute_diff_summary(old_text: str, new_text: str) -> str:
+    import difflib
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    additions = 0
+    deletions = 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes():
+        if tag == "replace":
+            deletions += (i2 - i1)
+            additions += (j2 - j1)
+        elif tag == "delete":
+            deletions += (i2 - i1)
+        elif tag == "insert":
+            additions += (j2 - j1)
+    
+    parts = []
+    if additions: parts.append(f"+{additions} lines")
+    if deletions: parts.append(f"-{deletions} lines")
+    if not parts: return "No changes"
+    return ", ".join(parts)
+
+def _create_file_backup(resolved, old_raw: str, new_raw: str, source: str, repo_root: str) -> None:
+    import hashlib, json
+    from datetime import datetime
+    
+    old_no_notes = _HTML_COMMENT_RE.sub("", old_raw)
+    new_no_notes = _HTML_COMMENT_RE.sub("", new_raw)
+    
+    if source == "Manual Save" and old_no_notes == new_no_notes and old_raw != new_raw:
+        source = "Manual Save (Notes Only)"
+        
+    if old_raw == new_raw and source != "Pre-Restore State":
+        return
+
+    root = Path(repo_root).resolve()
+    from .config import Config
+    cfg = Config.load(root)
+    max_backups = getattr(cfg, "max_backups", 50)
+    if max_backups <= 0:
+        return
+        
+    rel_path = resolved.relative_to(root).as_posix()
+    path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+    backups_dir = root / ".proseview" / "backups" / path_hash
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_file = backups_dir / f"{ts}.json"
+    
+    wc = len(re.findall(r"\w+", old_no_notes))
+    diff_summary = _compute_diff_summary(old_raw, new_raw)
+    
+    metadata = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "source": source,
+        "word_count": wc,
+        "diff_summary": diff_summary,
+        "content": old_raw
+    }
+    
+    backup_file.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    
+    existing_backups = sorted(backups_dir.glob("*.json"))
+    if len(existing_backups) > max_backups:
+        for to_delete in existing_backups[:-max_backups]:
+            try:
+                to_delete.unlink()
+            except OSError:
+                pass
+
+
 def save_scene_content(
     abs_path: str,
     content: str,
     open_mtime: float,
     repo_root: str,
     manuscript_subdir: str = "manuscript",
+    source: str = "Manual Save",
 ) -> None:
     """Atomically replace the prose body of a scene file.
 
@@ -518,7 +591,11 @@ def save_scene_content(
     header = "".join(raw.splitlines(keepends=True)[:offset])
 
     body_out = content if content.endswith("\n") else content + "\n"
-    _atomic_write_text(resolved, header + body_out)
+    new_raw = header + body_out
+    
+    _create_file_backup(resolved, raw, new_raw, source, repo_root)
+    
+    _atomic_write_text(resolved, new_raw)
 
 
 # ── In-browser terminal sessions ─────────────────────────────────────────────
@@ -1382,6 +1459,51 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, 500)
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        if not self._authorize_mutation():
+            return
+            
+        try:
+            from urllib.parse import urlparse, parse_qs
+            import shutil
+            
+            if self.path == "/api/backups":
+                backups_dir = Path(self.repo_root).resolve() / ".proseview" / "backups"
+                if backups_dir.exists():
+                    shutil.rmtree(backups_dir)
+                self._send_json({"ok": True})
+                return
+                
+            if self.path.startswith("/api/scene/history"):
+                qs = parse_qs(urlparse(self.path).query)
+                rel = (qs.get("path") or [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                    
+                import hashlib
+                root = Path(self.repo_root).resolve()
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                if not scene_path.is_relative_to(manuscript_root):
+                    self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
+                    return
+                    
+                rel_path = scene_path.relative_to(root).as_posix()
+                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+                backups_dir = root / ".proseview" / "backups" / path_hash
+                
+                if backups_dir.exists():
+                    shutil.rmtree(backups_dir)
+                self._send_json({"ok": True})
+                return
+                
+            self.send_response(404)
+            self.end_headers()
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 500)
+
     def do_GET(self) -> None:  # noqa: N802
         # Reads are not token-gated (a browser navigating here cannot send a
         # custom header), but they must still address us as localhost so a
@@ -1573,6 +1695,114 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
             return
+        if self.path == "/api/backups/stats":
+            try:
+                backups_dir = Path(self.repo_root).resolve() / ".proseview" / "backups"
+                total_size = 0
+                if backups_dir.exists():
+                    for f in backups_dir.rglob("*"):
+                        if f.is_file():
+                            total_size += f.stat().st_size
+                
+                size_mb = total_size / (1024 * 1024)
+                self._send_json({"ok": True, "size_bytes": total_size, "formatted": f"{size_mb:.2f} MB"})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+
+        if self.path.startswith("/api/scene/history/diff?"):
+            try:
+                qs = parse_qs(urlparse(self.path).query)
+                rel = (qs.get("path") or [""])[0]
+                ts = (qs.get("timestamp") or [""])[0]
+                if not rel or not ts:
+                    self._send_json({"ok": False, "error": "missing path or timestamp"}, 400)
+                    return
+                    
+                import hashlib
+                root = Path(self.repo_root).resolve()
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                
+                rel_path = scene_path.relative_to(root).as_posix()
+                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+                backup_file = root / ".proseview" / "backups" / path_hash / f"{ts}.json"
+                
+                if not backup_file.exists():
+                    self._send_json({"ok": False, "error": "Backup not found"}, 404)
+                    return
+                
+                with backup_file.open("r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                
+                old_raw = meta["content"]
+                new_raw = read_repo_text(scene_path)
+                
+                import difflib
+                old_words = re.findall(r"\S+|\s+", old_raw)
+                new_words = re.findall(r"\S+|\s+", new_raw)
+                
+                diff_html = []
+                for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old_words, new_words).get_opcodes():
+                    if tag == 'equal':
+                        diff_html.append(''.join(old_words[i1:i2]))
+                    elif tag == 'delete':
+                        diff_html.append('<del class="diff-delete">' + ''.join(old_words[i1:i2]) + '</del>')
+                    elif tag == 'insert':
+                        diff_html.append('<ins class="diff-insert">' + ''.join(new_words[j1:j2]) + '</ins>')
+                    elif tag == 'replace':
+                        diff_html.append('<del class="diff-delete">' + ''.join(old_words[i1:i2]) + '</del>')
+                        diff_html.append('<ins class="diff-insert">' + ''.join(new_words[j1:j2]) + '</ins>')
+                
+                self._send_json({"ok": True, "diff_html": ''.join(diff_html)})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+
+        if self.path.startswith("/api/scene/history?"):
+            try:
+                qs = parse_qs(urlparse(self.path).query)
+                rel = (qs.get("path") or [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                    
+                import hashlib
+                root = Path(self.repo_root).resolve()
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                
+                if not scene_path.is_relative_to(manuscript_root):
+                    self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
+                    return
+                    
+                rel_path = scene_path.relative_to(root).as_posix()
+                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+                backups_dir = root / ".proseview" / "backups" / path_hash
+                
+                backups = []
+                if backups_dir.exists():
+                    for f in backups_dir.glob("*.json"):
+                        try:
+                            with f.open("r", encoding="utf-8") as bf:
+                                meta = json.load(bf)
+                                backups.append({
+                                    "timestamp": meta["timestamp"],
+                                    "file_ts": f.stem,
+                                    "source": meta["source"],
+                                    "word_count": meta["word_count"],
+                                    "diff_summary": meta["diff_summary"]
+                                })
+                        except Exception:
+                            pass
+                
+                backups.sort(key=lambda x: x["timestamp"], reverse=True)
+                self._send_json({"ok": True, "history": backups})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+
         if self.path.startswith("/repo-file"):
             self._handle_repo_file()
             return
@@ -1957,6 +2187,43 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
+        elif self.path == "/api/scene/history/restore":
+            try:
+                rel = (body.get("path") or "")
+                ts = (body.get("timestamp") or "")
+                
+                import hashlib
+                root = Path(self.repo_root).resolve()
+                cfg = Config.load(root)
+                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
+                
+                rel_path = scene_path.relative_to(root).as_posix()
+                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+                backup_file = root / ".proseview" / "backups" / path_hash / f"{ts}.json"
+                
+                if not backup_file.exists():
+                    self._send_json({"ok": False, "error": "Backup not found"}, 404)
+                    return
+                
+                with backup_file.open("r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                
+                # Perform restore via save_scene_content to ensure a "Pre-Restore State" backup is made
+                # We pass open_mtime as the current mtime to bypass the conflict check,
+                # since this is an explicit restore action.
+                save_scene_content(
+                    str(scene_path),
+                    meta["content"],
+                    scene_path.stat().st_mtime,
+                    self.repo_root,
+                    source="Pre-Restore State"
+                )
+                
+                self.invalidate()
+                self._send_json({"ok": True})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+
         elif self.path == "/save-scene":
             try:
                 save_scene_content(

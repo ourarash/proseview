@@ -396,7 +396,7 @@
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
         </div><button id="sceneToolbarReveal" type="button" aria-label="Show scene toolbar" title="Show scene toolbar" onclick="revealSceneToolbar(true)"><span aria-hidden="true">&#8964;</span></button></header>
-        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><span class="scene-edit-divider" aria-hidden="true"></span><span class="scene-edit-format" id="sceneEditFormat"><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('strong')" aria-label="Bold" title="Bold (⌘B)"><b>B</b></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('em')" aria-label="Italic" title="Italic (⌘I)"><i>I</i></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('code')" aria-label="Code" title="Code (⌘`)">&lt;&gt;</button></span><span class="scene-edit-divider" aria-hidden="true"></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status" title="Editing"><span class="scene-edit-dot" id="sceneEditDot"></span></span><span class="scene-edit-divider" aria-hidden="true"></span><span class="scene-edit-format" id="sceneEditFormat"><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('strong')" onmousedown="event.preventDefault();" aria-label="Bold" title="Bold (⌘B)"><b>B</b></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('em')" onmousedown="event.preventDefault();" aria-label="Italic" title="Italic (⌘I)"><i>I</i></button><button type="button" class="scene-edit-format-btn" onclick="toggleBlockquote()" onmousedown="event.preventDefault();" aria-label="Quote" title="Quote (⌘⇧9)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6H3"></path><path d="M21 12H8"></path><path d="M21 18H8"></path><path d="M3 12v6"></path></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('code')" onmousedown="event.preventDefault();" aria-label="Code" title="Code (⌘`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleList('bullet_list')" onmousedown="event.preventDefault();" aria-label="Bullet List" title="Bullet List (⌘⇧8)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleList('ordered_list')" onmousedown="event.preventDefault();" aria-label="Numbered List" title="Numbered List (⌘⇧7)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><path d="M4 6h1v4"></path><path d="M4 10h2"></path><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg></button></span><span class="scene-edit-divider" aria-hidden="true"></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled aria-label="Save" title="Save"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()" aria-label="Cancel" title="Cancel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button></div></div></div>
 
     <dialog id="sceneConflictDialog" class="scene-conflict-dialog" role="alertdialog" aria-labelledby="sceneConflictTitle" aria-describedby="sceneConflictDescription">
         <h2 id="sceneConflictTitle">Scene changed on disk</h2>
@@ -575,7 +575,9 @@
         import { EditorView, Decoration, DecorationSet } from '/vendor/pm/prosemirror-view.js';
         import { history, undo, redo } from '/vendor/pm/prosemirror-history.js';
         import { keymap } from '/vendor/pm/prosemirror-keymap.js';
-        import { baseKeymap, toggleMark } from '/vendor/pm/prosemirror-commands.js';
+        import { baseKeymap, toggleMark, wrapIn, lift, chainCommands } from '/vendor/pm/prosemirror-commands.js';
+        import { wrapInList, liftListItem, splitListItem } from '/vendor/pm/prosemirror-schema-list.js';
+        import { inputRules, wrappingInputRule } from '/vendor/pm/prosemirror-inputrules.js';
 
         // Enable HTML so block-level <!-- TODO/NOTE --> comments are emitted
         // as html_block tokens, which the parser rule in 40-prose-editor.js
@@ -841,7 +843,7 @@
         }
 
         const mySchema = new Schema({
-            nodes: mdSchema.spec.nodes.addBefore('paragraph', 'annotation', annotationSpec),
+            nodes: mdSchema.spec.nodes.addToEnd('annotation', annotationSpec),
             marks: mdSchema.spec.marks
         });
 
@@ -870,7 +872,8 @@
             mySchema, mdSchema,
             MarkdownParser, MarkdownSerializer,
             defaultMarkdownParser, defaultMarkdownSerializer,
-            history, undo, redo, keymap, baseKeymap, toggleMark,
+            history, undo, redo, keymap, baseKeymap, toggleMark, wrapIn, lift, chainCommands,
+            wrapInList, liftListItem, splitListItem, inputRules, wrappingInputRule,
             hlPluginKey, buildHlPlugin, createAnnotationNodeView
         };
 

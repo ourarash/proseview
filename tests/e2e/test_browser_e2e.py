@@ -1211,6 +1211,72 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     assert page.locator(".discuss-message.user").count() == 1
 
 
+def test_missing_thread_notice_stays_chronological_is_dismissible_and_does_not_trap_scroll(
+    page: Page,
+    server: ProseviewServer,
+):
+    page.set_viewport_size({"width": 1024, "height": 520})
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.fill("#discussInput", "FORGET_THREAD_AFTER_TURN")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.assistant').length === 1"
+        " && !window._discussSnapshot.active_turn_id"
+    )
+    page.fill("#discussInput", "Continue after the missing thread")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.assistant').length === 2"
+        " && !window._discussSnapshot.active_turn_id"
+    )
+
+    entries = page.locator("#discussLog > .discuss-message, #discussLog > .discuss-notice")
+    rendered = entries.all_inner_texts()
+    question_index = next(i for i, text in enumerate(rendered) if "Continue after the missing thread" in text)
+    notice_index = next(i for i, text in enumerate(rendered) if "retried your question" in text)
+    answer_index = max(i for i, text in enumerate(rendered) if "Fake answer" in text)
+    assert question_index < notice_index < answer_index
+
+    for expected in range(3, 7):
+        page.fill("#discussInput", f"Follow-up {expected}")
+        page.press("#discussInput", "Enter")
+        page.wait_for_function(
+            "count => document.querySelectorAll('.discuss-message.assistant').length === count"
+            " && !window._discussSnapshot.active_turn_id",
+            arg=expected,
+        )
+
+    scroll = page.locator("#discussLog")
+    page.evaluate(
+        """() => {
+            const log = document.getElementById('discussLog');
+            log.style.scrollBehavior = 'auto';
+            log.scrollTop = log.scrollHeight;
+        }"""
+    )
+    bottom = scroll.evaluate("node => node.scrollTop")
+    page.evaluate("document.getElementById('discussLog').scrollTop -= 20")
+    before = scroll.evaluate("node => node.scrollTop")
+    assert before > 0 and 0 < bottom - before <= 21
+
+    after = page.evaluate(
+        """() => new Promise(resolve => {
+            renderDiscussSnapshot();
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                resolve(document.getElementById('discussLog').scrollTop);
+            }));
+        })"""
+    )
+    assert abs(after - before) <= 1
+
+    page.get_by_role("button", name="Dismiss notice").click()
+    page.wait_for_selector("#discussLog .discuss-notice", state="detached")
+    assert page.evaluate("document.activeElement === document.getElementById('discussLog')")
+
+
 def test_conversation_history_reopens_a_previous_thread(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_discuss(page)
@@ -6057,3 +6123,59 @@ def test_external_change_highlight(page: Page, server: ProseviewServer):
     # Verify the highlighted paragraph contains our text
     text = highlighted_paras[-1].inner_text()
     assert "brand new externally added paragraph" in text, f"Text was: {text}"
+
+def test_editor_list_and_quote_formatting(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.wait_for_selector(".ProseMirror")
+    
+    # Empty editor, type something
+    page.click(".ProseMirror")
+    page.keyboard.type("List item")
+    
+    # Select text
+    page.keyboard.press("Shift+ArrowLeft")
+    page.keyboard.press("Shift+ArrowLeft")
+    
+    # Reveal toolbar if hidden
+    page.click("#sceneToolbarReveal", force=True)
+    
+    # Click bullet list
+    page.click("button[aria-label='Bullet List']")
+    page.wait_for_selector(".ProseMirror ul li")
+    assert page.locator(".ProseMirror ul li").count() > 0, "Bullet list was not created"
+    
+    # Click ordered list
+    page.click("button[aria-label='Numbered List']")
+    page.wait_for_selector(".ProseMirror ol li")
+    assert page.locator(".ProseMirror ol li").count() > 0, "Ordered list was not created"
+    
+    # Click quote
+    page.click("button[aria-label='Quote']")
+    page.wait_for_selector(".ProseMirror blockquote")
+    assert page.locator(".ProseMirror blockquote").count() > 0, "Blockquote was not created"
+
+def test_editor_list_enter_splits_item(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.wait_for_selector(".ProseMirror")
+    
+    page.click(".ProseMirror")
+    page.keyboard.type("List item 1")
+    
+    page.keyboard.press("Shift+ArrowLeft")
+    page.keyboard.press("Shift+ArrowLeft")
+    
+    page.click("#sceneToolbarReveal", force=True)
+    page.click("button[aria-label='Bullet List']")
+    page.wait_for_selector(".ProseMirror ul li")
+    
+    # Go to end of the line
+    page.evaluate("() => { const sel = window.getSelection(); sel.modify('move', 'forward', 'lineboundary'); }")
+    
+    # Press Enter
+    page.keyboard.press("Enter")
+    page.keyboard.type("List item 2")
+    
+    # Verify there are two list items
+    page.wait_for_function("() => document.querySelectorAll('.ProseMirror ul li').length === 2")
+    list_items = page.locator(".ProseMirror ul li").all_inner_texts()
+    assert len(list_items) == 2

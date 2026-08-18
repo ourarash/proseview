@@ -495,9 +495,16 @@
         // showing did nothing visible.
         function closeScenePanel() {
             const term = document.getElementById('terminalPanel');
-            if (term && typeof _termDock !== 'undefined' && _termDock === 'right') term.hidden = true;
+            var termInDock = term && typeof _termDock !== 'undefined' && _termDock === 'right';
             const panel = document.getElementById('discussPanel');
+            var wasOpen = (panel && !panel.hidden) || (term && !term.hidden && termInDock);
+
+            if (termInDock) term.hidden = true;
             if (panel && !panel.hidden) closeDiscuss();
+            
+            if (wasOpen) {
+                try { sessionStorage.setItem('proseview-panel-open', 'false'); } catch(e) {}
+            }
         }
 
         function renderSceneDetailsPane() {
@@ -693,7 +700,7 @@
             });
             ['connection', 'conversation.reset', 'turn.queued', 'turn.cancelled', 'turn.preparing', 'turn.started', 'turn.completed', 'turn.idle', 'response.completed', 'progress.delta',
              'plan.updated', 'activity.updated', 'approval.requested', 'approval.resolved', 'approval.expired', 'task.ready', 'task.failed',
-             'task.updated', 'tasks.cleared', 'warning', 'error'].forEach(function(type) {
+             'task.updated', 'tasks.cleared', 'notice.dismissed', 'warning', 'error'].forEach(function(type) {
                 source.addEventListener(type, function(event) {
                     if (type === 'connection') {
                         var detail = JSON.parse(event.data);
@@ -786,7 +793,7 @@
         function appendDiscussStreamDelta(text) {
             var log = document.getElementById('discussLog');
             var draft = log.querySelector('.discuss-stream-draft');
-            var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 70;
+            var atBottom = discussIsAtBottom(log);
             if (!draft) {
                 draft = document.createElement('div');
                 draft.className = 'discuss-message assistant discuss-stream-draft';
@@ -1196,13 +1203,84 @@
             return node;
         }
 
+        function discussIsAtBottom(log) {
+            return log.scrollHeight - log.scrollTop - log.clientHeight <= 1;
+        }
+
+        function captureDiscussScroll(log) {
+            return {atBottom: discussIsAtBottom(log), scrollTop: log.scrollTop};
+        }
+
+        function restoreDiscussScroll(log, state) {
+            var previousBehavior = log.style.scrollBehavior;
+            log.style.scrollBehavior = 'auto';
+            log.scrollTop = state.atBottom ? log.scrollHeight : state.scrollTop;
+            requestAnimationFrame(function() { log.style.scrollBehavior = previousBehavior; });
+            document.getElementById('discussNewActivity').hidden = state.atBottom;
+        }
+
+        function renderDiscussNotice(notice) {
+            var node = elementWith('discuss-notice ' + (notice.kind === 'error' ? 'error' : 'warning'));
+            if (notice.id) node.dataset.noticeId = notice.id;
+            node.appendChild(elementWith('discuss-notice-message', notice.message || ''));
+            if (notice.id) {
+                var dismiss = document.createElement('button');
+                dismiss.type = 'button';
+                dismiss.className = 'discuss-notice-dismiss';
+                dismiss.textContent = '×';
+                dismiss.title = 'Dismiss';
+                dismiss.setAttribute('aria-label', 'Dismiss notice');
+                dismiss.onclick = function() {
+                    dismiss.disabled = true;
+                    discussApi(
+                        '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                        + '/notices/' + encodeURIComponent(notice.id) + '/dismiss',
+                        {}
+                    ).then(function() {
+                        if (_discussSnapshot) {
+                            _discussSnapshot.notices = (_discussSnapshot.notices || []).filter(function(candidate) {
+                                return candidate.id !== notice.id;
+                            });
+                        }
+                        renderDiscussSnapshot();
+                        document.getElementById('discussLog').focus();
+                        document.getElementById('discussAnnouncement').textContent = 'Notice dismissed';
+                    }).catch(function(error) {
+                        dismiss.disabled = false;
+                        renderDiscussError(error.message);
+                    });
+                };
+                node.appendChild(dismiss);
+            }
+            return node;
+        }
+
         function renderDiscussSnapshot() {
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
             var log = document.getElementById('discussLog');
-            var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 70;
+            var scrollState = captureDiscussScroll(log);
             log.replaceChildren();
+            var notices = snapshot.notices || [];
+            var renderedNotices = Object.create(null);
+            function appendNoticesForRequest(requestId) {
+                if (!requestId) return;
+                notices.forEach(function(notice, index) {
+                    if (!renderedNotices[index] && notice.client_request_id === requestId) {
+                        log.appendChild(renderDiscussNotice(notice));
+                        renderedNotices[index] = true;
+                    }
+                });
+            }
+            function appendUnassociatedNotices() {
+                notices.forEach(function(notice, index) {
+                    if (!renderedNotices[index] && !notice.client_request_id) {
+                        log.appendChild(renderDiscussNotice(notice));
+                        renderedNotices[index] = true;
+                    }
+                });
+            }
             var hasNoDiscussActivity = !(snapshot.messages || []).length
                 && !(snapshot.progress || []).length
                 && !(snapshot.tasks || []).length;
@@ -1247,8 +1325,10 @@
                 }
                 log.appendChild(empty);
             }
+            appendUnassociatedNotices();
             groupDiscussTasks(snapshot.tasks || []).forEach(function(group) {
                 log.appendChild(renderDiscussTask(group.latest, group.previous));
+                appendNoticesForRequest(group.latest.client_request_id);
             });
             (snapshot.messages || []).forEach(function(message) {
                 var wrap = elementWith('discuss-message ' + (message.role === 'user' ? 'user' : 'assistant'));
@@ -1257,6 +1337,7 @@
                 if (message.role === 'assistant') renderDiscussMarkdown(wrap, message.text);
                 else wrap.appendChild(document.createTextNode(message.text || ''));
                 log.appendChild(wrap);
+                if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
             });
             if ((snapshot.progress || []).length) {
                 var progress = document.createElement('details'); progress.className = 'discuss-progress';
@@ -1276,8 +1357,8 @@
                 details.appendChild(document.createTextNode(activity.command || activity.query || activity.tool || '')); log.appendChild(details);
             });
             (snapshot.approvals || []).forEach(function(approval) { log.appendChild(renderDiscussApproval(approval)); });
-            (snapshot.notices || []).forEach(function(notice) {
-                log.appendChild(elementWith(notice.kind === 'error' ? 'discuss-error' : 'discuss-queue', notice.message || ''));
+            notices.forEach(function(notice, index) {
+                if (!renderedNotices[index]) log.appendChild(renderDiscussNotice(notice));
             });
             appendDiscussLocalError(log);
             if ((snapshot.queue || []).length) {
@@ -1337,7 +1418,7 @@
             if (newConversationHint.textContent !== unavailableReason) newConversationHint.textContent = unavailableReason;
             newConversationHint.hidden = !unavailableReason;
             log.setAttribute('aria-busy', snapshot.active_turn_id ? 'true' : 'false');
-            discussAfterActivity(atBottom);
+            restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
                 var target = log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"] button');
                 if (target) { target.focus(); document.getElementById('discussAnnouncement').textContent = 'Codex is requesting approval'; }
@@ -2489,7 +2570,7 @@
             }
         });
         document.getElementById('discussLog').addEventListener('scroll', function() {
-            if (this.scrollHeight - this.scrollTop - this.clientHeight < 70) document.getElementById('discussNewActivity').hidden = true;
+            if (discussIsAtBottom(this)) document.getElementById('discussNewActivity').hidden = true;
         });
         (function initDiscussResize() {
             var handle = document.getElementById('discussResizeHandle'); var dragging = false; var startX = 0; var startWidth = 0;

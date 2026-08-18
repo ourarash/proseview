@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -763,6 +764,8 @@ class ProseviewServer:
 
     @contextmanager
     def sse(self, path: str = "/events", headers: dict[str, str] | None = None) -> Iterator[SseStream]:
+        separator = "&" if "?" in path else "?"
+        path += separator + urllib.parse.urlencode({"session": self.session_token})
         request = urllib.request.Request(self.url(path), headers=headers or {})
         resp = urllib.request.urlopen(request, timeout=30)
         stream = SseStream(resp)

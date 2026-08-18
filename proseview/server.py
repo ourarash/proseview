@@ -1133,6 +1133,25 @@ class _Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _authorize_event_stream_generation(self) -> bool:
+        """Reject EventSource clients rendered by an older server process.
+
+        EventSource reconnects automatically after a server restart. Returning
+        204 for an obsolete page session tells the browser to stop reconnecting
+        and releases the HTTP/1.1 connection for the replacement dashboard.
+        """
+        values = parse_qs(
+            urlparse(self.path).query, keep_blank_values=True
+        ).get("session", [])
+        supplied = values[0] if len(values) == 1 else ""
+        if self.session_token and compare_digest(supplied, self.session_token):
+            return True
+        self.send_response(204)
+        self.send_header("Cache-Control", "no-cache, no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def _send_discuss_error(self, exc: Exception) -> None:
         message = str(exc) or exc.__class__.__name__
         if isinstance(exc, CodexAuthError):
@@ -1517,6 +1536,8 @@ class _Handler(BaseHTTPRequestHandler):
         if discuss_match:
             conversation_id, action = discuss_match.groups()
             if action == "events":
+                if not self._authorize_event_stream_generation():
+                    return
                 self._handle_discuss_events(conversation_id)
             else:
                 try:
@@ -1526,6 +1547,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/terminal-output/"):
             # Allow query string (e.g. /terminal-output/<id>?...).
+            if not self._authorize_event_stream_generation():
+                return
             tid = urlparse(self.path).path.split("/")[-1]
             with _terminals_lock:
                 session = _terminals.get(tid)
@@ -1567,7 +1590,9 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 session.unsubscribe(q)
             return
-        if self.path == "/events":
+        if discuss_path == "/events":
+            if not self._authorize_event_stream_generation():
+                return
             q: queue.Queue[str] = self.subscribe()
             try:
                 self.send_response(200)

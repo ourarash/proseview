@@ -1127,7 +1127,7 @@
         }
 
         (function connectSSE() {
-            const es = new EventSource('/events');
+            const es = new EventSource(pvEventSourceUrl('/events'));
             es.onmessage = function(e) {
                 if (!e.data) return;
                 var payload = null;
@@ -1146,6 +1146,7 @@
                 }
             };
             es.onerror = function() {
+                if (es.readyState === EventSource.CLOSED) return;
                 es.close();
                 setTimeout(connectSSE, 3000);
             };

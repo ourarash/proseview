@@ -47,3 +47,21 @@ def test_diff_modal_restore_button_restores_file(page: Page, server: ProseviewSe
     page.wait_for_selector("#diffModalOverlay", state="hidden")
     
     _wait_until(lambda: path.read_text(encoding="utf-8") == original_text)
+
+def test_diff_modal_preview_direction(page: Page, server: ProseviewServer):
+    _create_history_backup(page, server)
+    _open_history_tab(page)
+    
+    page.wait_for_timeout(100)
+    page.evaluate("document.querySelector('#historyListContent .history-item').click()")
+    page.wait_for_selector("#diffModalOverlay:not([hidden])")
+    
+    # Wait for the diff to load (the loading text will disappear)
+    page.wait_for_function("() => !document.getElementById('diffModalContent').innerText.includes('Loading diff...')")
+    
+    # We added " A new sentence for history." to the current file.
+    # The past version does NOT have it.
+    # Restoring the past version will DELETE it.
+    # Therefore, it should be marked as deleted (.diff_sub) in the diff preview.
+    sub_text = page.locator(".diff_sub").inner_text()
+    assert "A new sentence for history." in sub_text, "Expected the newly added text to be marked for deletion (red) when previewing a past version."

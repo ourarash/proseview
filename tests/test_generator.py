@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from proseview.config import Config  # noqa: E402
+from proseview.config import Config, DiscussConfig  # noqa: E402
 from proseview.generator import build_analysis_payload, build_dashboard  # noqa: E402
 from proseview.scenes import collect_scene_stats, split_frontmatter  # noqa: E402
 
@@ -413,6 +413,21 @@ def test_dashboard_renders_repo_browser_with_fixture_tree():
         "const repoPreviewMax =",
         ]:
         assert marker in html, f"missing marker: {marker!r}"
+
+
+def test_dashboard_embeds_discuss_selection_presets_as_safe_json():
+    cfg = Config().with_overrides(
+        discuss=DiscussConfig(selection_presets=('Check "grammar" </script><carefully>.',))
+    )
+
+    html = build_dashboard(FIXTURE, cfg)
+
+    assert 'const discussSelectionPresets = JSON.parse(' in html
+    assert json.loads(_extract_js_literal(html, "discussSelectionPresets")) == [
+        'Check "grammar" </script><carefully>.'
+    ]
+    assignment = html[html.index("const discussSelectionPresets"):]
+    assert "<\\\\/script>" in assignment.split(";", 1)[0]
 
 
 def test_dashboard_scene_meta_embeds_related_docs_and_modal_sidebar(tmp_path: Path):

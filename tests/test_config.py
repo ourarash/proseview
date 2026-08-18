@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from proseview.config import (  # noqa: E402
     Config,
     ConfigError,
+    DiscussConfig,
     EditorConfig,
     RepoTabConfig,
     _parse_yaml,
@@ -180,6 +181,49 @@ def test_repo_tab_preview_max_bytes_must_be_positive(tmp_path: Path):
     )
     with pytest.raises(ConfigError, match="preview_max_bytes"):
         Config.load(tmp_path)
+
+
+def test_discuss_selection_presets_are_trimmed_and_deduplicated(tmp_path: Path):
+    (tmp_path / ".proseview.yaml").write_text(
+        "discuss:\n"
+        "  selection_presets:\n"
+        "    - Is the grammar correct?\n"
+        "    - '  Make this more direct.  '\n"
+        "    - Is the grammar correct?\n",
+        encoding="utf-8",
+    )
+
+    cfg = Config.load(tmp_path)
+
+    assert cfg.discuss == DiscussConfig(
+        selection_presets=("Is the grammar correct?", "Make this more direct.")
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["one prompt", ["valid", ""], ["valid", 42]],
+)
+def test_discuss_selection_presets_reject_invalid_values(tmp_path: Path, value: object):
+    import yaml
+
+    (tmp_path / ".proseview.yaml").write_text(
+        yaml.safe_dump({"discuss": {"selection_presets": value}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="discuss.selection_presets"):
+        Config.load(tmp_path)
+
+
+def test_config_save_preserves_discuss_selection_presets(tmp_path: Path):
+    cfg = Config().with_overrides(
+        discuss=DiscussConfig(selection_presets=("Check the point of view.",))
+    )
+
+    cfg.save(tmp_path)
+
+    assert Config.load(tmp_path).discuss == cfg.discuss
 
 
 def test_yaml_parser_handles_comments_and_blanks():

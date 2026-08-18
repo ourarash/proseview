@@ -350,6 +350,14 @@ editor:
 repo_tab:
   folders: [plans, continuity, outline, story-bible, docs, templates]
 
+# Stable shortcuts shown when asking Codex about selected prose. Proseview
+# displays at most three presets inline; additional presets are under More.
+discuss:
+  selection_presets:
+    - Is the grammar correct?
+    - Make this more direct.
+    - Check the point of view.
+
 # Which frontmatter keys the Timeline reads. Defaults shown; point them at
 # your own convention instead of renaming fields across the manuscript.
 story:
@@ -419,6 +427,12 @@ Four places where AI shows up, all opt-in:
    reach the browser. `History` lets you reopen, rename, export, or remove a
    previous conversation. `New conversation` starts a blank discussion while
    keeping the previous one available there.
+
+   When selected prose is attached, the composer shows up to three **Presets**
+   from `discuss.selection_presets` and your browser-local favorites. Favorites
+   come first, duplicates are removed, and additional presets are available
+   under **More**. Recent instructions are kept out of the inline preset row;
+   open **More** to reuse or star one as a personal preset.
 4. **TODOs as Markdown.** Every TODO and Note is a plain
    `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
    scene file. Your AI assistant can see them through the file, your

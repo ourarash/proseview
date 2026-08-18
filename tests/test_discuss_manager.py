@@ -9,7 +9,7 @@ import pytest
 
 from proseview.codex_app_server import CodexRequestError
 import proseview.discuss as discuss_module
-from proseview.discuss import DiscussManager, DiscussStateStore, _Conversation, validate_action_result
+from proseview.discuss import ContextError, DiscussManager, DiscussStateStore, _Conversation, validate_action_result
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -1011,7 +1011,22 @@ def test_missing_thread_retries_the_same_question_once_on_a_new_thread(tmp_path:
     assert snapshot["connection"] == "Live"
     assert conversation.thread_id != stale_thread_id
     assert sum("Can we continue?" in prompt for prompt in clients[0].prompts) == 1
-    assert any("new conversation" in notice["message"].lower() for notice in snapshot["notices"])
+    notice = next(
+        notice for notice in snapshot["notices"]
+        if "new conversation" in notice["message"].lower()
+    )
+    assert notice["id"].startswith("notice-")
+    assert notice["client_request_id"] == "recover"
+    assert next(message for message in snapshot["messages"] if message["role"] == "assistant")[
+        "client_request_id"
+    ] == "recover"
+
+    dismissed = manager.dismiss_notice(conversation_id, notice["id"])
+
+    assert dismissed == {"dismissed": True, "notice_id": notice["id"]}
+    assert manager.get_snapshot(conversation_id)["notices"] == []
+    with pytest.raises(ContextError, match="notice was not found"):
+        manager.dismiss_notice(conversation_id, notice["id"])
     manager.close()
 
 

@@ -1074,7 +1074,22 @@
                 if (!r.ok) throw new Error('Refresh failed: ' + r.status);
                 return r.json();
             }).then(function(data) {
-                if (data.contents && data.contents[scenePath] !== undefined) contents[scenePath] = data.contents[scenePath];
+                if (data.contents && data.contents[scenePath] !== undefined) {
+                    var oldContent = contents[scenePath] || '';
+                    var newContent = data.contents[scenePath];
+                    if (oldContent !== newContent && oldContent !== '') {
+                        var oldParas = oldContent.split('\n\n');
+                        var newParas = newContent.split('\n\n');
+                        var changed = [];
+                        for (var i = 0; i < newParas.length; i++) {
+                            if (i >= oldParas.length || newParas[i] !== oldParas[i]) {
+                                changed.push(i);
+                            }
+                        }
+                        window._lastExternalChangeIndices = changed;
+                    }
+                    contents[scenePath] = newContent;
+                }
                 if (data.meta && data.meta[scenePath]) meta[scenePath] = data.meta[scenePath];
                 if (data.highlightsByPath && data.highlightsByPath[scenePath]) highlightsByPath[scenePath] = data.highlightsByPath[scenePath];
                 refreshSucceeded = true;

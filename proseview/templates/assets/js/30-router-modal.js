@@ -553,7 +553,7 @@
             let oldScroll = 0;
             if (scrollEl) {
                 oldScroll = scrollEl.scrollTop;
-                scrollEl.style.minHeight = scrollEl.scrollHeight + 'px';
+                if (b) b.style.minHeight = scrollEl.scrollHeight + 'px';
             }
             const fm = m.fm || {};
             const chars = Array.isArray(fm.characters) ? fm.characters : (typeof fm.characters === 'string' ? [fm.characters] : []);
@@ -713,17 +713,28 @@
             }
             window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
             if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
-            if (window._PM) mountProseView(p);
+            if (window._PM) {
+                mountProseView(p);
+                if (window._lastExternalChangeIndices && window._lastExternalChangeIndices.length > 0) {
+                    const pmParas = document.querySelectorAll('.ProseMirror > p');
+                    window._lastExternalChangeIndices.forEach(function(idx) {
+                        if (pmParas[idx]) {
+                            pmParas[idx].classList.add('external-change-highlight');
+                        }
+                    });
+                    window._lastExternalChangeIndices = null;
+                }
+            }
             if (scrollEl) {
                 if (preserveScroll) {
                     scrollEl.scrollTop = oldScroll;
                     setTimeout(function() {
                         scrollEl.scrollTop = oldScroll;
-                        scrollEl.style.minHeight = '';
+                        if (b) b.style.minHeight = '';
                     }, 50);
                 } else {
                     scrollEl.scrollTop = 0;
-                    scrollEl.style.minHeight = '';
+                    if (b) b.style.minHeight = '';
                 }
             }
         }
@@ -849,6 +860,9 @@
             var btn = document.getElementById('modalFullscreenBtn');
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().then(function() {
+                    if (navigator.keyboard && navigator.keyboard.lock) {
+                        navigator.keyboard.lock(['Escape']).catch(function() {});
+                    }
                     if (btn) {
                         btn.classList.add('is-active');
                         btn.setAttribute('aria-pressed', 'true');
@@ -859,6 +873,9 @@
             } else {
                 if (document.exitFullscreen) {
                     document.exitFullscreen().then(function() {
+                        if (navigator.keyboard && navigator.keyboard.unlock) {
+                            navigator.keyboard.unlock();
+                        }
                         if (btn) {
                             btn.classList.remove('is-active');
                             btn.setAttribute('aria-pressed', 'false');

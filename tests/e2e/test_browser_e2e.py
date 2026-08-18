@@ -5994,3 +5994,66 @@ def test_timeline_names_a_bare_chapter_number(page: Page, shared_server: Prosevi
         "() => ['2', 2, 'ch00-prolog', 'Chapter 3', ''].map(v => _storyChapterLabel(v))")
 
     assert labels == ["Chapter 2", "Chapter 2", "ch00-prolog", "Chapter 3", ""]
+
+def test_scroll_position_preserved_on_save(page: Page, server: ProseviewServer):
+    # Use the standard scene, we'll force it to be scrollable
+    open_scene(page, server, SCENE_REL)
+    enter_edit_mode(page)
+    
+    # Wait for editor to render fully
+    page.wait_for_selector(".ProseMirror")
+    page.wait_for_timeout(500)
+    
+    # Force the container to be tall enough to scroll
+    page.evaluate("document.querySelector('#sceneModal .modal-content').style.paddingBottom = '3000px'")
+    
+    # Scroll down to ensure we are not at the top
+    page.mouse.wheel(0, 500)
+    page.wait_for_timeout(200)
+    
+    # Verify we scrolled
+    scroll_before = page.evaluate("document.querySelector('#sceneModal .modal-content').scrollTop")
+    assert scroll_before > 0, "Failed to scroll"
+    
+    # Append text and save without moving cursor
+    page.evaluate("window._pmDirty = true; window.contents = window.contents || {}; window.contents[Object.keys(window.contents)[0]] += ' test';")
+    with page.expect_response("**/save-scene*"):
+        save_scene(page)
+        
+    # Wait for save state to settle
+    page.wait_for_timeout(1000)
+    
+    # Verify scroll is preserved
+    scroll_after = page.evaluate("document.querySelector('#sceneModal .modal-content').scrollTop")
+    
+    # Allow 1px difference for browser sub-pixel rendering or exact match
+    assert abs(scroll_after - scroll_before) <= 1, f"Scroll jumped! Before: {scroll_before}, After: {scroll_after}"
+@pytest.mark.e2e_browser
+def test_external_change_highlight(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    
+    # Wait for the scene to load
+    page.wait_for_selector(".ProseMirror")
+    
+    # Give the app a moment to settle
+    page.wait_for_timeout(500)
+    
+    # Get the file path
+    abs_path = server.scene_path(SCENE_REL)
+    
+    # Read the file
+    content = abs_path.read_text()
+        
+    # Append a new paragraph externally
+    abs_path.write_text(content + "\n\nThis is a brand new externally added paragraph.")
+        
+    # Wait for the frontend to reload the file via SSE
+    # The new paragraph should get the highlight class
+    page.wait_for_selector(".ProseMirror > p.external-change-highlight")
+    
+    highlighted_paras = page.locator(".ProseMirror > p.external-change-highlight").all()
+    assert len(highlighted_paras) > 0, "No paragraphs were highlighted"
+    
+    # Verify the highlighted paragraph contains our text
+    text = highlighted_paras[-1].inner_text()
+    assert "brand new externally added paragraph" in text, f"Text was: {text}"

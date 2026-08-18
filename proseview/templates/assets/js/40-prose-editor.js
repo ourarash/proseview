@@ -314,17 +314,18 @@
             if (btn) btn.textContent = '✏ Edit';
             var p = paths[curIdx];
             var scrollEl = document.querySelector('#sceneModal .modal-content');
+            var bodyEl = document.getElementById('modalBody');
             var oldScroll = 0;
             if (scrollEl) {
                 oldScroll = scrollEl.scrollTop;
-                scrollEl.style.minHeight = scrollEl.scrollHeight + 'px';
+                if (bodyEl) bodyEl.style.minHeight = scrollEl.scrollHeight + 'px';
             }
             mountProseView(p);
             if (scrollEl) {
                 scrollEl.scrollTop = oldScroll;
                 setTimeout(function() {
                     scrollEl.scrollTop = oldScroll;
-                    scrollEl.style.minHeight = '';
+                    if (bodyEl) bodyEl.style.minHeight = '';
                 }, 50);
             }
             return true;

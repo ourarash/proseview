@@ -29,3 +29,21 @@ def test_diff_modal_escape_key_closes_modal_only(page: Page, server: ProseviewSe
     page.wait_for_selector("#diffModalOverlay", state="hidden")
     
     assert page.locator("#utilityTabHistory").evaluate("el => el.classList.contains('active')")
+
+def test_diff_modal_restore_button_restores_file(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    original_text = path.read_text(encoding="utf-8")
+    
+    _create_history_backup(page, server)
+    _open_history_tab(page)
+    
+    page.wait_for_timeout(100)
+    page.evaluate("document.querySelector('#historyListContent .history-item').click()")
+    page.wait_for_selector("#diffModalOverlay:not([hidden])")
+    
+    with page.expect_response("**/api/scene/history/restore"):
+        page.locator("#diffModalRestoreBtn").click()
+        
+    page.wait_for_selector("#diffModalOverlay", state="hidden")
+    
+    _wait_until(lambda: path.read_text(encoding="utf-8") == original_text)

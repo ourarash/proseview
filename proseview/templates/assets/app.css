@@ -2602,3 +2602,12 @@ table.diff td[nowrap="nowrap"] {
     animation: external-change-flash 3s ease-out forwards;
     border-radius: 4px;
 }
+
+/* Dashboard KPI Styles */
+.kpi-card { display: flex; flex-direction: column; justify-content: center; padding: 20px 24px; }
+.kpi-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text-main); }
+.warning-card { background-color: color-mix(in srgb, var(--button-danger) 5%, transparent); }
+.warning-card .card-title { color: var(--button-danger) !important; }
+.actionable-insight-item { margin-bottom: 8px; }
+

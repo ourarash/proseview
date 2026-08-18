@@ -143,6 +143,32 @@
     </div>
 
     <div id="tab-overview" class="tab-panel active">
+        <div class="dashboard-grid kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
+            <div class="card kpi-card">
+                <div class="kpi-label">Total Words</div>
+                <div class="kpi-value" id="kpiTotalWords">--</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-label">Total Scenes</div>
+                <div class="kpi-value" id="kpiTotalScenes">--</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-label">Reading Time</div>
+                <div class="kpi-value" id="kpiReadingTime">--</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-label">Open TODOs</div>
+                <div class="kpi-value" id="kpiOpenTodos">--</div>
+            </div>
+        </div>
+        
+        <div id="actionableInsightsSection" class="dashboard-grid" style="grid-template-columns: 1fr; margin-bottom: 24px; display: none;">
+            <div class="card warning-card" style="border-color: var(--button-danger);">
+                <div class="card-header"><h2 class="card-title" style="color: var(--button-danger);">Actionable Insights</h2></div>
+                <ul id="actionableInsightsList" style="margin: 0; padding-left: 20px; line-height: 1.5;"></ul>
+            </div>
+        </div>
+
         {{ goals_card_wrapper | safe }}
         {{ recent_changes_card | safe }}
 

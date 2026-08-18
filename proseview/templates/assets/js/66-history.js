@@ -111,11 +111,12 @@ document.addEventListener("keydown", (e) => {
     }
 }, true);
 
-document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => {
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => {
     if (!currentDiffScene || !currentDiffTs) return;
     
     // Check if dirty
-    if (window.isDirty && window.isDirty()) {
+    if (typeof _pmDirty !== 'undefined' && _pmDirty) {
         alert("Please save your current changes before restoring an older version.");
         return;
     }
@@ -144,6 +145,7 @@ document.getElementById("diffModalRestoreBtn")?.addEventListener("click", () => 
         }, 500);
     })
     .catch(err => console.error("Restore error:", err));
+});
 });
 
 function clearSceneHistory() {

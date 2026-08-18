@@ -1161,6 +1161,7 @@ class _Conversation:
         self.activities: dict[str, dict[str, Any]] = {}
         self.approvals: dict[str, dict[str, Any]] = {}
         self.notices: list[dict[str, str]] = []
+        self.notice_sequence = 0
         self.pending: deque[_QueuedQuestion] = deque()
         self.request_ids: dict[str, dict[str, Any]] = {}
         self.tasks: dict[str, dict[str, Any]] = {}
@@ -1217,12 +1218,21 @@ class _Conversation:
                     subscriber.put_nowait(BrowserEvent(event.id, "snapshot", self.snapshot()))
         return event
 
-    def add_notice(self, kind: str, message: str, **extra: Any) -> BrowserEvent:
-        data = {"kind": kind, "message": _bounded_text(message, 4000)}
-        data.update({key: _bounded_text(value, 1000) for key, value in extra.items()})
+    def _append_notice(self, kind: str, message: str, **extra: Any) -> dict[str, str]:
         with self.lock:
+            self.notice_sequence += 1
+            data = {
+                "id": f"notice-{self.notice_sequence}",
+                "kind": kind,
+                "message": _bounded_text(message, 4000),
+            }
+            data.update({key: _bounded_text(value, 1000) for key, value in extra.items()})
             self.notices.append(data)
             self.notices = self.notices[-50:]
+            return data
+
+    def add_notice(self, kind: str, message: str, **extra: Any) -> BrowserEvent:
+        data = self._append_notice(kind, message, **extra)
         return self.publish(kind, data)
 
 
@@ -1429,9 +1439,12 @@ class DiscussManager:
                 "kind": "warning",
                 "message": "Some earlier Codex content could not be displayed safely.",
             }
-            if warning not in conversation.notices:
-                conversation.notices.append(warning)
-                conversation.notices = conversation.notices[-50:]
+            if not any(
+                notice.get("kind") == warning["kind"]
+                and notice.get("message") == warning["message"]
+                for notice in conversation.notices
+            ):
+                conversation._append_notice(warning["kind"], warning["message"])
         conversation.thread_restored = True
 
     def _restored_action_task(
@@ -2388,6 +2401,7 @@ class DiscussManager:
                             "role": "assistant",
                             "text": event.get("text") or "",
                             "turn_id": event.get("turn_id"),
+                            "client_request_id": conversation.active_request_id or "",
                         })
                 else:
                     conversation.progress.append(str(event.get("text") or ""))
@@ -2419,8 +2433,11 @@ class DiscussManager:
                 if conversation.active_done is not None:
                     conversation.active_done.set()
             elif event_type in {"warning", "error"}:
-                conversation.notices.append({"kind": event_type, "message": _bounded_text(event.get("message"), 4000)})
-                conversation.notices = conversation.notices[-50:]
+                conversation._append_notice(
+                    event_type,
+                    event.get("message"),
+                    client_request_id=conversation.active_request_id or "",
+                )
             conversation.publish(event_type, event)
 
     def proposal_for_task(self, conversation_id: str, task_id: str) -> dict[str, Any]:
@@ -2564,6 +2581,22 @@ class DiscussManager:
             conversation.tasks = {}
         conversation.publish("tasks.cleared", {})
         return {"cleared": True}
+
+    def dismiss_notice(self, conversation_id: str, notice_id: str) -> dict[str, Any]:
+        conversation = self._get(conversation_id)
+        clean_id = str(notice_id or "").strip()
+        if not clean_id or len(clean_id) > 128:
+            raise ContextError("notice id is required and must be at most 128 characters")
+        with conversation.lock:
+            index = next(
+                (index for index, notice in enumerate(conversation.notices) if notice.get("id") == clean_id),
+                None,
+            )
+            if index is None:
+                raise ContextError("notice was not found")
+            conversation.notices.pop(index)
+        conversation.publish("notice.dismissed", {"notice_id": clean_id})
+        return {"dismissed": True, "notice_id": clean_id}
 
     def _on_agent_failure(self, error: BaseException) -> None:
         message = _bounded_text(str(error) or "Codex app-server failed", 4000)

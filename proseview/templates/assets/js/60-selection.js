@@ -989,6 +989,9 @@
             // Don't interfere if our own confirmation dialog is up; it has
             // its own Esc handler.
             if (_unsavedDialog) return;
+            // Don't interfere if the diff modal is open
+            const diffModal = document.getElementById('diffModalOverlay');
+            if (diffModal && !diffModal.hidden) return;
             if (tryEscapeEditMode()) {
                 e.preventDefault();
                 e.stopPropagation();

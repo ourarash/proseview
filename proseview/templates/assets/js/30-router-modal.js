@@ -793,6 +793,7 @@
             _pmEditMode = false;
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) editBar.hidden = true;
+            if (window._resetEditBarPosition) window._resetEditBarPosition();
             exitFocusMode();
             delete document.documentElement.dataset.view;
             if (options.route !== false) routeToHash('/tab/' + currentTab, true);

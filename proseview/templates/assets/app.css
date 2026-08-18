@@ -1822,7 +1822,8 @@
             font-size: 12px;
         }
         .scene-edit-status {
-            display: flex; align-items: center; gap: 6px;
+            display: flex; align-items: center; justify-content: center;
+            width: 24px; height: 24px;
             color: var(--text-muted);
             user-select: none;
         }
@@ -1840,21 +1841,22 @@
         .scene-edit-bar.is-saved .scene-edit-dot { background: #3fb950; }
         .scene-edit-save {
             background: var(--surface-muted); color: var(--text-muted);
-            border: 1px solid var(--border); border-radius: 999px;
-            padding: 4px 14px; cursor: pointer; font-size: 12px;
+            border: 1px solid var(--border); border-radius: 50%;
+            width: 24px; height: 24px; padding: 0; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
         .scene-edit-save:disabled { cursor: default; }
         .scene-edit-bar.is-dirty .scene-edit-save {
             background: var(--primary, #2563eb); color: #fff;
             border-color: var(--primary, #2563eb);
-            font-weight: 600;
         }
         .scene-edit-bar.is-dirty .scene-edit-save:hover { opacity: 0.9; }
         .scene-edit-cancel {
             background: none; border: 1px solid var(--border);
-            border-radius: 999px; padding: 4px 12px; cursor: pointer;
-            font-size: 12px; color: var(--text-muted);
+            border-radius: 50%; width: 24px; height: 24px; padding: 0; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--text-muted);
         }
         .scene-edit-cancel:hover { border-color: var(--text-muted); color: var(--text-main); }
         .scene-edit-cancel:disabled { cursor: wait; opacity: .55; }

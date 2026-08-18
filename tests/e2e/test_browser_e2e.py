@@ -316,7 +316,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     open_scene(page, server)
     selected = select_prose(page, "ledger")
     assert selected == "ledger"
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert SCENE_REL in page.locator("#discussContext").inner_text()
@@ -346,7 +346,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
 
     page.press("body", "Escape")
     page.wait_for_selector("#discussPanel", state="hidden")
-    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
+    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal #utilityTabDiscuss')")
 
 
 def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
@@ -788,7 +788,7 @@ def test_discuss_decodes_restored_assistant_prose_after_server_restart(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Describe Patel's setting")
     page.press("#discussInput", "Enter")
@@ -798,7 +798,7 @@ def test_discuss_decodes_restored_assistant_prose_after_server_restart(
     page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
     page.goto("about:blank")
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     wait_for_discuss_answer(page, "Patel's note")
 
@@ -815,7 +815,7 @@ def test_discuss_repository_links_open_inside_prosview_and_target_source_line(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "SHOW_FILE_LINKS")
     page.press("#discussInput", "Enter")
@@ -855,7 +855,7 @@ def test_discuss_repository_link_preserves_unsaved_scene_edits(
     page: Page, server: ProseviewServer
 ):
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "SHOW_FILE_LINKS")
     page.press("#discussInput", "Enter")
@@ -881,7 +881,7 @@ def test_discuss_current_file_is_default_removable_context(
     fake_home: Path,
 ):
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
     context_button = page.locator("#discussContextButton")
@@ -1013,7 +1013,7 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     open_scene(page, server)
     # The toolbar button opens the dock from the keyboard; the tab row then
     # takes you to Codex, also from the keyboard.
-    button = page.locator("#sceneModal .discuss-open-btn")
+    button = page.locator("#sceneModal #utilityTabDiscuss")
     button.focus()
     page.keyboard.press("Enter")
     page.wait_for_selector("#discussPanel", state="visible")
@@ -1058,7 +1058,7 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     # Focus lands on the toolbar button, not on the tab that opened Codex: the
     # tab lives inside the panel that just closed, so focusing it would do
     # nothing and drop the keyboard user back to the document.
-    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal .discuss-open-btn')")
+    assert page.evaluate("document.activeElement === document.querySelector('#sceneModal #utilityTabDiscuss')")
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):
@@ -1463,15 +1463,16 @@ def open_discuss(page: Page) -> None:
     helper so the tab order can change again without touching thirty of them.
     """
     if page.locator("#discussPanel").is_hidden():
-        scene_btn = page.locator("#sceneModal .discuss-open-btn")
+        scene_btn = page.locator("#sceneModal #utilityTabDiscuss")
         button = scene_btn if scene_btn.is_visible() else page.locator(
-            "#file-preview-panel .discuss-open-btn"
+            "#file-preview-panel #utilityTabDiscuss"
         )
         button.click()
     # The button may have landed on Codex already, and clicking the tab again
     # would open a second conversation. Only click when it is not the live tab.
     if page.locator("#utilityTabDiscuss").get_attribute("aria-selected") != "true":
-        page.locator("#utilityTabDiscuss").click()
+        page.locator(".scene-toolbar-button.discuss-open-btn").click()
+    page.locator("#utilityTabDiscuss").click()
     page.wait_for_selector("#discussLog:not([hidden])")
 
 
@@ -1667,7 +1668,7 @@ def test_discuss_tab_shows_ai_not_connected_empty_state_without_codex(page: Page
     page.route("**/api/discuss/conversations/open", handle_route)
 
     # Click the discuss/panel button
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_selector("#discussPanel", state="visible")
     
     # Verify the empty state renders
@@ -5000,11 +5001,11 @@ def test_unsent_selection_instruction_survives_panel_close_and_reload(
     page.click("#selectionCodexBtn")
     page.fill("#discussInput", "Make the waiting feel more ominous")
     page.click(".discuss-close")
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     assert page.input_value("#discussInput") == "Make the waiting feel more ominous"
     page.reload()
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     assert page.input_value("#discussInput") == "Make the waiting feel more ominous"
 
 
@@ -5107,7 +5108,7 @@ def test_managed_selection_action_restores_as_a_card_after_server_restart(
     page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
     page.goto("about:blank")
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_timeout(1_000)
     connection = page.locator("#discussConnection").inner_text()
     assert connection.startswith("Live"), connection
@@ -5156,7 +5157,7 @@ def test_same_server_reload_does_not_auto_review_replayed_rewrite_history(
     page.wait_for_function("() => !!window._PM")
     page.wait_for_selector("#sceneModal", state="visible")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.wait_for_timeout(1_000)
 
@@ -5195,7 +5196,7 @@ def test_legacy_selection_history_restores_as_a_safe_historical_card(
     page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
     page.goto("about:blank")
     open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#sceneModal .discuss-open-btn'))")
+    page.evaluate("openDiscuss(document.querySelector('#sceneModal #utilityTabDiscuss'))")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.wait_for_function(
         "() => document.querySelector('.discuss-task-status')?.textContent === 'Restored'",
@@ -6179,3 +6180,29 @@ def test_editor_list_enter_splits_item(page: Page, server: ProseviewServer):
     page.wait_for_function("() => document.querySelectorAll('.ProseMirror ul li').length === 2")
     list_items = page.locator(".ProseMirror ul li").all_inner_texts()
     assert len(list_items) == 2
+
+def test_discuss_panel_state_preserved_on_reload(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    
+    # Open the discuss panel
+    page.locator(".scene-toolbar-button.discuss-open-btn").click()
+    page.locator("#utilityTabDiscuss").click()
+    page.wait_for_selector("#discussPanel:not([hidden])")
+    
+    # Reload the page
+    page.reload()
+    
+    # Verify the discuss panel opens automatically
+    page.wait_for_selector("#discussPanel:not([hidden])")
+    
+    # Close the panel
+    page.locator(".discuss-close").click()
+    page.wait_for_selector("#discussPanel", state="hidden")
+    
+    # Reload the page
+    page.reload()
+    
+    # Verify it stays closed
+    page.wait_for_selector("#discussPanel", state="hidden")
+    page.wait_for_timeout(500) # Give it some time to ensure it doesn't pop open
+    assert page.locator("#discussPanel").is_hidden(), "Discuss panel should remain closed after reload"

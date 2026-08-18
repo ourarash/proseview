@@ -2389,9 +2389,7 @@
                 var picker = document.getElementById('discussContextPicker');
                 var resetDialog = document.getElementById('discussNewConversationDialog');
                 var historyDialog = document.getElementById('discussHistoryDialog');
-                if ((picker && !picker.hidden) || (resetDialog && resetDialog.open) || (historyDialog && historyDialog.open)) return;
-                var panel = document.getElementById('discussPanel');
-                if (panel && !panel.hidden) { event.preventDefault(); closeDiscuss(); }
+                // Removed the code that closes the discuss panel on Escape
             }
         });
         document.getElementById('discussLog').addEventListener('scroll', function() {

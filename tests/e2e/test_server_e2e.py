@@ -410,6 +410,19 @@ def test_discuss_http_approval_and_event_stream(server: ProseviewServer):
     assert stale.status == 409
 
 
+def test_event_streams_reject_a_stale_server_session_without_subscribing(
+    server: ProseviewServer,
+):
+    stale_query = "?session=stale-server-session"
+
+    assert server.get("/events" + stale_query).status == 204
+    assert server.get(
+        "/api/discuss/conversations/not-open/events" + stale_query
+    ).status == 204
+    assert server.get("/terminal-output/not-open" + stale_query).status == 204
+    assert server.get("/events").status == 204
+
+
 def test_discuss_stop_preserves_and_runs_queued_question(server: ProseviewServer):
     headers = _discuss_headers(server)
     conversation_id = server.post_json(

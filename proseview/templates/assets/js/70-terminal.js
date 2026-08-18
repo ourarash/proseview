@@ -386,7 +386,7 @@
                 }).catch(function() {});
             });
 
-            var es = new EventSource('/terminal-output/' + tid);
+            var es = new EventSource(pvEventSourceUrl('/terminal-output/' + tid));
             session.es = es;
             var promptSent = false, idleTimer = null;
             var maxWaitTimer = initialPrompt ? setTimeout(function() {

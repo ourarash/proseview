@@ -653,7 +653,9 @@
             clearTimeout(_discussReconnectTimer);
             if (!_discussConversationId) return;
             var cid = _discussConversationId;
-            var source = new EventSource('/api/discuss/conversations/' + encodeURIComponent(cid) + '/events');
+            var source = new EventSource(pvEventSourceUrl(
+                '/api/discuss/conversations/' + encodeURIComponent(cid) + '/events'
+            ));
             _discussEventSource = source;
             source.onopen = function() {
                 if (_discussConversationId === cid && (!_discussSnapshot || _discussSnapshot.connection !== 'Unavailable')) {
@@ -663,6 +665,10 @@
             };
             source.onerror = function() {
                 if (_discussConversationId !== cid || _discussEventSource !== source) return;
+                if (source.readyState === EventSource.CLOSED) {
+                    showDiscussReloadRequired(source);
+                    return;
+                }
                 setDiscussConnection('Reconnecting', 'Proseview server unavailable');
                 scheduleDiscussReconnectProbe(cid, source);
             };

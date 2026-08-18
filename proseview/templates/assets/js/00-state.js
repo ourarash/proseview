@@ -13,6 +13,14 @@ let currentTab = 'overview';
             };
         }
 
+        // EventSource cannot send the custom header used by mutations. Carry
+        // the same per-run token in its URL so a replacement server can answer
+        // stale tabs with 204 and make their automatic reconnects stop.
+        function pvEventSourceUrl(path) {
+            const separator = path.includes('?') ? '&' : '?';
+            return path + separator + 'session=' + encodeURIComponent(pageSessionToken);
+        }
+
         const PASS_LABELS = {
             passive_voice: 'Passive Voice',
             filter_verbs: 'Filter Verbs',

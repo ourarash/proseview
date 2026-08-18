@@ -183,6 +183,24 @@ def open_dashboard(page: Page, server: ProseviewServer) -> None:
     page.wait_for_function("() => !!window._PM")
 
 
+def _track_event_sources(page: Page) -> None:
+    """Expose EventSource lifecycle state before the application scripts run."""
+    page.add_init_script(
+        """(() => {
+            const NativeEventSource = window.EventSource;
+            window.__trackedEventSources = [];
+            window.EventSource = class extends NativeEventSource {
+                constructor(url, options) {
+                    super(url, options);
+                    this.__openCount = 0;
+                    this.addEventListener('open', () => { this.__openCount += 1; });
+                    window.__trackedEventSources.push(this);
+                }
+            };
+        })()"""
+    )
+
+
 def open_scene(page: Page, server: ProseviewServer, rel: str = SCENE_REL) -> None:
     page.goto(f"{server.base_url}#/scene/{rel}", wait_until="load")
     page.wait_for_function("() => !!window._PM")
@@ -655,6 +673,86 @@ def test_discuss_detects_a_server_restart_and_recovers_by_reload(
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussInput").input_value() == draft
+
+
+def test_stale_tabs_release_event_streams_after_restart_and_do_not_starve_new_requests(
+    page: Page, server: ProseviewServer
+):
+    stale_pages = [page]
+    current = None
+    try:
+        _track_event_sources(page)
+        open_dashboard(page, server)
+        for _ in range(3):
+            stale = page.context.new_page()
+            _install_esm_cache(stale)
+            _track_event_sources(stale)
+            open_dashboard(stale, server)
+            stale_pages.append(stale)
+
+        for stale in stale_pages:
+            stale.wait_for_function(
+                """() => window.__trackedEventSources.some(source =>
+                    new URL(source.url).pathname === '/events'
+                    && source.readyState === EventSource.OPEN
+                    && source.__openCount === 1
+                )"""
+            )
+
+        previous_token = page.evaluate("pageSessionToken")
+        stale_urls = []
+        for stale in stale_pages:
+            stale_urls.append(stale.evaluate(
+                """() => {
+                    const source = window.__trackedEventSources.find(candidate =>
+                        new URL(candidate.url).pathname === '/events'
+                    );
+                    source.close();
+                    return source.url;
+                }"""
+            ))
+        server.restart()
+        assert server.session_token != previous_token
+
+        for stale, stale_url in zip(stale_pages, stale_urls, strict=True):
+            stale.evaluate(
+                """url => {
+                    window.__forcedStaleEventSource = new EventSource(url);
+                }""",
+                stale_url,
+            )
+            stale.wait_for_function(
+                "() => window.__forcedStaleEventSource.readyState !== EventSource.CONNECTING",
+                timeout=15_000,
+            )
+            assert stale.evaluate(
+                "window.__forcedStaleEventSource.readyState === EventSource.CLOSED"
+            )
+
+        current = page.context.new_page()
+        _install_esm_cache(current)
+        open_scene(current, server)
+        open_discuss(current)
+        current.wait_for_function(
+            "() => document.querySelector('#discussConnection').innerText.startsWith('Live')"
+        )
+        current.evaluate("window._discussRequestTimeoutMs = 750")
+
+        current.click("#discussNewConversation")
+        current.click("#discussNewConversationConfirm")
+        current.wait_for_selector("#discussNewConversationDialog", state="hidden", timeout=3_000)
+
+        current.fill("#discussInput", "Can a fresh tab still reach Codex?")
+        current.press("#discussInput", "Enter")
+        wait_for_discuss_answer(current)
+        assert current.locator(".discuss-local-error").count() == 0
+    finally:
+        if current is not None:
+            current.close()
+        for stale in stale_pages[1:]:
+            stale.close()
+        if not page.is_closed():
+            page.goto("about:blank")
 
 
 def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zoom(
@@ -5834,4 +5932,3 @@ def test_timeline_names_a_bare_chapter_number(page: Page, shared_server: Prosevi
         "() => ['2', 2, 'ch00-prolog', 'Chapter 3', ''].map(v => _storyChapterLabel(v))")
 
     assert labels == ["Chapter 2", "Chapter 2", "ch00-prolog", "Chapter 3", ""]
-

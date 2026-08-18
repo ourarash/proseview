@@ -549,7 +549,12 @@
 
         function render(preserveScroll) {
             const p = paths[curIdx], b = document.getElementById('modalBody'), m = meta[p];
-            const oldScroll = b ? b.scrollTop : 0;
+            const scrollEl = document.querySelector('#sceneModal .modal-content');
+            let oldScroll = 0;
+            if (scrollEl) {
+                oldScroll = scrollEl.scrollTop;
+                scrollEl.style.minHeight = scrollEl.scrollHeight + 'px';
+            }
             const fm = m.fm || {};
             const chars = Array.isArray(fm.characters) ? fm.characters : (typeof fm.characters === 'string' ? [fm.characters] : []);
             const charMentions = m.char_mentions || {};
@@ -709,8 +714,18 @@
             window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
             if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
             if (window._PM) mountProseView(p);
-            if (preserveScroll) b.scrollTop = oldScroll;
-            else b.scrollTop = 0;
+            if (scrollEl) {
+                if (preserveScroll) {
+                    scrollEl.scrollTop = oldScroll;
+                    setTimeout(function() {
+                        scrollEl.scrollTop = oldScroll;
+                        scrollEl.style.minHeight = '';
+                    }, 50);
+                } else {
+                    scrollEl.scrollTop = 0;
+                    scrollEl.style.minHeight = '';
+                }
+            }
         }
 
         function guardDirtySceneNavigation() {

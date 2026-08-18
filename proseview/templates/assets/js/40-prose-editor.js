@@ -43,6 +43,8 @@
                     'Mod-Shift-z': PM.redo,
                     'Mod-b': PM.toggleMark(PM.mySchema.marks.strong),
                     'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
+                    'Mod-`': PM.toggleMark(PM.mySchema.marks.code),
+                    'Mod-e': PM.toggleMark(PM.mySchema.marks.code),
                     'Mod-s': function() { saveSceneEdit(); return true; }
                 }))
             ].filter(Boolean);
@@ -399,3 +401,13 @@
                 tt.style.opacity = '1';
             });
         });
+
+        window.toggleFormat = function(markName) {
+            if (!_pmView || !window._PM) return;
+            var PM = window._PM;
+            var markType = PM.mySchema.marks[markName];
+            if (markType) {
+                PM.toggleMark(markType)(_pmView.state, _pmView.dispatch);
+                _pmView.focus();
+            }
+        };

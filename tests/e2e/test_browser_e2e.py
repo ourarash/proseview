@@ -4850,6 +4850,68 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     assert path.read_bytes() == before
 
 
+def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_recents(
+    page: Page, server: ProseviewServer
+):
+    page.set_viewport_size({"width": 1024, "height": 768})
+    (server.root / ".proseview.yaml").write_text(
+        "discuss:\n"
+        "  selection_presets:\n"
+        "    - Is the grammar correct?\n"
+        "    - Make this more direct.\n"
+        "    - Check the point of view.\n",
+        encoding="utf-8",
+    )
+    server.restart()
+    page.goto(f"{server.base_url}#/scene/{SCENE_REL}", wait_until="load")
+    page.evaluate(
+        """() => {
+            localStorage.setItem('proseview-codex-favorite-instructions', JSON.stringify([
+                'Favorite prompt', 'Make this more direct.'
+            ]));
+            localStorage.setItem('proseview-codex-recent-instructions', JSON.stringify([
+                'Recent only prompt', 'Favorite prompt'
+            ]));
+        }"""
+    )
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    open_selection_menu(page, "the slow algebra")
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussTaskMode:not([hidden])")
+
+    presets = page.locator("#discussTaskMode .discuss-preset-inline")
+    assert presets.all_inner_texts() == [
+        "Favorite prompt", "Make this more direct.", "Is the grammar correct?"
+    ]
+    assert "Recent only prompt" not in page.locator("#discussTaskMode").inner_text()
+
+    more = page.get_by_role("button", name="More presets and recent instructions")
+    more.focus()
+    page.keyboard.press("Enter")
+    popover = page.locator("#discussPresetsPopover")
+    assert popover.is_visible()
+    assert "Check the point of view." in popover.inner_text()
+    assert "Recent only prompt" in popover.inner_text()
+
+    popover.get_by_role("button", name="Add to favorites: Recent only prompt").click()
+    assert popover.is_visible()
+    assert page.evaluate(
+        "document.activeElement?.getAttribute('aria-label')"
+    ) == "Remove from favorites: Recent only prompt"
+    assert page.locator("#discussTaskMode .discuss-preset-inline").all_inner_texts() == [
+        "Recent only prompt", "Favorite prompt", "Make this more direct."
+    ]
+    assert page.evaluate(
+        "JSON.parse(localStorage.getItem('proseview-codex-favorite-instructions'))[0]"
+    ) == "Recent only prompt"
+
+    page.locator("#discussTaskMode .discuss-preset-inline").first.click()
+    assert page.input_value("#discussInput") == "Recent only prompt"
+    assert page.locator("#discussTaskMode .discuss-preset-inline").count() == 3
+    assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
+
+
 def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
     page: Page, server: ProseviewServer
 ):

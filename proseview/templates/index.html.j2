@@ -379,7 +379,7 @@
         <div class="scene-conflict-actions"><button type="button" onclick="keepEditingAfterConflict()">Keep editing</button><button type="button" onclick="copyConflictDraft()">Copy draft</button><button type="button" class="scene-conflict-reload" onclick="reloadConflictDiskVersion()">Reload disk version</button></div>
     </dialog>
 
-    <div id="pmInsertAffordance" class="pm-insert-affordance" hidden title="Insert annotation">+</div>
+
     <div id="terminalPanel" class="terminal-panel dock-bottom" hidden>
         <div id="terminalResizeHandle" class="terminal-resize-handle" role="separator" tabindex="0" aria-label="Resize Terminal" aria-orientation="horizontal" aria-valuemin="150" aria-valuemax="920" aria-valuenow="520"></div>
         <div class="terminal-inner">
@@ -500,6 +500,7 @@
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
         const imagesConfig = {{ images_config_json | safe }};
+        const discussSelectionPresets = {{ discuss_presets_json | safe }};
         const terminalAvailable = {{ terminal_available_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
         const storyModel = {{ story_json | safe }};

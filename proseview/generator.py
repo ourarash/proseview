@@ -714,6 +714,7 @@ def render_html_report(
         "images_config_json": _js_json(
             {"mode": cfg.images.mode, "remoteInAgentOutput": cfg.images.remote_in_agent_output}
         ),
+        "discuss_presets_json": _js_json(list(cfg.discuss.selection_presets)),
         "lexical_bands_json": _js_json({"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)}),
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),

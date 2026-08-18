@@ -62,6 +62,8 @@ GENRE_LABELS: dict[str, str] = {
     "speculative": "Fantasy & science fiction",
 }
 DEFAULT_GENRE = "contemporary"
+DISCUSS_SELECTION_PRESET_MAX = 12
+DISCUSS_SELECTION_PRESET_LENGTH_MAX = 32_768
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,13 @@ class EditorConfig:
 class RepoTabConfig:
     folders: tuple[str, ...] = DEFAULT_REPO_TAB_FOLDERS
     preview_max_bytes: int = DEFAULT_REPO_TAB_PREVIEW_MAX_BYTES
+
+
+@dataclass(frozen=True)
+class DiscussConfig:
+    """Stable, repository-level shortcuts for selection questions."""
+
+    selection_presets: tuple[str, ...] = ()
 
 
 #: Accepted values for ``images``, loosest first.
@@ -130,6 +139,7 @@ class Config:
     locations: tuple[str, ...] = ()
     editor: EditorConfig = field(default_factory=EditorConfig)
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
+    discuss: DiscussConfig = field(default_factory=DiscussConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
     max_backups: int = 50
@@ -202,6 +212,7 @@ class Config:
             locations=_coerce_str_tuple(raw.get("locations", ()), "locations"),
             editor=_coerce_editor(raw.get("editor")),
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
+            discuss=_coerce_discuss(raw.get("discuss")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
@@ -251,6 +262,12 @@ class Config:
         default_mtld = GENRE_MTLD_BANDS.get(self.genre, defaults.mtld_band)
         if self.mtld_band != default_mtld or "mtld_band" in data:
             data["mtld_band"] = list(self.mtld_band)
+        if self.discuss != defaults.discuss or "discuss" in data:
+            discuss = data.get("discuss")
+            if not isinstance(discuss, dict):
+                discuss = {}
+                data["discuss"] = discuss
+            discuss["selection_presets"] = list(self.discuss.selection_presets)
 
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f)
@@ -266,7 +283,7 @@ def _config_field_names() -> tuple[str, ...]:
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
-        "max_backups",
+        "discuss", "max_backups",
     )
 
 
@@ -381,6 +398,34 @@ def _coerce_repo_tab(v: Any) -> RepoTabConfig:
     if preview_max_bytes <= 0:
         raise ConfigError("'repo_tab.preview_max_bytes' must be a positive integer")
     return RepoTabConfig(folders=folders, preview_max_bytes=preview_max_bytes)
+
+
+def _coerce_discuss(v: Any) -> DiscussConfig:
+    if v is None:
+        return DiscussConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'discuss' must be a mapping, got {type(v).__name__}: {v!r}")
+    raw_presets = v.get("selection_presets", ())
+    if not isinstance(raw_presets, (list, tuple)):
+        raise ConfigError("'discuss.selection_presets' must be a list of strings")
+
+    presets: list[str] = []
+    for raw in raw_presets:
+        if not isinstance(raw, str) or not raw.strip():
+            raise ConfigError("'discuss.selection_presets' entries must be non-empty strings")
+        value = raw.strip()
+        if len(value) > DISCUSS_SELECTION_PRESET_LENGTH_MAX:
+            raise ConfigError(
+                "'discuss.selection_presets' entries must be at most "
+                f"{DISCUSS_SELECTION_PRESET_LENGTH_MAX} characters"
+            )
+        if value not in presets:
+            presets.append(value)
+    if len(presets) > DISCUSS_SELECTION_PRESET_MAX:
+        raise ConfigError(
+            f"'discuss.selection_presets' supports at most {DISCUSS_SELECTION_PRESET_MAX} entries"
+        )
+    return DiscussConfig(selection_presets=tuple(presets))
 
 
 def _coerce_images(v: Any) -> ImagesConfig:

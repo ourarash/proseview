@@ -2348,16 +2348,13 @@ class _Handler(BaseHTTPRequestHandler):
                 with backup_file.open("r", encoding="utf-8") as f:
                     meta = json.load(f)
                 
-                # Perform restore via save_scene_content to ensure a "Pre-Restore State" backup is made
-                # We pass open_mtime as the current mtime to bypass the conflict check,
-                # since this is an explicit restore action.
-                save_scene_content(
-                    str(scene_path),
-                    meta["content"],
-                    scene_path.stat().st_mtime,
-                    self.repo_root,
-                    source="Pre-Restore State"
-                )
+                raw = read_repo_text(scene_path)
+                new_raw = meta["content"]
+                if not new_raw.endswith("\n"):
+                    new_raw += "\n"
+                
+                _create_file_backup(scene_path, raw, new_raw, source="Pre-Restore State", repo_root=self.repo_root)
+                _atomic_write_text(scene_path, new_raw)
                 
                 self.invalidate()
                 self._send_json({"ok": True})

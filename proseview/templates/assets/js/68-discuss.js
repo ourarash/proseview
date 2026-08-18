@@ -171,6 +171,7 @@
             _discussOpenFailed = false;
             _discussConversationId = null;
             document.body.classList.add('discuss-open');
+            try { sessionStorage.setItem('proseview-panel-open', 'true'); } catch(e) {}
             if (typeof _termDock !== 'undefined' && _termDock === 'right') {
                 var terminal = document.getElementById('terminalPanel');
                 if (terminal && !terminal.hidden) terminal.hidden = true;
@@ -263,6 +264,7 @@
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
             document.body.classList.remove('discuss-open');
+            try { sessionStorage.setItem('proseview-panel-open', 'false'); } catch(e) {}
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
             clearTimeout(_discussReconnectTimer);
@@ -372,6 +374,7 @@
             hideRightTerminalForPanel();
             panel.hidden = false;
             document.body.classList.add('discuss-open');
+            try { sessionStorage.setItem('proseview-panel-open', 'true'); } catch(e) {}
             _discussBodyEls().forEach(function(el) { el.hidden = true; });
             Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
                 const other = document.getElementById(SCENE_PANEL_PANES[key].id);
@@ -442,7 +445,18 @@
             const dashBtn = document.getElementById('dashboardPanelBtn');
             if (dashBtn) dashBtn.hidden = !_terminalIsAvailable();
 
-            if (!scoped) closeScenePanel();
+            if (!scoped) {
+                closeScenePanel();
+            } else {
+                var shouldBeOpen = false;
+                try { shouldBeOpen = sessionStorage.getItem('proseview-panel-open') === 'true'; } catch(e) {}
+                var panel = document.getElementById('discussPanel');
+                if (shouldBeOpen && panel && panel.hidden) {
+                    var tab = _readScenePanelTab();
+                    if (tab === 'discuss') showDiscussTab();
+                    else showScenePanelTab(tab);
+                }
+            }
         }
 
         // Observed rather than called from each transition: `data-view` is set
@@ -1868,8 +1882,20 @@
             })[actionId] || 'Selection action';
         }
 
+        function normalizedDiscussInstructions(rows, limit) {
+            if (!Array.isArray(rows)) return [];
+            var normalized = [];
+            rows.forEach(function(row) {
+                if (typeof row !== 'string') return;
+                var value = row.trim();
+                if (value.length > 32768) return;
+                if (value && normalized.indexOf(value) < 0) normalized.push(value);
+            });
+            return normalized.slice(0, limit);
+        }
+
         function recentDiscussInstructions() {
-            try { var rows = JSON.parse(localStorage.getItem('proseview-codex-recent-instructions') || '[]'); return Array.isArray(rows) ? rows.slice(0, 8) : []; }
+            try { return normalizedDiscussInstructions(JSON.parse(localStorage.getItem('proseview-codex-recent-instructions') || '[]'), 8); }
             catch(e) { return []; }
         }
 
@@ -1882,25 +1908,80 @@
         }
 
         function favoriteDiscussInstructions() {
-            try { var rows = JSON.parse(localStorage.getItem('proseview-codex-favorite-instructions') || '[]'); return Array.isArray(rows) ? rows.slice(0, 12) : []; }
+            try { return normalizedDiscussInstructions(JSON.parse(localStorage.getItem('proseview-codex-favorite-instructions') || '[]'), 12); }
             catch(e) { return []; }
         }
 
-        function toggleDiscussInstructionFavorite(value) {
+        function configuredDiscussInstructions() {
+            return normalizedDiscussInstructions(
+                typeof discussSelectionPresets === 'undefined' ? [] : discussSelectionPresets,
+                12
+            );
+        }
+
+        function presetDiscussInstructions() {
+            return normalizedDiscussInstructions(
+                favoriteDiscussInstructions().concat(configuredDiscussInstructions()),
+                24
+            );
+        }
+
+        function toggleDiscussInstructionFavorite(value, reopenMenu) {
             var rows = favoriteDiscussInstructions(); var index = rows.indexOf(value);
             if (index >= 0) rows.splice(index, 1); else rows.unshift(value);
             try { localStorage.setItem('proseview-codex-favorite-instructions', JSON.stringify(rows.slice(0, 12))); } catch(e) {}
             renderDiscussTaskMode();
+            if (reopenMenu) {
+                var details = document.querySelector('#discussTaskMode .discuss-presets-more');
+                if (details) {
+                    details.open = true;
+                    var label = (index >= 0 ? 'Add to favorites: ' : 'Remove from favorites: ') + value;
+                    Array.prototype.some.call(details.querySelectorAll('.discuss-favorite'), function(button) {
+                        if (button.getAttribute('aria-label') !== label) return false;
+                        button.focus();
+                        return true;
+                    });
+                }
+            }
         }
 
-        function appendDiscussInstructionShortcut(node, value, favorite) {
-            var wrap = elementWith('discuss-instruction-shortcut');
-            var button = document.createElement('button'); button.type = 'button'; button.className = 'discuss-recent'; button.textContent = value;
-            button.onclick = function() { document.getElementById('discussInput').value = value; saveDiscussDraft(); document.getElementById('discussInput').focus(); };
+        function chooseDiscussInstruction(value, details) {
+            document.getElementById('discussInput').value = value;
+            saveDiscussDraft();
+            if (details) details.open = false;
+            document.getElementById('discussInput').focus();
+        }
+
+        function appendDiscussPresetMenuRow(node, value, favorite, details) {
+            var wrap = elementWith('discuss-preset-menu-row');
+            var button = document.createElement('button'); button.type = 'button'; button.className = 'discuss-preset-menu-choice'; button.textContent = value;
+            button.title = value;
+            button.onclick = function() { chooseDiscussInstruction(value, details); };
             var star = document.createElement('button'); star.type = 'button'; star.className = 'discuss-favorite'; star.textContent = favorite ? '★' : '☆';
             star.setAttribute('aria-label', (favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + value);
-            star.onclick = function() { toggleDiscussInstructionFavorite(value); };
+            star.onclick = function() { toggleDiscussInstructionFavorite(value, true); };
             wrap.appendChild(button); wrap.appendChild(star); node.appendChild(wrap);
+        }
+
+        function appendDiscussPresetsMenu(node, presets, recents) {
+            var details = document.createElement('details'); details.className = 'discuss-presets-more';
+            var summary = document.createElement('summary'); summary.textContent = presets.length ? 'More…' : 'Add from recent…';
+            summary.setAttribute('role', 'button');
+            summary.setAttribute('aria-label', 'More presets and recent instructions');
+            details.appendChild(summary);
+            var popover = elementWith('discuss-presets-popover'); popover.id = 'discussPresetsPopover';
+            var favorites = favoriteDiscussInstructions();
+            if (presets.length) {
+                var presetHeading = document.createElement('strong'); presetHeading.textContent = 'Presets'; popover.appendChild(presetHeading);
+                presets.forEach(function(value) {
+                    appendDiscussPresetMenuRow(popover, value, favorites.indexOf(value) >= 0, details);
+                });
+            }
+            if (recents.length) {
+                var recentHeading = document.createElement('strong'); recentHeading.textContent = 'Recent'; popover.appendChild(recentHeading);
+                recents.forEach(function(value) { appendDiscussPresetMenuRow(popover, value, false, details); });
+            }
+            details.appendChild(popover); node.appendChild(details);
         }
 
         function renderDiscussTaskMode() {
@@ -1931,16 +2012,25 @@
                 return;
             }
             document.getElementById('discussSend').textContent = 'Send';
-            var recents = recentDiscussInstructions();
-            var favorites = favoriteDiscussInstructions();
+            var presets = presetDiscussInstructions();
+            var recents = recentDiscussInstructions().filter(function(value) { return presets.indexOf(value) < 0; });
             document.getElementById('discussInput').placeholder = _discussSelection
                 ? 'Ask anything about this selection…'
                 : 'Ask about this document…';
-            node.hidden = !(_discussSelection && (recents.length || favorites.length));
+            node.hidden = !(_discussSelection && (presets.length || recents.length));
             if (!node.hidden) {
-                var label = document.createElement('span'); label.textContent = favorites.length ? 'Favorites and recent' : 'Recent instructions'; node.appendChild(label);
-                favorites.slice(0, 3).forEach(function(value) { appendDiscussInstructionShortcut(node, value, true); });
-                recents.filter(function(value) { return favorites.indexOf(value) < 0; }).slice(0, 3).forEach(function(value) { appendDiscussInstructionShortcut(node, value, false); });
+                var label = document.createElement('strong'); label.textContent = 'Presets'; node.appendChild(label);
+                var inline = elementWith('discuss-presets-inline');
+                presets.slice(0, 3).forEach(function(value) {
+                    var button = document.createElement('button');
+                    button.type = 'button'; button.className = 'discuss-preset-inline'; button.textContent = value; button.title = value;
+                    button.onclick = function() { chooseDiscussInstruction(value); };
+                    inline.appendChild(button);
+                });
+                if (presets.length) node.appendChild(inline);
+                if (presets.length > 3 || recents.length || favoriteDiscussInstructions().length) {
+                    appendDiscussPresetsMenu(node, presets, recents);
+                }
             }
         }
 

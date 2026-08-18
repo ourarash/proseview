@@ -70,6 +70,14 @@ editor:
 repo_tab:
   folders: [plans, continuity, outline, story-bible, docs, templates]
 
+# Stable shortcuts shown when asking Codex about selected prose.
+# Personal favorites are stored in this browser and appear before these.
+# discuss:
+#   selection_presets:
+#     - Is the grammar correct?
+#     - Make this more direct.
+#     - Check the point of view.
+
 # Whether rendered Markdown may load images.
 #   all   - repo images and remote URLs (default)
 #   local - only files inside this repo, served by this server

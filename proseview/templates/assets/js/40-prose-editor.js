@@ -32,10 +32,22 @@
             var doc = parser.parse(markdown);
 
             var lnPlugin = _buildLnPlugin();
+
+            function buildListInputRules(PM) {
+                if (!PM.inputRules || !PM.wrappingInputRule) return null;
+                return PM.inputRules({
+                    rules: [
+                        PM.wrappingInputRule(/^\s*([-+*])\s$/, PM.mdSchema.nodes.bullet_list, { tight: true }),
+                        PM.wrappingInputRule(/^(\d+)\.\s$/, PM.mdSchema.nodes.ordered_list, match => ({order: +match[1], tight: true}), (match, node) => node.childCount + node.attrs.order == +match[1])
+                    ]
+                });
+            }
+
             var plugins = [
                 PM.buildHlPlugin(),
                 lnPlugin,
                 (typeof buildAiProposalPlugin === 'function' ? buildAiProposalPlugin(PM) : null),
+                buildListInputRules(PM),
                 PM.history(),
                 PM.keymap(Object.assign({}, PM.baseKeymap, {
                     'Mod-z': PM.undo,
@@ -45,6 +57,11 @@
                     'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
                     'Mod-`': PM.toggleMark(PM.mySchema.marks.code),
                     'Mod-e': PM.toggleMark(PM.mySchema.marks.code),
+                    'Enter': function(state, dispatch, view) {
+                        return PM.chainCommands(PM.splitListItem(state.schema.nodes.list_item), PM.baseKeymap.Enter)(state, dispatch, view);
+                    },
+                    'Mod-Shift-8': function() { window.toggleList('bullet_list'); return true; },
+                    'Mod-Shift-7': function() { window.toggleList('ordered_list'); return true; },
                     'Mod-s': function() { saveSceneEdit(); return true; }
                 }))
             ].filter(Boolean);
@@ -405,9 +422,143 @@
         window.toggleFormat = function(markName) {
             if (!_pmView || !window._PM) return;
             var PM = window._PM;
-            var markType = PM.mySchema.marks[markName];
+            var markType = _pmView.state.schema.marks[markName];
             if (markType) {
                 PM.toggleMark(markType)(_pmView.state, _pmView.dispatch);
                 _pmView.focus();
             }
         };
+
+        window.toggleList = function(listType) {
+            if (!_pmView || !window._PM) return;
+            var PM = window._PM;
+            var state = _pmView.state;
+            var dispatch = _pmView.dispatch.bind(_pmView);
+            var nodeType = state.schema.nodes[listType];
+            var itemType = state.schema.nodes.list_item;
+            if (!nodeType || !itemType) return;
+            
+            var isActive = false;
+            var $from = state.selection.$from;
+            for (var i = $from.depth; i > 0; i--) {
+                if ($from.node(i).type === nodeType) {
+                    isActive = true;
+                    break;
+                }
+            }
+
+            if (isActive) {
+                if (PM.liftListItem && PM.liftListItem(itemType)(state)) {
+                    PM.liftListItem(itemType)(state, dispatch);
+                }
+            } else {
+                if (PM.wrapInList && PM.wrapInList(nodeType, { tight: true })(state)) {
+                    PM.wrapInList(nodeType, { tight: true })(state, dispatch);
+                } else {
+                    if (PM.liftListItem && PM.liftListItem(itemType)(state)) {
+                        PM.liftListItem(itemType)(state, dispatch);
+                        if (PM.wrapInList && PM.wrapInList(nodeType, { tight: true })(_pmView.state)) {
+                            PM.wrapInList(nodeType, { tight: true })(_pmView.state, dispatch);
+                        }
+                    }
+                }
+            }
+            _pmView.focus();
+        };
+
+        window.toggleBlockquote = function() {
+            if (!_pmView || !window._PM) return;
+            var PM = window._PM;
+            var state = _pmView.state;
+            var nodeType = state.schema.nodes.blockquote;
+            if (!nodeType) return;
+            
+            var dispatch = _pmView.dispatch.bind(_pmView);
+            
+            var isActive = false;
+            var $from = state.selection.$from;
+            for (var i = $from.depth; i > 0; i--) {
+                if ($from.node(i).type === nodeType) {
+                    isActive = true;
+                    break;
+                }
+            }
+
+            if (isActive) {
+                if (PM.lift && PM.lift(state)) {
+                    PM.lift(state, dispatch);
+                }
+            } else {
+                if (PM.wrapIn && PM.wrapIn(nodeType)(state)) {
+                    PM.wrapIn(nodeType)(state, dispatch);
+                }
+            }
+            _pmView.focus();
+        };
+
+        (function() {
+            var editBar = document.getElementById('sceneEditBar');
+            var dragHandle = document.querySelector('.scene-edit-status');
+            if (!editBar || !dragHandle) return;
+            
+            var originalParent = editBar.parentNode;
+            var originalNextSibling = editBar.nextSibling;
+            
+            var isDragging = false;
+            var startX = 0, startY = 0;
+            
+            dragHandle.style.cursor = 'grab';
+            
+            dragHandle.addEventListener('mousedown', function(e) {
+                isDragging = true;
+                dragHandle.style.cursor = 'grabbing';
+                
+                if (editBar.parentNode !== document.body) {
+                    var rect = editBar.getBoundingClientRect();
+                    document.body.appendChild(editBar);
+                    editBar.style.position = 'fixed';
+                    editBar.style.margin = '0';
+                    editBar.style.bottom = 'auto';
+                    editBar.style.right = 'auto';
+                    editBar.style.left = rect.left + 'px';
+                    editBar.style.top = rect.top + 'px';
+                    editBar.style.transform = 'none';
+                    editBar.style.zIndex = '3000';
+                    startX = e.clientX - rect.left;
+                    startY = e.clientY - rect.top;
+                } else {
+                    startX = e.clientX - parseFloat(editBar.style.left || 0);
+                    startY = e.clientY - parseFloat(editBar.style.top || 0);
+                }
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                var left = e.clientX - startX;
+                var top = e.clientY - startY;
+                editBar.style.left = left + 'px';
+                editBar.style.top = top + 'px';
+            });
+            
+            document.addEventListener('mouseup', function() {
+                if (isDragging) {
+                    isDragging = false;
+                    dragHandle.style.cursor = 'grab';
+                }
+            });
+            
+            window._resetEditBarPosition = function() {
+                if (editBar.parentNode !== originalParent) {
+                    originalParent.insertBefore(editBar, originalNextSibling);
+                    editBar.style.position = '';
+                    editBar.style.margin = '';
+                    editBar.style.bottom = '';
+                    editBar.style.right = '';
+                    editBar.style.left = '';
+                    editBar.style.top = '';
+                    editBar.style.transform = '';
+                    editBar.style.zIndex = '';
+                }
+            };
+        })();

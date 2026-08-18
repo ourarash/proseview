@@ -1787,8 +1787,8 @@ class _Handler(BaseHTTPRequestHandler):
                 mode = (qs.get("mode") or ["inline"])[0]
                 context_mode = (qs.get("context") or ["changes"])[0]
                 show_full = (context_mode == "full")
-                old_raw = meta["content"]
-                new_raw = read_repo_text(scene_path)
+                old_raw = read_repo_text(scene_path)
+                new_raw = meta["content"]
                 
                 import difflib
                 
@@ -2048,6 +2048,9 @@ class _Handler(BaseHTTPRequestHandler):
                     r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/findings/([^/]+)/decision", path
                 )
                 clear_tasks_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/clear", path)
+                dismiss_notice_match = re.fullmatch(
+                    r"/api/discuss/conversations/([^/]+)/notices/([^/]+)/dismiss", path
+                )
                 task_status_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/status", path)
                 cancel_queue_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/queue/([^/]+)/cancel", path)
                 history_list_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/history/list", path)
@@ -2141,6 +2144,12 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 if clear_tasks_match:
                     result = self.discuss_manager.clear_tasks(clear_tasks_match.group(1))
+                    self._send_json({"ok": True, **result})
+                    return
+                if dismiss_notice_match:
+                    result = self.discuss_manager.dismiss_notice(
+                        dismiss_notice_match.group(1), dismiss_notice_match.group(2)
+                    )
                     self._send_json({"ok": True, **result})
                     return
                 if task_status_match:

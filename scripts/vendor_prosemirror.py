@@ -47,6 +47,8 @@ ENTRIES = {
     "prosemirror-history": f"https://esm.sh/prosemirror-history@1.5.0{_CORE}",
     "prosemirror-keymap": f"https://esm.sh/prosemirror-keymap@1.2.3{_CORE}",
     "prosemirror-commands": f"https://esm.sh/prosemirror-commands@1.7.1{_CORE}",
+    "prosemirror-schema-list": f"https://esm.sh/prosemirror-schema-list@1.5.0{_CORE}",
+    "prosemirror-inputrules": f"https://esm.sh/prosemirror-inputrules@1.4.0{_CORE}",
 }
 
 #: ``from "x"``, ``import "x"``, and ``export ... from "x"``. ESM specifiers are

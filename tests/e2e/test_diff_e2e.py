@@ -1,0 +1,31 @@
+from playwright.sync_api import Page
+from .conftest import ProseviewServer
+from .test_browser_e2e import open_scene, enter_edit_mode, append_to_paragraph, save_scene, _wait_until
+
+def _create_history_backup(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " A new sentence for history.")
+    with page.expect_response("**/save-scene*"):
+        save_scene(page)
+    _wait_until(lambda: "A new sentence for history." in path.read_text(encoding="utf-8"))
+
+def _open_history_tab(page: Page):
+    page.evaluate("() => showScenePanelTab('history')")
+    page.wait_for_selector("#sceneHistoryPane:not([hidden])")
+    page.wait_for_selector("#historyListContent .history-item", state="visible")
+
+def test_diff_modal_escape_key_closes_modal_only(page: Page, server: ProseviewServer):
+    _create_history_backup(page, server)
+    _open_history_tab(page)
+    
+    page.wait_for_timeout(100)
+    page.evaluate("document.querySelector('#historyListContent').innerHTML")
+    page.evaluate("document.querySelector('#historyListContent .history-item').click()")
+    page.wait_for_selector("#diffModalOverlay:not([hidden])")
+    
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#diffModalOverlay", state="hidden")
+    
+    assert page.locator("#utilityTabHistory").evaluate("el => el.classList.contains('active')")

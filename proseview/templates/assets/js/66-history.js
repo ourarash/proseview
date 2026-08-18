@@ -75,7 +75,7 @@ function setDiffMode(mode) {
     }
 }
 
-function openDiffModal(scenePath, timestamp) {
+function openDiffModal(scenePath, timestamp) { console.log("openDiffModal called with", scenePath, timestamp);
     currentDiffScene = scenePath;
     currentDiffTs = timestamp;
     
@@ -105,7 +105,7 @@ document.addEventListener("keydown", (e) => {
         const overlay = document.getElementById("diffModalOverlay");
         if (overlay && !overlay.hidden) {
             closeDiffModal();
-            e.stopPropagation();
+            e.stopImmediatePropagation();
             e.preventDefault();
         }
     }

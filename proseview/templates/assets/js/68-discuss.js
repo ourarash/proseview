@@ -286,7 +286,7 @@
         // highlight passes, all derived from the file on disk. Codex is the
         // only surface that calls a model. Terminal is a shell. Keeping that
         // boundary legible is the point of the split.
-        const SCENE_PANEL_TABS = ['scene', 'analysis', 'discuss', 'terminal'];
+        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'discuss', 'terminal'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -304,6 +304,7 @@
         const UTILITY_TAB_IDS = {
             scene: ['utilityTabScene', 'termUtilityTabScene'],
             analysis: ['utilityTabAnalysis', 'termUtilityTabAnalysis'],
+            history: ['utilityTabHistory', 'termUtilityTabHistory'],
             discuss: ['utilityTabDiscuss', 'termUtilityTabDiscuss'],
             terminal: ['utilityTabTerminal', 'termUtilityTabTerminal']
         };
@@ -362,7 +363,7 @@
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }}
         };
 
-        function showScenePanelTab(name) {
+        function showScenePanelTab(name) { console.trace('showScenePanelTab called with:', name);
             const spec = SCENE_PANEL_PANES[name];
             const panel = document.getElementById('discussPanel');
             if (!spec || !panel) return;
@@ -417,7 +418,7 @@
         // Closing costs nothing. closeScenePanel only hides the terminal, so a
         // live session keeps running and comes back intact when the dock is
         // reopened; _termSessions is never touched.
-        const SCENE_SCOPED_TABS = ['scene', 'analysis', 'discuss'];
+        const SCENE_SCOPED_TABS = ['scene', 'analysis', 'history', 'discuss'];
 
         function _terminalIsAvailable() {
             return typeof terminalAvailable === 'undefined' || !!terminalAvailable;

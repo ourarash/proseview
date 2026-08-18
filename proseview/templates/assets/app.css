@@ -2571,3 +2571,15 @@ table.diff td:nth-child(3) {
 table.diff td[nowrap="nowrap"] {
     white-space: pre-wrap !important;
 }
+
+/* Diff Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--surface-overlay, rgba(0, 0, 0, 0.5));
+    z-index: 9999;
+    backdrop-filter: blur(2px);
+}

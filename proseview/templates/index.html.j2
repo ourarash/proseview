@@ -396,7 +396,7 @@
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
         </div><button id="sceneToolbarReveal" type="button" aria-label="Show scene toolbar" title="Show scene toolbar" onclick="revealSceneToolbar(true)"><span aria-hidden="true">&#8964;</span></button></header>
-        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
+        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status"><span class="scene-edit-dot" id="sceneEditDot"></span><span class="scene-edit-state" id="sceneEditState">Editing</span></span><span class="scene-edit-divider" aria-hidden="true"></span><span class="scene-edit-format" id="sceneEditFormat"><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('strong')" aria-label="Bold" title="Bold (⌘B)"><b>B</b></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('em')" aria-label="Italic" title="Italic (⌘I)"><i>I</i></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('code')" aria-label="Code" title="Code (⌘`)">&lt;&gt;</button></span><span class="scene-edit-divider" aria-hidden="true"></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled>Save</button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()">Cancel</button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button><span class="scene-edit-hint" title="Save shortcut">&#x2318;S</span></div></div></div>
 
     <dialog id="sceneConflictDialog" class="scene-conflict-dialog" role="alertdialog" aria-labelledby="sceneConflictTitle" aria-describedby="sceneConflictDescription">
         <h2 id="sceneConflictTitle">Scene changed on disk</h2>
@@ -466,7 +466,7 @@
                 </div>
             </div>
             <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
-            <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false"></div>
+            <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false" tabindex="-1"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
             <div id="discussComposerArea" class="discuss-composer-area">
                 <div id="discussContextPicker" class="discuss-context-menu" hidden>
@@ -591,6 +591,13 @@
             parseDOM: [],
             toDOM(node) {
                 const raw = String(node.attrs.raw || '');
+                if (!raw.match(/^<!--/)) {
+                    const el = document.createElement('div');
+                    el.className = 'pm-raw-html';
+                    el.contentEditable = 'false';
+                    el.innerHTML = raw;
+                    return el;
+                }
                 const inner = raw.replace(/^<!--\s*/, '').replace(/\s*-->$/, '').trim();
                 const todoMatch = /^TODO\s*:\s*(.*)$/i.exec(inner);
                 const noteMatch = /^NOTE(?:\[(\w+)\])?\s*:\s*(.*)$/i.exec(inner);
@@ -619,6 +626,9 @@
 
         function parseAnnotationRawForView(raw) {
             const text = String(raw || '');
+            if (!text.match(/^<!--/)) {
+                return { kind: 'html', tag: 'HTML', body: text, icon: '🌐' };
+            }
             let m = text.match(/^<!--\s*TODO:\s*([\s\S]*?)\s*-->$/);
             if (m) return { kind: 'todo', tag: 'TODO', body: m[1], icon: '📝' };
             m = text.match(/^<!--\s*NOTE\[(\w+)\]:\s*([\s\S]*?)\s*-->$/);
@@ -634,6 +644,7 @@
         }
 
         function buildAnnotationRawFromView(tag, text) {
+            if (tag === 'HTML') return text;
             if (tag === 'TODO') return '<!-- TODO: ' + text + ' -->';
             if (tag === 'NOTE') return '<!-- NOTE: ' + text + ' -->';
             return '<!-- NOTE[' + tag + ']: ' + text + ' -->';
@@ -655,27 +666,45 @@
                 return parseAnnotationRawForView(this.node.attrs.raw);
             }
             setBaseClass(parsed) {
-                this.dom.className = 'pm-annotation pm-annotation-' + parsed.kind + (this.editing ? ' pm-annotation-editing' : '');
-                this.dom.dataset.tag = parsed.tag.toLowerCase();
-                this.dom.title = this.editing ? '' : parsed.body;
+                if (parsed.kind === 'html' && !this.editing) {
+                    this.dom.className = 'pm-raw-html';
+                    this.dom.dataset.tag = 'html';
+                    this.dom.title = '';
+                } else {
+                    this.dom.className = 'pm-annotation pm-annotation-' + parsed.kind + (this.editing ? ' pm-annotation-editing' : '');
+                    this.dom.dataset.tag = parsed.tag.toLowerCase();
+                    this.dom.title = this.editing ? '' : parsed.body;
+                }
             }
             renderRead() {
                 const parsed = this.parsed();
                 this.editing = false;
                 this.setBaseClass(parsed);
                 this.dom.replaceChildren();
-                const icon = document.createElement('span');
-                icon.className = 'pm-annotation-icon';
-                icon.textContent = parsed.icon;
-                const text = document.createElement('span');
-                text.className = 'pm-annotation-text';
-                text.textContent = parsed.body;
-                this.dom.append(icon, text);
-                this.dom.onclick = (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.startEdit(!window._pmEditMode);
-                };
+                
+                if (parsed.kind === 'html') {
+                    this.dom.innerHTML = parsed.body;
+                    this.dom.onclick = null;
+                    this.dom.ondblclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.startEdit(!window._pmEditMode);
+                    };
+                } else {
+                    const icon = document.createElement('span');
+                    icon.className = 'pm-annotation-icon';
+                    icon.textContent = parsed.icon;
+                    const text = document.createElement('span');
+                    text.className = 'pm-annotation-text';
+                    text.textContent = parsed.body;
+                    this.dom.append(icon, text);
+                    this.dom.ondblclick = null;
+                    this.dom.onclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.startEdit(!window._pmEditMode);
+                    };
+                }
             }
             renderEdit() {
                 const parsed = this.parsed();
@@ -706,6 +735,10 @@
                         event.preventDefault();
                         event.stopPropagation();
                         cancel.click();
+                    } else if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.save(editable.innerText);
                     }
                 };
 

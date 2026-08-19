@@ -30,3 +30,6 @@ htmlcov/
 # Artifacts written by scripts/spike_claude_agent_sdk.py
 spike-report.json
 spike-structured-output.json
+
+# Transient agent worktrees; .claude/ itself stays trackable
+.claude/worktrees/

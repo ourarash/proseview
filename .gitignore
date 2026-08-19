@@ -26,3 +26,7 @@ env/
 *.tmp
 .coverage
 htmlcov/
+
+# Artifacts written by scripts/spike_claude_agent_sdk.py
+spike-report.json
+spike-structured-output.json

@@ -76,50 +76,34 @@ it happens is visible instead of inferred. Hover any scene for its card.
 
 ## ✨ What you get
 
-- 📊 **Dashboard.** Word count, chapter pacing, lexical health (MATTR /
-  MTLD), sentence-rhythm variance, character presence, location
-  stickiness, character co-occurrence, plus a sortable scene table.
-- 📖 **Reading view.** Open a scene as a typographic page with a real
-  reader font. The dashboard chrome gets out of the way.
-- ✏️ **WYSIWYG editor.** ProseMirror-backed. Same surface as the reading
-  view, just with `Edit` toggled on. Mod-S saves. Conflict guard checks
-  the file mtime so a concurrent change in your editor never gets
-  silently overwritten.
-- 🎨 **Editorial highlights.** Toggle nine prose passes on top of any
-  scene: repetition, passive voice, filter verbs, crutch words,
-  hyperbole, lyrical reach, sensory density, comedy beats, first-person
-  rate. Each pass is a single click.
+- 📊 **Dashboard.** Word count, chapter pacing, lexical health, sentence
+  rhythm, character presence, setting stickiness, and a sortable scene
+  table. [What the numbers mean →](docs/analytics.md)
+- 📖 **Reading view and WYSIWYG editor.** The same typographic page, with
+  `Edit` toggled on. `Mod-S` saves; a conflict guard checks the file mtime
+  so a change made in your own editor is never silently overwritten.
+- 🎨 **Editorial highlights.** Nine prose passes over any scene:
+  repetition, passive voice, filter verbs, crutch words, hyperbole,
+  lyrical reach, sensory density, comedy beats, first-person rate.
 - 🗒️ **Inline TODOs and Notes.** Select a passage, drop a `TODO` or a
-  tagged `NOTE` (continuity / character / theme / question), and it
-  lands in the file as a Markdown comment. Survives in git.
-- 🕰️ **Timeline.** The shape of the book, your storylines as lanes, and
-  reading order against the order events happen — so a scene read far from
-  where it happens is visible instead of inferred. Reads optional `thread:`
-  and `day:` frontmatter; each view hides itself when its field is absent.
-- 🔎 **Repository search.** `Mod-K` from anywhere. File paths, scene
-  metadata, TODOs, notes, and prose, grouped by kind. Opening a result
-  reveals it in the sidebar.
-- 📦 **EPUB export.** `proseview export` compiles your scenes into a book,
-  in the same order the dashboard counts them. Needs `pandoc` installed;
-  nothing else does.
-- 🔁 **Live reload.** Save a file in your editor and the dashboard
-  picks up the change over Server-Sent Events. No manual refresh.
-- 🔗 **Deep links.** Every scene and file has a URL. Copy the address
-  bar to share or revisit a view. Back / forward work.
-- 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch, Graphite
-  Light, Graphite Dark. Reader, Literary, Inter, Georgia, Baskerville,
-  Sans, Mono.
-- 🤖 **Two agents, side by side.** Codex and Claude each get a dock tab
-  and their own conversation per document. Both run at once; switching
-  tabs never interrupts the other. A tab that cannot start says why.
-- 🕹️ **Undo and redo per file.** The History tab keeps versions of a
-  scene and restores one with a diff you can read first, side by side or
-  inline.
-- ⚙️ **Settings in the app.** Edit `.proseview.yaml` from the dashboard
-  instead of hand-writing YAML.
-- 🧪 **Tested.** 642 unit tests plus a browser tier that boots the real
-  server and drives the real UI. One behaviour suite runs against both
-  agents, so a feature cannot silently work on one tab and not the other.
+  tagged `NOTE`, and it lands in the file as a Markdown comment. Survives
+  in git, greppable, visible to any tool.
+- 🕰️ **Timeline.** The shape of the book, storylines as lanes, and reading
+  order against the order events happen.
+- 🤖 **Two agents, side by side.** Codex and Claude each get a dock tab and
+  their own conversation per document. Both run at once; switching tabs
+  never interrupts the other. [How the AI features work →](docs/ai.md)
+- 🔎 **Repository search.** `Mod-K` from anywhere — paths, metadata, TODOs,
+  notes, and prose, grouped by kind.
+- 🕹️ **File history.** Versions of a scene, restored through a diff you
+  can read first.
+- 📦 **EPUB export.** `proseview export` compiles your scenes in the order
+  the dashboard counts them. [Export options →](docs/export.md)
+- 🔁 **Live reload, deep links, themes.** Save in your editor and the page
+  follows. Every scene has a URL. Six themes, seven fonts.
+- 🧪 **Tested.** 642 unit tests and a browser tier that drives the real UI.
+  One behaviour suite runs against both agents, so a feature cannot
+  silently work on one tab and not the other.
 
 ### 🤖 And AI, if you want it
 
@@ -127,42 +111,28 @@ Entirely optional, and it never runs on its own. Proseview has no model of its
 own and no API key of yours — it drives the agent CLIs already installed on
 your machine, under your login.
 
-Select a passage and send it to Codex, Claude, or Gemini; open a
-document-aware conversation beside a scene on the **Codex** or **Claude** tab;
-or use the built-in terminal (a real PTY) for anything else.
-[Details below](#-working-with-ai).
+Agent sessions are read-only. Anything beyond reading — a shell command, a file
+write — stops at an approval you have to grant, and raw model reasoning is
+never forwarded to the browser.
 
 If you want none of this, ignore it. Everything above works without an agent
-installed.
+installed. [Details →](docs/ai.md)
 
 ## 🚀 Quick start
 
 **Requirements:** Python 3.11+ on macOS, Linux, or Windows. The in-browser
-terminal needs a real PTY, so it is hidden on Windows — everything else works.
-Use WSL if you want the terminal too.
+terminal needs a real PTY, so it is hidden on Windows; everything else works.
 
 ```bash
-git clone https://github.com/ourarash/proseview.git
-cd proseview
-pip install -r requirements.txt
-
-# Run the dashboard against your novel repo
-python -m proseview --root /path/to/your/novel
-```
-
-A browser tab will open at `http://localhost:7842`. Press Ctrl-C to stop.
-
-If you'd rather install proseview as a tool:
-
-```bash
-pip install -e .
+pipx install proseview
 proseview --root /path/to/your/novel
 ```
 
-## 📁 What proseview expects
+A browser tab opens at `http://localhost:7842`. Press Ctrl-C to stop.
 
-A Proseview scene is any `.md` file under the manuscript directory, at any
-depth. The conventional layout is:
+Point it at any folder of Markdown. If there is no `manuscript/` directory the
+whole folder is the manuscript, so an Obsidian vault or a flat pile of chapter
+files works with no configuration and no reorganising.
 
 ```text
 my-novel/
@@ -175,311 +145,31 @@ my-novel/
 └── .proseview.yaml          # optional
 ```
 
-**Already have a folder of Markdown?** Point Proseview at it. If there is no
-`manuscript/` directory, the whole folder is the manuscript — so an Obsidian
-vault, a flat pile of chapter files, or any nesting you already use works with
-no configuration and no reorganising:
-
-```text
-my-vault/                    my-novel/
-├── daily.md                 ├── 01-opening.md
-├── chapters/                ├── 02-meeting.md
-│   └── one.md               └── 03-aftermath.md
-└── .obsidian/   (skipped)
-```
-
-A file inside the manuscript that is not prose — a `review/` folder, a
-per-chapter outline — can opt out with `scene: false` in its frontmatter, so it
-stays browsable without counting toward scene or word totals.
-
-Scenes group into chapters by their first folder below the manuscript root, and
-a `chapter:` in frontmatter always overrides that. Folders and files are read in
-name order. `README.md`, dotfiles, hidden folders, and tool directories such as
-`.obsidian/`, `.git/`, and `node_modules/` are never indexed; nor are extensions
-other than `.md`. Set `manuscript_path` to point somewhere else, or to `./` to
-force the repo root.
-
-Git is optional for the core dashboard, but revision history, goals, streaks,
-and recent changes require the root to be a Git worktree.
-
-Scene files use simple frontmatter:
-
-```markdown
----
-title: Opening Ledger
-chapter: Chapter 1
-status: draft
-where: River loft
-when: Day 1, before opening
-pov: Rena
-characters:
-  - Rena
-  - Lowe
-goal: Rena needs to clear a weekly ledger before the shop opens
-conflict: The safe refuses a code she has used since spring
-outcome: She opens the shop in the red
-todos:
-  - Tighten the opening paragraph
----
-
-# Opening Ledger
-
-The loft smelled of cold coffee and the slow algebra of...
-```
-
-Every field is optional. Proseview reads what's there and falls back
-gracefully on what isn't. Frontmatter supports simple scalar values and block
-lists like the examples above; inline YAML lists are not interpreted as lists.
-
-### 📝 Frontmatter contract
-
-These are the keys proseview recognizes. Any other keys are passed
-through and ignored. Every field is optional.
-
-#### Identity
-
-- `title` (string) header of the scene viewer; defaults to a Title-Case
-  version of the filename stem.
-- `chapter` (string) "Chapter" column in the scene table and the
-  chapter rows of charts; defaults to the chapter folder name.
-- `status` (string) color-coded status badge. Conventional values:
-  `draft`, `revision`, `done`. Anything else renders as a generic chip;
-  missing means `unknown`.
-
-#### Scene context
-
-- `where` (string) "Where" row in the scene card. Also feeds the
-  **Setting Stickiness** chart (Words per Location).
-- `location` (string) synonym for `where` (older convention).
-- `when` (string) "When" row in the scene card. Free-form.
-- `pov` (string) "POV" row in the scene card. Free-form.
-- `characters` (list of strings) "Characters" row in the scene card;
-  each name is clickable to open the bio if
-  `<characters_path>/<name>.md` exists. Also feeds the **Character
-  Presence** and **Co-occurrence** charts.
-
-#### Arc
-
-- `goal` (string) "Goal" row in the arc panel.
-- `conflict` (string) "Conflict" row in the arc panel.
-- `outcome` (string) "Outcome" row in the arc panel.
-
-#### Story layer (optional)
-
-- `thread` (string) the storyline a scene belongs to — `present`, `1943`,
-  whatever you call them. Scenes sharing a value share a lane in the Timeline
-  tab. Up to eight threads render; the rest fold into `other`.
-- `day` (number) where the scene sits in story time. Counting up and counting
-  down both work — Proseview detects the direction rather than assuming it.
-  Scenes sharing a day keep their reading order. `day: "Day 93"` is read as
-  `93`.
-
-Both are optional and independent. With neither, the Timeline still shows the
-shape of the book; with only `thread`, the lanes appear; with `day` on two or
-more scenes, reading order can be compared with story order.
-
-#### Tasks
-
-- `todos` (list of strings) each entry shows up as a frontmatter-level
-  TODO in the Tasks panel. Inline `<!-- TODO: ... -->` comments inside
-  the prose are picked up too and get a line anchor.
-
-A scene with no frontmatter still renders, just with `Unknown` /
-`Not defined` placeholders in the scene card and the file's stem as
-its title.
-
-## 📦 Export
-
-```bash
-proseview export --root /path/to/your/novel --author "Your Name"
-# → output/your-novel.epub
-```
-
-Scenes are compiled in the same order the dashboard counts them: chapters
-become top-level sections, scenes become sub-sections, and pandoc builds the
-table of contents from that structure. Titles and chapters use frontmatter
-where present and fall back to the filename and folder, exactly as the scene
-table does.
-
-### Appendices
-
-Append other folders after the manuscript — planning notes, an outline, a
-story bible — one appendix per folder, in the order you name them:
-
-```bash
-proseview export --list-appendix-folders     # what can I append?
-proseview export --appendix plans --appendix outline
-```
-
-Each folder contributes the Markdown files sitting directly inside it. Nested
-directories are left out, so an archive like `plans/done/` stays out of the
-book, and `README.md` is skipped. Appendix headings are pushed below the
-table-of-contents depth so they do not compete with your chapters.
-
-Options: `--output`, `--title`, `--author`, `--language`, `--epub-version`
-(`epub3` / `epub2`), `--cover-image`, repeatable `--css`, and repeatable
-`--appendix`.
-
-**Requires [pandoc](https://pandoc.org/installing.html)** (`brew install pandoc`
-or `apt install pandoc`). Only EPUB export needs it; the dashboard runs without
-it, and the export command explains how to install it when it is missing.
+Frontmatter is optional. Proseview reads what is there and falls back on what
+is not. [Layout and the full frontmatter contract →](docs/manuscript.md)
 
 ## ⚙️ Configuration
 
-`proseview` works with zero config against any folder of Markdown. Drop a
-`.proseview.yaml` at the repo root if you want to customize:
+Zero config works. Drop a `.proseview.yaml` at the repo root to change where
+things live, set a word-count goal, pick which agent tab opens first, or point
+the Timeline at your own frontmatter keys.
 
 ```yaml
-# Whether rendered Markdown may load images: all | local | off.
-# `local` serves only files inside this repo; `off` shows alt text instead.
-# `remote_in_agent_output: false` stops remote images inside AI replies
-# from loading, since there the URL is the model's choice, not yours.
-images:
-  mode: all
-  remote_in_agent_output: true
-
-# Where the manuscript lives. Default: manuscript/, falling back to the
-# repo root when that folder does not exist. Use ./ to force the root.
 manuscript_path: manuscript/
-
-# Where character bios live. Default: story-bible/characters
-characters_path: story-bible/characters
-
-# Where AI skill prompts live. Default: skills
-skills_path: skills
-
-# Word-count goal for the finished book.
 target_words: 80000
-
-# Daily word goal (drives the "days to finish" estimate).
-daily_target: 500
-
-# Healthy band for local lexical variety (MATTR).
-mattr_band: [0.74, 0.77]
-
-# Healthy band for whole-scene lexical variety (MTLD).
-mtld_band: [105, 130]
-
-# Editor URL handler. One of: vscode, cursor, zed, positron, custom.
-editor:
-  scheme: vscode
-
-# Folders shown in the file tree alongside the manuscript.
-repo_tab:
-  folders: [plans, continuity, outline, story-bible, docs, templates]
-
-# Stable shortcuts shown when asking Codex about selected prose. Proseview
-# displays at most three presets inline; additional presets are under More.
 discuss:
-  # Which agent tab the dock opens on: codex | claude. Both tabs always
-  # exist and run independently; this only picks which one is in front.
   agent: codex
-  selection_presets:
-    - Is the grammar correct?
-    - Make this more direct.
-    - Check the point of view.
-
-# Which frontmatter keys the Timeline reads. Defaults shown; point them at
-# your own convention instead of renaming fields across the manuscript.
-story:
-  thread_field: thread
-  day_field: day
 ```
 
-Every key has a sensible default. Missing optional folders are skipped, but the
-configured manuscript directory is required.
+[Every key, with defaults →](docs/configuration.md)
 
-## 🧠 The analytics
+## 📚 Documentation
 
-Lexical health is real, not vibes:
-
-- 📐 **MATTR** (moving-average type-token ratio, window 100). Measures
-  *local* vocabulary variety. Low = the same words inside a paragraph;
-  high = constant rotation that may feel jittery.
-- 📐 **MTLD** (measure of textual lexical diversity). Measures
-  *whole-scene* variety. Low = the scene keeps circling the same ground;
-  high = the scene keeps reaching.
-- 📐 **Sentence rhythm.** Per-chapter standard deviation of sentence
-  length. Static / Rhythmic / Dynamic zones are annotated on the chart.
-- 📐 **Dialogue percentage**, **passive voice rate**, **crutch-word rate**,
-  **first-person density**, **sensory density**, **filter-verb rate**,
-  **paragraph length**.
-
-Every scene gets a row in the deep-dive table; outliers get listed under
-Editorial Alerts with a one-line revision signal.
-
-## 🤝 Working with AI
-
-Four places where AI shows up, all opt-in:
-
-1. **Selection menu.** Highlight any text in a scene. The pill that
-   appears includes `Add TODO`, `Add Note`, and (if the corresponding
-   tools are installed locally) `Run in Codex` and `Skills`. Skills are
-   reusable prompts you keep in `skills/<name>/SKILL.md`; they show up
-   automatically in the menu. Skills are discovered by Codex today — the
-   Claude tab's picker is still empty.
-2. **Agent menu.** From the scene header, launch a conversation with
-   Codex, Claude, or Gemini scoped to that file. The conversation runs
-   in the in-browser terminal so you can keep reading the prose
-   underneath while the agent works.
-3. **Discuss, on either agent.** The side dock has a **Codex** tab and a
-   **Claude** tab. Each is a separate conversation for the document you are
-   reading, with its own queue, history, and approvals — ask one, switch to
-   the other, and both keep working. `discuss.agent` decides which tab opens
-   first; both tabs are always there, and one that cannot start explains why
-   rather than disappearing.
-
-   The document you are reading is attached to each question by default — drop
-   its chip to omit it, or press `@` to attach other files and folders. Tool
-   and file actions wait on approvals you can see.
-
-   Discuss also has evidence-first continuity actions. **Trace a canon
-   change** scans the configured manuscript and repository-tab folders,
-   separates direct contradictions from ambiguous and likely intentional
-   references, and cites the exact file, line, and passage for every finding.
-   Nothing is edited during the scan. You can preserve an intentional
-   exception, send one scene finding at a time through the existing proposal
-   review, then rescan to verify the result. **Check this scene's continuity**
-   runs the same guarded workflow with the active document as its focus.
-
-   Repository continuity scans are bounded to 200 supported text files, 4 MB
-   of context, and 50 displayed findings. The impact report shows the actual
-   files and bytes scanned, and warns when the finding limit is reached. These
-   impact reports and their decisions are session-only in the current MVP.
-
-   Under the hood each tab starts its agent on demand — a local
-   `codex app-server`, or Claude through `claude-agent-sdk` — and uses the
-   login, model, and history you already have. Neither sees the other's
-   conversation, and a failure on one tab leaves the other running.
-
-   Proseview stores a bounded list of thread IDs and display metadata per
-   document *per agent* in your state directory, and discards raw reasoning:
-   only progress summaries reach the browser, never unedited model thinking.
-   `History` lets you reopen, rename, export, or remove a previous
-   conversation. `New conversation` starts a blank discussion while keeping
-   the previous one available there.
-
-   The Claude tab needs `claude-agent-sdk` installed alongside the Claude Code
-   CLI:
-
-   ```bash
-   pip install claude-agent-sdk
-   ```
-
-   Its session runs with a fixed read-only tool allowlist and without loading
-   your personal Claude settings, so nothing outside Proseview's own scope can
-   widen what the agent may do. Anything beyond reading — a shell command, a
-   file write — stops at an approval you have to grant.
-
-   When selected prose is attached, the composer shows up to three **Presets**
-   from `discuss.selection_presets` and your browser-local favorites. Favorites
-   come first, duplicates are removed, and additional presets are available
-   under **More**. Recent instructions are kept out of the inline preset row;
-   open **More** to reuse or star one as a personal preset.
-4. **TODOs as Markdown.** Every TODO and Note is a plain
-   `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
-   scene file. Your AI assistant can see them through the file, your
-   repo can track them through git, and you can grep them.
+- [Manuscript layout and frontmatter](docs/manuscript.md)
+- [Configuration reference](docs/configuration.md)
+- [Working with AI](docs/ai.md)
+- [The analytics](docs/analytics.md)
+- [EPUB export](docs/export.md)
 
 ## 🛣️ Roadmap
 

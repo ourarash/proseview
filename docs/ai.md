@@ -1,0 +1,78 @@
+# Working with AI
+
+Every AI feature is opt-in and none of it runs on its own. Proseview has
+no model of its own and no API key of yours: it drives the agent CLIs
+already installed on your machine, under your login.
+
+[← back to the README](../README.md)
+
+Four places where AI shows up, all opt-in:
+
+1. **Selection menu.** Highlight any text in a scene. The pill that
+   appears includes `Add TODO`, `Add Note`, and (if the corresponding
+   tools are installed locally) `Run in Codex` and `Skills`. Skills are
+   reusable prompts you keep in `skills/<name>/SKILL.md`; they show up
+   automatically in the menu. Skills are discovered by Codex today — the
+   Claude tab's picker is still empty.
+2. **Agent menu.** From the scene header, launch a conversation with
+   Codex, Claude, or Gemini scoped to that file. The conversation runs
+   in the in-browser terminal so you can keep reading the prose
+   underneath while the agent works.
+3. **Discuss, on either agent.** The side dock has a **Codex** tab and a
+   **Claude** tab. Each is a separate conversation for the document you are
+   reading, with its own queue, history, and approvals — ask one, switch to
+   the other, and both keep working. `discuss.agent` decides which tab opens
+   first; both tabs are always there, and one that cannot start explains why
+   rather than disappearing.
+
+   The document you are reading is attached to each question by default — drop
+   its chip to omit it, or press `@` to attach other files and folders. Tool
+   and file actions wait on approvals you can see.
+
+   Discuss also has evidence-first continuity actions. **Trace a canon
+   change** scans the configured manuscript and repository-tab folders,
+   separates direct contradictions from ambiguous and likely intentional
+   references, and cites the exact file, line, and passage for every finding.
+   Nothing is edited during the scan. You can preserve an intentional
+   exception, send one scene finding at a time through the existing proposal
+   review, then rescan to verify the result. **Check this scene's continuity**
+   runs the same guarded workflow with the active document as its focus.
+
+   Repository continuity scans are bounded to 200 supported text files, 4 MB
+   of context, and 50 displayed findings. The impact report shows the actual
+   files and bytes scanned, and warns when the finding limit is reached. These
+   impact reports and their decisions are session-only in the current MVP.
+
+   Under the hood each tab starts its agent on demand — a local
+   `codex app-server`, or Claude through `claude-agent-sdk` — and uses the
+   login, model, and history you already have. Neither sees the other's
+   conversation, and a failure on one tab leaves the other running.
+
+   Proseview stores a bounded list of thread IDs and display metadata per
+   document *per agent* in your state directory, and discards raw reasoning:
+   only progress summaries reach the browser, never unedited model thinking.
+   `History` lets you reopen, rename, export, or remove a previous
+   conversation. `New conversation` starts a blank discussion while keeping
+   the previous one available there.
+
+   The Claude tab needs `claude-agent-sdk` installed alongside the Claude Code
+   CLI:
+
+   ```bash
+   pip install claude-agent-sdk
+   ```
+
+   Its session runs with a fixed read-only tool allowlist and without loading
+   your personal Claude settings, so nothing outside Proseview's own scope can
+   widen what the agent may do. Anything beyond reading — a shell command, a
+   file write — stops at an approval you have to grant.
+
+   When selected prose is attached, the composer shows up to three **Presets**
+   from `discuss.selection_presets` and your browser-local favorites. Favorites
+   come first, duplicates are removed, and additional presets are available
+   under **More**. Recent instructions are kept out of the inline preset row;
+   open **More** to reuse or star one as a personal preset.
+4. **TODOs as Markdown.** Every TODO and Note is a plain
+   `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
+   scene file. Your AI assistant can see them through the file, your
+   repo can track them through git, and you can grep them.

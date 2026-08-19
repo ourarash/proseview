@@ -62,7 +62,11 @@
                     },
                     'Mod-Shift-8': function() { window.toggleList('bullet_list'); return true; },
                     'Mod-Shift-7': function() { window.toggleList('ordered_list'); return true; },
-                    'Mod-s': function() { saveSceneEdit(); return true; }
+                    // Saving with the keyboard keeps you writing; the Save
+                    // button is the one that finishes and leaves edit mode.
+                    // saveSceneEdit guards on `exitEditMode !== false`, so
+                    // this has to be passed explicitly.
+                    'Mod-s': function() { saveSceneEdit(null, false); return true; }
                 }))
             ].filter(Boolean);
 

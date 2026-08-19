@@ -56,11 +56,13 @@
 
         function _saveDiscussAgentLocal() {
             var input = document.getElementById('discussInput');
+            var previous = _discussAgentLocal[_discussAgent] || {};
             _discussAgentLocal[_discussAgent] = {
                 draft: input ? input.value : '',
                 attachments: _discussAttachments.slice(),
                 includeCurrentDocument: _discussIncludeCurrentDocument,
-                selectedSkill: _discussSelectedSkill
+                selectedSkill: _discussSelectedSkill,
+                conversationId: _discussConversationId || previous.conversationId || null
             };
         }
 
@@ -88,8 +90,13 @@
         function showDiscussAgentTab(agent, trigger) {
             agent = DISCUSS_AGENTS.indexOf(agent) >= 0 ? agent : 'codex';
             var panel = document.getElementById('discussPanel');
-            var alreadyShowing = panel && !panel.hidden && agent === _discussAgent;
-            if (alreadyShowing) { _showDiscussBody(); return; }
+            var log = document.getElementById('discussLog');
+            // Only skip reopening when this agent's conversation is already the
+            // thing on screen. The dock being open on Scene or Analysis is not
+            // the same as Codex being live in it, and treating it as such left
+            // the tab showing an empty log that never connected.
+            var live = panel && !panel.hidden && log && !log.hidden && _discussConversationId;
+            if (live && agent === _discussAgent) { _showDiscussBody(); return; }
             if (panel && !panel.hidden) _saveDiscussAgentLocal();
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             _discussAgent = agent;
@@ -106,20 +113,25 @@
                 var panel = document.getElementById('discussPanel');
                 if (!panel || panel.hidden) return;
                 var other = _discussAgent === 'codex' ? 'claude' : 'codex';
-                var doc = discussDocument();
-                if (!doc) return;
-                discussApi('/api/discuss/conversations/open', {
-                    kind: doc.kind, path: doc.path, agent: other
-                }).then(function(data) {
-                    var snapshot = data.snapshot || {};
-                    var busy = !!snapshot.active_turn_id || (snapshot.queue || []).length > 0;
-                    var pending = (snapshot.approvals || []).some(function(row) {
-                        return row.status === 'pending';
-                    });
-                    _markDiscussAgentTab(other, busy || pending);
-                }).catch(function() {}).then(function() {
-                    _pollInactiveDiscussAgent();
-                });
+                // Only look at an agent the writer has actually opened. Opening
+                // a conversation to poll it would start that agent -- visiting
+                // the Codex tab would boot Claude, and every four seconds keep
+                // it alive, for someone who never asked for it.
+                var known = (_discussAgentLocal[other] || {}).conversationId;
+                if (!known) { _pollInactiveDiscussAgent(); return; }
+                fetch('/api/discuss/conversations/' + encodeURIComponent(known) + '/snapshot',
+                      {cache: 'no-store'})
+                    .then(function(response) { return response.ok ? response.json() : null; })
+                    .then(function(data) {
+                        var snapshot = (data || {}).snapshot || {};
+                        var busy = !!snapshot.active_turn_id || (snapshot.queue || []).length > 0;
+                        var pending = (snapshot.approvals || []).some(function(row) {
+                            return row.status === 'pending';
+                        });
+                        _markDiscussAgentTab(other, busy || pending);
+                    })
+                    .catch(function() {})
+                    .then(function() { _pollInactiveDiscussAgent(); });
             }, 4000);
         }
 
@@ -2701,14 +2713,10 @@
         });
         window.addEventListener('resize', positionDiscussContextPicker);
         if (window.visualViewport) window.visualViewport.addEventListener('resize', positionDiscussContextPicker);
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                var picker = document.getElementById('discussContextPicker');
-                var resetDialog = document.getElementById('discussNewConversationDialog');
-                var historyDialog = document.getElementById('discussHistoryDialog');
-                // Removed the code that closes the discuss panel on Escape
-            }
-        });
+        // Escape deliberately does not close the dock: it belongs to whatever
+        // the writer is inside -- the composer's context picker handles its own,
+        // and the dialogs are <dialog> elements that close natively. Taking it
+        // for the panel stole the key from the editor underneath.
         document.getElementById('discussLog').addEventListener('scroll', function() {
             if (discussIsAtBottom(this)) document.getElementById('discussNewActivity').hidden = true;
         });

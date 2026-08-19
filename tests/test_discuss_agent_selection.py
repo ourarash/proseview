@@ -33,7 +33,8 @@ def _repo(tmp_path: Path, default_agent: str | None = None) -> Path:
 class _FakeClient:
     """Enough of a transport to prove routing, with a per-instance identity."""
 
-    def __init__(self, callback):
+    def __init__(self, callback, agent: str = "codex"):
+        self.agent = agent
         self.callback = callback
         self.alive = True
         self.capabilities = {"reasoning_summary": False}
@@ -125,8 +126,8 @@ def test_unknown_agent_is_rejected(tmp_path):
 def test_one_document_has_a_separate_conversation_per_agent(tmp_path):
     made: list[_FakeClient] = []
 
-    def factory(callback):
-        client = _FakeClient(callback)
+    def factory(callback, agent):
+        client = _FakeClient(callback, agent)
         made.append(client)
         return client
 

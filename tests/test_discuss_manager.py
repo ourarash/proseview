@@ -11,6 +11,10 @@ from proseview.codex_app_server import CodexRequestError
 import proseview.discuss as discuss_module
 from proseview.discuss import ContextError, DiscussManager, DiscussStateStore, _Conversation, validate_action_result
 
+# Shared with the cross-transport conformance suite so both exercise the
+# same double rather than drifting apart.
+from .transport_fakes import CodexFakeClient as _FakeClient
+
 
 def _repo(tmp_path: Path) -> Path:
     root = tmp_path / "novel"
@@ -18,169 +22,6 @@ def _repo(tmp_path: Path) -> Path:
     (root / "manuscript" / "one.md").write_text("# One\n\nFirst document.\n", encoding="utf-8")
     (root / "manuscript" / "two.md").write_text("# Two\n\nSecond document.\n", encoding="utf-8")
     return root
-
-
-class _FakeClient:
-    def __init__(self, callback):
-        self.callback = callback
-        self.alive = True
-        self.next_thread = 0
-        self.next_turn = 0
-        self.prompts: list[str] = []
-        self.turn_params: list[dict] = []
-        self.responses: list[tuple[object, dict]] = []
-        self.interrupts: list[dict] = []
-        self.active = 0
-        self.max_active = 0
-        self.turn_start_attempts = 0
-        self.finish_delay = 0.04
-        self.hold_next_turn = False
-        self.interrupt_error: BaseException | None = None
-        self.complete_turn_before_interrupt_error = False
-        self.reject_turn_starts = False
-        self.invalid_continuity_result = False
-        self.continuity_file = "manuscript/one.md"
-        self.continuity_line = 3
-        self.continuity_quote = "Mira learned winter in Boston."
-        self.capabilities = {"reasoning_summary": True}
-        self.threads: dict[str, dict] = {}
-        self._lock = threading.Lock()
-
-    def inspect_capabilities(self):
-        return {"stable_discuss_protocol": True}
-
-    def probe_capabilities(self):
-        return {"stable_discuss_protocol": True}
-
-    def start(self):
-        return None
-
-    def request(self, method, params, *, timeout=None):
-        if method == "skills/list":
-            return {"data": [{"cwd": params["cwds"][0], "skills": [{
-                "name": "scene-review", "path": "/skills/scene-review/SKILL.md", "enabled": True,
-                "description": "Review a scene", "interface": {"displayName": "Scene Review", "shortDescription": "Review selected prose"},
-            }]}]}
-        if method == "thread/read":
-            thread = self.threads.get(params["threadId"])
-            if thread is None:
-                raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
-            return {"thread": thread}
-        if method == "thread/start":
-            self.next_thread += 1
-            thread = {"id": f"thread-{self.next_thread}", "turns": []}
-            self.threads[thread["id"]] = thread
-            return {"thread": thread}
-        if method == "turn/start":
-            self.turn_start_attempts += 1
-            if self.reject_turn_starts:
-                raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
-            if params["threadId"] not in self.threads:
-                raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
-            self.next_turn += 1
-            turn_id = f"turn-{self.next_turn}"
-            thread_id = params["threadId"]
-            self.prompts.append(params["input"][0]["text"])
-            self.turn_params.append(dict(params))
-            with self._lock:
-                self.active += 1
-                self.max_active = max(self.max_active, self.active)
-
-            if self.hold_next_turn:
-                self.hold_next_turn = False
-                return {"turn": {"id": turn_id, "status": "inProgress"}}
-
-            def finish():
-                self.callback({
-                    "method": "item/reasoning/textDelta",
-                    "params": {"threadId": thread_id, "turnId": turn_id, "delta": "RAW SECRET"},
-                })
-                self.callback({
-                    "method": "item/reasoning/summaryTextDelta",
-                    "params": {"threadId": thread_id, "turnId": turn_id, "delta": "Reading context"},
-                })
-                answer = f"Answer {turn_id}"
-                schema = params.get("outputSchema") or {}
-                kind = (((schema.get("properties") or {}).get("kind") or {}).get("enum") or [None])[0]
-                if kind == "alternatives":
-                    count = schema["properties"]["alternatives"]["maxItems"]
-                    choices = [
-                        {"text": "Revised document.", "rationale": "Removes repetition."},
-                        {"text": "A revised document.", "rationale": "Changes the rhythm."},
-                        {"text": "Document, revised.", "rationale": "Leads with the subject."},
-                    ]
-                    answer = json.dumps({"kind": "alternatives", "summary": "A tighter beat.", "alternatives": choices[:count]})
-                elif kind == "critique":
-                    answer = json.dumps({"kind": "critique", "findings": [{"observation": "The opening is abstract.", "evidence": "First document.", "why_it_matters": "The image is hard to picture.", "next_step": "Use one concrete detail."}]})
-                elif kind == "continuity_report":
-                    answer = json.dumps({
-                        "kind": "continuity_report",
-                        "summary": "One direct contradiction needs review.",
-                        "findings": [{
-                            "category": "direct",
-                            "file": self.continuity_file,
-                            "line": self.continuity_line,
-                            "quote": self.continuity_quote,
-                            "explanation": "This conflicts with the requested Chicago childhood.",
-                            "replacement": "Mira learned winter in Chicago.",
-                        }],
-                    })
-                    if self.invalid_continuity_result:
-                        answer = json.dumps({
-                            "kind": "continuity_report",
-                            "summary": "Unsupported citation.",
-                            "findings": [{
-                                "category": "direct",
-                                "file": "manuscript/one.md",
-                                "line": 3,
-                                "quote": "This quote is not in the scanned file.",
-                                "explanation": "Invented evidence.",
-                                "replacement": "Replacement.",
-                            }],
-                        })
-                self.callback({
-                    "method": "item/completed",
-                    "params": {
-                        "threadId": thread_id,
-                        "turnId": turn_id,
-                        "item": {"id": f"answer-{turn_id}", "type": "agentMessage", "phase": "final_answer", "text": answer},
-                    },
-                })
-                self.callback({
-                    "method": "turn/completed",
-                    "params": {"threadId": thread_id, "turn": {"id": turn_id, "status": "completed"}},
-                })
-                with self._lock:
-                    self.active -= 1
-
-            threading.Timer(self.finish_delay, finish).start()
-            return {"turn": {"id": turn_id, "status": "inProgress"}}
-        if method == "turn/interrupt":
-            self.interrupts.append(dict(params))
-            if self.complete_turn_before_interrupt_error:
-                self.callback({
-                    "method": "turn/completed",
-                    "params": {
-                        "threadId": params["threadId"],
-                        "turn": {"id": params["turnId"], "status": "interrupted"},
-                    },
-                })
-                deadline = time.monotonic() + 1.0
-                while self.next_turn < 2 and time.monotonic() < deadline:
-                    time.sleep(0.001)
-            if self.interrupt_error is not None:
-                raise self.interrupt_error
-            return {}
-        raise AssertionError(method)
-
-    def respond(self, request_id, result):
-        self.responses.append((request_id, result))
-
-    def respond_error(self, request_id, message):
-        self.responses.append((request_id, {"error": message}))
-
-    def close(self):
-        self.alive = False
 
 
 def _wait_for(predicate, timeout: float = 2.0):
@@ -196,7 +37,7 @@ def test_managed_rewrite_uses_output_schema_and_creates_stale_checked_proposal(t
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
     root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
 
     result = manager.submit(
@@ -238,7 +79,7 @@ def test_canon_refactor_scans_configured_story_scope_and_creates_reviewable_find
         "Mira sometimes claims Boston to strangers.\n", encoding="utf-8"
     )
     clients: list[_FakeClient] = []
-    def factory(callback):
+    def factory(callback, _agent=None):
         client = _FakeClient(callback)
         client.continuity_file = "manuscript/ch01/one.md"
         clients.append(client)
@@ -283,7 +124,7 @@ def test_non_scene_manuscript_finding_cannot_enter_scene_proposal_flow(tmp_path:
     (root / "manuscript" / "one.md").write_text(
         "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
     )
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     submitted = manager.submit(
         cid, client_request_id="canon-nonscene", question="Change a fact.", action_id="canon_refactor"
@@ -383,7 +224,7 @@ def test_failed_refactor_validation_discards_private_scan_bodies(tmp_path: Path,
     root = _repo(tmp_path)
     client: _FakeClient | None = None
 
-    def factory(callback):
+    def factory(callback, _agent=None):
         nonlocal client
         client = _FakeClient(callback)
         client.invalid_continuity_result = True
@@ -409,7 +250,7 @@ def test_refactor_scan_rejects_a_source_changed_during_context_capture(tmp_path:
     (root / "manuscript" / "one.md").write_text(
         "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
     )
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     original_build = manager.refactor_context.build
 
@@ -442,7 +283,7 @@ def test_refactor_finding_becomes_stale_and_intentional_decisions_feed_verificat
         "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
     )
 
-    def factory(callback):
+    def factory(callback, _agent=None):
         client = _FakeClient(callback)
         client.continuity_file = "manuscript/ch01/one.md"
         return client
@@ -489,7 +330,7 @@ def test_verification_bounds_prior_decision_quotes_for_a_maximum_report(tmp_path
     (root / "manuscript" / "one.md").write_text(
         "# One\n\nMira learned winter in Boston.\n", encoding="utf-8"
     )
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     submitted = manager.submit(
         cid, client_request_id="canon-max", question="Change a fact.", action_id="canon_refactor"
@@ -526,7 +367,7 @@ def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tm
     (root / "manuscript" / "one.md").write_text(
         "# One\n\nMira learned winter in Boston.\nMira later moved to Chicago.\n", encoding="utf-8"
     )
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     submitted = manager.submit(
         cid, client_request_id="canon-changed", question="Change a fact.", action_id="canon_refactor"
@@ -559,7 +400,7 @@ def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tm
 
 def test_managed_task_records_the_applied_suggestion_until_save_or_undo(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     submitted = manager.submit(
         cid, client_request_id="rewrite-choice", question="", selection="First document.", action_id="tighten"
@@ -582,7 +423,7 @@ def test_managed_task_records_the_applied_suggestion_until_save_or_undo(tmp_path
 
 def test_managed_critique_is_evidence_linked_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     manager.submit(cid, client_request_id="critique-1", question="", selection="First document.", action_id="quick_critique")
     _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
@@ -597,7 +438,7 @@ def test_managed_critique_is_evidence_linked_and_never_becomes_a_proposal(tmp_pa
 def test_selection_action_becomes_stale_after_external_file_change(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     manager.submit(cid, client_request_id="rewrite-stale", question="", selection="First document.", action_id="rephrase")
     _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
@@ -612,7 +453,7 @@ def test_selection_action_becomes_stale_after_external_file_change(tmp_path: Pat
 def test_managed_skill_is_discovered_and_sent_as_a_real_skill_input(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     skills = manager.list_skills()
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     manager.submit(
@@ -678,7 +519,7 @@ def test_critique_evidence_accepts_typographic_quotes_outer_wrappers_and_whitesp
 
 def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     first = manager.submit(
         cid, client_request_id="critique-first", question="", selection="First document.", action_id="quick_critique"
@@ -719,7 +560,7 @@ def test_manager_serializes_one_document_and_filters_raw_reasoning(tmp_path: Pat
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
 
-    def factory(callback):
+    def factory(callback, _agent=None):
         client = _FakeClient(callback)
         clients.append(client)
         return client
@@ -745,7 +586,7 @@ def test_manager_omits_current_document_when_user_removes_it(tmp_path: Path, mon
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
 
@@ -766,7 +607,7 @@ def test_manager_runs_different_documents_concurrently_and_is_idempotent(tmp_pat
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
 
-    def factory(callback):
+    def factory(callback, _agent=None):
         client = _FakeClient(callback)
         clients.append(client)
         return client
@@ -792,7 +633,7 @@ def test_open_revalidates_and_forgets_a_cached_thread_that_codex_lost(tmp_path: 
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -813,7 +654,7 @@ def test_opening_a_valid_cached_thread_does_not_rewrite_unchanged_state(tmp_path
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -830,7 +671,7 @@ def test_opening_a_valid_cached_thread_does_not_rewrite_unchanged_state(tmp_path
 def test_restore_thread_rebuilds_escaped_selection_action_as_a_task_card(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     conversation = _Conversation("restored-conversation", {"kind": "scene", "path": "one.md"})
     prompt = manager.context.build(
         conversation.document,
@@ -880,7 +721,7 @@ def test_restore_thread_rebuilds_escaped_selection_action_as_a_task_card(tmp_pat
 def test_restore_thread_preserves_action_provenance_and_detects_restart_staleness(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     conversation = _Conversation("restored-conversation", {"kind": "scene", "path": "one.md"})
     _task, question, _schema, _skill = manager._action_task(
         conversation,
@@ -923,7 +764,7 @@ def test_restore_thread_preserves_action_provenance_and_detects_restart_stalenes
 
 def test_restore_thread_preserves_selection_action_retry_grouping(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     conversation = _Conversation("restored-conversation", {"kind": "scene", "path": "one.md"})
     first, first_question, _schema, _skill = manager._action_task(
         conversation, request_id="first", action_id="tighten", selection="First document."
@@ -966,7 +807,7 @@ def test_open_does_not_replace_local_messages_while_work_is_active(tmp_path: Pat
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -996,7 +837,7 @@ def test_missing_thread_retries_the_same_question_once_on_a_new_thread(tmp_path:
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -1035,7 +876,7 @@ def test_new_conversation_clears_projection_and_uses_a_new_thread(tmp_path: Path
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -1062,7 +903,7 @@ def test_conversation_history_survives_new_conversation_and_can_be_reopened(tmp_
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -1100,7 +941,7 @@ def test_history_rename_export_and_remove_use_safe_projection(tmp_path: Path, mo
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
@@ -1130,7 +971,7 @@ def test_history_rename_export_and_remove_use_safe_projection(tmp_path: Path, mo
 
 def test_history_export_rejects_a_mismatched_codex_thread(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     thread_id = manager._start_thread(manager._get(cid), manager._client_for("codex"))
     manager._client_for("codex").threads[thread_id] = {"id": "different-thread", "turns": [{"items": [
@@ -1144,7 +985,7 @@ def test_history_export_rejects_a_mismatched_codex_thread(tmp_path: Path, monkey
 
 def test_history_open_rejects_a_missing_codex_thread_identity(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     thread_id = manager._start_thread(manager._get(cid), manager._client_for("codex"))
     manager._client_for("codex").threads[thread_id] = {"turns": [{"items": [
@@ -1160,7 +1001,7 @@ def test_history_open_rejects_a_missing_codex_thread_identity(tmp_path: Path, mo
 
 def test_restored_history_omits_unrecognized_user_prompt_envelopes(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     conversation = _Conversation("safe-restore", {"kind": "scene", "path": "one.md"})
 
     manager._restore_thread(conversation, {"turns": [{"items": [
@@ -1222,7 +1063,7 @@ def test_discuss_state_store_bounds_each_document_history(tmp_path: Path):
 def test_new_conversation_fails_safely_when_conversation_lock_stays_busy(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(discuss_module, "CONVERSATION_RESET_LOCK_TIMEOUT", 0.05)
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._get(cid)
     locked = threading.Event()
@@ -1250,7 +1091,7 @@ def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_pat
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._get(cid)
@@ -1306,7 +1147,7 @@ def test_dequeued_question_blocks_reset_and_history_switch_until_it_finishes(tmp
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._get(cid)
@@ -1348,7 +1189,7 @@ def test_missing_thread_recovery_is_bounded_to_one_retry(tmp_path: Path, monkeyp
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     conversation_id = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[conversation_id]
@@ -1368,7 +1209,7 @@ def test_new_conversation_keeps_memory_mapping_when_durable_reset_fails(tmp_path
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     conversation_id = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[conversation_id]
@@ -1387,7 +1228,7 @@ def test_new_conversation_keeps_memory_mapping_when_durable_reset_fails(tmp_path
 def test_manager_surfaces_and_resolves_allowlisted_approval(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
@@ -1413,7 +1254,7 @@ def test_manager_surfaces_and_resolves_allowlisted_approval(tmp_path: Path, monk
 
 def test_restored_history_exposes_question_not_packaged_documents(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager._conversation_id({"kind": "scene", "path": "one.md"})
     conversation = manager._conversations.setdefault(cid, _Conversation(cid, {"kind": "scene", "path": "one.md"}))
     manager._restore_thread(conversation, {
@@ -1433,7 +1274,7 @@ def test_restored_history_exposes_question_not_packaged_documents(tmp_path: Path
 def test_concurrent_duplicate_submissions_enqueue_once(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     barrier = threading.Barrier(3)
     results: list[dict] = []
@@ -1458,7 +1299,7 @@ def test_action_retry_is_idempotent_even_after_source_file_changes(tmp_path: Pat
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     clients: list[_FakeClient] = []
-    manager = DiscussManager(root, client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     first = manager.submit(
         cid, client_request_id="same-action", question="", selection="First document.", action_id="tighten"
@@ -1476,7 +1317,7 @@ def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: P
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     (root / "manuscript" / "one.md").write_text("# One\n\nA *quiet* room was quiet.\n", encoding="utf-8")
-    manager = DiscussManager(root, client_factory=lambda callback: _FakeClient(callback))
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     result = manager.submit(
         cid,
@@ -1496,7 +1337,7 @@ def test_selection_action_uses_bounded_live_editor_context(tmp_path: Path, monke
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     clients: list[_FakeClient] = []
-    manager = DiscussManager(root, client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     scene = root / "manuscript" / "one.md"
     live = "Local preface. First document.\n"
@@ -1520,7 +1361,7 @@ def test_selection_action_uses_bounded_live_editor_context(tmp_path: Path, monke
 def test_pending_queue_item_can_be_removed_individually(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     clients[0].finish_delay = 0.5
     manager.submit(cid, client_request_id="active", question="First")
@@ -1538,7 +1379,7 @@ def test_stop_recovers_when_codex_has_unloaded_the_active_thread(tmp_path: Path,
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     client = clients[0]
@@ -1588,7 +1429,7 @@ def test_delayed_stop_error_cannot_detach_the_next_queued_turn(tmp_path: Path, m
     clients: list[_FakeClient] = []
     manager = DiscussManager(
         _repo(tmp_path),
-        client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1],
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
     )
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     client = clients[0]
@@ -1620,7 +1461,7 @@ def test_delayed_stop_error_cannot_detach_the_next_queued_turn(tmp_path: Path, m
 def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
@@ -1654,7 +1495,7 @@ def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, m
 def test_approval_without_advertised_decisions_is_declined(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: clients.append(_FakeClient(callback)) or clients[-1])
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])

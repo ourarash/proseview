@@ -1361,7 +1361,11 @@ class DiscussManager:
             if self._client_factory is None:
                 client = self._build_client(agent)
             else:
-                client = self._client_factory(lambda message: self._on_agent_message(agent, message))
+                # The agent is passed through so a test double can stand in for
+                # a specific transport rather than one fake serving both.
+                client = self._client_factory(
+                    lambda message: self._on_agent_message(agent, message), agent
+                )
             inspected = client.inspect_capabilities()
             client.start()
             if not inspected.get("stable_discuss_protocol"):

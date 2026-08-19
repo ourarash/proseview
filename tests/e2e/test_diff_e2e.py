@@ -1,6 +1,19 @@
-from playwright.sync_api import Page
-from .conftest import ProseviewServer
-from .test_browser_e2e import open_scene, enter_edit_mode, append_to_paragraph, save_scene, _wait_until
+import pytest
+
+# The default pytest run installs only ".[dev]", which has no playwright.
+# Without this the module fails to import and takes the whole run with it.
+pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
+
+from playwright.sync_api import Page  # noqa: E402
+
+from .conftest import ProseviewServer  # noqa: E402
+from .test_browser_e2e import (  # noqa: E402
+    _wait_until,
+    append_to_paragraph,
+    enter_edit_mode,
+    open_scene,
+    save_scene,
+)
 
 def _create_history_backup(page: Page, server: ProseviewServer):
     path = server.scene_path()

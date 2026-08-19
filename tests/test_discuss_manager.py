@@ -465,10 +465,10 @@ def test_refactor_finding_becomes_stale_and_intentional_decisions_feed_verificat
         action_id="verify_refactor",
         verify_of_task_id=submitted["task_id"],
     )
-    _wait_for(lambda: len(manager.get_snapshot(cid)["tasks"]) == 2 and len(manager._client.prompts) == 2)
+    _wait_for(lambda: len(manager.get_snapshot(cid)["tasks"]) == 2 and len(manager._client_for("codex").prompts) == 2)
     verify_task = next(row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"])
     assert verify_task["verify_of"] == submitted["task_id"]
-    assert "intentionally preserved" in manager._client.prompts[-1]
+    assert "intentionally preserved" in manager._client_for("codex").prompts[-1]
     _wait_for(
         lambda: next(
             row for row in manager.get_snapshot(cid)["tasks"] if row["id"] == verified["task_id"]
@@ -511,9 +511,9 @@ def test_verification_bounds_prior_decision_quotes_for_a_maximum_report(tmp_path
         action_id="verify_refactor",
         verify_of_task_id=submitted["task_id"],
     )
-    _wait_for(lambda: len(manager._client.prompts) == 2)
+    _wait_for(lambda: len(manager._client_for("codex").prompts) == 2)
 
-    verification_prompt = manager._client.prompts[-1]
+    verification_prompt = manager._client_for("codex").prompts[-1]
     assert verification_prompt.count("intentionally preserved") == discuss_module.REFACTOR_FINDINGS_MAX
     internal_question = verification_prompt.rsplit("\n\nUSER QUESTION\n", 1)[-1]
     assert len(internal_question.encode("utf-8")) <= discuss_module.REFACTOR_QUESTION_MAX
@@ -536,8 +536,8 @@ def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tm
     manager.set_refactor_finding_decision(
         cid, submitted["task_id"], parent["result"]["findings"][0]["id"], "intentional"
     )
-    manager._client.continuity_line = 4
-    manager._client.continuity_quote = "Mira later moved to Chicago."
+    manager._client_for("codex").continuity_line = 4
+    manager._client_for("codex").continuity_quote = "Mira later moved to Chicago."
     verified = manager.submit(
         cid,
         client_request_id="verify-changed",
@@ -588,7 +588,7 @@ def test_managed_critique_is_evidence_linked_and_never_becomes_a_proposal(tmp_pa
     _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
     task = manager.get_snapshot(cid)["tasks"][0]
     assert task["result"]["findings"][0]["evidence"] == "First document."
-    assert "copy a short contiguous excerpt verbatim" in manager._client.prompts[0]
+    assert "copy a short contiguous excerpt verbatim" in manager._client_for("codex").prompts[0]
     with pytest.raises(ValueError, match="not ready for review"):
         manager.proposal_for_task(cid, task["id"])
     manager.close()
@@ -1132,8 +1132,8 @@ def test_history_export_rejects_a_mismatched_codex_thread(tmp_path: Path, monkey
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    thread_id = manager._start_thread(manager._get(cid), manager._client)
-    manager._client.threads[thread_id] = {"id": "different-thread", "turns": [{"items": [
+    thread_id = manager._start_thread(manager._get(cid), manager._client_for("codex"))
+    manager._client_for("codex").threads[thread_id] = {"id": "different-thread", "turns": [{"items": [
         {"type": "userMessage", "content": [{"type": "text", "text": "PRIVATE OTHER THREAD"}]},
     ]}]}
 
@@ -1146,8 +1146,8 @@ def test_history_open_rejects_a_missing_codex_thread_identity(tmp_path: Path, mo
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    thread_id = manager._start_thread(manager._get(cid), manager._client)
-    manager._client.threads[thread_id] = {"turns": [{"items": [
+    thread_id = manager._start_thread(manager._get(cid), manager._client_for("codex"))
+    manager._client_for("codex").threads[thread_id] = {"turns": [{"items": [
         {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nDo not project me"}]},
     ]}]}
     manager.new_conversation(cid)
@@ -1317,14 +1317,14 @@ def test_dequeued_question_blocks_reset_and_history_switch_until_it_finishes(tmp
     manager.state.set("scene", "one.md", active_thread)
     claimed = threading.Event()
     release = threading.Event()
-    original_ensure_client = manager._ensure_client
+    original_client_for = manager._client_for
 
-    def stalled_client():
+    def stalled_client(agent):
         claimed.set()
         release.wait(timeout=2)
-        return original_ensure_client()
+        return original_client_for(agent)
 
-    monkeypatch.setattr(manager, "_ensure_client", stalled_client)
+    monkeypatch.setattr(manager, "_client_for", stalled_client)
     manager.submit(cid, client_request_id="claimed", question="Keep this question in its thread")
     assert claimed.wait(timeout=1)
     assert manager.get_snapshot(cid)["queue"] == []
@@ -1391,7 +1391,7 @@ def test_manager_surfaces_and_resolves_allowlisted_approval(tmp_path: Path, monk
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
-    manager._on_agent_message({
+    manager._on_agent_message("codex", {
         "id": 91,
         "method": "item/commandExecution/requestApproval",
         "params": {
@@ -1630,7 +1630,7 @@ def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, m
         (103, "item/permissions/requestApproval", {"permissions": {"filesystem": ["one.md"]}}, "permissions"),
     ]
     for request_id, method, extra, expected_kind in requests:
-        manager._on_agent_message({
+        manager._on_agent_message("codex", {
             "id": request_id,
             "method": method,
             "params": {
@@ -1658,7 +1658,7 @@ def test_approval_without_advertised_decisions_is_declined(tmp_path: Path, monke
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     conversation = manager._conversations[cid]
     thread_id = manager._start_thread(conversation, clients[0])
-    manager._on_agent_message({
+    manager._on_agent_message("codex", {
         "id": 104,
         "method": "item/fileChange/requestApproval",
         "params": {"threadId": thread_id, "turnId": "turn-x", "itemId": "item-x"},

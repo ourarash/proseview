@@ -83,8 +83,8 @@ class DiscussConfig:
     """Stable, repository-level shortcuts for selection questions."""
 
     selection_presets: tuple[str, ...] = ()
-    #: Which agent backs Discuss. Codex remains the default; ``claude`` routes
-    #: through ``claude-agent-sdk`` instead.
+    #: Which agent tab the dock opens on. Both tabs always exist and run
+    #: independently; this only decides which one is in front to begin with.
     agent: str = "codex"
 
 

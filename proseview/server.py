@@ -2031,12 +2031,25 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/discuss/"):
             try:
                 body = self._read_json_limited()
+                if path == "/api/discuss/agents":
+                    self._send_json({
+                        "ok": True,
+                        "agents": self.discuss_manager.agents(),
+                        "default": self.discuss_manager.context.cfg.discuss.agent,
+                    })
+                    return
                 if path == "/api/discuss/conversations/open":
-                    snapshot = self.discuss_manager.open({"kind": body.get("kind"), "path": body.get("path")})
+                    snapshot = self.discuss_manager.open(
+                        {"kind": body.get("kind"), "path": body.get("path")},
+                        body.get("agent") or "codex",
+                    )
                     self._send_json({"ok": True, "conversation_id": snapshot["conversation_id"], "snapshot": snapshot})
                     return
                 if path == "/api/discuss/skills":
-                    skills = self.discuss_manager.list_skills(force_reload=bool(body.get("force_reload")))
+                    skills = self.discuss_manager.list_skills(
+                        force_reload=bool(body.get("force_reload")),
+                        agent=body.get("agent") or "codex",
+                    )
                     self._send_json({"ok": True, "skills": skills})
                     return
                 question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)

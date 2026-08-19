@@ -881,8 +881,12 @@ def test_new_conversation_clears_projection_and_uses_a_new_thread(tmp_path: Path
     document = {"kind": "scene", "path": "one.md"}
     conversation_id = manager.open(document)["conversation_id"]
     manager.submit(conversation_id, client_request_id="before", question="First thread")
+    # active_turn_id clears before the worker finishes winding the turn down,
+    # and new_conversation refuses while anything is still in flight. Waiting
+    # only on the turn id makes this racy under load.
     _wait_for(
         lambda: manager.get_snapshot(conversation_id)["active_turn_id"] is None
+        and manager.get_snapshot(conversation_id)["active_request_id"] is None
         and any(message["role"] == "assistant" for message in manager.get_snapshot(conversation_id)["messages"])
     )
     old_thread_id = manager._conversations[conversation_id].thread_id

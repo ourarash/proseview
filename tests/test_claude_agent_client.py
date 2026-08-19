@@ -92,7 +92,12 @@ def make_client(script: list | None = None, **kwargs: Any) -> tuple[ClaudeAgentC
 
     ``script`` is applied at construction: the drain starts as soon as a turn
     does, so setting it afterwards races the turn it is meant to describe.
+
+    A ``session_reader`` is always supplied, defaulting to an empty store. The
+    SDK is an optional dependency, so a test that falls through to the real one
+    passes wherever it happens to be installed and fails in CI, where it is not.
     """
+    kwargs.setdefault("session_reader", lambda session_id, cwd: [])
     seen: list[dict] = []
     made: list[FakeSDKClient] = []
 

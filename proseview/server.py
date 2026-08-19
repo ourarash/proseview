@@ -2662,8 +2662,34 @@ def serve(
                 return  # normal on browser reload / SSE disconnect
             super().handle_error(request, client_address)
 
-    httpd = _Server(("localhost", port), handler_cls)
+    import sys
+    original_port = port
+    max_port = port + 20
+    
+    while port <= max_port:
+        try:
+            httpd = _Server(("localhost", port), handler_cls)
+            break
+        except OSError as e:
+            if getattr(e, "errno", None) == 48:
+                if original_port != DEFAULT_PORT and original_port != 0:
+                    sys.stderr.write(f"Error: Requested port {original_port} is already in use.\n")
+                    sys.exit(1)
+                port += 1
+            else:
+                raise
+    else:
+        sys.stderr.write(f"Error: Could not find an open port (tried {original_port}-{max_port}).\n")
+        sys.exit(1)
+
     port = httpd.server_address[1]
+
+    if port != original_port and original_port != 0:
+        if port == original_port + 1:
+            print(f"Default port {original_port} is in use (likely by another Proseview session).")
+        else:
+            print(f"Default ports {original_port}-{port-1} are in use (likely by other Proseview sessions).")
+        print(f"Started on fallback port {port}.")
 
     url = f"http://localhost:{port}"
     print(f"proseview serving at {url}")

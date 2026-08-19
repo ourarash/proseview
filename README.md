@@ -25,7 +25,7 @@ Proseview reads the same `.md` files, in whatever layout you already use.
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-![The Proseview dashboard: word-count goal, writing streak, and recently modified files](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
+![The Proseview dashboard: total words against the goal, scene count, reading time, and a Goals panel with writing streak and per-chapter average](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
 ## 📸 A look around
 
@@ -42,6 +42,14 @@ Hit `Edit` and the page you were reading becomes the page you type into — same
 typography, same highlights. `Mod-S` saves to the file, and the stats update.
 
 ![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
+
+### Ask two agents, side by side
+
+Codex and Claude each get a tab, each with its own conversation for the
+document you are reading. Ask one, switch to the other, come back — both keep
+working, and neither can see the other's thread.
+
+![The Codex and Claude tabs answering the same question about a scene in separate conversations, with each answer staying in its own tab](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-agents.gif)
 
 ### Search the whole repository
 
@@ -60,7 +68,7 @@ it happens is visible instead of inferred. Hover any scene for its card.
 
 ### Analytics that mean something
 
-![Character presence, sentence-rhythm bands, setting stickiness, and character co-occurrence charts](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
+![The Analysis tab's character presence timeline, tracking how often each character is mentioned across all twelve chapters](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
 
 > Clips use the bundled demo manuscript: *Alice's Adventures in Wonderland*
 > (public domain), split into 39 scenes across 12 chapters with story fields
@@ -98,11 +106,20 @@ it happens is visible instead of inferred. Hover any scene for its card.
   picks up the change over Server-Sent Events. No manual refresh.
 - 🔗 **Deep links.** Every scene and file has a URL. Copy the address
   bar to share or revisit a view. Back / forward work.
-- 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch. Reader,
-  Literary, Inter, Georgia, Baskerville, Sans, Mono.
-- 🧪 **Tested.** 400 tests: unit coverage of the analytics engine, scene
-  parsing, save guards, history, and refresh behavior, plus end-to-end
-  tiers that boot the real server and drive the real UI in a browser.
+- 🎨 **Themes and fonts.** Light, Dark, Docsify, Hopscotch, Graphite
+  Light, Graphite Dark. Reader, Literary, Inter, Georgia, Baskerville,
+  Sans, Mono.
+- 🤖 **Two agents, side by side.** Codex and Claude each get a dock tab
+  and their own conversation per document. Both run at once; switching
+  tabs never interrupts the other. A tab that cannot start says why.
+- 🕹️ **Undo and redo per file.** The History tab keeps versions of a
+  scene and restores one with a diff you can read first, side by side or
+  inline.
+- ⚙️ **Settings in the app.** Edit `.proseview.yaml` from the dashboard
+  instead of hand-writing YAML.
+- 🧪 **Tested.** 642 unit tests plus a browser tier that boots the real
+  server and drives the real UI. One behaviour suite runs against both
+  agents, so a feature cannot silently work on one tab and not the other.
 
 ### 🤖 And AI, if you want it
 
@@ -111,8 +128,9 @@ own and no API key of yours — it drives the agent CLIs already installed on
 your machine, under your login.
 
 Select a passage and send it to Codex, Claude, or Gemini; open a
-document-aware **Discuss** conversation beside a scene; or use the built-in
-terminal (a real PTY) for anything else. [Details below](#-working-with-ai).
+document-aware conversation beside a scene on the **Codex** or **Claude** tab;
+or use the built-in terminal (a real PTY) for anything else.
+[Details below](#-working-with-ai).
 
 If you want none of this, ignore it. Everything above works without an agent
 installed.
@@ -353,6 +371,9 @@ repo_tab:
 # Stable shortcuts shown when asking Codex about selected prose. Proseview
 # displays at most three presets inline; additional presets are under More.
 discuss:
+  # Which agent tab the dock opens on: codex | claude. Both tabs always
+  # exist and run independently; this only picks which one is in front.
+  agent: codex
   selection_presets:
     - Is the grammar correct?
     - Make this more direct.
@@ -395,16 +416,22 @@ Four places where AI shows up, all opt-in:
    appears includes `Add TODO`, `Add Note`, and (if the corresponding
    tools are installed locally) `Run in Codex` and `Skills`. Skills are
    reusable prompts you keep in `skills/<name>/SKILL.md`; they show up
-   automatically in the menu.
+   automatically in the menu. Skills are discovered by Codex today — the
+   Claude tab's picker is still empty.
 2. **Agent menu.** From the scene header, launch a conversation with
    Codex, Claude, or Gemini scoped to that file. The conversation runs
    in the in-browser terminal so you can keep reading the prose
    underneath while the agent works.
-3. **Discuss.** Choose `Discuss` in a scene or text-file header for a
-   document-aware conversation in the side dock. The document you are
-   reading is attached to each question by default — drop its chip to omit
-   it, or press `@` to attach other files and folders. Tool and file
-   actions wait on approvals you can see.
+3. **Discuss, on either agent.** The side dock has a **Codex** tab and a
+   **Claude** tab. Each is a separate conversation for the document you are
+   reading, with its own queue, history, and approvals — ask one, switch to
+   the other, and both keep working. `discuss.agent` decides which tab opens
+   first; both tabs are always there, and one that cannot start explains why
+   rather than disappearing.
+
+   The document you are reading is attached to each question by default — drop
+   its chip to omit it, or press `@` to attach other files and folders. Tool
+   and file actions wait on approvals you can see.
 
    Discuss also has evidence-first continuity actions. **Trace a canon
    change** scans the configured manuscript and repository-tab folders,
@@ -420,13 +447,29 @@ Four places where AI shows up, all opt-in:
    files and bytes scanned, and warns when the finding limit is reached. These
    impact reports and their decisions are session-only in the current MVP.
 
-   Under the hood it starts a local `codex app-server` on demand and uses
-   your existing Codex login, model, and history. Proseview stores a bounded
-   list of thread IDs and display metadata for each document in your state
-   directory, and discards raw reasoning — only Codex's own progress summaries
-   reach the browser. `History` lets you reopen, rename, export, or remove a
-   previous conversation. `New conversation` starts a blank discussion while
-   keeping the previous one available there.
+   Under the hood each tab starts its agent on demand — a local
+   `codex app-server`, or Claude through `claude-agent-sdk` — and uses the
+   login, model, and history you already have. Neither sees the other's
+   conversation, and a failure on one tab leaves the other running.
+
+   Proseview stores a bounded list of thread IDs and display metadata per
+   document *per agent* in your state directory, and discards raw reasoning:
+   only progress summaries reach the browser, never unedited model thinking.
+   `History` lets you reopen, rename, export, or remove a previous
+   conversation. `New conversation` starts a blank discussion while keeping
+   the previous one available there.
+
+   The Claude tab needs `claude-agent-sdk` installed alongside the Claude Code
+   CLI:
+
+   ```bash
+   pip install claude-agent-sdk
+   ```
+
+   Its session runs with a fixed read-only tool allowlist and without loading
+   your personal Claude settings, so nothing outside Proseview's own scope can
+   widen what the agent may do. Anything beyond reading — a shell command, a
+   file write — stops at an approval you have to grant.
 
    When selected prose is attached, the composer shows up to three **Presets**
    from `discuss.selection_presets` and your browser-local favorites. Favorites
@@ -444,11 +487,11 @@ This is alpha. Things that are working and things that are coming:
 
 - ✅ Live server, live reload, ProseMirror editor, highlights, TODOs,
   notes, deep links, in-browser terminal, agent menu, and document-aware
-  Discuss conversations with Codex.
+  Discuss conversations with Codex and Claude.
 - ✅ Vendored front-end dependencies. chart.js, marked, xterm and
   friends ship with the package and load from `/vendor/`. ProseMirror
   modules are pinned to specific versions on esm.sh.
-- ✅ Modularized front-end. The JS lives in twelve topical files under
+- ✅ Modularized front-end. The JS lives in seventeen topical files under
   `templates/assets/js/`, concatenated at render time.
 - ✅ `proseview init` writes a starter `.proseview.yaml` so a fresh
   novel repo gets a working configuration with one command.
@@ -456,7 +499,10 @@ This is alpha. Things that are working and things that are coming:
   survive scene navigation and reloads.
 - ✅ AI proposal review. Suggested selection edits show the original and
   proposed text with explicit accept, reject, undo, and save steps.
-- 🚧 Configurable agent list (Codex / Claude / Gemini are presets today).
+- ✅ Discuss on either agent. Codex and Claude each have a dock tab and
+  their own conversation per document, running side by side.
+- 🚧 Skills on the Claude tab. Codex discovers them today; Claude's picker
+  is still empty.
 - ✅ Evidence-first continuity and canon refactoring in Discuss, with cited
   impact reports, intentional exceptions, proposal handoff, and verification.
 - 🚧 Frontmatter editor (status, where, todos) inside the scene viewer

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .config import Config
+from .config import DISCUSS_AGENTS, Config
 from .repo import (
     CONTEXT_FILE_MAX_BYTES,
     CONTEXT_SKIP_DIRS,
@@ -52,6 +52,9 @@ REFACTOR_FINDINGS_MAX = 50
 REFACTOR_QUESTION_MAX = 512 * 1024
 CONVERSATION_RESET_LOCK_TIMEOUT = 3.0
 CONVERSATION_HISTORY_MAX = 50
+#: Codex predates the second agent, so it keeps the unprefixed history keys and
+#: remains what an unqualified request means.
+DEFAULT_AGENT = "codex"
 _SELECTION_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _SELECTION_BLOCK_RE = re.compile(r"\n[ \t]*\n+")
 _EVIDENCE_QUOTE_TRANSLATION = str.maketrans({
@@ -518,8 +521,15 @@ class DiscussStateStore:
         self._lock = threading.Lock()
 
     @staticmethod
-    def _doc_key(kind: str, path: str) -> str:
-        return f"{kind}:{Path(path).as_posix()}"
+    def _doc_key(kind: str, path: str, agent: str = DEFAULT_AGENT) -> str:
+        """Namespace history per agent without orphaning what Codex already wrote.
+
+        Threads are not portable between agents, so each needs its own history.
+        Codex keeps the original unprefixed key so conversations recorded before
+        a second agent existed stay reachable.
+        """
+        base = f"{kind}:{Path(path).as_posix()}"
+        return base if agent == DEFAULT_AGENT else f"{agent}\x00{base}"
 
     def _load(self) -> dict[str, Any]:
         try:
@@ -572,29 +582,29 @@ class DiscussStateStore:
         rows.sort(key=lambda row: (row["updated_at"], row["created_at"]), reverse=True)
         return {"active": active if active in seen else None, "threads": rows[:CONVERSATION_HISTORY_MAX]}
 
-    def _entry(self, data: dict[str, Any], kind: str, path: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    def _entry(self, data: dict[str, Any], kind: str, path: str, agent: str = DEFAULT_AGENT) -> tuple[dict[str, Any], dict[str, Any]]:
         data["version"] = 2
         repos = data.setdefault("repositories", {})
         docs = repos.get(self.root_key)
         if not isinstance(docs, dict):
             docs = {}
             repos[self.root_key] = docs
-        key = self._doc_key(kind, path)
+        key = self._doc_key(kind, path, agent)
         entry = self._normalized_entry(docs.get(key))
         docs[key] = entry
         return docs, entry
 
-    def get(self, kind: str, path: str) -> str | None:
+    def get(self, kind: str, path: str, agent: str = DEFAULT_AGENT) -> str | None:
         with self._lock:
             data = self._load()
             docs = data["repositories"].get(self.root_key, {})
-            value = docs.get(self._doc_key(kind, path)) if isinstance(docs, dict) else None
+            value = docs.get(self._doc_key(kind, path, agent)) if isinstance(docs, dict) else None
             return self._normalized_entry(value)["active"]
 
-    def set(self, kind: str, path: str, thread_id: str) -> None:
+    def set(self, kind: str, path: str, thread_id: str, agent: str = DEFAULT_AGENT) -> None:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             thread_id = str(thread_id)
             now = time.time()
             row = next((row for row in entry["threads"] if row["thread_id"] == thread_id), None)
@@ -611,10 +621,10 @@ class DiscussStateStore:
             entry["threads"] = entry["threads"][:CONVERSATION_HISTORY_MAX]
             self._write(data)
 
-    def touch(self, kind: str, path: str, thread_id: str, *, title: str, preview: str) -> dict[str, Any]:
+    def touch(self, kind: str, path: str, thread_id: str, *, title: str, preview: str, agent: str = DEFAULT_AGENT) -> dict[str, Any]:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             now = time.time()
             row = next((row for row in entry["threads"] if row["thread_id"] == thread_id), None)
             if row is None:
@@ -637,24 +647,24 @@ class DiscussStateStore:
             self._write(data)
             return dict(row)
 
-    def list(self, kind: str, path: str) -> list[dict[str, Any]]:
+    def list(self, kind: str, path: str, agent: str = DEFAULT_AGENT) -> list[dict[str, Any]]:
         with self._lock:
             data = self._load()
             docs = data["repositories"].get(self.root_key, {})
-            value = docs.get(self._doc_key(kind, path)) if isinstance(docs, dict) else None
+            value = docs.get(self._doc_key(kind, path, agent)) if isinstance(docs, dict) else None
             return [dict(row) for row in self._normalized_entry(value)["threads"]]
 
-    def clear_active(self, kind: str, path: str) -> None:
+    def clear_active(self, kind: str, path: str, agent: str = DEFAULT_AGENT) -> None:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             entry["active"] = None
             self._write(data)
 
-    def rename(self, kind: str, path: str, thread_id: str, title: str) -> dict[str, Any]:
+    def rename(self, kind: str, path: str, thread_id: str, title: str, agent: str = DEFAULT_AGENT) -> dict[str, Any]:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             row = next((row for row in entry["threads"] if row["thread_id"] == thread_id), None)
             if row is None:
                 raise ContextError("conversation was not found in this document's history")
@@ -663,10 +673,10 @@ class DiscussStateStore:
             self._write(data)
             return dict(row)
 
-    def remove(self, kind: str, path: str, thread_id: str) -> bool:
+    def remove(self, kind: str, path: str, thread_id: str, agent: str = DEFAULT_AGENT) -> bool:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             before = len(entry["threads"])
             entry["threads"] = [row for row in entry["threads"] if row["thread_id"] != thread_id]
             if entry["active"] == thread_id:
@@ -676,10 +686,10 @@ class DiscussStateStore:
             self._write(data)
             return True
 
-    def delete(self, kind: str, path: str) -> None:
+    def delete(self, kind: str, path: str, agent: str = DEFAULT_AGENT) -> None:
         with self._lock:
             data = self._load()
-            _docs, entry = self._entry(data, kind, path)
+            _docs, entry = self._entry(data, kind, path, agent)
             active = entry["active"]
             entry["threads"] = [row for row in entry["threads"] if row["thread_id"] != active]
             entry["active"] = None
@@ -1155,9 +1165,12 @@ def _is_repository_action_prompt(prompt: str) -> bool:
 
 
 class _Conversation:
-    def __init__(self, conversation_id: str, document: dict[str, str]) -> None:
+    def __init__(self, conversation_id: str, document: dict[str, str], agent: str = DEFAULT_AGENT) -> None:
         self.id = conversation_id
         self.document = dict(document)
+        # A document has one conversation per agent, running independently:
+        # separate threads, queues, history, and workers.
+        self.agent = agent
         self.thread_id: str | None = None
         self.thread_restored = False
         self.connection = "Restoring conversation"
@@ -1189,6 +1202,7 @@ class _Conversation:
             return {
                 "conversation_id": self.id,
                 "document": dict(self.document),
+                "agent": self.agent,
                 "connection": self.connection,
                 "unavailable_reason": self.unavailable_reason,
                 "messages": [dict(message) for message in self.messages],
@@ -1266,67 +1280,127 @@ class DiscussManager:
         )
         self.state = DiscussStateStore(self.root)
         self._client_factory = client_factory
-        self._client: Any | None = None
-        # Set from the live client so callers never branch on which agent is in
-        # use; each transport owns its own translator into the event vocabulary.
-        self._translate: Any = sanitize_agent_message
+        # One transport per agent, started lazily. Codex and Claude run side by
+        # side, so nothing below may assume a single connection.
+        self._clients: dict[str, Any] = {}
+        # Each transport owns its own translator into the event vocabulary, so
+        # callers never branch on which agent answered.
+        self._translators: dict[str, Any] = {}
         self._client_lock = threading.Lock()
         self._conversations: dict[str, _Conversation] = {}
+        # Keyed by agent and thread id together: a thread id is only unique
+        # within the agent that issued it.
         self._threads: dict[str, _Conversation] = {}
         self._task_context: dict[str, dict[str, dict[str, Any]]] = {}
         self._closed = False
 
-    def _conversation_id(self, document: dict[str, Any]) -> str:
+    @staticmethod
+    def normalized_agent(agent: Any) -> str:
+        value = str(agent or DEFAULT_AGENT).strip().lower()
+        if value not in DISCUSS_AGENTS:
+            raise ContextError("unknown agent")
+        return value
+
+    def _conversation_id(self, document: dict[str, Any], agent: str = DEFAULT_AGENT) -> str:
         key = f"{document.get('kind')}:{Path(str(document.get('path') or '')).as_posix()}"
+        # Codex keeps its historic id so a browser holding one across an upgrade
+        # still resolves to the same conversation.
+        if agent != DEFAULT_AGENT:
+            key = f"{agent}\x00{key}"
         return hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
 
-    def _ensure_client(self) -> Any:
+    @staticmethod
+    def _thread_key(agent: str, thread_id: str) -> str:
+        return f"{agent}\x00{thread_id}"
+
+    def agents(self) -> list[dict[str, Any]]:
+        """Report every agent and whether it can currently run.
+
+        Both tabs always exist, so an agent that cannot start must explain
+        itself rather than quietly disappear from the dock.
+        """
+        rows: list[dict[str, Any]] = []
+        for agent in DISCUSS_AGENTS:
+            row: dict[str, Any] = {
+                "id": agent,
+                "label": "Codex" if agent == "codex" else "Claude",
+                "available": True,
+                "reason": "",
+            }
+            try:
+                self._probe_agent(agent)
+            except Exception as exc:  # noqa: BLE001
+                row["available"] = False
+                row["reason"] = _bounded_text(str(exc), 500)
+            rows.append(row)
+        return rows
+
+    def _probe_agent(self, agent: str) -> None:
+        """Cheap availability check that never starts a session."""
+        if self._client_factory is not None:
+            return
+        if agent == "claude":
+            from .claude_agent_client import ClaudeAgentClient
+
+            ClaudeAgentClient(cwd=self.root).inspect_capabilities()
+            return
+        import shutil
+
+        from .codex_app_server import CodexUnavailableError
+
+        if not shutil.which("codex"):
+            raise CodexUnavailableError("Codex CLI is not installed or is not on PATH")
+
+    def _client_for(self, agent: str) -> Any:
         with self._client_lock:
-            if self._client is not None and self._client.alive:
-                return self._client
+            existing = self._clients.get(agent)
+            if existing is not None and existing.alive:
+                return existing
             if self._closed:
                 raise RuntimeError("Discuss manager is closed")
             if self._client_factory is None:
-                client = self._build_client()
+                client = self._build_client(agent)
             else:
-                client = self._client_factory(self._on_agent_message)
+                client = self._client_factory(lambda message: self._on_agent_message(agent, message))
             inspected = client.inspect_capabilities()
             client.start()
             if not inspected.get("stable_discuss_protocol"):
                 client.probe_capabilities()
-            self._client = client
-            self._translate = getattr(client, "translate", sanitize_agent_message)
+            self._clients[agent] = client
+            self._translators[agent] = getattr(client, "translate", sanitize_agent_message)
             return client
 
-    def _build_client(self) -> Any:
-        """Construct the transport this repository selected.
+    def _build_client(self, agent: str) -> Any:
+        """Construct one agent's transport.
 
-        Both transports present the same surface, so nothing above this method
-        needs to know which agent answered.
+        Both present the same surface, so nothing above this method needs to
+        know which agent answered. The callbacks are bound to the agent so
+        inbound messages can be routed back to the right conversations.
         """
-        if self.context.cfg.discuss.agent == "claude":
+        if agent == "claude":
             from .claude_agent_client import ClaudeAgentClient
 
             return ClaudeAgentClient(
                 cwd=self.root,
-                on_message=self._on_agent_message,
-                on_failure=self._on_agent_failure,
+                on_message=lambda message: self._on_agent_message(agent, message),
+                on_failure=lambda error: self._on_agent_failure(agent, error),
             )
         from .codex_app_server import CodexAppServer
 
         return CodexAppServer(
             cwd=self.root,
-            on_message=self._on_agent_message,
-            on_failure=self._on_agent_failure,
+            on_message=lambda message: self._on_agent_message(agent, message),
+            on_failure=lambda error: self._on_agent_failure(agent, error),
         )
 
-    def open(self, document: dict[str, Any]) -> dict[str, Any]:
+    def open(self, document: dict[str, Any], agent: str = DEFAULT_AGENT) -> dict[str, Any]:
         item = self.context.validate_document(document)
+        agent = self.normalized_agent(agent)
         normalized = {"kind": str(document["kind"]), "path": str(document["path"])}
-        conversation_id = self._conversation_id(normalized)
+        conversation_id = self._conversation_id(normalized, agent)
         conversation = self._conversations.get(conversation_id)
         if conversation is None:
-            conversation = _Conversation(conversation_id, normalized)
+            conversation = _Conversation(conversation_id, normalized, agent)
             self._conversations[conversation_id] = conversation
         candidate: str | None = None
         with conversation.restore_lock:
@@ -1335,8 +1409,8 @@ class DiscussManager:
                 conversation.unavailable_reason = ""
                 restore_cursor = conversation.events.latest_id
             try:
-                client = self._ensure_client()
-                stored = self.state.get(normalized["kind"], normalized["path"])
+                client = self._client_for(conversation.agent)
+                stored = self.state.get(normalized["kind"], normalized["path"], conversation.agent)
                 with conversation.lock:
                     candidate = conversation.thread_id or stored
                 if candidate:
@@ -1359,11 +1433,11 @@ class DiscussManager:
                             # replace that newer thread with the stale result.
                             if not current_id or current_id == candidate:
                                 if current_id and current_id != restored_id:
-                                    self._threads.pop(current_id, None)
+                                    self._threads.pop(self._thread_key(conversation.agent, current_id), None)
                                 conversation.thread_id = restored_id
-                                self._threads[restored_id] = conversation
+                                self._threads[self._thread_key(conversation.agent, restored_id)] = conversation
                                 if stored != restored_id:
-                                    self.state.set(normalized["kind"], normalized["path"], restored_id)
+                                    self.state.set(normalized["kind"], normalized["path"], restored_id, conversation.agent)
                                 if not local_work:
                                     self._restore_thread(conversation, thread)
                     except Exception as exc:
@@ -1587,8 +1661,8 @@ class DiscussManager:
             for action_id, value in ACTION_DEFINITIONS.items()
         ]
 
-    def list_skills(self, *, force_reload: bool = False) -> list[dict[str, Any]]:
-        client = self._ensure_client()
+    def list_skills(self, *, force_reload: bool = False, agent: str = DEFAULT_AGENT) -> list[dict[str, Any]]:
+        client = self._client_for(self.normalized_agent(agent))
         result = client.request("skills/list", {"cwds": [str(self.root)], "forceReload": bool(force_reload)})
         rows = result.get("data") if isinstance(result, dict) else None
         skills: list[dict[str, Any]] = []
@@ -2090,25 +2164,27 @@ class DiscussManager:
         with conversation.lock:
             conversation.thread_id = thread_id
             conversation.thread_restored = True
-            self._threads[thread_id] = conversation
-            self.state.set(conversation.document["kind"], conversation.document["path"], thread_id)
+            self._threads[self._thread_key(conversation.agent, thread_id)] = conversation
+            self.state.set(conversation.document["kind"], conversation.document["path"], thread_id, conversation.agent)
         return thread_id
 
     def _forget_thread(self, conversation: _Conversation) -> None:
         with conversation.lock:
             thread_id = conversation.thread_id
-            self.state.delete(conversation.document["kind"], conversation.document["path"])
-            if thread_id and self._threads.get(thread_id) is conversation:
-                self._threads.pop(thread_id, None)
+            self.state.delete(conversation.document["kind"], conversation.document["path"], conversation.agent)
+            key = self._thread_key(conversation.agent, thread_id or "")
+            if thread_id and self._threads.get(key) is conversation:
+                self._threads.pop(key, None)
             conversation.thread_id = None
             conversation.thread_restored = False
 
     def _clear_active_thread(self, conversation: _Conversation) -> None:
         with conversation.lock:
             thread_id = conversation.thread_id
-            self.state.clear_active(conversation.document["kind"], conversation.document["path"])
-            if thread_id and self._threads.get(thread_id) is conversation:
-                self._threads.pop(thread_id, None)
+            self.state.clear_active(conversation.document["kind"], conversation.document["path"], conversation.agent)
+            key = self._thread_key(conversation.agent, thread_id or "")
+            if thread_id and self._threads.get(key) is conversation:
+                self._threads.pop(key, None)
             conversation.thread_id = None
             conversation.thread_restored = False
 
@@ -2142,7 +2218,7 @@ class DiscussManager:
 
     def _history_row(self, conversation: _Conversation, thread_id: str) -> dict[str, Any]:
         row = next((
-            item for item in self.state.list(conversation.document["kind"], conversation.document["path"])
+            item for item in self.state.list(conversation.document["kind"], conversation.document["path"], conversation.agent)
             if item["thread_id"] == thread_id
         ), None)
         if row is None:
@@ -2151,7 +2227,7 @@ class DiscussManager:
 
     def list_conversations(self, conversation_id: str) -> dict[str, Any]:
         conversation = self._get(conversation_id)
-        rows = self.state.list(conversation.document["kind"], conversation.document["path"])
+        rows = self.state.list(conversation.document["kind"], conversation.document["path"], conversation.agent)
         return {
             "document": dict(conversation.document),
             "conversations": [{
@@ -2175,12 +2251,12 @@ class DiscussManager:
         try:
             if self._conversation_busy(conversation):
                 raise ContextError("conversation is busy; stop the active turn and wait for queued questions first")
-            client = self._ensure_client()
+            client = self._client_for(conversation.agent)
             try:
                 result = client.request("thread/read", {"threadId": thread_id, "includeTurns": True})
             except Exception as exc:
                 if _is_thread_unavailable(exc):
-                    self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id)
+                    self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id, conversation.agent)
                     raise ContextError("This conversation is no longer available and was removed from Prosview history.") from exc
                 raise
             thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
@@ -2188,14 +2264,15 @@ class DiscussManager:
             if restored_id != thread_id:
                 raise ContextError("The agent returned a different conversation than Prosview requested")
             old_thread_id = conversation.thread_id
-            if old_thread_id and self._threads.get(old_thread_id) is conversation:
-                self._threads.pop(old_thread_id, None)
+            old_key = self._thread_key(conversation.agent, old_thread_id or "")
+            if old_thread_id and self._threads.get(old_key) is conversation:
+                self._threads.pop(old_key, None)
             self._clear_projection(conversation)
             conversation.thread_id = thread_id
             conversation.thread_restored = False
-            self._threads[thread_id] = conversation
+            self._threads[self._thread_key(conversation.agent, thread_id)] = conversation
             self._restore_thread(conversation, thread)
-            self.state.set(conversation.document["kind"], conversation.document["path"], thread_id)
+            self.state.set(conversation.document["kind"], conversation.document["path"], thread_id, conversation.agent)
         finally:
             conversation.lock.release()
         conversation.publish("conversation.opened", {"thread_id": thread_id, "document": dict(conversation.document)})
@@ -2205,7 +2282,8 @@ class DiscussManager:
         conversation = self._get(conversation_id)
         clean_title = _nonempty_string(title, field="conversation title", limit=200)
         row = self.state.rename(
-            conversation.document["kind"], conversation.document["path"], str(thread_id or ""), clean_title
+            conversation.document["kind"], conversation.document["path"], str(thread_id or ""), clean_title,
+            conversation.agent,
         )
         return {"thread_id": row["thread_id"], "title": row["title"]}
 
@@ -2216,14 +2294,14 @@ class DiscussManager:
         with conversation.lock:
             if conversation.thread_id == thread_id:
                 raise ContextError("Start or open another conversation before removing the current conversation from history")
-            removed = self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id)
+            removed = self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id, conversation.agent)
         return {"removed": removed, "thread_id": thread_id}
 
     def export_conversation(self, conversation_id: str, thread_id: str) -> dict[str, Any]:
         conversation = self._get(conversation_id)
         thread_id = str(thread_id or "").strip()
         row = self._history_row(conversation, thread_id)
-        result = self._ensure_client().request("thread/read", {"threadId": thread_id, "includeTurns": True})
+        result = self._client_for(conversation.agent).request("thread/read", {"threadId": thread_id, "includeTurns": True})
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         if str(thread.get("id") or "") != thread_id:
             raise ContextError("The agent returned a different conversation than Prosview requested")
@@ -2254,7 +2332,7 @@ class DiscussManager:
                     conversation.tasks[queued.task_id]["status"] = "running"
             conversation.publish("turn.preparing", {"client_request_id": queued.request_id})
             try:
-                client = self._ensure_client()
+                client = self._client_for(conversation.agent)
                 with conversation.lock:
                     conversation.connection = "Live"
                     conversation.unavailable_reason = ""
@@ -2277,7 +2355,7 @@ class DiscussManager:
                         preview = queued.bundle.question
                     self.state.touch(
                         conversation.document["kind"], conversation.document["path"], thread_id,
-                        title=title, preview=preview,
+                        title=title, preview=preview, agent=conversation.agent,
                     )
                     turn_input: list[dict[str, Any]] = [{"type": "text", "text": queued.bundle.prompt}]
                     if queued.skill:
@@ -2365,18 +2443,20 @@ class DiscussManager:
         conversation.publish("conversation.reset", {"document": dict(conversation.document)})
         return conversation.snapshot()
 
-    def _on_agent_message(self, message: dict[str, Any]) -> None:
+    def _on_agent_message(self, agent: str, message: dict[str, Any]) -> None:
         if message.get("method") == "skills/changed":
             for conversation in list(self._conversations.values()):
-                conversation.publish("skills.changed", {})
+                if conversation.agent == agent:
+                    conversation.publish("skills.changed", {})
             return
         if message.get("id") is not None and message.get("method"):
-            self._on_server_request(message)
+            self._on_server_request(agent, message)
             return
-        events = self._translate(message)
+        translate = self._translators.get(agent, sanitize_agent_message)
+        events = translate(message)
         for event in events:
             thread_id = str(event.get("thread_id") or "")
-            conversation = self._threads.get(thread_id)
+            conversation = self._threads.get(self._thread_key(agent, thread_id))
             if conversation is None:
                 continue
             event_type = str(event.pop("type"))
@@ -2626,9 +2706,16 @@ class DiscussManager:
         conversation.publish("notice.dismissed", {"notice_id": clean_id})
         return {"dismissed": True, "notice_id": clean_id}
 
-    def _on_agent_failure(self, error: BaseException) -> None:
+    def _on_agent_failure(self, agent: str, error: BaseException) -> None:
+        """Mark only the failing agent unavailable.
+
+        The other agent's conversations are a separate transport and keep
+        working, so a Codex outage must not blank the Claude tab.
+        """
         message = _bounded_text(str(error) or "The agent connection failed", 4000)
         for conversation in list(self._conversations.values()):
+            if conversation.agent != agent:
+                continue
             with conversation.lock:
                 if conversation.active_done is None and not conversation.active_turn_id and not any(
                     approval.get("status") == "pending" for approval in conversation.approvals.values()
@@ -2645,12 +2732,12 @@ class DiscussManager:
             conversation.publish("connection", {"state": "Unavailable", "reason": message})
             conversation.add_notice("error", message)
 
-    def _on_server_request(self, message: dict[str, Any]) -> None:
+    def _on_server_request(self, agent: str, message: dict[str, Any]) -> None:
         method = str(message.get("method") or "")
         params = message.get("params") if isinstance(message.get("params"), dict) else {}
         thread_id = str(params.get("threadId") or "")
-        conversation = self._threads.get(thread_id)
-        client = self._client
+        conversation = self._threads.get(self._thread_key(agent, thread_id))
+        client = self._clients.get(agent)
         if conversation is None or client is None:
             if client is not None:
                 client.respond_error(message["id"], "Unknown Prosview conversation")
@@ -2723,7 +2810,8 @@ class DiscussManager:
             wire = wire_decisions.get(decision)
             if wire is None or wire not in approval["available_decisions"]:
                 raise ContextError("approval decision is not available")
-            if self._client is None:
+            client = self._clients.get(conversation.agent)
+            if client is None:
                 raise ContextError("The agent connection is unavailable")
             if approval["kind"] == "permissions":
                 requested = approval.get("permissions") or {}
@@ -2737,9 +2825,9 @@ class DiscussManager:
                 result = {"decision": wire}
             approval["status"] = "resolving"
         try:
-            self._client.respond(approval["protocol_request_id"], result)
+            client.respond(approval["protocol_request_id"], result)
             if approval["kind"] == "permissions" and decision == "cancel" and conversation.thread_id and approval.get("turn_id"):
-                self._client.request("turn/interrupt", {
+                client.request("turn/interrupt", {
                     "threadId": conversation.thread_id,
                     "turnId": approval["turn_id"],
                 })
@@ -2787,7 +2875,7 @@ class DiscussManager:
         with conversation.lock:
             if not conversation.active_turn_id or conversation.active_turn_id != turn_id:
                 raise ContextError("turn is not active")
-            client = self._client
+            client = self._clients.get(conversation.agent)
             thread_id = conversation.thread_id
             done = conversation.active_done
         if client is None or not thread_id:
@@ -2855,9 +2943,13 @@ class DiscussManager:
     def close(self) -> None:
         self._closed = True
         self._task_context.clear()
-        if self._client is not None:
-            self._client.close()
-            self._client = None
+        for client in list(self._clients.values()):
+            try:
+                client.close()
+            except Exception:
+                pass
+        self._clients.clear()
+        self._translators.clear()
         for conversation in self._conversations.values():
             if conversation.active_done is not None:
                 conversation.active_done.set()

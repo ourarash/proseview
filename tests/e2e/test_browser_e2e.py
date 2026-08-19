@@ -344,9 +344,12 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.wait_for_function("previous => !document.querySelector('#discussContext').innerText.includes(previous)", arg=SCENE_REL)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
+    # Escape belongs to whatever the writer is inside, not to the dock. It used
+    # to close the panel and was taken away from the editor underneath, so the
+    # panel now stays put.
     page.press("body", "Escape")
-    page.wait_for_selector("#discussPanel", state="hidden")
-    assert page.evaluate("document.activeElement === document.querySelector('#utilityTabCodex')")
+    page.wait_for_timeout(300)
+    assert page.locator("#discussPanel").is_visible()
 
 
 def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
@@ -1012,9 +1015,9 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
     # The toolbar button opens the dock from the keyboard; the tab row then
-    # takes you to Codex, also from the keyboard.
-    button = page.locator("#utilityTabCodex")
-    button.focus()
+    # takes you to Codex, also from the keyboard. The tabs live inside the dock,
+    # so the toolbar button is the only one that can open it.
+    page.locator("#sceneModal .scene-toolbar-button.discuss-open-btn").focus()
     page.keyboard.press("Enter")
     page.wait_for_selector("#discussPanel", state="visible")
     page.locator("#utilityTabCodex").focus()
@@ -1053,12 +1056,13 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     assert phone_menu_box and phone_menu_box["x"] >= 0 and phone_menu_box["x"] + phone_menu_box["width"] <= 390
     page.locator("#discussInput").press("Escape")
 
+    # Escape closes the context picker and stops there. It no longer closes the
+    # dock, so a writer who dismisses the picker keeps the conversation they
+    # were in, and the key stays available to the editor underneath.
     page.keyboard.press("Escape")
-    page.wait_for_selector("#discussPanel", state="hidden")
-    # Focus lands on the toolbar button, not on the tab that opened Codex: the
-    # tab lives inside the panel that just closed, so focusing it would do
-    # nothing and drop the keyboard user back to the document.
-    assert page.evaluate("document.activeElement === document.querySelector('#utilityTabCodex')")
+    page.wait_for_timeout(300)
+    assert page.locator("#discussPanel").is_visible()
+    assert page.locator("#discussContextPicker").is_hidden()
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):
@@ -1184,10 +1188,11 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     page.wait_for_function("() => !document.getElementById('discussNewConversation').disabled")
     assert page.locator("#discussConnection").inner_text().startswith("Live")
 
-    new_button = page.locator("#discussNewConversation")
-    new_button.focus()
-    page.keyboard.press("Enter")
-    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    # new_conversation refuses while a turn is still winding down. The rendered
+    # snapshot lags the server, so ask the server directly -- believing the
+    # browser here is what made this fail roughly half the time.
+    wait_for_discuss_idle(page)
+    open_new_discuss_conversation_dialog(page)
     assert page.evaluate("document.activeElement === document.getElementById('discussNewConversationCancel')")
     assert "reopen the current conversation later from History" in page.locator("#discussNewConversationDialog").inner_text()
     page.keyboard.press("Escape")
@@ -1196,8 +1201,15 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     assert page.evaluate("document.activeElement === document.getElementById('discussNewConversation')")
 
     page.keyboard.press("Enter")
-    page.click("#discussNewConversationConfirm")
-    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    # Wait for the dialog to come back before confirming: clicking into it while
+    # it was still opening is what made this racy.
+    page.wait_for_selector("#discussNewConversationDialog", state="visible")
+    # The reset is refused while the worker is still draining, and the browser
+    # cannot see that moment: the snapshot reports the turn finished before the
+    # server stops calling itself busy. The dialog is built for this -- it keeps
+    # the writer in place and offers "Try again" -- so exercise that path rather
+    # than pretend the window does not exist.
+    confirm_new_discuss_conversation(page)
     page.wait_for_function("() => document.querySelectorAll('#discussLog .discuss-message').length === 0")
     assert "Ask about what you are reading" in page.locator("#discussLog").inner_text()
     assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
@@ -1470,6 +1482,58 @@ def open_discuss(page: Page) -> None:
     page.wait_for_selector("#discussPanel:not([hidden])")
     page.wait_for_selector("#discussLog:not([hidden])")
     page.wait_for_function("() => _discussAgent === 'codex'")
+
+
+def wait_for_discuss_idle(page: Page) -> None:
+    """Block until the server agrees the conversation has nothing in flight."""
+    page.wait_for_function(
+        """async () => {
+            if (!window._discussConversationId) return false;
+            const response = await fetch(
+                '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/snapshot',
+                {cache: 'no-store'}
+            );
+            if (!response.ok) return false;
+            const snapshot = (await response.json()).snapshot || {};
+            return !snapshot.active_turn_id
+                && !snapshot.active_request_id
+                && !(snapshot.queue || []).length;
+        }"""
+    )
+
+
+def confirm_new_discuss_conversation(page: Page, attempts: int = 5) -> None:
+    """Confirm the reset, retrying the busy refusal the dialog invites."""
+    for _ in range(attempts):
+        page.click("#discussNewConversationConfirm")
+        try:
+            page.wait_for_selector("#discussNewConversationDialog", state="hidden", timeout=5000)
+            return
+        except Exception:
+            error = page.locator("#discussNewConversationError")
+            if not error.is_visible() or "busy" not in error.inner_text():
+                raise
+            wait_for_discuss_idle(page)
+    raise AssertionError("the conversation never became resettable")
+
+
+def open_new_discuss_conversation_dialog(page: Page, attempts: int = 5) -> None:
+    """Open the reset dialog from the keyboard, tolerating the busy window.
+
+    The dialog refuses to open while the server still considers the
+    conversation busy, and the browser cannot see the moment that ends. press()
+    also re-resolves the button, which matters because a snapshot re-render
+    between a separate focus() and keypress rebuilds it.
+    """
+    for _ in range(attempts):
+        wait_for_discuss_idle(page)
+        page.locator("#discussNewConversation").press("Enter")
+        try:
+            page.wait_for_selector("#discussNewConversationDialog", state="visible", timeout=5000)
+            return
+        except Exception:
+            continue
+    raise AssertionError("the new-conversation dialog never opened")
 
 
 def open_selection_menu(page: Page, needle: str) -> None:
@@ -2847,7 +2911,11 @@ def test_typing_during_a_delayed_save_remains_visible_and_dirty(
     assert page.evaluate("window._pmEditMode && window._pmDirty")
     assert "Typed during save." in _editor_text(page)
     page.evaluate("window.__releaseSave()")
-    page.wait_for_function("() => document.querySelector('#sceneEditState').textContent.includes('unsaved')")
+    # The status readout became an icon whose tooltip carries the state, so
+    # there is no #sceneEditState element to read text out of any more.
+    page.wait_for_function(
+        "() => (document.querySelector('.scene-edit-status')?.title || '').includes('unsaved')"
+    )
 
     assert "Typed during save." in _editor_text(page)
     assert "Typed during save." not in server.scene_path().read_text()

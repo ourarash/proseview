@@ -83,6 +83,13 @@ class DiscussConfig:
     """Stable, repository-level shortcuts for selection questions."""
 
     selection_presets: tuple[str, ...] = ()
+    #: Which agent backs Discuss. Codex remains the default; ``claude`` routes
+    #: through ``claude-agent-sdk`` instead.
+    agent: str = "codex"
+
+
+#: Agents Discuss can be pointed at.
+DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude")
 
 
 #: Accepted values for ``images``, loosest first.
@@ -425,7 +432,12 @@ def _coerce_discuss(v: Any) -> DiscussConfig:
         raise ConfigError(
             f"'discuss.selection_presets' supports at most {DISCUSS_SELECTION_PRESET_MAX} entries"
         )
-    return DiscussConfig(selection_presets=tuple(presets))
+    agent = v.get("agent", DiscussConfig().agent)
+    if not isinstance(agent, str) or agent.strip().lower() not in DISCUSS_AGENTS:
+        raise ConfigError(
+            "'discuss.agent' must be one of " + ", ".join(DISCUSS_AGENTS) + f", got {agent!r}"
+        )
+    return DiscussConfig(selection_presets=tuple(presets), agent=agent.strip().lower())
 
 
 def _coerce_images(v: Any) -> ImagesConfig:

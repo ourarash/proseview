@@ -757,11 +757,18 @@ def _bounded_text(value: Any, limit: int = 16_384) -> str:
 
 
 def _is_thread_unavailable(error: BaseException) -> bool:
-    """Return true only for an authoritative missing or unloaded thread response."""
+    """Return true only for an authoritative missing or unloaded thread response.
+
+    Matched structurally rather than by class so both agent transports qualify:
+    a request error carrying a not-found code or message.
+    """
+    from .claude_agent_client import ClaudeRequestError
     from .codex_app_server import CodexRequestError
 
+    if not isinstance(error, (CodexRequestError, ClaudeRequestError)):
+        return False
     message = str(error).lower()
-    return isinstance(error, CodexRequestError) and (
+    return (
         error.code in {-32004, 404}
         or "thread not found" in message
         or "thread not loaded" in message
@@ -907,20 +914,20 @@ def _validate_replacement(text: str, original: str, action_id: str) -> None:
 
 def validate_action_result(raw: str, task: dict[str, Any]) -> dict[str, Any]:
     if len(raw.encode("utf-8")) > ACTION_RESULT_MAX:
-        raise ContextError("Codex returned an oversized structured result")
+        raise ContextError("The agent returned an oversized structured result")
     try:
         value = json.loads(raw)
     except (TypeError, ValueError) as exc:
-        raise ContextError("Codex returned malformed structured output; try again") from exc
+        raise ContextError("The agent returned malformed structured output; try again") from exc
     if task["kind"] == "continuity_report":
         if not isinstance(value, dict) or set(value) != {"kind", "summary", "findings"}:
-            raise ContextError("Codex returned an unexpected structured result")
+            raise ContextError("The agent returned an unexpected structured result")
         if value.get("kind") != "continuity_report":
-            raise ContextError("Codex returned the wrong result type")
+            raise ContextError("The agent returned the wrong result type")
         summary = _nonempty_string(value.get("summary"), field="summary", limit=2000)
         rows = value.get("findings")
         if not isinstance(rows, list) or len(rows) > REFACTOR_FINDINGS_MAX:
-            raise ContextError("Codex returned an invalid number of continuity findings")
+            raise ContextError("The agent returned an invalid number of continuity findings")
         context_files = task.get("context_files")
         if not isinstance(context_files, dict):
             raise ContextError("continuity scan context is unavailable")
@@ -928,10 +935,10 @@ def validate_action_result(raw: str, task: dict[str, Any]) -> dict[str, Any]:
         for index, row in enumerate(rows):
             required = {"category", "file", "line", "quote", "explanation", "replacement"}
             if not isinstance(row, dict) or set(row) != required:
-                raise ContextError("Codex returned an invalid continuity finding")
+                raise ContextError("The agent returned an invalid continuity finding")
             category = str(row.get("category") or "")
             if category not in {"direct", "judgment", "intentional"}:
-                raise ContextError("Codex returned an invalid continuity category")
+                raise ContextError("The agent returned an invalid continuity category")
             file_path = _nonempty_string(row.get("file"), field="finding file", limit=1000).replace("\\", "/")
             source = context_files.get(file_path)
             if not isinstance(source, dict) or not isinstance(source.get("content"), str):
@@ -990,39 +997,39 @@ def validate_action_result(raw: str, task: dict[str, Any]) -> dict[str, Any]:
             })
         return {"kind": "continuity_report", "summary": summary, "findings": findings}
     if not isinstance(value, dict) or set(value) - ({"kind", "summary", "alternatives"} if task["kind"] == "alternatives" else {"kind", "findings"}):
-        raise ContextError("Codex returned an unexpected structured result")
+        raise ContextError("The agent returned an unexpected structured result")
     if value.get("kind") != task["kind"]:
-        raise ContextError("Codex returned the wrong result type")
+        raise ContextError("The agent returned the wrong result type")
     if task["kind"] == "alternatives":
         summary = _nonempty_string(value.get("summary"), field="summary", limit=2000)
         rows = value.get("alternatives")
         if not isinstance(rows, list) or len(rows) != int(task["max_results"]):
-            raise ContextError("Codex returned an invalid number of alternatives")
+            raise ContextError("The agent returned an invalid number of alternatives")
         alternatives: list[dict[str, str]] = []
         seen: set[str] = set()
         original = str(task["target"]["selection"]).strip()
         for row in rows:
             if not isinstance(row, dict) or set(row) != {"text", "rationale"}:
-                raise ContextError("Codex returned an invalid alternative")
+                raise ContextError("The agent returned an invalid alternative")
             text = _nonempty_string(row.get("text"), field="alternative text", limit=65536)
             rationale = _nonempty_string(row.get("rationale"), field="alternative rationale", limit=2000)
             if text == original:
-                raise ContextError("Codex returned an alternative identical to the selection")
+                raise ContextError("The agent returned an alternative identical to the selection")
             _validate_replacement(text, original, str(task.get("action_id") or ""))
             if text in seen:
-                raise ContextError("Codex returned duplicate alternatives")
+                raise ContextError("The agent returned duplicate alternatives")
             seen.add(text)
             alternatives.append({"text": text, "rationale": rationale})
         return {"kind": "alternatives", "summary": summary, "alternatives": alternatives}
     rows = value.get("findings")
     if not isinstance(rows, list) or not 1 <= len(rows) <= int(task["max_results"]):
-        raise ContextError("Codex returned an invalid number of critique findings")
+        raise ContextError("The agent returned an invalid number of critique findings")
     findings: list[dict[str, str]] = []
     selection = str(task["target"]["selection"])
     for row in rows:
         required = {"observation", "evidence", "why_it_matters", "next_step"}
         if not isinstance(row, dict) or set(row) != required:
-            raise ContextError("Codex returned an invalid critique finding")
+            raise ContextError("The agent returned an invalid critique finding")
         finding = {
             key: _nonempty_string(row.get(key), field=key.replace("_", " "), limit=1000 if key == "evidence" else 2000)
             for key in required
@@ -1260,6 +1267,9 @@ class DiscussManager:
         self.state = DiscussStateStore(self.root)
         self._client_factory = client_factory
         self._client: Any | None = None
+        # Set from the live client so callers never branch on which agent is in
+        # use; each transport owns its own translator into the event vocabulary.
+        self._translate: Any = sanitize_agent_message
         self._client_lock = threading.Lock()
         self._conversations: dict[str, _Conversation] = {}
         self._threads: dict[str, _Conversation] = {}
@@ -1277,12 +1287,7 @@ class DiscussManager:
             if self._closed:
                 raise RuntimeError("Discuss manager is closed")
             if self._client_factory is None:
-                from .codex_app_server import CodexAppServer
-                client = CodexAppServer(
-                    cwd=self.root,
-                    on_message=self._on_agent_message,
-                    on_failure=self._on_agent_failure,
-                )
+                client = self._build_client()
             else:
                 client = self._client_factory(self._on_agent_message)
             inspected = client.inspect_capabilities()
@@ -1290,7 +1295,30 @@ class DiscussManager:
             if not inspected.get("stable_discuss_protocol"):
                 client.probe_capabilities()
             self._client = client
+            self._translate = getattr(client, "translate", sanitize_agent_message)
             return client
+
+    def _build_client(self) -> Any:
+        """Construct the transport this repository selected.
+
+        Both transports present the same surface, so nothing above this method
+        needs to know which agent answered.
+        """
+        if self.context.cfg.discuss.agent == "claude":
+            from .claude_agent_client import ClaudeAgentClient
+
+            return ClaudeAgentClient(
+                cwd=self.root,
+                on_message=self._on_agent_message,
+                on_failure=self._on_agent_failure,
+            )
+        from .codex_app_server import CodexAppServer
+
+        return CodexAppServer(
+            cwd=self.root,
+            on_message=self._on_agent_message,
+            on_failure=self._on_agent_failure,
+        )
 
     def open(self, document: dict[str, Any]) -> dict[str, Any]:
         item = self.context.validate_document(document)
@@ -1348,7 +1376,7 @@ class DiscussManager:
                                     self._forget_thread(conversation)
                                     conversation.add_notice(
                                         "warning",
-                                        "The previous Codex conversation is no longer available. "
+                                        "The previous agent conversation is no longer available. "
                                         "Your next question will start a new conversation.",
                                     )
                         else:
@@ -1437,7 +1465,7 @@ class DiscussManager:
         if unsafe_turns:
             warning = {
                 "kind": "warning",
-                "message": "Some earlier Codex content could not be displayed safely.",
+                "message": "Some earlier agent content could not be displayed safely.",
             }
             if not any(
                 notice.get("kind") == warning["kind"]
@@ -1870,7 +1898,7 @@ class DiscussManager:
             raise ContextError("live document requires its base modification time") from exc
         target = self.context._document_target(conversation.document)
         if abs(target.stat().st_mtime - base_mtime) > 0.01:
-            raise ContextError("The scene changed externally. Reopen it before asking Codex to use unsaved edits.")
+            raise ContextError("The scene changed externally. Reopen it before asking the agent to use unsaved edits.")
         return content
 
     def _validated_skill(self, skill: dict[str, Any] | None) -> dict[str, str] | None:
@@ -2058,7 +2086,7 @@ class DiscussManager:
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         thread_id = str(thread.get("id") or "")
         if not thread_id:
-            raise RuntimeError("Codex did not return a thread id")
+            raise RuntimeError("The agent did not return a thread id")
         with conversation.lock:
             conversation.thread_id = thread_id
             conversation.thread_restored = True
@@ -2153,12 +2181,12 @@ class DiscussManager:
             except Exception as exc:
                 if _is_thread_unavailable(exc):
                     self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id)
-                    raise ContextError("This Codex conversation is no longer available and was removed from Prosview history.") from exc
+                    raise ContextError("This conversation is no longer available and was removed from Prosview history.") from exc
                 raise
             thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
             restored_id = str(thread.get("id") or "")
             if restored_id != thread_id:
-                raise ContextError("Codex returned a different conversation than Prosview requested")
+                raise ContextError("The agent returned a different conversation than Prosview requested")
             old_thread_id = conversation.thread_id
             if old_thread_id and self._threads.get(old_thread_id) is conversation:
                 self._threads.pop(old_thread_id, None)
@@ -2198,7 +2226,7 @@ class DiscussManager:
         result = self._ensure_client().request("thread/read", {"threadId": thread_id, "includeTurns": True})
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         if str(thread.get("id") or "") != thread_id:
-            raise ContextError("Codex returned a different conversation than Prosview requested")
+            raise ContextError("The agent returned a different conversation than Prosview requested")
         projected = _Conversation("export", conversation.document)
         self._restore_thread(projected, thread)
         return {
@@ -2276,7 +2304,7 @@ class DiscussManager:
                         self._forget_thread(conversation)
                         conversation.add_notice(
                             "warning",
-                            "The previous Codex conversation was unavailable. "
+                            "The previous agent conversation was unavailable. "
                             "Prosview started a new conversation and retried your question.",
                             client_request_id=queued.request_id,
                         )
@@ -2284,14 +2312,14 @@ class DiscussManager:
                 turn = result.get("turn") if isinstance(result.get("turn"), dict) else {}
                 turn_id = str(turn.get("id") or "")
                 if not turn_id:
-                    raise RuntimeError("Codex did not return a turn id")
+                    raise RuntimeError("The agent did not return a turn id")
                 if not done.is_set():
                     conversation.active_turn_id = turn_id
                 if queued.task_id and queued.task_id in conversation.tasks:
                     conversation.tasks[queued.task_id]["turn_id"] = turn_id
                 conversation.publish("turn.started", {"turn_id": turn_id, "client_request_id": queued.request_id})
                 if not done.wait(timeout=60 * 60):
-                    raise RuntimeError("Codex turn timed out")
+                    raise RuntimeError("The agent turn timed out")
                 conversation.active_done = None
                 conversation.active_request_id = None
                 conversation.active_task_id = None
@@ -2325,7 +2353,7 @@ class DiscussManager:
         if not conversation.lock.acquire(timeout=CONVERSATION_RESET_LOCK_TIMEOUT):
             raise ContextError(
                 "Prosview is still finishing conversation work for this document. "
-                "Wait a moment and try again; if Codex is running, stop it first."
+                "Wait a moment and try again; if the agent is running, stop it first."
             )
         try:
             if self._conversation_busy(conversation):
@@ -2345,7 +2373,7 @@ class DiscussManager:
         if message.get("id") is not None and message.get("method"):
             self._on_server_request(message)
             return
-        events = sanitize_agent_message(message)
+        events = self._translate(message)
         for event in events:
             thread_id = str(event.get("thread_id") or "")
             conversation = self._threads.get(thread_id)
@@ -2427,7 +2455,7 @@ class DiscussManager:
                         task["error"] = (
                             "Stopped by writer"
                             if task["status"] == "cancelled"
-                            else "Codex did not return a usable result"
+                            else "The agent did not return a usable result"
                         )
                         self._task_context.pop(task["id"], None)
                 if conversation.active_done is not None:
@@ -2599,7 +2627,7 @@ class DiscussManager:
         return {"dismissed": True, "notice_id": clean_id}
 
     def _on_agent_failure(self, error: BaseException) -> None:
-        message = _bounded_text(str(error) or "Codex app-server failed", 4000)
+        message = _bounded_text(str(error) or "The agent connection failed", 4000)
         for conversation in list(self._conversations.values()):
             with conversation.lock:
                 if conversation.active_done is None and not conversation.active_turn_id and not any(
@@ -2635,7 +2663,7 @@ class DiscussManager:
         kind = supported.get(method)
         if kind is None:
             client.respond_error(message["id"], "Prosview does not support this request type")
-            conversation.add_notice("warning", f"Unsupported Codex request declined: {method}")
+            conversation.add_notice("warning", f"Unsupported agent request declined: {method}")
             return
         if kind == "command" and params.get("networkApprovalContext"):
             kind = "network"
@@ -2648,7 +2676,7 @@ class DiscussManager:
                 client.respond(message["id"], {"permissions": {}, "scope": "turn"})
             else:
                 client.respond(message["id"], {"decision": "decline"})
-            conversation.add_notice("warning", "Codex requested approval without advertising safe decisions; declined")
+            conversation.add_notice("warning", "The agent requested approval without advertising safe decisions; declined")
             return
         raw_permissions = params.get("permissions") or params.get("requestedPermissions")
         raw_network = params.get("networkApprovalContext")
@@ -2696,7 +2724,7 @@ class DiscussManager:
             if wire is None or wire not in approval["available_decisions"]:
                 raise ContextError("approval decision is not available")
             if self._client is None:
-                raise ContextError("Codex connection is unavailable")
+                raise ContextError("The agent connection is unavailable")
             if approval["kind"] == "permissions":
                 requested = approval.get("permissions") or {}
                 granted = (body or {}).get("permissions") or {}
@@ -2763,7 +2791,7 @@ class DiscussManager:
             thread_id = conversation.thread_id
             done = conversation.active_done
         if client is None or not thread_id:
-            raise ContextError("Codex connection is unavailable")
+            raise ContextError("The agent connection is unavailable")
         try:
             client.request(
                 "turn/interrupt",
@@ -2771,9 +2799,10 @@ class DiscussManager:
                 timeout=STOP_REQUEST_TIMEOUT,
             )
         except Exception as exc:
+            from .claude_agent_client import ClaudeError
             from .codex_app_server import CodexError
 
-            if not isinstance(exc, CodexError):
+            if not isinstance(exc, (CodexError, ClaudeError)):
                 raise
             # The writer's stop remains authoritative even when Codex has
             # already evicted the thread or fails to acknowledge promptly.
@@ -2786,7 +2815,7 @@ class DiscussManager:
             if detached:
                 conversation.add_notice(
                     "warning",
-                    "Codex could not confirm the stop. Prosview detached that conversation and will use a fresh one.",
+                    "The agent could not confirm the stop. Prosview detached that conversation and will use a fresh one.",
                 )
             return {"stopping": False, "stopped": True, "turn_id": turn_id}
 

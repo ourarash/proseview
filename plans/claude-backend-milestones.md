@@ -56,6 +56,33 @@ prose and text deltas are suppressed for that turn.
 A third bug came out of the test run itself: pending approvals were abandoned
 on `close`, stranding the gate coroutine and the turn it held.
 
+## What works today, without any UI change
+
+Setting `discuss.agent: claude` in `.proseview.yaml` routes the existing
+Discuss panel through Claude. Verified end to end through `DiscussManager`,
+driving it the way the browser does:
+
+* A plain question returns an assistant message into the panel projection.
+* Rephrase returns three alternatives that pass `validate_action_result`
+  unmodified, so the proposal UI has what it needs.
+
+There is no agent picker, the history pane will not repopulate, and the skills
+list is empty — all milestone 4.
+
+## Structured-output reliability, so far
+
+Eight selection actions run against the live agent: seven accepted by
+`validate_action_result`, one rejected with "the agent returned the wrong
+result type", meaning the `kind` field came back as something other than the
+single value its schema enum permits. The failing payload was not captured, so
+the cause is not yet known.
+
+Six consecutive runs afterwards were clean. One failure in eight is not a rate
+worth quoting, but it is enough to say the concern is real rather than
+theoretical: the validator hard-fails where it could truncate or retry, so a
+rare malformed result becomes a visible error for the writer. Capturing the
+failing payload is the next step, not loosening the validator.
+
 ## Known gap
 
 `thread/read` currently returns only the user's message. The assistant reply
@@ -72,10 +99,9 @@ across both transports.
 
 Still unvalidated, and not resolvable by more unit tests:
 
-- Structured-output reliability as a *rate*. Every live run so far has been
-  clean, but a handful of runs is not a measurement, and the manager's
-  validator hard-fails on an exact count mismatch rather than truncating.
-- Pool behaviour under a writer moving between many scenes for an extended
+* Structured-output reliability as a *rate*. Eight runs is a signal, not a
+  measurement — see above.
+* Pool behaviour under a writer moving between many scenes for an extended
   period.
 
 ## Open question outside the code

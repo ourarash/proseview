@@ -2712,6 +2712,18 @@ def serve(
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
+    # Windows has no SIGINT for another process; Ctrl-Break is what a caller
+    # can actually deliver. Route it into the same unwind so the runtime file
+    # is still removed rather than left pointing at a dead port.
+    if hasattr(signal, "SIGBREAK"):
+        def _break(_signum, _frame):
+            raise KeyboardInterrupt
+
+        try:
+            signal.signal(signal.SIGBREAK, _break)
+        except (ValueError, OSError):
+            pass
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

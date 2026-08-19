@@ -854,6 +854,9 @@ def _start_server(root: Path, bin_dir: Path, home: Path, *, port: int | None = N
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        # Ctrl-Break can only be delivered to a process that owns its group,
+        # and it is the only interrupt Windows lets us send a child.
+        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
 
     # Wait for the server to write its runtime file so we know what port it bound.
@@ -903,7 +906,10 @@ def _stop_server(server: ProseviewServer) -> None:
     """
     proc = server.proc
     if proc.poll() is None:
-        proc.send_signal(signal.SIGINT)
+        # SIGINT cannot be sent to another process on Windows. Ctrl-Break is
+        # the equivalent there, and serve() unwinds on both.
+        interrupt = getattr(signal, "CTRL_BREAK_EVENT", signal.SIGINT)
+        proc.send_signal(interrupt)
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -916,6 +922,23 @@ def _stop_server(server: ProseviewServer) -> None:
 
 
 # ── fixtures ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _browser_timeout(request: pytest.FixtureRequest) -> None:
+    """Give CI runners longer before a wait is called a failure.
+
+    pytest-playwright defaults to 30s, which is comfortable on a developer
+    machine and marginal on a two-core hosted runner: the browser tier there
+    fails one test per run, a different one each time, always a timeout and
+    always passing in isolation. Locally the default stays put so a genuine
+    hang still surfaces quickly.
+    """
+    if "page" not in request.fixturenames:
+        return
+    request.getfixturevalue("page").set_default_timeout(
+        60_000 if os.environ.get("CI") else 30_000
+    )
 
 
 @pytest.fixture(scope="session")

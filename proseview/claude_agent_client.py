@@ -189,6 +189,9 @@ class _Session:
         # Captured at thread/start; the developer instructions live here rather
         # than on each turn, matching where the manager sends them.
         self.thread_params: dict[str, Any] = {}
+        #: True once a turn has run, so later turns resume the session rather
+        #: than trying to name one that already exists.
+        self.started = False
         #: Set per turn. When an output schema is in play the JSON — not the
         #: model's prose — is the final answer.
         self.expects_structured = False
@@ -405,7 +408,10 @@ class ClaudeAgentClient:
         return handler(params, budget)
 
     def _handle_thread_start(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
-        thread_id = uuid.uuid4().hex
+        # The SDK lets us name the session, so the thread id Prosview persists
+        # *is* the session id. Without that the id means nothing after a
+        # restart and every reopened conversation looks lost.
+        thread_id = str(uuid.uuid4())
         session = _Session(thread_id)
         session.thread_params = dict(params)
         with self._lock:
@@ -446,13 +452,29 @@ class ClaudeAgentClient:
         return {}
 
     def _handle_thread_read(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
+        """Read a conversation, adopting one this process has never seen.
+
+        Sessions live in the SDK's own store, so a thread started before a
+        restart is still readable. Adopting it here is what lets the history
+        pane reopen a conversation instead of reporting it lost.
+        """
         thread_id = str(params.get("threadId") or "")
+        if not thread_id:
+            raise ClaudeRequestError("thread not found", code=-32004)
+        result = self._submit(self._read_session(thread_id), timeout=timeout)
+        if not result.get("turns"):
+            raise ClaudeRequestError("thread not found", code=-32004)
         with self._lock:
             session = self._sessions.get(thread_id)
-        session_id = session.session_id if session else ""
-        if not session_id:
-            raise ClaudeRequestError("thread not found", code=-32004)
-        return self._submit(self._read_session(session_id), timeout=timeout)
+            if session is None:
+                session = _Session(thread_id)
+                session.thread_params = dict(params)
+                self._sessions[thread_id] = session
+                self._evict_idle_locked()
+            # It exists in the store, so the next turn resumes rather than
+            # trying to claim an id that is already taken.
+            session.started = True
+        return result
 
     def _handle_skills_list(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
         # Skills selection lands with the writer-facing milestone; advertising
@@ -508,8 +530,10 @@ class ClaudeAgentClient:
         schema = params.get("outputSchema")
         if schema:
             options["output_format"] = {"type": "json_schema", "schema": schema}
-        if session.session_id:
-            options["resume"] = session.session_id
+        if session.started:
+            options["resume"] = session.thread_id
+        else:
+            options["session_id"] = session.thread_id
         if self._options_factory is not None:
             return self._options_factory(hooks={"PreToolUse": [pre_tool_use]}, **options)
 
@@ -541,6 +565,7 @@ class ClaudeAgentClient:
         session.turn_id = turn_id
         session.expects_structured = bool(params.get("outputSchema"))
         session.internal_tool_ids = set()
+        session.started = True
         session.busy = True
         session.last_used = time.monotonic()
         await client.query(prompt)
@@ -704,18 +729,42 @@ class ClaudeAgentClient:
         else:
             import claude_agent_sdk as sdk
 
-            messages = sdk.get_session_messages(session_id, directory=self.cwd)
+            try:
+                messages = sdk.get_session_messages(session_id, directory=self.cwd)
+            except Exception:
+                # An id the store has never heard of is a missing thread, not a
+                # broken transport; the caller turns this into "not found".
+                messages = []
         if asyncio.iscoroutine(messages):
             messages = await messages
+        # Shaped the way DiscussManager already parses history: a turn is a
+        # user message plus the answers that followed it. The manager's restore
+        # path is deliberately strict, so meeting its structure here is what
+        # makes a Claude conversation reopenable at all.
         turns: list[dict[str, Any]] = []
+        current: dict[str, Any] | None = None
         for row in messages or []:
             payload = getattr(row, "message", None) or {}
-            role = payload.get("role") if isinstance(payload, dict) else None
+            role = payload.get("role") if isinstance(payload, dict) else getattr(row, "type", "")
             text = self._session_message_text(payload)
             if not text:
                 continue
-            turns.append({"role": role or getattr(row, "type", ""), "text": _bounded(text)})
-        return {"thread": {"id": session_id}, "turns": turns}
+            if role == "user":
+                current = {
+                    "id": str(getattr(row, "uuid", "") or f"turn-{len(turns) + 1}"),
+                    "items": [{
+                        "type": "userMessage",
+                        "content": [{"type": "text", "text": _bounded(text, 65536)}],
+                    }],
+                }
+                turns.append(current)
+            elif role == "assistant" and current is not None:
+                current["items"].append({
+                    "type": "agentMessage",
+                    "phase": "final_answer",
+                    "text": _bounded(text, 65536),
+                })
+        return {"thread": {"id": session_id, "turns": turns}, "turns": turns}
 
     @staticmethod
     def _session_message_text(payload: Any) -> str:

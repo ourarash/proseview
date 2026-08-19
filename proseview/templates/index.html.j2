@@ -414,7 +414,7 @@
                  session chips meant that opening two shells could push "Scene"
                  and "Analysis" out of a right-docked terminal entirely, and
                  there was no way back to them. -->
-            <div class="terminal-dock-tabs utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" id="termUtilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')">Scene</button><button type="button" id="termUtilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')">Analysis</button><button type="button" id="termUtilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')">History</button><button type="button" id="termUtilityTabDiscuss" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussTab(this)">Codex</button><button type="button" id="termUtilityTabTerminal" class="utility-tab active" role="tab" aria-selected="true" onclick="showRightTerminal()">Terminal</button></div>
+            <div class="terminal-dock-tabs utility-tabs terminal-utility-tabs" role="tablist" aria-label="Right utility dock"><button type="button" id="termUtilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')">Scene</button><button type="button" id="termUtilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')">Analysis</button><button type="button" id="termUtilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')">History</button><button type="button" id="termUtilityTabCodex" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('codex', this)">Codex</button><button type="button" id="termUtilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)">Claude</button><button type="button" id="termUtilityTabTerminal" class="utility-tab active" role="tab" aria-selected="true" onclick="showRightTerminal()">Terminal</button></div>
             <div class="terminal-header">
                 <div id="terminalTabs" class="terminal-tabs" role="tablist" aria-label="Terminal sessions"></div>
                 <button id="termReloadIndicator" class="term-reload-indicator" hidden title="Files changed — click to refresh content, or close terminal to reload" onclick="refreshContent()">&#x25CF; changes pending</button>
@@ -450,10 +450,10 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabDiscuss" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussTab(this)">Codex</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
+                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabCodex" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussAgentTab('codex', this)" title="Discuss this document with Codex">Codex</button><button type="button" id="utilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)" title="Discuss this document with Claude">Claude</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
                 <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
-                <button type="button" class="discuss-close" onclick="closeDiscuss()" aria-label="Close Codex panel">&times;</button>
+                <button type="button" class="discuss-close" id="discussClose" onclick="closeDiscuss()" aria-label="Close the agent panel">&times;</button>
             </header>
             <div id="sceneDetailsPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabScene" hidden></div>
             <div id="sceneAnalysisPane" class="scene-details-pane" role="tabpanel" aria-labelledby="utilityTabAnalysis" hidden></div>
@@ -483,10 +483,10 @@
                         <button id="discussHistory" type="button" class="discuss-secondary" onclick="openDiscussHistoryDialog()">History</button>
                         <button id="discussHistoryClear" type="button" class="discuss-secondary" onclick="clearDiscussHistory()" title="Clear assistance results from this conversation" hidden>Clear results</button>
                     </div>
-                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop Codex</button>
+                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
                 </div>
                 <div id="discussNewConversationHint" class="discuss-control-hint" role="status" hidden></div>
-                <label class="sr-only" for="discussInput">Ask Codex about this document</label>
+                <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about this document</label>
                 <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
                 <div class="discuss-send-row"><span id="discussHint">Enter to send · Shift+Enter for newline</span><button id="discussSend" type="button" onclick="sendDiscussQuestion()">Send</button></div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
@@ -527,6 +527,7 @@
         const repoPreviewMax = {{ repo_preview_max }};
         const imagesConfig = {{ images_config_json | safe }};
         const discussSelectionPresets = {{ discuss_presets_json | safe }};
+        const discussDefaultAgent = {{ discuss_default_agent_json | safe }};
         const terminalAvailable = {{ terminal_available_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
         const storyModel = {{ story_json | safe }};

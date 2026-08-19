@@ -533,7 +533,16 @@ def test_thread_read_returns_turns_from_the_session_store():
         client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
         assert wait_for(lambda: client._sessions[thread_id].session_id == "sess-1")
         result = client.request("thread/read", {"threadId": thread_id, "includeTurns": True})
-        assert [row["text"] for row in result["turns"]] == ["hello", "hi back"]
+        # Shaped the way DiscussManager parses history: one turn, holding the
+        # user message and the answer that followed it.
+        turns = result["thread"]["turns"]
+        assert len(turns) == 1
+        items = turns[0]["items"]
+        assert items[0]["type"] == "userMessage"
+        assert items[0]["content"][0]["text"] == "hello"
+        assert items[1]["type"] == "agentMessage"
+        assert items[1]["phase"] == "final_answer"
+        assert items[1]["text"] == "hi back"
     finally:
         client.close()
 

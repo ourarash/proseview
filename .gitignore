@@ -33,3 +33,6 @@ spike-structured-output.json
 
 # Transient agent worktrees; .claude/ itself stays trackable
 .claude/worktrees/
+
+# Scratch video from scripts/record_demo_clips.py
+docs/_clips/

@@ -1,7 +1,7 @@
 ---
-title: Claude Backend for Discuss — Milestones 1-3
-status: in progress
-date: 2026-08-18
+title: Claude Backend for Discuss
+status: milestones 1-5 complete
+date: 2026-08-19
 ---
 
 # Claude backend for Discuss
@@ -56,18 +56,35 @@ prose and text deltas are suppressed for that turn.
 A third bug came out of the test run itself: pending approvals were abandoned
 on `close`, stranding the gate coroutine and the turn it held.
 
-## What works today, without any UI change
+## Milestone 4 — two agent tabs
 
-Setting `discuss.agent: claude` in `.proseview.yaml` routes the existing
-Discuss panel through Claude. Verified end to end through `DiscussManager`,
-driving it the way the browser does:
+Codex and Claude each have a dock tab. Selecting one opens that agent's own
+conversation for the current document; the other keeps running on the server
+and its state is restored from its snapshot on return. Both tabs are always
+present, and one that cannot start says why rather than disappearing.
 
-* A plain question returns an assistant message into the panel projection.
-* Rephrase returns three alternatives that pass `validate_action_result`
-  unmodified, so the proposal UI has what it needs.
+`discuss.agent` no longer selects an agent — it decides which tab the dock
+opens on.
 
-There is no agent picker, the history pane will not repopulate, and the skills
-list is empty — all milestone 4.
+Verified in a browser, not only in tests: a Codex turn stays live while you
+switch to Claude, ask it something, and switch back, with each answer landing
+only in its own tab.
+
+## Milestone 5 — one behaviour suite, both transports
+
+`tests/test_discuss_transport_conformance.py` runs the same forty-odd
+assertions against both agents: questions, queueing, structured selection
+actions and their schemas, stop, approvals, history scoping, failure handling,
+and the rule that raw reasoning never reaches the projection.
+
+The doubles live in `tests/transport_fakes.py` and deliberately speak
+different protocols — sharing the emitting code would test nothing, and a test
+guards that too. `test_discuss_manager.py` keeps the Codex-specific depth
+(continuity reports, proposal staleness, thread recovery) and now imports the
+same Codex double instead of defining its own.
+
+Checked by sabotage: making the Claude translator forward raw thinking fails
+`test_raw_reasoning_never_reaches_the_projection[claude]` and nothing else.
 
 ## Structured-output reliability, so far
 
@@ -83,19 +100,23 @@ theoretical: the validator hard-fails where it could truncate or retry, so a
 rare malformed result becomes a visible error for the writer. Capturing the
 failing payload is the next step, not loosening the validator.
 
-## Known gap
+## The history gap, closed
 
-`thread/read` currently returns only the user's message. The assistant reply
-does not appear in the session store immediately after the turn — most likely
-`session_store_flush` batching rather than absence. Worth settling with
-`flush="eager"` or a read retry when the history pane is wired up in milestone
-4; it is not yet proven either way.
+`thread/read` returned only the user's message, so reopening a Claude
+conversation blanked it. Two causes, both fixed while driving the real UI:
+
+* The thread id Prosview persisted was a locally generated value that meant
+  nothing to a new process. A thread id is now the SDK session id, so a
+  conversation survives a restart and resumes rather than warning that it is
+  no longer available.
+* The transport returned its own turn shape. `DiscussManager` has a strict
+  restore parser, so `thread/read` now returns the structure that parser
+  expects.
 
 ## Not built
 
-Milestones 4 and 5: skills, agent selection in the UI, the writer-facing
-history pane, and the wider test coverage mirroring `test_discuss_manager.py`
-across both transports.
+Skills still return an empty list for Claude: the SDK has no `skills/list`
+equivalent, so the picker needs to scan `SKILL.md` frontmatter instead.
 
 Still unvalidated, and not resolvable by more unit tests:
 

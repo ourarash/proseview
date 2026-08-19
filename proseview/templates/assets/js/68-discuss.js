@@ -29,25 +29,141 @@
         var _discussOpenFailed = false;
         var _discussLocalError = '';
         var _discussLocalErrorKind = '';
+        // ── Agents ──────────────────────────────────────────────────────────
+        // Codex and Claude are separate conversations that run at the same
+        // time on the server. They are tabs, so only one is on screen; the
+        // other keeps working and its state is restored from its snapshot when
+        // you come back. Only the things a snapshot cannot carry -- the draft
+        // you were typing, what you had attached -- are held here per agent.
+        const DISCUSS_AGENTS = ['codex', 'claude'];
+        const DISCUSS_AGENT_KEY = 'proseview-discuss-agent';
+        var _discussAgent = _readDiscussAgent();
+        var _discussAgentAvailability = {};
+        var _discussAgentLocal = {codex: null, claude: null};
+        var _discussAgentPollTimer = null;
+
+        function _readDiscussAgent() {
+            var saved = null;
+            try { saved = localStorage.getItem(DISCUSS_AGENT_KEY); } catch (e) {}
+            if (DISCUSS_AGENTS.indexOf(saved) >= 0) return saved;
+            var fallback = (typeof discussDefaultAgent !== 'undefined') ? discussDefaultAgent : 'codex';
+            return DISCUSS_AGENTS.indexOf(fallback) >= 0 ? fallback : 'codex';
+        }
+
+        function discussAgentLabel(agent) {
+            return (agent || _discussAgent) === 'claude' ? 'Claude' : 'Codex';
+        }
+
+        function _saveDiscussAgentLocal() {
+            var input = document.getElementById('discussInput');
+            _discussAgentLocal[_discussAgent] = {
+                draft: input ? input.value : '',
+                attachments: _discussAttachments.slice(),
+                includeCurrentDocument: _discussIncludeCurrentDocument,
+                selectedSkill: _discussSelectedSkill
+            };
+        }
+
+        function _restoreDiscussAgentLocal() {
+            var bag = _discussAgentLocal[_discussAgent] || {};
+            _discussAttachments = (bag.attachments || []).slice();
+            _discussIncludeCurrentDocument = bag.includeCurrentDocument !== false;
+            _discussSelectedSkill = bag.selectedSkill || null;
+            return bag.draft || '';
+        }
+
+        // Rename every piece of chrome that used to say "Codex" unconditionally.
+        function _applyDiscussAgentLabels() {
+            var label = discussAgentLabel();
+            var title = document.getElementById('discussTitle');
+            if (title) title.textContent = label;
+            var close = document.getElementById('discussClose');
+            if (close) close.setAttribute('aria-label', 'Close the ' + label + ' panel');
+            var stop = document.getElementById('discussStop');
+            if (stop) stop.textContent = 'Stop ' + label;
+            var inputLabel = document.getElementById('discussInputLabel');
+            if (inputLabel) inputLabel.textContent = 'Ask ' + label + ' about this document';
+        }
+
+        function showDiscussAgentTab(agent, trigger) {
+            agent = DISCUSS_AGENTS.indexOf(agent) >= 0 ? agent : 'codex';
+            var panel = document.getElementById('discussPanel');
+            var alreadyShowing = panel && !panel.hidden && agent === _discussAgent;
+            if (alreadyShowing) { _showDiscussBody(); return; }
+            if (panel && !panel.hidden) _saveDiscussAgentLocal();
+            if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
+            _discussAgent = agent;
+            try { localStorage.setItem(DISCUSS_AGENT_KEY, agent); } catch (e) {}
+            _applyDiscussAgentLabels();
+            openDiscuss(trigger || _discussReturnFocus);
+        }
+
+        // The other agent may finish while you are reading this one. A dot on
+        // its tab is the only way to know without switching.
+        function _pollInactiveDiscussAgent() {
+            clearTimeout(_discussAgentPollTimer);
+            _discussAgentPollTimer = setTimeout(function() {
+                var panel = document.getElementById('discussPanel');
+                if (!panel || panel.hidden) return;
+                var other = _discussAgent === 'codex' ? 'claude' : 'codex';
+                var doc = discussDocument();
+                if (!doc) return;
+                discussApi('/api/discuss/conversations/open', {
+                    kind: doc.kind, path: doc.path, agent: other
+                }).then(function(data) {
+                    var snapshot = data.snapshot || {};
+                    var busy = !!snapshot.active_turn_id || (snapshot.queue || []).length > 0;
+                    var pending = (snapshot.approvals || []).some(function(row) {
+                        return row.status === 'pending';
+                    });
+                    _markDiscussAgentTab(other, busy || pending);
+                }).catch(function() {}).then(function() {
+                    _pollInactiveDiscussAgent();
+                });
+            }, 4000);
+        }
+
+        function _markDiscussAgentTab(agent, active) {
+            (UTILITY_TAB_IDS[agent] || []).forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.classList.toggle('utility-tab-busy', !!active);
+            });
+        }
+
+        function loadDiscussAgentAvailability() {
+            return discussApi('/api/discuss/agents', {}).then(function(data) {
+                (data.agents || []).forEach(function(row) {
+                    _discussAgentAvailability[row.id] = row;
+                    (UTILITY_TAB_IDS[row.id] || []).forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        el.classList.toggle('utility-tab-unavailable', !row.available);
+                        if (!row.available && row.reason) el.title = row.label + ' is unavailable — ' + row.reason;
+                    });
+                });
+            }).catch(function() {});
+        }
         var _discussLocalErrorReload = false;
         var _discussReconnectTimer = null;
 
-        function discussDraftKey(doc) {
-            return 'proseview-codex-draft:' + discussDocumentKey(doc);
+        // Per agent as well as per document: the two tabs are separate
+        // conversations, so a draft typed in one must not appear in the other.
+        function discussDraftKey(doc, agent) {
+            return 'proseview-draft:' + (agent || _discussAgent) + ':' + discussDocumentKey(doc);
         }
 
         function saveDiscussDraft() {
             var input = document.getElementById('discussInput');
             if (!_discussDocumentKey || !input) return;
-            var key = 'proseview-codex-draft:' + _discussDocumentKey;
+            var key = 'proseview-draft:' + _discussAgent + ':' + _discussDocumentKey;
             try {
                 if (input.value) sessionStorage.setItem(key, input.value);
                 else sessionStorage.removeItem(key);
             } catch(e) {}
         }
 
-        function restoreDiscussDraft(doc) {
-            try { return sessionStorage.getItem(discussDraftKey(doc)) || ''; }
+        function restoreDiscussDraft(doc, agent) {
+            try { return sessionStorage.getItem(discussDraftKey(doc, agent)) || ''; }
             catch(e) { return ''; }
         }
 
@@ -183,9 +299,12 @@
             var key = discussDocumentKey(doc);
             _discussDocumentKey = key;
             var input = document.getElementById('discussInput');
-            _discussPreservedDraft = restoreDiscussDraft(doc);
+            var bag = _discussAgentLocal[_discussAgent];
+            var carriedDraft = _restoreDiscussAgentLocal();
+            _discussPreservedDraft = bag ? carriedDraft : restoreDiscussDraft(doc, _discussAgent);
             input.value = requestedAutoRun ? '' : _discussPreservedDraft;
-            discussApi('/api/discuss/conversations/open', doc).then(function(data) {
+            var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
+            discussApi('/api/discuss/conversations/open', openBody).then(function(data) {
                 if (_discussDocumentKey !== key) return;
                 _discussConversationId = data.conversation_id;
                 _discussSnapshot = data.snapshot;
@@ -193,6 +312,9 @@
                 connectDiscussEvents();
                 renderDiscussTaskMode();
                 document.getElementById('discussSend').disabled = false;
+                _markDiscussAgentTab(_discussAgent, false);
+                loadDiscussAgentAvailability();
+                _pollInactiveDiscussAgent();
                 if (options.showSkills) loadDiscussSkills();
                 else if (requestedAutoRun && requestedAction) {
                     runDiscussSelectionAction(requestedAction, requestedSelection, requestedSelectionRange, requestedLiveDocument);
@@ -202,22 +324,34 @@
                 _discussOpenFailed = true;
                 
                 var msg = error.message || '';
-                if (msg.includes('Codex') || msg.includes('API key') || msg.includes('app-server')) {
-                    setDiscussConnection('AI Not Connected', '');
-                    document.getElementById('discussLog').innerHTML = `
-                        <div style="padding: 24px; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
-                            <div style="font-size: 32px; margin-bottom: 16px;">🤖</div>
-                            <h3 style="color: var(--text-primary); margin-bottom: 8px;">Bring Your Own AI</h3>
-                            <p style="max-width: 300px; line-height: 1.5; margin-bottom: 16px;">
-                                Proseview runs entirely locally, but you can connect an AI agent like Codex to discuss your manuscript, fix continuity errors, and review pacing.
-                            </p>
-                            <p style="font-size: 13px;">
-                                <em>Install the Codex CLI and set up an API key to unlock this feature.</em>
-                            </p>
-                        </div>
-                    `;
+                var label = discussAgentLabel();
+                if (msg.includes('Codex') || msg.includes('API key') || msg.includes('app-server')
+                    || msg.includes('claude-agent-sdk') || msg.includes('Claude Code')) {
+                    setDiscussConnection('Not connected', '');
+                    // Built as nodes, not markup: the reason is an error string
+                    // and must never be interpolated into innerHTML.
+                    var empty = document.createElement('div');
+                    empty.className = 'discuss-empty-state';
+                    var icon = document.createElement('div');
+                    icon.className = 'discuss-empty-icon';
+                    icon.textContent = '🤖';
+                    var heading = document.createElement('h3');
+                    heading.textContent = label + ' is not connected';
+                    var blurb = document.createElement('p');
+                    blurb.className = 'discuss-empty-blurb';
+                    blurb.textContent = 'Proseview runs entirely locally, but you can connect an AI agent '
+                        + 'to discuss your manuscript, fix continuity errors, and review pacing.';
+                    var reason = document.createElement('p');
+                    reason.className = 'discuss-empty-reason';
+                    var em = document.createElement('em');
+                    em.textContent = msg;
+                    reason.appendChild(em);
+                    [icon, heading, blurb, reason].forEach(function(node) { empty.appendChild(node); });
+                    var log = document.getElementById('discussLog');
+                    log.textContent = '';
+                    log.appendChild(empty);
                     document.getElementById('discussComposerArea').hidden = true;
-                    document.getElementById('discussAnnouncement').textContent = 'AI is not connected.';
+                    document.getElementById('discussAnnouncement').textContent = label + ' is not connected.';
                     return;
                 }
 
@@ -288,7 +422,7 @@
         // highlight passes, all derived from the file on disk. Codex is the
         // only surface that calls a model. Terminal is a shell. Keeping that
         // boundary legible is the point of the split.
-        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'discuss', 'terminal'];
+        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'codex', 'claude', 'terminal'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -297,6 +431,10 @@
             // "details" was this tab's name before it split into Scene and
             // Analysis; a stored value from then must not leave the dock blank.
             if (saved === 'details') saved = 'scene';
+            // "discuss" was the single agent tab before Codex and Claude got
+            // one each. Send those readers to whichever agent they last used
+            // rather than dropping them on Scene.
+            if (saved === 'discuss') saved = _discussAgent;
             return SCENE_PANEL_TABS.indexOf(saved) >= 0 ? saved : 'scene';
         }
 
@@ -307,7 +445,8 @@
             scene: ['utilityTabScene', 'termUtilityTabScene'],
             analysis: ['utilityTabAnalysis', 'termUtilityTabAnalysis'],
             history: ['utilityTabHistory', 'termUtilityTabHistory'],
-            discuss: ['utilityTabDiscuss', 'termUtilityTabDiscuss'],
+            codex: ['utilityTabCodex', 'termUtilityTabCodex'],
+            claude: ['utilityTabClaude', 'termUtilityTabClaude'],
             terminal: ['utilityTabTerminal', 'termUtilityTabTerminal']
         };
 
@@ -399,10 +538,11 @@
             });
             _discussVisibleEls().forEach(function(el) { el.hidden = false; });
             _setDockHeading(null, true);
-            _setUtilityTab('discuss');
+            _applyDiscussAgentLabels();
+            _setUtilityTab(_discussAgent);
         }
 
-        function showDiscussTab(trigger) { openDiscuss(trigger || _discussReturnFocus); }
+        function showDiscussTab(trigger) { showDiscussAgentTab(_discussAgent, trigger); }
 
         function hideRightTerminalForPanel() {
             const term = document.getElementById('terminalPanel');
@@ -421,7 +561,7 @@
         // Closing costs nothing. closeScenePanel only hides the terminal, so a
         // live session keeps running and comes back intact when the dock is
         // reopened; _termSessions is never touched.
-        const SCENE_SCOPED_TABS = ['scene', 'analysis', 'history', 'discuss'];
+        const SCENE_SCOPED_TABS = ['scene', 'analysis', 'history', 'codex', 'claude'];
 
         function _terminalIsAvailable() {
             return typeof terminalAvailable === 'undefined' || !!terminalAvailable;
@@ -453,7 +593,7 @@
                 var panel = document.getElementById('discussPanel');
                 if (shouldBeOpen && panel && panel.hidden) {
                     var tab = _readScenePanelTab();
-                    if (tab === 'discuss') showDiscussTab();
+                    if (DISCUSS_AGENTS.indexOf(tab) >= 0) showDiscussAgentTab(tab);
                     else showScenePanelTab(tab);
                 }
             }
@@ -485,8 +625,8 @@
             }
             // One call, not two: openDiscuss opens a conversation on the
             // server, and doing it twice queued a second thread/read behind the
-            // first for every reader whose last tab was Codex.
-            if (tab === 'discuss') showDiscussTab(trigger);
+            // first for every reader whose last tab was an agent.
+            if (DISCUSS_AGENTS.indexOf(tab) >= 0) showDiscussAgentTab(tab, trigger);
             else showScenePanelTab(tab);
         }
 
@@ -1332,7 +1472,7 @@
             });
             (snapshot.messages || []).forEach(function(message) {
                 var wrap = elementWith('discuss-message ' + (message.role === 'user' ? 'user' : 'assistant'));
-                var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : 'Codex');
+                var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : discussAgentLabel());
                 wrap.appendChild(label);
                 if (message.role === 'assistant') renderDiscussMarkdown(wrap, message.text);
                 else wrap.appendChild(document.createTextNode(message.text || ''));
@@ -1341,7 +1481,7 @@
             });
             if ((snapshot.progress || []).length) {
                 var progress = document.createElement('details'); progress.className = 'discuss-progress';
-                var progressSummary = document.createElement('summary'); progressSummary.textContent = 'What Codex is doing'; progress.appendChild(progressSummary);
+                var progressSummary = document.createElement('summary'); progressSummary.textContent = 'What ' + discussAgentLabel() + ' is doing'; progress.appendChild(progressSummary);
                 progress.appendChild(document.createTextNode((snapshot.progress || []).join(''))); log.appendChild(progress);
             }
             if ((snapshot.plan || []).length) {
@@ -1387,7 +1527,7 @@
             stopButton.hidden = !snapshot.active_turn_id;
             if (!snapshot.active_turn_id) {
                 stopButton.disabled = false;
-                stopButton.textContent = 'Stop Codex';
+                stopButton.textContent = 'Stop ' + discussAgentLabel();
             }
             var clearResults = document.getElementById('discussHistoryClear');
             var hasClearableResults = (snapshot.tasks || []).some(function(task) {
@@ -1409,10 +1549,10 @@
             var newConversation = document.getElementById('discussNewConversation');
             var newConversationHint = document.getElementById('discussNewConversationHint');
             var unavailableReason = '';
-            if (snapshot.active_turn_id) unavailableReason = 'Stop Codex before starting a new conversation.';
-            else if (snapshot.active_request_id) unavailableReason = 'Wait for Codex to start this question before starting a new conversation.';
+            if (snapshot.active_turn_id) unavailableReason = 'Stop ' + discussAgentLabel() + ' before starting a new conversation.';
+            else if (snapshot.active_request_id) unavailableReason = 'Wait for ' + discussAgentLabel() + ' to start this question before starting a new conversation.';
             else if ((snapshot.queue || []).length) unavailableReason = 'Remove or wait for queued items before starting a new conversation.';
-            else if (pendingApproval) unavailableReason = 'Resolve the Codex approval request before starting a new conversation.';
+            else if (pendingApproval) unavailableReason = 'Resolve the ' + discussAgentLabel() + ' approval request before starting a new conversation.';
             newConversation.disabled = !!unavailableReason;
             newConversation.title = unavailableReason;
             if (newConversationHint.textContent !== unavailableReason) newConversationHint.textContent = unavailableReason;
@@ -1421,7 +1561,7 @@
             restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
                 var target = log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"] button');
-                if (target) { target.focus(); document.getElementById('discussAnnouncement').textContent = 'Codex is requesting approval'; }
+                if (target) { target.focus(); document.getElementById('discussAnnouncement').textContent = discussAgentLabel() + ' is requesting approval'; }
                 _discussLastApproval = '';
             }
         }
@@ -1543,7 +1683,7 @@
             if (Number(scope.files_omitted || 0) > 0) {
                 fragment.appendChild(elementWith(
                     'discuss-queue',
-                    'Codex input limit · scanned ' + String(scope.files_scanned || 0)
+                    discussAgentLabel() + ' input limit · scanned ' + String(scope.files_scanned || 0)
                     + ' of ' + String(scope.files_available || 0) + ' configured files; '
                     + String(scope.files_omitted) + ' files were omitted. Narrow repo_tab.folders for a complete scan.'
                 ));
@@ -1624,7 +1764,7 @@
             if (task.restored) {
                 var restoredLabel = task.status === 'restored'
                     ? 'Historical result · reselect the passage to use it safely'
-                    : 'Restored from Codex history';
+                    : 'Restored from ' + discussAgentLabel() + ' history';
                 card.appendChild(elementWith('discuss-task-meta', restoredLabel));
             }
             if (task.skill && task.skill.name) card.appendChild(elementWith('discuss-task-meta', 'Skill · ' + task.skill.name));
@@ -2528,7 +2668,7 @@
             if (button.disabled) return;
             button.disabled = true;
             button.textContent = 'Stopping…';
-            document.getElementById('discussAnnouncement').textContent = 'Stopping Codex';
+            document.getElementById('discussAnnouncement').textContent = 'Stopping ' + discussAgentLabel();
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/turns/' + encodeURIComponent(_discussSnapshot.active_turn_id) + '/stop', {})
                 .then(scheduleDiscussSnapshot).catch(function(error) {
                     button.disabled = false;

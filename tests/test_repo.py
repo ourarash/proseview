@@ -89,7 +89,8 @@ def test_small_markdown_file_ships_body_inline(tmp_path: Path):
     assert node["too_large"] is False
     assert node["body"] == body
     assert node["size"] == len(body.encode("utf-8"))
-    assert node["abs_path"].endswith("plans/book-plan.md")
+    # abs_path stays OS-native because it is what the editor handoff opens.
+    assert Path(node["abs_path"]).parts[-2:] == ("plans", "book-plan.md")
 
 
 def test_oversized_file_omits_body_and_flags_too_large(tmp_path: Path):

@@ -78,6 +78,24 @@ def _wait_for(predicate, timeout: float = 3.0):
     raise AssertionError("condition was not reached")
 
 
+def _wait_for_settled_answer(session):
+    """An assistant message, and the turn that produced it finished.
+
+    Assistant text reaches the projection before turn teardown runs, so waiting
+    on the message alone leaves the conversation briefly busy -- long enough, on
+    a loaded runner, for the next manager call to be refused as busy.
+    """
+    def settled():
+        snapshot = session.snapshot()
+        return bool(
+            any(m["role"] == "assistant" for m in snapshot["messages"])
+            and snapshot["active_turn_id"] is None
+            and snapshot["active_request_id"] is None
+        )
+
+    _wait_for(settled)
+
+
 # --- identity ---------------------------------------------------------------
 
 def test_snapshot_reports_the_agent_that_owns_it(session):
@@ -268,7 +286,7 @@ def test_history_is_scoped_to_the_agent(repo: Path, agent: str):
 
 def test_a_new_conversation_clears_the_projection(session):
     session.manager.submit(session.cid, client_request_id="q1", question="Old conversation")
-    _wait_for(lambda: any(m["role"] == "assistant" for m in session.snapshot()["messages"]))
+    _wait_for_settled_answer(session)
     session.manager.new_conversation(session.cid)
     assert session.snapshot()["messages"] == []
 

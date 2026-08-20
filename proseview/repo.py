@@ -355,6 +355,7 @@ def recent_changes(
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
             check=False,
         )

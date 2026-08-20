@@ -321,7 +321,11 @@ def build_scene_data(
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
-        text = str(path)
+        # as_posix, not str: these become keys in the embedded JSON and the
+        # fragments of every scene URL. On Windows str() yields backslashes,
+        # so the browser looks up "ch01/one.md" against "ch01\\one.md" and
+        # finds nothing.
+        text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     def _compute_char_mentions(scene: SceneStats) -> dict[str, dict[str, int]]:
@@ -428,7 +432,11 @@ def _scene_table_body(
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
-        text = str(path)
+        # as_posix, not str: these become keys in the embedded JSON and the
+        # fragments of every scene URL. On Windows str() yields backslashes,
+        # so the browser looks up "ch01/one.md" against "ch01\\one.md" and
+        # finds nothing.
+        text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     span = 8 if analysis else 4
@@ -522,7 +530,11 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
-        text = str(path)
+        # as_posix, not str: these become keys in the embedded JSON and the
+        # fragments of every scene URL. On Windows str() yields backslashes,
+        # so the browser looks up "ch01/one.md" against "ch01\\one.md" and
+        # finds nothing.
+        text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     chapters = sorted({scene.chapter for scene in scenes})
@@ -616,7 +628,11 @@ def render_html_report(
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
-        text = str(path)
+        # as_posix, not str: these become keys in the embedded JSON and the
+        # fragments of every scene URL. On Windows str() yields backslashes,
+        # so the browser looks up "ch01/one.md" against "ch01\\one.md" and
+        # finds nothing.
+        text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     scene_data = build_scene_data(scenes, root, cfg, tree_nodes)

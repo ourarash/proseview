@@ -324,6 +324,27 @@ def _build_repo(dest: Path) -> Path:
 # ── agent stubs ─────────────────────────────────────────────────────────────
 
 
+def _make_runnable(bin_dir: Path, name: str) -> None:
+    """Make a stub launchable by name on this platform.
+
+    POSIX needs the execute bit and honours the shebang. Windows honours
+    neither: a bare `codex` is not on PATHEXT, so shutil.which never finds it
+    and every agent looks uninstalled. A .cmd wrapper naming this interpreter
+    is what makes the same stub reachable there.
+    """
+    script = bin_dir / name
+    script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if os.name == "nt":
+        (bin_dir / f"{name}.cmd").write_text(
+            f'@echo off\r\n"{sys.executable}" "%~dp0{name}" %*\r\n', encoding="utf-8"
+        )
+
+
+def _install_stub(bin_dir: Path, name: str, source: str) -> None:
+    (bin_dir / name).write_text(source, encoding="utf-8")
+    _make_runnable(bin_dir, name)
+
+
 def _write_agent_stubs(bin_dir: Path) -> Path:
     """Create fake ``codex`` / ``claude`` / ``gemini`` executables.
 
@@ -337,16 +358,17 @@ def _write_agent_stubs(bin_dir: Path) -> Path:
     """
     bin_dir.mkdir(parents=True, exist_ok=True)
     for name in ("claude", "gemini"):
-        script = bin_dir / name
-        script.write_text(
-            "#!/bin/sh\n"
-            f'echo "{AGENT_MARKER} {name} argv:$*"\n'
-            "while IFS= read -r line; do\n"
-            '  echo "STDIN:$line"\n'
-            "done\n",
-            encoding="utf-8",
+        # Python rather than /bin/sh: Windows has neither sh nor shebang
+        # handling, and one language for every stub means one wrapper below.
+        _install_stub(
+            bin_dir,
+            name,
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            f'print("{AGENT_MARKER} {name} argv:" + " ".join(sys.argv[1:]), flush=True)\n'
+            "for line in sys.stdin:\n"
+            '    print("STDIN:" + line.rstrip("\\n"), flush=True)\n',
         )
-        script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     codex = bin_dir / "codex"
     codex.write_text(
@@ -552,7 +574,7 @@ for line in sys.stdin:
 """,
         encoding="utf-8",
     )
-    codex.chmod(codex.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    _make_runnable(bin_dir, "codex")
     return bin_dir
 
 
@@ -788,6 +810,7 @@ class ProseviewServer:
             env=self.env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=60,
         )
         if check and proc.returncode != 0:
@@ -854,6 +877,7 @@ def _start_server(root: Path, bin_dir: Path, home: Path, *, port: int | None = N
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
         # Ctrl-Break can only be delivered to a process that owns its group,
         # and it is the only interrupt Windows lets us send a child.
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),

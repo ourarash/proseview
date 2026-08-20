@@ -700,7 +700,12 @@ class DiscussStateStore:
         os.chmod(self.path.parent, 0o700)
         fd, tmp_name = tempfile.mkstemp(prefix="discuss-", suffix=".tmp", dir=self.path.parent)
         try:
-            os.fchmod(fd, 0o600)
+            # Windows has no fchmod, and no POSIX mode bits to set with it. The
+            # directory is already restricted above; without this guard the
+            # state file is never written there at all, and every conversation
+            # silently loses its history.
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2, sort_keys=True)
                 handle.write("\n")

@@ -192,7 +192,9 @@ def _coerce_day(value: Any) -> int | None:
 
 def _scene_path(path: Path, cfg: Config) -> str:
     """Manuscript-relative path, matching the keys the browser opens scenes by."""
-    text = str(path)
+    # Those keys are posix; str() would hand Windows a backslash form that
+    # matches nothing on the other side.
+    text = path.as_posix()
     prefix = cfg.manuscript_subdir + "/"
     return text[len(prefix):] if text.startswith(prefix) else text
 

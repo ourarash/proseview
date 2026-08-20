@@ -243,7 +243,9 @@ def export_epub(
         if cover_image:
             command += ["--epub-cover-image", str(cover_image)]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", timeout=300
+            )
         except subprocess.TimeoutExpired as exc:
             raise ExportError("pandoc timed out after 5 minutes") from exc
     if result.returncode != 0:

@@ -137,6 +137,7 @@ def test_dashboard_app_script_is_valid_javascript(tmp_path: Path):
         [node, "--check", str(script_path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     assert result.returncode == 0, result.stderr or result.stdout

@@ -186,6 +186,7 @@ def test_bundle_passes_node_syntax_check_when_available():
         [node, "--check", "-"],
         input=bundle,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )

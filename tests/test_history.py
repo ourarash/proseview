@@ -44,7 +44,7 @@ def _run(cmd: list[str], cwd: Path) -> None:
         "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@t",
     }
     subprocess.run(cmd, cwd=cwd, check=True, env=env,
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8")
 
 
 @pytest.fixture

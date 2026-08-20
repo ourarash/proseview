@@ -489,7 +489,7 @@ def resolve_baseline(baseline: str, scenes: list[SceneStats], root: Path) -> Bas
         label = raw
     else:
         cand = (root / baseline).resolve() if not Path(baseline).is_absolute() else Path(baseline)
-        sel = [s for s in scenes if (root / s.path).resolve() == cand or str(s.path) == baseline]
+        sel = [s for s in scenes if (root / s.path).resolve() == cand or s.path.as_posix() == baseline]
         label = str(baseline)
     if not sel:
         return None
@@ -523,7 +523,7 @@ def filter_scenes(scenes: list[SceneStats], focus: str, cfg: Config) -> list[Sce
             if t.startswith("chapter:") and t.split(":", 1)[1].strip() in s.chapter.lower():
                 filtered.append(s)
                 break
-            if t.startswith("path:") and t.split(":", 1)[1].strip() in str(s.path).lower():
+            if t.startswith("path:") and t.split(":", 1)[1].strip() in s.path.as_posix().lower():
                 filtered.append(s)
                 break
     return filtered
@@ -532,8 +532,9 @@ def filter_scenes(scenes: list[SceneStats], focus: str, cfg: Config) -> list[Sce
 def sort_scenes(scenes: list[SceneStats], key: str, rev: bool,
                 cfg: Config | None = None) -> list[SceneStats]:
     funcs: dict[str, Any] = {
-        "path": lambda s: str(s.path),
-        "chapter": lambda s: (s.chapter, str(s.path)),
+        # Posix so ordering and search behave the same on every platform.
+        "path": lambda s: s.path.as_posix(),
+        "chapter": lambda s: (s.chapter, s.path.as_posix()),
         "words": lambda s: s.words,
         "mattr": lambda s: s.mattr,
         "mtld": lambda s: s.mtld,

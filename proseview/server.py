@@ -1925,7 +1925,7 @@ class _Handler(BaseHTTPRequestHandler):
                 try:
                     res_repo = subprocess.run(
                         ["git", "rev-parse", "--is-inside-work-tree"],
-                        cwd=root, capture_output=True, text=True
+                        cwd=root, capture_output=True, text=True, encoding="utf-8"
                     )
                     if res_repo.returncode == 0 and res_repo.stdout.strip() == "true":
                         is_git_repo = True

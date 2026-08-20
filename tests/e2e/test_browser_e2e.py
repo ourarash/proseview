@@ -253,15 +253,7 @@ def wait_for_discuss_answer(page: Page, text: str = "Fake answer") -> None:
     )
 
 
-def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
-    """Select *needle* in the rendered prose and raise the selection pill.
-
-    The pill is bound to ``mouseup`` on ``#modalBody``, so a synthetic Range has
-    to be followed by that event for the UI to react. ``block`` lets placement
-    tests exercise selections near both vertical viewport edges.
-    """
-    selected = page.evaluate(
-        """({needle, block}) => {
+_SELECT_PROSE_JS = """({needle, block}) => {
             const host = document.getElementById('sceneProseHost');
             const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
             let node = null, idx = -1;
@@ -289,11 +281,33 @@ def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
                 bubbles: true, clientX: rect.left, clientY: rect.bottom,
             }));
             return sel.toString();
-        }""",
-        {"needle": needle, "block": block},
-    )
-    page.wait_for_selector("#selectionPill", state="visible")
-    page.wait_for_function("needle => currentSelectionText.includes(needle)", arg=needle)
+        }"""
+
+
+def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
+    """Select *needle* in the rendered prose and raise the selection pill.
+
+    The pill is bound to ``mouseup`` on ``#modalBody``, so a synthetic Range has
+    to be followed by that event for the UI to react. ``block`` lets placement
+    tests exercise selections near both vertical viewport edges.
+    """
+    selected = page.evaluate(_SELECT_PROSE_JS, {"needle": needle, "block": block})
+
+    # A re-render can drop the range before the app records it -- applying an
+    # AI proposal rebuilds the prose, and on a slow machine that lands after
+    # the selection is made. Redo it rather than wait out a timeout: the whole
+    # point of the helper is to leave a selection the app has seen.
+    for attempt in range(4):
+        try:
+            page.wait_for_selector("#selectionPill", state="visible", timeout=5_000)
+            page.wait_for_function(
+                "needle => currentSelectionText.includes(needle)", arg=needle, timeout=5_000
+            )
+            return selected
+        except Exception:
+            if attempt == 3:
+                raise
+            selected = page.evaluate(_SELECT_PROSE_JS, {"needle": needle, "block": block})
     return selected
 
 

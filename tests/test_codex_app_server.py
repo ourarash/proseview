@@ -178,16 +178,20 @@ out.mkdir(parents=True)
 
 
 def test_stderr_diagnostics_never_retain_document_or_reasoning_text(tmp_path: Path):
-    executable = _fake_codex(tmp_path)
-    raw = executable.read_text(encoding="utf-8")
-    executable.write_text(
+    launcher = _fake_codex(tmp_path)
+    # Patch the script, not the launcher: on Windows those are different files
+    # and rewriting the wrapper leaves the stub silent.
+    script = tmp_path / "codex"
+    raw = script.read_text(encoding="utf-8")
+    script.write_text(
         raw.replace("import json, sys", "import json, sys\nprint('PRIVATE DOCUMENT BODY AND RAW REASONING', file=sys.stderr, flush=True)"),
         encoding="utf-8",
     )
-    client = CodexAppServer(executable=str(executable), cwd=tmp_path)
+    client = CodexAppServer(executable=str(launcher), cwd=tmp_path)
     try:
         client.start()
-        deadline = time.monotonic() + 1
+        # Process startup is slower on Windows than the second this allowed.
+        deadline = time.monotonic() + 10
         while not client._stderr and time.monotonic() < deadline:
             time.sleep(0.01)
         assert client._stderr

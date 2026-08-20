@@ -4,4 +4,4 @@ See ``visualization/plan/visualization-app-plan.md`` for the product spec and
 ``visualization/plan/implementation-plan.md`` for the milestone order.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

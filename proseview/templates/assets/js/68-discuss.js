@@ -516,7 +516,7 @@
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }}
         };
 
-        function showScenePanelTab(name) { console.trace('showScenePanelTab called with:', name);
+        function showScenePanelTab(name) {
             const spec = SCENE_PANEL_PANES[name];
             const panel = document.getElementById('discussPanel');
             if (!spec || !panel) return;

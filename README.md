@@ -2,22 +2,19 @@
 
 > A local dashboard for Markdown-first novel repositories. ✍️
 
-Point it at a convention-structured manuscript. Get lexical health, pacing,
-character presence, and revision history from the files you already have —
-then read, edit, and annotate them on the same surface.
+Proseview reads a folder of Markdown scenes and reports lexical health,
+pacing, character presence, and revision history. The same pages can be read,
+edited, and annotated in place.
 
 Core analysis stays on your machine: no account, subscription, database, or
-telemetry. AI features are opt-in; when you use one, Proseview sends the active
-document by default, plus any selection or attachments, through your installed
-agent CLI under that agent's login and data handling.
+telemetry. AI features are opt-in and run through agent CLIs you installed and
+logged into yourself — Codex or Claude in the side dock, and Codex, Claude, or
+Gemini in a terminal scoped to one file. When you use one, Proseview sends the
+active document by default, plus any selection or attachments, to that agent
+under its own login and data handling.
 
-```bash
-pipx install proseview
-proseview --root /path/to/your/novel
-```
-
-Already writing in Obsidian, Vim, or another Markdown editor? Keep doing that.
-Proseview reads the same `.md` files, in whatever layout you already use.
+Proseview reads plain `.md` files in whatever layout they already have, so it
+sits alongside Obsidian, Vim, or any other Markdown editor.
 
 [![CI](https://github.com/ourarash/proseview/actions/workflows/ci.yml/badge.svg)](https://github.com/ourarash/proseview/actions/workflows/ci.yml)
 ![status](https://img.shields.io/badge/status-alpha-orange)
@@ -25,40 +22,41 @@ Proseview reads the same `.md` files, in whatever layout you already use.
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-![The Proseview dashboard: total words against the goal, scene count, reading time, and a Goals panel with writing streak and per-chapter average](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
+![The Proseview dashboard with the file sidebar open on chapter one's scenes: total words against the goal, scene count, reading time, and a Goals panel with writing streak and per-chapter average](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
-## 📸 A look around
+## 📸 Screenshots
 
-### Read and revise, with editorial passes on
+### Editorial passes
 
-Nine prose passes highlight repetition, passive voice, filter verbs and more,
-right on the page you are reading. Toggle them one at a time.
+The Analysis panel lists nine prose passes, each with the number of matches in
+this scene. Switching a row on marks the page you are reading: repetition,
+filter verbs, sensory language, passive voice.
 
-![Four editorial passes switching on over a scene, marking repeated words, filter verbs, sensory language, and passive voice](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-highlights.gif)
+![The Analysis panel open beside a scene, with four highlight passes switched on from their rows and the matching words marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-highlights.gif)
 
-### Write on the same surface
+### Editing
 
-Hit `Edit` and the page you were reading becomes the page you type into — same
+`Edit` turns the page you were reading into the page you type into — same
 typography, same highlights. `Mod-S` saves to the file, and the stats update.
 
 ![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
-### Ask two agents, side by side
+### Agent tabs
 
 Codex and Claude each get a tab, each with its own conversation for the
-document you are reading. Ask one, switch to the other, come back — both keep
-working, and neither can see the other's thread.
+document you are reading. Both keep working while the other is in front, and
+neither can see the other's thread.
 
 ![The Codex and Claude tabs answering the same question about a scene in separate conversations, with each answer staying in its own tab](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-agents.gif)
 
-### Search the whole repository
+### Search
 
 `Mod-K` from anywhere. File paths, scene metadata, TODOs, notes, and prose,
 grouped by kind.
 
 ![The search palette open over a scene, showing file, scene, and prose matches grouped by kind](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-search.gif)
 
-### See the shape of the book
+### Timeline
 
 Chapter proportion and words per scene, your storylines as lanes, and reading
 order against the order events actually happen — so a scene read far from where
@@ -66,7 +64,7 @@ it happens is visible instead of inferred. Hover any scene for its card.
 
 ![The Timeline tab showing chapter proportion, words per scene, three storyline lanes, and reading order against story order, with a scene card on hover](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-timeline.gif)
 
-### Analytics that mean something
+### Character presence
 
 ![The Analysis tab's character presence timeline, tracking how often each character is mentioned across all twelve chapters](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
 
@@ -74,7 +72,7 @@ it happens is visible instead of inferred. Hover any scene for its card.
 > (public domain), split into 39 scenes across 12 chapters with story fields
 > filled in. See [fixtures/demo-book](fixtures/demo-book/README.md).
 
-## ✨ What you get
+## ✨ Features
 
 - 📊 **Dashboard.** Word count, chapter pacing, lexical health, sentence
   rhythm, character presence, setting stickiness, and a sortable scene
@@ -82,12 +80,13 @@ it happens is visible instead of inferred. Hover any scene for its card.
 - 📖 **Reading view and WYSIWYG editor.** The same typographic page, with
   `Edit` toggled on. `Mod-S` saves; a conflict guard checks the file mtime
   so a change made in your own editor is never silently overwritten.
-- 🎨 **Editorial highlights.** Nine prose passes over any scene:
-  repetition, passive voice, filter verbs, crutch words, hyperbole,
-  lyrical reach, sensory density, comedy beats, first-person rate.
+- 🎨 **Editorial highlights.** Nine prose passes over any scene, switched
+  on from the Analysis panel with a match count each: repetition, passive
+  voice, filter verbs, crutch words, hyperbole, lyrical reach, sensory
+  density, comedy beats, first-person rate.
 - 🗒️ **Inline TODOs and Notes.** Select a passage, drop a `TODO` or a
-  tagged `NOTE`, and it lands in the file as a Markdown comment. Survives
-  in git, greppable, visible to any tool.
+  tagged `NOTE`, and it lands in the file as a Markdown comment. They stay
+  in the file, so they survive in git and turn up in grep.
 - 🕰️ **Timeline.** The shape of the book, storylines as lanes, and reading
   order against the order events happen.
 - 🤖 **Two agents, side by side.** Codex and Claude each get a dock tab and
@@ -101,22 +100,25 @@ it happens is visible instead of inferred. Hover any scene for its card.
   the dashboard counts them. [Export options →](docs/export.md)
 - 🔁 **Live reload, deep links, themes.** Save in your editor and the page
   follows. Every scene has a URL. Six themes, seven fonts.
-- 🧪 **Tested.** 642 unit tests and a browser tier that drives the real UI.
+- 🧪 **Tested.** A unit suite plus a browser tier that drives the real UI.
   One behaviour suite runs against both agents, so a feature cannot
   silently work on one tab and not the other.
 
-### 🤖 And AI, if you want it
+### 🤖 Optional AI
 
 Entirely optional, and it never runs on its own. Proseview has no model of its
 own and no API key of yours — it drives the agent CLIs already installed on
-your machine, under your login.
+your machine, under your login: Codex and Claude for the two Discuss tabs, and
+Codex, Claude, or Gemini for a terminal conversation about a single file.
 
 Agent sessions are read-only. Anything beyond reading — a shell command, a file
 write — stops at an approval you have to grant, and raw model reasoning is
 never forwarded to the browser.
 
-If you want none of this, ignore it. Everything above works without an agent
-installed. [Details →](docs/ai.md)
+Continuity and canon questions come back with citations, and suggested edits
+arrive as proposals you accept or reject before anything is written.
+
+Everything else works without an agent installed. [Details →](docs/ai.md)
 
 ## 🚀 Quick start
 
@@ -132,7 +134,7 @@ A browser tab opens at `http://localhost:7842`. Press Ctrl-C to stop.
 
 Point it at any folder of Markdown. If there is no `manuscript/` directory the
 whole folder is the manuscript, so an Obsidian vault or a flat pile of chapter
-files works with no configuration and no reorganising.
+files works with no configuration.
 
 ```text
 my-novel/
@@ -150,9 +152,10 @@ is not. [Layout and the full frontmatter contract →](docs/manuscript.md)
 
 ## ⚙️ Configuration
 
-Zero config works. Drop a `.proseview.yaml` at the repo root to change where
-things live, set a word-count goal, pick which agent tab opens first, or point
-the Timeline at your own frontmatter keys.
+Proseview runs without a config file. A `.proseview.yaml` at the repo root can
+change where things live, set a word-count goal, pick which agent tab opens
+first, or point the Timeline at your own frontmatter keys. `proseview init`
+writes a starter file.
 
 ```yaml
 manuscript_path: manuscript/
@@ -171,30 +174,12 @@ discuss:
 - [The analytics](docs/analytics.md)
 - [EPUB export](docs/export.md)
 
-## 🛣️ Roadmap
+## 🛣️ Status
 
-This is alpha. Things that are working and things that are coming:
+Proseview is alpha. Everything described above works today. Still unfinished:
 
-- ✅ Live server, live reload, ProseMirror editor, highlights, TODOs,
-  notes, deep links, in-browser terminal, agent menu, and document-aware
-  Discuss conversations with Codex and Claude.
-- ✅ Vendored front-end dependencies. chart.js, marked, xterm and
-  friends ship with the package and load from `/vendor/`. ProseMirror
-  modules are pinned to specific versions on esm.sh.
-- ✅ Modularized front-end. The JS lives in seventeen topical files under
-  `templates/assets/js/`, concatenated at render time.
-- ✅ `proseview init` writes a starter `.proseview.yaml` so a fresh
-  novel repo gets a working configuration with one command.
-- ✅ Persisted UI prefs. Your highlight-pass toggles and theme choices
-  survive scene navigation and reloads.
-- ✅ AI proposal review. Suggested selection edits show the original and
-  proposed text with explicit accept, reject, undo, and save steps.
-- ✅ Discuss on either agent. Codex and Claude each have a dock tab and
-  their own conversation per document, running side by side.
 - 🚧 Skills on the Claude tab. Codex discovers them today; Claude's picker
   is still empty.
-- ✅ Evidence-first continuity and canon refactoring in Discuss, with cited
-  impact reports, intentional exceptions, proposal handoff, and verification.
 - 🚧 Frontmatter editor (status, where, todos) inside the scene viewer
   so you don't need to drop into your text editor for routine fields.
 
@@ -207,7 +192,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-That runs the unit suite plus an HTTP end-to-end tier that boots a real
+That runs 642 unit tests plus an HTTP end-to-end tier that boots a real
 `proseview` subprocess and drives every endpoint — saves and the conflict
 guard, TODOs and notes, the AI proposal bridge through the actual CLI, live
 reload over SSE, and PTY terminals — asserting on bytes written to disk.

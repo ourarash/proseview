@@ -134,15 +134,29 @@ def beat(page, ms: int = 900) -> None:
 
 
 def flow_highlights(page, base, docs):
-    """Editorial passes switching on over a scene, one at a time."""
+    """The Analysis panel, and passes switching on as their rows are clicked."""
     open_scene(page, base, SCENE)
+    beat(page, 900)
+    # Driven through the panel rather than toggleHighlight(): the clip exists
+    # to show where the switches are. Colour that arrives with nothing visibly
+    # touching it teaches a reader nothing about how to turn a pass on.
+    page.click("#sceneModal .discuss-open-btn")
+    page.wait_for_selector("#discussPanel:not([hidden])")
+    beat(page, 700)
+    page.click("#utilityTabAnalysis")
+    page.wait_for_selector("#scenePassList", state="visible")
     beat(page, 1400)
     for pass_name in ("repeats", "filter_verbs", "sensory", "passive_voice"):
-        page.evaluate("(name) => toggleHighlight(name)", pass_name)
-        beat(page, 1300)
-    beat(page, 1200)
+        row = page.locator("#pass-row-" + pass_name)
+        row.scroll_into_view_if_needed()
+        row.hover()
+        beat(page, 350)
+        row.click()
+        beat(page, 1400)
+    beat(page, 800)
     # Off again, so the clip ends on clean prose rather than a wall of colour.
-    page.evaluate("() => toggleAllHighlights && toggleAllHighlights()")
+    # With passes on, the All button reads Clear.
+    page.click("#scenePassAllBtn")
     beat(page, 900)
 
 
@@ -305,6 +319,14 @@ def main(argv: list[str]) -> int:
 def shot_dashboard(page, base, docs):
     page.goto(base, wait_until="load")
     page.wait_for_selector("#tab-overview", state="visible")
+    # One chapter opened to its scenes. This still leads the README, and a
+    # column of closed ch01..ch12 folders never shows what a chapter holds.
+    page.wait_for_selector("#sidebarTree .dir-toggle")
+    # Wide enough for a scene filename to sit on one line. The sidebar is
+    # drag-resizable, so this is a width a reader can have, not a mock-up.
+    page.evaluate("() => document.documentElement.style.setProperty('--sidebar-w', '300px')")
+    page.get_by_role("treeitem", name="ch01", exact=True).click()
+    page.wait_for_selector('#sidebarTree [data-path*="ch01/"]', state="visible")
     page.wait_for_timeout(1800)
 
 

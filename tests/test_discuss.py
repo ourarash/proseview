@@ -218,7 +218,10 @@ def test_state_store_is_external_atomic_and_user_only(tmp_path: Path, monkeypatc
     assert store.get("scene", "ch01/opening.md") == "thread-1"
     assert store.path == state_home / "proseview" / "discuss.json"
     assert not store.path.is_relative_to(root)
-    assert store.path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        # Windows has no POSIX mode bits to assert on; chmod there only
+        # toggles the read-only flag.
+        assert store.path.stat().st_mode & 0o777 == 0o600
     data = json.loads(store.path.read_text(encoding="utf-8"))
     assert str(root.resolve()) not in json.dumps(data)
 

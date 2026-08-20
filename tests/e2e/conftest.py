@@ -38,7 +38,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_REPO = REPO_ROOT / "fixtures" / "demo-repo"
 
 #: How long to wait for the server subprocess to answer its first request.
-BOOT_TIMEOUT = 30.0
+# Hosted runners are slow enough that a fixed 30s starves the server before
+# it binds: the macOS leg spends 21 minutes where Ubuntu spends two, and
+# every e2e test there errors with "did not write port". Local runs keep the
+# short deadline so a genuinely stuck server still fails fast.
+BOOT_TIMEOUT = 90.0 if os.environ.get("CI") else 30.0
 #: Watch interval handed to the server. Low so live-reload tests stay quick.
 WATCH_INTERVAL = 0.5
 

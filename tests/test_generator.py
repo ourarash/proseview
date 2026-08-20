@@ -150,7 +150,9 @@ def test_dashboard_embeds_every_fixture_scene():
 
     paths_json = _extract_js_literal(html, "paths")
     embedded = json.loads(paths_json)
-    expected = [str(s.path).removeprefix("manuscript/") for s in scenes]
+    # The embedded keys are posix on every platform, so compare like for
+    # like rather than against the OS-native separator.
+    expected = [s.path.as_posix().removeprefix("manuscript/") for s in scenes]
     assert sorted(embedded) == sorted(expected)
 
 

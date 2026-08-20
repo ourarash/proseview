@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -76,7 +77,9 @@ def test_manuscript_excluded_even_if_listed(tmp_path: Path):
 def test_small_markdown_file_ships_body_inline(tmp_path: Path):
     (tmp_path / "plans").mkdir()
     body = "# Plan\n\nParagraph.\n"
-    (tmp_path / "plans" / "book-plan.md").write_text(body, encoding="utf-8")
+    # newline="" so the file holds exactly these bytes. Text mode on Windows
+    # would translate to CRLF, and the assertions below compare bytes.
+    (tmp_path / "plans" / "book-plan.md").write_text(body, encoding="utf-8", newline="")
 
     tree = build_tree(tmp_path, Config())
     node = _find_descendant(tree, "plans/book-plan.md")
@@ -281,9 +284,15 @@ def test_scene_relative_path_matches_scene_discovery(relative: str, expected: st
     assert scene_relative_path(relative, "manuscript") == expected
 
 
+# "/tmp/secret.txt" is only absolute off Windows; there it is just a relative
+# path that happens to start with a slash, and the rejection has a different
+# reason. Name an absolute path the platform actually recognises.
+_ABSOLUTE_OUTSIDE = "C:/Windows/secret.txt" if os.name == "nt" else "/tmp/secret.txt"
+
+
 @pytest.mark.parametrize(
     "relative",
-    [".private/token.txt", "docs/.private/token.txt", ".git/config", "/tmp/secret.txt", "../secret.txt"],
+    [".private/token.txt", "docs/.private/token.txt", ".git/config", _ABSOLUTE_OUTSIDE, "../secret.txt"],
 )
 def test_visible_repository_path_rejects_internal_or_non_relative_paths(tmp_path: Path, relative: str):
     with pytest.raises(ValueError, match="safe visible repository"):

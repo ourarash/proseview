@@ -3,12 +3,31 @@ from __future__ import annotations
 import json
 import os
 import stat
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 from proseview.codex_app_server import CodexAppServer, CodexAuthError, CodexProtocolError
+
+
+def _runnable(path: Path) -> Path:
+    """Return the path that will actually launch *path* on this platform.
+
+    The stubs are Python scripts with a shebang, which POSIX honours once the
+    execute bit is set. Windows honours neither and refuses them outright with
+    "not a valid Win32 application", so there it gets a .cmd wrapper naming the
+    running interpreter, and that is what the client is pointed at.
+    """
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    if os.name != "nt":
+        return path
+    wrapper = path.with_suffix(".cmd")
+    wrapper.write_text(
+        f'@echo off\r\n"{sys.executable}" "{path}" %*\r\n', encoding="utf-8"
+    )
+    return wrapper
 
 
 def _fake_codex(tmp_path: Path, *, authenticated: bool = True, malformed: bool = False) -> Path:
@@ -36,8 +55,7 @@ for line in sys.stdin:
             print(json.dumps({{'method': 'turn/completed', 'params': {{'threadId': 'thread-1', 'turn': {{'id': 'turn-1', 'status': 'completed'}}}}}}), flush=True)
 """
     path.write_text(script, encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
-    return path
+    return _runnable(path)
 
 
 def test_client_initializes_checks_auth_and_dispatches_notifications(tmp_path: Path):
@@ -102,7 +120,7 @@ for line in sys.stdin:
 """,
         encoding="utf-8",
     )
-    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    executable = _runnable(executable)
     seen: list[dict] = []
     client = CodexAppServer(executable=str(executable), cwd=tmp_path, on_message=seen.append)
     try:
@@ -135,7 +153,7 @@ for name, body in {
 """,
         encoding="utf-8",
     )
-    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    executable = _runnable(executable)
     client = CodexAppServer(executable=str(executable), cwd=tmp_path)
     capabilities = client.inspect_capabilities()
     assert capabilities["stable_discuss_protocol"] is True
@@ -153,7 +171,7 @@ out.mkdir(parents=True)
 """,
         encoding="utf-8",
     )
-    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    executable = _runnable(executable)
     client = CodexAppServer(executable=str(executable), cwd=tmp_path)
     with pytest.raises(CodexProtocolError, match="unsupported"):
         client.inspect_capabilities()

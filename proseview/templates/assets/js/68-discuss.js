@@ -1,13 +1,14 @@
-        // ── Document-aware Discuss with Codex ─────────────────────────────
+        // ── Project conversations with document-aware turns ──────────────
         var _discussConversationId = null;
         var _discussSnapshot = null;
         var _discussDocumentKey = '';
+        var _discussDraftDocument = null;
         var _discussEventSource = null;
         var _discussAttachments = [];
         var _discussSelection = '';
         var _discussSelectionRange = null;
         var _discussLiveDocument = null;
-        var _discussIncludeCurrentDocument = true;
+        var _discussIncludeCurrentDocument = false;
         var _discussContextChoices = [];
         var _discussContextActiveIndex = 0;
         var _discussMentionRange = null;
@@ -55,12 +56,9 @@
         }
 
         function _saveDiscussAgentLocal() {
-            var input = document.getElementById('discussInput');
             var previous = _discussAgentLocal[_discussAgent] || {};
             _discussAgentLocal[_discussAgent] = {
-                draft: input ? input.value : '',
                 attachments: _discussAttachments.slice(),
-                includeCurrentDocument: _discussIncludeCurrentDocument,
                 selectedSkill: _discussSelectedSkill,
                 conversationId: _discussConversationId || previous.conversationId || null
             };
@@ -69,9 +67,7 @@
         function _restoreDiscussAgentLocal() {
             var bag = _discussAgentLocal[_discussAgent] || {};
             _discussAttachments = (bag.attachments || []).slice();
-            _discussIncludeCurrentDocument = bag.includeCurrentDocument !== false;
             _discussSelectedSkill = bag.selectedSkill || null;
-            return bag.draft || '';
         }
 
         // Rename every piece of chrome that used to say "Codex" unconditionally.
@@ -84,7 +80,7 @@
             var stop = document.getElementById('discussStop');
             if (stop) stop.textContent = 'Stop ' + label;
             var inputLabel = document.getElementById('discussInputLabel');
-            if (inputLabel) inputLabel.textContent = 'Ask ' + label + ' about this document';
+            if (inputLabel) inputLabel.textContent = 'Ask ' + label + ' about your project';
         }
 
         function showDiscussAgentTab(agent, trigger) {
@@ -97,7 +93,10 @@
             // the tab showing an empty log that never connected.
             var live = panel && !panel.hidden && log && !log.hidden && _discussConversationId;
             if (live && agent === _discussAgent) { _showDiscussBody(); return; }
-            if (panel && !panel.hidden) _saveDiscussAgentLocal();
+            if (panel && !panel.hidden) {
+                saveDiscussDraft();
+                _saveDiscussAgentLocal();
+            }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             _discussAgent = agent;
             try { localStorage.setItem(DISCUSS_AGENT_KEY, agent); } catch (e) {}
@@ -158,25 +157,124 @@
         var _discussLocalErrorReload = false;
         var _discussReconnectTimer = null;
 
-        // Per agent as well as per document: the two tabs are separate
-        // conversations, so a draft typed in one must not appear in the other.
+        // Drafts belong to the provider's project conversation. Their document
+        // is stored separately so navigation cannot silently change context
+        // underneath text the writer already composed.
         function discussDraftKey(doc, agent) {
+            return 'proseview-draft:' + (agent || _discussAgent);
+        }
+
+        function legacyDiscussDraftKey(doc, agent) {
             return 'proseview-draft:' + (agent || _discussAgent) + ':' + discussDocumentKey(doc);
+        }
+
+        function discussDraftDocumentKey(agent) {
+            return discussDraftKey(null, agent) + ':document';
+        }
+
+        function discussIncludeCurrentDocumentKey(agent) {
+            return discussDraftKey(null, agent) + ':include-current-document';
+        }
+
+        function discussTurnDocument() {
+            return _discussDraftDocument || discussDocument();
+        }
+
+        function discussTaskDocument(target) {
+            var taskDocument = target && target.document;
+            if (taskDocument && (taskDocument.kind === 'scene' || taskDocument.kind === 'file')
+                && typeof taskDocument.path === 'string' && taskDocument.path) {
+                return {kind: taskDocument.kind, path: taskDocument.path};
+            }
+            return null;
+        }
+
+        function discussLiveDocumentFor(targetDocument) {
+            var current = discussDocument();
+            if (!current || !targetDocument || current.kind !== targetDocument.kind
+                || current.path !== targetDocument.path || targetDocument.kind !== 'scene') return null;
+            return typeof currentSceneLiveDocumentSnapshot === 'function'
+                ? currentSceneLiveDocumentSnapshot() : null;
         }
 
         function saveDiscussDraft() {
             var input = document.getElementById('discussInput');
-            if (!_discussDocumentKey || !input) return;
-            var key = 'proseview-draft:' + _discussAgent + ':' + _discussDocumentKey;
+            if (!input) return;
+            var key = discussDraftKey(null, _discussAgent);
+            if (input.value && !_discussDraftDocument) _discussDraftDocument = discussDocument();
+            if (!input.value && !_discussSelection && !_discussPendingAction
+                && !_discussRepositoryAction && !_discussIncludeCurrentDocument) {
+                _discussDraftDocument = null;
+            }
             try {
                 if (input.value) sessionStorage.setItem(key, input.value);
                 else sessionStorage.removeItem(key);
+                if (_discussDraftDocument && (input.value || _discussIncludeCurrentDocument)) {
+                    sessionStorage.setItem(discussDraftDocumentKey(_discussAgent), JSON.stringify(_discussDraftDocument));
+                } else {
+                    sessionStorage.removeItem(discussDraftDocumentKey(_discussAgent));
+                }
+                if (_discussIncludeCurrentDocument) {
+                    sessionStorage.setItem(discussIncludeCurrentDocumentKey(_discussAgent), 'true');
+                } else sessionStorage.removeItem(discussIncludeCurrentDocumentKey(_discussAgent));
             } catch(e) {}
         }
 
         function restoreDiscussDraft(doc, agent) {
-            try { return sessionStorage.getItem(discussDraftKey(doc, agent)) || ''; }
-            catch(e) { return ''; }
+            try {
+                var key = discussDraftKey(doc, agent);
+                var draft = sessionStorage.getItem(key) || '';
+                var rawDocument = sessionStorage.getItem(discussDraftDocumentKey(agent));
+                var savedDocument = rawDocument ? JSON.parse(rawDocument) : null;
+                _discussIncludeCurrentDocument = sessionStorage.getItem(
+                    discussIncludeCurrentDocumentKey(agent)
+                ) === 'true';
+                if (!draft && doc) {
+                    var legacyKey = legacyDiscussDraftKey(doc, agent);
+                    var legacyDraft = sessionStorage.getItem(legacyKey) || '';
+                    if (legacyDraft) {
+                        draft = legacyDraft;
+                        savedDocument = Object.assign({}, doc);
+                        sessionStorage.setItem(key, draft);
+                        sessionStorage.setItem(discussDraftDocumentKey(agent), JSON.stringify(savedDocument));
+                        sessionStorage.removeItem(legacyKey);
+                    }
+                }
+                _discussDraftDocument = savedDocument && (savedDocument.kind === 'scene' || savedDocument.kind === 'file')
+                    && typeof savedDocument.path === 'string' ? savedDocument : null;
+                if (draft && !_discussDraftDocument && doc) _discussDraftDocument = Object.assign({}, doc);
+                return draft;
+            }
+            catch(e) { _discussIncludeCurrentDocument = false; return ''; }
+        }
+
+        function hasLegacyDiscussDraft(doc, agent) {
+            if (!doc) return false;
+            try { return !!sessionStorage.getItem(legacyDiscussDraftKey(doc, agent)); }
+            catch(e) { return false; }
+        }
+
+        function activateLegacyDiscussDraft(doc, agent) {
+            var input = document.getElementById('discussInput');
+            if (!input || input.value || _discussDraftDocument || _discussSelection
+                || _discussPendingAction || _discussRepositoryAction || !doc) return false;
+            var legacyKey = legacyDiscussDraftKey(doc, agent);
+            try {
+                var draft = sessionStorage.getItem(legacyKey) || '';
+                if (!draft) return false;
+                var savedDocument = {kind: doc.kind, path: doc.path};
+                sessionStorage.setItem(discussDraftKey(doc, agent), draft);
+                sessionStorage.setItem(discussDraftDocumentKey(agent), JSON.stringify(savedDocument));
+                sessionStorage.removeItem(legacyKey);
+                input.value = draft;
+                _discussDraftDocument = savedDocument;
+                _discussPreservedDraft = draft;
+                _saveDiscussAgentLocal();
+                renderDiscussContext();
+                renderDiscussTaskMode();
+                renderDiscussContextOptions();
+                return true;
+            } catch(e) { return false; }
         }
 
         function discussDocument() {
@@ -268,15 +366,15 @@
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
             clearTimeout(_discussReconnectTimer);
-            saveDiscussDraft();
             _discussReturnFocus = _returnFocusTarget(trigger);
             _discussSelection = options.selection !== undefined ? String(options.selection || '') : captureDiscussSelection();
             _discussSelectionRange = options.selectionRange && typeof options.selectionRange.start === 'number'
                 ? {start: options.selectionRange.start, end: options.selectionRange.end}
                 : null;
             _discussLiveDocument = options.liveDocument || null;
+            _discussDraftDocument = null;
             _discussAttachments = [];
-            _discussIncludeCurrentDocument = true;
+            _discussIncludeCurrentDocument = false;
             _discussPendingAction = options.actionId || null;
             _discussRepositoryAction = null;
             _discussRetryOfTaskId = null;
@@ -311,10 +409,16 @@
             var key = discussDocumentKey(doc);
             _discussDocumentKey = key;
             var input = document.getElementById('discussInput');
-            var bag = _discussAgentLocal[_discussAgent];
-            var carriedDraft = _restoreDiscussAgentLocal();
-            _discussPreservedDraft = bag ? carriedDraft : restoreDiscussDraft(doc, _discussAgent);
+            _restoreDiscussAgentLocal();
+            _discussPreservedDraft = restoreDiscussDraft(doc, _discussAgent);
             input.value = requestedAutoRun ? '' : _discussPreservedDraft;
+            if (requestedSelection || requestedAction) {
+                _discussDraftDocument = Object.assign({}, doc);
+                _discussIncludeCurrentDocument = false;
+            } else if (input.value && !_discussDraftDocument) {
+                _discussDraftDocument = Object.assign({}, doc);
+            }
+            renderDiscussContext();
             var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
             discussApi('/api/discuss/conversations/open', openBody).then(function(data) {
                 if (_discussDocumentKey !== key) return;
@@ -385,6 +489,8 @@
                 _discussReturnFocus = (trigger && trigger.getClientRects && trigger.getClientRects().length)
                     ? trigger : document.querySelector('#sceneModal .scene-back-btn');
                 _discussSelection = options.selection;
+                _discussDraftDocument = Object.assign({}, doc);
+                _discussIncludeCurrentDocument = false;
                 _discussSelectionRange = options.selectionRange || null;
                 _discussLiveDocument = options.liveDocument || null;
                 _discussPendingAction = options.actionId || null;
@@ -406,6 +512,7 @@
 
         function closeDiscuss() {
             saveDiscussDraft();
+            _saveDiscussAgentLocal();
             closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
@@ -422,6 +529,8 @@
         function hideDiscussForTerminal() {
             var panel = document.getElementById('discussPanel');
             if (panel && !panel.hidden) {
+                saveDiscussDraft();
+                _saveDiscussAgentLocal();
                 panel.hidden = true;
                 document.body.classList.remove('discuss-open');
             }
@@ -818,7 +927,25 @@
             if (!panel || panel.hidden) return;
             var doc = discussDocument();
             var key = discussDocumentKey(doc);
-            if (doc && key !== _discussDocumentKey) openDiscuss(_discussReturnFocus);
+            if (!doc || key === _discussDocumentKey) return;
+            _discussDocumentKey = key;
+            renderDiscussContext();
+            renderDiscussTaskMode();
+            var waitingLegacyDraft = hasLegacyDiscussDraft(doc, _discussAgent);
+            if (!_discussDraftDocument && activateLegacyDiscussDraft(doc, _discussAgent)) {
+                document.getElementById('discussAnnouncement').textContent =
+                    'Conversation kept open. Restored the saved draft for ' + doc.path + '.';
+            } else if (_discussDraftDocument && waitingLegacyDraft) {
+                document.getElementById('discussAnnouncement').textContent =
+                    'Conversation kept open. Your current draft is still here. A saved draft for this file '
+                    + 'is waiting and will appear after you send or clear this draft.';
+            } else {
+                document.getElementById('discussAnnouncement').textContent = _discussIncludeCurrentDocument
+                    ? 'Conversation kept open. ' + discussTurnDocument().path + ' remains attached.'
+                    : _discussDraftDocument
+                    ? 'Conversation kept open. Your draft is still here; no file is attached.'
+                    : 'Conversation kept open. No file is attached.';
+            }
         }
 
         function connectDiscussEvents() {
@@ -1573,8 +1700,13 @@
             restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
                 var target = log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"] button');
-                if (target) { target.focus(); document.getElementById('discussAnnouncement').textContent = discussAgentLabel() + ' is requesting approval'; }
-                _discussLastApproval = '';
+                // An earlier scheduled snapshot may race the approval SSE
+                // event. Keep the id until a snapshot renders its controls.
+                if (target) {
+                    target.focus();
+                    document.getElementById('discussAnnouncement').textContent = discussAgentLabel() + ' is requesting approval';
+                    _discussLastApproval = '';
+                }
             }
         }
 
@@ -1808,17 +1940,21 @@
                     list.appendChild(item);
                 });
                 card.appendChild(list);
-                var propose = document.createElement('button'); propose.type = 'button'; propose.className = 'discuss-secondary'; propose.textContent = 'Propose a revision';
-                propose.onclick = function() {
-                    _discussSelection = target.selection || '';
-                    _discussSelectionRange = target.range || null;
-                    _discussLiveDocument = typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null;
-                    _discussPendingAction = 'rephrase';
-                    _discussRetryOfTaskId = null;
-                    var input = document.getElementById('discussInput'); input.value = 'Address the critique while preserving the passage’s facts, point of view, and tense.';
-                    renderDiscussContext(); renderDiscussTaskMode(); saveDiscussDraft(); input.focus();
-                };
-                card.appendChild(propose);
+                if (discussTaskDocument(target)) {
+                    var propose = document.createElement('button'); propose.type = 'button'; propose.className = 'discuss-secondary'; propose.textContent = 'Propose a revision';
+                    propose.onclick = function() {
+                        var taskDocument = discussTaskDocument(target);
+                        _discussSelection = target.selection || '';
+                        _discussSelectionRange = target.range || null;
+                        _discussDraftDocument = taskDocument;
+                        _discussLiveDocument = discussLiveDocumentFor(taskDocument);
+                        _discussPendingAction = 'rephrase';
+                        _discussRetryOfTaskId = null;
+                        var input = document.getElementById('discussInput'); input.value = 'Address the critique while preserving the passage’s facts, point of view, and tense.';
+                        renderDiscussContext(); renderDiscussTaskMode(); saveDiscussDraft(); input.focus();
+                    };
+                    card.appendChild(propose);
+                }
             } else if (result.kind === 'alternatives') {
                 card.appendChild(elementWith('discuss-task-summary', result.summary || 'Rewrite alternatives are ready.'));
                 card.appendChild(elementWith('discuss-task-meta', discussAlternativesStateSummary(task, result)));
@@ -1828,12 +1964,15 @@
                     review.onclick = function() { reviewDiscussTask(task, review); }; card.appendChild(review);
                 }
             }
-            if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'stale') {
+            if ((task.status === 'failed' || task.status === 'cancelled' || task.status === 'stale')
+                && discussTaskDocument(target)) {
                 var retry = document.createElement('button'); retry.type = 'button'; retry.className = 'discuss-secondary'; retry.textContent = 'Try again';
                 retry.onclick = function() {
+                    var taskDocument = discussTaskDocument(target);
                     _discussSelection = target.selection || '';
                     _discussSelectionRange = target.range || null;
-                    _discussLiveDocument = typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null;
+                    _discussDraftDocument = taskDocument;
+                    _discussLiveDocument = discussLiveDocumentFor(taskDocument);
                     _discussPendingAction = task.action_id;
                     _discussRetryOfTaskId = task.id;
                     var input = document.getElementById('discussInput');
@@ -1893,7 +2032,7 @@
             var status = document.getElementById('discussHistoryStatus');
             list.replaceChildren();
             if (!rows.length) {
-                status.textContent = 'No saved conversations for this document yet.'; status.hidden = false;
+                status.textContent = 'No saved conversations for this project yet.'; status.hidden = false;
                 return;
             }
             status.hidden = true;
@@ -1974,7 +2113,7 @@
 
         function clearDiscussHistory() {
             if (!_discussConversationId) return;
-            if (!window.confirm('Clear assistance results for this document? This cannot be undone.')) return;
+            if (!window.confirm('Clear assistance results for this conversation? This cannot be undone.')) return;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/tasks/clear', {})
                 .then(function() { scheduleDiscussSnapshot(); document.getElementById('discussAnnouncement').textContent = 'Assistance results cleared'; })
                 .catch(function(error) { renderDiscussError(error.message); });
@@ -2069,19 +2208,41 @@
 
         function renderDiscussContext() {
             var context = document.getElementById('discussContext'); context.replaceChildren();
-            var doc = discussDocument();
+            var doc = discussTurnDocument();
             if (doc && _discussIncludeCurrentDocument) {
                 var current = elementWith('discuss-chip discuss-chip-current', doc.path);
-                current.title = 'Current document';
+                current.title = 'File attached to the next question';
                 var removeCurrent = document.createElement('button');
                 removeCurrent.type = 'button'; removeCurrent.textContent = '×';
                 removeCurrent.setAttribute('aria-label', 'Remove current document ' + doc.path);
                 removeCurrent.onclick = function() {
                     _discussIncludeCurrentDocument = false;
+                    if (!document.getElementById('discussInput').value && !_discussSelection
+                        && !_discussPendingAction && !_discussRepositoryAction) {
+                        _discussDraftDocument = null;
+                    }
+                    saveDiscussDraft();
                     renderDiscussContext();
-                    document.getElementById('discussAnnouncement').textContent = 'Current document removed from context';
+                    document.getElementById('discussAnnouncement').textContent = 'Document removed from context';
                 };
                 current.appendChild(removeCurrent); context.appendChild(current);
+            } else if (!_discussSelection && !_discussPendingAction && !_discussRepositoryAction) {
+                var visibleDocument = discussDocument();
+                if (visibleDocument) {
+                    var attachCurrent = document.createElement('button');
+                    attachCurrent.type = 'button';
+                    attachCurrent.className = 'discuss-chip discuss-chip-attach';
+                    attachCurrent.textContent = 'Attach current · ' + visibleDocument.path;
+                    attachCurrent.setAttribute('aria-label', 'Attach current document ' + visibleDocument.path);
+                    attachCurrent.onclick = function() {
+                        _discussDraftDocument = Object.assign({}, visibleDocument);
+                        _discussIncludeCurrentDocument = true;
+                        saveDiscussDraft();
+                        renderDiscussContext();
+                        document.getElementById('discussAnnouncement').textContent = visibleDocument.path + ' attached to the next question';
+                    };
+                    context.appendChild(attachCurrent);
+                }
             }
             _discussAttachments.forEach(function(attachment, index) {
                 var chip = elementWith('discuss-chip', attachment.path);
@@ -2096,9 +2257,11 @@
                 selection.appendChild(document.createTextNode('Selection · ' + words + ' words · “' + _discussSelection.slice(0, 72) + (_discussSelection.length > 72 ? '…' : '') + '”'));
                 var removeSelection = document.createElement('button');
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
-                removeSelection.setAttribute('aria-label', 'Remove selected text from Codex context');
+                removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
                 removeSelection.onclick = function() {
-                    _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussPendingAction = null; _discussRetryOfTaskId = null; renderDiscussContext(); renderDiscussTaskMode();
+                    _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussPendingAction = null; _discussRetryOfTaskId = null;
+                    if (!document.getElementById('discussInput').value) _discussDraftDocument = null;
+                    saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
                     document.getElementById('discussAnnouncement').textContent = 'Selection removed from context';
                 };
                 selection.appendChild(removeSelection);
@@ -2249,7 +2412,7 @@
             var recents = recentDiscussInstructions().filter(function(value) { return presets.indexOf(value) < 0; });
             document.getElementById('discussInput').placeholder = _discussSelection
                 ? 'Ask anything about this selection…'
-                : 'Ask about this document…';
+                : 'Ask anything about your story…';
             node.hidden = !(_discussSelection && (presets.length || recents.length));
             if (!node.hidden) {
                 var label = document.createElement('strong'); label.textContent = 'Presets'; node.appendChild(label);
@@ -2484,7 +2647,9 @@
                     _discussSelectedSkill = null;
                     _discussAutoRun = false;
                     _discussAttachments = [];
-                    _discussIncludeCurrentDocument = true;
+                    _discussIncludeCurrentDocument = false;
+                    if (!document.getElementById('discussInput').value) _discussDraftDocument = null;
+                    saveDiscussDraft();
                     closeDiscussContextPicker();
                     renderDiscussContext();
                     renderDiscussTaskMode();
@@ -2529,6 +2694,8 @@
             if (_discussPendingAction) { runDiscussSelectionAction(); return; }
             if (_discussRepositoryAction) { runDiscussRepositoryAction(); return; }
             if (!question || !_discussConversationId || button.disabled) return;
+            var turnDocument = discussTurnDocument();
+            if (!turnDocument) return;
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             clearDiscussError();
             button.disabled = true;
@@ -2537,6 +2704,7 @@
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: question,
+                document: turnDocument,
                 selection: _discussSelection,
                 selection_range: _discussSelectionRange,
                 live_document: _discussLiveDocument,
@@ -2544,9 +2712,14 @@
                 include_current_document: _discussIncludeCurrentDocument,
                 skill: _discussSelectedSkill
             }).then(function() {
-                rememberDiscussInstruction(question); input.value = ''; saveDiscussDraft(); _discussSelectedSkill = null;
+                rememberDiscussInstruction(question); input.value = '';
+                if (!_discussSelection && !_discussIncludeCurrentDocument) _discussDraftDocument = null;
+                saveDiscussDraft(); _discussSelectedSkill = null;
+                var restoredLegacyDraft = activateLegacyDiscussDraft(discussDocument(), _discussAgent);
                 closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
-                document.getElementById('discussAnnouncement').textContent = _discussSelection
+                document.getElementById('discussAnnouncement').textContent = restoredLegacyDraft
+                    ? 'Question queued. Restored another saved draft for this file.'
+                    : _discussSelection
                     ? 'Question queued. Selection remains attached for follow-up questions.'
                     : 'Question queued';
             }).catch(function(error) {
@@ -2562,6 +2735,7 @@
 
         function startDiscussRepositoryAction(actionId) {
             _discussRepositoryAction = actionId;
+            if (!_discussDraftDocument) _discussDraftDocument = discussDocument();
             _discussPendingAction = null;
             _discussSelectedSkill = null;
             renderDiscussTaskMode();
@@ -2574,6 +2748,7 @@
         function cancelDiscussRepositoryAction() {
             if (!_discussRepositoryAction) return;
             _discussRepositoryAction = null;
+            if (!document.getElementById('discussInput').value && !_discussSelection) _discussDraftDocument = null;
             renderDiscussTaskMode();
             renderDiscussSnapshot();
             document.getElementById('discussInput').focus();
@@ -2586,6 +2761,8 @@
             var question = input.value.trim();
             var button = document.getElementById('discussSend');
             if (!actionId || !_discussConversationId || button.disabled) return;
+            var turnDocument = discussTurnDocument();
+            if (!turnDocument) return;
             if (actionId === 'canon_refactor' && !question) {
                 input.focus();
                 document.getElementById('discussAnnouncement').textContent = 'Describe the old and new canon fact first';
@@ -2601,12 +2778,14 @@
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: question,
+                document: turnDocument,
                 action_id: actionId,
                 verify_of_task_id: verifyOfTaskId || ''
             }).then(function() {
                 if (question) rememberDiscussInstruction(question);
                 input.value = '';
                 _discussRepositoryAction = null;
+                _discussDraftDocument = null;
                 saveDiscussDraft(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. This scan cannot change manuscript files.';
             }).catch(function(error) {
@@ -2630,7 +2809,9 @@
             var selectionRange = rangeOverride || _discussSelectionRange;
             var liveDocument = liveDocumentOverride || _discussLiveDocument;
             var retryOfTaskId = retryOfOverride || _discussRetryOfTaskId;
+            var turnDocument = discussTurnDocument();
             if (!actionId || !selection || !_discussConversationId) return;
+            if (!turnDocument) return;
             if (button.disabled) {
                 retryCount = Number(retryCount || 0);
                 if (retryCount < 100) {
@@ -2648,6 +2829,7 @@
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: '',
+                document: turnDocument,
                 selection: selection,
                 selection_range: selectionRange,
                 live_document: liveDocument,
@@ -2661,7 +2843,7 @@
                 if (custom) rememberDiscussInstruction(custom);
                 input.value = _discussAutoRun ? _discussPreservedDraft : '';
                 _discussPendingAction = null; _discussRetryOfTaskId = null; _discussSelectedSkill = null; _discussAutoRun = false; saveDiscussDraft();
-                _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussDraftDocument = null; saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. The manuscript will not change.';
             }).catch(function(error) {
                 delete _discussAutoReviewRequests[requestId];
@@ -2705,7 +2887,16 @@
                 event.preventDefault(); event.stopPropagation(); closeDiscussContextPicker();
             } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
         });
-        document.getElementById('discussInput').addEventListener('input', function() { saveDiscussDraft(); renderDiscussContextOptions(); });
+        document.getElementById('discussInput').addEventListener('input', function() {
+            var beforeDocument = discussDocumentKey(discussTurnDocument());
+            saveDiscussDraft();
+            if (activateLegacyDiscussDraft(discussDocument(), _discussAgent)) {
+                document.getElementById('discussAnnouncement').textContent =
+                    'Restored another saved draft for this file.';
+            }
+            if (discussDocumentKey(discussTurnDocument()) !== beforeDocument) renderDiscussContext();
+            renderDiscussContextOptions();
+        });
         document.addEventListener('mousedown', function(event) {
             var picker = document.getElementById('discussContextPicker');
             if (picker.hidden || picker.contains(event.target) || event.target === document.getElementById('discussContextButton') || event.target === document.getElementById('discussInput')) return;

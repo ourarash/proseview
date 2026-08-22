@@ -451,7 +451,7 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabCodex" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussAgentTab('codex', this)" title="Discuss this document with Codex">Codex</button><button type="button" id="utilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)" title="Discuss this document with Claude">Claude</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
+                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabCodex" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussAgentTab('codex', this)" title="Discuss this project with Codex">Codex</button><button type="button" id="utilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)" title="Discuss this project with Claude">Claude</button><button type="button" id="utilityTabTerminal" class="utility-tab" role="tab" aria-selected="false" onclick="showRightTerminal()">Terminal</button>
                 </div>
                 <div class="discuss-heading"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div>
                 <button type="button" class="discuss-close" id="discussClose" onclick="closeDiscuss()" aria-label="Close the agent panel">&times;</button>
@@ -466,7 +466,7 @@
                     <button type="button" class="editor-btn" onclick="clearSceneHistory()" style="width: 100%; color: var(--red);">Clear File History...</button>
                 </div>
             </div>
-            <div id="discussContext" class="discuss-context" aria-label="Attached context"></div>
+            <div id="discussContext" class="discuss-context" aria-label="Conversation context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false" tabindex="-1"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
             <div id="discussComposerArea" class="discuss-composer-area">
@@ -487,8 +487,8 @@
                     <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
                 </div>
                 <div id="discussNewConversationHint" class="discuss-control-hint" role="status" hidden></div>
-                <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about this document</label>
-                <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask about this document…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
+                <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about your project</label>
+                <textarea id="discussInput" rows="3" maxlength="32768" placeholder="Ask anything about your story…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
                 <div class="discuss-send-row"><span id="discussHint">Enter to send · Shift+Enter for newline</span><button id="discussSend" type="button" onclick="sendDiscussQuestion()">Send</button></div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
             </div>
@@ -497,7 +497,7 @@
     <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription" aria-busy="false">
         <form method="dialog">
             <div class="discuss-picker-header"><h2 id="discussNewConversationTitle">Start a new conversation?</h2></div>
-            <p id="discussNewConversationDescription">This starts a blank conversation for this document. You can reopen the current conversation later from History.</p>
+            <p id="discussNewConversationDescription">This starts a blank conversation for this project. You can reopen the current conversation later from History.</p>
             <p id="discussNewConversationStatus" class="discuss-pending-status" role="status" aria-live="polite" hidden></p>
             <p id="discussNewConversationError" class="discuss-error" role="alert" hidden></p>
             <div class="discuss-picker-actions"><button id="discussNewConversationCancel" class="discuss-secondary" value="cancel" autofocus>Keep conversation</button><button id="discussNewConversationConfirm" class="discuss-primary" value="default" onclick="confirmNewDiscussConversation(event)">Start new conversation</button></div>
@@ -506,7 +506,7 @@
     <dialog id="discussHistoryDialog" class="discuss-context-picker discuss-history-dialog" aria-labelledby="discussHistoryTitle" aria-describedby="discussHistoryDescription" aria-busy="false">
         <form method="dialog">
             <div class="discuss-picker-header"><h2 id="discussHistoryTitle">Conversation history</h2><button id="discussHistoryClose" class="discuss-secondary" value="cancel" aria-label="Close conversation history">Done</button></div>
-            <p id="discussHistoryDescription">Conversations for the document you are viewing.</p>
+            <p id="discussHistoryDescription">Conversations for this project.</p>
             <p id="discussHistoryStatus" class="discuss-pending-status" role="status" aria-live="polite">Loading conversations…</p>
             <div id="discussHistoryList" class="discuss-history-list"></div>
         </form>

@@ -1346,6 +1346,14 @@ class _Conversation:
         self.active_request_id: str | None = None
         self.active_turn_id: str | None = None
         self.active_done: threading.Event | None = None
+        # Turn timing. Without it the browser cannot say "running 0:42", and a
+        # turn that shows no clock is indistinguishable from a dead one. The
+        # wall clock is for display; durations come from a monotonic reading so
+        # a clock change cannot produce a negative one.
+        self.active_turn_started_at: float | None = None
+        self.active_turn_started_monotonic: float | None = None
+        self.active_turn_phase: str = ""
+        self.last_turn: dict[str, Any] = {}
         self.worker: threading.Thread | None = None
         self.events = EventBuffer()
         self.subscribers: list[queue.Queue[BrowserEvent]] = []
@@ -1353,6 +1361,48 @@ class _Conversation:
         # Serializes slow Codex history reads without blocking fast browser
         # operations such as queueing a question on ``self.lock``.
         self.restore_lock = threading.Lock()
+
+    def begin_turn(self) -> None:
+        """Start the clock when a question is accepted, before there is a turn id.
+
+        Booting a local agent takes seconds, and those seconds are part of the
+        wait even though no turn exists yet to attribute them to.
+        """
+        with self.lock:
+            self.active_turn_started_at = time.time()
+            self.active_turn_started_monotonic = time.monotonic()
+            self.active_turn_phase = "starting"
+            self.last_turn = {}
+
+    def finish_turn(self, status: str, *, error: str = "") -> dict[str, Any]:
+        """Close the running turn and record what the browser should say next.
+
+        Idempotent on purpose: three paths end one turn -- the agent's
+        ``turn/completed``, a stop the writer asked for, and a transport
+        failure -- and whichever arrives first owns the record.
+        """
+        with self.lock:
+            if self.active_turn_started_monotonic is None:
+                return {}
+            self.last_turn = {
+                "status": status,
+                "duration_ms": int((time.monotonic() - self.active_turn_started_monotonic) * 1000),
+                "finished_at": time.time(),
+                "steps": len(self.activities),
+                "error": _bounded_text(error, 4000),
+                "turn_id": self.active_turn_id or "",
+                "client_request_id": self.active_request_id or "",
+            }
+            self.active_turn_started_at = None
+            self.active_turn_started_monotonic = None
+            self.active_turn_phase = ""
+            return dict(self.last_turn)
+
+    def elapsed_ms(self) -> int | None:
+        with self.lock:
+            if self.active_turn_started_monotonic is None:
+                return None
+            return int((time.monotonic() - self.active_turn_started_monotonic) * 1000)
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
@@ -1376,6 +1426,11 @@ class _Conversation:
                 "tasks": [dict(value) for value in self.tasks.values()],
                 "active_request_id": self.active_request_id,
                 "active_turn_id": self.active_turn_id,
+                # Elapsed is computed here rather than from a start timestamp in
+                # the browser: the two clocks are not the same clock.
+                "active_turn_phase": self.active_turn_phase,
+                "active_turn_elapsed_ms": self.elapsed_ms(),
+                "last_turn": dict(self.last_turn),
                 "event_cursor": self.events.latest_id,
             }
 
@@ -2439,6 +2494,10 @@ class DiscussManager:
         conversation.tasks = {}
         conversation.active_task_id = None
         conversation.active_request_id = None
+        conversation.active_turn_started_at = None
+        conversation.active_turn_started_monotonic = None
+        conversation.active_turn_phase = ""
+        conversation.last_turn = {}
         conversation.connection = "Live"
         conversation.unavailable_reason = ""
 
@@ -2581,6 +2640,7 @@ class DiscussManager:
                 queued = conversation.pending.popleft()
                 conversation.active_request_id = queued.request_id
                 conversation.active_task_id = queued.task_id
+                conversation.begin_turn()
                 if queued.task_id and queued.task_id in conversation.tasks:
                     conversation.tasks[queued.task_id]["status"] = "running"
             conversation.publish("turn.preparing", {"client_request_id": queued.request_id})
@@ -2646,6 +2706,7 @@ class DiscussManager:
                     raise RuntimeError("The agent did not return a turn id")
                 if not done.is_set():
                     conversation.active_turn_id = turn_id
+                    conversation.active_turn_phase = "working"
                 if queued.task_id and queued.task_id in conversation.tasks:
                     conversation.tasks[queued.task_id]["turn_id"] = turn_id
                 conversation.publish("turn.started", {"turn_id": turn_id, "client_request_id": queued.request_id})
@@ -2671,6 +2732,7 @@ class DiscussManager:
                     conversation.tasks[queued.task_id]["status"] = "failed"
                     conversation.tasks[queued.task_id]["error"] = _bounded_text(str(exc), 4000)
                     self._task_context.pop(queued.task_id, None)
+                conversation.finish_turn("failed", error=str(exc))
                 conversation.active_turn_id = None
                 conversation.active_done = None
                 conversation.active_request_id = None
@@ -2767,18 +2829,39 @@ class DiscussManager:
                 else:
                     conversation.progress.append(str(event.get("text") or ""))
             elif event_type == "progress.delta":
-                conversation.progress.append(str(event.get("text") or ""))
+                text = str(event.get("text") or "")
+                # A heartbeat repeated twenty times is still one fact. Codex
+                # streams partial deltas, which never repeat exactly; only whole
+                # lines are collapsed.
+                if not (text.endswith("\n") and conversation.progress[-1:] == [text]):
+                    conversation.progress.append(text)
                 conversation.progress = conversation.progress[-100:]
             elif event_type == "plan.updated":
                 conversation.plan = list(event.get("plan") or [])
             elif event_type == "activity.updated":
                 activity = event.get("activity") or {}
                 if activity.get("id"):
+                    activity["turn_id"] = event.get("turn_id") or conversation.active_turn_id or ""
+                    # Merge rather than replace: an update reports what changed,
+                    # and a completion that knows only the outcome must not
+                    # erase the command the start recorded.
+                    existing = conversation.activities.get(str(activity["id"]))
+                    if existing:
+                        merged = dict(existing)
+                        merged.update({
+                            key: value for key, value in activity.items()
+                            if value not in ("", None, [], {})
+                        })
+                        activity = merged
                     conversation.activities[str(activity["id"])] = activity
             elif event_type == "turn.completed":
                 for approval in conversation.approvals.values():
                     if approval.get("status") == "pending":
                         approval["status"] = "expired"
+                conversation.finish_turn(
+                    str(event.get("status") or "completed"),
+                    error=str(event.get("error") or ""),
+                )
                 conversation.active_turn_id = None
                 if conversation.active_task_id and conversation.active_task_id in conversation.tasks:
                     task = conversation.tasks[conversation.active_task_id]
@@ -2979,6 +3062,7 @@ class DiscussManager:
                 for approval in conversation.approvals.values():
                     if approval.get("status") == "pending":
                         approval["status"] = "expired"
+                conversation.finish_turn("failed", error=message)
                 conversation.active_turn_id = None
                 if conversation.active_done is not None:
                     conversation.active_done.set()
@@ -3034,7 +3118,7 @@ class DiscussManager:
             "protocol_request_id": message["id"],
             "method": method,
             "kind": kind,
-            "turn_id": params.get("turnId"),
+            "turn_id": params.get("turnId") or conversation.active_turn_id or "",
             "item_id": params.get("itemId"),
             "reason": _bounded_text(params.get("reason"), 4000),
             "command": _bounded_text(params.get("command"), 4000),
@@ -3116,6 +3200,7 @@ class DiscussManager:
                 task["status"] = "cancelled"
                 task["error"] = "Stopped by writer"
                 self._task_context.pop(task["id"], None)
+            conversation.finish_turn("interrupted")
             conversation.active_turn_id = None
             done = conversation.active_done
             conversation.publish("turn.completed", {"turn_id": turn_id, "status": "interrupted"})

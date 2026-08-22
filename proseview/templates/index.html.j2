@@ -469,6 +469,21 @@
             <div id="discussContext" class="discuss-context" aria-label="Conversation context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false" tabindex="-1"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>
+            <div id="discussTurnStatus" class="discuss-turn-status" data-state="idle" hidden>
+                <div id="discussTurnPlan" class="discuss-turn-plan" hidden></div>
+                <div class="discuss-turn-strip">
+                    <span class="discuss-turn-dot" aria-hidden="true"></span>
+                    <span class="discuss-turn-what">
+                        <span id="discussTurnState" class="discuss-turn-state"></span>
+                        <span id="discussTurnDoing" class="discuss-turn-doing"></span>
+                    </span>
+                    <span id="discussTurnClock" class="discuss-turn-clock" hidden></span>
+                    <button id="discussTurnTrailToggle" type="button" class="discuss-turn-trail-toggle" aria-expanded="false" aria-controls="discussTurnTrail" onclick="toggleDiscussTurnTrail()" hidden>Details</button>
+                    <button id="discussTurnAction" type="button" class="discuss-turn-action" hidden></button>
+                    <button id="discussStop" type="button" class="discuss-turn-action" onclick="stopDiscussTurn()" hidden>Stop</button>
+                </div>
+                <ul id="discussTurnTrail" class="discuss-turn-trail" hidden></ul>
+            </div>
             <div id="discussComposerArea" class="discuss-composer-area">
                 <div id="discussContextPicker" class="discuss-context-menu" hidden>
                     <div class="discuss-context-menu-header"><strong>Files and folders</strong><span>Type to search</span></div>
@@ -484,7 +499,6 @@
                         <button id="discussHistory" type="button" class="discuss-secondary" onclick="openDiscussHistoryDialog()">History</button>
                         <button id="discussHistoryClear" type="button" class="discuss-secondary" onclick="clearDiscussHistory()" title="Clear assistance results from this conversation" hidden>Clear results</button>
                     </div>
-                    <button id="discussStop" type="button" class="discuss-secondary" onclick="stopDiscussTurn()" hidden>Stop</button>
                 </div>
                 <div id="discussNewConversationHint" class="discuss-control-hint" role="status" hidden></div>
                 <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about your project</label>

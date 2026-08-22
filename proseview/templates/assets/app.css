@@ -1354,11 +1354,16 @@
         .utility-tab.active { background: var(--surface-muted); color: var(--primary); font-weight: 700; }
         /* An agent tab you are not looking at still has work running. The dot
            is the only signal that the other one finished or needs you. */
-        .utility-tab-busy { position: relative; }
-        .utility-tab-busy::after {
+        .utility-tab-busy, .utility-tab-attention { position: relative; }
+        .utility-tab-busy::after, .utility-tab-attention::after {
             content: ''; position: absolute; top: 2px; right: 2px;
             width: 6px; height: 6px; border-radius: 50%; background: var(--primary);
         }
+        /* Working and waiting-on-you are different problems and get different
+           dots: one pulses because it will resolve itself, one does not. */
+        .utility-tab-busy::after { animation: discussTurnPulse 1.6s ease-in-out infinite; }
+        .utility-tab-attention::after { background: #d29922; animation: none; }
+        @media (prefers-reduced-motion: reduce) { .utility-tab-busy::after { animation: none; } }
         .utility-tab-unavailable { opacity: 0.55; }
         .terminal-utility-tabs { flex-shrink: 0; }
         .terminal-header .utility-tab { color: #8b949e; }
@@ -1462,6 +1467,66 @@
         .discuss-error { border-color: #d73a49; color: #b42318; }
         .discuss-local-error .discuss-secondary { display: block; margin-top: 9px; }
         .discuss-new-activity { position: absolute; right: 18px; bottom: 150px; z-index: 2; border: 1px solid var(--primary); border-radius: 999px; background: var(--surface-card); color: var(--primary); padding: 6px 10px; cursor: pointer; }
+        /* One strip owns turn state. It sits between the log and the composer
+           so it cannot scroll away while the thing it reports is still running. */
+        .discuss-turn-status { flex-shrink: 0; padding: 0 11px 8px; background: var(--surface-card); }
+        .discuss-turn-status[hidden] { display: none; }
+        .discuss-turn-plan { margin-bottom: 7px; }
+        .discuss-turn-plan[hidden] { display: none; }
+        .discuss-turn-plan .discuss-plan { margin: 0; }
+        .discuss-turn-strip {
+            display: flex; align-items: center; gap: 9px;
+            border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface-card); padding: 7px 9px; font-size: 12px;
+        }
+        .discuss-turn-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+        .discuss-turn-what { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+        .discuss-turn-state, .discuss-turn-doing { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .discuss-turn-state { color: var(--text-main); }
+        .discuss-turn-doing { color: var(--text-muted); font-size: 11px; }
+        .discuss-turn-doing:empty { display: none; }
+        .discuss-turn-clock { flex: none; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+        .discuss-turn-clock[hidden], .discuss-turn-action[hidden], .discuss-turn-trail-toggle[hidden] { display: none; }
+        .discuss-turn-action, .discuss-turn-trail-toggle {
+            flex: none; border: 1px solid var(--border); border-radius: 6px;
+            background: var(--surface-card); color: var(--text-main);
+            padding: 3px 8px; font: inherit; font-size: 11px; cursor: pointer;
+        }
+        .discuss-turn-action:hover, .discuss-turn-trail-toggle:hover { background: var(--surface-muted); }
+        .discuss-turn-status[data-state="working"] .discuss-turn-strip,
+        .discuss-turn-status[data-state="starting"] .discuss-turn-strip {
+            border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+            background: color-mix(in srgb, var(--primary) 7%, var(--surface-card));
+        }
+        .discuss-turn-status[data-state="working"] .discuss-turn-dot { background: var(--primary); animation: discussTurnPulse 1.6s ease-in-out infinite; }
+        .discuss-turn-status[data-state="starting"] .discuss-turn-dot { animation: discussTurnPulse 1.6s ease-in-out infinite; }
+        .discuss-turn-status[data-state="waiting"] .discuss-turn-strip {
+            border-color: #d29922; background: color-mix(in srgb, #d29922 10%, var(--surface-card));
+        }
+        .discuss-turn-status[data-state="waiting"] .discuss-turn-dot { background: #d29922; }
+        .discuss-turn-status[data-state="waiting"] .discuss-turn-action { border-color: #d29922; color: #d29922; }
+        .discuss-turn-status[data-state="done"] .discuss-turn-dot { background: #22a06b; }
+        .discuss-turn-status[data-state="failed"] .discuss-turn-strip { border-color: #d73a49; }
+        .discuss-turn-status[data-state="failed"] .discuss-turn-dot { background: #d73a49; }
+        @keyframes discussTurnPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+        @media (prefers-reduced-motion: reduce) { .discuss-turn-dot { animation: none !important; } }
+        /* The trail is the turn's own record: what it has already done, in the
+           order it happened, instead of a pile below the answer it produced. */
+        .discuss-turn-trail {
+            margin: 0; padding: 7px 10px; list-style: none;
+            border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px;
+            max-height: 132px; overflow-y: auto;
+        }
+        .discuss-turn-trail[hidden] { display: none; }
+        .discuss-turn-status[data-trail="open"] .discuss-turn-strip { border-radius: 8px 8px 0 0; }
+        .discuss-turn-trail li { display: flex; gap: 7px; color: var(--text-muted); font-size: 11px; line-height: 1.65; }
+        .discuss-turn-trail li::before { content: '\2713'; flex: none; color: #22a06b; }
+        .discuss-turn-trail li.now { color: var(--text-main); }
+        .discuss-turn-trail li.now::before { content: '\25B8'; color: var(--primary); }
+        .discuss-turn-trail li.empty::before { content: '\25CB'; color: var(--text-muted); }
+        .discuss-turn-trail li.failed::before { content: '\00D7'; color: #d73a49; }
+        .discuss-turn-trail li.settled::before { content: '\2022'; color: var(--text-muted); }
+        .discuss-turn-trail li span { overflow-wrap: anywhere; }
         .discuss-composer-area { position: relative; border-top: 1px solid var(--border); padding: 9px 11px 11px; background: var(--surface-card); }
         .discuss-task-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--text-muted); font-size: 11px; }
         .discuss-task-mode[hidden], .discuss-skills-picker[hidden] { display: none; }

@@ -340,9 +340,13 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.evaluate("sendDiscussQuestion(); sendDiscussQuestion()")
     wait_for_discuss_answer(page, "<script>hostile()</script>")
     panel_text = page.locator("#discussPanel").inner_text()
-    assert "What Codex is doing" in panel_text
+    # The turn reports itself in the strip, in writer language, instead of
+    # leaving a pile of protocol nouns below the answer it produced.
+    assert "Answered in" in panel_text
     assert "Read context" in panel_text
-    assert "commandExecution" in panel_text
+    assert "commandExecution" not in panel_text
+    page.click("#discussTurnTrailToggle")
+    assert "Running printf" in page.locator("#discussTurnTrail").inner_text()
     assert "PRIVATE RAW REASONING" not in panel_text
     assert "<script>hostile()</script>" in panel_text
     assert page.locator("#discussLog script").count() == 0
@@ -1320,7 +1324,11 @@ def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, s
     assert page.evaluate("document.activeElement === document.querySelector('.discuss-approval button')")
     page.keyboard.press("Enter")
     wait_for_discuss_answer(page, "Approval resolved")
-    assert "resolved" in page.locator(".discuss-approval").inner_text().lower()
+    # A decision you already made is a settled line in the turn's trail, not a
+    # card still wearing the amber "needs you" treatment.
+    assert page.locator(".discuss-approval").count() == 0
+    page.click("#discussTurnTrailToggle")
+    assert "You allowed a command" in page.locator("#discussTurnTrail").inner_text()
 
     page.fill("#discussInput", "REQUEST_APPROVAL again")
     page.press("#discussInput", "Enter")
@@ -1427,6 +1435,37 @@ def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: Pros
     page.wait_for_timeout(300)
     assert page.locator("#discussPanel").is_visible()
     assert page.locator("#discussContextPicker").is_hidden()
+
+
+def test_the_turn_strip_reports_work_a_stop_and_an_answer(page: Page, server: ProseviewServer):
+    """The panel can be asked "is it still working?" and answer it.
+
+    Before this, a running turn and a finished one looked identical: the only
+    difference was a Stop button in a row of other buttons.
+    """
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussTurnStatus[data-state='working']")
+    assert "Codex is working" in page.locator("#discussTurnState").inner_text()
+    # The clock is the difference between "thinking" and "wedged".
+    page.wait_for_function(r"() => /^\d+:\d\d$/.test(document.querySelector('#discussTurnClock').innerText)")
+    # The tab carries the same state for anyone not looking at the panel.
+    assert page.locator("#utilityTabCodex.utility-tab-busy").count() == 1
+
+    page.click("#discussStop")
+    page.wait_for_selector("#discussTurnStatus[data-state='failed']")
+    assert "Stopped after" in page.locator("#discussTurnState").inner_text()
+
+    page.fill("#discussInput", "Explain this scene")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "Fake answer")
+    page.wait_for_selector("#discussTurnStatus[data-state='done']")
+    assert "Answered in" in page.locator("#discussTurnState").inner_text()
+    assert page.locator("#utilityTabCodex.utility-tab-busy").count() == 0
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):

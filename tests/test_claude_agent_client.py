@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -167,6 +168,41 @@ def test_translator_maps_write_to_file_change():
     })
     assert events[0]["activity"]["kind"] == "fileChange"
     assert events[0]["activity"]["changes"] == [{"path": "a.md", "kind": "modify"}]
+
+
+def test_a_completion_does_not_relabel_the_tool_it_finished():
+    """A completion knows the outcome, not the tool.
+
+    Deriving a kind from the empty name it carries turned a finished command
+    into a dynamic tool call and threw the command away with it.
+    """
+    events = sanitize_claude_message({
+        "method": "tool/completed",
+        "params": {"threadId": "t1", "turnId": "u1", "itemId": "i1", "tool": "", "status": "completed"},
+    })
+    activity = events[0]["activity"]
+    assert activity["status"] == "completed"
+    assert "kind" not in activity
+    assert "command" not in activity
+
+
+def test_thinking_reports_life_without_reporting_the_thought():
+    """Claude was mute from Send to answer: thinking is dropped and nothing
+    replaced it. A fixed heartbeat says work is happening and nothing else."""
+    client, seen, _made = make_client(script=[
+        AssistantMessage(content=[ThinkingBlock("the butler did it")]),
+        AssistantMessage(content=[TextBlock("an answer")]),
+        ResultMessage(),
+    ])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "who?"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        progress = [m for m in seen if m["method"] == "assistant/progress"]
+        assert [m["params"]["text"] for m in progress] == ["Thinking\n"]
+        assert "butler" not in json.dumps(seen)
+    finally:
+        client.close()
 
 
 def test_translator_ignores_unknown_methods():

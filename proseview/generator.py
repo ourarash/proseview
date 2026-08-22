@@ -12,6 +12,7 @@ split into a Jinja template plus inlined CSS and JavaScript assets under
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import html
 import json
 import math
@@ -398,6 +399,10 @@ def build_scene_data(
             "notes": scene.notes,
             "txt_line_offset": scene.txt_line_offset,
             "mtime": (root / scene.path).stat().st_mtime,
+            # A stable token for the exact Markdown source that produced the
+            # browser's ProseMirror document. Selection offsets belong to that
+            # rendered document, not to a server-side Markdown approximation.
+            "revision": hashlib.sha256(scene.text.encode("utf-8")).hexdigest(),
         }
         for scene in scenes
     }

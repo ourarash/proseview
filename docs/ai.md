@@ -46,6 +46,16 @@ Four places where AI shows up, all opt-in:
    needs a decision, and the browser tab title says which agent is working or
    waiting whenever the dock is closed or the window is in the background.
 
+   Opening the dock on a scene offers passes over that scene, one click and no
+   typing. **Quick critique** returns five evidence-linked findings, each
+   quoting the line it came from. **Style and consistency** works differently:
+   Proseview's own analysis finds the passive constructions, filter verbs,
+   repeated words and point-of-view slips first, and the agent only decides
+   which of them weaken the scene and which are the narrator's voice. It can
+   neither miss what the analysis found nor report anything the analysis did
+   not, and on prose with nothing mechanical to flag it says so without
+   starting a turn at all.
+
    Discuss also has evidence-first continuity actions. **Trace a canon
    change** scans the configured manuscript and repository-tab folders,
    separates direct contradictions from ambiguous and likely intentional

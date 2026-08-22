@@ -37,6 +37,7 @@ from .conftest import (
     AGENT_MARKER,
     ANNOTATED_SCENE_REL,
     BARE_SCENE_REL,
+    HTML_LEAD_SCENE_REL,
     LARGE_SCENE_REL,
     NESTED_MANUSCRIPT_NOTE,
     SCENE_REL,
@@ -717,6 +718,61 @@ def test_discuss_task_continuations_keep_their_source_scene_after_navigation(
         page.click("#discussSend")
     _wait_until(lambda: len(question_requests) > initial_requests, message="continuation request was not sent")
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert question_requests[-1]["selection_source_task_id"]
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+@pytest.mark.parametrize(
+    ("scene_rel", "quote", "hidden_source"),
+    [
+        (
+            HTML_LEAD_SCENE_REL,
+            "What if the whole thing was a rumor the king started to save his pride?",
+            "<img",
+        ),
+        (
+            ANNOTATED_SCENE_REL,
+            "Rena read the column twice. The second reading did not improve it.",
+            "NOTE[continuity]",
+        ),
+    ],
+)
+def test_discuss_selection_uses_the_rendered_scene_snapshot_when_markdown_has_non_text_blocks(
+    page: Page,
+    server: ProseviewServer,
+    agent: str,
+    scene_rel: str,
+    quote: str,
+    hidden_source: str,
+):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server, scene_rel)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    open_selection_menu(page, quote)
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        timeout=15_000,
+    )
+    request = question_requests[-1]
+    snapshot = request["selection_snapshot"]
+    selected_range = request["selection_range"]
+    assert snapshot["editor_text"][selected_range["start"]:selected_range["end"]] == quote
+    assert hidden_source not in snapshot["editor_text"]
+    if scene_rel == ANNOTATED_SCENE_REL:
+        assert "TODO:" not in snapshot["editor_text"]
+        assert "NOTE[" not in snapshot["editor_text"]
+    assert re.fullmatch(r"[0-9a-f]{64}", snapshot["source_revision"])
 
 
 def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
@@ -1466,6 +1522,33 @@ def test_the_turn_strip_reports_work_a_stop_and_an_answer(page: Page, server: Pr
     page.wait_for_selector("#discussTurnStatus[data-state='done']")
     assert "Answered in" in page.locator("#discussTurnState").inner_text()
     assert page.locator("#utilityTabCodex.utility-tab-busy").count() == 0
+
+
+def test_the_dock_offers_the_scene_before_the_repository(page: Page, server: ProseviewServer):
+    """Opening the dock on a scene should offer something about that scene.
+
+    The passes writers repeat were reachable only after selecting prose, so the
+    empty state led with two repository scans, one of which will not run until
+    you type a paragraph describing a canon change.
+    """
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.wait_for_selector(".discuss-story-action")
+
+    labels = page.locator(".discuss-story-action-title").all_inner_texts()
+    assert labels[:2] == ["Quick critique", "Style and consistency"]
+    assert "Trace a canon change" in labels
+
+    page.locator(".discuss-story-action", has_text="Quick critique").click()
+    page.wait_for_selector(".discuss-task")
+    # One click: nothing selected, nothing typed.
+    assert page.locator("#discussInput").input_value() == ""
+    assert "This scene ·" in page.locator(".discuss-task-selection").inner_text()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-task-status').innerText === 'Ready'"
+    )
+    assert page.locator(".discuss-findings li").count() >= 1
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):

@@ -9,6 +9,7 @@ POST /insert-todo  Insert a TODO comment into a manuscript file.
 from __future__ import annotations
 
 import base64
+import hashlib as _hashlib
 from html import escape as html_escape
 import json
 import os
@@ -2081,10 +2082,13 @@ class _Handler(BaseHTTPRequestHandler):
                         document=body.get("document") if isinstance(body.get("document"), dict) else None,
                         selection=body.get("selection", ""),
                         selection_range=body.get("selection_range") if isinstance(body.get("selection_range"), dict) else None,
+                        selection_snapshot=body.get("selection_snapshot") if isinstance(body.get("selection_snapshot"), dict) else None,
+                        selection_source_task_id=str(body.get("selection_source_task_id") or ""),
                         live_document=body.get("live_document") if isinstance(body.get("live_document"), dict) else None,
                         attachments=body.get("attachments") or [],
                         include_current_document=body.get("include_current_document", False),
                         action_id=str(body.get("action_id") or ""),
+                        action_scope=str(body.get("action_scope") or "selection"),
                         custom_instruction=str(body.get("custom_instruction") or ""),
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),
@@ -2397,10 +2401,16 @@ class _Handler(BaseHTTPRequestHandler):
                 # baseline and keep editing without hitting a stale-mtime
                 # conflict on the next save.
                 try:
-                    new_mtime = Path(body["abs_path"]).stat().st_mtime
+                    saved_path = Path(body["abs_path"])
+                    new_mtime = saved_path.stat().st_mtime
+                    _frontmatter, saved_body = split_frontmatter(read_repo_text(saved_path))
+                    new_revision = _hashlib.sha256(
+                        extract_scene_text(saved_body).encode("utf-8")
+                    ).hexdigest()
                 except OSError:
                     new_mtime = None
-                self._send_json({"ok": True, "mtime": new_mtime})
+                    new_revision = None
+                self._send_json({"ok": True, "mtime": new_mtime, "revision": new_revision})
             except _FileConflictError:
                 self._send_json({"conflict": True}, 409)
             except _FileConflictError as exc:

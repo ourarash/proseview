@@ -796,6 +796,8 @@ def test_save_scene_writes_body_and_preserves_frontmatter(server: ProseviewServe
     assert "# Opening Ledger" in after
     # The returned mtime is the client's next conflict baseline.
     assert payload["mtime"] == pytest.approx(path.stat().st_mtime, abs=0.01)
+    assert re.fullmatch(r"[0-9a-f]{64}", payload["revision"])
+    assert server.scene_meta()["revision"] == payload["revision"]
 
 
 def test_save_scene_with_stale_mtime_conflicts_and_changes_nothing(server: ProseviewServer):

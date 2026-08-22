@@ -50,6 +50,10 @@ WATCH_INTERVAL = 0.5
 SCENE_REL = "ch01/01-opening.md"
 #: Scene carrying inline TODO/NOTE comments (created by ``_seed_annotated_scene``).
 ANNOTATED_SCENE_REL = "ch01/03-annotated.md"
+#: Scene reproducing a book layout where raw HTML precedes the H1. The browser
+#: renders the HTML as a non-text atom, so Markdown character offsets cannot be
+#: used as ProseMirror selection offsets.
+HTML_LEAD_SCENE_REL = "ch01/05-html-lead.md"
 #: Generated ~10k-word scene used by the large-file cases.
 LARGE_SCENE_REL = "ch03/01-long-haul.md"
 #: Scene with no frontmatter at all -- what an Obsidian vault or an imported
@@ -166,6 +170,29 @@ def _seed_annotated_scene(root: Path) -> None:
     )
 
 
+def _seed_html_lead_scene(root: Path) -> None:
+    """A scene whose rendered text deliberately diverges from its Markdown."""
+    path = root / "manuscript" / HTML_LEAD_SCENE_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n"
+        "title: The King\n"
+        "chapter: Chapter 1\n"
+        "status: revision\n"
+        "---\n"
+        "\n"
+        '<img src="/repo-asset/manuscript/ch01/king.png" alt="The king at dusk">\n'
+        "\n"
+        "# The King\n"
+        "\n"
+        "But I have another theory.\n"
+        "\n"
+        "What if the whole thing was a rumor the king started to save his pride? "
+        "After all, who kills a young girl every day if he can get the fear for free?\n",
+        encoding="utf-8",
+    )
+
+
 def _seed_bare_scene(root: Path) -> None:
     """A scene that is plain Markdown, with no YAML block of any kind."""
     path = root / "manuscript" / BARE_SCENE_REL
@@ -255,6 +282,7 @@ def _build_repo(dest: Path) -> Path:
     shutil.rmtree(dest / ".proseview", ignore_errors=True)
     _seed_skills(dest)
     _seed_annotated_scene(dest)
+    _seed_html_lead_scene(dest)
     _seed_bare_scene(dest)
     _seed_large_scene(dest)
     for rel, thread, day in STORY_SCENES:

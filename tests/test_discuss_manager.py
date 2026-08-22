@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
+import hashlib
 import json
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from proseview.codex_app_server import CodexRequestError
 import proseview.discuss as discuss_module
 from proseview.discuss import ContextError, DiscussManager, DiscussStateStore, _Conversation, validate_action_result
+from proseview.scenes import extract_scene_text, split_frontmatter
 
 # Shared with the cross-transport conformance suite so both exercise the
 # same double rather than drifting apart.
@@ -31,6 +33,11 @@ def _wait_for(predicate, timeout: float = 2.0):
             return
         time.sleep(0.01)
     raise AssertionError("condition was not reached")
+
+
+def _scene_revision(path: Path) -> str:
+    _frontmatter, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    return hashlib.sha256(extract_scene_text(body).encode("utf-8")).hexdigest()
 
 
 def test_managed_rewrite_uses_output_schema_and_creates_stale_checked_proposal(tmp_path: Path, monkeypatch):
@@ -610,6 +617,124 @@ def test_a_repeated_progress_heartbeat_is_recorded_once(tmp_path: Path, monkeypa
     assert manager.get_snapshot(cid)["progress"] == ["Thinking\n"]
     manager.stop(cid, turn_id)
     manager.close()
+
+
+# --- scene passes -----------------------------------------------------------
+
+def test_a_scene_pass_reads_the_whole_scene_without_a_selection(tmp_path: Path, monkeypatch):
+    """The passes writers repeat were reachable only after selecting prose.
+
+    Opening the dock on a scene and asking "what is wrong with this" is the
+    ordinary case, and it had no entry point at all.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    manager.submit(
+        cid, client_request_id="pass-1", question="",
+        action_id="quick_critique", action_scope="scene",
+    )
+    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+
+    task = manager.get_snapshot(cid)["tasks"][0]
+    assert task["target"]["scope"] == "scene"
+    # The title line is not prose and is not part of what the pass reads.
+    assert task["target"]["selection"] == "First document."
+    assert task["result"]["findings"][0]["evidence"] == "First document."
+    manager.close()
+
+
+def test_a_scene_pass_refuses_a_rewrite_action(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    with pytest.raises(ContextError, match="only a reading pass"):
+        manager.submit(
+            cid, client_request_id="pass-2", question="",
+            action_id="tighten", action_scope="scene",
+        )
+    manager.close()
+
+
+def test_a_style_pass_hands_the_agent_what_prosview_already_found(tmp_path: Path, monkeypatch):
+    """Detection is not the model's job here, and the prompt has to say so.
+
+    ``highlights.py`` is deterministic, offline and exact. An agent asked to
+    hunt for passives would miss some, invent others, and answer differently
+    every run; handing it the hits leaves it only the judgement.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "# One\n\n"
+        "She felt a chill of something coming.\n\n"
+        "The door was opened by the wind. She felt cold. The cold was everywhere, "
+        "and the cold would not leave.\n",
+        encoding="utf-8",
+    )
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    manager.submit(
+        cid, client_request_id="style-1", question="",
+        action_id="style_consistency", action_scope="scene",
+    )
+    _wait_for(lambda: clients[0].prompts)
+
+    prompt = clients[0].prompts[-1]
+    assert "BEGIN STYLE OBSERVATIONS" in prompt
+    assert "passive construction: The door was opened by the wind." in prompt
+    assert "filter verb: She felt a chill of something coming." in prompt
+    assert "repeated word" in prompt
+    # Whole sentences, never bare hits: "felt" cannot be quoted back at a writer.
+    assert "filter verb: felt" not in prompt
+    manager.close()
+
+
+def test_a_style_pass_on_clean_prose_costs_nothing(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    with pytest.raises(ContextError, match="nothing mechanical to flag"):
+        manager.submit(
+            cid, client_request_id="style-2", question="",
+            action_id="style_consistency", action_scope="scene",
+        )
+    assert manager.get_snapshot(cid)["tasks"] == []
+    manager.close()
+
+
+def test_a_style_finding_outside_the_observations_is_refused():
+    """The evidence set is the whole point: cite it or the finding is invented."""
+    task = {
+        "kind": "critique",
+        "action_id": "style_consistency",
+        "max_results": 5,
+        "target": {"selection": "She felt cold. The door was opened by the wind."},
+        "style_observations": ["The door was opened by the wind."],
+    }
+    payload = json.dumps({"kind": "critique", "findings": [{
+        "observation": "The emotion is named, not shown.",
+        "evidence": "She felt cold.",
+        "why_it_matters": "Naming the feeling does the reader's work for them.",
+        "next_step": "Give the cold something to act on.",
+    }]})
+    with pytest.raises(ContextError, match="not one of the style observations"):
+        validate_action_result(payload, task)
+
+    grounded = json.dumps({"kind": "critique", "findings": [{
+        "observation": "The wind does the work in the passive.",
+        "evidence": "The door was opened by the wind.",
+        "why_it_matters": "The agent of the sentence arrives last.",
+        "next_step": "Let the wind open the door.",
+    }]})
+    assert validate_action_result(grounded, task)["findings"][0]["evidence"] == "The door was opened by the wind."
 
 
 def test_manager_serializes_one_document_and_filters_raw_reasoning(tmp_path: Path, monkeypatch):
@@ -1643,11 +1768,96 @@ def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: P
         question="",
         selection="quiet",
         selection_range={"start": 2, "end": 7},
+        selection_snapshot={
+            "editor_text": "A quiet room was quiet.",
+            "source_revision": _scene_revision(root / "manuscript" / "one.md"),
+        },
         action_id="tighten",
     )
     assert result["accepted"] is True
     task = manager.get_snapshot(cid)["tasks"][0]
     assert task["target"]["range"] == {"start": 2, "end": 7}
+    followup = manager.submit(
+        cid,
+        client_request_id="marked-range-followup",
+        question="",
+        selection="quiet",
+        selection_range={"start": 2, "end": 7},
+        selection_source_task_id=task["id"],
+        action_id="clarify",
+    )
+    assert followup["accepted"] is True
+    manager.close()
+
+
+def test_selection_snapshot_validates_browser_offsets_without_reconstructing_markdown(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    scene = root / "manuscript" / "one.md"
+    scene.write_text(
+        "---\ntitle: The King\n---\n\n"
+        '<img src="/repo-asset/king.png" alt="The king">\n\n'
+        "# The King\n\n"
+        "But I have another theory.\n\n"
+        "What if the whole thing was just a rumor the king started to save his pride?\n",
+        encoding="utf-8",
+    )
+    editor_text = (
+        "The King\nBut I have another theory.\n"
+        "What if the whole thing was just a rumor the king started to save his pride?"
+    )
+    selection = "What if the whole thing was just a rumor the king started to save his pride?"
+    start = editor_text.index(selection)
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    result = manager.submit(
+        cid,
+        client_request_id="rendered-snapshot",
+        question="",
+        selection=selection,
+        selection_range={"start": start, "end": start + len(selection)},
+        selection_snapshot={
+            "editor_text": editor_text,
+            "source_revision": _scene_revision(scene),
+        },
+        action_id="tighten",
+    )
+
+    assert result["accepted"] is True
+    assert manager.get_snapshot(cid)["tasks"][0]["target"]["range"] == {
+        "start": start,
+        "end": start + len(selection),
+    }
+    manager.close()
+
+
+def test_selection_snapshot_rejects_a_scene_revision_that_changed_after_selection(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    scene = root / "manuscript" / "one.md"
+    original_revision = _scene_revision(scene)
+    scene.write_text("# One\n\nFirst document changed externally.\n", encoding="utf-8")
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    with pytest.raises(ContextError, match="changed after you selected"):
+        manager.submit(
+            cid,
+            client_request_id="stale-rendered-snapshot",
+            question="",
+            selection="First document.",
+            selection_range={"start": 0, "end": 15},
+            selection_snapshot={
+                "editor_text": "First document.",
+                "source_revision": original_revision,
+            },
+            action_id="tighten",
+        )
     manager.close()
 
 
@@ -1665,6 +1875,10 @@ def test_selection_action_uses_bounded_live_editor_context(tmp_path: Path, monke
         question="",
         selection="First document.",
         selection_range={"start": 15, "end": 30},
+        selection_snapshot={
+            "editor_text": live.rstrip("\n"),
+            "source_revision": _scene_revision(scene),
+        },
         live_document={"content": live, "base_mtime": scene.stat().st_mtime},
         action_id="tighten",
     )

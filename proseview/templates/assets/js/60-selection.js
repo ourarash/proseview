@@ -31,12 +31,7 @@
             currentSelectionText = text;
             currentSelectionRange = range.cloneRange();
             selectionMemoryPreserved = false;
-            lastValidSelectionActionContext = {
-                selection: text,
-                range: currentSelectionFlatRange(),
-                liveDocument: typeof currentSceneLiveDocumentSnapshot === 'function'
-                    ? currentSceneLiveDocumentSnapshot() : null,
-            };
+            lastValidSelectionActionContext = currentSelectionActionContext();
             return true;
         }
 
@@ -69,7 +64,7 @@
             clearPinnedSelectionHighlight();
         }
 
-        function currentSelectionFlatRange() {
+        function currentSelectionFlatSnapshot() {
             if (!currentSelectionRange || !_pmView || typeof aiDocTextMap !== 'function') return null;
             try {
                 var from = _pmView.posAtDOM(currentSelectionRange.startContainer, currentSelectionRange.startOffset);
@@ -87,8 +82,40 @@
                 if (start < 0 || end <= start) return null;
                 var selected = map.text.slice(start, end).replace(/\s+/g, ' ').trim();
                 if (selected !== currentSelectionText.replace(/\s+/g, ' ').trim()) return null;
-                return {start: start, end: end};
+                var path = paths[curIdx];
+                var revision = meta[path] && meta[path].revision;
+                if (typeof revision !== 'string' || !/^[0-9a-f]{64}$/.test(revision)) return null;
+                return {
+                    range: {start: start, end: end},
+                    snapshot: {editor_text: map.text, source_revision: revision}
+                };
             } catch (e) { return null; }
+        }
+
+        function currentSelectionFlatRange() {
+            var flat = currentSelectionFlatSnapshot();
+            return flat ? flat.range : null;
+        }
+
+        function currentSelectionActionContext() {
+            var flat = currentSelectionFlatSnapshot();
+            return {
+                selection: currentSelectionText.trim(),
+                range: flat ? flat.range : null,
+                selectionSnapshot: flat ? flat.snapshot : null,
+                liveDocument: typeof currentSceneLiveDocumentSnapshot === 'function'
+                    ? currentSceneLiveDocumentSnapshot() : null,
+            };
+        }
+
+        function currentSceneSelectionSnapshot(targetDocument) {
+            var currentPath = paths[curIdx];
+            if (!targetDocument || targetDocument.kind !== 'scene'
+                || targetDocument.path !== currentPath || !_pmView
+                || typeof aiDocTextMap !== 'function') return null;
+            var revision = meta[currentPath] && meta[currentPath].revision;
+            if (typeof revision !== 'string' || !/^[0-9a-f]{64}$/.test(revision)) return null;
+            return {editor_text: aiDocTextMap(_pmView.state.doc).text, source_revision: revision};
         }
 
         // ── Pinned scene selection highlight ─────────────────────────────
@@ -535,12 +562,8 @@
             });
 
             function showSelectionSubmenu(id) {
-                pendingSelectionActionContext = currentSelectionText ? {
-                    selection: currentSelectionText.trim(),
-                    range: currentSelectionFlatRange(),
-                    liveDocument: typeof currentSceneLiveDocumentSnapshot === 'function'
-                        ? currentSceneLiveDocumentSnapshot() : null,
-                } : lastValidSelectionActionContext;
+                pendingSelectionActionContext = currentSelectionText
+                    ? currentSelectionActionContext() : lastValidSelectionActionContext;
                 var opener = document.getElementById(id === 'selectionRewriteMenu' ? 'selectionRewriteBtn' : 'selectionCritiqueBtn');
                 document.getElementById('selectionMenuRoot').hidden = true;
                 document.getElementById('selectionRewriteMenu').hidden = id !== 'selectionRewriteMenu';
@@ -561,13 +584,20 @@
                 var frozen = pendingSelectionActionContext;
                 var selection = frozen ? frozen.selection : currentSelectionText.trim();
                 var selectionRange = frozen ? frozen.range : currentSelectionFlatRange();
+                var selectionSnapshot = frozen ? frozen.selectionSnapshot : (
+                    currentSelectionFlatSnapshot() || {}
+                ).snapshot || null;
                 var liveDocument = frozen ? frozen.liveDocument : (
                     typeof currentSceneLiveDocumentSnapshot === 'function' ? currentSceneLiveDocumentSnapshot() : null
                 );
                 if (currentSelectionRange) pinSelectionHighlight(currentSelectionRange);
                 selectionMemoryPreserved = true;
                 setSelectionMenuExpanded(false, {restoreFocus: true});
-                openDiscussForSelection(document.getElementById('selectionPillBtn'), selection, Object.assign({selectionRange: selectionRange, liveDocument: liveDocument}, options || {}));
+                openDiscussForSelection(document.getElementById('selectionPillBtn'), selection, Object.assign({
+                    selectionRange: selectionRange,
+                    selectionSnapshot: selectionSnapshot,
+                    liveDocument: liveDocument
+                }, options || {}));
                 pendingSelectionActionContext = null;
             }
 

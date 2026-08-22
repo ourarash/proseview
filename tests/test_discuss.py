@@ -152,7 +152,9 @@ def test_context_builder_can_fit_whole_files_under_an_agent_prompt_limit(tmp_pat
         root,
         max_file_bytes=300,
         max_total_bytes=1_000,
-        max_prompt_chars=950,
+        # The shared preamble is fixed overhead on every turn; this budget is
+        # the content room left over, so it moves when the preamble does.
+        max_prompt_chars=1010,
         allow_partial=True,
     )
 
@@ -162,7 +164,7 @@ def test_context_builder_can_fit_whole_files_under_an_agent_prompt_limit(tmp_pat
         attachments=[{"kind": "folder", "path": "plans"}],
     )
 
-    assert len(bundle.prompt) <= 950
+    assert len(bundle.prompt) <= 1010
     assert bundle.items[0].path == "manuscript/ch01/opening.md"
     assert "plans/a-large.md" in bundle.omitted_paths
     assert "plans/b-small.md" in [item.path for item in bundle.items]

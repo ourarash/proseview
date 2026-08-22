@@ -49,6 +49,11 @@ APPROVAL_DECISIONS = ["accept", "acceptForSession", "decline", "cancel"]
 # Tools Prosview allows without asking. Everything else reaches the writer.
 READ_ONLY_TOOLS = ["Read", "Glob", "Grep"]
 
+#: Tools that change the manuscript. They are offered only on a turn the writer
+#: asked to change something, and every one of them still stops at the
+#: PreToolUse gate below, so Claude asks before it writes.
+WRITE_TOOLS = ["Write", "Edit", "NotebookEdit"]
+
 #: SDK-internal plumbing, not writer-facing actions. ``StructuredOutput`` is how
 #: the CLI delivers a JSON result when an output schema is set, so gating it
 #: would stall every selection action behind an approval nobody can explain.
@@ -525,7 +530,9 @@ class ClaudeAgentClient:
             "strict_mcp_config": True,
             "mcp_servers": {},
             "permission_mode": "default",
-            "tools": list(READ_ONLY_TOOLS),
+            "tools": list(READ_ONLY_TOOLS) + (
+                list(WRITE_TOOLS) if params.get("mayWrite") else []
+            ),
             "include_partial_messages": True,
         }
         instructions = params.get("developerInstructions") or session.thread_params.get(

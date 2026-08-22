@@ -40,33 +40,6 @@ def _scene_revision(path: Path) -> str:
     return hashlib.sha256(extract_scene_text(body).encode("utf-8")).hexdigest()
 
 
-def test_managed_rewrite_uses_output_schema_and_creates_stale_checked_proposal(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    clients: list[_FakeClient] = []
-    root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
-    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-
-    result = manager.submit(
-        cid, client_request_id="rewrite-1", question="", selection="First document.", action_id="tighten"
-    )
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
-
-    task = manager.get_snapshot(cid)["tasks"][0]
-    assert result["task_id"] == task["id"]
-    assert clients[0].turn_params[0]["outputSchema"]["properties"]["kind"]["enum"] == ["alternatives"]
-    assert clients[0].turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
-    proposal = manager.proposal_for_task(cid, task["id"])
-    assert proposal["origin"] == "managed_selection_action"
-    assert proposal["quote"] == "First document."
-    assert proposal["options"] == [
-        {"text": "Revised document.", "rationale": "Removes repetition."},
-        {"text": "A revised document.", "rationale": "Changes the rhythm."},
-    ]
-    assert (root / "manuscript" / "one.md").read_text(encoding="utf-8") == "# One\n\nFirst document.\n"
-    manager.close()
-
-
 def test_canon_refactor_scans_configured_story_scope_and_creates_reviewable_finding(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
@@ -405,27 +378,53 @@ def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tm
     manager.close()
 
 
-def test_managed_task_records_the_applied_suggestion_until_save_or_undo(tmp_path: Path, monkeypatch):
+# --- skills own the wording -------------------------------------------------
+
+def test_first_run_offers_the_default_skills_to_the_repository(tmp_path: Path, monkeypatch):
+    """The buttons are convenience; the skill files are the thing."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
-    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    submitted = manager.submit(
-        cid, client_request_id="rewrite-choice", question="", selection="First document.", action_id="tighten"
-    )
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    root = _repo(tmp_path)
+    manager = DiscussManager(root, client_factory=fake_factory)
 
-    applied = manager.set_task_status(cid, submitted["task_id"], "applied", selected_option=1)
-    assert applied == {"task_id": submitted["task_id"], "status": "applied", "selected_option": 1}
-    assert manager.get_snapshot(cid)["tasks"][0]["selected_option"] == 1
-
-    saved = manager.set_task_status(cid, submitted["task_id"], "saved")
-    assert saved["selected_option"] == 1
-    manager.set_task_status(cid, submitted["task_id"], "ready")
-    assert manager.get_snapshot(cid)["tasks"][0]["selected_option"] is None
-
-    with pytest.raises(ValueError, match="selected suggestion"):
-        manager.set_task_status(cid, submitted["task_id"], "applied", selected_option=5)
+    shipped = {path.parent.name for path in (Path(discuss_module.__file__).parent / "skills").glob("*/SKILL.md")}
+    installed = {path.parent.name for path in (root / "skills").glob("*/SKILL.md")}
+    assert shipped and shipped == installed
+    assert "Quick critique" not in (root / "skills" / "quick_critique" / "SKILL.md").read_text(encoding="utf-8")
     manager.close()
+
+
+def test_a_writers_own_skill_is_what_the_button_sends(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    (root / "skills" / "quick_critique" / "SKILL.md").write_text(
+        "---\nname: quick_critique\n---\n\nRead this like a hostile reviewer.\n", encoding="utf-8"
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
+    manager.submit(cid, client_request_id="own-skill", question="", selection="First document.", action_id="quick_critique")
+    _wait_for(lambda: bool(clients[0].prompts))
+    assert "Read this like a hostile reviewer." in clients[0].prompts[0]
+
+    asked = [m["text"] for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"]
+    assert asked == ["Read this like a hostile reviewer."]
+    manager.close()
+
+
+def test_a_deleted_skill_is_not_reinstalled_on_the_next_run(tmp_path: Path, monkeypatch):
+    """Deleting one is a decision, and starting Prosview again must not undo it."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    DiscussManager(root, client_factory=fake_factory).close()
+
+    removed = root / "skills" / "pacing_tension"
+    for path in sorted(removed.rglob("*"), reverse=True):
+        path.unlink() if path.is_file() else path.rmdir()
+    removed.rmdir()
+
+    DiscussManager(root, client_factory=fake_factory).close()
+    assert not removed.exists()
 
 
 def test_a_reading_pass_is_a_message_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
@@ -450,21 +449,6 @@ def test_a_reading_pass_is_a_message_and_never_becomes_a_proposal(tmp_path: Path
     assert "outputSchema" not in client.turn_params[0]
     # Reading is still reading: nothing may be written on this turn.
     assert client.turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
-    manager.close()
-
-
-def test_selection_action_becomes_stale_after_external_file_change(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    root = _repo(tmp_path)
-    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
-    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    manager.submit(cid, client_request_id="rewrite-stale", question="", selection="First document.", action_id="rephrase")
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
-    task_id = manager.get_snapshot(cid)["tasks"][0]["id"]
-    (root / "manuscript" / "one.md").write_text("# One\n\nExternally changed.\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="changed after this action"):
-        manager.proposal_for_task(cid, task_id)
-    assert manager.get_snapshot(cid)["tasks"][0]["status"] == "stale"
     manager.close()
 
 
@@ -533,45 +517,6 @@ def test_critique_evidence_accepts_typographic_quotes_outer_wrappers_and_whitesp
                 "next_step": "Keep the deadline visible.",
             }],
         }), task)
-
-
-def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
-    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    first = manager.submit(
-        cid, client_request_id="rewrite-first", question="", selection="First document.", action_id="tighten"
-    )
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
-    conversation = manager._get(cid)
-    with conversation.lock:
-        conversation.tasks[first["task_id"]]["status"] = "failed"
-        conversation.tasks[first["task_id"]]["error"] = "A simulated invalid citation"
-
-    second = manager.submit(
-        cid,
-        client_request_id="rewrite-retry",
-        question="",
-        selection="First document.",
-        action_id="tighten",
-        retry_of_task_id=first["task_id"],
-    )
-    _wait_for(lambda: len(manager.get_snapshot(cid)["tasks"]) == 2)
-    tasks = {task["id"]: task for task in manager.get_snapshot(cid)["tasks"]}
-    assert tasks[first["task_id"]]["superseded_by"] == second["task_id"]
-    assert tasks[second["task_id"]]["retry_root_id"] == first["task_id"]
-    assert tasks[second["task_id"]]["retry_of"] == first["task_id"]
-    assert tasks[second["task_id"]]["attempt"] == 2
-    with pytest.raises(ValueError, match="already been retried"):
-        manager.submit(
-            cid,
-            client_request_id="rewrite-duplicate-retry",
-            question="",
-            selection="First document.",
-            action_id="tighten",
-            retry_of_task_id=first["task_id"],
-        )
-    manager.close()
 
 
 def test_a_finished_tool_keeps_the_command_it_started_with(tmp_path: Path, monkeypatch):
@@ -1572,7 +1517,7 @@ def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_pat
     submit = threading.Thread(
         target=lambda: submitted.append(manager.submit(
             cid,
-            client_request_id="critique-during-restore",
+            client_request_id="action-during-restore",
             question="",
             selection="First document.",
             action_id="tighten",
@@ -1589,8 +1534,7 @@ def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_pat
         restore.join(timeout=2)
         submit.join(timeout=2)
         _wait_for(lambda: any(
-            task.get("action_id") == "tighten" and task.get("status") == "ready"
-            for task in manager.get_snapshot(cid)["tasks"]
+            message["role"] == "assistant" for message in manager.get_snapshot(cid)["messages"]
         ))
         manager.close()
 
@@ -1748,30 +1692,14 @@ def test_concurrent_duplicate_submissions_enqueue_once(tmp_path: Path, monkeypat
     manager.close()
 
 
-def test_action_retry_is_idempotent_even_after_source_file_changes(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    root = _repo(tmp_path)
-    clients: list[_FakeClient] = []
-    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
-    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
-    first = manager.submit(
-        cid, client_request_id="same-action", question="", selection="First document.", action_id="tighten"
-    )
-    (root / "manuscript" / "one.md").write_text("# One\n\nChanged after submission.\n", encoding="utf-8")
-    duplicate = manager.submit(
-        cid, client_request_id="same-action", question="", selection="First document.", action_id="tighten"
-    )
-    assert duplicate == first
-    assert len(manager.get_snapshot(cid)["tasks"]) == 1
-    manager.close()
-
-
 def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: Path, monkeypatch):
+    """An ambiguous quote is how an edit lands on the wrong paragraph."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     (root / "manuscript" / "one.md").write_text("# One\n\nA *quiet* room was quiet.\n", encoding="utf-8")
     manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+
     result = manager.submit(
         cid,
         client_request_id="marked-range",
@@ -1785,20 +1713,18 @@ def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: P
         action_id="tighten",
     )
     assert result["accepted"] is True
-    task = manager.get_snapshot(cid)["tasks"][0]
-    assert task["target"]["range"] == {"start": 2, "end": 7}
-    followup = manager.submit(
-        cid,
-        client_request_id="marked-range-followup",
-        question="",
-        selection="quiet",
-        selection_range={"start": 2, "end": 7},
-        selection_source_task_id=task["id"],
-        action_id="clarify",
-    )
-    assert followup["accepted"] is True
-    manager.close()
 
+    # The same word without a range appears twice, and is refused rather than
+    # handed to an agent that would have to guess which one was meant.
+    with pytest.raises(ContextError, match="appears more than once"):
+        manager.submit(
+            cid,
+            client_request_id="marked-ambiguous",
+            question="",
+            selection="quiet",
+            action_id="tighten",
+        )
+    manager.close()
 
 def test_selection_snapshot_validates_browser_offsets_without_reconstructing_markdown(
     tmp_path: Path, monkeypatch
@@ -1836,11 +1762,9 @@ def test_selection_snapshot_validates_browser_offsets_without_reconstructing_mar
         action_id="tighten",
     )
 
+    # Accepting proves the browser offsets validated against the rendered
+    # scene without Prosview rebuilding the markdown to check them.
     assert result["accepted"] is True
-    assert manager.get_snapshot(cid)["tasks"][0]["target"]["range"] == {
-        "start": start,
-        "end": start + len(selection),
-    }
     manager.close()
 
 
@@ -1893,10 +1817,8 @@ def test_selection_action_uses_bounded_live_editor_context(tmp_path: Path, monke
         action_id="tighten",
     )
     _wait_for(lambda: bool(clients[0].prompts))
+    # The unsaved buffer is what the agent was given, not the file on disk.
     assert "Local preface. First document." in clients[0].prompts[0]
-    task = manager.get_snapshot(cid)["tasks"][0]
-    assert task["target"]["range"] == {"start": 15, "end": 30}
-    assert task["target"]["live_content_hash"]
     manager.close()
 
 
@@ -1947,17 +1869,17 @@ def test_stop_recovers_when_codex_has_unloaded_the_active_thread(tmp_path: Path,
     active_turn_id = manager.get_snapshot(cid)["active_turn_id"]
     assert active_turn_id
     manager.stop(cid, active_turn_id)
-    _wait_for(
-        lambda: next(
-            task for task in manager.get_snapshot(cid)["tasks"] if task["id"] == rewrite["task_id"]
-        )["status"] == "ready"
-    )
+    # The queued rewrite is an ordinary turn now, so it is answered rather than
+    # marked ready -- but it must still survive the lost thread.
+    _wait_for(lambda: any(
+        message["role"] == "assistant" for message in manager.get_snapshot(cid)["messages"]
+    ))
 
     snapshot = manager.get_snapshot(cid)
     tasks = {task["id"]: task for task in snapshot["tasks"]}
     assert tasks[continuity["task_id"]]["status"] == "cancelled"
     assert tasks[continuity["task_id"]]["error"] == "Stopped by writer"
-    assert tasks[rewrite["task_id"]]["status"] == "ready"
+    assert rewrite["accepted"] is True
     assert client.next_thread == 2
     assert snapshot["connection"] == "Live"
     assert snapshot["unavailable_reason"] == ""

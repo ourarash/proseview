@@ -201,7 +201,7 @@ def test_a_selection_action_sends_its_output_schema(session):
     assert schema["properties"]["kind"]["enum"] == ["alternatives"]
 
 
-def test_a_critique_is_validated_into_findings(session):
+def test_a_reading_pass_answers_in_the_conversation(session):
     session.manager.submit(
         session.cid,
         client_request_id="c1",
@@ -209,11 +209,10 @@ def test_a_critique_is_validated_into_findings(session):
         selection="First document.",
         action_id="quick_critique",
     )
-    _wait_for(lambda: session.snapshot()["tasks"] and
-              session.snapshot()["tasks"][0]["status"] in {"ready", "failed"})
-    task = session.snapshot()["tasks"][0]
-    assert task["status"] == "ready", task.get("error")
-    assert task["result"]["findings"][0]["observation"]
+    _wait_for_settled_answer(session)
+    snapshot = session.snapshot()
+    assert snapshot["tasks"] == []
+    assert any(m["role"] == "assistant" and m["text"] for m in snapshot["messages"])
 
 
 def test_structured_results_never_appear_as_chat(session):

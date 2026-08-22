@@ -46,6 +46,14 @@ Four places where AI shows up, all opt-in:
    needs a decision, and the browser tab title says which agent is working or
    waiting whenever the dock is closed or the window is in the background.
 
+   Reading passes — critiques from the selection pill, and the scene passes
+   below — are ordinary questions with ordinary answers. Nothing they return is
+   written to your manuscript, so none of them produces a card, a structured
+   result or anything that can go stale: the agent replies in the conversation
+   and the passage it read stays attached, so a follow-up needs no reselecting.
+   Rewrites are different, because their answer is prose that gets applied to
+   your draft; those keep their card and their exact target.
+
    Opening the dock on a scene offers passes over that scene, one click and no
    typing. **Quick critique** returns five evidence-linked findings, each
    quoting the line it came from. **Style and consistency** works differently:

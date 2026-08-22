@@ -39,6 +39,15 @@
         // you come back. Only the things a snapshot cannot carry -- the draft
         // you were typing, what you had attached -- are held here per agent.
         const DISCUSS_AGENTS = ['codex', 'claude'];
+        // Reading passes are ordinary questions: no schema, no card, and the
+        // thing they read stays attached so a follow-up can refer to it.
+        const DISCUSS_READING_ACTIONS = [
+            'quick_critique', 'style_consistency', 'voice_character',
+            'pacing_tension', 'clarity_flow', 'continuity'
+        ];
+        function discussIsReadingAction(actionId) {
+            return DISCUSS_READING_ACTIONS.indexOf(String(actionId || '')) >= 0;
+        }
         // What a writer reaches for on an ordinary afternoon. The test for this
         // list is repetition: these get run on the same scene in draft two and
         // again in draft five.
@@ -3284,7 +3293,8 @@
             var custom = input.value.trim();
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             clearDiscussError();
-            _discussAutoReviewRequests[requestId] = true;
+            // Only a rewrite has a proposal to open when it lands.
+            if (!discussIsReadingAction(actionId)) _discussAutoReviewRequests[requestId] = true;
             button.disabled = true;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
@@ -3305,9 +3315,15 @@
                 if (custom) rememberDiscussInstruction(custom);
                 input.value = _discussAutoRun ? _discussPreservedDraft : '';
                 _discussPendingAction = null; _discussRetryOfTaskId = null; _discussSelectedSkill = null; _discussAutoRun = false; saveDiscussDraft();
-                _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
-                _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
-                _discussDraftDocument = null; saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                // A reading pass leaves its subject attached: the obvious next
+                // move is "say more about that", and it should not have to be
+                // reselected to ask.
+                if (!discussIsReadingAction(actionId)) {
+                    _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
+                    _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+                    _discussDraftDocument = null;
+                }
+                saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. The manuscript will not change.';
             }).catch(function(error) {
                 delete _discussAutoReviewRequests[requestId];

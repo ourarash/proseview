@@ -134,17 +134,18 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
     assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
 
 
-def test_all_selection_presets_use_structured_read_only_turns(server: ProseviewServer, fake_home: Path):
+def test_every_preset_is_read_only_and_only_rewrites_are_structured(server: ProseviewServer, fake_home: Path):
     headers = _discuss_headers(server)
     opened = server.post_json(
         "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
     )
     conversation_id = opened.json()["conversation_id"]
     quote = "the slow algebra of yesterday's receipts"
-    actions = [
-        "rephrase", "tighten", "clarify", "sensory_detail", "show_moment", "custom_rewrite",
-        "quick_critique", "voice_character", "pacing_tension", "clarity_flow", "continuity",
-    ]
+    # A rewrite hands back prose to apply, so it is schema-bound and leaves a
+    # card. A reading pass writes nothing and is an ordinary question.
+    rewrites = ["rephrase", "tighten", "clarify", "sensory_detail", "show_moment", "custom_rewrite"]
+    readings = ["quick_critique", "voice_character", "pacing_tension", "clarity_flow", "continuity"]
+    actions = rewrites + readings
     for index, action_id in enumerate(actions):
         response = server.post_json(
             f"/api/discuss/conversations/{conversation_id}/questions",
@@ -156,10 +157,10 @@ def test_all_selection_presets_use_structured_read_only_turns(server: ProseviewS
             headers=headers,
         )
         assert response.status == 202, response.text
-        if index in {4, 9}:
+        if index in {4, 8}:
             _wait_discuss(
                 server, conversation_id,
-                lambda value, expected=index + 1: len(value["tasks"]) >= expected and all(
+                lambda value, expected=min(index + 1, len(rewrites)): len(value["tasks"]) >= expected and all(
                     task["status"] == "ready" for task in value["tasks"][:expected]
                 ),
                 timeout=10.0,
@@ -167,15 +168,22 @@ def test_all_selection_presets_use_structured_read_only_turns(server: ProseviewS
 
     snapshot = _wait_discuss(
         server, conversation_id,
-        lambda value: len(value["tasks"]) == len(actions) and all(task["status"] == "ready" for task in value["tasks"]),
-        timeout=10.0,
+        lambda value: len(value["tasks"]) == len(rewrites)
+        and all(task["status"] == "ready" for task in value["tasks"])
+        and len([m for m in value["messages"] if m["role"] == "assistant"]) >= len(readings),
+        timeout=15.0,
     )
-    assert [task["action_id"] for task in snapshot["tasks"]] == actions
+    assert [task["action_id"] for task in snapshot["tasks"]] == rewrites
     records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
     preset_records = [row for row in records if str(row["params"].get("clientUserMessageId", "")).startswith("preset-")]
     assert len(preset_records) == len(actions)
+    # Every preset reads and none of them may write, structured or not.
     assert all(row["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False} for row in preset_records)
-    assert all("outputSchema" in row["params"] for row in preset_records)
+    schema_by_request = {
+        str(row["params"]["clientUserMessageId"]): "outputSchema" in row["params"] for row in preset_records
+    }
+    assert all(schema_by_request[f"preset-{index}"] for index in range(len(rewrites)))
+    assert not any(schema_by_request[f"preset-{index}"] for index in range(len(rewrites), len(actions)))
 
 
 def test_continuity_refactor_http_flow_scans_without_writing_and_hands_off_one_proposal(server: ProseviewServer):
@@ -254,51 +262,6 @@ def test_continuity_refactor_http_flow_scans_without_writing_and_hands_off_one_p
     verify_task = next(task for task in verified["tasks"] if task["id"] == verify_id)
     assert verify_task["verify_of"] == task_id
     assert server.scene_path().read_bytes() == before
-
-
-def test_selection_action_retry_is_linked_and_keeps_actionable_citation_error(server: ProseviewServer):
-    headers = _discuss_headers(server)
-    opened = server.post_json(
-        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
-    ).json()
-    conversation_id = opened["conversation_id"]
-    quote = "dial turned with a dry clatter"
-    first = server.post_json(
-        f"/api/discuss/conversations/{conversation_id}/questions",
-        {
-            "client_request_id": "invalid-critique-first",
-            "question": "",
-            "selection": quote,
-            "action_id": "quick_critique",
-        },
-        headers=headers,
-    ).json()
-    failed = _wait_discuss(
-        server, conversation_id,
-        lambda value: len(value["tasks"]) == 1 and value["tasks"][0]["status"] == "failed",
-    )
-    assert "a pressure gauge that was never selected" in failed["tasks"][0]["error"]
-
-    second = server.post_json(
-        f"/api/discuss/conversations/{conversation_id}/questions",
-        {
-            "client_request_id": "invalid-critique-retry",
-            "question": "",
-            "selection": quote,
-            "action_id": "quick_critique",
-            "retry_of_task_id": first["task_id"],
-        },
-        headers=headers,
-    ).json()
-    retried = _wait_discuss(
-        server, conversation_id,
-        lambda value: len(value["tasks"]) == 2 and value["tasks"][1]["status"] == "failed",
-    )
-    original, retry = retried["tasks"]
-    assert original["superseded_by"] == second["task_id"]
-    assert retry["retry_of"] == first["task_id"]
-    assert retry["retry_root_id"] == first["task_id"]
-    assert retry["attempt"] == 2
 
 
 def test_managed_proposal_blocks_stage_validation_after_external_change(server: ProseviewServer):

@@ -428,17 +428,28 @@ def test_managed_task_records_the_applied_suggestion_until_save_or_undo(tmp_path
     manager.close()
 
 
-def test_managed_critique_is_evidence_linked_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
+def test_a_reading_pass_is_a_message_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
+    """A critique writes nothing, so it carries none of a rewrite's machinery.
+
+    It is an ordinary question with an ordinary answer: no schema, no card, no
+    result to validate and nothing to go stale.
+    """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     manager.submit(cid, client_request_id="critique-1", question="", selection="First document.", action_id="quick_critique")
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
-    task = manager.get_snapshot(cid)["tasks"][0]
-    assert task["result"]["findings"][0]["evidence"] == "First document."
-    assert "copy a short contiguous excerpt verbatim" in manager._client_for("codex").prompts[0]
-    with pytest.raises(ValueError, match="not ready for review"):
-        manager.proposal_for_task(cid, task["id"])
+    _wait_for(lambda: any(m["role"] == "assistant" for m in manager.get_snapshot(cid)["messages"]))
+
+    snapshot = manager.get_snapshot(cid)
+    assert snapshot["tasks"] == []
+    # What the writer is shown having sent is what was sent.
+    asked = [m["text"] for m in snapshot["messages"] if m["role"] == "user"]
+    assert asked == ["Give me a short critique of this, quoting the exact lines you mean. Don't rewrite it."]
+    client = manager._client_for("codex")
+    assert "First document." in client.prompts[0]
+    assert "outputSchema" not in client.turn_params[0]
+    # Reading is still reading: nothing may be written on this turn.
+    assert client.turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
     manager.close()
 
 
@@ -529,7 +540,7 @@ def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: 
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     first = manager.submit(
-        cid, client_request_id="critique-first", question="", selection="First document.", action_id="quick_critique"
+        cid, client_request_id="rewrite-first", question="", selection="First document.", action_id="tighten"
     )
     _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
     conversation = manager._get(cid)
@@ -539,10 +550,10 @@ def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: 
 
     second = manager.submit(
         cid,
-        client_request_id="critique-retry",
+        client_request_id="rewrite-retry",
         question="",
         selection="First document.",
-        action_id="quick_critique",
+        action_id="tighten",
         retry_of_task_id=first["task_id"],
     )
     _wait_for(lambda: len(manager.get_snapshot(cid)["tasks"]) == 2)
@@ -554,10 +565,10 @@ def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: 
     with pytest.raises(ValueError, match="already been retried"):
         manager.submit(
             cid,
-            client_request_id="critique-duplicate-retry",
+            client_request_id="rewrite-duplicate-retry",
             question="",
             selection="First document.",
-            action_id="quick_critique",
+            action_id="tighten",
             retry_of_task_id=first["task_id"],
         )
     manager.close()
@@ -637,13 +648,12 @@ def test_a_scene_pass_reads_the_whole_scene_without_a_selection(tmp_path: Path, 
         cid, client_request_id="pass-1", question="",
         action_id="quick_critique", action_scope="scene",
     )
-    _wait_for(lambda: manager.get_snapshot(cid)["tasks"][0]["status"] == "ready")
+    _wait_for(lambda: any(m["role"] == "assistant" for m in manager.get_snapshot(cid)["messages"]))
 
-    task = manager.get_snapshot(cid)["tasks"][0]
-    assert task["target"]["scope"] == "scene"
-    # The title line is not prose and is not part of what the pass reads.
-    assert task["target"]["selection"] == "First document."
-    assert task["result"]["findings"][0]["evidence"] == "First document."
+    prompt = clients[0].prompts[0]
+    # The whole scene went with the turn -- and the title line is not prose.
+    assert "BEGIN USER SELECTION\nFirst document.\nEND USER SELECTION" in prompt
+    assert manager.get_snapshot(cid)["tasks"] == []
     manager.close()
 
 
@@ -687,7 +697,7 @@ def test_a_style_pass_hands_the_agent_what_prosview_already_found(tmp_path: Path
     _wait_for(lambda: clients[0].prompts)
 
     prompt = clients[0].prompts[-1]
-    assert "BEGIN STYLE OBSERVATIONS" in prompt
+    assert "BEGIN PROSVIEW NOTES" in prompt
     assert "passive construction: The door was opened by the wind." in prompt
     assert "filter verb: She felt a chill of something coming." in prompt
     assert "repeated word" in prompt
@@ -1565,7 +1575,7 @@ def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_pat
             client_request_id="critique-during-restore",
             question="",
             selection="First document.",
-            action_id="quick_critique",
+            action_id="tighten",
         )),
         daemon=True,
     )
@@ -1579,7 +1589,7 @@ def test_selection_action_queues_while_thread_history_is_still_restoring(tmp_pat
         restore.join(timeout=2)
         submit.join(timeout=2)
         _wait_for(lambda: any(
-            task.get("action_id") == "quick_critique" and task.get("status") == "ready"
+            task.get("action_id") == "tighten" and task.get("status") == "ready"
             for task in manager.get_snapshot(cid)["tasks"]
         ))
         manager.close()

@@ -675,106 +675,6 @@ def test_discuss_restores_an_inactive_providers_legacy_draft_on_its_source_file(
     assert page.evaluate("key => sessionStorage.getItem(key)", legacy_key) is None
 
 
-@pytest.mark.parametrize("agent", ["codex", "claude"])
-@pytest.mark.parametrize(
-    ("quote", "ready_status", "continuation"),
-    [
-        ("the slow algebra of yesterday's receipts", "Ready", "Propose a revision"),
-        ("dial turned with a dry clatter", "Failed", "Try again"),
-    ],
-)
-def test_discuss_task_continuations_keep_their_source_scene_after_navigation(
-    page: Page,
-    server: ProseviewServer,
-    agent: str,
-    quote: str,
-    ready_status: str,
-    continuation: str,
-):
-    question_requests: list[dict] = []
-    page.on(
-        "request",
-        lambda request: question_requests.append(request.post_data_json)
-        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
-        else None,
-    )
-    open_scene(page, server)
-    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    open_selection_menu(page, quote)
-    page.click("#selectionCritiqueBtn")
-    page.click("[data-selection-action='quick_critique']")
-    page.wait_for_function(
-        "status => document.querySelector('.discuss-task-status')?.textContent === status",
-        arg=ready_status,
-        timeout=15_000,
-    )
-    initial_requests = len(question_requests)
-
-    page.locator("#sceneModal .nav-btn").nth(1).click()
-    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
-    page.locator(".discuss-task").get_by_role("button", name=continuation).click()
-    if continuation == "Propose a revision":
-        page.click("#discussSend")
-    _wait_until(lambda: len(question_requests) > initial_requests, message="continuation request was not sent")
-    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
-    assert question_requests[-1]["selection_source_task_id"]
-
-
-@pytest.mark.parametrize("agent", ["codex", "claude"])
-@pytest.mark.parametrize(
-    ("scene_rel", "quote", "hidden_source"),
-    [
-        (
-            HTML_LEAD_SCENE_REL,
-            "What if the whole thing was a rumor the king started to save his pride?",
-            "<img",
-        ),
-        (
-            ANNOTATED_SCENE_REL,
-            "Rena read the column twice. The second reading did not improve it.",
-            "NOTE[continuity]",
-        ),
-    ],
-)
-def test_discuss_selection_uses_the_rendered_scene_snapshot_when_markdown_has_non_text_blocks(
-    page: Page,
-    server: ProseviewServer,
-    agent: str,
-    scene_rel: str,
-    quote: str,
-    hidden_source: str,
-):
-    question_requests: list[dict] = []
-    page.on(
-        "request",
-        lambda request: question_requests.append(request.post_data_json)
-        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
-        else None,
-    )
-    open_scene(page, server, scene_rel)
-    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-
-    open_selection_menu(page, quote)
-    page.click("#selectionCritiqueBtn")
-    page.click("[data-selection-action='quick_critique']")
-
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
-        timeout=15_000,
-    )
-    request = question_requests[-1]
-    snapshot = request["selection_snapshot"]
-    selected_range = request["selection_range"]
-    assert snapshot["editor_text"][selected_range["start"]:selected_range["end"]] == quote
-    assert hidden_source not in snapshot["editor_text"]
-    if scene_rel == ANNOTATED_SCENE_REL:
-        assert "TODO:" not in snapshot["editor_text"]
-        assert "NOTE[" not in snapshot["editor_text"]
-    assert re.fullmatch(r"[0-9a-f]{64}", snapshot["source_revision"])
-
-
 def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
     page: Page, server: ProseviewServer
 ):
@@ -1541,14 +1441,11 @@ def test_the_dock_offers_the_scene_before_the_repository(page: Page, server: Pro
     assert "Trace a canon change" in labels
 
     page.locator(".discuss-story-action", has_text="Quick critique").click()
-    page.wait_for_selector(".discuss-task")
+    page.wait_for_selector(".discuss-message.user")
     # One click: nothing selected, nothing typed.
     assert page.locator("#discussInput").input_value() == ""
-    assert "This scene ·" in page.locator(".discuss-task-selection").inner_text()
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status').innerText === 'Ready'"
-    )
-    assert page.locator(".discuss-findings li").count() >= 1
+    wait_for_discuss_answer(page, "Fake answer")
+    assert page.locator(".discuss-task").count() == 0
 
 
 def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer):
@@ -5875,25 +5772,25 @@ def test_proposal_review_fits_beside_dock_at_200_percent_zoom(
     assert page.locator("#discussPanel").bounding_box() is None
 
 
-def test_managed_critique_is_evidence_linked_and_can_transition_to_a_revision(
+def test_a_critique_answers_in_the_conversation_and_keeps_its_subject(
     page: Page, server: ProseviewServer
 ):
+    """A critique writes nothing, so it is a message and not a card.
+
+    It also leaves the passage attached: "say more about that" is the obvious
+    next move and should not require reselecting the prose.
+    """
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
     open_selection_menu(page, quote)
     page.click("#selectionCritiqueBtn")
     page.click("[data-selection-action='quick_critique']")
 
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'", timeout=15_000)
-    task = page.locator(".discuss-task").first
-    assert "The passage delays its strongest image" in task.inner_text()
-    assert quote in task.inner_text()
-    assert page.locator(".ai-proposal-panel:visible").count() == 0
-
-    task.get_by_role("button", name="Propose a revision").click()
-    assert "Rephrase selection" in page.locator("#discussTaskMode").inner_text()
-    assert "Address the critique" in page.input_value("#discussInput")
-
+    wait_for_discuss_answer(page, "Fake answer")
+    assert page.locator(".discuss-task").count() == 0
+    asked = page.locator(".discuss-message.user").last.inner_text()
+    assert "short critique" in asked
+    assert "Selection" in page.locator("#discussSelectionChip").inner_text()
 
 def test_quick_critique_queues_while_another_tab_restores_history(
     page: Page, server: ProseviewServer
@@ -5924,13 +5821,13 @@ def test_quick_critique_queues_while_another_tab_restores_history(
             open_selection_menu(page, quote)
             page.click("#selectionCritiqueBtn")
             page.click("[data-selection-action='quick_critique']")
-            page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+            page.wait_for_selector(".discuss-message.user", state="visible", timeout=1_500)
             assert page.locator("#discussError", has_text="Request timed out").count() == 0
     finally:
         other.close()
 
     page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        "() => document.querySelectorAll('.discuss-message.assistant').length > 0",
         timeout=15_000,
     )
 
@@ -5951,12 +5848,11 @@ def test_quick_critique_queues_before_a_slow_codex_turn_starts(
             turn_start_reached.exists,
             message="Quick Critique never reached the Codex turn boundary",
         )
-        page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+        page.wait_for_selector(".discuss-message.user", state="visible", timeout=1_500)
         assert page.locator("#discussError", has_text="Request timed out").count() == 0
-        assert page.locator(".discuss-task-status").inner_text() in {"Queued", "Running"}
 
     page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        "() => document.querySelectorAll('.discuss-message.assistant').length > 0",
         timeout=15_000,
     )
 
@@ -5982,7 +5878,7 @@ def test_quick_critique_runs_immediately_after_restart_with_retained_history(
     page.click("[data-selection-action='quick_critique']")
 
     page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        "() => document.querySelectorAll('.discuss-message.assistant').length > 0",
         timeout=15_000,
     )
     assert page.locator("#discussConnection").inner_text().startswith("Live")
@@ -6013,40 +5909,14 @@ def test_quick_critique_queues_while_an_active_turn_is_stopping(
         open_selection_menu(page, quote)
         page.click("#selectionCritiqueBtn")
         page.click("[data-selection-action='quick_critique']")
-        page.wait_for_selector(".discuss-task", state="visible", timeout=1_500)
+        page.wait_for_selector(".discuss-message.user", state="visible", timeout=1_500)
         assert page.locator("#discussError", has_text="Request timed out").count() == 0
 
     page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
+        "() => document.querySelectorAll('.discuss-message.assistant').length > 0",
         timeout=15_000,
     )
     page.wait_for_selector("#discussStop", state="hidden")
-
-
-def test_failed_critique_retry_shows_the_bad_citation_and_groups_attempts(
-    page: Page, server: ProseviewServer
-):
-    open_scene(page, server)
-    open_selection_menu(page, "dial turned with a dry clatter")
-    page.click("#selectionCritiqueBtn")
-    page.click("[data-selection-action='quick_critique']")
-
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Failed'", timeout=15_000)
-    task = page.locator(".discuss-task")
-    assert task.count() == 1
-    assert "a pressure gauge that was never selected" in task.inner_text()
-    task.get_by_role("button", name="Try again").click()
-
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task')?.querySelector('.discuss-task-status')?.textContent === 'Failed'"
-        " && document.querySelector('.discuss-attempts summary')?.textContent.includes('previous attempt')",
-        timeout=15_000,
-    )
-    assert page.locator(".discuss-task").count() == 1
-    attempts = page.locator(".discuss-attempts")
-    assert "1 previous attempt" in attempts.locator("summary").inner_text()
-    attempts.locator("summary").click()
-    assert "Attempt 1 · failed" in attempts.inner_text()
 
 
 def test_selection_assistance_history_can_be_cleared_without_clearing_conversation(
@@ -6054,9 +5924,10 @@ def test_selection_assistance_history_can_be_cleared_without_clearing_conversati
 ):
     open_scene(page, server)
     open_selection_menu(page, "the slow algebra of yesterday's receipts")
-    page.click("#selectionCritiqueBtn")
-    page.click("[data-selection-action='quick_critique']")
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'", timeout=15_000)
+    page.click("#selectionRewriteBtn")
+    page.click("[data-selection-action='tighten']")
+    page.wait_for_selector(".discuss-task", state="visible", timeout=15_000)
+    page.wait_for_function("() => !!document.querySelector('#discussHistoryClear:not([hidden])')", timeout=15_000)
     page.once("dialog", lambda dialog: dialog.accept())
     page.click("#discussHistoryClear")
     page.wait_for_function("() => document.querySelectorAll('.discuss-task').length === 0")

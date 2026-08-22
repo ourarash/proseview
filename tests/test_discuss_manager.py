@@ -13,7 +13,7 @@ from proseview.discuss import ContextError, DiscussManager, DiscussStateStore, _
 
 # Shared with the cross-transport conformance suite so both exercise the
 # same double rather than drifting apart.
-from .transport_fakes import CodexFakeClient as _FakeClient
+from .transport_fakes import CodexFakeClient as _FakeClient, fake_factory
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -553,6 +553,62 @@ def test_action_retry_links_attempts_without_discarding_prior_failure(tmp_path: 
             action_id="quick_critique",
             retry_of_task_id=first["task_id"],
         )
+    manager.close()
+
+
+def test_a_finished_tool_keeps_the_command_it_started_with(tmp_path: Path, monkeypatch):
+    """The Claude transport reports a start and an outcome as two messages.
+
+    Replacing the record with the second one left the trail saying a nameless
+    tool completed, with no sign of what had run.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"}, "claude")["conversation_id"]
+    client = manager._client_for("claude")
+    client.hold_next_turn = True
+    manager.submit(cid, client_request_id="tools-1", question="Look through the manuscript")
+    _wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] is not None)
+
+    turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    thread_id = next(iter(client.threads))
+    common = {"threadId": thread_id, "turnId": turn_id, "itemId": "tool-1"}
+    client.callback({"method": "tool/started", "params": {
+        **common, "tool": "Bash", "command": "grep -rn 'pocket-watch' manuscript",
+    }})
+    client.callback({"method": "tool/completed", "params": {
+        **common, "tool": "", "status": "completed", "output": "no matches",
+    }})
+
+    activity = manager.get_snapshot(cid)["activities"][0]
+    assert activity["kind"] == "commandExecution"
+    assert activity["command"] == "grep -rn 'pocket-watch' manuscript"
+    assert activity["status"] == "completed"
+    # Filed under the turn that ran it, so a trail can be drawn per turn.
+    assert activity["turn_id"] == turn_id
+
+    manager.stop(cid, turn_id)
+    manager.close()
+
+
+def test_a_repeated_progress_heartbeat_is_recorded_once(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"}, "claude")["conversation_id"]
+    client = manager._client_for("claude")
+    client.hold_next_turn = True
+    manager.submit(cid, client_request_id="beat-1", question="Think about this")
+    _wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] is not None)
+
+    turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    thread_id = next(iter(client.threads))
+    for _ in range(4):
+        client.callback({"method": "assistant/progress", "params": {
+            "threadId": thread_id, "turnId": turn_id, "text": "Thinking\n",
+        }})
+
+    assert manager.get_snapshot(cid)["progress"] == ["Thinking\n"]
+    manager.stop(cid, turn_id)
     manager.close()
 
 

@@ -136,9 +136,15 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
         tool = str(params.get("tool") or "")
         activity: dict[str, Any] = {
             "id": params.get("itemId"),
-            "kind": _activity_kind(tool),
             "status": params.get("status") or ("inProgress" if method.endswith("started") else "completed"),
         }
+        if not tool:
+            # A completion knows the outcome, not the tool. Guessing a kind from
+            # an empty name would relabel a finished command as a dynamic tool
+            # call and lose the command with it.
+            activity["output"] = _bounded(params.get("output"))
+            return [{"type": "activity.updated", **common, "activity": activity}]
+        activity["kind"] = _activity_kind(tool)
         if activity["kind"] == "commandExecution":
             activity.update(
                 command=_bounded(params.get("command"), 4000),
@@ -656,6 +662,9 @@ class ClaudeAgentClient:
                 if block_name == "ThinkingBlock":
                     # Never forward raw reasoning; the translator drops it too.
                     out.append(("assistant/thinkingDelta", dict(common)))
+                    # ...but silence is its own failure. A fixed heartbeat says
+                    # the model is working without saying what it is thinking.
+                    out.append(("assistant/progress", {**common, "text": "Thinking\n"}))
                 elif block_name == "TextBlock":
                     if structured:
                         # Prose alongside a schema-bound turn is commentary. The

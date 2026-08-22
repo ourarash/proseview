@@ -33,6 +33,19 @@ Four places where AI shows up, all opt-in:
    scene, and selection tasks and their follow-ups stay anchored there. Tool
    and file actions wait on approvals you can see.
 
+   A status strip between the conversation and the composer says what the
+   agent is doing: starting, working (with the current step and a running
+   clock), waiting on an approval, or finished, with how long the answer took.
+   **Details** opens the turn's trail — the files it read, the searches it ran,
+   the approvals you granted — in the order they happened. A turn that has
+   produced nothing for a minute says so rather than spinning. The **Stop**
+   button lives in that strip.
+
+   The same state reaches you when you are not looking at the dock: the agent's
+   tab carries a pulsing dot while it works and a steady amber one when it
+   needs a decision, and the browser tab title says which agent is working or
+   waiting whenever the dock is closed or the window is in the background.
+
    Discuss also has evidence-first continuity actions. **Trace a canon
    change** scans the configured manuscript and repository-tab folders,
    separates direct contradictions from ambiguous and likely intentional

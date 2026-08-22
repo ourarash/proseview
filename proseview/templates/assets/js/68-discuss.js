@@ -37,6 +37,10 @@
         // you come back. Only the things a snapshot cannot carry -- the draft
         // you were typing, what you had attached -- are held here per agent.
         const DISCUSS_AGENTS = ['codex', 'claude'];
+        // How long a finished turn keeps its result on screen before the
+        // strip stands down.
+        const DISCUSS_TURN_DONE_MS = 6000;
+        var _discussStreamText = '';
         const DISCUSS_AGENT_KEY = 'proseview-discuss-agent';
         var _discussAgent = _readDiscussAgent();
         var _discussAgentAvailability = {};
@@ -104,40 +108,52 @@
             openDiscuss(trigger || _discussReturnFocus);
         }
 
-        // The other agent may finish while you are reading this one. A dot on
-        // its tab is the only way to know without switching.
+        // An agent you are not looking at still finishes, still gets stuck on
+        // an approval. The dock being closed is exactly when that matters most,
+        // so the poll keeps running -- it just never opens a conversation that
+        // was never started, which would boot an agent nobody asked for.
         function _pollInactiveDiscussAgent() {
             clearTimeout(_discussAgentPollTimer);
             _discussAgentPollTimer = setTimeout(function() {
                 var panel = document.getElementById('discussPanel');
-                if (!panel || panel.hidden) return;
-                var other = _discussAgent === 'codex' ? 'claude' : 'codex';
-                // Only look at an agent the writer has actually opened. Opening
-                // a conversation to poll it would start that agent -- visiting
-                // the Codex tab would boot Claude, and every four seconds keep
-                // it alive, for someone who never asked for it.
-                var known = (_discussAgentLocal[other] || {}).conversationId;
-                if (!known) { _pollInactiveDiscussAgent(); return; }
-                fetch('/api/discuss/conversations/' + encodeURIComponent(known) + '/snapshot',
-                      {cache: 'no-store'})
-                    .then(function(response) { return response.ok ? response.json() : null; })
-                    .then(function(data) {
-                        var snapshot = (data || {}).snapshot || {};
-                        var busy = !!snapshot.active_turn_id || (snapshot.queue || []).length > 0;
-                        var pending = (snapshot.approvals || []).some(function(row) {
-                            return row.status === 'pending';
-                        });
-                        _markDiscussAgentTab(other, busy || pending);
-                    })
-                    .catch(function() {})
-                    .then(function() { _pollInactiveDiscussAgent(); });
+                var live = panel && !panel.hidden && _discussConversationId;
+                var targets = DISCUSS_AGENTS.filter(function(agent) {
+                    // The agent on screen reports itself through its own event
+                    // stream; polling it as well would only race that.
+                    if (live && agent === _discussAgent) return false;
+                    return !!(_discussAgentLocal[agent] || {}).conversationId;
+                });
+                Promise.all(targets.map(function(agent) {
+                    var known = (_discussAgentLocal[agent] || {}).conversationId;
+                    return fetch('/api/discuss/conversations/' + encodeURIComponent(known) + '/snapshot',
+                                 {cache: 'no-store'})
+                        .then(function(response) { return response.ok ? response.json() : null; })
+                        .then(function(data) {
+                            var snapshot = (data || {}).snapshot || {};
+                            var pending = (snapshot.approvals || []).some(function(row) {
+                                return row.status === 'pending';
+                            });
+                            var busy = !!snapshot.active_turn_id
+                                || !!snapshot.active_request_id
+                                || (snapshot.queue || []).length > 0;
+                            _discussAgentState[agent] = pending ? 'attention' : (busy ? 'busy' : '');
+                        })
+                        .catch(function() {});
+                })).then(function() {
+                    _syncDiscussAmbientSignals();
+                    _pollInactiveDiscussAgent();
+                });
             }, 4000);
         }
 
-        function _markDiscussAgentTab(agent, active) {
+        // '' | 'busy' | 'attention'. Working and waiting-on-you are different
+        // problems: one resolves itself, the other never will until you act.
+        function _markDiscussAgentTab(agent, state) {
             (UTILITY_TAB_IDS[agent] || []).forEach(function(id) {
                 var el = document.getElementById(id);
-                if (el) el.classList.toggle('utility-tab-busy', !!active);
+                if (!el) return;
+                el.classList.toggle('utility-tab-busy', state === 'busy');
+                el.classList.toggle('utility-tab-attention', state === 'attention');
             });
         }
 
@@ -524,6 +540,7 @@
             var focus = _discussReturnFocus;
             _discussReturnFocus = null;
             if (focus && focus.isConnected && typeof focus.focus === 'function') focus.focus();
+            _syncDiscussAmbientSignals();
         }
 
         function hideDiscussForTerminal() {
@@ -610,7 +627,7 @@
         // second list: it earns its visibility from the log, so restoring it
         // blind would announce activity that had already been read.
         function _discussBodyEls() {
-            return ['discussContext', 'discussLog', 'discussComposerArea', 'discussNewActivity']
+            return ['discussContext', 'discussLog', 'discussComposerArea', 'discussNewActivity', 'discussTurnStatus']
                 .map(function(id) { return document.getElementById(id); }).filter(Boolean);
         }
 
@@ -985,6 +1002,7 @@
                         var detail = JSON.parse(event.data);
                         setDiscussConnection(detail.state, detail.reason || '');
                     }
+                    if (type === 'turn.started' || type === 'conversation.reset') _discussStreamText = '';
                     if (type === 'approval.requested') {
                         var request = JSON.parse(event.data);
                         _discussLastApproval = request.request_id || '';
@@ -1071,16 +1089,18 @@
 
         function appendDiscussStreamDelta(text) {
             var log = document.getElementById('discussLog');
-            var draft = log.querySelector('.discuss-stream-draft');
             var atBottom = discussIsAtBottom(log);
+            // The text lives outside the DOM so the next snapshot render can
+            // put it back; the node alone did not survive replaceChildren().
+            _discussStreamText += text;
+            var draft = log.querySelector('.discuss-stream-draft');
             if (!draft) {
-                draft = document.createElement('div');
-                draft.className = 'discuss-message assistant discuss-stream-draft';
-                draft.dataset.text = '';
+                draft = elementWith('discuss-message assistant discuss-stream-draft');
+                draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
+                draft.appendChild(document.createTextNode(''));
                 log.appendChild(draft);
             }
-            draft.dataset.text += text;
-            draft.textContent = draft.dataset.text;
+            draft.lastChild.textContent = _discussStreamText;
             discussAfterActivity(atBottom);
         }
 
@@ -1534,6 +1554,361 @@
             return node;
         }
 
+        // ---- Turn status -------------------------------------------------
+        // One strip answers "is it still working?". Everything it says is
+        // derived from the snapshot, so a reload or a reconnect cannot leave it
+        // claiming work that already finished.
+        var _discussTurnBase = {ms: null, at: 0};
+        var _discussTurnTimer = null;
+        var _discussTurnTrailOpen = false;
+        var _discussTurnLastKind = '';
+        var _discussTurnPhraseAt = 0;
+        var _discussTurnPhrase = '';
+        var _discussTurnDoneUntil = 0;
+        var _discussAgentState = {};
+        var _discussBaseTitle = '';
+
+        function discussFormatDuration(ms) {
+            var total = Math.max(0, Math.round((ms || 0) / 1000));
+            return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+        }
+
+        function discussSpokenDuration(ms) {
+            var total = Math.max(0, Math.round((ms || 0) / 1000));
+            var minutes = Math.floor(total / 60);
+            var seconds = total % 60;
+            var parts = [];
+            if (minutes) parts.push(minutes + ' minute' + (minutes === 1 ? '' : 's'));
+            if (seconds || !minutes) parts.push(seconds + ' second' + (seconds === 1 ? '' : 's'));
+            return parts.join(' ');
+        }
+
+        function discussShortPath(value) {
+            var parts = String(value || '').replace(/\\/g, '/').split('/').filter(Boolean);
+            if (!parts.length) return '';
+            return parts.slice(-2).join('/');
+        }
+
+        // Protocol nouns are not writer language. "commandExecution · failed"
+        // says nothing about what was tried, and a search that matched nothing
+        // is an outcome rather than an error.
+        function discussCommandPhrase(activity) {
+            var command = String(activity.command || '').trim();
+            var head = command.split(/\s+/)[0] || '';
+            var name = head.split('/').pop();
+            var quoted = command.match(/(["'])(.*?)\1/);
+            var term = quoted ? quoted[2] : '';
+            if (name === 'grep' || name === 'rg' || name === 'ugrep') {
+                return term ? 'Searching for “' + term + '”' : 'Searching the manuscript';
+            }
+            if (name === 'cat' || name === 'head' || name === 'tail' || name === 'sed') {
+                var target = command.split(/\s+/).filter(function(part) { return part.indexOf('-') !== 0; }).pop();
+                return target && target !== name ? 'Reading ' + discussShortPath(target) : 'Reading a file';
+            }
+            if (name === 'ls' || name === 'find' || name === 'fd') return 'Looking through files';
+            if (name === 'git') return 'Checking the repository';
+            return command ? 'Running ' + name : 'Running a command';
+        }
+
+        function discussActivityPhrase(activity) {
+            var kind = activity.kind || '';
+            var tool = String(activity.tool || '');
+            if (kind === 'commandExecution') return discussCommandPhrase(activity);
+            if (kind === 'fileChange') {
+                var changes = activity.changes || [];
+                var path = changes.length ? discussShortPath(changes[0].path) : '';
+                return path ? 'Editing ' + path : 'Editing a file';
+            }
+            if (kind === 'webSearch') {
+                return activity.query ? 'Searching the web for “' + activity.query + '”' : 'Searching the web';
+            }
+            if (tool === 'Read' || tool === 'NotebookRead') {
+                return activity.path ? 'Reading ' + discussShortPath(activity.path) : 'Reading a file';
+            }
+            if (tool === 'Grep') {
+                return activity.query ? 'Searching for “' + activity.query + '”' : 'Searching the manuscript';
+            }
+            if (tool === 'Glob') return 'Looking through files';
+            if (tool) return 'Using ' + tool;
+            if (kind === 'mcpToolCall') return 'Using a connected tool';
+            return 'Working';
+        }
+
+        function discussApprovalPhrase(approval) {
+            if (approval.kind === 'command' || approval.kind === 'network') return 'Wants to run a shell command';
+            if (approval.kind === 'fileChange') return 'Wants to edit a file';
+            if (approval.kind === 'permissions') return 'Wants wider permissions';
+            return 'Wants your decision';
+        }
+
+        function discussSettledApprovalPhrase(approval) {
+            var what = approval.kind === 'fileChange' ? 'an edit'
+                : approval.kind === 'permissions' ? 'wider permissions'
+                : 'a command';
+            if (approval.status === 'expired') return 'The request for ' + what + ' expired';
+            if (approval.decision === 'decline' || approval.decision === 'cancel') return 'You declined ' + what;
+            return 'You allowed ' + what;
+        }
+
+        function discussTurnActivities(snapshot, turnId) {
+            var rows = (snapshot.activities || []);
+            if (!turnId) return rows;
+            var scoped = rows.filter(function(row) { return (row.turn_id || '') === turnId; });
+            // An agent that never labels its activities with a turn is still
+            // reporting this turn's work: the projection is cleared when the
+            // next turn starts.
+            return scoped.length ? scoped : rows;
+        }
+
+        function discussTurnTrailRows(snapshot, turnId, running) {
+            var rows = discussTurnActivities(snapshot, turnId).map(function(activity) {
+                var phrase = discussActivityPhrase(activity);
+                var status = activity.status || '';
+                if (status === 'inProgress') return {text: phrase, state: running ? 'now' : 'settled'};
+                if (status === 'failed') {
+                    return phrase.indexOf('Searching') === 0
+                        ? {text: phrase + ' — no matches', state: 'empty'}
+                        : {text: phrase + ' — failed', state: 'failed'};
+                }
+                return {text: phrase, state: 'done'};
+            });
+            (snapshot.approvals || []).forEach(function(approval) {
+                if (approval.status === 'pending' || approval.status === 'resolving') return;
+                if (turnId && approval.turn_id && approval.turn_id !== turnId) return;
+                rows.push({text: discussSettledApprovalPhrase(approval), state: 'settled'});
+            });
+            return rows;
+        }
+
+        // The last thing the agent said it was doing. Activities beat progress:
+        // "Reading alice.md" is a fact, a reasoning summary is a paraphrase.
+        function discussTurnDoingLine(snapshot) {
+            var scoped = discussTurnActivities(snapshot, snapshot.active_turn_id);
+            var running = scoped.filter(function(row) { return row.status === 'inProgress'; });
+            if (running.length) return discussActivityPhrase(running[running.length - 1]);
+            var tail = (snapshot.progress || []).join('').split('\n').filter(function(line) {
+                return line.trim();
+            }).pop();
+            if (tail) return tail.trim().slice(0, 160);
+            if (scoped.length) return discussActivityPhrase(scoped[scoped.length - 1]);
+            return '';
+        }
+
+        function discussTurnModel(snapshot) {
+            var label = discussAgentLabel();
+            var pending = (snapshot.approvals || []).filter(function(row) { return row.status === 'pending'; });
+            if (pending.length) {
+                return {
+                    kind: 'waiting',
+                    state: label + ' needs your permission',
+                    doing: discussApprovalPhrase(pending[0]),
+                    action: {label: 'Review', run: function() { discussFocusApproval(pending[0].request_id); }}
+                };
+            }
+            if (snapshot.active_turn_id) {
+                var queued = (snapshot.queue || []).length;
+                return {
+                    kind: 'working',
+                    state: label + ' is working' + (queued ? ' · ' + queued + ' queued' : ''),
+                    doing: discussTurnDoingLine(snapshot)
+                };
+            }
+            if (snapshot.active_request_id) {
+                return {
+                    kind: 'starting',
+                    state: 'Starting ' + label + '…',
+                    doing: 'Waiting for the local agent to accept the question'
+                };
+            }
+            var last = snapshot.last_turn || {};
+            if (last.status) {
+                var duration = discussFormatDuration(last.duration_ms);
+                if (last.status === 'completed') {
+                    var steps = last.steps || 0;
+                    return {
+                        kind: 'done',
+                        state: 'Answered in ' + duration,
+                        doing: steps ? steps + ' step' + (steps === 1 ? '' : 's') : ''
+                    };
+                }
+                if (last.status === 'interrupted' || last.status === 'cancelled') {
+                    return {kind: 'failed', state: 'Stopped after ' + duration, doing: 'You stopped ' + label};
+                }
+                return {
+                    kind: 'failed',
+                    state: label + ' could not finish',
+                    doing: last.error ? String(last.error).split('\n')[0].slice(0, 160) : 'The turn ended without an answer'
+                };
+            }
+            return {kind: 'idle'};
+        }
+
+        function discussFocusApproval(requestId) {
+            var card = document.getElementById('discussLog')
+                .querySelector('[data-approval-id="' + CSS.escape(String(requestId || '')) + '"]');
+            if (!card) return;
+            card.scrollIntoView({block: 'center'});
+            var button = card.querySelector('button');
+            if (button) button.focus();
+        }
+
+        function toggleDiscussTurnTrail() {
+            _discussTurnTrailOpen = !_discussTurnTrailOpen;
+            if (_discussSnapshot) renderDiscussTurnStatus(_discussSnapshot);
+        }
+
+        function discussTurnElapsedMs() {
+            if (_discussTurnBase.ms === null) return null;
+            return _discussTurnBase.ms + (Date.now() - _discussTurnBase.at);
+        }
+
+        function updateDiscussTurnClock() {
+            var elapsed = discussTurnElapsedMs();
+            var clock = document.getElementById('discussTurnClock');
+            if (elapsed === null) { clock.hidden = true; return; }
+            clock.hidden = false;
+            clock.textContent = discussFormatDuration(elapsed);
+            // Silence is a fact worth reporting. A turn that has produced
+            // nothing for a minute may be thinking or may be wedged, and
+            // pretending it is fine is how a panel loses its writer's trust.
+            if (_discussTurnLastKind === 'working' && Date.now() - _discussTurnPhraseAt > 60000) {
+                var quiet = Math.floor((Date.now() - _discussTurnPhraseAt) / 60000);
+                document.getElementById('discussTurnDoing').textContent =
+                    'Still working — no output for ' + quiet + 'm';
+            }
+        }
+
+        function _syncDiscussTurnTimer(running) {
+            if (running && !_discussTurnTimer) {
+                _discussTurnTimer = setInterval(updateDiscussTurnClock, 1000);
+            } else if (!running && _discussTurnTimer) {
+                clearInterval(_discussTurnTimer);
+                _discussTurnTimer = null;
+            }
+        }
+
+        function renderDiscussTurnStatus(snapshot) {
+            var wrap = document.getElementById('discussTurnStatus');
+            if (!wrap) return;
+            var model = discussTurnModel(snapshot);
+            var kind = model.kind;
+            // A finished turn holds its result briefly, then gets out of the way.
+            if (kind === 'done') {
+                if (_discussTurnLastKind !== 'done') _discussTurnDoneUntil = Date.now() + DISCUSS_TURN_DONE_MS;
+                if (Date.now() > _discussTurnDoneUntil) kind = 'idle';
+            } else if (kind !== 'idle') {
+                _discussTurnDoneUntil = 0;
+            }
+            if (kind !== _discussTurnLastKind) {
+                if (kind === 'done' && (_discussTurnLastKind === 'working' || _discussTurnLastKind === 'starting')) {
+                    document.getElementById('discussAnnouncement').textContent =
+                        discussAgentLabel() + ' finished in ' + discussSpokenDuration((snapshot.last_turn || {}).duration_ms);
+                    setTimeout(function() {
+                        if (_discussSnapshot) renderDiscussTurnStatus(_discussSnapshot);
+                    }, DISCUSS_TURN_DONE_MS + 200);
+                }
+                if (kind === 'working' || kind === 'starting') _discussTurnTrailOpen = true;
+                if (kind === 'idle' || kind === 'done') _discussTurnTrailOpen = false;
+                _discussTurnLastKind = kind;
+            }
+
+            _discussAgentState[_discussAgent] = kind === 'waiting' ? 'attention'
+                : (kind === 'working' || kind === 'starting') ? 'busy' : '';
+            _syncDiscussAmbientSignals();
+
+            if (kind === 'idle') {
+                wrap.hidden = true;
+                wrap.dataset.state = 'idle';
+                _syncDiscussTurnTimer(false);
+                return;
+            }
+            wrap.hidden = false;
+            wrap.dataset.state = kind;
+
+            document.getElementById('discussTurnState').textContent = model.state || '';
+            var doing = model.doing || '';
+            if (doing !== _discussTurnPhrase) { _discussTurnPhrase = doing; _discussTurnPhraseAt = Date.now(); }
+            document.getElementById('discussTurnDoing').textContent = doing;
+
+            var running = kind === 'working' || kind === 'starting';
+            _discussTurnBase = running
+                ? {ms: snapshot.active_turn_elapsed_ms || 0, at: Date.now()}
+                : {ms: null, at: 0};
+            _syncDiscussTurnTimer(running);
+            updateDiscussTurnClock();
+
+            var action = document.getElementById('discussTurnAction');
+            if (model.action) {
+                action.hidden = false;
+                action.textContent = model.action.label;
+                action.onclick = model.action.run;
+            } else {
+                action.hidden = true;
+                action.onclick = null;
+            }
+
+            var planHost = document.getElementById('discussTurnPlan');
+            planHost.replaceChildren();
+            planHost.hidden = !(snapshot.plan || []).length;
+            if (!planHost.hidden) {
+                var plan = document.createElement('details');
+                plan.className = 'discuss-plan';
+                plan.open = true;
+                var planSummary = document.createElement('summary');
+                planSummary.textContent = 'Plan';
+                plan.appendChild(planSummary);
+                var list = document.createElement('ol');
+                snapshot.plan.forEach(function(row) {
+                    var item = document.createElement('li');
+                    item.className = row.status || '';
+                    item.textContent = row.step || '';
+                    list.appendChild(item);
+                });
+                plan.appendChild(list);
+                planHost.appendChild(plan);
+            }
+
+            var rows = discussTurnTrailRows(
+                snapshot, snapshot.active_turn_id || (snapshot.last_turn || {}).turn_id, running);
+            var toggle = document.getElementById('discussTurnTrailToggle');
+            var trail = document.getElementById('discussTurnTrail');
+            toggle.hidden = !rows.length;
+            toggle.textContent = _discussTurnTrailOpen
+                ? 'Hide'
+                : (running ? 'Details' : rows.length + ' step' + (rows.length === 1 ? '' : 's'));
+            toggle.setAttribute('aria-expanded', _discussTurnTrailOpen ? 'true' : 'false');
+            trail.hidden = !(_discussTurnTrailOpen && rows.length);
+            wrap.dataset.trail = trail.hidden ? 'closed' : 'open';
+            trail.replaceChildren();
+            rows.forEach(function(row) {
+                var item = document.createElement('li');
+                item.className = row.state;
+                var text = document.createElement('span');
+                text.textContent = row.text;
+                item.appendChild(text);
+                trail.appendChild(item);
+            });
+        }
+
+        // ---- Signals outside the panel ------------------------------------
+        // You are usually reading, not watching the dock. The tab dot and the
+        // document title are the only things that reach you from there.
+        function _syncDiscussAmbientSignals() {
+            DISCUSS_AGENTS.forEach(function(agent) {
+                _markDiscussAgentTab(agent, _discussAgentState[agent] || '');
+            });
+            if (!_discussBaseTitle) _discussBaseTitle = document.title;
+            var panel = document.getElementById('discussPanel');
+            var away = !panel || panel.hidden || !document.hasFocus();
+            var waiting = DISCUSS_AGENTS.filter(function(a) { return _discussAgentState[a] === 'attention'; });
+            var working = DISCUSS_AGENTS.filter(function(a) { return _discussAgentState[a] === 'busy'; });
+            var prefix = '';
+            if (away && waiting.length) prefix = '· ' + discussAgentLabel(waiting[0]) + ' needs you — ';
+            else if (away && working.length) prefix = '· ' + discussAgentLabel(working[0]) + ' working — ';
+            var next = prefix + _discussBaseTitle;
+            if (document.title !== next) document.title = next;
+        }
+
         function renderDiscussSnapshot() {
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
@@ -1618,24 +1993,29 @@
                 log.appendChild(wrap);
                 if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
             });
-            if ((snapshot.progress || []).length) {
-                var progress = document.createElement('details'); progress.className = 'discuss-progress';
-                var progressSummary = document.createElement('summary'); progressSummary.textContent = 'What ' + discussAgentLabel() + ' is doing'; progress.appendChild(progressSummary);
-                progress.appendChild(document.createTextNode((snapshot.progress || []).join(''))); log.appendChild(progress);
+            // Words appearing are the strongest sign of life there is, and the
+            // rebuild above would erase them 35ms after they arrived. Re-hang
+            // the draft until the message it becomes has landed.
+            if (_discussStreamText && snapshot.active_turn_id) {
+                var landed = (snapshot.messages || []).some(function(message) {
+                    return message.role === 'assistant'
+                        && String(message.text || '').indexOf(_discussStreamText.slice(0, 200)) >= 0;
+                });
+                if (landed) _discussStreamText = '';
+                else {
+                    var draft = elementWith('discuss-message assistant discuss-stream-draft');
+                    draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
+                    draft.appendChild(document.createTextNode(_discussStreamText));
+                    log.appendChild(draft);
+                }
             }
-            if ((snapshot.plan || []).length) {
-                var plan = document.createElement('details'); plan.className = 'discuss-plan'; plan.open = true;
-                var planSummary = document.createElement('summary'); planSummary.textContent = 'Plan'; plan.appendChild(planSummary);
-                var list = document.createElement('ol');
-                snapshot.plan.forEach(function(row) { var item = document.createElement('li'); item.className = row.status || ''; item.textContent = row.step || ''; list.appendChild(item); });
-                plan.appendChild(list); log.appendChild(plan);
-            }
-            (snapshot.activities || []).forEach(function(activity) {
-                var details = document.createElement('details'); details.className = 'discuss-activity';
-                var summary = document.createElement('summary'); summary.textContent = (activity.kind || 'Activity') + ' · ' + (activity.status || ''); details.appendChild(summary);
-                details.appendChild(document.createTextNode(activity.command || activity.query || activity.tool || '')); log.appendChild(details);
+            // Progress and activities now belong to the turn strip, in the
+            // order they happened. Only an approval that still needs a decision
+            // earns a card here; a settled one is a line in the turn's trail.
+            (snapshot.approvals || []).forEach(function(approval) {
+                if (approval.status !== 'pending' && approval.status !== 'resolving') return;
+                log.appendChild(renderDiscussApproval(approval));
             });
-            (snapshot.approvals || []).forEach(function(approval) { log.appendChild(renderDiscussApproval(approval)); });
             notices.forEach(function(notice, index) {
                 if (!renderedNotices[index]) log.appendChild(renderDiscussNotice(notice));
             });
@@ -1697,6 +2077,7 @@
             if (newConversationHint.textContent !== unavailableReason) newConversationHint.textContent = unavailableReason;
             newConversationHint.hidden = !unavailableReason;
             log.setAttribute('aria-busy', snapshot.active_turn_id ? 'true' : 'false');
+            renderDiscussTurnStatus(snapshot);
             restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
                 var target = log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"] button');
@@ -2903,6 +3284,8 @@
             closeDiscussContextPicker();
         });
         window.addEventListener('resize', positionDiscussContextPicker);
+        window.addEventListener('focus', _syncDiscussAmbientSignals);
+        window.addEventListener('blur', _syncDiscussAmbientSignals);
         if (window.visualViewport) window.visualViewport.addEventListener('resize', positionDiscussContextPicker);
         // Escape deliberately does not close the dock: it belongs to whatever
         // the writer is inside -- the composer's context picker handles its own,

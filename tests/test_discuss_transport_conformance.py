@@ -278,6 +278,57 @@ def test_stopping_a_turn_that_is_not_active_is_refused(session):
         session.manager.stop(session.cid, "no-such-turn")
 
 
+# --- turn status ------------------------------------------------------------
+
+def test_the_running_turn_carries_a_clock_and_records_how_it_ended(session):
+    """A snapshot has to be able to answer "how long has this been going?".
+
+    Without it the browser can show a spinner but never a duration, and a
+    spinner alone is what made a wedged turn look like a thinking one.
+    """
+    session.client.hold_next_turn = True
+    session.manager.submit(session.cid, client_request_id="clock-1", question="Take your time")
+    _wait_for(lambda: session.snapshot()["active_turn_id"] is not None)
+
+    running = session.snapshot()
+    assert running["active_turn_phase"] == "working"
+    assert isinstance(running["active_turn_elapsed_ms"], int)
+    assert running["active_turn_elapsed_ms"] >= 0
+    assert running["last_turn"] == {}
+
+    session.manager.stop(session.cid, running["active_turn_id"])
+    _wait_for(lambda: session.snapshot()["last_turn"].get("status") == "interrupted")
+
+    ended = session.snapshot()
+    assert ended["active_turn_elapsed_ms"] is None
+    assert ended["active_turn_phase"] == ""
+    assert ended["last_turn"]["duration_ms"] >= 0
+
+
+def test_an_answered_turn_reports_what_it_took(session):
+    session.manager.submit(session.cid, client_request_id="clock-2", question="How long did that take?")
+    _wait_for_settled_answer(session)
+
+    last = session.snapshot()["last_turn"]
+    assert last["status"] == "completed"
+    assert last["duration_ms"] >= 0
+    assert last["steps"] >= 0
+    assert last["client_request_id"] == "clock-2"
+
+
+def test_a_question_is_timed_from_the_moment_it_is_accepted(session):
+    """Starting a local agent is part of the wait, even before a turn exists."""
+    conversation = session.manager._conversations[session.cid]
+    conversation.begin_turn()
+    assert conversation.snapshot()["active_turn_phase"] == "starting"
+    assert conversation.snapshot()["active_turn_id"] is None
+
+    first = conversation.finish_turn("completed")
+    # Three code paths end one turn. Whichever arrives first owns the record.
+    assert conversation.finish_turn("failed", error="late") == {}
+    assert conversation.snapshot()["last_turn"] == first
+
+
 # --- history ----------------------------------------------------------------
 
 def test_a_conversation_is_recorded_in_history(session):

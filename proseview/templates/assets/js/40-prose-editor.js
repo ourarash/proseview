@@ -252,6 +252,7 @@
                 _pmSaveInFlight = false;
                 if (!data.ok) { setPmDirty(true); return; }
                 if (data.mtime) _pmOpenMtime = data.mtime;
+                if (meta[p] && data.revision) meta[p].revision = data.revision;
                 contents[p] = markdown;
                 var liveMarkdown = serializeSceneEditorMarkdown();
                 if (liveMarkdown !== markdown) {

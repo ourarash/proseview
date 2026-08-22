@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import proseview
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -29,6 +30,7 @@ UNIX_ONLY = {"fcntl", "pty", "termios"}
 def without_unix_modules(monkeypatch):
     """Re-import proseview.server as if the Unix-only modules did not exist."""
     real_import = builtins.__import__
+    original_server = sys.modules.get("proseview.server")
 
     def fake_import(name, *args, **kwargs):
         if name in UNIX_ONLY:
@@ -46,7 +48,11 @@ def without_unix_modules(monkeypatch):
     # Restore the real module for everything that follows.
     monkeypatch.undo()
     sys.modules.pop("proseview.server", None)
-    importlib.import_module("proseview.server")
+    if original_server is None:
+        importlib.import_module("proseview.server")
+    else:
+        sys.modules["proseview.server"] = original_server
+        proseview.server = original_server
 
 
 def test_server_imports_without_the_unix_only_modules(without_unix_modules):

@@ -7,6 +7,8 @@
         var _discussAttachments = [];
         var _discussSelection = '';
         var _discussSelectionRange = null;
+        var _discussSelectionSnapshot = null;
+        var _discussSelectionSourceTaskId = null;
         var _discussLiveDocument = null;
         var _discussIncludeCurrentDocument = false;
         var _discussContextChoices = [];
@@ -37,6 +39,21 @@
         // you come back. Only the things a snapshot cannot carry -- the draft
         // you were typing, what you had attached -- are held here per agent.
         const DISCUSS_AGENTS = ['codex', 'claude'];
+        // What a writer reaches for on an ordinary afternoon. The test for this
+        // list is repetition: these get run on the same scene in draft two and
+        // again in draft five.
+        const DISCUSS_SCENE_PASSES = [
+            {
+                id: 'quick_critique',
+                label: 'Quick critique',
+                copy: 'Five things working against this scene, each quoting the line it came from.'
+            },
+            {
+                id: 'style_consistency',
+                label: 'Style and consistency',
+                copy: 'Proseview finds the passives, filter verbs and echoes. The agent says which ones hurt.'
+            }
+        ];
         // How long a finished turn keeps its result on screen before the
         // strip stands down.
         const DISCUSS_TURN_DONE_MS = 6000;
@@ -213,6 +230,11 @@
                 ? currentSceneLiveDocumentSnapshot() : null;
         }
 
+        function discussSelectionSnapshotFor(targetDocument) {
+            return typeof currentSceneSelectionSnapshot === 'function'
+                ? currentSceneSelectionSnapshot(targetDocument) : null;
+        }
+
         function saveDiscussDraft() {
             var input = document.getElementById('discussInput');
             if (!input) return;
@@ -387,6 +409,8 @@
             _discussSelectionRange = options.selectionRange && typeof options.selectionRange.start === 'number'
                 ? {start: options.selectionRange.start, end: options.selectionRange.end}
                 : null;
+            _discussSelectionSnapshot = options.selectionSnapshot || null;
+            _discussSelectionSourceTaskId = options.selectionSourceTaskId || null;
             _discussLiveDocument = options.liveDocument || null;
             _discussDraftDocument = null;
             _discussAttachments = [];
@@ -400,6 +424,8 @@
             var requestedAction = _discussPendingAction;
             var requestedSelection = _discussSelection;
             var requestedSelectionRange = _discussSelectionRange;
+            var requestedSelectionSnapshot = _discussSelectionSnapshot;
+            var requestedSelectionSourceTaskId = _discussSelectionSourceTaskId;
             var requestedLiveDocument = _discussLiveDocument;
             closeDiscussContextPicker();
             clearDiscussError();
@@ -442,14 +468,19 @@
                 _discussSnapshot = data.snapshot;
                 renderDiscussSnapshot();
                 connectDiscussEvents();
-                renderDiscussTaskMode();
+                // The composer was rendered after its selection/draft state was
+                // restored above. Rebuilding it here detaches an open presets
+                // popover while the conversation request finishes.
                 document.getElementById('discussSend').disabled = false;
                 _markDiscussAgentTab(_discussAgent, false);
                 loadDiscussAgentAvailability();
                 _pollInactiveDiscussAgent();
                 if (options.showSkills) loadDiscussSkills();
                 else if (requestedAutoRun && requestedAction) {
-                    runDiscussSelectionAction(requestedAction, requestedSelection, requestedSelectionRange, requestedLiveDocument);
+                    runDiscussSelectionAction(
+                        requestedAction, requestedSelection, requestedSelectionRange, requestedLiveDocument,
+                        0, null, requestedSelectionSnapshot, requestedSelectionSourceTaskId
+                    );
                 }
                 else input.focus();
             }).catch(function(error) {
@@ -508,6 +539,8 @@
                 _discussDraftDocument = Object.assign({}, doc);
                 _discussIncludeCurrentDocument = false;
                 _discussSelectionRange = options.selectionRange || null;
+                _discussSelectionSnapshot = options.selectionSnapshot || null;
+                _discussSelectionSourceTaskId = options.selectionSourceTaskId || null;
                 _discussLiveDocument = options.liveDocument || null;
                 _discussPendingAction = options.actionId || null;
                 _discussRepositoryAction = null;
@@ -518,7 +551,8 @@
                 if (options.showSkills) loadDiscussSkills();
                 else if (_discussAutoRun && _discussPendingAction) {
                     runDiscussSelectionAction(
-                        _discussPendingAction, _discussSelection, _discussSelectionRange, _discussLiveDocument
+                        _discussPendingAction, _discussSelection, _discussSelectionRange, _discussLiveDocument,
+                        0, null, _discussSelectionSnapshot, _discussSelectionSourceTaskId
                     );
                 } else document.getElementById('discussInput').focus();
                 return;
@@ -1964,7 +1998,25 @@
                     }
                 } else {
                     title.textContent = 'What do you want to examine?';
-                    empty.appendChild(title); empty.appendChild(document.createTextNode('Ask about what you are reading, or start with a story-aware action.'));
+                    empty.appendChild(title);
+                    empty.appendChild(document.createTextNode('Ask about what you are reading, or run a pass over it.'));
+                    // The scene on screen comes first. The repository scans are
+                    // the rarer, heavier work and no longer lead.
+                    var emptyDocument = discussTurnDocument();
+                    if (emptyDocument && emptyDocument.kind === 'scene') {
+                        empty.appendChild(elementWith('discuss-story-group', 'Read this scene'));
+                        var passes = elementWith('discuss-story-actions');
+                        DISCUSS_SCENE_PASSES.forEach(function(row) {
+                            var pass = document.createElement('button');
+                            pass.type = 'button'; pass.className = 'discuss-story-action';
+                            pass.appendChild(elementWith('discuss-story-action-title', row.label));
+                            pass.appendChild(elementWith('discuss-story-action-copy', row.copy));
+                            pass.onclick = function() { runDiscussScenePass(row.id); };
+                            passes.appendChild(pass);
+                        });
+                        empty.appendChild(passes);
+                    }
+                    empty.appendChild(elementWith('discuss-story-group', 'Across the story'));
                     var actions = elementWith('discuss-story-actions');
                     var canon = document.createElement('button'); canon.type = 'button'; canon.className = 'discuss-story-action';
                     canon.appendChild(elementWith('discuss-story-action-title', 'Trace a canon change'));
@@ -2279,8 +2331,15 @@
             if (task.kind === 'continuity_report') {
                 card.appendChild(elementWith('discuss-task-selection', task.change_request || task.instruction || 'Repository continuity scan'));
             } else {
-                var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
-                card.appendChild(preview);
+                if (target.scope === 'scene') {
+                    // Quoting the first 120 characters of a whole scene back at
+                    // its writer says nothing about what the pass read.
+                    var words = String(target.selection || '').split(/\s+/).filter(Boolean).length;
+                    card.appendChild(elementWith('discuss-task-selection', 'This scene · ' + words.toLocaleString() + ' words'));
+                } else {
+                    var preview = elementWith('discuss-task-selection', '“' + String(target.selection || '').slice(0, 120) + (String(target.selection || '').length > 120 ? '…' : '') + '”');
+                    card.appendChild(preview);
+                }
             }
             previousAttempts = previousAttempts || [];
             if (previousAttempts.length) {
@@ -2293,6 +2352,7 @@
                 card.appendChild(elementWith('discuss-task-meta', restoredLabel));
             }
             if (task.skill && task.skill.name) card.appendChild(elementWith('discuss-task-meta', 'Skill · ' + task.skill.name));
+            if (target && target.scope_note) card.appendChild(elementWith('discuss-task-meta', target.scope_note));
             if (task.error) card.appendChild(elementWith('discuss-error', task.error));
             if (previousAttempts.length) {
                 var attempts = document.createElement('details'); attempts.className = 'discuss-attempts';
@@ -2328,6 +2388,8 @@
                         _discussSelection = target.selection || '';
                         _discussSelectionRange = target.range || null;
                         _discussDraftDocument = taskDocument;
+                        _discussSelectionSnapshot = discussSelectionSnapshotFor(taskDocument);
+                        _discussSelectionSourceTaskId = task.id;
                         _discussLiveDocument = discussLiveDocumentFor(taskDocument);
                         _discussPendingAction = 'rephrase';
                         _discussRetryOfTaskId = null;
@@ -2353,6 +2415,8 @@
                     _discussSelection = target.selection || '';
                     _discussSelectionRange = target.range || null;
                     _discussDraftDocument = taskDocument;
+                    _discussSelectionSnapshot = discussSelectionSnapshotFor(taskDocument);
+                    _discussSelectionSourceTaskId = task.id;
                     _discussLiveDocument = discussLiveDocumentFor(taskDocument);
                     _discussPendingAction = task.action_id;
                     _discussRetryOfTaskId = task.id;
@@ -2362,7 +2426,10 @@
                     if (task.action_id === 'custom_rewrite' || task.instruction) {
                         input.focus();
                         document.getElementById('discussAnnouncement').textContent = 'Review the restored instruction, then run the action again';
-                    } else runDiscussSelectionAction(task.action_id, target.selection || '', target.range || null, _discussLiveDocument, 0, task.id);
+                    } else runDiscussSelectionAction(
+                        task.action_id, target.selection || '', target.range || null, _discussLiveDocument,
+                        0, task.id, _discussSelectionSnapshot, task.id
+                    );
                 };
                 card.appendChild(retry);
             }
@@ -2640,7 +2707,9 @@
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
                 removeSelection.onclick = function() {
-                    _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussPendingAction = null; _discussRetryOfTaskId = null;
+                    _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
+                    _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+                    _discussPendingAction = null; _discussRetryOfTaskId = null;
                     if (!document.getElementById('discussInput').value) _discussDraftDocument = null;
                     saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
                     document.getElementById('discussAnnouncement').textContent = 'Selection removed from context';
@@ -3021,6 +3090,8 @@
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';
                     _discussSelectionRange = null;
+                    _discussSelectionSnapshot = null;
+                    _discussSelectionSourceTaskId = null;
                     _discussLiveDocument = null;
                     _discussPendingAction = null;
                     _discussRepositoryAction = null;
@@ -3182,12 +3253,17 @@
             });
         }
 
-        function runDiscussSelectionAction(actionOverride, selectionOverride, rangeOverride, liveDocumentOverride, retryCount, retryOfOverride) {
+        function runDiscussSelectionAction(
+            actionOverride, selectionOverride, rangeOverride, liveDocumentOverride,
+            retryCount, retryOfOverride, selectionSnapshotOverride, selectionSourceTaskOverride
+        ) {
             var input = document.getElementById('discussInput');
             var button = document.getElementById('discussSend');
             var actionId = actionOverride || _discussPendingAction;
             var selection = selectionOverride || _discussSelection;
             var selectionRange = rangeOverride || _discussSelectionRange;
+            var selectionSnapshot = selectionSnapshotOverride || _discussSelectionSnapshot;
+            var selectionSourceTaskId = selectionSourceTaskOverride || _discussSelectionSourceTaskId;
             var liveDocument = liveDocumentOverride || _discussLiveDocument;
             var retryOfTaskId = retryOfOverride || _discussRetryOfTaskId;
             var turnDocument = discussTurnDocument();
@@ -3197,7 +3273,10 @@
                 retryCount = Number(retryCount || 0);
                 if (retryCount < 100) {
                     setTimeout(function() {
-                        runDiscussSelectionAction(actionId, selection, selectionRange, liveDocument, retryCount + 1, retryOfTaskId);
+                        runDiscussSelectionAction(
+                            actionId, selection, selectionRange, liveDocument, retryCount + 1,
+                            retryOfTaskId, selectionSnapshot, selectionSourceTaskId
+                        );
                     }, 50);
                 }
                 return;
@@ -3213,6 +3292,8 @@
                 document: turnDocument,
                 selection: selection,
                 selection_range: selectionRange,
+                selection_snapshot: selectionSnapshot,
+                selection_source_task_id: selectionSourceTaskId,
                 live_document: liveDocument,
                 attachments: _discussAttachments,
                 include_current_document: _discussIncludeCurrentDocument,
@@ -3224,7 +3305,9 @@
                 if (custom) rememberDiscussInstruction(custom);
                 input.value = _discussAutoRun ? _discussPreservedDraft : '';
                 _discussPendingAction = null; _discussRetryOfTaskId = null; _discussSelectedSkill = null; _discussAutoRun = false; saveDiscussDraft();
-                _discussSelection = ''; _discussSelectionRange = null; _discussLiveDocument = null; _discussDraftDocument = null; saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
+                _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+                _discussDraftDocument = null; saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 document.getElementById('discussAnnouncement').textContent = selectionActionLabel(actionId) + ' queued. The manuscript will not change.';
             }).catch(function(error) {
                 delete _discussAutoReviewRequests[requestId];
@@ -3234,6 +3317,40 @@
                 var proposalPanel = document.getElementById('aiProposalPanel');
                 if (proposalPanel && !proposalPanel.hidden) proposalPanel.focus({preventScroll: true});
                 else input.focus();
+            });
+        }
+
+        // A scene pass takes no selection: the server reads the scene this
+        // conversation is looking at. Nothing to highlight, nothing to type --
+        // an action that needs a paragraph of setup first is not one anybody
+        // reaches for.
+        function runDiscussScenePass(actionId) {
+            var button = document.getElementById('discussSend');
+            var turnDocument = discussTurnDocument();
+            if (!actionId || !_discussConversationId || button.disabled) return;
+            if (!turnDocument || turnDocument.kind !== 'scene') {
+                renderDiscussError('A scene pass reads a manuscript scene. Open one first.');
+                return;
+            }
+            var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            clearDiscussError();
+            button.disabled = true;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
+                client_request_id: requestId,
+                question: '',
+                document: turnDocument,
+                action_id: actionId,
+                action_scope: 'scene',
+                attachments: [],
+                include_current_document: false
+            }).then(function() {
+                document.getElementById('discussAnnouncement').textContent =
+                    selectionActionLabel(actionId) + ' running on this scene. The manuscript will not change.';
+                scheduleDiscussSnapshot();
+            }).catch(function(error) {
+                renderDiscussError(error.message);
+            }).finally(function() {
+                button.disabled = false;
             });
         }
 

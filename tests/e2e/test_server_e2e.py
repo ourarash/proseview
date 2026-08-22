@@ -131,18 +131,19 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
     assert "selection sentinel" in prompt
     assert "book-plan.md" in prompt
     assert "Explain the ledger" in prompt
-    assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+    assert records[-1]["params"]["sandboxPolicy"] == {"type": "workspaceWrite", "networkAccess": False}
 
 
-def test_every_preset_is_read_only_and_only_rewrites_are_structured(server: ProseviewServer, fake_home: Path):
+def test_a_preset_may_write_only_when_it_was_asked_to_change_something(server: ProseviewServer, fake_home: Path):
     headers = _discuss_headers(server)
     opened = server.post_json(
         "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
     )
     conversation_id = opened.json()["conversation_id"]
     quote = "the slow algebra of yesterday's receipts"
-    # A rewrite hands back prose to apply, so it is schema-bound and leaves a
-    # card. A reading pass writes nothing and is an ordinary question.
+    # Every preset is an ordinary question now. A rewrite edits the scene, so
+    # its turn is sandboxed to allow it; a pass that exists to read and report
+    # cannot write even if it decided to try.
     rewrites = ["rephrase", "tighten", "clarify", "sensory_detail", "show_moment", "custom_rewrite"]
     readings = ["quick_critique", "voice_character", "pacing_tension", "clarity_flow", "continuity"]
     actions = rewrites + readings
@@ -160,30 +161,33 @@ def test_every_preset_is_read_only_and_only_rewrites_are_structured(server: Pros
         if index in {4, 8}:
             _wait_discuss(
                 server, conversation_id,
-                lambda value, expected=min(index + 1, len(rewrites)): len(value["tasks"]) >= expected and all(
-                    task["status"] == "ready" for task in value["tasks"][:expected]
-                ),
-                timeout=10.0,
+                lambda value, expected=index: len([
+                    m for m in value["messages"] if m["role"] == "assistant"
+                ]) >= expected,
+                timeout=15.0,
             )
 
     snapshot = _wait_discuss(
         server, conversation_id,
-        lambda value: len(value["tasks"]) == len(rewrites)
-        and all(task["status"] == "ready" for task in value["tasks"])
-        and len([m for m in value["messages"] if m["role"] == "assistant"]) >= len(readings),
-        timeout=15.0,
+        lambda value: len([m for m in value["messages"] if m["role"] == "assistant"]) == len(actions),
+        timeout=20.0,
     )
-    assert [task["action_id"] for task in snapshot["tasks"]] == rewrites
+    assert snapshot["tasks"] == []
     records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
     preset_records = [row for row in records if str(row["params"].get("clientUserMessageId", "")).startswith("preset-")]
     assert len(preset_records) == len(actions)
-    # Every preset reads and none of them may write, structured or not.
-    assert all(row["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False} for row in preset_records)
-    schema_by_request = {
-        str(row["params"]["clientUserMessageId"]): "outputSchema" in row["params"] for row in preset_records
+    assert not any("outputSchema" in row["params"] for row in preset_records)
+    sandbox_by_request = {
+        str(row["params"]["clientUserMessageId"]): row["params"]["sandboxPolicy"]["type"]
+        for row in preset_records
     }
-    assert all(schema_by_request[f"preset-{index}"] for index in range(len(rewrites)))
-    assert not any(schema_by_request[f"preset-{index}"] for index in range(len(rewrites), len(actions)))
+    assert all(sandbox_by_request[f"preset-{i}"] == "workspaceWrite" for i in range(len(rewrites)))
+    assert all(
+        sandbox_by_request[f"preset-{i}"] == "readOnly"
+        for i in range(len(rewrites), len(actions))
+    )
+    assert all(row["params"]["networkAccess"] is False for row in preset_records
+               if "networkAccess" in row["params"])
 
 
 def test_continuity_refactor_http_flow_scans_without_writing_and_hands_off_one_proposal(server: ProseviewServer):
@@ -262,33 +266,6 @@ def test_continuity_refactor_http_flow_scans_without_writing_and_hands_off_one_p
     verify_task = next(task for task in verified["tasks"] if task["id"] == verify_id)
     assert verify_task["verify_of"] == task_id
     assert server.scene_path().read_bytes() == before
-
-
-def test_managed_proposal_blocks_stage_validation_after_external_change(server: ProseviewServer):
-    headers = _discuss_headers(server)
-    opened = server.post_json(
-        "/api/discuss/conversations/open", {"kind": "scene", "path": SCENE_REL}, headers=headers
-    )
-    conversation_id = opened.json()["conversation_id"]
-    response = server.post_json(
-        f"/api/discuss/conversations/{conversation_id}/questions",
-        {
-            "client_request_id": "stale-stage", "question": "", "selection": "the slow algebra of yesterday's receipts",
-            "action_id": "tighten",
-        },
-        headers=headers,
-    )
-    task_id = response.json()["task_id"]
-    _wait_discuss(server, conversation_id, lambda value: value["tasks"][0]["status"] == "ready")
-    proposal = server.post_json(
-        f"/api/discuss/conversations/{conversation_id}/tasks/{task_id}/proposal", {}, headers=headers
-    ).json()["proposal"]
-    path = server.scene_path()
-    path.write_text(path.read_text(encoding="utf-8") + "\nExternal edit.\n", encoding="utf-8")
-
-    validation = server.post_json(f"/ai/proposals/{proposal['id']}/validate", {})
-    assert validation.status == 409
-    assert "scene changed" in validation.json()["error"].lower()
 
 
 def test_discuss_http_omits_document_context_unless_requested(server: ProseviewServer, fake_home: Path):

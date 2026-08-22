@@ -5495,200 +5495,17 @@ def test_new_conversation_clears_configured_selection_action_mode(
     )
 
 
-def test_managed_rewrite_auto_opens_review_exposes_suggestions_and_applies_only_to_draft(
+def test_selection_action_started_from_dirty_editor_sends_the_live_target(
     page: Page, server: ProseviewServer
 ):
-    path = server.scene_path()
-    before = path.read_text(encoding="utf-8")
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-
-    page.wait_for_selector(".ai-proposal-panel", state="visible", timeout=15_000)
-    page.wait_for_function("() => document.activeElement === document.getElementById('aiProposalPanel')")
-    task = page.locator(".discuss-task").first
-    assert "Tighten" in task.inner_text()
-    assert "2 suggestions" in task.inner_text()
-    suggestions = task.locator(".discuss-alternatives")
-    suggestions.locator("summary").click()
-    assert "Rena pressed her thumb against the envelope seam." in suggestions.inner_text()
-    assert "Uses a direct physical action." in suggestions.inner_text()
-    assert "Rena held the sealed envelope to the window." in suggestions.inner_text()
-    assert path.read_text(encoding="utf-8") == before
-
-    panel = page.locator(".ai-proposal-panel")
-    assert panel.get_attribute("role") == "dialog"
-    assert panel.get_attribute("aria-modal") == "false"
-    assert panel.get_attribute("aria-labelledby") == "aiProposalTitle"
-    assert "PROPOSED · 1 OF 2" in panel.inner_text()
-    assert "Use this version" in panel.inner_text()
-    assert "Stage change" not in panel.inner_text()
-    panel.get_by_role("button", name="Use this version").click()
-    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
-    assert path.read_text(encoding="utf-8") == before
-    assert "Applied to draft · Not saved" in panel.inner_text()
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Applied · Not saved'")
-    assert "used suggestion 1" in task.inner_text().lower()
-    assert "Rena pressed her thumb against the envelope seam." in task.inner_text()
-
-    panel.get_by_role("button", name="Undo").click()
-    _wait_until(lambda: quote in _editor_text(page))
-    assert "Rena pressed her thumb" not in _editor_text(page)
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'")
-
-
-def test_managed_selection_action_restores_as_a_card_after_server_restart(
-    page: Page, server: ProseviewServer
-):
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Reviewing'",
-        timeout=15_000,
-    )
-
-    server.restart()
-    # Force a fresh document so the restarted server's per-process mutation
-    # token is not satisfied from the browser cache.
-    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
-    page.goto("about:blank")
-    open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
-    page.wait_for_timeout(1_000)
-    connection = page.locator("#discussConnection").inner_text()
-    assert connection.startswith("Live"), connection
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Ready'",
-        timeout=15_000,
-    )
-
-    task = page.locator(".discuss-task")
-    assert task.count() == 1
-    assert "Tighten" in task.inner_text()
-    assert "Restored from Codex history" in task.inner_text()
-    assert "2 suggestions" in task.inner_text()
-    restored_suggestions = task.locator(".discuss-alternatives")
-    restored_suggestions.locator("summary").click()
-    assert "Rena pressed her thumb against the envelope seam." in restored_suggestions.inner_text()
-    assert "Rena held the sealed envelope to the window." in restored_suggestions.inner_text()
-    assert "&quot;" not in page.locator("#discussLog").inner_text()
-    assert '"kind":"alternatives"' not in page.locator("#discussLog").inner_text()
-    task.get_by_role("button", name="Review changes").click()
-    page.wait_for_selector(".ai-proposal-panel", state="visible")
-    assert quote in page.locator(".ai-proposal-panel").inner_text()
-
-
-def test_same_server_reload_does_not_auto_review_replayed_rewrite_history(
-    page: Page, server: ProseviewServer
-):
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Reviewing'",
-        timeout=15_000,
-    )
-
-    proposal_requests: list[str] = []
+    """An action on an unsaved buffer must be about the buffer, not the file."""
+    question_requests: list[dict] = []
     page.on(
         "request",
-        lambda request: proposal_requests.append(request.url)
-        if request.url.endswith("/proposal")
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
         else None,
     )
-    page.reload(wait_until="load")
-    page.wait_for_function("() => !!window._PM")
-    page.wait_for_selector("#sceneModal", state="visible")
-    page.wait_for_selector("#sceneProseHost .ProseMirror")
-    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    page.wait_for_timeout(1_000)
-
-    assert proposal_requests == []
-    assert page.locator(".ai-proposal-panel:visible").count() == 0, page.evaluate(
-        """() => ({
-            reviewed: Object.keys(_discussAutoReviewedTasks),
-            pendingRequests: Object.keys(_discussAutoReviewRequests),
-            taskStatus: document.querySelector('.discuss-task-status')?.textContent,
-            panelText: document.querySelector('#aiProposalPanel')?.textContent
-        })"""
-    )
-    task = page.locator(".discuss-task").first
-    assert "Reviewing" in task.locator(".discuss-task-status").inner_text()
-    task.get_by_role("button", name="Review changes").click()
-    page.wait_for_selector(".ai-proposal-panel", state="visible")
-
-
-def test_legacy_selection_history_restores_as_a_safe_historical_card(
-    page: Page, server: ProseviewServer
-):
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='custom_rewrite']")
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    page.fill("#discussInput", "SIMULATE_LEGACY_HISTORY")
-    page.press("#discussInput", "Enter")
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Reviewing'",
-        timeout=15_000,
-    )
-
-    server.restart()
-    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
-    page.goto("about:blank")
-    open_scene(page, server)
-    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
-    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    page.wait_for_function(
-        "() => document.querySelector('.discuss-task-status')?.textContent === 'Restored'",
-        timeout=15_000,
-    )
-
-    task = page.locator(".discuss-task")
-    assert task.count() == 1
-    assert "Custom rewrite" in task.inner_text()
-    assert "Historical result · reselect the passage to use it safely" in task.inner_text()
-    assert "2 suggestions" in task.inner_text()
-    assert "Instruction · SIMULATE_LEGACY_HISTORY" in task.inner_text()
-    assert task.get_by_role("button", name="Review changes").count() == 0
-    assert "&quot;" not in page.locator("#discussLog").inner_text()
-    assert '"kind":"alternatives"' not in page.locator("#discussLog").inner_text()
-
-
-def test_managed_apply_tracks_target_after_unrelated_unsaved_insert(
-    page: Page, server: ProseviewServer
-):
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.wait_for_selector(".pm-ai-proposal-highlight", state="visible")
-    page.evaluate(
-        """() => {
-            if (!_pmEditMode) toggleSceneEdit();
-            _pmView.dispatch(_pmView.state.tr.insertText('Local preface. ', 1));
-            setPmDirty(true);
-        }"""
-    )
-    page.get_by_role("button", name="Use this version").click()
-    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
-    assert "Local preface." in _editor_text(page)
-    assert quote not in _editor_text(page)
-
-
-def test_selection_action_started_from_dirty_editor_uses_live_target(
-    page: Page, server: ProseviewServer
-):
     quote = "the slow algebra of yesterday's receipts"
     open_scene(page, server)
     page.click("#sceneEditBtn")
@@ -5701,75 +5518,11 @@ def test_selection_action_started_from_dirty_editor_uses_live_target(
     open_selection_menu(page, quote)
     page.click("#selectionRewriteBtn")
     page.click("[data-selection-action='tighten']")
-    page.wait_for_selector(".pm-ai-proposal-highlight", state="visible")
-    page.get_by_role("button", name="Use this version").click()
-    _wait_until(lambda: "Rena pressed her thumb" in _editor_text(page))
-    assert "Local preface." in _editor_text(page)
-    assert quote not in _editor_text(page)
 
-
-def test_applied_managed_task_becomes_saved_only_after_normal_scene_save(
-    page: Page, server: ProseviewServer
-):
-    path = server.scene_path()
-    quote = "the slow algebra of yesterday's receipts"
-    open_scene(page, server)
-    open_selection_menu(page, quote)
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.get_by_role("button", name="Use this version").wait_for(state="visible", timeout=15_000)
-    page.get_by_role("button", name="Use this version").click()
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Applied · Not saved'")
-    assert "Rena pressed her thumb" not in path.read_text(encoding="utf-8")
-    page.get_by_role("button", name="Save scene").click()
-    _wait_until(lambda: "Rena pressed her thumb" in path.read_text(encoding="utf-8"))
-    page.wait_for_function("() => document.querySelector('.discuss-task-status')?.textContent === 'Saved'")
-    saved_task = page.locator(".discuss-task").first
-    assert "used suggestion 1" in saved_task.inner_text().lower()
-    assert "Rena pressed her thumb against the envelope seam." in saved_task.inner_text()
-    assert "saved to manuscript" in saved_task.inner_text().lower()
-
-
-def test_one_scene_save_marks_every_applied_managed_task_saved(
-    page: Page, server: ProseviewServer
-):
-    open_scene(page, server)
-    open_selection_menu(page, "the slow algebra of yesterday's receipts")
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.get_by_role("button", name="Use this version").wait_for(state="visible", timeout=15_000)
-    page.get_by_role("button", name="Use this version").click()
-    page.locator("#aiProposalPanel").get_by_role("button", name="Close", exact=True).click()
-
-    open_selection_menu(page, "dial turned with a dry clatter")
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='clarify']")
-    page.get_by_role("button", name="Use this version").wait_for(state="visible", timeout=15_000)
-    page.get_by_role("button", name="Use this version").click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('.discuss-task-status.status-applied').length === 2"
-    )
-    page.get_by_role("button", name="Save scene").click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('.discuss-task-status.status-saved').length === 2"
-    )
-
-
-def test_proposal_review_fits_beside_dock_at_200_percent_zoom(
-    page: Page, server: ProseviewServer
-):
-    page.set_viewport_size({"width": 1024, "height": 768})
-    open_scene(page, server)
-    open_selection_menu(page, "the slow algebra of yesterday's receipts")
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.wait_for_selector("#aiProposalPanel", state="visible")
-    open_scene_appearance(page)
-    page.select_option("#modalThemeSelect", "dark")
-    page.evaluate("document.body.style.zoom = '2'")
-    page.wait_for_timeout(150)
-    assert_fully_inside_viewport(page, "#aiProposalPanel")
-    assert page.locator("#discussPanel").bounding_box() is None
+    wait_for_discuss_answer(page, "Fake answer")
+    sent = question_requests[-1]
+    assert "Local preface." in sent["live_document"]["content"]
+    assert sent["selection"] == quote
 
 
 def test_a_critique_answers_in_the_conversation_and_keeps_its_subject(
@@ -5917,21 +5670,6 @@ def test_quick_critique_queues_while_an_active_turn_is_stopping(
         timeout=15_000,
     )
     page.wait_for_selector("#discussStop", state="hidden")
-
-
-def test_selection_assistance_history_can_be_cleared_without_clearing_conversation(
-    page: Page, server: ProseviewServer
-):
-    open_scene(page, server)
-    open_selection_menu(page, "the slow algebra of yesterday's receipts")
-    page.click("#selectionRewriteBtn")
-    page.click("[data-selection-action='tighten']")
-    page.wait_for_selector(".discuss-task", state="visible", timeout=15_000)
-    page.wait_for_function("() => !!document.querySelector('#discussHistoryClear:not([hidden])')", timeout=15_000)
-    page.once("dialog", lambda dialog: dialog.accept())
-    page.click("#discussHistoryClear")
-    page.wait_for_function("() => document.querySelectorAll('.discuss-task').length === 0")
-    assert page.locator("#discussPanel").is_visible()
 
 
 def test_terminal_survives_a_page_reload(page: Page, server: ProseviewServer):

@@ -168,39 +168,6 @@ def test_raw_reasoning_never_reaches_the_projection(session):
     assert any("Reading context" in line for line in snapshot["progress"])
 
 
-# --- selection actions ------------------------------------------------------
-
-def test_a_selection_action_is_validated_into_alternatives(session):
-    session.manager.submit(
-        session.cid,
-        client_request_id="a1",
-        question="",
-        selection="First document.",
-        action_id="tighten",
-    )
-    _wait_for(lambda: session.snapshot()["tasks"] and
-              session.snapshot()["tasks"][0]["status"] in {"ready", "failed"})
-    task = session.snapshot()["tasks"][0]
-    assert task["status"] == "ready", task.get("error")
-    assert task["kind"] == "alternatives"
-    assert len(task["result"]["alternatives"]) == 2
-    assert all(row["text"] and row["rationale"] for row in task["result"]["alternatives"])
-
-
-def test_a_selection_action_sends_its_output_schema(session):
-    session.manager.submit(
-        session.cid,
-        client_request_id="a1",
-        question="",
-        selection="First document.",
-        action_id="tighten",
-    )
-    _wait_for(lambda: bool(session.client.turn_params))
-    schema = session.client.turn_params[-1].get("outputSchema")
-    assert schema, "a structured action must carry its schema to the agent"
-    assert schema["properties"]["kind"]["enum"] == ["alternatives"]
-
-
 def test_a_reading_pass_answers_in_the_conversation(session):
     session.manager.submit(
         session.cid,
@@ -214,22 +181,6 @@ def test_a_reading_pass_answers_in_the_conversation(session):
     assert snapshot["tasks"] == []
     assert any(m["role"] == "assistant" and m["text"] for m in snapshot["messages"])
 
-
-def test_structured_results_never_appear_as_chat(session):
-    """A structured action has its own UI; its JSON must not leak into the log."""
-    session.manager.submit(
-        session.cid,
-        client_request_id="a1",
-        question="",
-        selection="First document.",
-        action_id="tighten",
-    )
-    _wait_for(lambda: session.snapshot()["tasks"] and
-              session.snapshot()["tasks"][0]["status"] == "ready")
-    assert session.snapshot()["messages"] == []
-
-
-# --- queueing and turn lifecycle --------------------------------------------
 
 def test_questions_queue_and_drain_in_order(session):
     session.manager.submit(session.cid, client_request_id="q1", question="First question")

@@ -861,7 +861,10 @@ def _server_env(bin_dir: Path, home: Path) -> dict[str, str]:
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["HOME"] = str(home)
     env["SHELL"] = "/bin/bash" if Path("/bin/bash").exists() else "/bin/sh"
-    env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    fake_claude_sdk = REPO_ROOT / "tests" / "e2e" / "fake_claude_sdk"
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(fake_claude_sdk), str(REPO_ROOT), env.get("PYTHONPATH", "")]
+    )
     env.pop("PYTHONWARNINGS", None)
     return env
 

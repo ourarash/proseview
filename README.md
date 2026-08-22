@@ -43,9 +43,9 @@ typography, same highlights. `Mod-S` saves to the file, and the stats update.
 
 ### Agent tabs
 
-Codex and Claude each get a tab, each with its own conversation for the
-document you are reading. Both keep working while the other is in front, and
-neither can see the other's thread.
+Codex and Claude each get a tab and a separate project conversation. Opening
+another file does not replace either conversation or silently send that file
+to the agent. Attach the current file when you want it included.
 
 ![The Codex and Claude tabs answering the same question about a scene in separate conversations, with each answer staying in its own tab](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-agents.gif)
 
@@ -90,8 +90,8 @@ it happens is visible instead of inferred. Hover any scene for its card.
 - 🕰️ **Timeline.** The shape of the book, storylines as lanes, and reading
   order against the order events happen.
 - 🤖 **Two agents, side by side.** Codex and Claude each get a dock tab and
-  their own conversation per document. Both run at once; switching tabs
-  never interrupts the other. [How the AI features work →](docs/ai.md)
+  their own project conversation. Both run at once; switching tabs or opening
+  another file never interrupts either one. [How the AI features work →](docs/ai.md)
 - 🔎 **Repository search.** `Mod-K` from anywhere — paths, metadata, TODOs,
   notes, and prose, grouped by kind.
 - 🕹️ **File history.** Versions of a scene, restored through a diff you

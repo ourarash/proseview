@@ -333,7 +333,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    assert SCENE_REL in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
     assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
     page.fill("#discussInput", "Explain this scene")
@@ -354,8 +354,11 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.evaluate("_discussEventSource.close(); setDiscussConnection('Reconnecting', ''); connectDiscussEvents()")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')", timeout=15_000)
 
+    conversation_id = page.evaluate("() => window._discussConversationId")
     page.locator("#sceneModal .nav-btn").nth(1).click()
-    page.wait_for_function("previous => !document.querySelector('#discussContext').innerText.includes(previous)", arg=SCENE_REL)
+    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.evaluate("() => window._discussConversationId") == conversation_id
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
     # Escape belongs to whatever the writer is inside, not to the dock. It used
@@ -364,6 +367,352 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.press("body", "Escape")
     page.wait_for_timeout(300)
     assert page.locator("#discussPanel").is_visible()
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_current_document_is_opt_in_and_does_not_follow_navigation(
+    page: Page, server: ProseviewServer, agent: str
+):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=agent,
+    )
+
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    attach_current = page.get_by_role(
+        "button", name=f"Attach current document {SCENE_REL}"
+    )
+    assert attach_current.is_visible()
+
+    page.fill("#discussInput", "What makes an opening effective?")
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["include_current_document"] is False
+
+    attach_current.click()
+    current_chip = page.locator("#discussContext .discuss-chip-current")
+    assert SCENE_REL in current_chip.inner_text()
+    page.fill("#discussInput", "Compare this attached opening with the next scene")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    next_path = page.evaluate("() => paths[curIdx]")
+
+    assert SCENE_REL in current_chip.inner_text()
+    assert next_path not in current_chip.inner_text()
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert question_requests[-1]["include_current_document"] is True
+
+    page.click("#discussClose")
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "() => document.querySelector('#discussConnection').innerText.startsWith('Live')"
+    )
+    current_chip = page.locator("#discussContext .discuss-chip-current")
+    assert SCENE_REL in current_chip.inner_text()
+
+    current_chip.get_by_role(
+        "button", name=f"Remove current document {SCENE_REL}"
+    ).click()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+
+    page.fill("#discussInput", "Continue without reading either scene")
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_project_conversation_and_draft_survive_scene_navigation(
+    page: Page, server: ProseviewServer, agent: str
+):
+    question_requests: list[dict] = []
+
+    def record_question(request) -> None:
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions"):
+            question_requests.append(request.post_data_json)
+
+    page.on("request", record_question)
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Remember this opening")
+    page.click("#discussSend")
+    wait_for_discuss_answer(page)
+    wait_for_discuss_idle(page)
+    page.wait_for_function("() => document.querySelectorAll('#discussLog .discuss-message').length >= 2")
+    original_id = page.evaluate("() => window._discussConversationId")
+    page.evaluate("() => { window._discussEventSource.__navigationTest = true; }")
+    original_messages = page.locator("#discussLog .discuss-message").count()
+
+    # A draft freezes its origin metadata while navigation leaves the project
+    # conversation and its live event stream untouched. The scene's contents
+    # are still omitted unless the writer explicitly attaches them.
+    page.fill("#discussInput", "Compare the image I was reading")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    next_path = page.evaluate("() => paths[curIdx]")
+    assert page.evaluate("() => window._discussConversationId") == original_id
+    assert page.evaluate("() => window._discussEventSource.__navigationTest") is True
+    assert page.locator("#discussLog .discuss-message").count() == original_messages
+    assert page.input_value("#discussInput") == "Compare the image I was reading"
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+
+    page.click("#discussSend")
+    page.wait_for_function(
+        "count => document.querySelectorAll('#discussLog .discuss-message').length > count",
+        arg=original_messages,
+    )
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert question_requests[-1]["include_current_document"] is False
+
+    # Once the draft is sent, the next turn follows the scene now on screen.
+    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    page.fill("#discussInput", "What changes in this scene?")
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
+    assert page.evaluate("() => window._discussConversationId") == original_id
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_migrates_legacy_draft_and_clearing_it_follows_the_new_scene(
+    page: Page, server: ProseviewServer, agent: str
+):
+    legacy_key = f"proseview-draft:{agent}:scene:{SCENE_REL}"
+    page.goto(server.base_url, wait_until="load")
+    page.evaluate(
+        "([key, value]) => sessionStorage.setItem(key, value)",
+        [legacy_key, "A draft saved before project conversations"],
+    )
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert page.input_value("#discussInput") == "A draft saved before project conversations"
+    assert page.evaluate("agent => sessionStorage.getItem('proseview-draft:' + agent)", agent)
+    assert page.evaluate("key => sessionStorage.getItem(key)", legacy_key) is None
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    next_path = page.evaluate("() => paths[curIdx]")
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+
+    page.fill("#discussInput", "")
+    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    page.fill("#discussInput", "Use the scene now on screen")
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_recovers_multiple_legacy_document_drafts_without_reload(
+    page: Page, server: ProseviewServer, agent: str
+):
+    page.goto(server.base_url, wait_until="load")
+    next_path = page.evaluate(
+        "first => paths[paths.indexOf(first) + 1]", SCENE_REL
+    )
+    first_key = f"proseview-draft:{agent}:scene:{SCENE_REL}"
+    second_key = f"proseview-draft:{agent}:scene:{next_path}"
+    page.evaluate(
+        "([firstKey, secondKey]) => {"
+        " sessionStorage.setItem(firstKey, 'Legacy opening draft');"
+        " sessionStorage.setItem(secondKey, 'Legacy next-scene draft');"
+        "}",
+        [first_key, second_key],
+    )
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert page.input_value("#discussInput") == "Legacy opening draft"
+    assert page.evaluate("key => sessionStorage.getItem(key)", first_key) is None
+    assert page.evaluate("key => sessionStorage.getItem(key)", second_key) == "Legacy next-scene draft"
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("path => location.hash.includes(encodeURIComponent(path))", arg=next_path)
+    assert page.input_value("#discussInput") == "Legacy opening draft"
+    assert "saved draft for this file is waiting" in page.locator("#discussAnnouncement").inner_text().lower()
+
+    page.fill("#discussInput", "")
+    page.wait_for_function(
+        "() => document.querySelector('#discussInput').value === 'Legacy next-scene draft'"
+    )
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.evaluate("key => sessionStorage.getItem(key)", second_key) is None
+
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_reopens_the_newest_saved_provider_draft(
+    page: Page, server: ProseviewServer, agent: str
+):
+    other_agent = "claude" if agent == "codex" else "codex"
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=agent,
+    )
+    page.fill("#discussInput", "Old unsent draft")
+
+    page.evaluate("agent => showDiscussAgentTab(agent)", other_agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=other_agent,
+    )
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=agent,
+    )
+    assert page.input_value("#discussInput") == "Old unsent draft"
+
+    page.fill("#discussInput", "New unsent draft")
+    page.click("#discussClose")
+    assert page.locator("#discussPanel").is_hidden()
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "() => document.querySelector('#discussConnection').innerText.startsWith('Live')"
+    )
+
+    assert page.input_value("#discussInput") == "New unsent draft"
+    assert page.evaluate(
+        "agent => sessionStorage.getItem('proseview-draft:' + agent)", agent
+    ) == "New unsent draft"
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role("button", name=f"Attach current document {SCENE_REL}").is_visible()
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_restores_an_inactive_providers_legacy_draft_on_its_source_file(
+    page: Page, server: ProseviewServer, agent: str
+):
+    other_agent = "claude" if agent == "codex" else "codex"
+    page.goto(server.base_url, wait_until="load")
+    next_path = page.evaluate(
+        "first => paths[paths.indexOf(first) + 1]", SCENE_REL
+    )
+    legacy_key = f"proseview-draft:{agent}:scene:{next_path}"
+    page.evaluate(
+        "key => sessionStorage.setItem(key, 'Released draft for the next scene')",
+        legacy_key,
+    )
+
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=agent,
+    )
+    assert page.input_value("#discussInput") == ""
+    page.evaluate("agent => showDiscussAgentTab(agent)", other_agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=other_agent,
+    )
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("path => location.hash.includes(encodeURIComponent(path))", arg=next_path)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "agent => window._discussAgent === agent"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')",
+        arg=agent,
+    )
+
+    assert page.input_value("#discussInput") == "Released draft for the next scene"
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    assert page.evaluate("key => sessionStorage.getItem(key)", legacy_key) is None
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+@pytest.mark.parametrize(
+    ("quote", "ready_status", "continuation"),
+    [
+        ("the slow algebra of yesterday's receipts", "Ready", "Propose a revision"),
+        ("dial turned with a dry clatter", "Failed", "Try again"),
+    ],
+)
+def test_discuss_task_continuations_keep_their_source_scene_after_navigation(
+    page: Page,
+    server: ProseviewServer,
+    agent: str,
+    quote: str,
+    ready_status: str,
+    continuation: str,
+):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    open_selection_menu(page, quote)
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+    page.wait_for_function(
+        "status => document.querySelector('.discuss-task-status')?.textContent === status",
+        arg=ready_status,
+        timeout=15_000,
+    )
+    initial_requests = len(question_requests)
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    page.locator(".discuss-task").get_by_role("button", name=continuation).click()
+    if continuation == "Propose a revision":
+        page.click("#discussSend")
+    _wait_until(lambda: len(question_requests) > initial_requests, message="continuation request was not sent")
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
 
 
 def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silent_writes(
@@ -892,7 +1241,7 @@ def test_discuss_repository_link_preserves_unsaved_scene_edits(
     assert "Save or cancel your scene edits before opening another file." in page.locator("#discussLog").inner_text()
 
 
-def test_discuss_current_file_is_default_removable_context(
+def test_discuss_context_picker_attaches_only_the_files_the_writer_selects(
     page: Page,
     server: ProseviewServer,
     fake_home: Path,
@@ -904,6 +1253,8 @@ def test_discuss_current_file_is_default_removable_context(
     context_button = page.locator("#discussContextButton")
     assert context_button.get_attribute("aria-label") == "Add files and more"
     assert "+ Context" not in page.locator("#discussComposerArea").inner_text()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role("button", name=f"Attach current document {SCENE_REL}").is_visible()
     page.locator("#discussInput").press("@")
     page.wait_for_selector("#discussContextPicker", state="visible")
     assert page.locator("#discussContextOptions").get_attribute("role") == "listbox"
@@ -927,11 +1278,7 @@ def test_discuss_current_file_is_default_removable_context(
     assert "scripts/check_continuity.py" in page.locator("#discussContextOptions").inner_text()
     page.locator("#discussInput").press("Enter")
     assert "scripts/check_continuity.py" in page.locator("#discussContext").inner_text()
-    current_chip = page.locator("#discussContext .discuss-chip-current")
-    assert SCENE_REL in current_chip.inner_text()
-
-    current_chip.get_by_role("button", name=f"Remove current document {SCENE_REL}").click()
-    assert SCENE_REL not in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
 
     question = "Compare BROWSER OMIT CURRENT DOCUMENT SENTINEL"
     page.fill("#discussInput", question)
@@ -956,7 +1303,10 @@ def test_discuss_approval_file_navigation_and_shared_terminal_dock(page: Page, s
     page.wait_for_selector("#file-preview-panel", state="visible")
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    assert "plans/book-plan.md" in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    assert page.get_by_role(
+        "button", name="Attach current document plans/book-plan.md"
+    ).is_visible()
 
     page.get_by_role("button", name="Add files and more").click()
     page.wait_for_selector("#discussContextPicker", state="visible")
@@ -4962,7 +5312,7 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert quote in page.locator("#discussSelectionChip").inner_text()
-    assert SCENE_REL in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussContext .discuss-chip-current").count() == 0
     assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about this selection…"
     assert page.locator("#discussSend").inner_text() == "Send"
 
@@ -4994,7 +5344,7 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
 
     page.locator("#discussSelectionChip button").click()
     assert page.locator("#discussSelectionChip").is_hidden()
-    assert page.locator("#discussInput").get_attribute("placeholder") == "Ask about this document…"
+    assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about your story…"
     assert path.read_bytes() == before
 
 

@@ -19,14 +19,18 @@ Four places where AI shows up, all opt-in:
    in the in-browser terminal so you can keep reading the prose
    underneath while the agent works.
 3. **Discuss, on either agent.** The side dock has a **Codex** tab and a
-   **Claude** tab. Each is a separate conversation for the document you are
-   reading, with its own queue, history, and approvals — ask one, switch to
-   the other, and both keep working. `discuss.agent` decides which tab opens
-   first; both tabs are always there, and one that cannot start explains why
-   rather than disappearing.
+   **Claude** tab. Each has a separate project conversation, with its own queue,
+   history, and approvals — ask one, switch agents or open another file, and
+   both keep working. `discuss.agent` decides which tab opens first; both tabs
+   are always there, and one that cannot start explains why rather than
+   disappearing.
 
-   The document you are reading is attached to each question by default — drop
-   its chip to omit it, or press `@` to attach other files and folders. Tool
+   Ordinary questions start without any file contents attached. Choose
+   **Attach current** to include the file on screen, or press `@` to attach
+   other files and folders. An attached current-file chip stays on that file
+   when you navigate, until you remove it; navigation alone never changes what
+   is sent. Selecting prose explicitly attaches that selection to its source
+   scene, and selection tasks and their follow-ups stay anchored there. Tool
    and file actions wait on approvals you can see.
 
    Discuss also has evidence-first continuity actions. **Trace a canon
@@ -48,12 +52,12 @@ Four places where AI shows up, all opt-in:
    login, model, and history you already have. Neither sees the other's
    conversation, and a failure on one tab leaves the other running.
 
-   Proseview stores a bounded list of thread IDs and display metadata per
-   document *per agent* in your state directory, and discards raw reasoning:
-   only progress summaries reach the browser, never unedited model thinking.
-   `History` lets you reopen, rename, export, or remove a previous
-   conversation. `New conversation` starts a blank discussion while keeping
-   the previous one available there.
+   Proseview stores one bounded project history per agent in your state
+   directory, including which documents each thread discussed, and discards raw
+   reasoning: only progress summaries reach the browser, never unedited model
+   thinking. `History` lets you reopen, rename, export, or remove a previous
+   project conversation. `New conversation` starts a blank discussion while
+   keeping the previous one available there.
 
    The Claude tab needs `claude-agent-sdk` installed alongside the Claude Code
    CLI:

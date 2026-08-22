@@ -603,7 +603,7 @@ def test_manager_omits_current_document_when_user_removes_it(tmp_path: Path, mon
     manager.close()
 
 
-def test_manager_runs_different_documents_concurrently_and_is_idempotent(tmp_path: Path, monkeypatch):
+def test_manager_serializes_project_turns_across_documents_and_is_idempotent(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
 
@@ -615,14 +615,22 @@ def test_manager_runs_different_documents_concurrently_and_is_idempotent(tmp_pat
     manager = DiscussManager(_repo(tmp_path), client_factory=factory)
     one = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
     two = manager.open({"kind": "scene", "path": "two.md"})["conversation_id"]
-    first = manager.submit(one, client_request_id="same", question="One?")
-    duplicate = manager.submit(one, client_request_id="same", question="Ignored duplicate")
-    manager.submit(two, client_request_id="other", question="Two?")
+    assert one == two
+    first = manager.submit(
+        one, client_request_id="same", question="One?", document={"kind": "scene", "path": "one.md"}
+    )
+    duplicate = manager.submit(
+        one, client_request_id="same", question="Ignored duplicate",
+        document={"kind": "scene", "path": "one.md"},
+    )
+    manager.submit(
+        two, client_request_id="other", question="Two?", document={"kind": "scene", "path": "two.md"}
+    )
     _wait_for(lambda: len(clients[0].prompts) == 2)
 
     assert first["client_request_id"] == duplicate["client_request_id"] == "same"
     assert first["accepted"] is duplicate["accepted"] is True
-    assert clients[0].max_active == 2
+    assert clients[0].max_active == 1
     assert sum("One?" in prompt for prompt in clients[0].prompts) == 1
     assert not any("Ignored duplicate" in prompt for prompt in clients[0].prompts)
     manager.close()
@@ -940,6 +948,168 @@ def test_conversation_history_survives_new_conversation_and_can_be_reopened(tmp_
     manager.close()
 
 
+def test_migrated_legacy_action_uses_its_recorded_source_when_opened_elsewhere(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    legacy_thread: dict = {}
+    clients: list[_FakeClient] = []
+
+    def factory(callback, _agent=None):
+        client = _FakeClient(callback)
+        client.threads[legacy_thread["id"]] = legacy_thread
+        clients.append(client)
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    source = {"kind": "scene", "path": "one.md"}
+    source_conversation = _Conversation("legacy-source", source)
+    task, question, _schema, _skill = manager._action_task(
+        source_conversation,
+        document=source,
+        request_id="legacy-action",
+        action_id="tighten",
+        selection="First document.",
+    )
+    header, prompt_body = question.split("\n", 1)
+    provenance = json.loads(header.removeprefix("PROSVIEW_SELECTION_ACTION_V1 "))
+    provenance.pop("document")
+    legacy_question = (
+        "PROSVIEW_SELECTION_ACTION_V1 "
+        + json.dumps(provenance, sort_keys=True, separators=(",", ":"))
+        + "\n"
+        + prompt_body
+    )
+    prompt = manager.context.build(
+        source, legacy_question, selection="First document."
+    ).prompt
+    legacy_thread.update({
+        "id": "legacy-action-thread",
+        "turns": [{"id": "legacy-action-turn", "items": [
+            {"type": "userMessage", "content": [{"type": "text", "text": prompt}]},
+            {"type": "agentMessage", "phase": "final_answer", "text": json.dumps({
+                "kind": "alternatives",
+                "summary": "A tighter beat.",
+                "alternatives": [
+                    {"text": "Revised document.", "rationale": "Removes repetition."},
+                    {"text": "Document, revised.", "rationale": "Changes the rhythm."},
+                ],
+            })},
+        ]}],
+    })
+    manager.state.path.parent.mkdir(parents=True, exist_ok=True)
+    manager.state.path.write_text(json.dumps({
+        "version": 2,
+        "repositories": {manager.state.root_key: {
+            "scene:one.md": {
+                "active": legacy_thread["id"],
+                "threads": [{
+                    "thread_id": legacy_thread["id"],
+                    "title": "Legacy rewrite",
+                    "preview": "First document.",
+                    "created_at": 1,
+                    "updated_at": 2,
+                    "renamed": False,
+                }],
+            },
+        }},
+    }), encoding="utf-8")
+
+    conversation_id = manager.open({"kind": "scene", "path": "two.md"})["conversation_id"]
+    restored = manager.get_snapshot(conversation_id)["tasks"][0]
+    exported = manager.export_conversation(conversation_id, legacy_thread["id"])
+
+    assert restored["id"] == task["id"]
+    assert restored["target"]["document"] == source
+    assert restored["status"] == "ready"
+    assert exported["document"] == source
+    assert exported["documents"] == [source]
+    assert exported["tasks"][0]["target"]["document"] == source
+    manager.close()
+
+
+def test_legacy_action_with_ambiguous_history_origins_never_uses_current_scene(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    thread_id = "ambiguous-legacy-action"
+    thread: dict = {}
+
+    def factory(callback, _agent=None):
+        client = _FakeClient(callback)
+        client.threads[thread_id] = thread
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    source = {"kind": "scene", "path": "one.md"}
+    source_conversation = _Conversation("legacy-source", source)
+    _task, question, _schema, _skill = manager._action_task(
+        source_conversation,
+        document=source,
+        request_id="legacy-action",
+        action_id="tighten",
+        selection="First document.",
+    )
+    header, prompt_body = question.split("\n", 1)
+    provenance = json.loads(header.removeprefix("PROSVIEW_SELECTION_ACTION_V1 "))
+    provenance.pop("document")
+    prompt = manager.context.build(
+        source,
+        "PROSVIEW_SELECTION_ACTION_V1 "
+        + json.dumps(provenance, sort_keys=True, separators=(",", ":"))
+        + "\n"
+        + prompt_body,
+        selection="First document.",
+    ).prompt
+    thread.update({
+        "id": thread_id,
+        "turns": [{"id": "ambiguous-turn", "items": [
+            {"type": "userMessage", "content": [{"type": "text", "text": prompt}]},
+            {"type": "agentMessage", "phase": "final_answer", "text": json.dumps({
+                "kind": "alternatives",
+                "summary": "A tighter beat.",
+                "alternatives": [
+                    {"text": "Revised document.", "rationale": "Removes repetition."},
+                    {"text": "Document, revised.", "rationale": "Changes the rhythm."},
+                ],
+            })},
+        ]}],
+    })
+    manager.state.path.parent.mkdir(parents=True, exist_ok=True)
+    manager.state.path.write_text(json.dumps({
+        "version": 3,
+        "repositories": {manager.state.root_key: {"agents": {
+            "codex": {
+                "active": thread_id,
+                "active_initialized": True,
+                "legacy_active": {},
+                "history_limit": 50,
+                "threads": [{
+                    "thread_id": thread_id,
+                    "title": "Ambiguous legacy rewrite",
+                    "preview": "",
+                    "created_at": 1,
+                    "updated_at": 2,
+                    "renamed": False,
+                    "documents": [source, {"kind": "scene", "path": "two.md"}],
+                }],
+            },
+        }}},
+    }), encoding="utf-8")
+
+    conversation_id = manager.open({"kind": "scene", "path": "two.md"})["conversation_id"]
+    restored = manager.get_snapshot(conversation_id)["tasks"][0]
+    exported = manager.export_conversation(conversation_id, thread_id)
+
+    assert restored["target"]["document"] is None
+    assert restored["status"] == "stale"
+    assert exported["document"] is None
+    assert exported["documents"] == [source, {"kind": "scene", "path": "two.md"}]
+    manager.close()
+
+
 def test_history_rename_export_and_remove_use_safe_projection(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
@@ -1020,7 +1190,69 @@ def test_restored_history_omits_unrecognized_user_prompt_envelopes(tmp_path: Pat
     manager.close()
 
 
-def test_discuss_state_store_migrates_legacy_pointer_to_bounded_history(tmp_path: Path):
+@pytest.mark.parametrize("first_agent", ["codex", "claude"])
+def test_discuss_state_store_migrates_document_history_to_project_agents(
+    tmp_path: Path, first_agent: str
+):
+    root = _repo(tmp_path)
+    state_path = tmp_path / "discuss.json"
+    store = DiscussStateStore(root, path=state_path)
+    state_path.write_text(json.dumps({
+        "version": 2,
+        "repositories": {store.root_key: {
+            "scene:one.md": {
+                "active": "codex-one",
+                "threads": [{
+                    "thread_id": "codex-one", "title": "Opening", "preview": "First",
+                    "created_at": 1, "updated_at": 2, "renamed": True,
+                }],
+            },
+            "scene:two.md": {
+                "active": "codex-two",
+                "threads": [{
+                    "thread_id": "codex-two", "title": "Next scene", "preview": "Second",
+                    "created_at": 3, "updated_at": 4, "renamed": False,
+                }],
+            },
+            "claude\u0000scene:two.md": {
+                "active": "claude-two",
+                "threads": [{
+                    "thread_id": "claude-two", "title": "Claude pass", "preview": "Other provider",
+                    "created_at": 5, "updated_at": 6, "renamed": False,
+                }],
+            },
+            "claude\u0000scene:one.md": {
+                "active": "claude-one",
+                "threads": [{
+                    "thread_id": "claude-one", "title": "Claude opening", "preview": "Preferred file",
+                    "created_at": 1, "updated_at": 2, "renamed": False,
+                }],
+            },
+        }},
+    }), encoding="utf-8")
+
+    second_agent = "claude" if first_agent == "codex" else "codex"
+    active = {
+        first_agent: store.get("scene", "one.md", first_agent),
+        second_agent: store.get("scene", "one.md", second_agent),
+    }
+    assert active == {"codex": "codex-one", "claude": "claude-one"}
+    assert {row["thread_id"] for row in store.list("file", "notes.md")} == {
+        "codex-one", "codex-two",
+    }
+    assert {row["thread_id"] for row in store.list("scene", "one.md", "claude")} == {
+        "claude-one", "claude-two",
+    }
+
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved["version"] == 3
+    agents = saved["repositories"][store.root_key]["agents"]
+    assert agents["codex"]["active"] == "codex-one"
+    assert agents["claude"]["active"] == "claude-one"
+    assert "scene:one.md" not in saved["repositories"][store.root_key]
+
+
+def test_discuss_state_store_migrates_v1_thread_pointer_to_project_history(tmp_path: Path):
     root = _repo(tmp_path)
     state_path = tmp_path / "discuss.json"
     store = DiscussStateStore(root, path=state_path)
@@ -1029,14 +1261,40 @@ def test_discuss_state_store_migrates_legacy_pointer_to_bounded_history(tmp_path
         "repositories": {store.root_key: {"scene:one.md": "legacy-thread"}},
     }), encoding="utf-8")
 
-    assert store.get("scene", "one.md") == "legacy-thread"
-    assert store.list("scene", "one.md")[0]["thread_id"] == "legacy-thread"
-    store.clear_active("scene", "one.md")
-
+    assert store.get("scene", "two.md") == "legacy-thread"
+    assert [row["thread_id"] for row in store.list("file", "notes.md")] == ["legacy-thread"]
     saved = json.loads(state_path.read_text(encoding="utf-8"))
-    assert saved["version"] == 2
-    assert saved["repositories"][store.root_key]["scene:one.md"]["active"] is None
-    assert saved["repositories"][store.root_key]["scene:one.md"]["threads"][0]["thread_id"] == "legacy-thread"
+    assert saved["version"] == 3
+
+
+def test_discuss_state_store_preserves_all_unique_rows_when_legacy_buckets_merge(tmp_path: Path):
+    root = _repo(tmp_path)
+    state_path = tmp_path / "discuss.json"
+    store = DiscussStateStore(root, path=state_path)
+
+    def legacy_entry(prefix: str, start: int) -> dict:
+        rows = [{
+            "thread_id": f"{prefix}-{index}",
+            "title": f"Conversation {index}",
+            "preview": "",
+            "created_at": float(start + index),
+            "updated_at": float(start + index),
+            "renamed": False,
+        } for index in range(discuss_module.CONVERSATION_HISTORY_MAX)]
+        return {"active": rows[-1]["thread_id"], "threads": rows}
+
+    state_path.write_text(json.dumps({
+        "version": 2,
+        "repositories": {store.root_key: {
+            "scene:one.md": legacy_entry("one", 0),
+            "scene:two.md": legacy_entry("two", 1000),
+        }},
+    }), encoding="utf-8")
+
+    rows = store.list("scene", "one.md")
+    assert len(rows) == discuss_module.CONVERSATION_HISTORY_MAX * 2
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert len(saved["repositories"][store.root_key]["agents"]["codex"]["threads"]) == len(rows)
 
 
 def test_discuss_state_store_recovers_from_malformed_repository_entry(tmp_path: Path):

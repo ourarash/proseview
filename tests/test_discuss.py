@@ -238,16 +238,16 @@ def test_state_store_recovers_from_malformed_json(tmp_path: Path, monkeypatch: p
     assert store.get("scene", "ch01/opening.md") == "thread-2"
 
 
-def test_state_store_isolates_repositories_and_document_kinds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_state_store_is_project_scoped_and_isolates_repositories_and_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     one = _repo(tmp_path / "one")
     two = _repo(tmp_path / "two")
     first = DiscussStateStore(one)
     second = DiscussStateStore(two)
     first.set("scene", "same.md", "scene-thread")
-    first.set("file", "same.md", "file-thread")
     assert first.get("scene", "same.md") == "scene-thread"
-    assert first.get("file", "same.md") == "file-thread"
+    assert first.get("file", "another.md") == "scene-thread"
+    assert first.get("scene", "same.md", "claude") is None
     assert second.get("scene", "same.md") is None
 
 

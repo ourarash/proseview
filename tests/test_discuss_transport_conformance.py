@@ -135,6 +135,28 @@ def test_the_document_and_question_reach_the_agent(session):
     assert "First document." in prompt
 
 
+def test_the_project_conversation_survives_document_navigation(session):
+    """A file chooses turn context; it does not own the agent thread."""
+    session.manager.submit(session.cid, client_request_id="q1", question="Remember this opening")
+    _wait_for_settled_answer(session)
+    before = session.snapshot()
+
+    reopened = session.manager.open({"kind": "scene", "path": "two.md"}, session.agent)
+
+    assert reopened["conversation_id"] == session.cid
+    assert reopened["messages"] == before["messages"]
+    session.manager.submit(
+        session.cid,
+        client_request_id="q2",
+        question="What changes here?",
+        document={"kind": "scene", "path": "two.md"},
+    )
+    _wait_for(lambda: len(session.client.prompts) == 2)
+    assert "Second document." in session.client.prompts[-1]
+    assert "First document." not in session.client.prompts[-1]
+    assert session.manager.list_conversations(session.cid)["conversations"]
+
+
 def test_raw_reasoning_never_reaches_the_projection(session):
     """Both transports drop unedited model reasoning at the seam."""
     session.manager.submit(session.cid, client_request_id="q1", question="Think about this")
@@ -262,7 +284,7 @@ def test_a_conversation_is_recorded_in_history(session):
     session.manager.submit(session.cid, client_request_id="q1", question="Remember me")
     _wait_for(lambda: any(m["role"] == "assistant" for m in session.snapshot()["messages"]))
     rows = session.manager.list_conversations(session.cid)["conversations"]
-    assert rows, "the conversation should appear in this document's history"
+    assert rows, "the conversation should appear in this project's history"
     assert rows[0]["thread_id"]
 
 

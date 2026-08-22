@@ -111,6 +111,7 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
         "question": "Explain the ledger",
         "selection": "selection sentinel",
         "attachments": [{"kind": "file", "path": "plans/book-plan.md"}],
+        "include_current_document": True,
     }
     first = server.post_json(f"/api/discuss/conversations/{conversation_id}/questions", payload, headers=headers)
     duplicate = server.post_json(f"/api/discuss/conversations/{conversation_id}/questions", payload, headers=headers)
@@ -327,7 +328,7 @@ def test_managed_proposal_blocks_stage_validation_after_external_change(server: 
     assert "scene changed" in validation.json()["error"].lower()
 
 
-def test_discuss_http_can_remove_default_document_context(server: ProseviewServer, fake_home: Path):
+def test_discuss_http_omits_document_context_unless_requested(server: ProseviewServer, fake_home: Path):
     headers = _discuss_headers(server)
     opened = server.post_json(
         "/api/discuss/conversations/open",
@@ -342,7 +343,6 @@ def test_discuss_http_can_remove_default_document_context(server: ProseviewServe
         {
             "client_request_id": "without-current-document",
             "question": question,
-            "include_current_document": False,
             "attachments": [{"kind": "file", "path": "plans/book-plan.md"}],
         },
         headers=headers,

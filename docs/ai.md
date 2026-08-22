@@ -46,6 +46,13 @@ Four places where AI shows up, all opt-in:
    needs a decision, and the browser tab title says which agent is working or
    waiting whenever the dock is closed or the window is in the background.
 
+   Every button is a shortcut to a skill. Proseview copies its defaults into
+   `skills/` the first time it runs in a repository, and from then on the file
+   is yours: edit `skills/quick_critique/SKILL.md` and Quick critique says what
+   you wrote. Delete one and it stays deleted. The wording that ships lives in
+   the same format under `proseview/skills/` in the Proseview repository, so
+   there is one place to read and one place to change.
+
    Reading passes — critiques from the selection pill, and the scene passes
    below — are ordinary questions with ordinary answers. Nothing they return is
    written to your manuscript, so none of them produces a card, a structured

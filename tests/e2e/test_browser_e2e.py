@@ -5648,6 +5648,37 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
     assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
 
 
+def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: ProseviewServer):
+    """A redraw of the presets strip must not shut the menu the writer opened.
+
+    The strip is rebuilt whenever the dock learns something -- the
+    conversation finishing its open, a document or draft change -- and the
+    rebuild used to recreate the menu closed and drop focus out of it.
+    """
+    page.goto(f"{server.base_url}#/scene/{SCENE_REL}", wait_until="load")
+    page.evaluate(
+        """() => localStorage.setItem('proseview-codex-recent-instructions',
+            JSON.stringify(['Recent only prompt']))"""
+    )
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    open_selection_menu(page, "the slow algebra")
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussTaskMode:not([hidden])")
+
+    more = page.get_by_role("button", name="More presets and recent instructions")
+    more.focus()
+    page.keyboard.press("Enter")
+    star = page.get_by_role("button", name="Add to favorites: Recent only prompt")
+    star.focus()
+
+    page.evaluate("() => renderDiscussTaskMode()")
+    assert page.locator("#discussPresetsPopover").is_visible()
+    assert page.evaluate(
+        "document.activeElement?.getAttribute('aria-label')"
+    ) == "Add to favorites: Recent only prompt"
+
+
 def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
     page: Page, server: ProseviewServer
 ):

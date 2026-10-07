@@ -23,18 +23,18 @@ import os
 import re
 import subprocess
 import time
-from urllib.parse import urlparse
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Callable
 
 import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
 
-from playwright.sync_api import Browser, Page, Route, sync_playwright  # noqa: E402
+from playwright.sync_api import Browser, Page  # noqa: E402
 
 from .conftest import (
     ANNOTATED_SCENE_REL,
+    _install_esm_cache,
     BARE_SCENE_REL,
     HTML_LEAD_SCENE_REL,
     LARGE_SCENE_REL,
@@ -45,119 +45,6 @@ from .conftest import (
 )
 
 pytestmark = pytest.mark.e2e_browser
-
-# ── browser plumbing ────────────────────────────────────────────────────────
-
-
-@pytest.fixture(scope="session")
-def browser() -> Iterator[Browser]:
-    with sync_playwright() as pw:
-        instance = pw.chromium.launch()
-        try:
-            yield instance
-        finally:
-            instance.close()
-
-
-#: Vendored ProseMirror modules, cached in-process across the whole session.
-_VENDOR_MODULE_CACHE: dict[str, bytes] = {}
-
-
-def _install_esm_cache(page: Page) -> None:
-    """Serve ``/vendor/pm/*`` from memory instead of the test server.
-
-    ProseMirror is vendored as a 36-module ES graph, so every page load would
-    otherwise make 36 round trips to a thread-per-request server -- hundreds of
-    page loads into a full run, that is enough extra load to lose timing races
-    in unrelated tests.
-
-    Keyed by path rather than URL: each test gets its own server on its own
-    port, and the bytes are identical across them.
-
-    (Named for the esm.sh cache it replaced, which became dead the moment
-    ProseMirror stopped being fetched from a CDN.)
-    """
-    def handler(route: Route) -> None:
-        key = urlparse(route.request.url).path
-        body = _VENDOR_MODULE_CACHE.get(key)
-        if body is None:
-            fetched = route.fetch()
-            if fetched.status != 200:
-                route.fulfill(status=fetched.status, body=fetched.body())
-                return
-            body = fetched.body()
-            _VENDOR_MODULE_CACHE[key] = body
-        route.fulfill(
-            status=200,
-            body=body,
-            headers={"content-type": "application/javascript; charset=utf-8"},
-        )
-
-    page.route("**/vendor/pm/*", handler)
-
-
-#: Console noise that is not a JavaScript fault. A 409 from the save conflict
-#: guard and an aborted request from a deliberate ``location.reload()`` both
-#: log here, and both are the app working as designed.
-_CONSOLE_NOISE = (
-    "Failed to load resource",
-    "net::ERR_ABORTED",
-    "net::ERR_EMPTY_RESPONSE",
-)
-
-
-@pytest.fixture
-def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
-    """A page wired to the esm cache that fails the test on any JS or server error.
-
-    A test may declare known-buggy output with
-    ``@pytest.mark.allow_js_errors("substring")`` -- used to keep a regression
-    documented rather than silently tolerated everywhere. A test that drives an
-    endpoint's failure path on purpose declares it with
-    ``@pytest.mark.allow_http_errors("/endpoint")``.
-
-    The HTTP half matters because the mutating endpoints answer with status 500
-    and ``{"ok": false}``, which the app reports through an ``alert()``. Without
-    this guard a server-side regression looks exactly like a passing test.
-    """
-    marker = request.node.get_closest_marker("allow_js_errors")
-    allowed = tuple(marker.args) if marker else ()
-    http_marker = request.node.get_closest_marker("allow_http_errors")
-    allowed_http = tuple(http_marker.args) if http_marker else ()
-
-    context = browser.new_context(viewport={"width": 1500, "height": 1200})
-    pg = context.new_page()
-    _install_esm_cache(pg)
-
-    errors: list[str] = []
-    server_errors: list[str] = []
-
-    def record(text: str) -> None:
-        if any(noise in text for noise in _CONSOLE_NOISE):
-            return
-        if any(ok in text for ok in allowed):
-            return
-        errors.append(text)
-
-    def record_response(response) -> None:
-        if response.status < 500:
-            return
-        if any(ok in response.url for ok in allowed_http):
-            return
-        server_errors.append(f"{response.status} {response.request.method} {response.url}")
-
-    pg.on("pageerror", lambda exc: record(str(exc)))
-    pg.on("console", lambda msg: record(msg.text) if msg.type == "error" else None)
-    pg.on("response", record_response)
-
-    try:
-        yield pg
-    finally:
-        context.close()
-
-    assert not errors, "uncaught JavaScript errors:\n" + "\n".join(errors)
-    assert not server_errors, "server returned 5xx:\n" + "\n".join(server_errors)
-
 
 # ── page helpers ────────────────────────────────────────────────────────────
 

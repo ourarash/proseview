@@ -2,6 +2,9 @@
 
 > A local dashboard for Markdown-first novel repositories. ✍️
 
+**[Try the live demo →](https://ourarash.github.io/proseview/)** A read-only copy of the
+dashboard for *Alice's Adventures in Wonderland*, in your browser. Nothing to install.
+
 Proseview reads a folder of Markdown scenes and reports lexical health,
 pacing, character presence, and revision history. The same pages can be read,
 edited, and annotated in place.

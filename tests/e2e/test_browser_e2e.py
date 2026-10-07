@@ -3389,7 +3389,13 @@ def test_conflict_shows_the_diff_in_the_history_review_modal(
     diff = page.locator("#diffModalOverlay")
     diff.wait_for(state="visible")
     page.wait_for_function(
-        "() => document.querySelector('#diffModalContent').innerText.includes('Browser draft.')"
+        """() => {
+            const node = document.querySelector('#diffModalContent');
+            if (!node) return false;
+            const text = node.innerText || '';
+            if (!text || text.includes('Loading diff...') || text.startsWith('Error loading diff:')) return false;
+            return text.includes('External version.') && text.includes('Browser draft');
+        }"""
     )
     diff_text = page.locator("#diffModalContent").inner_text()
     assert "External version." in diff_text, "the disk version is not shown"
@@ -5871,7 +5877,8 @@ def test_applied_proposal_requires_normal_save_to_reach_disk(page: Page, server:
     page.click(".ai-proposal-panel button:has-text('Use this version')")
     _wait_until(lambda: REPLACEMENT in _editor_text(page))
 
-    page.click("button:has-text('Close')")
+    # Scoped to the panel: the Discuss diff modal carries a Close button too.
+    page.click(".ai-proposal-panel button:has-text('Close')")
     page.wait_for_timeout(500)
     assert path.read_text(encoding="utf-8") == original
     page.click("#sceneProseHost .ProseMirror")
@@ -6413,41 +6420,230 @@ def test_discuss_panel_state_preserved_on_reload(page: Page, server: ProseviewSe
     page.wait_for_timeout(500) # Give it some time to ensure it doesn't pop open
     assert page.locator("#discussPanel").is_hidden(), "Discuss panel should remain closed after reload"
 
-def test_discuss_file_change_approval_renders_diff(page: Page, server: ProseviewServer):
+OPENED_SENTENCE = "She had used the same four digits since spring."
+CHANGED_SENTENCE = "She had changed the four digits at the start of spring."
+OPENED_SECOND = "Yesterday was also not today."
+CHANGED_SECOND = "Yesterday was a different country."
+
+
+def _review_card(page: Page):
+    """Let the agent edit the scene, then return the review its turn puts up."""
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SELECT_FILE_CHANGE")
+    page.locator("#discussSend").click()
+    card = page.locator(".discuss-review")
+    card.wait_for(state="visible")
+    page.wait_for_selector(".discuss-review-block")
+    return card
+
+
+def test_the_turn_offers_what_it_changed_with_everything_kept(page: Page, server: ProseviewServer) -> None:
+    """The agent's edit is already in the file; the review is where it is judged.
+
+    Nothing was gated on the way in, so the default has to be that the work
+    stands. The writer is deciding what to take back, not what to allow.
+    """
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+
+    assert card.locator(".discuss-review-path").inner_text() == "manuscript/ch01/01-opening.md"
+    assert card.locator(".discuss-review-block").count() == 2
+    assert "Keeping all 2" in card.locator(".discuss-review-count").inner_text()
+    for index in range(2):
+        assert card.locator(".discuss-review-choice input").nth(index).is_checked()
+
+    applied = scene.read_text(encoding="utf-8")
+    assert CHANGED_SENTENCE in applied and CHANGED_SECOND in applied
+    assert CHANGED_SENTENCE in card.inner_text()
+
+
+def test_unticking_one_change_puts_that_line_back_and_leaves_the_other(
+    page: Page, server: ProseviewServer
+) -> None:
+    """The whole point: keep one edit, take the other one out."""
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    assert "Keeping 1 of 2" in card.locator(".discuss-review-count").inner_text()
+    card.get_by_role("button", name="Keep 1").click()
+
+    page.wait_for_function(
+        "() => document.querySelector('#discussAnnouncement').innerText.includes('Kept 1 of 2')"
+    )
+    text = scene.read_text(encoding="utf-8")
+    assert CHANGED_SENTENCE in text, "the edit that was kept should still stand"
+    assert OPENED_SECOND in text, "the edit that was unticked should be back to the original"
+    assert CHANGED_SECOND not in text
+
+
+def test_a_reviewed_file_stops_offering_the_changes_already_settled(
+    page: Page, server: ProseviewServer
+) -> None:
+    """What the writer kept becomes the baseline, so it is not asked twice."""
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    card.get_by_role("button", name="Keep 1").click()
+    page.wait_for_function("() => !document.querySelector('.discuss-review')")
+
+
+def test_unticking_everything_puts_the_whole_edit_back(page: Page, server: ProseviewServer) -> None:
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+
+    for index in range(card.locator(".discuss-review-choice input").count()):
+        card.locator(".discuss-review-choice input").nth(index).uncheck()
+    card.get_by_role("button", name="Undo all of it").click()
+
+    page.wait_for_function("() => !document.querySelector('.discuss-review')")
+    text = scene.read_text(encoding="utf-8")
+    assert OPENED_SENTENCE in text and OPENED_SECOND in text
+    assert CHANGED_SENTENCE not in text and CHANGED_SECOND not in text
+
+
+def test_an_unticked_change_stays_readable_and_is_marked_as_going_back(
+    page: Page, server: ProseviewServer
+) -> None:
+    """Turned down is not hidden: you can still read what you are putting back."""
+    open_scene(page, server)
+    card = _review_card(page)
+
+    block = card.locator(".discuss-review-block").nth(1)
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    assert "discuss-review-block-off" in (block.get_attribute("class") or "")
+    assert block.locator(".discuss-review-state").inner_text() == "Putting back"
+    assert CHANGED_SECOND in block.inner_text()
+
+
+def test_a_file_change_no_longer_stops_to_ask(page: Page, server: ProseviewServer) -> None:
+    """An edit is reversible, so it lands and is reviewed after.
+
+    A command is not reversible, so that one still waits for an answer -- the
+    distinction the dock is built on.
+    """
     open_scene(page, server)
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
-    page.fill("#discussInput", "REQUEST_FILE_CHANGE")
+    page.fill("#discussInput", "SELECT_FILE_CHANGE")
     page.locator("#discussSend").click()
+    page.wait_for_selector(".discuss-review", state="visible")
+    assert page.locator(".discuss-approval[data-approval-id]").count() == 0
 
-    # Wait for the approval card
-    page.wait_for_selector(".discuss-approval", state="visible")
-    card = page.locator(".discuss-approval")
+    page.fill("#discussInput", "REQUEST_APPROVAL")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector(".discuss-approval[data-approval-id]", state="visible")
+    assert page.get_by_role("button", name="Decline").count() >= 1
 
-    # Verify the diff viewer is rendered
-    diff_viewer = card.locator(".discuss-diff-viewer")
-    diff_viewer.wait_for(state="visible")
-    
-    # Wait for async diff HTML to load, then verify the changed line content.
-    # The renderer uses HTML markup for replacements rather than literal +/- prefixes.
-    old_line = "She had used the same four digits since spring."
-    new_line = "She had changed the four digits at the start of spring."
+
+def test_a_choice_survives_the_log_redrawing_underneath_it(page: Page, server: ProseviewServer) -> None:
+    """A turn redraws the log constantly; a redraw must not re-tick an edit."""
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    page.evaluate("scheduleDiscussSnapshot()")
+    page.wait_for_timeout(800)
+
+    boxes = page.locator(".discuss-review-choice input")
+    assert boxes.nth(0).is_checked() is True
+    assert boxes.nth(1).is_checked() is False, "the redraw re-ticked an edit that was turned down"
+
+    page.get_by_role("button", name="Keep 1").click()
     page.wait_for_function(
-        """([selector, expected]) => {
-            const root = document.querySelector(selector);
-            if (!root) return false;
-            return root.textContent.includes(expected);
-        }""",
-        arg=[".discuss-approval .discuss-diff-viewer", old_line],
+        "() => document.querySelector('#discussAnnouncement').innerText.includes('Kept 1 of 2')"
     )
-    assert diff_viewer.locator("text=" + old_line).is_visible()
-    assert diff_viewer.locator("text=" + new_line).is_visible()
+    text = scene.read_text(encoding="utf-8")
+    assert CHANGED_SENTENCE in text and CHANGED_SECOND not in text
 
-    # Accept the file change
-    card.get_by_role("button", name="Accept once").click()
-    
-    # Wait for it to be resolved
-    page.wait_for_function("() => document.querySelector('#discussAnnouncement').innerText.includes('Approval accept')")
 
+def test_a_file_that_moved_while_you_looked_is_refused(page: Page, server: ProseviewServer) -> None:
+    """Writing your choice must not silently discard what arrived since."""
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+
+    scene.write_text(scene.read_text(encoding="utf-8") + "\nA line typed while reading.\n", encoding="utf-8")
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    card.get_by_role("button", name="Keep 1").click()
+
+    page.wait_for_selector(".discuss-local-error")
+    assert "changed since you looked" in page.locator(".discuss-local-error").inner_text()
+    assert "A line typed while reading." in scene.read_text(encoding="utf-8")
+
+
+def test_the_review_can_be_read_split_or_inline(page: Page, server: ProseviewServer) -> None:
+    """A reworded paragraph is easier to judge side by side."""
+    open_scene(page, server)
+    card = _review_card(page)
+
+    assert page.locator(".discuss-review-table table.diff-inline").count() >= 1
+    card.get_by_role("button", name="Split").click()
+    page.wait_for_selector(".discuss-review-table table.diff-side-by-side")
+    assert page.locator(".discuss-review-table table.diff-inline").count() == 0
+
+    page.locator(".discuss-review").get_by_role("button", name="Inline").click()
+    page.wait_for_selector(".discuss-review-table table.diff-inline")
+
+
+def test_the_expanded_view_offers_the_same_ticks_as_the_card(
+    page: Page, server: ProseviewServer
+) -> None:
+    """Room to read, without becoming a second place the answer can live."""
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.get_by_role("button", name="Expand view").click()
+    page.wait_for_selector("#discussDiffModalOverlay", state="visible")
+    page.wait_for_selector("#discussDiffModalContent .discuss-review-choice")
+    assert page.locator("#discussDiffModalTitle").inner_text() == "manuscript/ch01/01-opening.md"
+
+    boxes = page.locator("#discussDiffModalContent .discuss-review-choice input")
+    assert boxes.count() == 2
+    boxes.nth(1).uncheck()
+    page.get_by_role("button", name="Close diff viewer").click()
+    page.wait_for_selector("#discussDiffModalOverlay", state="hidden")
+
+    # What was turned down in the expanded view is what the card applies.
+    assert card.locator(".discuss-review-choice input").nth(1).is_checked() is False
+    assert "Keeping 1 of 2" in card.locator(".discuss-review-count").inner_text()
+
+
+def test_unticking_on_the_card_shows_through_in_the_expanded_view(
+    page: Page, server: ProseviewServer
+) -> None:
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.locator(".discuss-review-choice input").nth(1).uncheck()
+    card.get_by_role("button", name="Expand view").click()
+    page.wait_for_selector("#discussDiffModalContent .discuss-review-choice")
+
+    boxes = page.locator("#discussDiffModalContent .discuss-review-choice input")
+    assert boxes.nth(0).is_checked() is True
+    assert boxes.nth(1).is_checked() is False
+
+
+def test_the_expanded_view_keeps_its_own_split_choice(page: Page, server: ProseviewServer) -> None:
+    open_scene(page, server)
+    card = _review_card(page)
+
+    card.get_by_role("button", name="Expand view").click()
+    page.wait_for_selector("#discussDiffModalContent .discuss-review-choice")
+    page.locator("#discussDiffToggleSideBySide").click()
+    page.wait_for_selector("#discussDiffModalContent table.diff-side-by-side")
+
+    page.get_by_role("button", name="Close diff viewer").click()
+    page.wait_for_selector("#discussDiffModalOverlay", state="hidden")
+    # The card follows the choice made in the expanded view rather than
+    # snapping back to what it was showing before.
+    page.wait_for_selector(".discuss-review-table table.diff-side-by-side")

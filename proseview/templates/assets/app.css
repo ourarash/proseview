@@ -4241,6 +4241,38 @@
             margin: 0 0 8px;
         }
 
+        .discuss-message h1,
+        .discuss-message h2,
+        .discuss-message h3,
+        .discuss-message h4,
+        .discuss-message h5,
+        .discuss-message h6 {
+            margin: 16px 0 8px;
+            color: var(--primary);
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        .discuss-message h1 { font-size: 18px; }
+        .discuss-message h2 { font-size: 16px; }
+        .discuss-message h3 { font-size: 15px; }
+        .discuss-message h4,
+        .discuss-message h5,
+        .discuss-message h6 { font-size: 14px; }
+
+        .discuss-message blockquote {
+            margin: 12px 0 12px 24px;
+            padding: 8px 12px;
+            border-left: 3px solid var(--primary);
+            background: color-mix(in srgb, var(--primary) 8%, transparent);
+            border-radius: 0 6px 6px 0;
+            color: var(--text-reading);
+        }
+
+        .discuss-message blockquote p:last-child {
+            margin-bottom: 0;
+        }
+
         .discuss-message pre {
             overflow: auto;
             padding: 9px;
@@ -4610,6 +4642,46 @@
             background: color-mix(in srgb, #d29922 8%, var(--surface-card));
         }
 
+        /* A change already reviewed at the tick boxes: a record, one line high. */
+        .discuss-approval.discuss-change-line {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            padding: 7px 10px;
+            border-color: var(--border);
+            background: var(--surface-card);
+        }
+
+        .discuss-change-line-text {
+            color: var(--text-muted);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-change-line-undo {
+            margin-left: auto;
+            flex: none;
+            border: 0;
+            background: none;
+            padding: 0;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 12px;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .discuss-change-line-undo:hover {
+            color: var(--text-main);
+        }
+
+        /* Only a card that still needs an answer wears the warning colour;
+           one already dealt with is a record, not a question. */
+        .discuss-approval.discuss-approval-settled {
+            border-color: var(--border-strong);
+            background: var(--surface-card);
+        }
+
         .discuss-approval h3 {
             margin: 0 0 6px;
             font-size: 13px;
@@ -4641,6 +4713,208 @@
         .discuss-approval-actions button:first-child {
             border-color: var(--primary);
             color: var(--primary);
+        }
+
+        .discuss-diff {
+            margin-top: 12px;
+        }
+
+        .discuss-diff-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .discuss-diff-modes {
+            display: flex;
+            gap: 4px;
+        }
+
+        .discuss-diff-viewer {
+            max-height: 320px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-bg);
+        }
+
+        .discuss-diff-status {
+            padding: 12px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .discuss-diff-path {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .discuss-diff-path code {
+            display: inline;
+            margin: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-diff-kind {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* ── The review card ─────────────────────────────────────────────
+           What the turn changed, one decision at a time. Ticked is the
+           default and means "this stays"; unticking greys the change rather
+           than hiding it, so the writer can still read what they are
+           putting back. */
+        /* No overflow clipping: it would make the card its own containing box
+           and the sticky header would scroll away with it. The corners are
+           rounded on the pieces that reach the edges instead. */
+        .discuss-review {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-top: 12px;
+            background: var(--surface-card);
+        }
+
+        .discuss-review-top {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--surface-muted);
+            border-radius: 9px 9px 0 0;
+        }
+
+        .discuss-review-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 11px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-muted);
+        }
+
+        .discuss-review-path {
+            font-size: 12px;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-review-count {
+            margin-left: auto;
+            flex: none;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .discuss-review-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .discuss-review-block + .discuss-review-block {
+            border-top: 1px solid var(--border);
+        }
+
+        .discuss-review-choice {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 10px;
+            background: var(--surface-muted);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .discuss-review-choice input {
+            margin: 0;
+            width: 16px;
+            height: 16px;
+            flex: 0 0 16px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .discuss-review-where {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-soft);
+        }
+
+        .discuss-review-state {
+            margin-left: auto;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* No inner scroller. A block clipped at a fixed height cut the new
+           wording off mid-sentence, which is the one thing the writer is here
+           to read; the log scrolls instead. Only a very long block gets its
+           own scrollbar, and wide content scrolls sideways on its own. */
+        .discuss-review-table {
+            max-height: 60vh;
+            overflow: auto;
+        }
+
+        .discuss-review-block-off .discuss-review-choice {
+            background: var(--surface-bg);
+        }
+
+        .discuss-review-block-off .discuss-review-where {
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .discuss-review-block-off .discuss-review-table {
+            opacity: 0.45;
+            filter: grayscale(1);
+        }
+
+        .discuss-review-block-off .discuss-review-state {
+            font-style: italic;
+        }
+
+        .discuss-review-note {
+            margin-top: 12px;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-muted);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .discuss-review-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px 10px;
+            border-top: 1px solid var(--border);
+            background: var(--surface-card);
+            border-radius: 0 0 9px 9px;
+        }
+
+        .discuss-approval-actions button.discuss-approval-suggested {
+            border-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .discuss-diff-state {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .discuss-diff-state {
+            margin-top: 9px;
         }
 
         .discuss-error {

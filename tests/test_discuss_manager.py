@@ -16,6 +16,7 @@ from proseview.discuss import (
     default_skill_body,
     DiscussStateStore,
     _Conversation,
+    _merge_activity,
     validate_action_result,
 )
 from proseview.scenes import extract_scene_text, split_frontmatter
@@ -2057,7 +2058,14 @@ def test_delayed_stop_error_cannot_detach_the_next_queued_turn(tmp_path: Path, m
     manager.close()
 
 
-def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, monkeypatch):
+def test_commands_and_permissions_ask_but_a_file_change_does_not(tmp_path: Path, monkeypatch):
+    """Only the things that cannot be taken back stop to ask.
+
+    A file edit is answered on the spot: every one of them is reversible from
+    the end-of-turn review, and holding the agent while the writer rules on
+    prose they have not read yet buys nothing. Running a command or widening
+    permissions has no undo, so those still wait for an answer.
+    """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
     manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
@@ -2066,7 +2074,6 @@ def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, m
     thread_id = manager._start_thread(conversation, clients[0])
     requests = [
         (101, "item/commandExecution/requestApproval", {"networkApprovalContext": {"host": "example.test"}}, "network"),
-        (102, "item/fileChange/requestApproval", {}, "fileChange"),
         (103, "item/permissions/requestApproval", {"permissions": {"filesystem": ["one.md"]}}, "permissions"),
     ]
     for request_id, method, extra, expected_kind in requests:
@@ -2084,8 +2091,23 @@ def test_network_file_and_permission_approvals_are_allowlisted(tmp_path: Path, m
         approval = next(item for item in manager.get_snapshot(cid)["approvals"] if item["request_id"] == str(request_id))
         assert approval["kind"] == expected_kind
 
+    manager._on_agent_message("codex", {
+        "id": 102,
+        "method": "item/fileChange/requestApproval",
+        "params": {
+            "threadId": thread_id,
+            "turnId": "turn-x",
+            "itemId": "item-102",
+            "availableDecisions": ["accept", "decline"],
+            "item": {"id": "item-102", "changes": [{"path": "manuscript/one.md", "kind": "modified"}]},
+        },
+    })
+    assert (102, {"decision": "accept"}) in clients[0].responses
+    assert not [row for row in manager.get_snapshot(cid)["approvals"] if row["request_id"] == "102"]
+    # Answering it is also when the version to review against is taken.
+    assert "manuscript/one.md" in manager._get(cid).file_before
+
     manager.approve(cid, "101", "decline")
-    manager.approve(cid, "102", "accept")
     manager.approve(cid, "103", "accept", {"permissions": {"filesystem": ["one.md"], "network": ["bad"]}})
     assert clients[0].responses[-1] == (103, {"permissions": {"filesystem": ["one.md"]}, "scope": "turn"})
     manager.close()
@@ -2105,4 +2127,199 @@ def test_approval_without_advertised_decisions_is_declined(tmp_path: Path, monke
     })
     assert clients[0].responses == [(104, {"decision": "decline"})]
     assert manager.get_snapshot(cid)["approvals"] == []
+    manager.close()
+
+
+# ── Reviewing a turn's file changes against the version it started from ───────
+# Nothing here reverses a recorded diff. Prosview keeps the text as it stood
+# before the agent touched it, so the review compares two versions it holds and
+# the writer's choice can always be assembled.
+
+_SCENE_BEFORE = "# One\n\nFirst document.\n\nmiddle\n\nSecond document.\n"
+_SCENE_AFTER = "# One\n\nFirst draft.\n\nmiddle\n\nSecond draft.\n"
+
+
+def _turn_touching(tmp_path: Path, path: str = "manuscript/one.md"):
+    root = _repo(tmp_path)
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1]
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    conversation = manager._conversations[cid]
+    thread_id = manager._start_thread(conversation, clients[0])
+    conversation.active_turn_id = "turn-x"
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_SCENE_BEFORE, encoding="utf-8")
+    manager._on_agent_message("codex", {
+        "id": 301,
+        "method": "item/fileChange/requestApproval",
+        "params": {
+            "threadId": thread_id,
+            "turnId": "turn-x",
+            "itemId": "item-1",
+            "availableDecisions": ["accept", "decline"],
+            "item": {"id": "item-1", "changes": [{"path": path, "kind": "modified"}]},
+        },
+    })
+    return root, manager, cid, target
+
+
+def test_the_version_before_the_turn_is_captured_before_the_write(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    files = manager.turn_file_changes(cid)["files"]
+    assert [row["path"] for row in files] == ["manuscript/one.md"]
+    assert files[0]["before"] == _SCENE_BEFORE
+    assert files[0]["after"] == _SCENE_AFTER
+    assert [block["after"] for block in files[0]["blocks"]] == ["First draft.\n", "Second draft.\n"]
+    manager.close()
+
+
+def test_a_later_sighting_does_not_overwrite_the_original(tmp_path: Path):
+    """Only the first sighting counts, or the writer reviews an edit against itself."""
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+    manager._capture_before(manager._get(cid), [{"path": "manuscript/one.md"}])
+
+    assert manager.turn_file_changes(cid)["files"][0]["before"] == _SCENE_BEFORE
+    manager.close()
+
+
+def test_keeping_some_blocks_writes_exactly_that_file(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    result = manager.apply_file_selection(cid, "manuscript/one.md", [1])
+
+    assert result == {"path": "manuscript/one.md", "kept": [1], "dropped": 1, "total": 2}
+    assert target.read_text(encoding="utf-8") == "# One\n\nFirst draft.\n\nmiddle\n\nSecond document.\n"
+    manager.close()
+
+
+def test_keeping_nothing_puts_the_file_back_exactly(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    manager.apply_file_selection(cid, "manuscript/one.md", [])
+
+    assert target.read_text(encoding="utf-8") == _SCENE_BEFORE
+    manager.close()
+
+
+def test_what_the_writer_kept_becomes_the_baseline(tmp_path: Path):
+    """A second look offers the edits still standing, not the ones already refused."""
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    manager.apply_file_selection(cid, "manuscript/one.md", [1])
+
+    assert manager.turn_file_changes(cid)["files"] == []
+    manager.close()
+
+
+def test_a_file_that_moved_since_you_looked_is_refused(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+    stale = manager.turn_file_changes(cid)["files"][0]["fingerprint"]
+    target.write_text(_SCENE_AFTER + "\nA line you typed while reading.\n", encoding="utf-8")
+
+    with pytest.raises(ContextError, match="changed since you looked"):
+        manager.apply_file_selection(cid, "manuscript/one.md", [1], fingerprint=stale)
+    # Refused means untouched: the line survives.
+    assert "A line you typed while reading." in target.read_text(encoding="utf-8")
+    manager.close()
+
+
+def test_dropping_changes_tells_the_agent_and_keeping_them_all_does_not(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    manager.apply_file_selection(cid, "manuscript/one.md", [1, 2])
+    assert manager._get(cid).agent_notes == []
+
+    target.write_text(_SCENE_AFTER.replace("middle", "MIDDLE"), encoding="utf-8")
+    manager.apply_file_selection(cid, "manuscript/one.md", [])
+    owed = manager._get(cid).agent_notes
+    assert owed and "dropped 1 of 1" in owed[0]
+    manager.close()
+
+
+def test_the_replaced_version_is_kept_in_scene_history(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    manager.apply_file_selection(cid, "manuscript/one.md", [])
+
+    saved = sorted((root / ".proseview" / "backups").rglob("*.json"))
+    assert saved, "the agent's version should stay restorable"
+    assert json.loads(saved[-1].read_text(encoding="utf-8"))["content"] == _SCENE_AFTER
+    manager.close()
+
+
+def test_review_reaches_files_outside_the_manuscript(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path, path="story-bible/characters.md")
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    files = manager.turn_file_changes(cid)["files"]
+    assert [row["path"] for row in files] == ["story-bible/characters.md"]
+    manager.apply_file_selection(cid, "story-bible/characters.md", [2])
+    assert target.read_text(encoding="utf-8") == "# One\n\nFirst document.\n\nmiddle\n\nSecond draft.\n"
+    manager.close()
+
+
+def test_a_file_the_agent_creates_reviews_as_entirely_new(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path, path="manuscript/two.md")
+    target.unlink()
+    manager._get(cid).file_before.clear()
+    manager._capture_before(manager._get(cid), [{"path": "manuscript/two.md"}])
+    target.write_text("Brand new scene.\n", encoding="utf-8")
+
+    files = manager.turn_file_changes(cid)["files"]
+    assert files[0]["before"] == ""
+    assert [block["kind"] for block in files[0]["blocks"]] == ["added"]
+    manager.apply_file_selection(cid, "manuscript/two.md", [])
+    assert target.read_text(encoding="utf-8") == ""
+    manager.close()
+
+
+def test_a_file_written_with_no_warning_is_named_rather_than_left_out(tmp_path: Path):
+    """The one shape the review cannot cover, said out loud.
+
+    The version to compare against is taken when the agent announces a write.
+    An agent that writes with no announcement leaves nothing to compare, and a
+    review that quietly omitted the file would read as though it were untouched.
+    """
+    root, manager, cid, target = _turn_touching(tmp_path)
+    conversation = manager._get(cid)
+    conversation.file_before.clear()
+    conversation.activities["item-1"] = {
+        "id": "item-1",
+        "kind": "fileChange",
+        "status": "completed",
+        "changes": [{"path": "manuscript/one.md", "kind": "modified", "diff": ""}],
+    }
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    review = manager.turn_file_changes(cid)
+    assert review["files"] == []
+    assert review["unreviewable"] == ["manuscript/one.md"]
+    manager.close()
+
+
+def test_a_file_that_was_announced_is_not_called_unreviewable(tmp_path: Path):
+    root, manager, cid, target = _turn_touching(tmp_path)
+    manager._get(cid).activities["item-1"] = {
+        "id": "item-1",
+        "kind": "fileChange",
+        "status": "completed",
+        "changes": [{"path": "manuscript/one.md", "kind": "modified", "diff": ""}],
+    }
+    target.write_text(_SCENE_AFTER, encoding="utf-8")
+
+    review = manager.turn_file_changes(cid)
+    assert [row["path"] for row in review["files"]] == ["manuscript/one.md"]
+    assert review["unreviewable"] == []
     manager.close()

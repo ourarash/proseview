@@ -31,13 +31,18 @@ from typing import Callable, Any
 from .config import Config
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
+from .hunks import changed_blocks, split_lines
+from .patches import Hunk, parse_hunks
 from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
     build_scene_data,
 )
 from .lexical import paragraph_blocks, calculate_lexical_stats
 from .repo import (
+    backup_dir_for,
+    record_file_backup,
     _file_node as _repo_file_node,
+    atomic_write_text as _atomic_write_text,
     create_repository_entry,
     read_repo_text,
     rename_repository_entry,
@@ -458,162 +463,262 @@ class _FileConflictError(Exception):
     pass
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Replace *path*'s contents with *text* atomically.
+_DIFF_NOTE_STYLE = (
+    "text-align:center; color:var(--text-muted); font-size:12px; "
+    "font-style:italic; background:var(--surface-bg);"
+)
 
-    Every writer that touches a manuscript file goes through here. A partial
-    write would truncate someone's prose, so the new content lands in a
-    temporary file alongside the target and is moved into place with
-    ``os.replace``, which is atomic on the same filesystem.
+
+def _diff_note_row(text: str, mode: str) -> str:
+    """A full-width row that carries a hunk header or an explanatory note."""
+    escaped = html_escape(text)
+    if mode == "inline":
+        return (
+            f'<tr><td class="diff_header">...</td><td class="diff_header">...</td>'
+            f'<td style="{_DIFF_NOTE_STYLE}">{escaped}</td></tr>'
+        )
+    return (
+        f'<tr><td class="diff_header">...</td><td style="{_DIFF_NOTE_STYLE}">{escaped}</td>'
+        f'<td class="diff_header">...</td><td style="{_DIFF_NOTE_STYLE}"></td></tr>'
+    )
+
+
+def _word_level_html(old_text: str, new_text: str) -> tuple[str, str]:
+    """Mark the words that actually differ between two paired lines."""
+    import difflib
+
+    old_words = re.findall(r"\S+|\s+", old_text)
+    new_words = re.findall(r"\S+|\s+", new_text)
+    matcher = difflib.SequenceMatcher(None, old_words, new_words)
+    old_html: list[str] = []
+    new_html: list[str] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        old_chunk = html_escape("".join(old_words[i1:i2]))
+        new_chunk = html_escape("".join(new_words[j1:j2]))
+        if tag == "equal":
+            old_html.append(old_chunk)
+            new_html.append(new_chunk)
+            continue
+        if old_chunk:
+            old_html.append(f'<del class="diff-delete">{old_chunk}</del>')
+        if new_chunk:
+            new_html.append(f'<ins class="diff-insert">{new_chunk}</ins>')
+    return "".join(old_html), "".join(new_html)
+
+
+def _diff_cell(kind: str, content: str) -> str:
+    css = f' class="{kind}"' if kind else ""
+    return f'<td{css} style="white-space:pre-wrap">{content}</td>'
+
+
+def _hunk_label(hunk: Hunk) -> str:
+    """Where in the file this hunk sits, said the way a writer reads a file.
+
+    ``@@ -17,3 +17,3 @@`` is the right thing for a patch tool to print and the
+    wrong thing to show someone deciding whether to keep a sentence.
     """
-    tmp_path = None
+    span = len(hunk.new_lines)
+    if span <= 1:
+        return f"Line {hunk.new_start}"
+    return f"Lines {hunk.new_start}\u2013{hunk.new_start + span - 1}"
+
+
+def _hunk_rows(hunk: Hunk, mode: str, header: bool = True) -> list[str]:
+    """Render one hunk's lines, trusting the patch's own -/+ markers.
+
+    Deletions and the insertions that follow them are paired positionally so a
+    reworded sentence shows its old and new form together with the changed
+    words picked out. Leftovers on either side render as a plain removal or
+    addition rather than being forced into a pair.
+    """
+    rows = [_diff_note_row(_hunk_label(hunk), mode)] if header else []
+    old_ln = hunk.old_start
+    new_ln = hunk.new_start
+    index = 0
+    lines = hunk.lines
+    while index < len(lines):
+        op, text = lines[index]
+        if op == " ":
+            escaped = html_escape(text)
+            if mode == "inline":
+                rows.append(
+                    f'<tr><td class="diff_header">{old_ln}</td>'
+                    f'<td class="diff_header">{new_ln}</td>{_diff_cell("", escaped)}</tr>'
+                )
+            else:
+                rows.append(
+                    f'<tr><td class="diff_header">{old_ln}</td>{_diff_cell("", escaped)}'
+                    f'<td class="diff_header">{new_ln}</td>{_diff_cell("", escaped)}</tr>'
+                )
+            old_ln += 1
+            new_ln += 1
+            index += 1
+            continue
+
+        removed = []
+        while index < len(lines) and lines[index][0] == "-":
+            removed.append(lines[index][1])
+            index += 1
+        added = []
+        while index < len(lines) and lines[index][0] == "+":
+            added.append(lines[index][1])
+            index += 1
+
+        for offset in range(max(len(removed), len(added))):
+            old_text = removed[offset] if offset < len(removed) else None
+            new_text = added[offset] if offset < len(added) else None
+            if old_text is not None and new_text is not None:
+                old_html, new_html = _word_level_html(old_text, new_text)
+            else:
+                old_html = html_escape(old_text) if old_text is not None else ""
+                new_html = html_escape(new_text) if new_text is not None else ""
+            old_cell_no = old_ln if old_text is not None else ""
+            new_cell_no = new_ln if new_text is not None else ""
+            if mode == "inline":
+                if old_text is not None:
+                    rows.append(
+                        f'<tr><td class="diff_header">{old_cell_no}</td>'
+                        f'<td class="diff_header"></td>{_diff_cell("diff_sub", old_html)}</tr>'
+                    )
+                if new_text is not None:
+                    rows.append(
+                        f'<tr><td class="diff_header"></td>'
+                        f'<td class="diff_header">{new_cell_no}</td>{_diff_cell("diff_add", new_html)}</tr>'
+                    )
+            else:
+                left = _diff_cell("diff_sub", old_html) if old_text is not None else _diff_cell("", "")
+                right = _diff_cell("diff_add", new_html) if new_text is not None else _diff_cell("", "")
+                rows.append(
+                    f'<tr><td class="diff_header">{old_cell_no}</td>{left}'
+                    f'<td class="diff_header">{new_cell_no}</td>{right}</tr>'
+                )
+            if old_text is not None:
+                old_ln += 1
+            if new_text is not None:
+                new_ln += 1
+    return rows
+
+
+def _diff_table(rows: list[str], mode: str) -> str:
+    return "\n".join([f'<table class="diff diff-{mode}">', *rows, "</table>"])
+
+
+def _format_patch_hunks(patch: str, mode: str = "inline", headers: bool = True) -> list[dict[str, Any]]:
+    """One rendered table per hunk, so the browser can offer per-hunk actions.
+
+    With *headers* off the tables omit their own "Lines 17-19" row, for callers
+    that label each hunk themselves and would otherwise say it twice.
+    """
+    return [
+        {
+            "index": hunk.index,
+            "header": _hunk_label(hunk),
+            "line": hunk.new_start,
+            "html": _diff_table(_hunk_rows(hunk, mode, header=headers), mode),
+        }
+        for hunk in parse_hunks(patch)
+    ]
+
+
+def _blocks_as_hunks(before: str, after: str, context: int = 1) -> list[Hunk]:
+    """Dress each changed block as a hunk, so one renderer serves both.
+
+    The review compares two whole files rather than replaying a patch, but a
+    changed region still reads best the way a diff reads: a settled line either
+    side of the part that moved. Building that shape here means the picker and
+    the patch views look identical without a second renderer. One line of
+    context, not the usual three -- a line of prose is a whole paragraph, and
+    three of them bury the sentence the writer is deciding about.
+    """
+    old_lines, new_lines = split_lines(before), split_lines(after)
+    hunks: list[Hunk] = []
+    for block in changed_blocks(before, after):
+        stop = block.before_start + len(block.before)
+        lead = max(0, block.before_start - context)
+        trail = min(len(old_lines), stop + context)
+        rows: list[tuple[str, str]] = []
+        rows += [(" ", text.rstrip("\n")) for text in old_lines[lead:block.before_start]]
+        rows += [("-", text.rstrip("\n")) for text in block.before]
+        rows += [("+", text.rstrip("\n")) for text in block.after]
+        rows += [(" ", text.rstrip("\n")) for text in old_lines[stop:trail]]
+        hunks.append(Hunk(
+            index=block.index,
+            header="",
+            old_start=lead + 1,
+            new_start=max(1, block.after_start - (block.before_start - lead) + 1),
+            lines=tuple(rows),
+        ))
+    return hunks
+
+
+def _block_label(block) -> str:
+    """Where the change itself sits -- not counting the settled lines shown around it."""
+    if not block.after:
+        span, start = len(block.before), block.before_start + 1
+        return f"Line {start} removed" if span <= 1 else f"Lines {start}\u2013{start + span - 1} removed"
+    span, start = len(block.after), block.after_start + 1
+    if span <= 1:
+        return f"Line {start}" if block.before else f"Line {start} added"
+    end = start + span - 1
+    return f"Lines {start}\u2013{end}" if block.before else f"Lines {start}\u2013{end} added"
+
+
+def format_review_blocks(before: str, after: str, mode: str = "inline") -> list[dict[str, Any]]:
+    """One rendered table per changed block, for the review picker."""
+    hunks = {hunk.index: hunk for hunk in _blocks_as_hunks(before, after)}
+    return [
+        {
+            "id": block.index,
+            "header": _block_label(block),
+            "kind": block.kind,
+            "html": _diff_table(_hunk_rows(hunks[block.index], mode, header=False), mode),
+        }
+        for block in changed_blocks(before, after)
+    ]
+
+
+def resolve_history_target(root: Path, cfg: Config, rel: str) -> Path:
+    """The file whose saved versions *rel* names.
+
+    Scene history has always spoken in manuscript-relative paths, and the
+    editor still sends those. Agents write outside ``manuscript/`` too -- the
+    story bible, notes -- and those versions are kept in the same place, so a
+    repository-relative path is accepted as well. The manuscript reading wins
+    whenever it names something real, which keeps every existing caller
+    unchanged; a scene that has since been deleted still has versions worth
+    reading, so having saved versions counts as real.
+    """
+    raw = str(rel or "").strip().replace("\\", "/")
+    if not raw:
+        raise ValueError("missing path")
+    parts = Path(raw).parts
+    if Path(raw).is_absolute() or ".." in parts or any(part.startswith(".") for part in parts):
+        raise ValueError("path outside the repository")
+
+    manuscript_root = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
+    scene = (manuscript_root / raw).resolve()
+    if scene.is_relative_to(manuscript_root) and (
+        scene.is_file() or backup_dir_for(root, scene.relative_to(root).as_posix()).is_dir()
+    ):
+        return scene
+    # Not a scene: read it as repository-relative, with the containment,
+    # dotfile and symlink checks every other repository-facing path gets.
     try:
-        with tempfile.NamedTemporaryFile(
-            "w", dir=path.parent, delete=False, suffix=".tmp", encoding="utf-8"
-        ) as tmp:
-            tmp.write(text)
-            tmp_path = tmp.name
-        os.replace(tmp_path, path)
-        tmp_path = None
-    finally:
-        if tmp_path is not None:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+        return resolve_visible_repository_path(root, raw)
+    except ValueError:
+        raise ValueError("path outside the repository") from None
+
 
 def _format_patch_html(patch: str, mode: str = "inline") -> str:
-    import difflib
-    from html import escape as html_escape
-    
-    diff_html = []
-    
-    chunks = []
-    current_chunk = None
-    
-    lines = patch.splitlines(keepends=True)
-    for line in lines:
-        if line.startswith('---') or line.startswith('+++'):
-            continue
-        m = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
-        if m:
-            if current_chunk:
-                chunks.append(current_chunk)
-            old_start = int(m.group(1))
-            new_start = int(m.group(3))
-            current_chunk = {
-                'old_start': old_start,
-                'new_start': new_start,
-                'old_lines': [],
-                'new_lines': [],
-                'header': line
-            }
-            continue
-            
-        if not current_chunk:
-            continue
-            
-        if line.startswith('\\ No newline'):
-            continue
-            
-        if line.startswith('-'):
-            current_chunk['old_lines'].append(line[1:])
-        elif line.startswith('+'):
-            current_chunk['new_lines'].append(line[1:])
-        elif line.startswith(' '):
-            current_chunk['old_lines'].append(line[1:])
-            current_chunk['new_lines'].append(line[1:])
-        else:
-            current_chunk['old_lines'].append(line)
-            current_chunk['new_lines'].append(line)
-            
-    if current_chunk:
-        chunks.append(current_chunk)
-        
-    diff_html.append(f'<table class="diff diff-{mode}">')
-        
-    for chunk in chunks:
-        if mode == "inline":
-            diff_html.append(f'<tr><td class="diff_header">...</td><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);">{html_escape(chunk["header"].strip())}</td></tr>')
-        else:
-            diff_html.append(f'<tr><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);">{html_escape(chunk["header"].strip())}</td><td class="diff_header">...</td><td style="text-align:center; color:var(--text-muted); font-size:12px; font-style:italic; background:var(--surface-bg);"></td></tr>')
-            
-        old_lines = chunk['old_lines']
-        new_lines = chunk['new_lines']
-        
-        sm = difflib.SequenceMatcher(None, old_lines, new_lines)
-        opcodes = sm.get_opcodes()
-        
-        old_offset = chunk['old_start']
-        new_offset = chunk['new_start']
-        
-        for tag, i1, i2, j1, j2 in opcodes:
-            if tag == 'equal':
-                for k in range(i2 - i1):
-                    if mode == "inline":
-                        diff_html.append(f'<tr><td class="diff_header">{old_offset+i1+k}</td><td class="diff_header">{new_offset+j1+k}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
-                    else:
-                        diff_html.append(f'<tr><td class="diff_header">{old_offset+i1+k}</td><td style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td><td class="diff_header">{new_offset+j1+k}</td><td style="white-space:pre-wrap">{html_escape(new_lines[j1+k])}</td></tr>')
-            elif tag == 'delete':
-                for k in range(i2 - i1):
-                    if mode == "inline":
-                        diff_html.append(f'<tr><td class="diff_header">{old_offset+i1+k}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td></tr>')
-                    else:
-                        diff_html.append(f'<tr><td class="diff_header">{old_offset+i1+k}</td><td class="diff_sub" style="white-space:pre-wrap">{html_escape(old_lines[i1+k])}</td><td class="diff_header"></td><td class="diff_sub"></td></tr>')
-            elif tag == 'insert':
-                for k in range(j2 - j1):
-                    if mode == "inline":
-                        diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{new_offset+j1+k}</td><td class="diff_add" style="white-space:pre-wrap">{html_escape(new_lines[j1+k])}</td></tr>')
-                    else:
-                        diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_add"></td><td class="diff_header">{new_offset+j1+k}</td><td class="diff_add" style="white-space:pre-wrap">{html_escape(new_lines[j1+k])}</td></tr>')
-            elif tag == 'replace':
-                old_text = "".join(old_lines[i1:i2])
-                new_text = "".join(new_lines[j1:j2])
-                old_words = re.findall(r"\S+|[^\S\n]+|\n", old_text)
-                new_words = re.findall(r"\S+|[^\S\n]+|\n", new_text)
-                wsm = difflib.SequenceMatcher(None, old_words, new_words)
-                
-                old_html_lines = [[]]
-                new_html_lines = [[]]
-                
-                for wtag, wi1, wi2, wj1, wj2 in wsm.get_opcodes():
-                    if wtag in ('equal', 'delete', 'replace'):
-                        for w in old_words[wi1:wi2]:
-                            if w == '\n': old_html_lines.append([])
-                            else:
-                                if wtag == 'equal': old_html_lines[-1].append(html_escape(w))
-                                else: old_html_lines[-1].append(f'<del class="diff-delete">{html_escape(w)}</del>')
-                    if wtag in ('equal', 'insert', 'replace'):
-                        for w in new_words[wj1:wj2]:
-                            if w == '\n': new_html_lines.append([])
-                            else:
-                                if wtag == 'equal': new_html_lines[-1].append(html_escape(w))
-                                else: new_html_lines[-1].append(f'<ins class="diff-insert">{html_escape(w)}</ins>')
-                # Remove empty trailing lines from split
-                if len(old_html_lines) > 1 and not old_html_lines[-1]: old_html_lines.pop()
-                if len(new_html_lines) > 1 and not new_html_lines[-1]: new_html_lines.pop()
-                
-                max_lines = max(len(old_html_lines), len(new_html_lines))
-                for k in range(max_lines):
-                    old_ln = old_offset + i1 + k if k < len(old_html_lines) else ""
-                    new_ln = new_offset + j1 + k if k < len(new_html_lines) else ""
-                    
-                    old_content = "".join(old_html_lines[k]) if k < len(old_html_lines) else ""
-                    new_content = "".join(new_html_lines[k]) if k < len(new_html_lines) else ""
-                    
-                    if mode == "inline":
-                        if k < len(old_html_lines) and k < len(new_html_lines):
-                            diff_html.append(f'<tr><td class="diff_header">{old_ln}</td><td class="diff_header">{new_ln}</td><td class="diff_sub" style="white-space:pre-wrap">{old_content}</td></tr>')
-                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header"></td><td class="diff_add" style="white-space:pre-wrap">{new_content}</td></tr>')
-                        elif k < len(old_html_lines):
-                            diff_html.append(f'<tr><td class="diff_header">{old_ln}</td><td class="diff_header"></td><td class="diff_sub" style="white-space:pre-wrap">{old_content}</td></tr>')
-                        elif k < len(new_html_lines):
-                            diff_html.append(f'<tr><td class="diff_header"></td><td class="diff_header">{new_ln}</td><td class="diff_add" style="white-space:pre-wrap">{new_content}</td></tr>')
-                    else:
-                        diff_html.append(f'<tr><td class="diff_header">{old_ln}</td><td class="diff_sub" style="white-space:pre-wrap">{old_content}</td><td class="diff_header">{new_ln}</td><td class="diff_add" style="white-space:pre-wrap">{new_content}</td></tr>')
-                        
-    diff_html.append('</table>')
-    return "\n".join(diff_html)
+    """Render a whole unified diff as one table."""
+    hunks = parse_hunks(patch)
+    if not hunks:
+        return _diff_table([_diff_note_row("No changes to show.", mode)], mode)
+    rows: list[str] = []
+    for hunk in hunks:
+        rows.extend(_hunk_rows(hunk, mode))
+    return _diff_table(rows, mode)
+
 
 def _compute_diff_summary(old_text: str, new_text: str) -> str:
     import difflib
@@ -770,11 +875,19 @@ def render_scene_diff_html(
     import difflib
 
     if mode == "side-by-side":
-        old_lines = old_raw.splitlines(keepends=True)
-        new_lines = new_raw.splitlines(keepends=True)
-        html_diff = difflib.HtmlDiff().make_table(old_lines, new_lines, context=not show_full, numlines=3)
-        html_diff = re.sub(r"<colgroup.*?</colgroup>", "", html_diff, flags=re.DOTALL | re.IGNORECASE)
-        return html_diff
+        # Was difflib.HtmlDiff, which renders every space as &nbsp;. The table
+        # looked right and copied wrong: lifting a passage out of it produced
+        # U+00A0 between every word, which then travelled back into the
+        # manuscript on paste. The patch renderer keeps the prose literal.
+        old_lines = old_raw.splitlines()
+        new_lines = new_raw.splitlines()
+        context = max(len(old_lines), len(new_lines)) if show_full else 3
+        patch = "".join(difflib.unified_diff(
+            [line + "\n" for line in old_lines],
+            [line + "\n" for line in new_lines],
+            n=max(context, 1),
+        ))
+        return _format_patch_html(patch, mode="side-by-side")
 
     old_lines = old_raw.splitlines(keepends=True)
     new_lines = new_raw.splitlines(keepends=True)
@@ -1857,14 +1970,10 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": False, "error": "missing path or timestamp"}, 400)
                     return
                     
-                import hashlib
                 root = Path(self.repo_root).resolve()
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                
-                rel_path = scene_path.relative_to(root).as_posix()
-                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
-                backup_file = root / ".proseview" / "backups" / path_hash / f"{ts}.json"
+                scene_path = resolve_history_target(root, cfg, rel)
+                backup_file = backup_dir_for(root, scene_path.relative_to(root).as_posix()) / f"{ts}.json"
                 
                 if not backup_file.exists():
                     self._send_json({"ok": False, "error": "Backup not found"}, 404)
@@ -1893,19 +2002,10 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": False, "error": "missing path"}, 400)
                     return
                     
-                import hashlib
                 root = Path(self.repo_root).resolve()
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                manuscript_root = (root / cfg.manuscript_subdir).resolve()
-                
-                if not scene_path.is_relative_to(manuscript_root):
-                    self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
-                    return
-                    
-                rel_path = scene_path.relative_to(root).as_posix()
-                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
-                backups_dir = root / ".proseview" / "backups" / path_hash
+                scene_path = resolve_history_target(root, cfg, rel)
+                backups_dir = backup_dir_for(root, scene_path.relative_to(root).as_posix())
                 
                 backups = []
                 if backups_dir.exists():
@@ -2076,15 +2176,22 @@ class _Handler(BaseHTTPRequestHandler):
                 new_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/new", path)
                 stop_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/turns/([^/]+)/stop", path)
                 approval_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/approvals/([^/]+)", path)
-                reject_activity_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/activities/([^/]+)/reject", path)
+                turn_changes_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/changes", path)
+                apply_changes_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/changes/apply", path)
                 if path == "/api/discuss/format_patch":
                     patch_str = body.get("patch", "")
-                    mode_str = body.get("mode", "inline")
+                    mode_str = "side-by-side" if body.get("mode") == "side-by-side" else "inline"
                     try:
-                        html = _format_patch_html(patch_str, mode=mode_str)
-                        self._send_json({"ok": True, "diff_html": html})
-                    except Exception as e:
-                        self._send_json({"ok": False, "error": str(e)}, 500)
+                        payload = {"ok": True, "diff_html": _format_patch_html(patch_str, mode=mode_str)}
+                        # Only the per-hunk card needs the split rendering; the
+                        # expanded modal reads the whole patch as one table.
+                        if body.get("hunks"):
+                            payload["hunks"] = _format_patch_hunks(
+                                patch_str, mode=mode_str, headers=body.get("hunk_headers", True) is not False
+                            )
+                        self._send_json(payload)
+                    except Exception as exc:
+                        self._send_json({"ok": False, "error": str(exc)}, 500)
                     return
                 if question_match:
                     result = self.discuss_manager.submit(
@@ -2182,11 +2289,25 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     self._send_json({"ok": True, **result})
                     return
-                if reject_activity_match:
-                    result = self.discuss_manager.reject_activity(
-                        reject_activity_match.group(1), reject_activity_match.group(2)
+                if apply_changes_match:
+                    raw_keep = body.get("keep")
+                    result = self.discuss_manager.apply_file_selection(
+                        apply_changes_match.group(1),
+                        str(body.get("path") or ""),
+                        [int(value) for value in raw_keep] if isinstance(raw_keep, list) else [],
+                        fingerprint=str(body.get("fingerprint") or ""),
                     )
                     self._send_json({"ok": True, **result})
+                    return
+                if turn_changes_match:
+                    review = self.discuss_manager.turn_file_changes(turn_changes_match.group(1))
+                    mode_str = "side-by-side" if body.get("mode") == "side-by-side" else "inline"
+                    # The manager deals in text; the HTML is put on here so it
+                    # never has to know how a diff looks.
+                    for row in review["files"]:
+                        row["blocks"] = format_review_blocks(row.pop("before"), row["after"], mode=mode_str)
+                        row.pop("after", None)
+                    self._send_json({"ok": True, **review})
                     return
                 if task_status_match:
                     result = self.discuss_manager.set_task_status(
@@ -2384,14 +2505,10 @@ class _Handler(BaseHTTPRequestHandler):
                 rel = (body.get("path") or "")
                 ts = (body.get("timestamp") or "")
                 
-                import hashlib
                 root = Path(self.repo_root).resolve()
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                
-                rel_path = scene_path.relative_to(root).as_posix()
-                path_hash = hashlib.md5(rel_path.encode("utf-8")).hexdigest()
-                backup_file = root / ".proseview" / "backups" / path_hash / f"{ts}.json"
+                scene_path = resolve_history_target(root, cfg, rel)
+                backup_file = backup_dir_for(root, scene_path.relative_to(root).as_posix()) / f"{ts}.json"
                 
                 if not backup_file.exists():
                     self._send_json({"ok": False, "error": "Backup not found"}, 404)
@@ -2405,7 +2522,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if not new_raw.endswith("\n"):
                     new_raw += "\n"
                 
-                _create_file_backup(scene_path, raw, new_raw, source="Pre-Restore State", repo_root=self.repo_root)
+                record_file_backup(root, scene_path, raw, "Pre-Restore State")
                 _atomic_write_text(scene_path, new_raw)
                 
                 self.invalidate()

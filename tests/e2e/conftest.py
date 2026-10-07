@@ -542,14 +542,72 @@ for line in sys.stdin:
             continue
         if 'REQUEST_APPROVAL' in prompt:
             approval_id = 9000 + next_turn
-            pending[approval_id] = (thread_id, turn_id, turn)
+            pending[approval_id] = (thread_id, turn_id, turn, None)
             emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'command': 'printf approved', 'cwd': os.getcwd(), 'reason': 'Test approval', 'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
             continue
         if 'REQUEST_FILE_CHANGE' in prompt:
             approval_id = 9000 + next_turn
-            pending[approval_id] = (thread_id, turn_id, turn)
+            pending[approval_id] = (thread_id, turn_id, turn, None)
             emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'file-' + turn_id, 'type': 'fileChange', 'changes': [{'path': 'manuscript/ch01/01-opening.md', 'kind': 'modified', 'diff': '@@ -18,1 +18,1 @@\\n-She had used the same four digits since spring.\\n+She had changed the four digits at the start of spring.'}], 'status': 'inProgress'}}})
             emit({'id': approval_id, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'file-' + turn_id, 'reason': 'Test file change', 'availableDecisions': ['accept', 'decline', 'cancel']}})
+            continue
+        if 'SECOND_FILE_CHANGE' in prompt:
+            import difflib
+            approval_id = 9000 + next_turn
+            target = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            original = target.read_text(encoding='utf-8')
+            updated = original.replace('"You said that yesterday."', '"You said that on Tuesday."', 1)
+            diff = ''.join(difflib.unified_diff(original.splitlines(True), updated.splitlines(True), n=1))
+            item_id = 'file2-' + turn_id
+            pending[approval_id] = (thread_id, turn_id, turn, {
+                'item_id': item_id, 'path': str(target), 'updated': updated,
+                'rel': 'manuscript/ch01/01-opening.md', 'diff': diff,
+            })
+            emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': item_id, 'type': 'fileChange', 'status': 'inProgress', 'changes': [{'path': str(target), 'kind': {'update': {}}, 'diff': diff}]}}})
+            emit({'id': approval_id, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': item_id, 'reason': 'A second edit', 'availableDecisions': ['accept', 'decline', 'cancel']}})
+            continue
+        if 'SELECT_FILE_CHANGE' in prompt:
+            # Asks first, and only writes once approved -- so a partial accept
+            # has a real write to undo part of.
+            import difflib
+            approval_id = 9000 + next_turn
+            target = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            original = target.read_text(encoding='utf-8')
+            updated = original
+            for old_text, new_text in [
+                ('She had used the same four digits since spring.', 'She had changed the four digits at the start of spring.'),
+                ('Yesterday was also not today.', 'Yesterday was a different country.'),
+            ]:
+                updated = updated.replace(old_text, new_text, 1)
+            diff = ''.join(difflib.unified_diff(original.splitlines(True), updated.splitlines(True), n=1))
+            item_id = 'file-' + turn_id
+            pending[approval_id] = (thread_id, turn_id, turn, {
+                'item_id': item_id, 'path': str(target), 'updated': updated,
+                'rel': 'manuscript/ch01/01-opening.md', 'diff': diff,
+                'then': 'CHAIN_FILE_CHANGE' in prompt,
+            })
+            emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': item_id, 'type': 'fileChange', 'status': 'inProgress', 'changes': [{'path': str(target), 'kind': {'update': {}}, 'diff': diff}]}}})
+            emit({'id': approval_id, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': item_id, 'reason': 'Two edits you can answer separately', 'availableDecisions': ['accept', 'decline', 'cancel']}})
+            continue
+        if 'AUTO_FILE_CHANGE' in prompt:
+            # An edit written with no warning at all -- no approval, no start
+            # event. Prosview never gets the chance to keep the version before
+            # it, so this is the one shape the review cannot offer.
+            import difflib
+            target = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            original = target.read_text(encoding='utf-8')
+            updated = original
+            for old, new in [
+                ('She had used the same four digits since spring.', 'She had changed the four digits at the start of spring.'),
+                ('Yesterday was also not today.', 'Yesterday was a different country.'),
+            ]:
+                updated = updated.replace(old, new, 1)
+            target.write_text(updated, encoding='utf-8')
+            diff = ''.join(difflib.unified_diff(original.splitlines(True), updated.splitlines(True), n=1))
+            emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'file-' + turn_id, 'type': 'fileChange', 'status': 'completed', 'changes': [{'path': 'manuscript/ch01/01-opening.md', 'kind': 'modified', 'diff': diff}]}}})
+            emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'msg-' + turn_id, 'type': 'agentMessage', 'text': 'Made two edits.'}}})
+            turn['status'] = 'completed'
+            emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
             continue
         answer = "Fake answer for " + turn_id + ": Patel's note is **safe** [link](https://example.test) [unsafe](javascript:alert(1)) `&amp;` <script>hostile()</script>"
         if 'SHOW_FILE_LINKS' in prompt:
@@ -610,8 +668,30 @@ for line in sys.stdin:
         emit({'id': request_id, 'result': {}})
         emit({'method': 'turn/completed', 'params': {'threadId': params['threadId'], 'turn': {'id': params['turnId'], 'status': 'interrupted'}}})
     elif request_id in pending and ('result' in message or 'error' in message):
-        thread_id, turn_id, turn = pending.pop(request_id)
+        thread_id, turn_id, turn, file_change = pending.pop(request_id)
         decision = (message.get('result') or {}).get('decision', 'decline')
+        if file_change is not None and decision in ('accept', 'acceptForSession') and file_change.get('then'):
+            import difflib
+            pathlib.Path(file_change['path']).write_text(file_change['updated'], encoding='utf-8')
+            emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': file_change['item_id'], 'type': 'fileChange', 'status': 'completed', 'changes': [{'path': file_change['path'], 'kind': {'update': {}}, 'diff': file_change['diff']}]}}})
+            target = pathlib.Path(file_change['path'])
+            original = target.read_text(encoding='utf-8')
+            second = original.replace('"You said that yesterday."', '"You said that on Tuesday."', 1)
+            diff2 = ''.join(difflib.unified_diff(original.splitlines(True), second.splitlines(True), n=1))
+            approval2 = 9500 + len(pending) + 1
+            item2 = file_change['item_id'] + '-b'
+            pending[approval2] = (thread_id, turn_id, turn, {
+                'item_id': item2, 'path': str(target), 'updated': second,
+                'rel': file_change['rel'], 'diff': diff2,
+            })
+            emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': item2, 'type': 'fileChange', 'status': 'inProgress', 'changes': [{'path': str(target), 'kind': {'update': {}}, 'diff': diff2}]}}})
+            emit({'id': approval2, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': item2, 'reason': 'A second edit in the same turn', 'availableDecisions': ['accept', 'decline', 'cancel']}})
+            continue
+        if file_change is not None and decision in ('accept', 'acceptForSession'):
+            # The agent writes the whole change; Prosview undoes the parts the
+            # writer left unticked once this completion lands.
+            pathlib.Path(file_change['path']).write_text(file_change['updated'], encoding='utf-8')
+            emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': file_change['item_id'], 'type': 'fileChange', 'status': 'completed', 'changes': [{'path': file_change['path'], 'kind': {'update': {}}, 'diff': file_change['diff']}]}}})
         answer = 'Approval resolved: ' + decision
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
         turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})

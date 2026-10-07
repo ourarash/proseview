@@ -490,30 +490,34 @@
             var itemType = state.schema.nodes.list_item;
             if (!nodeType || !itemType) return;
             
-            var isActive = false;
+            // The innermost list around the selection decides what happens:
+            // the same kind is taken away, the other kind is switched in
+            // place, and only text in no list is wrapped in one. Switching by
+            // lifting the items out and wrapping them again nested the lists,
+            // or threw inside ProseMirror when the selection spanned items.
+            var listTypes = [state.schema.nodes.bullet_list, state.schema.nodes.ordered_list];
             var $from = state.selection.$from;
+            var listDepth = 0;
             for (var i = $from.depth; i > 0; i--) {
-                if ($from.node(i).type === nodeType) {
-                    isActive = true;
+                if (listTypes.indexOf($from.node(i).type) >= 0) {
+                    listDepth = i;
                     break;
                 }
             }
 
-            if (isActive) {
+            if (listDepth && $from.node(listDepth).type === nodeType) {
                 if (PM.liftListItem && PM.liftListItem(itemType)(state)) {
                     PM.liftListItem(itemType)(state, dispatch);
                 }
-            } else {
-                if (PM.wrapInList && PM.wrapInList(nodeType, { tight: true })(state)) {
-                    PM.wrapInList(nodeType, { tight: true })(state, dispatch);
-                } else {
-                    if (PM.liftListItem && PM.liftListItem(itemType)(state)) {
-                        PM.liftListItem(itemType)(state, dispatch);
-                        if (PM.wrapInList && PM.wrapInList(nodeType, { tight: true })(_pmView.state)) {
-                            PM.wrapInList(nodeType, { tight: true })(_pmView.state, dispatch);
-                        }
-                    }
-                }
+            } else if (listDepth) {
+                var list = $from.node(listDepth);
+                var attrs = {};
+                Object.keys(nodeType.spec.attrs || {}).forEach(function(name) {
+                    if (name in list.attrs) attrs[name] = list.attrs[name];
+                });
+                dispatch(state.tr.setNodeMarkup($from.before(listDepth), nodeType, attrs));
+            } else if (PM.wrapInList && PM.wrapInList(nodeType, { tight: true })(state)) {
+                PM.wrapInList(nodeType, { tight: true })(state, dispatch);
             }
             _pmView.focus();
         };

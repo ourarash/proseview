@@ -6467,6 +6467,41 @@ def test_editor_list_and_quote_formatting(page: Page, server: ProseviewServer):
     page.wait_for_selector(".ProseMirror blockquote")
     assert page.locator(".ProseMirror blockquote").count() > 0, "Blockquote was not created"
 
+def test_switching_a_list_type_keeps_every_item(page: Page, server: ProseviewServer):
+    """Numbered List on a bullet list renumbers it; it does not nest or fail.
+
+    Switching was done by lifting the items out and wrapping them again. With
+    a selection over two items the wrap threw inside ProseMirror and the list
+    stayed bulleted -- the same thing the formatting test hit whenever its
+    caret landed at a paragraph's edge.
+    """
+    open_scene(page, server)
+    enter_edit_mode(page)
+    page.evaluate(
+        """() => {
+            const state = _pmView.state, starts = [];
+            state.doc.forEach((node, offset) => starts.push(offset));
+            // From inside the fourth block into the start of the fifth.
+            const selection = window._PM.TextSelection.create(state.doc, starts[3] + 3, starts[4] + 1);
+            _pmView.dispatch(state.tr.setSelection(selection));
+            _pmView.focus();
+        }"""
+    )
+
+    page.click("button[aria-label='Bullet List']")
+    page.wait_for_selector(".ProseMirror ul > li + li")
+    page.click("button[aria-label='Numbered List']")
+    page.wait_for_selector(".ProseMirror ol > li + li")
+    assert page.locator(".ProseMirror ol > li").count() == 2
+    assert page.locator(".ProseMirror ul").count() == 0
+    assert page.locator(".ProseMirror ol ol, .ProseMirror li > ul").count() == 0
+
+    page.click("button[aria-label='Bullet List']")
+    page.wait_for_selector(".ProseMirror ul > li + li")
+    assert page.locator(".ProseMirror ul > li").count() == 2
+    assert page.locator(".ProseMirror ol").count() == 0
+
+
 def test_editor_list_enter_splits_item(page: Page, server: ProseviewServer):
     open_scene(page, server)
     page.wait_for_selector(".ProseMirror")

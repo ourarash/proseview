@@ -2216,6 +2216,60 @@ def test_a_reading_pass_declines_an_edit_that_a_question_takes(tmp_path: Path, m
     manager.close()
 
 
+def test_typing_into_a_running_command_asks_as_input_not_as_a_command(tmp_path: Path, monkeypatch):
+    """Codex now asks before it sends input to a command that is already running.
+
+    The request is a command approval of kind ``writeStdin`` whose command is
+    ``write_stdin --session-id N <input>``. Shown as a shell command it reads
+    as nonsense and offers answers Codex does not take. It is input, typed into
+    the command that is running, and the answer is to send it or to stop.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    conversation = manager._conversations[cid]
+    thread_id = manager._start_thread(conversation, clients[0])
+    conversation.activities["exec-1"] = {
+        "id": "exec-1", "kind": "commandExecution", "command": "/bin/bash -lc 'python3 ask.py'",
+    }
+    manager._on_agent_message("codex", {
+        "id": 301,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+            "threadId": thread_id,
+            "turnId": "turn-x",
+            "itemId": "exec-1",
+            "kind": "writeStdin",
+            "command": "write_stdin --session-id 7 'yes please\n'",
+        },
+    })
+
+    approval = next(row for row in manager.get_snapshot(cid)["approvals"] if row["request_id"] == "301")
+    assert approval["kind"] == "stdin"
+    assert approval["input"] == "yes please\n"
+    assert approval["command"] == "/bin/bash -lc 'python3 ask.py'"
+    assert approval["available_decisions"] == ["accept", "cancel"]
+    with pytest.raises(ContextError, match="not available"):
+        manager.approve(cid, "301", "decline")
+    manager.approve(cid, "301", "accept")
+    assert clients[0].responses[-1] == (301, {"decision": "accept"})
+
+    # An ordinary command approval is unchanged by the new field.
+    manager._on_agent_message("codex", {
+        "id": 302,
+        "method": "item/commandExecution/requestApproval",
+        "params": {"threadId": thread_id, "turnId": "turn-x", "itemId": "exec-2",
+                   "kind": "command", "command": "/bin/bash -lc 'echo hi > out.txt'",
+                   "availableDecisions": ["accept", "decline"]},
+    })
+    approval = next(row for row in manager.get_snapshot(cid)["approvals"] if row["request_id"] == "302")
+    assert approval["kind"] == "command"
+    assert approval["command"] == "/bin/bash -lc 'echo hi > out.txt'"
+    assert approval.get("input", "") == ""
+    manager.close()
+
+
 _PAGED_TURNS = [
     {"id": "t1", "items": [
         {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nFirst question"}]},

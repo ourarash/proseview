@@ -545,6 +545,14 @@ for line in sys.stdin:
             pending[approval_id] = (thread_id, turn_id, turn, None)
             emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'command': 'printf approved', 'cwd': os.getcwd(), 'reason': 'Test approval', 'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
             continue
+        if 'REQUEST_STDIN' in prompt:
+            # Codex 0.160 asks before typing into a command it already started,
+            # wording the input as a pseudo-command and advertising no
+            # decisions outside its experimental API.
+            approval_id = 9000 + next_turn
+            pending[approval_id] = (thread_id, turn_id, turn, None)
+            emit({'id': approval_id, 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'tool-' + turn_id, 'kind': 'writeStdin', 'command': "write_stdin --session-id 3 'yes\\n'", 'cwd': os.getcwd()}})
+            continue
         if 'REQUEST_FILE_CHANGE' in prompt:
             approval_id = 9000 + next_turn
             pending[approval_id] = (thread_id, turn_id, turn, None)

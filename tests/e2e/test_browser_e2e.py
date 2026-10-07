@@ -6823,6 +6823,9 @@ def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, dem
     assert page.locator("#utilityTabCodex").is_hidden()
 
     enter_edit_mode(page)
+    # The note steps aside while editing; it once sat on top of Save.
+    page.wait_for_selector(".static-snapshot-note", state="hidden")
+    assert page.locator("#sceneEditBar .scene-edit-save").is_visible()
     append_to_paragraph(page, "The loft smelled of cold coffee", " A sentence from the demo.")
     save_scene(page)
     page.wait_for_selector("#sceneEditBar.is-saved")

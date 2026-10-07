@@ -7828,10 +7828,13 @@
             text-decoration: none !important;
         }
 
+        /* Bottom-left: the edit bar floats bottom-right, and the note must
+           never sit on top of Save. While editing it steps aside entirely. */
         .static-snapshot-note {
             position: fixed;
-            right: 16px;
+            left: 16px;
             bottom: 16px;
+            max-width: calc(100vw - 32px);
             z-index: 900;
             margin: 0;
             padding: 6px 12px;
@@ -7845,4 +7848,8 @@
 
         .static-snapshot-note a {
             color: var(--text-main);
+        }
+
+        html:has(#sceneEditBar:not([hidden])) .static-snapshot-note {
+            display: none;
         }

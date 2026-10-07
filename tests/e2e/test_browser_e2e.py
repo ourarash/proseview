@@ -240,6 +240,48 @@ def save_scene(page: Page) -> None:
     page.keyboard.press("ControlOrMeta+s")
 
 
+def wait_for_settled_answers(page: Page, count: int) -> None:
+    """Wait until the dock's own copy of the conversation holds ``count`` answers.
+
+    A streamed answer reaches the log before the snapshot it belongs to, and
+    the previous turn's snapshot already reads as idle, so counting answers on
+    screen can pass just before the log is redrawn from the newer snapshot.
+    """
+    page.wait_for_function(
+        """count => {
+            const s = window._discussSnapshot;
+            return !!s && !s.active_turn_id && !s.active_request_id && !(s.queue || []).length
+                && s.messages.filter(m => m.role === 'assistant').length === count
+                && document.querySelectorAll('.discuss-message.assistant').length === count;
+        }""",
+        arg=count,
+    )
+
+
+def wait_for_discuss_quiet(page: Page, quiet_ms: int = 300) -> None:
+    """Wait until the dock has stopped redrawing the conversation.
+
+    Every agent event schedules a snapshot refetch, so a turn's closing events
+    can still redraw the log -- and pin it to the bottom -- after its answer is
+    on screen. A measurement of the log's scroll position starts after that.
+    """
+    page.evaluate(
+        """quiet => new Promise(resolve => {
+            let last = window._discussSnapshot, since = performance.now();
+            const tick = () => {
+                if (window._discussSnapshot !== last) { last = window._discussSnapshot; since = performance.now(); }
+                if (performance.now() - since >= quiet) {
+                    requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    return;
+                }
+                setTimeout(tick, 25);
+            };
+            tick();
+        })""",
+        quiet_ms,
+    )
+
+
 def wait_for_discuss_answer(page: Page, text: str = "Fake answer") -> None:
     page.wait_for_function(
         "needle => document.querySelector('#discussLog').innerText.includes(needle)",
@@ -1694,16 +1736,10 @@ def test_missing_thread_notice_stays_chronological_is_dismissible_and_does_not_t
 
     page.fill("#discussInput", "FORGET_THREAD_AFTER_TURN")
     page.press("#discussInput", "Enter")
-    page.wait_for_function(
-        "() => document.querySelectorAll('.discuss-message.assistant').length === 1"
-        " && !window._discussSnapshot.active_turn_id"
-    )
+    wait_for_settled_answers(page, 1)
     page.fill("#discussInput", "Continue after the missing thread")
     page.press("#discussInput", "Enter")
-    page.wait_for_function(
-        "() => document.querySelectorAll('.discuss-message.assistant').length === 2"
-        " && !window._discussSnapshot.active_turn_id"
-    )
+    wait_for_settled_answers(page, 2)
 
     entries = page.locator("#discussLog > .discuss-message, #discussLog > .discuss-notice")
     rendered = entries.all_inner_texts()
@@ -1715,11 +1751,8 @@ def test_missing_thread_notice_stays_chronological_is_dismissible_and_does_not_t
     for expected in range(3, 7):
         page.fill("#discussInput", f"Follow-up {expected}")
         page.press("#discussInput", "Enter")
-        page.wait_for_function(
-            "count => document.querySelectorAll('.discuss-message.assistant').length === count"
-            " && !window._discussSnapshot.active_turn_id",
-            arg=expected,
-        )
+        wait_for_settled_answers(page, expected)
+    wait_for_discuss_quiet(page)
 
     scroll = page.locator("#discussLog")
     page.evaluate(

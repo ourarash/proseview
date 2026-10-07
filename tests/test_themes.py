@@ -186,8 +186,11 @@ def test_chapter_tick_labels_ellipsize_rather_than_clip():
     own text node.
     """
     css = (REPO_ROOT / "proseview" / "templates" / "assets" / "app.css").read_text(encoding="utf-8")
-    assert ".story-tick > span" in css
-    block = css.split(".story-tick > span")[1].split("}")[0]
+    # Match the selector however it is spaced: this asserts a styling rule, not
+    # the author's whitespace around the child combinator.
+    selector = re.search(r"\.story-tick\s*>\s*span\s*\{", css)
+    assert selector, "the tick label needs its own overflow context"
+    block = css[selector.end():].split("}")[0]
     for rule in ("text-overflow: ellipsis", "overflow: hidden", "white-space: nowrap"):
         assert rule in block, f"tick label needs {rule}"
 

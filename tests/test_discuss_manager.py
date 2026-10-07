@@ -10,7 +10,14 @@ import pytest
 
 from proseview.codex_app_server import CodexRequestError
 import proseview.discuss as discuss_module
-from proseview.discuss import ContextError, DiscussManager, DiscussStateStore, _Conversation, validate_action_result
+from proseview.discuss import (
+    ContextError,
+    DiscussManager,
+    default_skill_body,
+    DiscussStateStore,
+    _Conversation,
+    validate_action_result,
+)
 from proseview.scenes import extract_scene_text, split_frontmatter
 
 # Shared with the cross-transport conformance suite so both exercise the
@@ -567,14 +574,11 @@ def test_a_reading_pass_is_a_message_and_never_becomes_a_proposal(tmp_path: Path
     assert snapshot["tasks"] == []
     # What the writer is shown having sent is what was sent.
     asked = [m["text"] for m in snapshot["messages"] if m["role"] == "user"]
-    assert asked == [
-        "Critique the provided text (which may be an entire scene or just a selected paragraph) "
-        "in plain English. For each issue you find:\n"
-        "1. Quote the exact line.\n"
-        "2. Briefly explain the issue with maximum clarity in plain english.\n"
-        "3. Provide a clear suggested fix.\n\n"
-        "Be concise and non-verbose. Do not rewrite the entire text. Do not modify the file."
-    ]
+    # Compared against the skill itself rather than a copy of its prose: the
+    # contract is that the writer sees exactly what was sent, and a skill's
+    # wording is meant to be edited without breaking that.
+    assert asked == [default_skill_body("quick_critique")]
+    assert asked[0], "the skill body should not be empty"
     client = manager._client_for("codex")
     assert "First document." in client.prompts[0]
     assert "outputSchema" not in client.turn_params[0]

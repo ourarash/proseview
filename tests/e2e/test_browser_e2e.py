@@ -1749,6 +1749,44 @@ def test_missing_thread_notice_stays_chronological_is_dismissible_and_does_not_t
     assert page.evaluate("document.activeElement === document.getElementById('discussLog')")
 
 
+def test_history_offers_open_as_soon_as_the_running_turn_ends(page: Page, server: ProseviewServer):
+    """Open is withheld while a turn runs, and given back the moment it ends.
+
+    The button used to be decided once, when the list was drawn. History opened
+    just as an answer landed -- before the turn was marked idle -- kept every
+    Open disabled until the dialog was closed and opened again.
+    """
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Why is the opening quiet?")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page)
+    page.click("#discussNewConversation")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussTurnStatus[data-state='working']")
+
+    page.click("#discussHistory")
+    previous = page.locator(".discuss-history-row").filter(has_text="Why is the opening quiet?")
+    previous.wait_for(state="visible")
+    open_button = previous.get_by_role("button", name="Open")
+    assert open_button.is_disabled()
+
+    # The dialog is modal, so the turn is ended the way the Stop button ends it.
+    page.evaluate("() => stopDiscussTurn()")
+    page.wait_for_selector("#discussTurnStatus[data-state='failed']")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.discuss-history-row')]"
+        ".some(row => row.innerText.includes('Why is the opening quiet?') && !row.querySelector('button').disabled)"
+    )
+    open_button.click()
+    page.wait_for_selector("#discussHistoryDialog", state="hidden")
+    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('Why is the opening quiet?')")
+
+
 def test_conversation_history_reopens_a_previous_thread(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_discuss(page)

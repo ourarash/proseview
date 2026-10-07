@@ -1966,6 +1966,7 @@
         function renderDiscussSnapshot() {
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
+            syncDiscussHistoryOpenButtons();
             // The agent has stopped, so the file has stopped moving: the first
             // moment there is something settled to review. Keyed on the turn
             // that finished so it is asked exactly once per turn.
@@ -2512,6 +2513,25 @@
             document.getElementById('discussAnnouncement').textContent = 'Conversation exported locally';
         }
 
+        function discussWorkInProgress() {
+            return !!(_discussSnapshot && (
+                _discussSnapshot.active_request_id || _discussSnapshot.active_turn_id || (_discussSnapshot.queue || []).length
+            ));
+        }
+
+        // Opening another conversation waits for the running turn, and has to
+        // be offered again the moment that turn ends -- not only the next time
+        // the list happens to be drawn.
+        function syncDiscussHistoryOpenButtons() {
+            var dialog = document.getElementById('discussHistoryDialog');
+            if (!dialog || !dialog.open) return;
+            var busy = discussWorkInProgress();
+            dialog.querySelectorAll('button[data-history-open="saved"]').forEach(function(button) {
+                if (button.dataset.historyOpening) return;
+                button.disabled = busy;
+            });
+        }
+
         function historyActionButton(label, handler) {
             var button = document.createElement('button');
             button.type = 'button'; button.textContent = label; button.onclick = handler;
@@ -2539,7 +2559,7 @@
 
                 var actions = elementWith('discuss-history-actions');
                 var openButton = historyActionButton(item.current ? 'Current' : 'Open', function() {
-                    openButton.disabled = true;
+                    openButton.disabled = true; openButton.dataset.historyOpening = 'true';
                     discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/open', {})
                         .then(function(data) {
                             _discussSnapshot = data.snapshot; renderDiscussSnapshot();
@@ -2547,12 +2567,13 @@
                             document.getElementById('discussAnnouncement').textContent = 'Conversation opened';
                             document.getElementById('discussInput').focus();
                         })
-                        .catch(function(error) { openButton.disabled = false; status.textContent = error.message; status.hidden = false; });
+                        .catch(function(error) {
+                            delete openButton.dataset.historyOpening; syncDiscussHistoryOpenButtons();
+                            status.textContent = error.message; status.hidden = false;
+                        });
                 });
-                var workInProgress = !!(_discussSnapshot && (
-                    _discussSnapshot.active_request_id || _discussSnapshot.active_turn_id || (_discussSnapshot.queue || []).length
-                ));
-                openButton.disabled = !!item.current || workInProgress; actions.appendChild(openButton);
+                openButton.dataset.historyOpen = item.current ? 'current' : 'saved';
+                openButton.disabled = !!item.current || discussWorkInProgress(); actions.appendChild(openButton);
                 var more = document.createElement('details');
                 var summary = document.createElement('summary'); summary.textContent = 'More'; more.appendChild(summary);
                 var menu = elementWith('discuss-history-menu');

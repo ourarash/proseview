@@ -59,6 +59,10 @@ REFACTOR_FINDINGS_MAX = 50
 REFACTOR_QUESTION_MAX = 512 * 1024
 CONVERSATION_RESET_LOCK_TIMEOUT = 3.0
 CONVERSATION_HISTORY_MAX = 50
+#: A paginated thread is read newest first, so a history longer than this
+#: loses its oldest turns rather than its latest.
+THREAD_HISTORY_PAGE_SIZE = 100
+THREAD_HISTORY_MAX_PAGES = 50
 #: Codex retired ``untrusted`` along with its list of known-safe commands, so
 #: sending it now asks before every command, reads included. ``on-request``
 #: lets the sandbox decide instead, and the sandbox is always read-only.
@@ -2122,7 +2126,7 @@ class DiscussManager:
                     candidate = conversation.thread_id or stored
                 if candidate:
                     try:
-                        result = client.request("thread/read", {"threadId": candidate, "includeTurns": True})
+                        result = self._read_thread_history(client, candidate)
                         thread = result.get("thread") or {}
                         restored_id = str(thread.get("id") or candidate)
                         with conversation.lock:
@@ -3343,6 +3347,51 @@ class DiscussManager:
             )
             conversation.worker.start()
 
+    @staticmethod
+    def _read_thread_history(client: Any, thread_id: str) -> dict[str, Any]:
+        """Read one thread with every turn, in order, as ``thread/read`` returns it.
+
+        Codex 0.160 starts threads with paginated history and deprecates
+        hydrating those whole, so where the server keeps pages the metadata
+        is read first and a paginated thread is paged in. A thread from before
+        the upgrade, a server without pages, and the Claude transport all keep
+        the single full read; so does paging the server will not serve.
+        """
+        whole = {"threadId": thread_id, "includeTurns": True}
+        if not client.capabilities.get("paginated_history"):
+            return client.request("thread/read", whole)
+        metadata = client.request("thread/read", {"threadId": thread_id, "includeTurns": False})
+        thread = metadata.get("thread") if isinstance(metadata.get("thread"), dict) else {}
+        if thread.get("historyMode") != "paginated":
+            return client.request("thread/read", whole)
+
+        from .claude_agent_client import ClaudeRequestError
+        from .codex_app_server import CodexRequestError
+
+        newest_first: list[dict[str, Any]] = []
+        cursor: str | None = None
+        try:
+            for _page in range(THREAD_HISTORY_MAX_PAGES):
+                params: dict[str, Any] = {
+                    "threadId": thread_id,
+                    "itemsView": "full",
+                    "sortDirection": "desc",
+                    "limit": THREAD_HISTORY_PAGE_SIZE,
+                }
+                if cursor:
+                    params["cursor"] = cursor
+                page = client.request("thread/turns/list", params)
+                newest_first.extend(turn for turn in page.get("data") or [] if isinstance(turn, dict))
+                following = page.get("nextCursor")
+                if not following or following == cursor:
+                    break
+                cursor = str(following)
+        except (CodexRequestError, ClaudeRequestError):
+            # A refusal here is about paging, not the thread: a missing thread
+            # fails the full read the same way and is reported from there.
+            return client.request("thread/read", whole)
+        return {"thread": {**thread, "turns": list(reversed(newest_first))}}
+
     def _start_thread(
         self, conversation: _Conversation, client: Any, document: dict[str, str] | None = None
     ) -> str:
@@ -3478,7 +3527,7 @@ class DiscussManager:
                 raise ContextError("conversation is busy; stop the active turn and wait for queued questions first")
             client = self._client_for(conversation.agent)
             try:
-                result = client.request("thread/read", {"threadId": thread_id, "includeTurns": True})
+                result = self._read_thread_history(client, thread_id)
             except Exception as exc:
                 if _is_thread_unavailable(exc):
                     self.state.remove(conversation.document["kind"], conversation.document["path"], thread_id, conversation.agent)
@@ -3539,7 +3588,7 @@ class DiscussManager:
         row = self._history_row(conversation, thread_id)
         documents = self._history_documents(row)
         source_document = documents[0] if len(documents) == 1 else None
-        result = self._client_for(conversation.agent).request("thread/read", {"threadId": thread_id, "includeTurns": True})
+        result = self._read_thread_history(self._client_for(conversation.agent), thread_id)
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         if str(thread.get("id") or "") != thread_id:
             raise ContextError("The agent returned a different conversation than Prosview requested")

@@ -2214,6 +2214,109 @@ def test_a_reading_pass_declines_an_edit_that_a_question_takes(tmp_path: Path, m
     assert "manuscript/one.md" in manager._get(cid).file_before
     manager.stop(cid, turn_id)
     manager.close()
+
+
+_PAGED_TURNS = [
+    {"id": "t1", "items": [
+        {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nFirst question"}]},
+        {"type": "agentMessage", "phase": "final_answer", "text": "First answer"},
+    ]},
+    {"id": "t2", "items": [
+        {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nSecond question"}]},
+        {"type": "agentMessage", "phase": "final_answer", "text": "Second answer"},
+    ]},
+]
+
+
+class _PagedHistoryClient(_FakeClient):
+    """A Codex that keeps the stored thread's history paginated."""
+
+    def __init__(self, callback, *, mode="paginated", paging_error=None):
+        super().__init__(callback)
+        self.capabilities = {**self.capabilities, "paginated_history": True}
+        self.mode = mode
+        self.paging_error = paging_error
+        self.calls: list[tuple[str, dict]] = []
+
+    def request(self, method, params, *, timeout=None):
+        if params.get("threadId") != "stored":
+            return super().request(method, params, timeout=timeout)
+        self.calls.append((method, dict(params)))
+        if method == "thread/read":
+            if params.get("includeTurns"):
+                if self.mode == "paginated" and self.paging_error is None:
+                    raise AssertionError("a paginated thread was hydrated whole")
+                return {"thread": {"id": "stored", "historyMode": self.mode, "turns": list(_PAGED_TURNS)}}
+            return {"thread": {"id": "stored", "historyMode": self.mode, "turns": []}}
+        if method == "thread/turns/list":
+            if self.paging_error is not None:
+                raise self.paging_error
+            assert params["itemsView"] == "full"
+            # Newest first: if a history is ever longer than Discuss reads,
+            # what it leaves out is the oldest turns, not the latest.
+            assert params["sortDirection"] == "desc"
+            if params.get("cursor") is None:
+                return {"data": [_PAGED_TURNS[1]], "nextCursor": "page-2"}
+            assert params["cursor"] == "page-2"
+            return {"data": [_PAGED_TURNS[0]], "nextCursor": None}
+        return super().request(method, params, timeout=timeout)
+
+
+def _restored_messages(tmp_path: Path, client_options: dict) -> tuple[list[str], list[tuple[str, dict]]]:
+    clients: list[_PagedHistoryClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback, _agent=None: clients.append(
+            _PagedHistoryClient(callback, **client_options)
+        ) or clients[-1],
+    )
+    manager.state.set("scene", "one.md", "stored", "codex")
+    snapshot = manager.open({"kind": "scene", "path": "one.md"})
+    manager.close()
+    return [message["text"] for message in snapshot["messages"]], clients[0].calls
+
+
+def test_a_paginated_thread_is_restored_a_page_at_a_time(tmp_path: Path, monkeypatch):
+    """Codex 0.160 starts threads with paginated history.
+
+    Hydrating one whole through ``thread/read`` is deprecated for them, so
+    Discuss reads the metadata, sees the mode, and pages the turns in order.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    messages, calls = _restored_messages(tmp_path, {})
+
+    assert messages == ["First question", "First answer", "Second question", "Second answer"]
+    assert [method for method, _params in calls] == ["thread/read", "thread/turns/list", "thread/turns/list"]
+    assert calls[0][1]["includeTurns"] is False
+
+
+def test_a_legacy_thread_on_a_paging_server_is_read_whole(tmp_path: Path, monkeypatch):
+    """A thread started before the upgrade keeps the history mode it began with."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    messages, calls = _restored_messages(tmp_path, {"mode": "legacy"})
+
+    assert messages == ["First question", "First answer", "Second question", "Second answer"]
+    assert [(method, params.get("includeTurns")) for method, params in calls] == [
+        ("thread/read", False), ("thread/read", True),
+    ]
+
+
+def test_paging_that_the_server_refuses_falls_back_to_a_whole_read(tmp_path: Path, monkeypatch):
+    """Paging is the preferred read, not the only one that works.
+
+    A server that publishes the method but will not serve it (older builds
+    gate it behind the experimental API) still answers the read it always has.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    refused = CodexRequestError("thread/turns/list requires experimentalApi capability", code=-32600)
+    messages, calls = _restored_messages(tmp_path, {"paging_error": refused})
+
+    assert messages == ["First question", "First answer", "Second question", "Second answer"]
+    assert [(method, params.get("includeTurns")) for method, params in calls] == [
+        ("thread/read", False), ("thread/turns/list", None), ("thread/read", True),
+    ]
+
+
 # ── Reviewing a turn's file changes against the version it started from ───────
 # Nothing here reverses a recorded diff. Prosview keeps the text as it stood
 # before the agent touched it, so the review compares two versions it holds and

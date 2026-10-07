@@ -160,6 +160,45 @@ for name, body in {
     assert capabilities["reasoning_summary"] is True
 
 
+def _schema_server(tmp_path: Path, name: str, extra: dict[str, str]) -> CodexAppServer:
+    files = {
+        'ThreadStartParams.json': '{}',
+        'ThreadReadParams.json': '{"includeTurns":true}',
+        'TurnStartParams.json': '{"summary":true}',
+        'TurnInterruptParams.json': '{}',
+        'CommandRequestApproval.json': '{}',
+        **extra,
+    }
+    executable = tmp_path / name
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1]) / 'v2'\n"
+        "out.mkdir(parents=True)\n"
+        f"for name, body in {files!r}.items():\n"
+        "    (out / name).write_text(body)\n",
+        encoding="utf-8",
+    )
+    return CodexAppServer(executable=str(_runnable(executable)), cwd=tmp_path)
+
+
+def test_paginated_history_is_reported_only_where_the_schema_publishes_it(tmp_path: Path):
+    """Codex 0.160 pages thread history; older servers only hydrate it whole.
+
+    Discuss asks for pages only where the schema says the server keeps them,
+    so a server without ``thread/turns/list`` keeps the single read it has
+    always answered.
+    """
+    older = _schema_server(tmp_path, "codex-whole-history", {}).inspect_capabilities()
+    paging = _schema_server(tmp_path, "codex-paged-history", {
+        'ThreadTurnsListParams.json': '{"itemsView":true}',
+        'ThreadReadResponse.json': '{"historyMode":["legacy","paginated"]}',
+    }).inspect_capabilities()
+
+    assert older["paginated_history"] is False
+    assert paging["paginated_history"] is True
+
+
 def test_generated_schema_rejects_missing_required_capabilities(tmp_path: Path):
     executable = tmp_path / "codex-schema-old"
     executable.write_text(

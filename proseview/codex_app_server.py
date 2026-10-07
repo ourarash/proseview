@@ -325,10 +325,18 @@ class CodexAppServer:
             command_decisions = response_decisions("CommandExecutionRequestApprovalResponse.json")
             file_decisions = response_decisions("FileChangeRequestApprovalResponse.json")
             permissions_supported = any(path.name == "PermissionsRequestApprovalResponse.json" for path in schema_files)
+            # A server that keeps threads in pages deprecates hydrating one
+            # whole; only it is asked for pages, so an older one keeps the
+            # single read it has always answered.
+            paginated_history = (
+                any(path.name == "ThreadTurnsListParams.json" for path in schema_files)
+                and "historymode" in normalized_text
+            )
             self.capabilities = {
                 "schema_generation": True,
                 "reasoning_summary": '"summary"' in schema_text,
                 "restricted_read_access": '"readableRoots"' in schema_text,
+                "paginated_history": paginated_history,
                 "stable_discuss_protocol": True,
                 "approval_decisions": {
                     "command": command_decisions,

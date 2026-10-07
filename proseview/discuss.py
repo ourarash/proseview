@@ -14,6 +14,7 @@ import json
 import os
 import queue
 import re
+import shlex
 import sys
 import tempfile
 import threading
@@ -1923,6 +1924,25 @@ def _merge_activity(existing: dict[str, Any] | None, incoming: dict[str, Any]) -
     merged = dict(existing)
     merged.update({key: value for key, value in incoming.items() if value not in ("", None, [], {})})
     return merged
+
+
+def _stdin_approval_details(command: Any, running: Any) -> tuple[str, str]:
+    """Return the input Codex wants to type and the command it would reach.
+
+    Codex words the request as a pseudo-command, ``write_stdin --session-id N
+    <input>``, which means nothing to a writer. The command the input goes to
+    is the one this item started. An unfamiliar shape is passed through whole
+    rather than guessed at.
+    """
+    text = str(command or "")
+    try:
+        words = shlex.split(text)
+    except ValueError:
+        words = []
+    running_text = str(running or "")
+    if len(words) == 4 and words[:2] == ["write_stdin", "--session-id"]:
+        return words[3], running_text
+    return "", running_text or text
 
 
 class DiscussManager:
@@ -4090,10 +4110,16 @@ class DiscussManager:
             return
         if kind == "command" and params.get("networkApprovalContext"):
             kind = "network"
+        elif kind == "command" and params.get("kind") == "writeStdin":
+            kind = "stdin"
         request_key = str(message["id"])
         available = params.get("availableDecisions")
         if not isinstance(available, list) or not available:
             available = (client.capabilities.get("approval_decisions") or {}).get(kind)
+        if kind == "stdin" and (not isinstance(available, list) or not available):
+            # Codex offers only to send the input or to abort, and says so
+            # only through its experimental API.
+            available = ["accept", "cancel"]
         if not isinstance(available, list) or not available:
             if kind == "permissions":
                 client.respond(message["id"], {"permissions": {}, "scope": "turn"})
@@ -4113,6 +4139,10 @@ class DiscussManager:
             conversation.add_notice("warning", "Oversized or malformed approval details were declined")
             return
 
+        command, stdin_input = params.get("command"), ""
+        if kind == "stdin":
+            running = (conversation.activities.get(str(params.get("itemId") or "")) or {}).get("command")
+            stdin_input, command = _stdin_approval_details(command, running)
         approval = {
             "request_id": request_key,
             "protocol_request_id": message["id"],
@@ -4121,7 +4151,8 @@ class DiscussManager:
             "turn_id": params.get("turnId") or conversation.active_turn_id or "",
             "item_id": params.get("itemId"),
             "reason": _bounded_text(params.get("reason"), 4000),
-            "command": _bounded_text(params.get("command"), 4000),
+            "command": _bounded_text(command, 4000),
+            "input": _bounded_text(stdin_input, 4000),
             "cwd": _bounded_text(params.get("cwd"), 2000),
             "network": network,
             "permissions": permissions,

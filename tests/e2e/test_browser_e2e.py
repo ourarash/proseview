@@ -1287,6 +1287,34 @@ def test_discuss_approval_and_file_navigation(page: Page, server: ProseviewServe
     page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('Approval resolved: decline')")
 
 
+def test_typing_into_a_running_command_is_asked_as_input(page: Page, server: ProseviewServer):
+    """Codex asks before it types into a command it has already started.
+
+    Its request reads ``write_stdin --session-id 3 'yes'``. The card has to say
+    what that means -- this input, to this command -- and offer only the two
+    answers Codex accepts.
+    """
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "REQUEST_STDIN")
+    page.press("#discussInput", "Enter")
+
+    card = page.locator(".discuss-approval").filter(has_text="Input:")
+    card.wait_for(state="visible")
+    assert page.locator("#discussTurnDoing").inner_text() == "Wants to type into a running command"
+    text = card.inner_text()
+    assert "Input: yes" in text
+    assert "Running: printf inspect" in text
+    assert "write_stdin" not in text
+    assert [button.inner_text() for button in card.get_by_role("button").all()] == ["Accept once", "Cancel"]
+
+    card.get_by_role("button", name="Accept once").click()
+    wait_for_discuss_answer(page, "Approval resolved")
+    page.click("#discussTurnTrailToggle")
+    assert "You allowed input to a running command" in page.locator("#discussTurnTrail").inner_text()
+
+
 def test_discuss_responsive_dark_zoom_and_keyboard_flow(page: Page, server: ProseviewServer):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)

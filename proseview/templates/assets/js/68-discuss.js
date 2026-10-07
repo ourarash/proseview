@@ -1670,6 +1670,7 @@
 
         function discussApprovalPhrase(approval) {
             if (approval.kind === 'command' || approval.kind === 'network') return 'Wants to run a shell command';
+            if (approval.kind === 'stdin') return 'Wants to type into a running command';
             if (approval.kind === 'fileChange') return 'Wants to edit a file';
             if (approval.kind === 'permissions') return 'Wants wider permissions';
             return 'Wants your decision';
@@ -1678,6 +1679,7 @@
         function discussSettledApprovalPhrase(approval) {
             var what = approval.kind === 'fileChange' ? 'an edit'
                 : approval.kind === 'permissions' ? 'wider permissions'
+                : approval.kind === 'stdin' ? 'input to a running command'
                 : 'a command';
             if (approval.status === 'expired') return 'The request for ' + what + ' expired';
             if (approval.decision === 'decline' || approval.decision === 'cancel') return 'You declined ' + what;
@@ -2611,8 +2613,15 @@
         function renderDiscussApproval(approval) {
             var card = elementWith('discuss-approval'); card.dataset.approvalId = approval.request_id;
             var title = document.createElement('h3'); title.textContent = approval.status === 'pending' ? 'Approval required' : 'Approval ' + approval.status; card.appendChild(title);
-            card.appendChild(document.createTextNode(approval.reason || approval.kind || 'Codex requested an action.'));
-            if (approval.command) { var code = document.createElement('code'); code.textContent = approval.command; card.appendChild(code); }
+            if (approval.kind === 'stdin') {
+                // Input typed into a command already running, not a new command.
+                card.appendChild(document.createTextNode(approval.reason || 'Codex wants to type into a command it is running.'));
+                if (approval.input) { var input = document.createElement('code'); input.textContent = 'Input: ' + approval.input; card.appendChild(input); }
+                if (approval.command) { var running = document.createElement('code'); running.textContent = 'Running: ' + approval.command; card.appendChild(running); }
+            } else {
+                card.appendChild(document.createTextNode(approval.reason || approval.kind || 'Codex requested an action.'));
+                if (approval.command) { var code = document.createElement('code'); code.textContent = approval.command; card.appendChild(code); }
+            }
             if (approval.grant_root) { var root = document.createElement('code'); root.textContent = 'Write access: ' + approval.grant_root; card.appendChild(root); }
             if (approval.network) { var network = document.createElement('code'); network.textContent = 'Network: ' + JSON.stringify(approval.network); card.appendChild(network); }
             if (approval.permissions) { var permissions = document.createElement('code'); permissions.textContent = 'Permissions: ' + JSON.stringify(approval.permissions); card.appendChild(permissions); }

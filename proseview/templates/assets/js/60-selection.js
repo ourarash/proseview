@@ -6,6 +6,9 @@
         let currentSelectionRange = null;
         let selectionMemoryPreserved = false;
         let selectionPillFallbackAnchor = null;
+        //: The text the visible pill was shown for, so showing it again for
+        //: the same selection can leave an open menu alone.
+        let selectionPillShownFor = null;
         let selectionPillPositionFrame = null;
         let pendingSelectionActionContext = null;
         let lastValidSelectionActionContext = null;
@@ -692,7 +695,12 @@
         function showSelectionPill(x, y, selText) {
             currentSelectionText = selText || '';
             const pill = getOrCreatePill();
-            collapseSelectionPillMenu();
+            // Selecting schedules a second look a moment later. If the menu was
+            // opened in between, that look finds the same text and must not
+            // shut the menu; different text starts over.
+            const sameSelection = pillIsVisible() && selectionPillShownFor === currentSelectionText;
+            selectionPillShownFor = currentSelectionText;
+            if (!sameSelection) collapseSelectionPillMenu();
             selectionPillFallbackAnchor = {left: x, right: x, top: y, bottom: y};
             pill.style.display = 'flex';
             positionSelectionPill();
@@ -701,6 +709,7 @@
         function hideSelectionPill() {
             const pill = document.getElementById('selectionPill');
             if (pill) pill.style.display = 'none';
+            selectionPillShownFor = null;
             collapseSelectionPillMenu();
             clearPinnedSelectionHighlight();
         }

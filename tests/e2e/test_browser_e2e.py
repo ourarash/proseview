@@ -334,11 +334,20 @@ def select_prose(page: Page, needle: str, *, block: str = "start") -> str:
     # AI proposal rebuilds the prose, and on a slow machine that lands after
     # the selection is made. Redo it rather than wait out a timeout: the whole
     # point of the helper is to leave a selection the app has seen.
+    #
+    # In edit mode ProseMirror has to have seen it too. The range is set on the
+    # DOM, and until the editor reads it back an editor redraw writes its old
+    # caret over it -- the pill still shows, but the live selection is gone and
+    # a keyboard shortcut finds nothing selected.
     for attempt in range(4):
         try:
             page.wait_for_selector("#selectionPill", state="visible", timeout=5_000)
             page.wait_for_function(
-                "needle => currentSelectionText.includes(needle)", arg=needle, timeout=5_000
+                """needle => currentSelectionText.includes(needle)
+                    && !window.getSelection().isCollapsed
+                    && (!window._pmEditMode || !_pmView.state.selection.empty)""",
+                arg=needle,
+                timeout=5_000,
             )
             return selected
         except Exception:
@@ -4952,6 +4961,33 @@ def test_selection_dialogs_trap_tab_focus(
         first_id,
     )
     assert page.locator(f"#{form_id}").is_visible()
+
+
+def test_a_late_look_at_the_same_selection_keeps_its_menu_open(page: Page, server: ProseviewServer):
+    """A deferred read of the selection must not shut a menu opened since.
+
+    Selecting schedules a second look at the selection a moment later. Ctrl+K
+    inside that moment opened the menu, then the late look showed the pill
+    again for the same text -- which collapsed the menu out from under the
+    writer. Choosing different text still starts over.
+    """
+    open_scene(page, server)
+    select_prose(page, "the slow algebra")
+    page.keyboard.press("ControlOrMeta+k")
+    page.wait_for_selector("#selectionTodoBtn", state="visible")
+
+    # The look a mouseup schedules (10 ms out), landing after the menu opened.
+    page.evaluate(
+        """() => new Promise(resolve => {
+            document.getElementById('modalBody').dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+            setTimeout(resolve, 60);
+        })"""
+    )
+    assert page.locator("#selectionTodoBtn").is_visible()
+
+    # Different text is a new selection: its own late look closes the menu.
+    select_prose(page, "cold coffee")
+    page.wait_for_selector("#selectionPillMenu", state="hidden")
 
 
 @pytest.mark.parametrize("dirty", [False, True])

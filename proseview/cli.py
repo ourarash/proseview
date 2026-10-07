@@ -202,6 +202,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List repository folders that contain Markdown files, then exit.",
     )
 
+    snapshot_p = sub.add_parser(
+        "snapshot", help="Write a read-only copy of the dashboard as static files.",
+        description=(
+            "Write the dashboard as static files any web host can serve: "
+            "readable, searchable, and editable nowhere. Paths from this "
+            "machine are replaced by the repository's folder name."
+        ),
+    )
+    snapshot_p.add_argument(
+        "--root", type=Path, default=Path.cwd(),
+        help="Path to the novel repo (default: current directory).",
+    )
+    snapshot_p.add_argument(
+        "--out", type=Path, required=True,
+        help="Folder to write, outside the repository. A previous snapshot there is replaced.",
+    )
+
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
         description="Create an AI proposal in a running proseview server.",
@@ -509,6 +526,18 @@ def export_manuscript(args: argparse.Namespace) -> int:
     return 0
 
 
+def write_static_snapshot(args: argparse.Namespace) -> int:
+    from .snapshot import SnapshotError, write_snapshot
+
+    try:
+        out = write_snapshot(args.root, args.out)
+    except SnapshotError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(f"Wrote a read-only snapshot to {out}")
+    print("Open index.html through any static web server; it does not need Proseview running.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -520,6 +549,8 @@ def main(argv: list[str] | None = None) -> int:
         return suggest_roster(args)
     if args.cmd == "export":
         return export_manuscript(args)
+    if args.cmd == "snapshot":
+        return write_static_snapshot(args)
     if args.cmd == "propose":
         return create_proposal(args)
     if args.cmd == "proposal":

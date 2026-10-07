@@ -22,9 +22,13 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
+from urllib.parse import urlparse
 
 import pytest
 
@@ -6735,3 +6739,60 @@ def test_the_expanded_view_keeps_its_own_split_choice(page: Page, server: Prosev
     # The card follows the choice made in the expanded view rather than
     # snapping back to what it was showing before.
     page.wait_for_selector(".discuss-review-table table.diff-side-by-side")
+
+
+# ── static snapshot ─────────────────────────────────────────────────────────
+
+
+class _QuietStaticHandler(SimpleHTTPRequestHandler):
+    def log_message(self, *args) -> None:  # noqa: D401 - silence per-request logging
+        return
+
+
+@pytest.fixture
+def snapshot_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
+    """A snapshot of the shared book under a project path, as GitHub Pages hosts it."""
+    from proseview.snapshot import write_snapshot
+
+    www = tmp_path / "www"
+    write_snapshot(shared_repo, www / "demo")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), partial(_QuietStaticHandler, directory=str(www)))
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_address[1]}/demo/"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, snapshot_site: str):
+    """The hosted demo: no server, a project path, and nothing that writes.
+
+    Every request has to stay under the project path -- a root-absolute URL
+    leaves it and finds nothing -- and the reads the page makes after loading
+    are answered by the files written beside it.
+    """
+    requested: list[str] = []
+    page.on("request", lambda request: requested.append(urlparse(request.url).path))
+
+    page.goto(snapshot_site + f"#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    assert page.locator("#sceneProseHost").inner_text().strip()
+    _wait_until(lambda: "/demo/scene-lexical.json" in requested, message="scene lexical stats were not read")
+
+    assert page.locator(".static-snapshot-note").is_visible()
+    assert page.locator("#sceneEditBtn").is_hidden()
+    assert page.locator("#utilityTabCodex").is_hidden()
+    assert page.locator("#utilityTabHistory").is_hidden()
+    page.locator("#sceneProseHost").click()
+    page.keyboard.press("e")
+    assert page.evaluate("window._pmEditMode") is not True
+
+    page.goto(snapshot_site + "#/tab/analysis")
+    page.wait_for_selector("#analysisContent:not([hidden])")
+    assert "/demo/analysis.json" in requested
+
+    outside = [path for path in requested if not path.startswith("/demo/")]
+    assert not outside, f"requests left the project path: {outside}"
+

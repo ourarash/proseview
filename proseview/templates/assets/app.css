@@ -7800,3 +7800,48 @@
             background: var(--surface-muted);
             color: var(--text-main);
         }
+        /* ── Static snapshot ─────────────────────────────────────────────
+           `proseview snapshot` publishes the page with no server behind it.
+           Anything that writes, talks to an agent, or reads history needs
+           one, so those controls are not offered at all. */
+        html[data-static-snapshot] #sceneEditBtn,
+        html[data-static-snapshot] #sceneEditBar,
+        html[data-static-snapshot] #modalEditorBtn,
+        html[data-static-snapshot] #modalRefreshBtn,
+        html[data-static-snapshot] #filePreviewEditorBtn,
+        html[data-static-snapshot] .editor-btn,
+        html[data-static-snapshot] .sidebar-create-wrap,
+        html[data-static-snapshot] #utilityTabHistory,
+        html[data-static-snapshot] #utilityTabCodex,
+        html[data-static-snapshot] #utilityTabClaude,
+        html[data-static-snapshot] [data-tab="settings"],
+        html[data-static-snapshot] #selectionPill {
+            display: none !important;
+        }
+
+        /* The word goal still reads as a number; it just no longer opens the
+           settings a snapshot cannot save. */
+        html[data-static-snapshot] .banner-stat [onclick="showTab('settings')"] {
+            pointer-events: none;
+            cursor: default !important;
+            text-decoration: none !important;
+        }
+
+        .static-snapshot-note {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 900;
+            margin: 0;
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface-card);
+            box-shadow: var(--shadow-card);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .static-snapshot-note a {
+            color: var(--text-main);
+        }

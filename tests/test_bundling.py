@@ -246,9 +246,10 @@ def test_template_loads_vendored_assets_from_local_paths():
     deps; they all come from /vendor/.
     """
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
-    # All vendored assets are loaded relative to /vendor/.
+    # Relative to the page: the same file when the server serves it at /, and
+    # still found when a snapshot is hosted under a project path.
     for filename in ("chart.js", "marked.js", "chartjs-plugin-annotation.js"):
-        assert "/vendor/" + filename in html, f"vendor path missing: {filename}"
+        assert f'src="vendor/{filename}"' in html, f"vendor path missing: {filename}"
     assert "cdn.jsdelivr.net" not in html, \
         "jsDelivr URLs should be vendored locally"
 
@@ -271,10 +272,10 @@ def test_prosemirror_is_served_from_this_origin():
     imports = re.findall(r"^\s*import\s.*?from\s+'([^']+)'", template, re.M)
     assert imports, "expected the ProseMirror import block"
     for spec in imports:
-        assert spec.startswith("/vendor/"), f"{spec} is not served from this origin"
+        assert spec.startswith("./vendor/"), f"{spec} is not served from this origin"
 
     for pkg in PM_PACKAGES:
-        assert f"'/vendor/pm/{pkg}.js'" in template, f"{pkg} is not imported from vendor/pm"
+        assert f"'./vendor/pm/{pkg}.js'" in template, f"{pkg} is not imported from vendor/pm"
 
 
 def test_vendored_prosemirror_graph_is_complete_and_local():

@@ -253,8 +253,13 @@ def build_dashboard(
     *,
     history_rows: list[HistoryRow] | None = None,
     session_token: str = "",
+    static_snapshot: bool = False,
 ) -> str:
-    """Produce the full HTML dashboard for the repo at ``root``."""
+    """Produce the full HTML dashboard for the repo at ``root``.
+
+    ``static_snapshot`` renders the read-only page :mod:`proseview.snapshot`
+    publishes: no server behind it, so nothing on it may need one.
+    """
     cfg = cfg or Config.load(root)
     # MATTR/MTLD are read only by the Analysis tab, which fetches them on
     # demand, so a dashboard rebuild no longer pays for that pass.
@@ -280,6 +285,7 @@ def build_dashboard(
         recent_entries=recent_entries,
         recent_git=recent_git,
         session_token=session_token,
+        static_snapshot=static_snapshot,
     )
 
 
@@ -597,6 +603,7 @@ def render_html_report(
     recent_entries: list[dict[str, object]] | None = None,
     recent_git: bool | None = None,
     session_token: str = "",
+    static_snapshot: bool = False,
 ) -> str:
     del baseline
 
@@ -742,6 +749,7 @@ def render_html_report(
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),
         "story_json": _js_json(story_payload(scenes, cfg)),
         "session_token_json": json.dumps(session_token),
+        "static_snapshot": static_snapshot,
         "config_json": _js_json(dataclasses.asdict(cfg)),
         "cfg": cfg,
         "config_exists": (root / ".proseview.yaml").exists(),

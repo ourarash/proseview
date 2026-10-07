@@ -170,7 +170,11 @@ def test_scene_view_uses_data_view_routing():
     # No more direct display:block toggles on #sceneModal.
     assert "document.getElementById('sceneModal').style.display" not in bundle
     # CSS gates visibility on the data attribute and hides dashboard chrome.
-    assert "[data-view=\"scene\"] .modal { display: block; }" in css
+    # Spacing and line breaks inside the rule are the author's business; that
+    # the rule exists is the contract.
+    assert re.search(
+        r"\[data-view=\"scene\"\]\s+\.modal\s*\{\s*display:\s*block;", css
+    ), "scene visibility must be gated on the data-view attribute"
     assert "[data-view=\"scene\"] .tab-panel" in css
 
 

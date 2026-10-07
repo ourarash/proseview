@@ -2130,6 +2130,90 @@ def test_approval_without_advertised_decisions_is_declined(tmp_path: Path, monke
     manager.close()
 
 
+def test_codex_turns_ask_on_request_inside_a_read_only_sandbox(tmp_path: Path, monkeypatch):
+    """Codex retired ``untrusted``; sent anyway, it now asks before every read.
+
+    ``on-request`` inside a read-only sandbox is what Prosview relied on the
+    old policy for: reading needs no answer, a command that would write stops
+    at an approval, and an edit arrives as a file change the writer reviews.
+    A rewrite runs read-only too. A workspace-write sandbox would let a shell
+    command change the manuscript without asking and with nothing kept to
+    review it against.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    started: list[dict] = []
+
+    class Recording(_FakeClient):
+        def request(self, method, params, *, timeout=None):
+            if method == "thread/start":
+                started.append(dict(params))
+            return super().request(method, params, timeout=timeout)
+
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback, _agent=None: clients.append(Recording(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    manager.submit(cid, client_request_id="ask-1", question="Fix the typo in the opening.")
+    manager.submit(cid, client_request_id="pass-1", question="", action_id="quick_critique", action_scope="scene")
+    _wait_for(lambda: len(clients[0].turn_params) == 2 and manager.get_snapshot(cid)["active_request_id"] is None)
+
+    assert started and all(params["approvalPolicy"] == "on-request" for params in started)
+    for params in clients[0].turn_params:
+        assert params["approvalPolicy"] == "on-request"
+        assert params["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+    # What tells the two turns apart now is whether an edit is taken.
+    assert [params["mayWrite"] for params in clients[0].turn_params] == [True, False]
+    manager.close()
+
+
+def test_a_reading_pass_declines_an_edit_that_a_question_takes(tmp_path: Path, monkeypatch):
+    """The sandbox no longer tells a reading pass from a request to change things.
+
+    Every Codex turn runs read-only, so each edit reaches Prosview as an
+    approval. A question the writer asked takes it, to be reviewed after the
+    turn. A reading pass exists to report, and declines it.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    client = manager._client_for("codex")
+
+    def run_held(request_id: str, **submit) -> str:
+        client.hold_next_turn = True
+        manager.submit(cid, client_request_id=request_id, **submit)
+        _wait_for(lambda: manager.get_snapshot(cid)["active_request_id"] == request_id
+                  and manager.get_snapshot(cid)["active_turn_id"] is not None)
+        return manager.get_snapshot(cid)["active_turn_id"]
+
+    def ask_to_edit(approval_id: int, turn_id: str) -> None:
+        manager._on_agent_message("codex", {
+            "id": approval_id,
+            "method": "item/fileChange/requestApproval",
+            "params": {
+                "threadId": manager._get(cid).thread_id,
+                "turnId": turn_id,
+                "itemId": f"edit-{approval_id}",
+                "availableDecisions": ["accept", "decline"],
+                "item": {"id": f"edit-{approval_id}", "changes": [{"path": "manuscript/one.md", "kind": "modified"}]},
+            },
+        })
+
+    turn_id = run_held("pass-1", question="", action_id="quick_critique", action_scope="scene")
+    ask_to_edit(201, turn_id)
+    assert (201, {"decision": "decline"}) in client.responses
+    assert "manuscript/one.md" not in manager._get(cid).file_before
+    assert any("reading pass" in notice["message"] for notice in manager.get_snapshot(cid)["notices"])
+    manager.stop(cid, turn_id)
+    _wait_for(lambda: manager.get_snapshot(cid)["active_request_id"] is None)
+
+    turn_id = run_held("ask-1", question="Fix the typo in the opening.")
+    ask_to_edit(202, turn_id)
+    assert (202, {"decision": "accept"}) in client.responses
+    assert "manuscript/one.md" in manager._get(cid).file_before
+    manager.stop(cid, turn_id)
+    manager.close()
 # ── Reviewing a turn's file changes against the version it started from ───────
 # Nothing here reverses a recorded diff. Prosview keeps the text as it stood
 # before the agent touched it, so the review compares two versions it holds and

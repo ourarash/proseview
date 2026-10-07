@@ -127,7 +127,11 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
     assert "selection sentinel" in prompt
     assert "book-plan.md" in prompt
     assert "Explain the ledger" in prompt
-    assert records[-1]["params"]["sandboxPolicy"] == {"type": "workspaceWrite", "networkAccess": False}
+    # A question may write, but through an edit Prosview reviews: the sandbox
+    # stays read-only, so a shell command that writes has to ask.
+    assert records[-1]["params"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+    assert records[-1]["params"]["approvalPolicy"] == "on-request"
+    assert records[-1]["params"]["mayWrite"] is True
 
 
 def test_the_action_list_carries_the_wording_the_writer_owns(server: ProseviewServer):
@@ -262,13 +266,16 @@ def test_a_preset_may_write_only_when_it_was_asked_to_change_something(server: P
     preset_records = [row for row in records if str(row["params"].get("clientUserMessageId", "")).startswith("preset-")]
     assert len(preset_records) == len(actions)
     assert not any("outputSchema" in row["params"] for row in preset_records)
-    sandbox_by_request = {
-        str(row["params"]["clientUserMessageId"]): row["params"]["sandboxPolicy"]["type"]
+    # Every turn shares one read-only sandbox; a rewrite is told apart by
+    # whether its edits are taken, which is what mayWrite carries.
+    assert all(row["params"]["sandboxPolicy"]["type"] == "readOnly" for row in preset_records)
+    may_write_by_request = {
+        str(row["params"]["clientUserMessageId"]): row["params"]["mayWrite"]
         for row in preset_records
     }
-    assert all(sandbox_by_request[f"preset-{i}"] == "workspaceWrite" for i in range(len(rewrites)))
+    assert all(may_write_by_request[f"preset-{i}"] is True for i in range(len(rewrites)))
     assert all(
-        sandbox_by_request[f"preset-{i}"] == "readOnly"
+        may_write_by_request[f"preset-{i}"] is False
         for i in range(len(rewrites), len(actions))
     )
     assert all(row["params"]["networkAccess"] is False for row in preset_records

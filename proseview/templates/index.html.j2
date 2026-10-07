@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light"{% if static_snapshot %} data-static-snapshot{% endif %}>
 <head>
     <meta charset="UTF-8">
     <title>Manuscript Dashboard</title>
@@ -54,14 +54,15 @@
             }
         })();
     </script>
-    <script src="/vendor/chart.js"></script>
-    <script src="/vendor/chartjs-plugin-annotation.js"></script>
-    <script src="/vendor/marked.js"></script>
+    <script src="vendor/chart.js"></script>
+    <script src="vendor/chartjs-plugin-annotation.js"></script>
+    <script src="vendor/marked.js"></script>
     <style id="proseview-app-css">
 {{ app_css | safe }}
     </style>
 </head>
 <body>
+    {% if static_snapshot %}<p class="static-snapshot-note" role="note">Read-only snapshot made with <a href="https://github.com/ourarash/proseview" target="_blank" rel="noopener">Proseview</a></p>{% endif %}
     <nav id="repoSidebar" class="repo-sidebar" aria-label="Repository files">
         <div class="sidebar-header">
             <span class="sidebar-title">Files</span>
@@ -536,6 +537,8 @@
         const discussSelectionPresets = {{ discuss_presets_json | safe }};
         const discussDefaultAgent = {{ discuss_default_agent_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
+        // A snapshot has no server behind it; see 01-static-snapshot.js.
+        window.PROSEVIEW_STATIC = {{ 'true' if static_snapshot else 'false' }};
         const storyModel = {{ story_json | safe }};
         const lexicalBands = {{ lexical_bands_json | safe }};
         const medians = {{ medians_json | safe }};
@@ -575,16 +578,16 @@
         // to change versions, and commit what it writes. Shared packages are
         // deduplicated to one file each, so Schema identity holds across
         // imports; two copies of prosemirror-model would break instanceof.
-        import { Schema } from '/vendor/pm/prosemirror-model.js';
+        import { Schema } from './vendor/pm/prosemirror-model.js';
         import { schema as mdSchema, MarkdownParser, MarkdownSerializer,
-                 defaultMarkdownParser, defaultMarkdownSerializer } from '/vendor/pm/prosemirror-markdown.js';
-        import { EditorState, Plugin, PluginKey, TextSelection } from '/vendor/pm/prosemirror-state.js';
-        import { EditorView, Decoration, DecorationSet } from '/vendor/pm/prosemirror-view.js';
-        import { history, undo, redo } from '/vendor/pm/prosemirror-history.js';
-        import { keymap } from '/vendor/pm/prosemirror-keymap.js';
-        import { baseKeymap, toggleMark, wrapIn, lift, chainCommands } from '/vendor/pm/prosemirror-commands.js';
-        import { wrapInList, liftListItem, splitListItem } from '/vendor/pm/prosemirror-schema-list.js';
-        import { inputRules, wrappingInputRule } from '/vendor/pm/prosemirror-inputrules.js';
+                 defaultMarkdownParser, defaultMarkdownSerializer } from './vendor/pm/prosemirror-markdown.js';
+        import { EditorState, Plugin, PluginKey, TextSelection } from './vendor/pm/prosemirror-state.js';
+        import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js';
+        import { history, undo, redo } from './vendor/pm/prosemirror-history.js';
+        import { keymap } from './vendor/pm/prosemirror-keymap.js';
+        import { baseKeymap, toggleMark, wrapIn, lift, chainCommands } from './vendor/pm/prosemirror-commands.js';
+        import { wrapInList, liftListItem, splitListItem } from './vendor/pm/prosemirror-schema-list.js';
+        import { inputRules, wrappingInputRule } from './vendor/pm/prosemirror-inputrules.js';
 
         // Enable HTML so block-level <!-- TODO/NOTE --> comments are emitted
         // as html_block tokens, which the parser rule in 40-prose-editor.js

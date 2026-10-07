@@ -170,7 +170,8 @@
         }
 
         function toggleSceneEdit() {
-            if (!window._PM) return;
+            // A snapshot has nowhere to save to; reading is all it offers.
+            if (!window._PM || window.PROSEVIEW_STATIC) return;
             if (_pmEditMode) {
                 cancelSceneEdit();
                 return;

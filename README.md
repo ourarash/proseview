@@ -150,6 +150,17 @@ my-novel/
 Frontmatter is optional. Proseview reads what is there and falls back on what
 is not. [Layout and the full frontmatter contract →](docs/manuscript.md)
 
+### Share a read-only copy
+
+```bash
+proseview snapshot --root /path/to/your/novel --out ~/my-novel-site
+```
+
+writes the dashboard as static files any web host can serve, GitHub Pages
+included. Readers can browse scenes, search, and read the analysis; nothing on
+it edits, and no server runs. Paths from your machine are replaced by the
+folder's name. The live demo is built this way.
+
 ## ⚙️ Configuration
 
 Proseview runs without a config file. A `.proseview.yaml` at the repo root can

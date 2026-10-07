@@ -111,9 +111,10 @@ Entirely optional, and it never runs on its own. Proseview has no model of its
 own and no API key of yours — it drives the agent CLIs already installed on
 your machine, under your login: Codex and Claude, one Discuss tab each.
 
-Agent sessions are read-only. Anything beyond reading — a shell command, a file
-write — stops at an approval you have to grant, and raw model reasoning is
-never forwarded to the browser.
+Agent sessions are read-only. Reading needs no answer; a shell command that
+could change something stops at an approval you have to grant, and the
+agent's file edits come back for review after the turn, a change at a time.
+Raw model reasoning is never forwarded to the browser.
 
 Continuity and canon questions come back with citations, and suggested edits
 arrive as proposals you accept or reject before anything is written.

@@ -26,8 +26,11 @@ Three places where AI shows up, all opt-in:
    other files and folders. An attached current-file chip stays on that file
    when you navigate, until you remove it; navigation alone never changes what
    is sent. Selecting prose explicitly attaches that selection to its source
-   scene, and selection tasks and their follow-ups stay anchored there. Tool
-   and file actions wait on approvals you can see.
+   scene, and selection tasks and their follow-ups stay anchored there.
+   Reading needs no answer. A command that would write, reach the network,
+   or type into a command already running waits on an approval you can see.
+   File edits are kept for review after the turn, and a reading pass
+   declines them.
 
    A status strip between the conversation and the composer says what the
    agent is doing: starting, working (with the current step and a running
@@ -105,8 +108,9 @@ Three places where AI shows up, all opt-in:
 
    Its session runs with a fixed read-only tool allowlist and without loading
    your personal Claude settings, so nothing outside Proseview's own scope can
-   widen what the agent may do. Anything beyond reading — a shell command, a
-   file write — stops at an approval you have to grant.
+   widen what the agent may do. Every shell command stops at an approval you
+   have to grant, and the tools that edit files are offered only when you
+   asked for a change.
 
    When selected prose is attached, the composer shows up to three **Presets**
    from `discuss.selection_presets` and your browser-local favorites. Favorites

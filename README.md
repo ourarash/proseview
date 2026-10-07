@@ -2,8 +2,9 @@
 
 > A local dashboard for Markdown-first novel repositories. ✍️
 
-**[Try the live demo →](https://ourarash.github.io/proseview/)** A read-only copy of the
-dashboard for *Alice's Adventures in Wonderland*, in your browser. Nothing to install.
+**[Try the live demo →](https://ourarash.github.io/proseview/)** The dashboard for
+*Alice's Adventures in Wonderland*, in your browser: read, search, open the
+analysis, and edit a scene. Nothing to install, and your edits never leave the tab.
 
 Proseview reads a folder of Markdown scenes and reports lexical health,
 pacing, character presence, and revision history. The same pages can be read,
@@ -162,7 +163,8 @@ proseview snapshot --root /path/to/your/novel --out ~/my-novel-site
 writes the dashboard as static files any web host can serve, GitHub Pages
 included. Readers can browse scenes, search, and read the analysis; nothing on
 it edits, and no server runs. Paths from your machine are replaced by the
-folder's name. The live demo is built this way.
+folder's name. `--demo` also lets visitors try edit mode; what they save stays
+in their browser tab. The live demo is built that way.
 
 ## ⚙️ Configuration
 

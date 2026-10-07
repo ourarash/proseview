@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light"{% if static_snapshot %} data-static-snapshot{% endif %}>
+<html lang="en" data-theme="light"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <title>Manuscript Dashboard</title>
@@ -62,7 +62,7 @@
     </style>
 </head>
 <body>
-    {% if static_snapshot %}<p class="static-snapshot-note" role="note">Read-only snapshot made with <a href="https://github.com/ourarash/proseview" target="_blank" rel="noopener">Proseview</a></p>{% endif %}
+    {% if static_snapshot %}<p class="static-snapshot-note" role="note">{% if static_snapshot == "demo" %}Demo: edits stay in this tab and are never uploaded. {% else %}Read-only snapshot. {% endif %}Made with <a href="https://github.com/ourarash/proseview" target="_blank" rel="noopener">Proseview</a></p>{% endif %}
     <nav id="repoSidebar" class="repo-sidebar" aria-label="Repository files">
         <div class="sidebar-header">
             <span class="sidebar-title">Files</span>
@@ -539,6 +539,7 @@
         const pageSessionToken = {{ session_token_json | safe }};
         // A snapshot has no server behind it; see 01-static-snapshot.js.
         window.PROSEVIEW_STATIC = {{ 'true' if static_snapshot else 'false' }};
+        window.PROSEVIEW_STATIC_EDITS = {{ 'true' if static_snapshot == 'demo' else 'false' }};
         const storyModel = {{ story_json | safe }};
         const lexicalBands = {{ lexical_bands_json | safe }};
         const medians = {{ medians_json | safe }};

@@ -218,6 +218,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True,
         help="Folder to write, outside the repository. A previous snapshot there is replaced.",
     )
+    snapshot_p.add_argument(
+        "--demo", action="store_true",
+        help="Let visitors try edit mode too. Their saves stay in their browser tab; nothing is uploaded.",
+    )
 
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
@@ -530,10 +534,10 @@ def write_static_snapshot(args: argparse.Namespace) -> int:
     from .snapshot import SnapshotError, write_snapshot
 
     try:
-        out = write_snapshot(args.root, args.out)
+        out = write_snapshot(args.root, args.out, demo=args.demo)
     except SnapshotError as exc:
         raise SystemExit(str(exc)) from exc
-    print(f"Wrote a read-only snapshot to {out}")
+    print(f"Wrote a {'demo' if args.demo else 'read-only'} snapshot to {out}")
     print("Open index.html through any static web server; it does not need Proseview running.")
     return 0
 

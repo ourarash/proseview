@@ -112,6 +112,24 @@ def test_a_folder_that_is_not_a_snapshot_is_never_cleared(tmp_path: Path):
         write_snapshot(root, root)
 
 
+def test_a_plain_snapshot_offers_no_editing_and_a_demo_one_does(tmp_path: Path):
+    """A copy for readers stays read-only; the hosted demo lets visitors edit.
+
+    The demo's saves never leave the visitor's tab, so it can show edit mode
+    without anywhere to write to.
+    """
+    root = _novel(tmp_path)
+    write_snapshot(root, tmp_path / "readers")
+    write_snapshot(root, tmp_path / "demo", demo=True)
+
+    readers = (tmp_path / "readers" / "index.html").read_text(encoding="utf-8")
+    demo = (tmp_path / "demo" / "index.html").read_text(encoding="utf-8")
+    assert 'data-static-snapshot="read-only"' in readers
+    assert "window.PROSEVIEW_STATIC_EDITS = false" in readers
+    assert 'data-static-snapshot="demo"' in demo
+    assert "window.PROSEVIEW_STATIC_EDITS = true" in demo
+
+
 def test_the_served_dashboard_is_not_a_snapshot():
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     assert "window.PROSEVIEW_STATIC = false" in html
@@ -123,3 +141,5 @@ def test_the_snapshot_command_writes_the_site(tmp_path: Path, capsys):
     assert main(["snapshot", "--root", str(root), "--out", str(out)]) == 0
     assert (out / "index.html").is_file()
     assert str(out) in capsys.readouterr().out
+    assert main(["snapshot", "--root", str(root), "--out", str(out), "--demo"]) == 0
+    assert 'data-static-snapshot="demo"' in (out / "index.html").read_text(encoding="utf-8")

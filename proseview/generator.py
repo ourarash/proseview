@@ -253,12 +253,13 @@ def build_dashboard(
     *,
     history_rows: list[HistoryRow] | None = None,
     session_token: str = "",
-    static_snapshot: bool = False,
+    static_snapshot: str = "",
 ) -> str:
     """Produce the full HTML dashboard for the repo at ``root``.
 
-    ``static_snapshot`` renders the read-only page :mod:`proseview.snapshot`
-    publishes: no server behind it, so nothing on it may need one.
+    ``static_snapshot`` renders the page :mod:`proseview.snapshot` publishes,
+    with no server behind it: ``"read-only"``, or ``"demo"``, which also lets
+    a visitor try editing with saves that stay in their tab.
     """
     cfg = cfg or Config.load(root)
     # MATTR/MTLD are read only by the Analysis tab, which fetches them on
@@ -603,7 +604,7 @@ def render_html_report(
     recent_entries: list[dict[str, object]] | None = None,
     recent_git: bool | None = None,
     session_token: str = "",
-    static_snapshot: bool = False,
+    static_snapshot: str = "",
 ) -> str:
     del baseline
 

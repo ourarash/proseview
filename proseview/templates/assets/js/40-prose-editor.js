@@ -170,8 +170,9 @@
         }
 
         function toggleSceneEdit() {
-            // A snapshot has nowhere to save to; reading is all it offers.
-            if (!window._PM || window.PROSEVIEW_STATIC) return;
+            // A snapshot has nowhere to save to, so reading is all it offers --
+            // unless it is the demo, whose saves stay in the visitor's tab.
+            if (!window._PM || (window.PROSEVIEW_STATIC && !window.PROSEVIEW_STATIC_EDITS)) return;
             if (_pmEditMode) {
                 cancelSceneEdit();
                 return;

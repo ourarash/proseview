@@ -6749,13 +6749,11 @@ class _QuietStaticHandler(SimpleHTTPRequestHandler):
         return
 
 
-@pytest.fixture
-def snapshot_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
-    """A snapshot of the shared book under a project path, as GitHub Pages hosts it."""
+def _host_snapshot(repo: Path, www: Path, *, demo: bool) -> Iterator[str]:
+    """Snapshot *repo* under a project path, as GitHub Pages hosts it, and serve it."""
     from proseview.snapshot import write_snapshot
 
-    www = tmp_path / "www"
-    write_snapshot(shared_repo, www / "demo")
+    write_snapshot(repo, www / "demo", demo=demo)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), partial(_QuietStaticHandler, directory=str(www)))
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -6764,6 +6762,18 @@ def snapshot_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+@pytest.fixture
+def snapshot_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
+    """A read-only snapshot of the shared book, hosted under a project path."""
+    yield from _host_snapshot(shared_repo, tmp_path / "www", demo=False)
+
+
+@pytest.fixture
+def demo_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
+    """The demo build of the shared book, hosted under a project path."""
+    yield from _host_snapshot(shared_repo, tmp_path / "www", demo=True)
 
 
 def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, snapshot_site: str):
@@ -6796,3 +6806,31 @@ def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, 
     outside = [path for path in requested if not path.startswith("/demo/")]
     assert not outside, f"requests left the project path: {outside}"
 
+
+def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, demo_site: str):
+    """The hosted demo shows edit mode, and a save goes nowhere.
+
+    It is accepted inside the page: no request carries the text, and reloading
+    brings back the manuscript as it was published.
+    """
+    sent: list[str] = []
+    page.on("request", lambda request: sent.append(request.method + " " + request.url)
+            if request.method != "GET" else None)
+
+    page.goto(demo_site + f"#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    assert "edits stay in this tab" in page.locator(".static-snapshot-note").inner_text()
+    assert page.locator("#utilityTabCodex").is_hidden()
+
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " A sentence from the demo.")
+    save_scene(page)
+    page.wait_for_selector("#sceneEditBar.is-saved")
+    page.locator("#sceneEditBar .scene-edit-cancel").click()
+    page.wait_for_function("() => window._pmEditMode === false")
+    assert "A sentence from the demo." in page.locator("#sceneProseHost").inner_text()
+    assert sent == [], f"the demo sent something: {sent}"
+
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    assert "A sentence from the demo." not in page.locator("#sceneProseHost").inner_text()

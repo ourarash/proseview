@@ -31,10 +31,22 @@
                 });
             }
 
+            // The demo lets a visitor try edit mode. A save is accepted here
+            // and goes no further: the editor keeps the text in memory, so it
+            // lasts until the tab is reloaded and is never uploaded.
+            let demoSaves = 0;
+            function demoSave() {
+                demoSaves += 1;
+                return Promise.resolve(jsonResponse({
+                    ok: true, mtime: Date.now() / 1000, revision: 'demo-' + demoSaves,
+                }));
+            }
+
             window.fetch = function(input, init) {
                 const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin);
                 if (url.pathname === '/analysis.json') return realFetch('analysis.json', init);
                 if (url.pathname === '/api/scene/lexical') return sceneLexical(url);
+                if (url.pathname === '/save-scene' && window.PROSEVIEW_STATIC_EDITS) return demoSave();
                 return Promise.resolve(jsonResponse({ok: false, error: 'This is a read-only snapshot.'}, 503));
             };
 

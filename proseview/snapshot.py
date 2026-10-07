@@ -83,15 +83,19 @@ def _prepare_output(root: Path, out: Path) -> None:
     out.mkdir(parents=True)
 
 
-def write_snapshot(root: Path, out: Path, cfg: Config | None = None) -> Path:
-    """Write a read-only copy of *root*'s dashboard into *out* and return it."""
+def write_snapshot(root: Path, out: Path, cfg: Config | None = None, *, demo: bool = False) -> Path:
+    """Write a copy of *root*'s dashboard into *out* and return it.
+
+    The copy is read-only. ``demo`` lets a visitor try edit mode as well; what
+    they save stays in their tab, since there is nowhere else for it to go.
+    """
     root = root.resolve()
     out = out.resolve()
     cfg = cfg or Config.load(root)
     _prepare_output(root, out)
 
     files = {
-        "index.html": build_dashboard(root, cfg, static_snapshot=True),
+        "index.html": build_dashboard(root, cfg, static_snapshot="demo" if demo else "read-only"),
         "analysis.json": json.dumps(build_analysis_payload(root, cfg)),
         "scene-lexical.json": json.dumps(_scene_lexical(root, cfg)),
     }

@@ -7803,9 +7803,10 @@
         /* ── Static snapshot ─────────────────────────────────────────────
            `proseview snapshot` publishes the page with no server behind it.
            Anything that writes, talks to an agent, or reads history needs
-           one, so those controls are not offered at all. */
-        html[data-static-snapshot] #sceneEditBtn,
-        html[data-static-snapshot] #sceneEditBar,
+           one, so those controls are not offered at all. The demo keeps edit
+           mode, whose saves stay in the visitor's tab. */
+        html[data-static-snapshot="read-only"] #sceneEditBtn,
+        html[data-static-snapshot="read-only"] #sceneEditBar,
         html[data-static-snapshot] #modalEditorBtn,
         html[data-static-snapshot] #modalRefreshBtn,
         html[data-static-snapshot] #filePreviewEditorBtn,

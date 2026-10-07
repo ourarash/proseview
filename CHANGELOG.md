@@ -9,8 +9,9 @@ section here becomes the release notes on GitHub.
 
 - `proseview snapshot` writes the dashboard as static, read-only files any web
   host can serve. Readers can browse scenes, search, and read the analysis, and
-  no paths from your machine are published. The
-  [live demo](https://ourarash.github.io/proseview/) is built with it.
+  no paths from your machine are published. With `--demo`, visitors can also
+  try edit mode; their saves stay in their browser tab. The
+  [live demo](https://ourarash.github.io/proseview/) is built that way.
 - Review an agent's file edits after the turn, a change at a time: keep or drop
   each block, side by side or inline. What you keep is written in one step, the
   version it replaces goes to scene history, and the agent is told which edits

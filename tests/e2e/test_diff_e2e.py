@@ -15,6 +15,10 @@ from .test_browser_e2e import (  # noqa: E402
     save_scene,
 )
 
+# Without the marker the default run collected these (and skipped them where
+# Playwright is absent) while the browser job deselected them: CI never ran them.
+pytestmark = pytest.mark.e2e_browser
+
 def _create_history_backup(page: Page, server: ProseviewServer):
     path = server.scene_path()
     open_scene(page, server)
@@ -33,8 +37,6 @@ def test_diff_modal_escape_key_closes_modal_only(page: Page, server: ProseviewSe
     _create_history_backup(page, server)
     _open_history_tab(page)
     
-    page.wait_for_timeout(100)
-    page.evaluate("document.querySelector('#historyListContent').innerHTML")
     page.evaluate("document.querySelector('#historyListContent .history-item').click()")
     page.wait_for_selector("#diffModalOverlay:not([hidden])")
     
@@ -50,7 +52,6 @@ def test_diff_modal_restore_button_restores_file(page: Page, server: ProseviewSe
     _create_history_backup(page, server)
     _open_history_tab(page)
     
-    page.wait_for_timeout(100)
     page.evaluate("document.querySelector('#historyListContent .history-item').click()")
     page.wait_for_selector("#diffModalOverlay:not([hidden])")
     
@@ -65,7 +66,6 @@ def test_diff_modal_preview_direction(page: Page, server: ProseviewServer):
     _create_history_backup(page, server)
     _open_history_tab(page)
     
-    page.wait_for_timeout(100)
     page.evaluate("document.querySelector('#historyListContent .history-item').click()")
     page.wait_for_selector("#diffModalOverlay:not([hidden])")
     

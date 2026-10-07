@@ -1,0 +1,53 @@
+name: Demo
+
+# Publishes a read-only snapshot of the demo manuscript (fixtures/demo-book) to
+# GitHub Pages, so anyone can try Proseview in a browser without installing
+# it. Built with the same `proseview snapshot` command a writer would use.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "proseview/**"
+      - "fixtures/demo-book/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes one still in flight.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build the demo snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install proseview
+        run: pip install .
+      - name: Write the snapshot
+        run: proseview snapshot --root fixtures/demo-book --out _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

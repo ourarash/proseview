@@ -59,6 +59,16 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match pyproject version $version" >&2
             exit 1
           fi
+      - name: Confirm CHANGELOG.md describes this version
+        # Checked before anything is published, so a release never reaches
+        # PyPI without the notes its GitHub release is made from.
+        run: |
+          version=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          sh .github/release-notes.sh "$version" > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -78,3 +88,24 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish the changelog section as release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sh .github/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

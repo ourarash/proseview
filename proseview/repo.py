@@ -17,8 +17,10 @@ with ``json.dumps``.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 import unicodedata
 import uuid
@@ -88,6 +90,31 @@ def read_repo_text(path: Path) -> str:
     Identical to ``utf-8`` when no BOM is present.
     """
     return path.read_text(encoding="utf-8-sig")
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Replace *path*'s contents with *text* atomically.
+
+    Every writer that touches a manuscript file goes through here. A partial
+    write would truncate someone's prose, so the new content lands in a
+    temporary file alongside the target and is moved into place with
+    ``os.replace``, which is atomic on the same filesystem.
+    """
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", dir=path.parent, delete=False, suffix=".tmp", encoding="utf-8"
+        ) as tmp:
+            tmp.write(text)
+            tmp_path = tmp.name
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def _is_hidden(name: str) -> bool:
@@ -715,3 +742,69 @@ def build_context_tree(
         return projected
 
     return project(repository)
+
+
+# ── Saved versions ───────────────────────────────────────────────────────────
+# Proseview keeps the replaced text every time a file it manages is written, so
+# any change is restorable without a commit. Agents write these files too, and
+# their edits belong in the same history as the writer's own saves.
+
+_BACKUP_WORD_RE = re.compile(r"\w+")
+_BACKUP_NOTE_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def file_fingerprint(text: str) -> str:
+    """A short digest of *text*, for noticing that a file moved underneath us."""
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def backup_dir_for(root: Path, rel_path: str) -> Path:
+    """Where the saved versions of one repository-relative path are kept."""
+    import hashlib
+    return root / ".proseview" / "backups" / hashlib.md5(rel_path.encode("utf-8")).hexdigest()
+
+
+def record_file_backup(root: Path, resolved: Path, old_raw: str, source: str) -> Path | None:
+    """Keep *old_raw* as a restorable version of *resolved*, and return its file.
+
+    Scene saves are no longer the only writer here. An agent editing the
+    manuscript is making the same kind of change a writer would, and it belongs
+    in the same history -- so this takes any path inside the repository, not
+    only one under ``manuscript/``, and is called with the content that is
+    about to be replaced.
+    """
+    import json
+    from datetime import datetime
+
+    from .config import Config
+
+    max_backups = getattr(Config.load(root), "max_backups", 50)
+    if max_backups <= 0:
+        return None
+    try:
+        rel_path = resolved.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+    backups_dir = backup_dir_for(root, rel_path)
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    backup_file = backups_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+    backup_file.write_text(json.dumps({
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "source": source,
+        "word_count": len(_BACKUP_WORD_RE.findall(_BACKUP_NOTE_RE.sub("", old_raw))),
+        "diff_summary": "",
+        "content": old_raw,
+        "path": rel_path,
+    }, indent=2), encoding="utf-8")
+
+    existing = sorted(backups_dir.glob("*.json"))
+    for stale in existing[:-max_backups] if len(existing) > max_backups else []:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+    return backup_file
+
+

@@ -1275,3 +1275,63 @@ def test_repo_file_rejects_hidden_internal_paths(shared_server: ProseviewServer)
 
 def test_unknown_paths_404(shared_server: ProseviewServer):
     assert shared_server.get("/definitely-not-a-route").status == 404
+
+
+# ── Saved versions of files outside the manuscript ───────────────────────────
+# Agents edit the story bible and notes, not only scenes, and Prosview keeps
+# the replaced text for those the same way. Scene history has to be able to
+# read them back, so its endpoints take a repository-relative path as well as
+# the manuscript-relative one the editor has always sent.
+
+
+def test_scene_history_reads_a_file_outside_the_manuscript(server: ProseviewServer):
+    from proseview.repo import record_file_backup
+
+    target = server.root / "story-bible" / "characters.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("Nadia is thirty.\n", encoding="utf-8")
+    record_file_backup(server.root, target, "Nadia is twenty-nine.\n", "Codex review")
+
+    listed = server.get_json("/api/scene/history?path=story-bible/characters.md")
+    assert listed["ok"] is True
+    assert [row["source"] for row in listed["history"]] == ["Codex review"]
+
+    stamp = listed["history"][0]["file_ts"]
+    shown = server.get_json(
+        f"/api/scene/history/diff?path=story-bible/characters.md&timestamp={stamp}"
+    )
+    assert shown["ok"] is True
+    assert "twenty-nine" in shown["diff_html"]
+
+    restored = server.post_json(
+        "/api/scene/history/restore",
+        {"path": "story-bible/characters.md", "timestamp": stamp},
+        headers=_discuss_headers(server),
+    )
+    assert restored.json()["ok"] is True
+    assert target.read_text(encoding="utf-8") == "Nadia is twenty-nine.\n"
+    # Restoring is itself a version, so the text it replaced is still reachable.
+    assert any(
+        row["source"] == "Pre-Restore State"
+        for row in server.get_json("/api/scene/history?path=story-bible/characters.md")["history"]
+    )
+
+
+def test_scene_history_still_speaks_manuscript_relative_for_scenes(server: ProseviewServer):
+    """The editor's own paths keep working unchanged."""
+    from proseview.repo import record_file_backup
+
+    scene = server.root / "manuscript" / SCENE_REL
+    record_file_backup(server.root, scene, "An earlier draft.\n", "Manual Save")
+
+    listed = server.get_json(f"/api/scene/history?path={SCENE_REL}")
+    assert listed["ok"] is True
+    assert any(row["source"] == "Manual Save" for row in listed["history"])
+
+
+@pytest.mark.parametrize("bad", ["../../etc/hosts", ".proseview/state.json", "/etc/hosts"])
+def test_scene_history_refuses_a_path_outside_the_repository(server: ProseviewServer, bad: str):
+    from urllib.parse import quote
+
+    answer = server.get_json(f"/api/scene/history?path={quote(bad, safe='')}")
+    assert answer["ok"] is False

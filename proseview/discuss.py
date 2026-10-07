@@ -25,10 +25,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import DEFAULT_SKILLS_PATH, DISCUSS_AGENTS, Config
+from .hunks import changed_blocks, compose
 from .repo import (
     CONTEXT_FILE_MAX_BYTES,
     CONTEXT_SKIP_DIRS,
+    atomic_write_text,
+    file_fingerprint,
     is_context_text_file,
+    read_repo_text,
+    record_file_backup,
     resolve_visible_repository_path,
     scene_relative_path,
 )
@@ -1715,6 +1720,8 @@ def _is_repository_action_prompt(prompt: str) -> bool:
 class _Conversation:
     def __init__(self, conversation_id: str, document: dict[str, str], agent: str = DEFAULT_AGENT) -> None:
         self.id = conversation_id
+        #: Corrections owed to the agent, delivered with the next question.
+        self.agent_notes: list[str] = []
         self.document = dict(document)
         # A project has one live projection per agent. ``document`` is only the
         # most recent focus; every queued turn freezes its own document.
@@ -1732,6 +1739,11 @@ class _Conversation:
         self.plan: list[dict[str, Any]] = []
         self.activities: dict[str, dict[str, Any]] = {}
         self.approvals: dict[str, dict[str, Any]] = {}
+        #: Repository-relative path -> the file's text before this turn first
+        #: touched it. Captured on the way in, while the old text still exists,
+        #: because reviewing an agent's work means comparing two versions and
+        #: only one of them survives the write.
+        self.file_before: dict[str, str] = {}
         self.notices: list[dict[str, str]] = []
         self.notice_sequence = 0
         self.pending: deque[_QueuedQuestion] = deque()
@@ -1768,6 +1780,9 @@ class _Conversation:
             self.active_turn_started_monotonic = time.monotonic()
             self.active_turn_phase = "starting"
             self.last_turn = {}
+            # Last turn's versions are history now; this turn compares against
+            # the file as it stands at its own start.
+            self.file_before = {}
 
     def finish_turn(self, status: str, *, error: str = "") -> dict[str, Any]:
         """Close the running turn and record what the browser should say next.
@@ -1830,6 +1845,23 @@ class _Conversation:
                 "event_cursor": self.events.latest_id,
             }
 
+    def note_for_agent(self, text: str) -> None:
+        """Queue a correction the agent must hear before it acts again.
+
+        The protocol answers an approval with a single word, so there is no way
+        to tell the agent mid-turn that only part of its edit was kept. It finds
+        out on the next turn, where this is folded into the prompt.
+        """
+        with self.lock:
+            if text and text not in self.agent_notes:
+                self.agent_notes.append(text)
+
+    def drain_agent_notes(self) -> list[str]:
+        with self.lock:
+            notes = list(self.agent_notes)
+            self.agent_notes.clear()
+            return notes
+
     def publish(self, event_type: str, data: dict[str, Any]) -> BrowserEvent:
         with self.lock:
             event = self.events.publish(event_type, data)
@@ -1863,6 +1895,21 @@ class _Conversation:
     def add_notice(self, kind: str, message: str, **extra: Any) -> BrowserEvent:
         data = self._append_notice(kind, message, **extra)
         return self.publish(kind, data)
+
+
+def _merge_activity(existing: dict[str, Any] | None, incoming: dict[str, Any]) -> dict[str, Any]:
+    """Fold an activity update into what Prosview already knows.
+
+    Merge rather than replace: an update reports what changed, and a completion
+    that knows only the outcome must not erase the command the start recorded.
+    Edits undone by the writer are tracked against a specific diff, so that
+    bookkeeping is dropped whenever the reported changes themselves move.
+    """
+    if not existing:
+        return incoming
+    merged = dict(existing)
+    merged.update({key: value for key, value in incoming.items() if value not in ("", None, [], {})})
+    return merged
 
 
 class DiscussManager:
@@ -2353,7 +2400,11 @@ class DiscussManager:
         return task
 
     def get_snapshot(self, conversation_id: str) -> dict[str, Any]:
-        return self._get(conversation_id).snapshot()
+        snapshot = self._get(conversation_id).snapshot()
+        # Agents report file paths absolutely; the dock speaks repository-relative
+        # everywhere else, and needs the root to bridge the two.
+        snapshot["root"] = str(self.root)
+        return snapshot
 
     def _action_turn(
         self,
@@ -3179,6 +3230,11 @@ class DiscussManager:
             selection = str(task["target"]["selection"])
         elif skill:
             skill_item = self._validated_skill(skill)
+        # Anything owed to the agent rides along with the next question; this is
+        # the first moment the protocol offers to say it.
+        owed = conversation.drain_agent_notes()
+        if owed:
+            action_notes = "\n".join([*owed, action_notes]) if action_notes else "\n".join(owed)
         if bundle is None:
             bundle = self.context.build(
                 turn_document,
@@ -3724,17 +3780,11 @@ class DiscussManager:
                 activity = event.get("activity") or {}
                 if activity.get("id"):
                     activity["turn_id"] = event.get("turn_id") or conversation.active_turn_id or ""
-                    # Merge rather than replace: an update reports what changed,
-                    # and a completion that knows only the outcome must not
-                    # erase the command the start recorded.
-                    existing = conversation.activities.get(str(activity["id"]))
-                    if existing:
-                        merged = dict(existing)
-                        merged.update({
-                            key: value for key, value in activity.items()
-                            if value not in ("", None, [], {})
-                        })
-                        activity = merged
+                    if activity.get("kind") == "fileChange" and activity.get("status") != "completed":
+                        self._capture_before(conversation, activity.get("changes") or [])
+                    activity = _merge_activity(
+                        conversation.activities.get(str(activity["id"])), activity
+                    )
                     conversation.activities[str(activity["id"])] = activity
             elif event_type == "turn.completed":
                 for approval in conversation.approvals.values():
@@ -4017,25 +4067,31 @@ class DiscussManager:
             "status": "pending",
         }
         
-        if kind == "fileChange" and isinstance(params.get("item"), dict):
-            item = params.get("item")
-            activity = {
-                "id": item.get("id"),
-                "kind": "fileChange",
-                "status": "inProgress",
-                "turn_id": approval["turn_id"],
-                "changes": [
-                    {"path": _bounded_text(x.get("path"), 2000), "kind": x.get("kind"), "diff": x.get("diff")}
-                    for x in (item.get("changes") or []) if isinstance(x, dict)
-                ]
-            }
-            existing = conversation.activities.get(str(activity["id"]))
-            if existing:
-                merged = dict(existing)
-                merged.update({k: v for k, v in activity.items() if v not in ("", None, [], {})})
-                activity = merged
-            conversation.activities[str(activity["id"])] = activity
-            conversation.publish("activity.updated", {"activity": activity})
+        if kind == "fileChange":
+            # A file change is not gated. Every edit is reversible from the
+            # review at the end of the turn -- against the text kept here, a
+            # line at a time -- so stopping to ask would only make the writer
+            # rule on prose they have not read yet. Commands and permissions
+            # still ask, because nothing takes those back.
+            item = params.get("item") if isinstance(params.get("item"), dict) else {}
+            self._capture_before(conversation, item.get("changes") or [])
+            decision = "accept" if "accept" in available else str(available[0])
+            client.respond(message["id"], {"decision": decision})
+            if item:
+                activity = {
+                    "id": item.get("id"),
+                    "kind": "fileChange",
+                    "status": "inProgress",
+                    "turn_id": approval["turn_id"],
+                    "changes": [
+                        {"path": _bounded_text(x.get("path"), 2000), "kind": x.get("kind"), "diff": x.get("diff")}
+                        for x in (item.get("changes") or []) if isinstance(x, dict)
+                    ],
+                }
+                activity = _merge_activity(conversation.activities.get(str(activity["id"])), activity)
+                conversation.activities[str(activity["id"])] = activity
+                conversation.publish("activity.updated", {"activity": activity})
+            return
 
         conversation.approvals[request_key] = approval
         conversation.publish("approval.requested", {key: value for key, value in approval.items() if key != "protocol_request_id"})
@@ -4087,58 +4143,188 @@ class DiscussManager:
         conversation.publish("approval.resolved", event)
         return event
 
-    def reject_activity(self, conversation_id: str, activity_id: str) -> dict[str, Any]:
+    def _capture_before(self, conversation: _Conversation, changes: Iterable[dict[str, Any]]) -> None:
+        """Record how each named file reads right now, if we have not already.
+
+        Called at every sighting of a file change that precedes the write --
+        the approval request, and the item's start. Only the first sighting in
+        a turn is kept: later ones would capture the agent's own work and the
+        writer would be reviewing an edit against itself.
+
+        A file that does not exist yet is recorded as empty rather than
+        skipped, so a newly created file reviews as "all of this is new".
+        """
+        for change in changes or []:
+            raw = str((change or {}).get("path") or "").strip()
+            if not raw:
+                continue
+            try:
+                resolved = self._resolve_change_path(raw)
+                rel = resolved.relative_to(self.root.resolve()).as_posix()
+            except (ContextError, ValueError):
+                continue
+            with conversation.lock:
+                if rel in conversation.file_before:
+                    continue
+            try:
+                text = read_repo_text(resolved) if resolved.is_file() else ""
+            except OSError:
+                continue
+            with conversation.lock:
+                conversation.file_before.setdefault(rel, text)
+
+    def turn_file_changes(self, conversation_id: str) -> dict[str, Any]:
+        """Every file this turn changed, as a pair of versions plus its blocks.
+
+        This is the whole review surface. It does not consult the agent's
+        reported diffs at all: the two texts are what Prosview holds, so what
+        the writer is shown is what is actually on disk versus what was there
+        before -- including anything the agent did without reporting it.
+        """
         conversation = self._get(conversation_id)
         with conversation.lock:
-            activity = conversation.activities.get(activity_id)
-            if not activity:
-                raise ContextError("Activity not found")
-            if activity.get("kind") != "fileChange":
-                raise ContextError("Only fileChange activities can be rejected")
-            if activity.get("status") == "rejected":
-                raise ContextError("Activity is already rejected")
-            
-            changes = activity.get("changes") or []
-            if not changes:
-                raise ContextError("No changes found in activity")
-                
-            import tempfile
-            import subprocess
-            import os
-            
-            for change in changes:
-                diff = change.get("diff")
-                if not diff:
-                    continue
-                fd, temp_path = tempfile.mkstemp(suffix=".diff")
-                try:
-                    with os.fdopen(fd, 'w') as f:
-                        f.write(diff)
-                    
-                    target_file = change.get("path")
-                    if not target_file:
-                        continue
-                    if not os.path.isabs(target_file):
-                        target_file = os.path.join(str(self.root), target_file)
-                        
-                    # Apply reverse patch directly to the target file
-                    result = subprocess.run(
-                        ["patch", "-R", "-i", temp_path, target_file],
-                        cwd=str(self.root),
-                        capture_output=True,
-                        text=True
-                    )
-                    if result.returncode != 0:
-                        raise ContextError(f"Failed to revert changes: {result.stderr}")
-                finally:
-                    os.unlink(temp_path)
-            
-            activity["status"] = "rejected"
-            conversation.add_notice("info", "The file change was successfully reverted.")
-            conversation.publish("activity.updated", {"activity": activity})
-            
-        return {"activity_id": activity_id, "status": "rejected"}
+            captured = dict(conversation.file_before)
+        files = []
+        for rel, before in sorted(captured.items()):
+            try:
+                resolved = self._resolve_change_path(rel)
+            except ContextError:
+                continue
+            try:
+                after = read_repo_text(resolved) if resolved.is_file() else ""
+            except OSError:
+                continue
+            if after == before:
+                continue
+            files.append({
+                "path": rel,
+                "before": before,
+                "after": after,
+                "fingerprint": file_fingerprint(after),
+                "blocks": [
+                    {
+                        "id": block.index,
+                        "kind": block.kind,
+                        "before": "".join(block.before),
+                        "after": "".join(block.after),
+                    }
+                    for block in changed_blocks(before, after)
+                ],
+            })
+        return {
+            "conversation_id": conversation_id,
+            "files": files,
+            "unreviewable": self._unsnapshotted_paths(conversation, captured),
+        }
 
+    def _unsnapshotted_paths(
+        self, conversation: _Conversation, captured: dict[str, str]
+    ) -> list[str]:
+        """Files the turn changed without ever announcing them first.
+
+        The version to compare against is taken when the agent says it is about
+        to write -- asking for approval, or starting the item. An agent that
+        writes with no warning gives Prosview no such moment, and there is no
+        honest way to reconstruct what the file said before. Naming those files
+        is better than a review that quietly leaves them out.
+        """
+        missing: list[str] = []
+        with conversation.lock:
+            activities = [dict(row) for row in conversation.activities.values()]
+        for activity in activities:
+            if activity.get("kind") != "fileChange" or activity.get("status") != "completed":
+                continue
+            for change in activity.get("changes") or []:
+                raw = str((change or {}).get("path") or "").strip()
+                if not raw:
+                    continue
+                try:
+                    rel = self._resolve_change_path(raw).relative_to(self.root.resolve()).as_posix()
+                except (ContextError, ValueError):
+                    continue
+                if rel not in captured and rel not in missing:
+                    missing.append(rel)
+        return sorted(missing)
+
+    def apply_file_selection(
+        self,
+        conversation_id: str,
+        path: str,
+        keep: Iterable[int],
+        fingerprint: str = "",
+    ) -> dict[str, Any]:
+        """Write the version of *path* that keeps only the blocks in *keep*.
+
+        *fingerprint* is what the file looked like when the writer was shown
+        the diff. If it no longer matches, something changed underneath them --
+        the agent started another turn, or they typed in the editor -- and
+        writing now would silently discard it. The write is refused instead.
+        """
+        conversation = self._get(conversation_id)
+        with conversation.lock:
+            before = conversation.file_before.get(str(path))
+        if before is None:
+            raise ContextError("This turn did not record a previous version of that file")
+        resolved = self._resolve_change_path(str(path))
+        try:
+            after = read_repo_text(resolved) if resolved.is_file() else ""
+        except OSError as exc:
+            raise ContextError(f"Cannot read {resolved.name}: {exc}") from None
+        if fingerprint and fingerprint != file_fingerprint(after):
+            raise ContextError(
+                f"{resolved.name} changed since you looked at it. Reopen the review so you "
+                "are choosing against what the file says now."
+            )
+
+        kept = sorted({int(value) for value in keep})
+        composed = compose(before, after, kept)
+        if composed != after:
+            # The version being replaced is worth keeping too: an agent's edit
+            # is the same kind of change a writer makes, and belongs in the
+            # same scene history.
+            record_file_backup(self.root, resolved, after, f"{conversation.agent} review")
+            atomic_write_text(resolved, composed)
+
+        total = len(changed_blocks(before, after))
+        dropped = total - len(kept)
+        with conversation.lock:
+            # What the writer kept is the new baseline, so reviewing the same
+            # file again offers the edits still standing rather than the ones
+            # they already turned down.
+            conversation.file_before[str(path)] = composed
+            if dropped:
+                conversation.note_for_agent(
+                    f"The writer reviewed your changes to {path} and dropped {dropped} of "
+                    f"{total}. The file on disk is not what you last wrote; re-read it "
+                    "before relying on it, and do not put back what they removed."
+                )
+            conversation.add_notice(
+                "info",
+                f"Kept {len(kept)} of {total} change{'' if total == 1 else 's'} in {resolved.name}."
+                if dropped else f"Kept every change in {resolved.name}.",
+            )
+        return {"path": str(path), "kept": kept, "dropped": dropped, "total": total}
+
+    def _resolve_change_path(self, raw: str) -> Path:
+        """Turn an agent-reported file path into a path inside the repository.
+
+        The agent chooses these strings, so they get the same containment,
+        symlink, and hidden-directory checks as any other browser-facing path
+        before Prosview writes through them.
+        """
+        value = str(raw or "").strip()
+        if not value:
+            raise ContextError("The change does not record which file it touched")
+        candidate = Path(value)
+        if candidate.is_absolute():
+            try:
+                value = candidate.resolve().relative_to(self.root).as_posix()
+            except ValueError:
+                raise ContextError(f"{raw} is outside this repository") from None
+        try:
+            return resolve_visible_repository_path(self.root, value)
+        except ValueError as exc:
+            raise ContextError(f"Cannot undo changes to {raw}: {exc}") from None
 
     def _complete_stopped_turn(
         self,

@@ -1777,12 +1777,25 @@
             return {kind: 'idle'};
         }
 
+        // The decision, not merely the first control in the card. A file change
+        // leads with its diff toolbar, so reaching for the first button landed
+        // on "Expand view" and left the actual question -- accept or decline --
+        // looking untouched, whether you got there by Review or by the focus
+        // that follows a new request.
+        function discussApprovalDecisionButton(card) {
+            if (!card) return null;
+            var actions = card.querySelector('.discuss-approval-actions');
+            return (actions && actions.querySelector('button:not([disabled])'))
+                || (actions && actions.querySelector('button'))
+                || card.querySelector('button');
+        }
+
         function discussFocusApproval(requestId) {
             var card = document.getElementById('discussLog')
                 .querySelector('[data-approval-id="' + CSS.escape(String(requestId || '')) + '"]');
             if (!card) return;
             card.scrollIntoView({block: 'center'});
-            var button = card.querySelector('button');
+            var button = discussApprovalDecisionButton(card);
             if (button) button.focus();
         }
 
@@ -1907,9 +1920,12 @@
             var toggle = document.getElementById('discussTurnTrailToggle');
             var trail = document.getElementById('discussTurnTrail');
             toggle.hidden = !rows.length;
+            // The label has to name the way back in. Relabelling the open
+            // control to a bare count read as a statistic rather than a
+            // button, so a closed trail looked like one you could not reopen.
             toggle.textContent = _discussTurnTrailOpen
-                ? 'Hide'
-                : (running ? 'Details' : rows.length + ' step' + (rows.length === 1 ? '' : 's'));
+                ? 'Hide steps'
+                : 'Show ' + rows.length + ' step' + (rows.length === 1 ? '' : 's');
             toggle.setAttribute('aria-expanded', _discussTurnTrailOpen ? 'true' : 'false');
             trail.hidden = !(_discussTurnTrailOpen && rows.length);
             wrap.dataset.trail = trail.hidden ? 'closed' : 'open';
@@ -1943,9 +1959,19 @@
             if (document.title !== next) document.title = next;
         }
 
+        var _discussReviewedTurn = '';
+
         function renderDiscussSnapshot() {
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
+            // The agent has stopped, so the file has stopped moving: the first
+            // moment there is something settled to review. Keyed on the turn
+            // that finished so it is asked exactly once per turn.
+            var finished = (snapshot.last_turn || {}).turn_id || '';
+            if (!snapshot.active_turn_id && finished && finished !== _discussReviewedTurn) {
+                _discussReviewedTurn = finished;
+                refreshDiscussReview();
+            }
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
             var log = document.getElementById('discussLog');
             var scrollState = captureDiscussScroll(log);
@@ -2021,8 +2047,7 @@
                 var wrap = elementWith('discuss-message ' + (message.role === 'user' ? 'user' : 'assistant'));
                 var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : discussAgentLabel());
                 wrap.appendChild(label);
-                if (message.role === 'assistant') renderDiscussMarkdown(wrap, message.text);
-                else wrap.appendChild(document.createTextNode(message.text || ''));
+                renderDiscussMarkdown(wrap, message.text);
                 log.appendChild(wrap);
                 if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
             });
@@ -2045,22 +2070,46 @@
             // Progress and activities now belong to the turn strip, in the
             // order they happened. Only an approval that still needs a decision
             // earns a card here; a settled one is a line in the turn's trail.
+            //
+            // Cards follow the order the edits happened, so an approved change
+            // stays above the request that came after it. Listing every pending
+            // approval first put the newest question above an older answer and
+            // read as though the change you had just approved was still asking.
             var pendingApprovals = {};
             (snapshot.approvals || []).forEach(function(approval) {
                 if (approval.status === 'pending' || approval.status === 'resolving') {
-                    pendingApprovals[approval.item_id] = true;
-                    log.appendChild(renderDiscussApproval(approval));
+                    pendingApprovals[approval.item_id] = approval;
                 }
             });
-            
-            (snapshot.activities || []).forEach(function(activity) {
-                if (activity.kind === 'fileChange' && activity.changes && activity.changes.length > 0 && activity.changes[0].diff && !pendingApprovals[activity.id]) {
-                    log.appendChild(renderDiscussActivityCard(activity));
-                }
+
+            // A file change is no longer answered here. What it did is
+            // reviewed once, against the file as it stood before the turn,
+            // from the card the turn's end puts up.
+            var anchored = {};
+
+            // Approvals with no file-change activity to sit beside -- a command,
+            // a permission grant -- still need somewhere to go.
+            Object.keys(pendingApprovals).forEach(function(itemId) {
+                var approval = pendingApprovals[itemId];
+                if (!anchored[approval.request_id]) log.appendChild(renderDiscussApproval(approval));
             });
             notices.forEach(function(notice, index) {
                 if (!renderedNotices[index]) log.appendChild(renderDiscussNotice(notice));
             });
+            (_discussReview || []).forEach(function(file) {
+                log.appendChild(renderDiscussReviewCard(file));
+            });
+            // Said plainly rather than left out: a file changed with no warning
+            // has no earlier version to offer, and silence would read as though
+            // nothing had happened to it.
+            if ((_discussReviewUnreviewable || []).length) {
+                var note = elementWith('discuss-review-note');
+                note.textContent = discussAgentLabel() + ' changed '
+                    + _discussReviewUnreviewable.join(', ')
+                    + ' without saying so first, so there is no earlier version to compare against here. '
+                    + 'Scene history still holds what was there before your last save.';
+                log.appendChild(note);
+            }
             appendDiscussLocalError(log);
             if ((snapshot.queue || []).length) {
                 var queueCard = elementWith('discuss-queue');
@@ -2123,7 +2172,8 @@
             renderDiscussTurnStatus(snapshot);
             restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
-                var target = log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"] button');
+                var target = discussApprovalDecisionButton(
+                    log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"]'));
                 // An earlier scheduled snapshot may race the approval SSE
                 // event. Keep the id until a snapshot renders its controls.
                 if (target) {
@@ -2566,24 +2616,21 @@
             if (approval.grant_root) { var root = document.createElement('code'); root.textContent = 'Write access: ' + approval.grant_root; card.appendChild(root); }
             if (approval.network) { var network = document.createElement('code'); network.textContent = 'Network: ' + JSON.stringify(approval.network); card.appendChild(network); }
             if (approval.permissions) { var permissions = document.createElement('code'); permissions.textContent = 'Permissions: ' + JSON.stringify(approval.permissions); card.appendChild(permissions); }
+            // Only a command, a network call, or a permission grant reaches
+            // here now, and none of those can be taken back afterwards -- so
+            // the answer is the whole request, not part of it.
             if (approval.status === 'pending') {
-                if (approval.kind === 'fileChange' && _discussSnapshot) {
-                    var activity = (_discussSnapshot.activities || []).find(function(a) { return a.id === approval.item_id; });
-                    if (activity && activity.changes && activity.changes.length > 0 && activity.changes[0].diff) {
-                        var diffString = activity.changes[0].diff;
-                        card.appendChild(createDiscussDiffViewer(diffString));
-                    }
-                }
                 var actions = elementWith('discuss-approval-actions');
-                var options = [
+                [
                     ['accept', 'Accept once'], ['accept_for_session', 'Accept for session ⚠'], ['decline', 'Decline'], ['cancel', 'Cancel']
-                ];
-                options.forEach(function(option) {
+                ].forEach(function(option) {
                     var wire = option[0] === 'accept_for_session' ? 'acceptForSession' : option[0];
                     if ((approval.available_decisions || []).indexOf(wire) < 0) return;
                     var button = document.createElement('button'); button.type = 'button'; button.textContent = option[1];
                     if (option[0] === 'accept_for_session') button.title = 'Allows matching requests until this Codex session ends';
-                    button.onclick = function() { resolveDiscussApproval(approval.request_id, option[0], button, approval.permissions); };
+                    button.onclick = function() {
+                        resolveDiscussApproval(approval.request_id, option[0], button, approval.permissions);
+                    };
                     actions.appendChild(button);
                 });
                 card.appendChild(actions);
@@ -2594,80 +2641,69 @@
         
 
 
+// A diff viewer for one file's patch. When `revert` is supplied the patch is
+// laid out hunk by hunk, each with its own control, so the writer can keep some
+// of an edit and take the rest back. Without it the patch renders as one table:
+// that is the right shape for a change that has not been applied yet, or one
+// that cannot be undone.
 function createDiscussDiffViewer(diffString) {
     var wrapper = document.createElement('div');
-    wrapper.style.marginTop = '12px';
-    
-    var header = document.createElement('div');
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
-    header.style.marginBottom = '6px';
-    
+    wrapper.className = 'discuss-diff';
+
+    var header = elementWith('discuss-diff-toolbar');
+
     var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
     expandBtn.className = 'discuss-chip discuss-chip-outline';
     expandBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: text-bottom;"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg> Expand view';
-    expandBtn.style.cursor = 'pointer';
     expandBtn.onclick = function(e) { e.preventDefault(); openDiscussDiffModal(diffString); };
-    
-    var toggleGroup = document.createElement('div');
-    toggleGroup.style.display = 'flex';
-    toggleGroup.style.gap = '4px';
-    
+
+    var toggleGroup = elementWith('discuss-diff-modes');
     var btnInline = document.createElement('button');
-    btnInline.className = 'discuss-chip';
+    btnInline.type = 'button';
     btnInline.textContent = 'Inline';
-    btnInline.style.cursor = 'pointer';
-    
     var btnSplit = document.createElement('button');
-    btnSplit.className = 'discuss-chip discuss-chip-outline';
+    btnSplit.type = 'button';
     btnSplit.textContent = 'Split';
-    btnSplit.style.cursor = 'pointer';
-    
     toggleGroup.appendChild(btnInline);
     toggleGroup.appendChild(btnSplit);
-    
+
     header.appendChild(expandBtn);
     header.appendChild(toggleGroup);
-    
-    var diffContainer = document.createElement('div');
-    diffContainer.className = 'discuss-diff-viewer';
-    diffContainer.style.maxHeight = '300px';
-    diffContainer.style.overflowY = 'auto';
-    diffContainer.style.backgroundColor = 'var(--surface-bg, #0d1117)';
-    diffContainer.style.border = '1px solid var(--border-color, #30363d)';
-    diffContainer.style.borderRadius = '6px';
-    
+
+    var body = elementWith('discuss-diff-viewer');
+
     wrapper.appendChild(header);
-    wrapper.appendChild(diffContainer);
-    
+    wrapper.appendChild(body);
+
+    // Toggling Inline/Split twice quickly can land the replies out of order,
+    // so only the newest request is allowed to paint.
+    var pending = 0;
     function loadDiff(mode) {
+        var token = ++pending;
         btnInline.className = mode === 'inline' ? 'discuss-chip' : 'discuss-chip discuss-chip-outline';
         btnSplit.className = mode === 'side-by-side' ? 'discuss-chip' : 'discuss-chip discuss-chip-outline';
-        
-        diffContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--text-muted);">Loading diff...</div>';
-        
+        body.textContent = '';
+        body.appendChild(elementWith('discuss-diff-status', 'Loading diff…'));
         discussApi('/api/discuss/format_patch', {patch: diffString, mode: mode})
             .then(function(res) {
-                diffContainer.innerHTML = res.diff_html;
+                if (token !== pending) return;
+                body.innerHTML = res.diff_html;
             })
             .catch(function(err) {
-                diffContainer.textContent = 'Error loading diff: ' + err.message;
+                if (token !== pending) return;
+                body.textContent = '';
+                body.appendChild(elementWith('discuss-diff-status', 'Could not render this diff: ' + err.message));
             });
     }
-    
+
     btnInline.onclick = function(e) { e.preventDefault(); loadDiff('inline'); };
     btnSplit.onclick = function(e) { e.preventDefault(); loadDiff('side-by-side'); };
-    
+
     loadDiff('inline');
-    
+
     return wrapper;
 }
-
-
-
-var _currentDiscussDiffString = null;
-var _currentDiscussDiffMode = 'side-by-side';
 
 function updateDiscussDiffFontSize(size) {
     var contentDiv = document.getElementById('discussDiffModalContent');
@@ -2676,9 +2712,27 @@ function updateDiscussDiffFontSize(size) {
     if (slider) slider.value = size;
 }
 
+// The expanded view of one reviewed file: the same blocks and the same ticks,
+// with room to read them and the split view a long paragraph needs.
+function openDiscussReviewModal(path) {
+    _currentDiscussReviewPath = path;
+    _currentDiscussDiffString = null;
+    document.getElementById('discussDiffModalTitle').textContent = path;
+    document.getElementById('discussDiffModalNote').textContent =
+        'Already in the file. Untick anything you want put back, then keep the rest from the card.';
+    var overlay = document.getElementById('discussDiffModalOverlay');
+    overlay.hidden = false;
+    _discussReturnFocus = document.activeElement;
+    setDiscussDiffMode(_discussReviewMode);
+    var initialSize = document.getElementById('discussDiffFontSize').value;
+    updateDiscussDiffFontSize(initialSize);
+}
+
 function openDiscussDiffModal(diffString) {
+    _currentDiscussReviewPath = null;
     _currentDiscussDiffString = diffString;
-    document.getElementById("discussDiffModalOverlay").hidden = false;
+    document.getElementById('discussDiffModalNote').textContent = 'Review the changes the agent made.';
+        document.getElementById("discussDiffModalOverlay").hidden = false;
     
     // Set initial mode UI
     setDiscussDiffMode(_currentDiscussDiffMode);
@@ -2695,6 +2749,10 @@ function openDiscussDiffModal(diffString) {
 function closeDiscussDiffModal() {
     document.getElementById("discussDiffModalOverlay").hidden = true;
     _currentDiscussDiffString = null;
+    _currentDiscussReviewPath = null;
+    // The card is the one that applies, so it has to show what was ticked here.
+    if (_discussSnapshot) renderDiscussSnapshot();
+    if (_discussReturnFocus && _discussReturnFocus.focus) _discussReturnFocus.focus();
 }
 
 function setDiscussDiffMode(mode) {
@@ -2715,71 +2773,253 @@ function setDiscussDiffMode(mode) {
 }
 
 function loadDiscussDiffMode(mode) {
-    if (!_currentDiscussDiffString) return;
     var contentDiv = document.getElementById('discussDiffModalContent');
-    contentDiv.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading diff...</div>';
+    if (_currentDiscussReviewPath) {
+        // Remembered as the review's mode too: closing the expanded view and
+        // going back to the card should not throw the choice away.
+        _discussReviewMode = mode;
+        var file = (_discussReview || []).filter(function(row) {
+            return row.path === _currentDiscussReviewPath;
+        })[0];
+        contentDiv.textContent = '';
+        if (!file) {
+            contentDiv.appendChild(elementWith('discuss-diff-status', 'This file has no changes left to review.'));
+            return;
+        }
+        discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/changes',
+                   {mode: mode})
+            .then(function(res) {
+                if (_currentDiscussReviewPath !== file.path) return;
+                _discussReview = res.files || [];
+                var fresh = _discussReview.filter(function(row) { return row.path === file.path; })[0];
+                contentDiv.textContent = '';
+                (((fresh || file).blocks) || []).forEach(function(block) {
+                    contentDiv.appendChild(renderDiscussReviewBlock(fresh || file, block).row);
+                });
+            })
+            .catch(function(err) {
+                contentDiv.textContent = '';
+                contentDiv.appendChild(elementWith('discuss-diff-status', 'Could not render this diff: ' + err.message));
+            });
+        return;
+    }
+    if (!_currentDiscussDiffString) return;
     discussApi('/api/discuss/format_patch', {patch: _currentDiscussDiffString, mode: mode})
-        .then(function(res) {
-            contentDiv.innerHTML = res.diff_html;
-        })
-        .catch(function(err) {
-            contentDiv.textContent = 'Error loading diff: ' + err.message;
-        });
+        .then(function(res) { contentDiv.innerHTML = res.diff_html; })
+        .catch(function(err) { contentDiv.textContent = 'Could not render this diff: ' + err.message; });
 }
 
-// Close discuss modal when clicking outside
-(function() {
-    const overlay = document.getElementById("discussDiffModalOverlay");
-    if (overlay) {
-        overlay.addEventListener("click", function(event) {
-            if (event.target === overlay) {
-                closeDiscussDiffModal();
-            }
-        });
-    }
-});
 
+        // ── Reviewing what the turn changed ─────────────────────────────
+        // The one place a file change is decided. It compares the file as it
+        // stands against the copy taken before the turn touched it, so what is
+        // offered is what actually happened -- not what the agent said it did.
 
-function renderDiscussActivityCard(activity) {
-            var card = elementWith('discuss-approval');
-            var header = elementWith('discuss-approval-header');
-            var title = document.createElement('strong'); title.textContent = 'Auto-accepted file change';
-            header.appendChild(title);
-            card.appendChild(header);
-            
-            var kindName = document.createElement('div');
-            kindName.textContent = 'fileChange';
-            kindName.style.fontSize = '14px';
-            kindName.style.marginTop = '4px';
-            card.appendChild(kindName);
-            
-            var diffString = activity.changes[0].diff;
-            card.appendChild(createDiscussDiffViewer(diffString));
-            
-            if (activity.status !== 'rejected') {
-                var actions = elementWith('discuss-approval-actions');
-                var button = document.createElement('button'); 
-                button.type = 'button'; 
-                button.textContent = 'Reject & Revert';
-                button.onclick = function() { rejectDiscussActivity(activity.id, button); };
-                actions.appendChild(button);
-                card.appendChild(actions);
-            } else {
-                var rejectedMsg = document.createElement('div');
-                rejectedMsg.style.marginTop = '12px';
-                rejectedMsg.style.color = 'var(--text-danger)';
-                rejectedMsg.style.fontWeight = 'bold';
-                rejectedMsg.textContent = 'This change was rejected and reverted.';
-                card.appendChild(rejectedMsg);
+        var _discussReview = null;
+        var _discussReviewMode = 'inline';
+        var _discussReviewUnreviewable = [];
+        var _discussReviewKeep = {};
+
+        function discussReviewKeep(path) {
+            if (!_discussReviewKeep[path]) _discussReviewKeep[path] = {};
+            return _discussReviewKeep[path];
+        }
+
+        function refreshDiscussReview() {
+            if (!_discussConversationId) return;
+            var conversationId = _discussConversationId;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(conversationId) + '/changes',
+                       {mode: _discussReviewMode})
+                .then(function(res) {
+                    if (conversationId !== _discussConversationId) return;
+                    _discussReview = res.files || [];
+                    _discussReviewUnreviewable = res.unreviewable || [];
+                    // Anything no longer on offer forgets its ticks, so a file
+                    // reviewed twice does not inherit the last answer.
+                    var live = {};
+                    _discussReview.forEach(function(file) { live[file.path] = true; });
+                    Object.keys(_discussReviewKeep).forEach(function(path) {
+                        if (!live[path]) delete _discussReviewKeep[path];
+                    });
+                    renderDiscussSnapshot();
+                })
+                .catch(function() { /* Nothing to review is not an error worth showing. */ });
+        }
+
+        // One row, used by the card and by the expanded view. Both write the
+        // same ticked state, so a change made in either shows in the other.
+        function renderDiscussReviewBlock(file, block, onChange) {
+            var keep = discussReviewKeep(file.path);
+            var row = elementWith('discuss-review-block');
+            var label = document.createElement('label');
+            label.className = 'discuss-review-choice';
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = keep[block.id] !== false;
+            box.setAttribute('aria-label', 'Keep the change at ' + block.header);
+            var where = elementWith('discuss-review-where', block.header);
+            var state = elementWith('discuss-review-state', '');
+            label.appendChild(box);
+            label.appendChild(where);
+            label.appendChild(state);
+            row.appendChild(label);
+
+            var table = elementWith('discuss-review-table');
+            table.innerHTML = block.html;
+            row.appendChild(table);
+
+            function paint() {
+                row.classList.toggle('discuss-review-block-off', !box.checked);
+                state.textContent = box.checked ? 'Keeping' : 'Putting back';
             }
+            box.onchange = function() {
+                keep[block.id] = box.checked;
+                paint();
+                if (onChange) onChange();
+            };
+            paint();
+            return {row: row, box: box};
+        }
+
+        function discussReviewToolbar(file) {
+            var bar = elementWith('discuss-review-toolbar');
+            var expand = document.createElement('button');
+            expand.type = 'button';
+            expand.className = 'discuss-chip discuss-chip-outline';
+            expand.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: text-bottom;"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg> Expand view';
+            expand.onclick = function(event) { event.preventDefault(); openDiscussReviewModal(file.path); };
+            bar.appendChild(expand);
+
+            var modes = elementWith('discuss-diff-modes');
+            [['inline', 'Inline'], ['side-by-side', 'Split']].forEach(function(option) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = option[1];
+                button.className = _discussReviewMode === option[0]
+                    ? 'discuss-chip' : 'discuss-chip discuss-chip-outline';
+                button.onclick = function(event) {
+                    event.preventDefault();
+                    if (_discussReviewMode === option[0]) return;
+                    _discussReviewMode = option[0];
+                    refreshDiscussReview();
+                };
+                modes.appendChild(button);
+            });
+            bar.appendChild(modes);
+            return bar;
+        }
+
+        function renderDiscussReviewCard(file) {
+            var card = elementWith('discuss-review');
+            card.dataset.reviewPath = file.path;
+
+            // The log settles at its foot, so a tall card would leave the file
+            // name and the view controls somewhere above the fold. They stay
+            // put instead, which is also what tells you which file you are
+            // reading when two of them are open.
+            var top = elementWith('discuss-review-top');
+            var head = elementWith('discuss-review-head');
+            var name = document.createElement('code');
+            name.className = 'discuss-review-path';
+            name.textContent = file.path;
+            head.appendChild(name);
+            var count = elementWith('discuss-review-count');
+            head.appendChild(count);
+            top.appendChild(head);
+            top.appendChild(discussReviewToolbar(file));
+            card.appendChild(top);
+
+            var boxes = [];
+
+            function syncCount() {
+                var on = boxes.filter(function(box) { return box.checked; }).length;
+                count.textContent = on === boxes.length
+                    ? 'Keeping all ' + boxes.length
+                    : 'Keeping ' + on + ' of ' + boxes.length;
+                apply.textContent = on ? 'Keep ' + on : 'Undo all of it';
+            }
+
+            (file.blocks || []).forEach(function(block) {
+                var built = renderDiscussReviewBlock(file, block, syncCount);
+                boxes.push(built.box);
+                card.appendChild(built.row);
+            });
+
+            var actions = elementWith('discuss-review-actions');
+            var apply = document.createElement('button');
+            apply.type = 'button';
+            apply.className = 'discuss-primary';
+            apply.onclick = function() {
+                var chosen = (file.blocks || [])
+                    .filter(function(block, index) { return boxes[index].checked; })
+                    .map(function(block) { return block.id; });
+                applyDiscussReview(file, chosen, apply);
+            };
+            actions.appendChild(apply);
+            card.appendChild(actions);
+            syncCount();
             return card;
         }
 
-        function rejectDiscussActivity(activityId, button) {
+        function applyDiscussReview(file, keep, button) {
             button.disabled = true;
-            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/activities/' + encodeURIComponent(activityId) + '/reject', {})
-                .then(function() { document.getElementById('discussAnnouncement').textContent = 'Activity rejected'; scheduleDiscussSnapshot(); })
-                .catch(function(error) { button.disabled = false; renderDiscussError(error.message); scheduleDiscussSnapshot(); });
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/changes/apply', {
+                path: file.path,
+                keep: keep,
+                fingerprint: file.fingerprint || ''
+            })
+                .then(function(res) {
+                    document.getElementById('discussAnnouncement').textContent = res.dropped
+                        ? 'Kept ' + res.kept.length + ' of ' + res.total + ' changes in ' + file.path
+                        : 'Kept every change in ' + file.path;
+                    delete _discussReviewKeep[file.path];
+                    refreshDiscussReview();
+                    scheduleDiscussSnapshot();
+                })
+                .catch(function(error) {
+                    button.disabled = false;
+                    renderDiscussError(error.message);
+                    // The file moved underneath the writer; show them what it
+                    // says now rather than leaving a stale offer on screen.
+                    refreshDiscussReview();
+                });
+        }
+
+        // Codex reports `kind` as a plain string on some items and as an object
+        // on others, so anything that is not a word is simply not shown rather
+        // than stringified into the card.
+        function discussChangeKindLabel(change) {
+            var kind = change.kind;
+            if (typeof kind === 'string') return kind;
+            if (kind && typeof kind === 'object') {
+                var named = kind.type || kind.kind || kind.name;
+                if (typeof named === 'string') return named;
+                var keys = Object.keys(kind);
+                if (keys.length === 1 && typeof keys[0] === 'string') return keys[0];
+            }
+            return '';
+        }
+
+        // Codex sends absolute paths; the dock speaks in repository-relative
+        // ones everywhere else, so the root is trimmed off when it matches.
+        function renderDiscussChangePath(change) {
+            var path = elementWith('discuss-diff-path');
+            var name = document.createElement('code');
+            name.textContent = discussRepoRelativePath(change.path) || 'unknown file';
+            name.title = change.path || '';
+            path.appendChild(name);
+            var kind = discussChangeKindLabel(change);
+            if (kind) path.appendChild(elementWith('discuss-diff-kind', kind));
+            return path;
+        }
+
+        function discussRepoRelativePath(value) {
+            var raw = String(value || '');
+            var root = (_discussSnapshot && _discussSnapshot.root) || '';
+            if (root && raw.indexOf(root) === 0) {
+                return raw.slice(root.length).replace(/^[\\/]+/, '');
+            }
+            return raw;
         }
 
         function resolveDiscussApproval(requestId, decision, button, permissions) {

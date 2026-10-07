@@ -8,6 +8,7 @@ a server and must not carry paths from the machine that built it.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -26,6 +27,13 @@ def _novel(tmp_path: Path) -> Path:
     root = tmp_path / "my-novel"
     shutil.copytree(FIXTURE, root)
     return root
+
+
+def _spellings(path: Path) -> set[str]:
+    """A path as raw text, in a JSON string, and in the JS literal wrapping one."""
+    raw = str(path)
+    in_json = json.dumps(raw)[1:-1]
+    return {raw, path.as_posix(), in_json, in_json.replace("\\", "\\\\")}
 
 
 def _published_text(out: Path) -> dict[str, str]:
@@ -57,10 +65,11 @@ def test_a_snapshot_publishes_no_path_from_the_machine_that_built_it(tmp_path: P
     write_snapshot(root, out)
 
     for name, text in _published_text(out).items():
-        assert str(tmp_path) not in text, f"{name} names the build machine's folder"
-        assert str(Path.home()) not in text, f"{name} names the build machine's home"
+        for spelling in _spellings(tmp_path) | _spellings(Path.home()):
+            assert spelling not in text, f"{name} names a folder on the build machine: {spelling}"
     # The repository keeps its own name, so links between files still agree.
-    assert "/my-novel/manuscript/" in (out / "index.html").read_text(encoding="utf-8")
+    # Separators stay native: Windows paths keep their backslashes.
+    assert re.search(r"/my-novel(?:/|\\+)manuscript", (out / "index.html").read_text(encoding="utf-8"))
 
 
 def test_a_snapshot_answers_the_lexical_read_for_every_scene(tmp_path: Path):

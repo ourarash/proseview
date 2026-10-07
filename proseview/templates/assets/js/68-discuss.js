@@ -3295,9 +3295,32 @@ function loadDiscussDiffMode(mode) {
             details.appendChild(popover); node.appendChild(details);
         }
 
+        function discussTaskModeControlKey(element) {
+            return element.className + '|' + (element.getAttribute('aria-label') || element.textContent);
+        }
+
+        // The strip is rebuilt whenever the dock learns something, and a
+        // rebuild recreates the presets menu closed. A menu the writer opened
+        // stays open, with focus on the control they were on.
         function renderDiscussTaskMode() {
             var node = document.getElementById('discussTaskMode');
             if (!node) return;
+            var menu = node.querySelector('.discuss-presets-more');
+            var menuOpen = !!(menu && menu.open);
+            var focused = node.contains(document.activeElement) ? discussTaskModeControlKey(document.activeElement) : '';
+            buildDiscussTaskMode(node);
+            var rebuilt = menuOpen && node.querySelector('.discuss-presets-more');
+            if (rebuilt) rebuilt.open = true;
+            if (focused) {
+                Array.prototype.some.call(node.querySelectorAll('button, summary'), function(control) {
+                    if (discussTaskModeControlKey(control) !== focused) return false;
+                    control.focus();
+                    return true;
+                });
+            }
+        }
+
+        function buildDiscussTaskMode(node) {
             node.replaceChildren();
             if (_discussRepositoryAction) {
                 node.hidden = false;

@@ -6870,6 +6870,16 @@ def test_a_phone_opens_with_the_file_list_closed_until_asked(browser: Browser, s
         page = context.new_page()
         page.goto(server.base_url, wait_until="load")
         assert page.evaluate("document.documentElement.dataset.sidebar") == "closed"
+        # Nothing may be wider than the phone: one wide row makes the browser
+        # lay the whole page out wider and shrink it.
+        assert page.evaluate("innerWidth") == 390
+        # The tabs scroll in their own strip, and the chosen one stays in sight.
+        page.goto(server.base_url + "#/tab/notes")
+        page.wait_for_function(
+            """() => { const tab = document.querySelector('.tab-nav [data-tab="notes"]').getBoundingClientRect();
+                       const strip = document.querySelector('.tab-nav').getBoundingClientRect();
+                       return tab.left >= strip.left - 1 && tab.right <= strip.right + 1; }"""
+        )
         page.evaluate("setSidebarOpen(true)")
         page.reload(wait_until="load")
         assert page.evaluate("document.documentElement.dataset.sidebar") != "closed"

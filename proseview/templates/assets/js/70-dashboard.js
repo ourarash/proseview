@@ -501,6 +501,9 @@
             if (btn) {
                 btn.classList.add('active');
                 btn.setAttribute('aria-current', 'page');
+                // On a phone the tabs scroll in their own strip; keep the
+                // chosen one in sight. Nothing moves when it already is.
+                if (btn.scrollIntoView) btn.scrollIntoView({block: 'nearest', inline: 'nearest'});
             }
             currentTab = name;
             if (name === 'analysis') buildAnalysisTab();

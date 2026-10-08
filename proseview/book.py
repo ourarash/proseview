@@ -397,11 +397,13 @@ def chapter_title(scene: SceneDocument) -> str:
 
 
 def chapter_label(number: int, numbering: str) -> str:
-    """``Chapter One`` / ``Chapter 1`` / empty, per a style's numbering."""
+    """``Chapter One`` / ``Chapter 1`` / ``1`` / empty, per a style's numbering."""
     if numbering == "words":
         return f"Chapter {number_to_words(number)}"
     if numbering == "numerals":
         return f"Chapter {number}"
+    if numbering == "number":
+        return str(number)
     return ""
 
 

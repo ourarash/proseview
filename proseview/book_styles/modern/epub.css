@@ -1,0 +1,55 @@
+/* Modern, on top of Classic: sans-serif headings, a large numeral for each
+ * chapter, no drop cap, and more air around the scene break. E-readers
+ * use their own sans-serif when none of these is installed. */
+
+.chapter-heading,
+.scene-title,
+.title-page h1,
+.matter h1,
+.appendix h1,
+nav h1,
+.contents h1 {
+  font-family: "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.chapter-number {
+  font-size: 2.6em;
+  font-weight: bold;
+  letter-spacing: 0;
+}
+
+.chapter-title,
+.chapter-heading .chapter-title:only-child {
+  margin-top: 0.3em;
+  font-size: 1.1em;
+  font-style: normal;
+}
+
+.title-page h1 {
+  font-weight: bold;
+}
+
+.scene-title {
+  font-variant: normal;
+  font-weight: bold;
+  letter-spacing: 0;
+}
+
+/* No drop cap and no small capitals: the chapter simply begins. */
+p.opener::first-letter,
+p.opener.short::first-letter {
+  float: none;
+  font-size: 1em;
+  line-height: inherit;
+  margin: 0;
+}
+
+p.opener::first-line {
+  font-variant: normal;
+  letter-spacing: 0;
+}
+
+.scene-break {
+  margin: 2em 0;
+  letter-spacing: 0.4em;
+}

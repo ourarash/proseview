@@ -29,6 +29,11 @@
 // `#metadata(here().page()) <first-text-page>` so the preview opens there.
 
 #let print = config.layout == "print"
+// Modern and Romance lay out with this same file and change these choices
+// (pdf: in their style.yaml); Classic keeps the defaults.
+#let modern = theme.opener == "modern"
+#let romance = theme.opener == "romance"
+#let heading-text(..args) = text(font: theme.heading-font, ..args)
 #let leading = 0.62em
 
 // Front matter and the blank left-hand page before a chapter carry no
@@ -52,7 +57,8 @@
     config.title
   }
   set text(size: 0.78em, tracking: 0.12em, hyphenate: false)
-  align(center, smallcaps(label))
+  align(center, if modern { heading-text(size: 0.9em, tracking: 0.16em, upper(label)) }
+    else if romance { emph(label) } else { smallcaps(label) })
 }
 
 #let folio() = context {
@@ -81,7 +87,7 @@
     },
   )
   set text(
-    font: "Libertinus Serif", size: config.size, lang: config.lang, region: config.region,
+    font: theme.body-font, size: config.size, lang: config.lang, region: config.region,
     hyphenate: true, number-type: "old-style",
   )
   set par(justify: true, leading: leading, spacing: leading, first-line-indent: (amount: 1.4em, all: true))
@@ -114,7 +120,10 @@
     set text(hyphenate: false)
     v(22%)
     align(center, {
-      text(size: 2em, config.title)
+      if modern { heading-text(size: 2em, weight: "bold", config.title) }
+      else if romance { text(size: 2.4em, style: "italic", config.title) }
+      else { text(size: 2em, config.title) }
+      if romance and theme.ornament != "" { v(0.8em); text(size: 1.4em, theme.ornament) }
       if config.subtitle != "" {
         v(0.6em)
         text(size: 1.15em, style: "italic", config.subtitle)
@@ -154,7 +163,9 @@
     align(center, pad(x: 12%, emph(body)))
   } else {
     v(if print { 12% } else { 6% })
-    align(center, text(size: 1.05em, tracking: 0.2em, upper(title)))
+    align(center, if modern { heading-text(size: 1.2em, weight: "bold", title) }
+      else if romance { text(size: 1.5em, style: "italic", title) }
+      else { text(size: 1.05em, tracking: 0.2em, upper(title)) })
     v(2em)
     if kind == "also-by" { align(center, body) } else { set par(justify: true); body }
   }
@@ -175,7 +186,7 @@
 
 #let started = state("body-started", false)
 
-#let chapter(number, title, outline-label) = {
+#let chapter(number, title, outline-label, n: none) = {
   if print and config.recto {
     pagebreak(weak: true, to: "odd")
   } else {
@@ -192,15 +203,42 @@
   set par(first-line-indent: 0pt, justify: false)
   set text(hyphenate: false)
   v(if print { 16% } else { 10% })
-  align(center, {
-    if number != none {
-      text(size: 0.8em, tracking: 0.24em, upper(number))
-    }
-    if number != none and title != none { v(0.9em) }
-    if title != none {
-      text(size: 1.45em, style: if number == none { "normal" } else { "italic" }, title)
-    }
-  })
+  if modern {
+    // A large numeral over the title, both in the heading font.
+    align(center, {
+      if n != none and number != none { heading-text(size: 3.4em, weight: "bold", str(n)) }
+      if title != none {
+        v(0.4em)
+        heading-text(size: 1.25em, title)
+      } else if n == none and number != none { heading-text(size: 1.25em, number) }
+    })
+  } else if romance {
+    // An italic numeral between ornaments, then the title, large and italic.
+    align(center, {
+      if n != none and number != none {
+        let mark = if theme.ornament != "" { text(size: 1.2em, theme.ornament) } else { [] }
+        mark
+        h(0.6em)
+        text(size: 1.9em, style: "italic", str(n))
+        h(0.6em)
+        mark
+      }
+      if title != none {
+        v(0.7em)
+        text(size: 2.2em, style: "italic", title)
+      }
+    })
+  } else {
+    align(center, {
+      if number != none {
+        text(size: 0.8em, tracking: 0.24em, upper(number))
+      }
+      if number != none and title != none { v(0.9em) }
+      if title != none {
+        text(size: 1.45em, style: if number == none { "normal" } else { "italic" }, title)
+      }
+    })
+  }
   v(2.6em)
 }
 
@@ -232,8 +270,14 @@
 
 #let noindent(body) = par(first-line-indent: 0pt, body)
 
-#let scene-break() = block(above: 1.3em, below: 1.3em, width: 100%,
-  align(center, text(tracking: 0.1em, config.scene-break)))
+#let scene-break() = if modern {
+  // Extra space, then the dots: a pause rather than a mark.
+  block(above: 2em, below: 2em, width: 100%, align(center, text(tracking: 0.5em, config.scene-break)))
+} else if romance {
+  block(above: 1.4em, below: 1.4em, width: 100%, align(center, text(size: 1.3em, config.scene-break)))
+} else {
+  block(above: 1.3em, below: 1.3em, width: 100%, align(center, text(tracking: 0.1em, config.scene-break)))
+}
 
 #let scene-title(body) = heading(level: 2, body)
 
@@ -242,6 +286,11 @@
 // words are measured into exactly two lines beside the letter; the rest of
 // the paragraph then runs the full width.
 #let opener(initial, words, joined: true, short: false) = context {
+  if not theme.drop-cap {
+    // No drop cap in this style: the opening paragraph simply starts flush.
+    let rest = words.join([ ])
+    return par(first-line-indent: 0pt, if joined { [#initial#rest] } else { [#initial #rest] })
+  }
   if short {
     // Too short for a drop cap: small capitals, as the EPUB sets it.
     let space = [ ]

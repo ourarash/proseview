@@ -285,3 +285,23 @@ pre {
   white-space: pre-wrap;
   text-align: left;
 }
+
+/* Raw HTML in a scene -------------------------------------------------- */
+
+/* An <img> written as HTML sits on its own, centred, at the width the
+ * scene asked for (as a share of the page) and never wider than it. */
+.figure {
+  margin: 1.2em 0;
+  text-align: center;
+  text-indent: 0;
+}
+
+img.html-image {
+  max-width: 100%;
+  height: auto;
+}
+
+p.center {
+  text-align: center;
+  text-indent: 0;
+}

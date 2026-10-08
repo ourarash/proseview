@@ -142,4 +142,4 @@
 
 #let appendix-document(title) = block(above: leading, below: 0pt, par(first-line-indent: 0pt, strong(title)))
 
-#let book-image(path, alt: "") = block(width: 100%, align(center, image(path, alt: alt, width: 70%)))
+#let book-image(path, alt: "", width: 70%) = block(width: 100%, align(center, image(path, alt: alt, width: width)))

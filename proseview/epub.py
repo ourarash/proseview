@@ -26,6 +26,7 @@ from urllib.parse import unquote, urlparse
 
 from .book import Book, BookChapter, ExportError, SceneDocument, chapter_label, smart_punctuation
 from .book_styles import BookStyle
+from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, read_html, repository_src, straighten_tag_quotes, image_only
 
 EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")
 
@@ -90,8 +91,10 @@ class _Markdown:
     def __init__(self, images: "_Images") -> None:
         from markdown_it import MarkdownIt
 
+        # HTML is parsed so that it can be understood, never passed through:
+        # every html token is rewritten from raw_html's events below.
         self._md = MarkdownIt(
-            "commonmark", {"html": False, "xhtmlOut": True, "typographer": True}
+            "commonmark", {"html": True, "xhtmlOut": True, "typographer": True}
         ).enable(["table", "strikethrough", "replacements", "smartquotes"])
         self._images = images
 
@@ -105,18 +108,80 @@ class _Markdown:
         first_class: str = "",
         scene: str = "",
     ) -> str:
-        tokens = self._md.parse(_COMMENT_RE.sub("", text))
+        tokens = self._md.parse(straighten_tag_quotes(_COMMENT_RE.sub("", text)))
         first_done = not first_class
-        for token in tokens:
+        for index, token in enumerate(tokens):
             if shift_headings and token.type in {"heading_open", "heading_close"}:
                 level = min(6, int(token.tag[1]) + shift_headings)
                 token.tag = f"h{level}"
+            if token.type == "paragraph_open" and image_only(tokens[index + 1].children or []):
+                # A picture on its own is a figure, not a paragraph to indent.
+                token.tag = tokens[index + 2].tag = "div"
+                token.attrSet("class", "figure")
+                continue
             if not first_done and token.type == "paragraph_open" and token.level == 0:
                 token.attrJoin("class", first_class)
                 first_done = True
+            if token.type == "html_block":
+                token.content = self._html_block(token.content, source, owner, scene)
             if token.children:
                 token.children = self._inline(token.children, source, owner, scene)
         return self._md.renderer.render(tokens, self._md.options, {})
+
+    # -- raw HTML --------------------------------------------------------------
+
+    _TAGS = {"em": "em", "strong": "strong", "sup": "sup", "sub": "sub"}
+
+    def _html_image(self, event, source, owner, scene) -> str:
+        href = self._images.add(event.src, source, owner, scene)
+        style = f' style="width: {round(event.width * 100)}%"' if event.width else ""
+        return f'<img class="html-image" src="{_esc(href)}" alt="{_esc(event.alt)}"{style} />'
+
+    def _html_inline(self, events, marks: MarkStack, source, owner, scene) -> str:
+        out = []
+        for event in events:
+            if isinstance(event, HtmlText):
+                out.append(_esc(event.text))
+            elif isinstance(event, HtmlBreak):
+                out.append("<br />")
+            elif isinstance(event, HtmlImage):
+                out.append(self._html_image(event, source, owner, scene))
+            elif isinstance(event, HtmlOpen) and event.mark in self._TAGS:
+                marks.push(event.mark)
+                out.append(f"<{self._TAGS[event.mark]}>")
+            elif isinstance(event, HtmlClose) and event.mark in self._TAGS:
+                out += [f"</{self._TAGS[mark]}>" for mark in marks.pop(event.mark) if mark in self._TAGS]
+        return "".join(out)
+
+    def _html_block(self, html: str, source, owner, scene) -> str:
+        """A block of raw HTML as paragraphs and images, centred where it asked to be."""
+        blocks: list[str] = []
+        current: list = []
+        centred = 0
+
+        def flush() -> None:
+            marks = MarkStack()
+            body = self._html_inline(current, marks, source, owner, scene).strip()
+            body += "".join(f"</{self._TAGS[mark]}>" for mark in marks.drain() if mark in self._TAGS)
+            current.clear()
+            if body:
+                blocks.append(f'<p class="html-block{" center" if centred else ""}">{body}</p>')
+
+        for event in read_html(html):
+            if isinstance(event, HtmlImage):
+                flush()
+                blocks.append(
+                    f'<div class="figure{" center" if centred else ""}">'
+                    f"{self._html_image(event, source, owner, scene)}</div>"
+                )
+            elif isinstance(event, (HtmlOpen, HtmlClose)) and event.mark in {"para", "center"}:
+                flush()
+                if event.mark == "center":
+                    centred = max(0, centred + (1 if isinstance(event, HtmlOpen) else -1))
+            else:
+                current.append(event)
+        flush()
+        return "\n".join(blocks) + "\n"
 
     def _inline(self, children: list, source: Path | None, owner: str, scene: str = "") -> list:
         """Embed images, and unwrap links that would dangle inside the book.
@@ -128,8 +193,15 @@ class _Markdown:
         """
         kept = []
         dropping: list[bool] = []
+        marks = MarkStack()
         for child in children:
-            if child.type == "image":
+            if child.type == "html_inline":
+                raw = child.content
+                child.content = "" if marks.skipping else self._html_inline(read_html(raw), marks, source, owner, scene)
+                marks.track_skips(raw)
+            elif marks.skipping:
+                continue
+            elif child.type == "image":
                 child.attrSet("src", self._images.add(str(child.attrGet("src") or ""), source, owner, scene))
             elif child.type == "link_open":
                 href = str(child.attrGet("href") or "")
@@ -139,6 +211,12 @@ class _Markdown:
             elif child.type == "link_close" and dropping and dropping.pop():
                 continue
             kept.append(child)
+        if marks.open:
+            from markdown_it.token import Token
+
+            closing = Token("html_inline", "", 0)
+            closing.content = "".join(f"</{self._TAGS[mark]}>" for mark in marks.drain() if mark in self._TAGS)
+            kept.append(closing)
         return kept
 
 
@@ -150,6 +228,7 @@ def resolve_image(root: Path | None, src: str, source: Path | None, owner: str) 
     Every renderer uses these rules, so an image that works in the EPUB works
     in the PDF too.
     """
+    src = repository_src(src)
     parsed = urlparse(src)
     if parsed.scheme in {"http", "https"} or src.startswith("//"):
         raise ExportError(

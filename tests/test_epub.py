@@ -177,8 +177,10 @@ def test_comments_are_dropped_and_raw_html_cannot_break_the_page(tmp_path: Path)
     text = _text(check_epub(path))
 
     assert "TODO" not in text and "fix his entrance" not in text and "he knows" not in text
-    # Shown as text, so the page stays well-formed XHTML.
-    assert "He said &lt;br&gt; nothing." in text
+    # Understood, not printed: an unclosed <br> is a line break, and the
+    # page stays well-formed XHTML (check_epub parsed every page).
+    assert "He said <br /> nothing." in text
+    assert "&lt;br" not in text
 
 
 def test_a_single_scene_has_a_small_header_and_no_contents(tmp_path: Path):

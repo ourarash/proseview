@@ -664,7 +664,18 @@ def export_manuscript(args: argparse.Namespace) -> int:
             print(f"Saved selection {args.save_selection!r} to {root / '.proseview.yaml'}")
 
         identifier = cfg.export.identifier or new_book_identifier()
-        fmt = args.format or cfg.export.format or "epub"
+        suffix = args.output.suffix.lower() if args.output is not None else ""
+        if args.format:
+            fmt = args.format
+            if (suffix == ".epub" and fmt != "epub") or (suffix == ".pdf" and fmt == "epub"):
+                raise ExportError(f"--output {args.output.name} does not match --format {fmt}")
+        elif suffix == ".epub":
+            # The file name says what was wanted, whatever was made last time.
+            fmt = "epub"
+        elif suffix == ".pdf":
+            fmt = cfg.export.format if cfg.export.format in {"pdf-print", "pdf-share"} else "pdf-share"
+        else:
+            fmt = cfg.export.format or "epub"
         formats = ["epub", "pdf-print", "pdf-share"] if fmt == "all" else [fmt]
         if len(formats) > 1 and args.output is not None:
             raise ExportError("--output names one file; leave it out with --format all")

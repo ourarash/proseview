@@ -17,6 +17,12 @@ section here becomes the release notes on GitHub.
   style, and both are in the Export dialog (with a page-spread preview) and
   on the command line (`--format pdf-print`, `pdf-share` or `all`, `--trim`,
   `--paper`, `--watermark`). Nothing else needs installing.
+- HTML in a scene is understood in every export instead of being printed as
+  text: `<img>` tags (including the dashboard's `/repo-asset/` addresses,
+  curly-quoted attributes and tags spread over several lines) become real
+  pictures sized by their `width`, `<br>`, `<b>`, `<i>`, `<sup>` and `<sub>`
+  keep their meaning, `<p>`/`<div>` are paragraphs and can be centred, and
+  any other tag is left out with its text kept.
 - The **Manuscript** style: standard submission format for agents and
   editors, with your contact details and the word count on the title page
   (`--style manuscript --contact …`).
@@ -66,6 +72,9 @@ section here becomes the release notes on GitHub.
 
 - Files marked `scene: false` are left out of an export, as the dashboard
   leaves them out.
+- `proseview export --output book.epub` makes an EPUB even when the last
+  dashboard export was a PDF; a file name that contradicts `--format` is
+  refused.
 - When Claude cannot answer -- an exhausted plan, an API error -- the dock
   says why, instead of "Claude could not finish: success".
 - Title pages, headings and the contents get the same curly quotes and

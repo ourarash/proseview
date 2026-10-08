@@ -128,6 +128,9 @@ class StoryConfig:
     day_field: str = "day"
 
 
+#: Accepted values for ``export.epub_version``.
+EXPORT_EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")
+
 #: Accepted values for ``export.selections.<name>.order``.
 EXPORT_SELECTION_ORDERS: tuple[str, ...] = ("book", "custom")
 
@@ -153,12 +156,22 @@ class ExportConfig:
 
     ``identifier`` is written once by the first export and reused, so an
     e-reader recognises a re-export as the same book rather than a new one.
+    The book details (title through ``cover_image``) are written by the
+    dashboard after each export and read by the CLI as its defaults, so the
+    second export is one click and the command line agrees with it.
+    ``cover_image`` is a path inside the novel's folder.
     """
 
     identifier: str = ""
     style: str = ""
     scene_titles: bool | None = None
     selections: tuple[ExportSelection, ...] = ()
+    title: str = ""
+    subtitle: str = ""
+    author: str = ""
+    language: str = ""
+    epub_version: str = ""
+    cover_image: str = ""
 
     def selection(self, name: str) -> ExportSelection | None:
         wanted = name.strip().casefold()
@@ -558,11 +571,20 @@ def _coerce_export(v: Any) -> ExportConfig:
     selections = tuple(
         _coerce_export_selection(str(name), body) for name, body in raw_selections.items()
     )
+    epub_version = _coerce_str(v.get("epub_version", ""), "export.epub_version").strip().lower()
+    if epub_version and epub_version not in EXPORT_EPUB_VERSIONS:
+        raise ConfigError(f"export.epub_version must be one of {', '.join(EXPORT_EPUB_VERSIONS)}")
     return ExportConfig(
         identifier=_coerce_str(v.get("identifier", ""), "export.identifier").strip(),
         style=_coerce_str(v.get("style", ""), "export.style").strip(),
         scene_titles=scene_titles,
         selections=selections,
+        title=_coerce_str(v.get("title", ""), "export.title").strip(),
+        subtitle=_coerce_str(v.get("subtitle", ""), "export.subtitle").strip(),
+        author=_coerce_str(v.get("author", ""), "export.author").strip(),
+        language=_coerce_str(v.get("language", ""), "export.language").strip(),
+        epub_version=epub_version,
+        cover_image=_coerce_str(v.get("cover_image", ""), "export.cover_image").strip(),
     )
 
 

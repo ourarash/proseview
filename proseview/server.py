@@ -31,6 +31,11 @@ from typing import Callable, Any
 from .config import Config
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
+from .export import ExportError
+from .export_dashboard import (
+    ExportJobs, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
+    save_cover, selection_from_request,
+)
 from .hunks import changed_blocks, split_lines
 from .patches import Hunk, parse_hunks
 from .generator import (
@@ -1228,6 +1233,8 @@ class _Handler(BaseHTTPRequestHandler):
     repo_root: str
     discuss_manager: DiscussManager
     session_token: str
+    export_jobs: ExportJobs
+    export_previews: PreviewCache
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -1601,6 +1608,131 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, 500)
 
+    # ── Export ───────────────────────────────────────────────────────────────
+
+    #: Files a preview page may load from the book being previewed.
+    _PREVIEW_MIME: dict[str, str] = {
+        ".xhtml": "application/xhtml+xml; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+    }
+
+    def _send_export_error(self, exc: Exception, status: int = 400) -> None:
+        payload: dict[str, Any] = {"ok": False, "error": str(exc)}
+        if isinstance(exc, ExportError) and exc.scene:
+            payload["scene"] = exc.scene
+            payload["scene_path"] = exc.scene + ".md"
+        self._send_json(payload, status)
+
+    def _handle_export_get(self, path: str) -> None:
+        """Read-only export routes: the outline, job status, previews, files."""
+        root = Path(self.repo_root).resolve()
+        if path == "/api/export/outline":
+            try:
+                self._send_json(export_outline(root, Config.load(root)))
+            except (ExportError, ValueError) as exc:
+                self._send_export_error(exc)
+            return
+        job_match = re.fullmatch(r"/api/export/jobs/([0-9a-f]{32})", path)
+        if job_match:
+            job = self.export_jobs.get(job_match.group(1))
+            if job is None:
+                self._send_json({"ok": False, "error": "No such export"}, 404)
+            else:
+                self._send_json(job.snapshot())
+            return
+        preview_match = re.fullmatch(r"/api/export/preview/([0-9a-f]{32})/(OEBPS/[A-Za-z0-9._/-]+)", path)
+        if preview_match:
+            token, name = preview_match.groups()
+            data = self.export_previews.file(token, name)
+            mime = self._PREVIEW_MIME.get(Path(name).suffix.lower())
+            if data is None or mime is None or ".." in name.split("/"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            # A book page is text, styles and images from the same book:
+            # nothing in it may run script or reach anywhere else.
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors 'self'",
+            )
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == "/api/export/file":
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                target = exported_file(root, (query.get("path") or [""])[0])
+                data = target.read_bytes()
+            except (ExportError, OSError):
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/epub+zip")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        self._send_json({"ok": False, "error": "Export endpoint not found"}, 404)
+
+    def _handle_export_post(self, path: str) -> None:
+        """Export routes that build, write or open something."""
+        root = Path(self.repo_root).resolve()
+        try:
+            if path == "/api/export/cover":
+                body = self._read_json_limited(28 * 1024 * 1024)
+                try:
+                    data = base64.b64decode(str(body.get("data") or ""), validate=True)
+                except ValueError as exc:
+                    raise ExportError("The image did not arrive intact; try again.") from exc
+                cover = save_cover(root, str(body.get("name") or ""), data)
+                self._send_json({"ok": True, "path": cover})
+                return
+            body = self._read_json_limited(512 * 1024)
+            if path == "/api/export/preview":
+                self._send_json(build_preview(root, Config.load(root), body, self.export_previews))
+            elif path == "/api/export/start":
+                job = self.export_jobs.start(root, body)
+                self._send_json(job.snapshot(), 202)
+            elif path == "/api/export/selections":
+                from .export import collect_scene_documents, save_selection
+
+                cfg = Config.load(root)
+                name = str(body.get("name") or "").strip()
+                if not name:
+                    raise ExportError("Give the selection a name.")
+                selection = selection_from_request(body, collect_scene_documents(root, cfg))
+                if selection is None:
+                    raise ExportError("The whole book is always one click away; tick part of it to save a selection.")
+                saved = save_selection(root, cfg, selection.__class__(name=name, picks=selection.picks, order=selection.order))
+                self._send_json({"ok": True, "name": saved.name, "outline": export_outline(root, Config.load(root))})
+            elif path in {"/api/export/open", "/api/export/reveal"}:
+                target = exported_file(root, str(body.get("path") or ""))
+                open_in_system(target, reveal=path.endswith("reveal"))
+                self._send_json({"ok": True})
+            else:
+                self._send_json({"ok": False, "error": "Export endpoint not found"}, 404)
+        except ContextError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+        except (ExportError, ValueError) as exc:
+            self._send_export_error(exc)
+        except OSError as exc:
+            self._send_json({"ok": False, "error": f"Could not do that: {exc}"}, 500)
+
     def _handle_ai_client(self, body: dict[str, Any]) -> None:
         client_id = str(body.get("client_id") or "").strip()
         if not client_id:
@@ -1791,6 +1923,9 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": True, "snapshot": self.discuss_manager.get_snapshot(conversation_id)})
                 except Exception as exc:
                     self._send_discuss_error(exc)
+            return
+        if discuss_path.startswith("/api/export/"):
+            self._handle_export_get(discuss_path)
             return
         if discuss_path == "/events":
             if not self._authorize_event_stream_generation():
@@ -2118,6 +2253,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path in {"/api/files/create", "/api/files/rename", "/api/files/delete"}:
             self._handle_file_mutation(path)
+            return
+        if path.startswith("/api/export/"):
+            self._handle_export_post(path)
             return
         if path.startswith("/api/discuss/"):
             try:
@@ -2595,6 +2733,8 @@ def _make_handler(
     repo_root: str,
     discuss_manager: DiscussManager,
     session_token: str,
+    export_jobs: ExportJobs | None = None,
+    export_previews: PreviewCache | None = None,
 ) -> type:
     class BoundHandler(_Handler):
         pass
@@ -2607,6 +2747,8 @@ def _make_handler(
     BoundHandler.repo_root = repo_root  # type: ignore[method-assign]
     BoundHandler.discuss_manager = discuss_manager  # type: ignore[method-assign]
     BoundHandler.session_token = session_token  # type: ignore[method-assign]
+    BoundHandler.export_jobs = export_jobs or ExportJobs()  # type: ignore[method-assign]
+    BoundHandler.export_previews = export_previews or PreviewCache()  # type: ignore[method-assign]
     return BoundHandler
 
 

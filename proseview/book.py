@@ -31,7 +31,15 @@ Selection = ExportSelection
 
 
 class ExportError(RuntimeError):
-    """Raised when an export cannot be produced, with a readable reason."""
+    """Raised when an export cannot be produced, with a readable reason.
+
+    *scene* names the scene at fault (its path below the manuscript folder,
+    without ``.md``) when there is one, so the dashboard can offer to open it.
+    """
+
+    def __init__(self, message: str, *, scene: str = "") -> None:
+        super().__init__(message)
+        self.scene = scene
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,7 @@ class Book:
     appendices: tuple[AppendixSection, ...] = ()
     #: A quiet line for the title page of a partial book, e.g. "Chapters 3, 7–9".
     note: str = ""
+    subtitle: str = ""
     #: The source repository, for resolving images relative to each scene.
     root: Path | None = field(default=None, compare=False)
 
@@ -375,6 +384,7 @@ def build_book(
     selected: list[SceneDocument],
     *,
     title: str,
+    subtitle: str = "",
     author: str = "",
     language: str = "en-US",
     identifier: str = "",
@@ -425,6 +435,7 @@ def build_book(
     base = identifier or uuid.uuid4().urn
     return Book(
         title=title,
+        subtitle=subtitle,
         author=author,
         language=language,
         identifier=base if whole_book else selection_identifier(base, selected),

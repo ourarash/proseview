@@ -16,14 +16,11 @@ Covers:
 from __future__ import annotations
 
 import os
-import posixpath
 import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from urllib.parse import unquote, urldefrag
-from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -33,6 +30,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from proseview import cli  # noqa: E402
 from proseview.config import Config, ExportSelection  # noqa: E402
+from proseview.epub_check import structural_problems  # noqa: E402
 from proseview.export import ExportError, export_book  # noqa: E402
 
 DEMO = REPO_ROOT / "fixtures" / "demo-book"
@@ -57,58 +55,12 @@ def check_epub(path: Path) -> dict[str, bytes]:
     """Assert the container-level rules readers rely on; return the files.
 
     Not a replacement for EPUBCheck, but it catches what a hand-written
-    writer most easily gets wrong, and runs everywhere.
+    writer most easily gets wrong, and runs everywhere. The dashboard runs
+    the same check after every export (:mod:`proseview.epub_check`).
     """
+    assert structural_problems(path) == []
     with zipfile.ZipFile(path) as archive:
-        infos = archive.infolist()
-        assert infos[0].filename == "mimetype"
-        assert infos[0].compress_type == zipfile.ZIP_STORED
-        assert infos[0].extra == b""
-        files = {info.filename: archive.read(info) for info in infos}
-    assert files["mimetype"] == b"application/epub+zip"
-
-    container = ET.fromstring(files["META-INF/container.xml"])
-    rootfile = container.find(".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
-    opf_path = rootfile.get("full-path")
-    opf = ET.fromstring(files[opf_path])
-    base = posixpath.dirname(opf_path)
-    version = opf.get("version")
-
-    manifest = {item.get("id"): item for item in opf.iter(f"{OPF_NS}item")}
-    hrefs = {posixpath.normpath(posixpath.join(base, item.get("href"))) for item in manifest.values()}
-    packaged = set(files) - {"mimetype", "META-INF/container.xml", opf_path}
-    assert hrefs == packaged, f"manifest and zip disagree: {hrefs ^ packaged}"
-    spine = [ref.get("idref") for ref in opf.iter(f"{OPF_NS}itemref")]
-    assert spine and all(idref in manifest for idref in spine)
-    assert len(spine) == len(set(spine))
-
-    unique = opf.get("unique-identifier")
-    identifiers = [el for el in opf.iter("{http://purl.org/dc/elements/1.1/}identifier") if el.get("id") == unique]
-    assert len(identifiers) == 1 and identifiers[0].text
-    if version == "3.0":
-        assert [i for i in manifest.values() if "nav" in (i.get("properties") or "").split()]
-        assert any(m.get("property") == "dcterms:modified" for m in opf.iter(f"{OPF_NS}meta"))
-
-    pages = {name: ET.fromstring(data) for name, data in files.items() if name.endswith((".xhtml", ".ncx"))}
-    ids = {
-        name: [el.get("id") for el in tree.iter() if el.get("id")]
-        for name, tree in pages.items()
-    }
-    for name, values in ids.items():
-        assert len(values) == len(set(values)), f"duplicate ids in {name}"
-    for name, tree in pages.items():
-        here = posixpath.dirname(name)
-        for el in tree.iter():
-            for attr in ("href", "src"):
-                target = el.get(attr)
-                if not target or target.startswith(("http:", "https:", "mailto:")):
-                    continue
-                file_part, fragment = urldefrag(target)
-                resolved = posixpath.normpath(posixpath.join(here, unquote(file_part))) if file_part else name
-                assert resolved in files, f"{name} links missing {target}"
-                if fragment:
-                    assert fragment in ids.get(resolved, []), f"{name} links missing anchor {target}"
-    return files
+        return {info.filename: archive.read(info) for info in archive.infolist()}
 
 
 def _text(files: dict[str, bytes]) -> str:

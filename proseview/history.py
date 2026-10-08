@@ -37,6 +37,12 @@ from .scenes import resolve_manuscript_dir
 
 HISTORY_CACHE_PATH = Path(".proseview") / "history-cache.json"
 
+#: How a commit's words and lexical figures are measured. Rows cached under
+#: another measure are counted again, so a history never mixes two rules --
+#: bump this whenever the measuring changes. 2: TODO and NOTE comments are not
+#: prose.
+HISTORY_MEASURE = 2
+
 _GIT_WARNED = False
 
 
@@ -261,6 +267,8 @@ class HistoryCache:
         except json.JSONDecodeError:
             return
         for sha, d in raw.items():
+            if not isinstance(d, dict) or d.get("measure") != HISTORY_MEASURE:
+                continue
             try:
                 self._data[sha] = HistoryRow(
                     sha=d["sha"],
@@ -290,7 +298,10 @@ class HistoryCache:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        serialized = {sha: asdict(row) for sha, row in sorted(self._data.items())}
+        serialized = {
+            sha: {**asdict(row), "measure": HISTORY_MEASURE}
+            for sha, row in sorted(self._data.items())
+        }
         tmp.write_text(json.dumps(serialized, indent=2, ensure_ascii=False),
                        encoding="utf-8")
         tmp.replace(self.path)

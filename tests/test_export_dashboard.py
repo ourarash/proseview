@@ -99,14 +99,14 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
 def test_outline_word_counts_leave_out_todo_comments(book: Path):
     scene = book / "manuscript" / "ch01" / "01-down-the-rabbit-hole.md"
     before = outline(book, Config.load(book))["chapters"][0]["scenes"][0]["words"]
-    scene.write_text(scene.read_text() + "\n<!-- TODO: five more words here -->\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n<!-- TODO: five more words here -->\n")
 
     assert outline(book, Config.load(book))["chapters"][0]["scenes"][0]["words"] == before
 
 
 def test_outline_resolves_saved_selections_and_flags_stale_ones(book: Path):
     (book / ".proseview.yaml").write_text(
-        (book / ".proseview.yaml").read_text()
+        (book / ".proseview.yaml").read_text(encoding="utf-8")
         + "export:\n  selections:\n    Opening:\n      chapters: [ch01]\n"
         + "    Gone:\n      scenes: [ch99/01-nowhere]\n"
     )
@@ -215,7 +215,7 @@ def test_a_chapter_for_readers_is_only_checked_for_soundness(book: Path, tmp_pat
 def test_an_image_without_a_description_names_its_scene(book: Path, tmp_path: Path):
     (book / "manuscript" / "ch02" / "art.png").write_bytes(png(2, 2))
     scene = book / "manuscript" / "ch02" / "02-the-pool-of-tears.md"
-    scene.write_text(scene.read_text() + "\n![](art.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![](art.png)\n")
     result = export_book(book, Config.load(book), tmp_path / "book.epub", author="L. C.")
     checks = readiness(result.path, result.book, title_given=True, cover=None)
 
@@ -226,7 +226,7 @@ def test_an_image_without_a_description_names_its_scene(book: Path, tmp_path: Pa
 
 def test_a_missing_image_names_the_scene_to_open(book: Path, tmp_path: Path):
     scene = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    scene.write_text(scene.read_text() + "\n![The race](race.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n")
 
     with pytest.raises(ExportError) as caught:
         export_book(book, Config.load(book), tmp_path / "book.epub")
@@ -248,7 +248,7 @@ def test_book_details_are_remembered_and_read_back_by_the_cli(book: Path, capsys
         "title": "Alice's Adventures in Wonderland", "author": "Lewis Carroll", "subtitle": "",
         "epub_version": "epub2", "scene_titles": True,
     })
-    text = (book / ".proseview.yaml").read_text()
+    text = (book / ".proseview.yaml").read_text(encoding="utf-8")
     assert "title: Alice's Adventures in Wonderland" in text
     assert "subtitle" not in text
     # Comments elsewhere in the file survive.
@@ -373,7 +373,7 @@ def test_route_export_job_runs_to_a_dated_file_and_remembers_details(client, boo
     assert result["chapters"] == 1 and result["scenes"] == 3 and result["words"] > 0
     assert file["checks"]["headline"] == "Ready to share with readers"
 
-    config = (book / ".proseview.yaml").read_text()
+    config = (book / ".proseview.yaml").read_text(encoding="utf-8")
     assert "title: Alice's Adventures" in config and "author: Lewis Carroll" in config
     assert "identifier: urn:uuid:" in config
     assert Config.load(book).export.title == "Alice's Adventures"
@@ -388,18 +388,18 @@ def test_route_export_job_runs_to_a_dated_file_and_remembers_details(client, boo
 
 def test_route_export_failure_names_the_scene(client, book: Path):
     scene = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    scene.write_text(scene.read_text() + "\n![The race](race.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n")
     _, job = client.json("POST", "/api/export/start", {"details": {}})
     done = client.wait(job["id"])
 
     assert done["state"] == "failed"
     assert done["error"]["scene_path"] == "ch03/02-the-caucus-race.md"
-    assert not (book / ".proseview.yaml").read_text().count("identifier")
+    assert not (book / ".proseview.yaml").read_text(encoding="utf-8").count("identifier")
 
 
 def test_route_file_refuses_anything_but_an_export(client, book: Path):
     (book / "exports").mkdir()
-    (book / "exports" / "notes.txt").write_text("x")
+    (book / "exports" / "notes.txt").write_text("x", encoding="utf-8")
     for path in ("manuscript/ch01/01-down-the-rabbit-hole.md", "exports/notes.txt", "../x.epub", ".proseview.yaml"):
         assert client.request("GET", f"/api/export/file?path={path}")[0] == 404
     assert client.json("POST", "/api/export/open", {"path": ".proseview.yaml"})[0] == 400
@@ -481,7 +481,7 @@ def test_route_exports_all_three_formats_and_checks_each(client, book: Path):
     config = Config.load(book).export
     assert (config.format, config.trim) == ("all", "6x9")
     # The watermark names one reader; it is never remembered.
-    assert "For Sam" not in (book / ".proseview.yaml").read_text()
+    assert "For Sam" not in (book / ".proseview.yaml").read_text(encoding="utf-8")
 
 
 def test_route_refuses_a_style_that_cannot_make_the_format(client):

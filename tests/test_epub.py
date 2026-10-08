@@ -238,7 +238,7 @@ def test_the_drop_cap_spans_two_lines_and_no_more():
     """A float taller than two lines pushes the third line in around it."""
     import re
 
-    css = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "epub.css").read_text()
+    css = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "epub.css").read_text(encoding="utf-8")
     body_line = float(re.search(r"body \{[^}]*line-height: ([\d.]+)", css).group(1))
     rule = re.search(r"p\.opener::first-letter \{([^}]*)\}", css).group(1)
     size = float(re.search(r"font-size: ([\d.]+)em", rule).group(1))
@@ -265,7 +265,7 @@ def test_metadata_carries_title_author_language_and_identifier(tmp_path: Path):
 def test_cover_and_extra_css_are_packaged(tmp_path: Path):
     root = _novel(tmp_path)
     (root / "cover.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 16)
-    (root / "extra.css").write_text("p { color: black; }\n", encoding="utf-8")
+    (root / "extra.css").write_bytes(b"p { color: black; }\n")
 
     path, _ = _export(tmp_path, root, cover_image=root / "cover.png", css=[root / "extra.css"])
     files = check_epub(path)

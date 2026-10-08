@@ -67,11 +67,11 @@ def test_proseview_writes_copyright_dedication_and_also_by(book: Path):
 
 def test_the_writers_own_pages_come_first_and_replace_written_ones(book: Path):
     (book / "front-matter").mkdir()
-    (book / "front-matter" / "01-dedication.md").write_text("To my sister, who read it first.\n")
-    (book / "front-matter" / "02-epigraph.md").write_text("> Curiouser and curiouser!\n")
+    (book / "front-matter" / "01-dedication.md").write_text("To my sister, who read it first.\n", encoding="utf-8")
+    (book / "front-matter" / "02-epigraph.md").write_text("> Curiouser and curiouser!\n", encoding="utf-8")
     (book / "back-matter").mkdir()
-    (book / "back-matter" / "about-the-author.md").write_text("Lewis Carroll taught mathematics at Oxford.\n")
-    (book / "back-matter" / "README.md").write_text("notes, not a page\n")
+    (book / "back-matter" / "about-the-author.md").write_text("Lewis Carroll taught mathematics at Oxford.\n", encoding="utf-8")
+    (book / "back-matter" / "README.md").write_text("notes, not a page\n", encoding="utf-8")
     front, back = build_matter(
         book, author="L.", copyright_page=True, isbn="", dedication="For Alice", also_by="",
         include_files=True, today=TODAY,
@@ -97,7 +97,7 @@ def test_only_a_whole_book_or_a_selection_gets_matter(book: Path):
 
 def test_the_epub_marks_each_page_and_lists_back_matter(tmp_path: Path, book: Path):
     (book / "back-matter").mkdir()
-    (book / "back-matter" / "acknowledgements.md").write_text("Thanks to the Liddells.\n")
+    (book / "back-matter" / "acknowledgements.md").write_text("Thanks to the Liddells.\n", encoding="utf-8")
     path = export_book(book, Config.load(book), tmp_path / "b.epub", author="Lewis Carroll",
                        dedication="For Alice", also_by="Sylvie and Bruno").path
     assert structural_problems(path) == []
@@ -120,7 +120,7 @@ def test_the_epub_marks_each_page_and_lists_back_matter(tmp_path: Path, book: Pa
 @pytest.mark.parametrize("version", ["epub3", "epub2"])
 def test_epubcheck_passes_with_front_and_back_matter(tmp_path: Path, book: Path, version: str):
     (book / "back-matter").mkdir()
-    (book / "back-matter" / "about-the-author.md").write_text("Lewis Carroll taught mathematics.\n")
+    (book / "back-matter" / "about-the-author.md").write_text("Lewis Carroll taught mathematics.\n", encoding="utf-8")
     path = export_book(book, Config.load(book), tmp_path / "b.epub", author="Lewis Carroll", epub_version=version,
                        dedication="For Alice", also_by="Sylvie and Bruno", isbn="978-1-23").path
     result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
@@ -147,7 +147,7 @@ def test_manuscript_leaves_out_front_and_back_matter(tmp_path: Path, book: Path)
 
 def test_matter_settings_are_remembered_and_read_by_the_cli(tmp_path: Path, book: Path):
     (book / ".proseview.yaml").write_text(
-        (book / ".proseview.yaml").read_text()
+        (book / ".proseview.yaml").read_text(encoding="utf-8")
         + "export:\n  dedication: For Alice Liddell\n  also_by:\n    - Sylvie and Bruno\n  copyright_page: false\n"
     )
     out = tmp_path / "b.epub"
@@ -178,7 +178,7 @@ def test_changed_dates_come_from_git_and_uncommitted_edits(book: Path):
     for command in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "draft"]):
         subprocess.run(["git", "-C", str(book), *command], check=True, env=env, capture_output=True)
     edited = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    edited.write_text(edited.read_text() + "\nA new line.\n")
+    edited.write_text(edited.read_text(encoding="utf-8") + "\nA new line.\n")
 
     scenes = {s["key"]: s for c in outline(book, Config.load(book))["chapters"] for s in c["scenes"]}
     assert scenes["ch01/01-down-the-rabbit-hole"]["changed"] == "2026-01-02"

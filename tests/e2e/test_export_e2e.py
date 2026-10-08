@@ -94,9 +94,9 @@ def test_export_one_chapter_from_the_dashboard(page: Page, demo_book_server: Pro
     with zipfile.ZipFile(exported[0]) as archive:
         chapter = archive.read("OEBPS/text/chapter-001.xhtml").decode()
     assert "Chapter Three" in chapter
-    config = (root / ".proseview.yaml").read_text()
+    config = (root / ".proseview.yaml").read_text(encoding="utf-8")
     assert "author: Lewis Carroll" in config and "identifier: urn:uuid:" in config
-    assert "exports/" in (root / ".gitignore").read_text()
+    assert "exports/" in (root / ".gitignore").read_text(encoding="utf-8")
 
     page.get_by_role("button", name="Done").click()
     expect(dialog).to_be_hidden()
@@ -155,7 +155,7 @@ def test_export_a_print_pdf_of_one_chapter(page: Page, demo_book_server: Prosevi
     (pdf,) = (root / "exports").glob("alice-chapter-3-print-*.pdf")
     facts = pdf_facts(pdf.read_bytes())
     assert facts.page_sizes == ((360.0, 576.0),) and facts.unembedded_fonts == ()
-    config = (root / ".proseview.yaml").read_text()
+    config = (root / ".proseview.yaml").read_text(encoding="utf-8")
     assert "format: pdf-print" in config and "trim: 5x8" in config
     # A preview still finishing may hold its source for a moment; none stays.
     deadline = time.monotonic() + 10
@@ -240,5 +240,5 @@ def test_pick_by_character_in_the_modern_style_with_a_dedication(page: Page, dem
     with zipfile.ZipFile(epub) as archive:
         pages = "".join(archive.read(n).decode() for n in archive.namelist() if n.endswith(".xhtml"))
     assert "For Alice Liddell" in pages and "All rights reserved." in pages
-    config = (root / ".proseview.yaml").read_text()
+    config = (root / ".proseview.yaml").read_text(encoding="utf-8")
     assert "style: modern" in config and "dedication: For Alice Liddell" in config

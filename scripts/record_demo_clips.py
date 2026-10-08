@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -20,6 +21,8 @@ REPO = Path("/Users/ari/github/proseview")
 BOOK = REPO / "fixtures" / "demo-book"
 SCRATCH = Path(__file__).resolve().parents[1] / "docs" / "_clips"
 THEME = "graphite-dark"
+#: The Claude model the agents clip asks, independent of local Claude settings.
+CLIP_CLAUDE_MODEL = "opus"
 VIEWPORT = {"width": 1280, "height": 760}
 
 SELECT_JS = """(needle) => {
@@ -197,7 +200,10 @@ def flow_search(page, base, docs):
     page.wait_for_selector("#searchBox", state="visible")
     beat(page, 600)
     page.fill("#searchBox", "")
-    page.type("#searchBox", "rabbit hole", delay=60)
+    # "Queen" reaches a file, scenes, a note and the prose: every group the
+    # clip claims. ("rabbit hole" matched nothing -- the text says
+    # "rabbit-hole" -- and the clip ended on "No matches".)
+    page.type("#searchBox", "Queen", delay=60)
     beat(page, 2600)
 
 
@@ -216,6 +222,14 @@ def flow_timeline(page, base, docs):
         beat(page, 1800)
 
 
+def attach_current_scene(page) -> None:
+    attach = page.get_by_role("button", name=re.compile(r"^Attach current document"))
+    if attach.count():
+        attach.first.click()
+        page.wait_for_selector("#discussContext .discuss-chip-current")
+    beat(page, 700)
+
+
 def flow_agents(page, base, docs):
     """Two agent tabs, each its own conversation, both live at once.
 
@@ -223,6 +237,14 @@ def flow_agents(page, base, docs):
     the clip are real: a scripted stand-in would be a claim about output that
     never happened.
     """
+    # Codex reports warnings about the recording machine's own account
+    # configuration into the conversation. They say nothing about Proseview and
+    # name that account's settings, so they are kept out of a public clip.
+    page.add_init_script("""
+        new MutationObserver(() => document.querySelectorAll('.discuss-notice').forEach(n => {
+            if (/requirements layers/.test(n.textContent)) n.remove();
+        })).observe(document.documentElement, {childList: true, subtree: true});
+    """)
     open_scene(page, base, SCENE)
     beat(page, 900)
     page.evaluate("() => showDiscussAgentTab('codex')")
@@ -230,6 +252,9 @@ def flow_agents(page, base, docs):
     page.wait_for_selector("#discussSend:not([disabled])", timeout=30000)
     beat(page, 1200)
 
+    # A question carries no file until it is attached; ask about the scene on
+    # screen, the way a writer would.
+    attach_current_scene(page)
     page.fill("#discussInput", "In one sentence, what is Alice feeling here?")
     beat(page, 700)
     page.click("#discussSend")
@@ -244,6 +269,16 @@ def flow_agents(page, base, docs):
     page.wait_for_function("() => _discussAgent === 'claude'")
     page.wait_for_selector("#discussSend:not([disabled])", timeout=30000)
     beat(page, 1400)
+    # Pin the model through the picker's own path rather than whatever the
+    # recording machine's Claude settings default to, which may have no
+    # credits left; the chip in the clip then names the model that answered.
+    page.evaluate("() => saveDiscussModel({model: CLIP_CLAUDE_MODEL, effort: 'high'}, '')".replace(
+        "CLIP_CLAUDE_MODEL", repr(CLIP_CLAUDE_MODEL)))
+    page.wait_for_function(
+        "model => window._discussSnapshot && window._discussSnapshot.model.model === model",
+        arg=CLIP_CLAUDE_MODEL,
+    )
+    attach_current_scene(page)
     page.fill("#discussInput", "In one sentence, what is Alice feeling here?")
     beat(page, 700)
     page.click("#discussSend")

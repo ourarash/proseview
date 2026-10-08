@@ -8665,7 +8665,13 @@
         .export-done-box {
             display: grid;
             gap: 18px;
-            width: min(620px, 100%);
+            width: min(680px, 100%);
+            max-height: 100%;
+        }
+
+        .export-done {
+            overflow: auto;
+            place-items: start center;
         }
 
         .export-done-head {
@@ -8799,6 +8805,206 @@
 
         .export-dialog.is-finished .export-totals {
             visibility: hidden;
+        }
+
+        /* Formats and PDF options (step 2) */
+        .export-format-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 10px;
+        }
+
+        .export-format-card {
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .export-format-card input {
+            position: absolute;
+            opacity: 0;
+        }
+
+        .export-format-card:has(input:checked) {
+            border-color: var(--primary);
+            background: var(--surface-soft);
+        }
+
+        .export-format-card:has(input:focus-visible) {
+            outline: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
+            outline-offset: 2px;
+        }
+
+        .export-format-icon {
+            flex: 0 0 auto;
+            width: 26px;
+            height: 26px;
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .export-format-copy {
+            display: grid;
+            gap: 2px;
+        }
+
+        .export-format-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 14px 22px;
+        }
+
+        .export-option-group {
+            display: grid;
+            align-content: start;
+            gap: 8px;
+        }
+
+        .export-option-group > label:not(.export-toggle-row):not(.export-radio-row) {
+            display: grid;
+            gap: 2px;
+            font-size: 13px;
+        }
+
+        .export-label-plain {
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+
+        .export-select {
+            max-width: 340px;
+        }
+
+        .export-select,
+        .export-option-group input[type="text"],
+        .export-contact textarea {
+            min-height: 38px;
+            padding: 7px 10px;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+        }
+
+        .export-contact {
+            display: grid;
+            gap: 6px;
+        }
+
+        .export-contact textarea {
+            resize: vertical;
+            line-height: 1.4;
+        }
+
+        .export-style-manuscript {
+            justify-items: start;
+            gap: 5px;
+            padding: 12px 14px;
+            font-family: "Times New Roman", Times, serif;
+        }
+
+        .export-style-manuscript .thumb-head {
+            justify-self: end;
+            font-size: 6px;
+        }
+
+        .export-style-manuscript .thumb-kicker {
+            justify-self: center;
+            margin-top: 10px;
+            font-size: 8px;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .export-style-manuscript .thumb-text {
+            font-size: 7.5px;
+            line-height: 2.1;
+            text-align: left;
+            text-indent: 2em;
+        }
+
+        .export-style-manuscript .thumb-break {
+            justify-self: center;
+        }
+
+        /* PDF preview: page images, facing pages for a printed book */
+        .export-preview-format {
+            flex: 0 0 auto;
+            width: auto;
+        }
+
+        .export-paper-view {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0;
+            min-height: 360px;
+            padding: 16px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--surface-muted) 70%, var(--border));
+            overflow: hidden;
+        }
+
+        .export-paper-page {
+            display: block;
+            max-width: 100%;
+            max-height: min(56vh, 520px);
+            object-fit: contain;
+            background: #fff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .22);
+        }
+
+        .export-paper-view.is-spread .export-paper-page {
+            max-width: 50%;
+        }
+
+        .export-paper-view.is-spread .export-paper-page:first-child:not(:last-child) {
+            box-shadow: -2px 2px 12px rgba(0, 0, 0, .22), inset -8px 0 12px -10px rgba(0, 0, 0, .35);
+        }
+
+        /* A first page sits alone on the right, as it does in a book. */
+        .export-paper-view.is-first {
+            justify-content: flex-end;
+            padding-right: calc(16px + 25%);
+        }
+
+        /* Finished files */
+        .export-file-list {
+            display: grid;
+            gap: 14px;
+        }
+
+        .export-file-list.is-several .export-file-block {
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .export-file-block {
+            display: grid;
+            gap: 8px;
+        }
+
+        .export-file-block p {
+            margin: 0;
+        }
+
+        .export-file-label {
+            margin: 0;
+            font-size: 15px;
+        }
+
+        .export-file-list .export-file-actions {
+            padding-left: 0;
         }
 
         @media (max-width: 760px) {

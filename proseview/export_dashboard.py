@@ -69,7 +69,7 @@ _FORMAT_BLURBS = {
 #: Chapters a PDF preview lays out. The whole book is laid out on export;
 #: the preview only needs enough pages to judge the look.
 PREVIEW_CHAPTERS = 3
-PREVIEW_PPI = 64
+PREVIEW_PPI = 110
 
 
 def _words(scene: SceneDocument) -> int:
@@ -482,7 +482,7 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
     shortened = len(book.chapters) > PREVIEW_CHAPTERS and book.kind != "scene"
     if shortened:
         book = replace(book, chapters=book.chapters[:PREVIEW_CHAPTERS], appendices=())
-    images = render_pages(book, PdfOptions(
+    images, first_text_page = render_pages(book, PdfOptions(
         layout="print" if fmt == "pdf-print" else "share",
         style=_load(details.style),
         show_scene_titles=details.scene_titles,
@@ -500,6 +500,7 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
     return {
         "ok": True, "token": token, "pages": pages, "kind": book.kind, "format": fmt,
         "spreads": fmt == "pdf-print",
+        "first_text_page": first_text_page,
         "note": f"The preview shows the first {PREVIEW_CHAPTERS} chapters; the export has them all." if shortened else "",
     }
 

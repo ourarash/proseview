@@ -11,6 +11,7 @@ Opt-in, like the rest of the browser tier: ``pytest -m e2e_browser``.
 from __future__ import annotations
 
 import shutil
+import time
 import zipfile
 from pathlib import Path
 from typing import Iterator
@@ -59,9 +60,10 @@ def test_export_one_chapter_from_the_dashboard(page: Page, demo_book_server: Pro
     expect(page.locator("#exportTotals")).to_have_text("1 chapter, 3 scenes, 1,697 words")
     page.locator('[data-chapter-toggle="3"]').click()
     expect(page.locator("#exportTree .export-scene-row")).to_have_count(3)
-    page.get_by_role("button", name="Next: Style").click()
+    page.get_by_role("button", name="Next: Format and style").click()
 
-    # Step 2: Classic is chosen; scene titles stay off.
+    # Step 2: an e-book in the Classic style; scene titles stay off.
+    expect(page.get_by_role("radio", name="E-book (EPUB)")).to_be_checked()
     expect(page.get_by_role("radio", name="Classic")).to_be_checked()
     expect(page.locator("#exportSceneTitles")).not_to_be_checked()
     page.get_by_role("button", name="Next: Book details").click()
@@ -85,6 +87,7 @@ def test_export_one_chapter_from_the_dashboard(page: Page, demo_book_server: Pro
     download = done.get_by_role("link", name="Download")
     expect(download).to_have_attribute("href", "/api/export/file?path=" + "exports%2F" + download.get_attribute("download"))
 
+    expect(done.get_by_role("link", name="Download")).to_have_count(1)
     exported = sorted((root / "exports").glob("alices-adventures-in-wonderland-chapter-3-*.epub"))
     assert len(exported) == 1
     assert structural_problems(exported[0]) == []
@@ -119,3 +122,57 @@ def test_export_this_scene_from_the_file_browser(page: Page, demo_book_server: P
     page.keyboard.press("Escape")
     expect(page.locator("#exportDialog")).to_be_hidden()
     assert not (demo_book_server.root / "exports").exists()
+
+
+def test_export_a_print_pdf_of_one_chapter(page: Page, demo_book_server: ProseviewServer):
+    from proseview.pdf_check import pdf_facts
+
+    root = demo_book_server.root
+    page.goto(demo_book_server.url("/#/scene/ch03%2F01-a-queer-looking-party.md"))
+    page.locator("#sceneMoreBtn").click()
+    page.locator("#modalExportChapterBtn").click()
+    expect(page.locator("#exportTotals")).to_have_text("1 chapter, 3 scenes, 1,697 words")
+    page.get_by_role("button", name="Next: Format and style").click()
+
+    page.get_by_role("radio", name="Print book (PDF)").check()
+    expect(page.get_by_label("Trim size")).to_have_value("5.5x8.5")
+    page.get_by_label("Trim size").select_option("5x8")
+    expect(page.get_by_role("radio", name="Manuscript")).to_have_count(0)
+    page.get_by_role("button", name="Next: Book details").click()
+
+    page.get_by_label("Author", exact=True).fill("Lewis Carroll")
+    preview = page.locator("#exportPaperView img")
+    expect(preview.first).to_be_visible(timeout=20_000)
+    expect(page.locator("#exportPreviewStatus")).to_contain_text("of")
+    page.get_by_role("button", name="Next page").click()
+    expect(page.locator("#exportPreviewStatus")).to_contain_text("Pages")
+
+    page.get_by_role("button", name="Export PDF").click()
+    done = page.locator("#exportDoneBox")
+    expect(done).to_contain_text("Your PDF is ready", timeout=30_000)
+    expect(done).to_contain_text("A 5 × 8 in proof of this part, ready to print")
+
+    (pdf,) = (root / "exports").glob("alice-chapter-3-print-*.pdf")
+    facts = pdf_facts(pdf.read_bytes())
+    assert facts.page_sizes == ((360.0, 576.0),) and facts.unembedded_fonts == ()
+    config = (root / ".proseview.yaml").read_text()
+    assert "format: pdf-print" in config and "trim: 5x8" in config
+    # A preview still finishing may hold its source for a moment; none stays.
+    deadline = time.monotonic() + 10
+    while list((root / ".proseview").glob("preview-*.typ")) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not list((root / ".proseview").glob("preview-*.typ"))
+
+
+def test_manuscript_asks_for_contact_details(page: Page, demo_book_server: ProseviewServer):
+    page.goto(demo_book_server.url("/"))
+    page.get_by_role("button", name="Export").first.click()
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("radio", name="Shareable PDF").check()
+    page.get_by_role("radio", name="Manuscript").check()
+    page.get_by_role("button", name="Next: Book details").click()
+    expect(page.get_by_label("Contact details")).to_be_visible()
+    expect(page.locator("#exportCoverDrop")).to_be_hidden()
+    expect(page.locator("#exportPaperView img").first).to_be_visible(timeout=20_000)
+    # The preview opens on the first page of text, after the title page.
+    expect(page.locator("#exportPagePick")).to_have_value("1")

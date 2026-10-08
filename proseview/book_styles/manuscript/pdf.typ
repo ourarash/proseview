@@ -87,6 +87,7 @@
   started.update(true)
   counter(page).update(1)
   [#metadata("body") <body-start>]
+  [#metadata(here().page()) <first-text-page>]
 }
 
 #let chapter(number, title, outline-label) = {

@@ -257,19 +257,53 @@ class _Source:
 
     # -- compiling ------------------------------------------------------------------
 
-    def compile(self, gutter: float, *, fmt: str = "pdf", ppi: float | None = None):
+    def compile(self, gutter: float, *, fmt: str = "pdf", ppi: float | None = None, first_page: list | None = None):
+        import json
+        import tempfile
+
         import typst
 
         source = (self.config(gutter) + "\n" + self.body()).encode("utf-8")
-        compiler = typst.Compiler(root=str(self.root) if self.root else None, ignore_system_fonts=True)
         stamp = (self.options.timestamp or _dt.datetime.now(_dt.timezone.utc)).replace(microsecond=0)
+        root = str(self.root) if self.root else None
         try:
-            if fmt == "pdf":
-                return compiler.compile(source, format="pdf", timestamp=stamp)
-            return compiler.compile(source, format="png", ppi=ppi or 72)
-        except typst.TypstError as exc:  # pragma: no cover -- a style bug, not a writer's
+            if first_page is None or self.root is None:
+                compiler = typst.Compiler(root=root, ignore_system_fonts=True)
+                if fmt == "pdf":
+                    return compiler.compile(source, format="pdf", timestamp=stamp)
+                return compiler.compile(source, format="png", ppi=ppi or 72)
+            # Asking where the text starts needs the document as a file inside
+            # the book's folder (Typst resolves images against it), so it goes
+            # in Proseview's own working folder for the moment it takes.
+            work = self.root / ".proseview"
+            work.mkdir(exist_ok=True)
+            _sweep_previews(work)
+            with tempfile.NamedTemporaryFile("wb", prefix="preview-", suffix=".typ", dir=work, delete=False) as handle:
+                handle.write(source)
+                main = Path(handle.name)
+            try:
+                compiler = typst.Compiler(str(main), root=root, ignore_system_fonts=True)
+                images = compiler.compile(format="png", ppi=ppi or 72)
+                found = json.loads(compiler.query("<first-text-page>", field="value") or "[]")
+                first_page.append(int(found[0]) if found else 1)
+                return images
+            finally:
+                main.unlink(missing_ok=True)
+        except (typst.TypstError, RuntimeError) as exc:  # pragma: no cover -- a style bug, not a writer's
             detail = getattr(exc, "message", "") or str(exc)
             raise ExportError(f"The PDF could not be laid out: {detail}") from exc
+
+
+def _sweep_previews(work: Path, older_than: float = 600) -> None:
+    """Remove preview sources a crashed preview left behind."""
+    import time
+
+    for stale in work.glob("preview-*.typ"):
+        try:
+            if time.time() - stale.stat().st_mtime > older_than:
+                stale.unlink()
+        except OSError:
+            pass
 
 
 def page_count(data: bytes) -> int:
@@ -303,12 +337,13 @@ def write_pdf(book: Book, output: Path | None, options: PdfOptions) -> PdfResult
     return PdfResult(output, pages, data)
 
 
-def render_pages(book: Book, options: PdfOptions, *, ppi: float = 60) -> list[bytes]:
-    """PNG images of every page, for the dialog's preview."""
+def render_pages(book: Book, options: PdfOptions, *, ppi: float = 60) -> tuple[list[bytes], int]:
+    """PNG images of every page, for the dialog's preview, and where the text starts (from 1)."""
     source = _Source(book, options)
     guess = gutter_for(max(1, sum(len(s.markdown) for s in book.scenes) // 1800))
-    images = source.compile(guess, fmt="png", ppi=ppi)
-    return images if isinstance(images, list) else [images]
+    first: list[int] = []
+    images = source.compile(guess, fmt="png", ppi=ppi, first_page=first)
+    return (images if isinstance(images, list) else [images]), (first[0] if first else 1)
 
 
 def typst_source(book: Book, options: PdfOptions) -> str:

@@ -21,7 +21,11 @@
 // config holds: layout ("print" or "share"), title, subtitle, author, note,
 // lang, region, page-width, page-height, inside, outside, top, bottom, size,
 // recto (chapters start on a right-hand page), watermark, cover (a path or
-// none), kind ("book", "selection", "chapter", "scene"), scene-break.
+// none), kind ("book", "selection", "chapter", "scene"), scene-break,
+// contact, word-count.
+//
+// Where the text begins, mark it with `<body-start>` metadata, and with
+// `#metadata(here().page()) <first-text-page>` so the preview opens there.
 
 #let print = config.layout == "print"
 #let leading = 0.62em
@@ -151,6 +155,7 @@
     started.update(true)
     counter(page).update(1)
     [#metadata("body") <body-start>]
+    [#metadata(here().page()) <first-text-page>]
   }
   [#metadata("chapter") <chapter-start>]
   heading(level: 1, outline-label)
@@ -175,6 +180,7 @@
     started.update(true)
     counter(page).update(1)
     [#metadata("body") <body-start>]
+    [#metadata(here().page()) <first-text-page>]
   }
   [#metadata("chapter") <chapter-start>]
   heading(level: 1, title)

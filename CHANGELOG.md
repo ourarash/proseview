@@ -3,6 +3,13 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
+## Unreleased
+
+### Fixed
+
+- When Claude cannot answer -- an exhausted plan, an API error -- the dock
+  says why, instead of "Claude could not finish: success".
+
 ## 0.3.1 — 2026-10-08
 
 ### Changed

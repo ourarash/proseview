@@ -800,8 +800,19 @@ class ClaudeAgentClient:
         if terminal == "aborted_streaming":
             return "interrupted", ""
         if getattr(message, "is_error", False) or subtype.startswith("error"):
+            # Claude Code reports some failures -- an exhausted plan, an API
+            # error -- with subtype "success", the reason in ``result`` and no
+            # ``errors``. The subtype says nothing then, and once reached the
+            # writer as the whole explanation.
             errors = getattr(message, "errors", None) or []
-            detail = "; ".join(str(item) for item in errors) if errors else subtype
+            status = getattr(message, "api_error_status", None)
+            detail = (
+                "; ".join(str(item) for item in errors)
+                or str(getattr(message, "result", "") or "").strip()
+                or (subtype if subtype not in {"", "success"} else "")
+                or (f"Claude's service answered with an error (HTTP {status})." if status else "")
+                or "Claude stopped with an error and gave no reason."
+            )
             return "failed", _bounded(detail, 4000)
         return "completed", ""
 

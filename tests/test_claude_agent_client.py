@@ -56,6 +56,7 @@ class ResultMessage:
     errors: list = field(default_factory=list)
     session_id: str = "sess-1"
     result: str = ""
+    api_error_status: int | None = None
 
 
 class FakeSDKClient:
@@ -322,6 +323,37 @@ def test_turn_outcome_classification(message, expected_status):
     """
     status, _ = ClaudeAgentClient._turn_outcome(message)
     assert status == expected_status
+
+
+OUT_OF_CREDITS = (
+    "You're out of usage credits. Switch to another model, or manage usage credits at "
+    "https://claude.ai/settings/usage?from=cc_cli_limit_message, to continue."
+)
+
+
+@pytest.mark.parametrize(
+    "message,reason",
+    [
+        # Exactly what Claude Code sent for an exhausted plan: an error whose
+        # subtype says "success", the reason in ``result``, and no ``errors``.
+        (ResultMessage(subtype="success", is_error=True, terminal_reason="api_error",
+                       result=OUT_OF_CREDITS, api_error_status=429), OUT_OF_CREDITS),
+        (ResultMessage(subtype="error_during_execution", is_error=True, errors=["boom", "bang"]), "boom; bang"),
+        (ResultMessage(subtype="error_max_turns", is_error=True), "error_max_turns"),
+        (ResultMessage(subtype="success", is_error=True, api_error_status=503),
+         "Claude's service answered with an error (HTTP 503)."),
+        (ResultMessage(subtype="success", is_error=True), "Claude stopped with an error and gave no reason."),
+    ],
+)
+def test_a_failed_turn_says_why_it_failed(message, reason):
+    """The reason under "Claude could not finish" once read "success".
+
+    The dock showed the subtype whenever ``errors`` was empty, and for an
+    exhausted plan the subtype is "success". The writer needs the reason.
+    """
+    status, detail = ClaudeAgentClient._turn_outcome(message)
+    assert status == "failed"
+    assert detail == reason
 
 
 def test_interrupt_forwards_to_the_session():

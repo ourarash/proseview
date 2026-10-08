@@ -254,12 +254,15 @@ def build_dashboard(
     history_rows: list[HistoryRow] | None = None,
     session_token: str = "",
     static_snapshot: str = "",
+    snapshot_meta: dict[str, str] | None = None,
 ) -> str:
     """Produce the full HTML dashboard for the repo at ``root``.
 
     ``static_snapshot`` renders the page :mod:`proseview.snapshot` publishes,
     with no server behind it: ``"read-only"``, or ``"demo"``, which also lets
-    a visitor try editing with saves that stay in their tab.
+    a visitor try editing with saves that stay in their tab. ``snapshot_meta``
+    carries the title, description, address and preview image a snapshot
+    gives link previews.
     """
     cfg = cfg or Config.load(root)
     # MATTR/MTLD are read only by the Analysis tab, which fetches them on
@@ -287,6 +290,7 @@ def build_dashboard(
         recent_git=recent_git,
         session_token=session_token,
         static_snapshot=static_snapshot,
+        snapshot_meta=snapshot_meta,
     )
 
 
@@ -605,6 +609,7 @@ def render_html_report(
     recent_git: bool | None = None,
     session_token: str = "",
     static_snapshot: str = "",
+    snapshot_meta: dict[str, str] | None = None,
 ) -> str:
     del baseline
 
@@ -620,6 +625,10 @@ def render_html_report(
     elif recent_git is None:
         recent_git = True
     recent_card = _render_recent_changes_card(recent_entries, bool(recent_git), cfg)
+    if static_snapshot and not recent_git:
+        # A reader of a snapshot cannot act on "Git is not available";
+        # to them it only reads as something broken.
+        recent_card = ""
 
     target_words = cfg.target_words
     daily_target = cfg.daily_target
@@ -751,6 +760,7 @@ def render_html_report(
         "story_json": _js_json(story_payload(scenes, cfg)),
         "session_token_json": json.dumps(session_token),
         "static_snapshot": static_snapshot,
+        "snapshot_meta": snapshot_meta,
         "config_json": _js_json(dataclasses.asdict(cfg)),
         "cfg": cfg,
         "config_exists": (root / ".proseview.yaml").exists(),

@@ -48,7 +48,7 @@ def _scrubbed(text: str, root: Path) -> str:
     return text
 
 
-def _scene_lexical(root: Path, cfg: Config) -> dict[str, dict[str, object]]:
+def _scene_lexical(root: Path, cfg: Config, scenes: list) -> dict[str, dict[str, object]]:
     """What ``/api/scene/lexical`` answers, for every scene, keyed as asked.
 
     The page names a scene by its path with the manuscript folder stripped
@@ -56,7 +56,7 @@ def _scene_lexical(root: Path, cfg: Config) -> dict[str, dict[str, object]]:
     """
     prefix = cfg.manuscript_subdir + "/"
     rows: dict[str, dict[str, object]] = {}
-    for scene in collect_scene_stats(root, cfg, lexical=False):
+    for scene in scenes:
         key = scene.path.as_posix()
         key = key[len(prefix):] if key.startswith(prefix) else key
         _, body = split_frontmatter((root / scene.path).read_text(encoding="utf-8"))
@@ -83,21 +83,60 @@ def _prepare_output(root: Path, out: Path) -> None:
     out.mkdir(parents=True)
 
 
-def write_snapshot(root: Path, out: Path, cfg: Config | None = None, *, demo: bool = False) -> Path:
+def write_snapshot(
+    root: Path,
+    out: Path,
+    cfg: Config | None = None,
+    *,
+    demo: bool = False,
+    title: str = "",
+    description: str = "",
+    site_url: str = "",
+    preview_image: Path | None = None,
+) -> Path:
     """Write a copy of *root*'s dashboard into *out* and return it.
 
     The copy is read-only. ``demo`` lets a visitor try edit mode as well; what
     they save stays in their tab, since there is nowhere else for it to go.
+
+    The rest describes the copy to link previews. ``site_url`` is where it
+    will be served from; a ``preview_image`` needs it, because a preview
+    image is only fetched from a full address.
     """
     root = root.resolve()
     out = out.resolve()
     cfg = cfg or Config.load(root)
+    if preview_image is not None:
+        if not site_url:
+            raise SnapshotError("a preview image needs the site URL the snapshot will be served from")
+        if not preview_image.is_file():
+            raise SnapshotError(f"{preview_image} is not a file")
     _prepare_output(root, out)
 
+    scenes = collect_scene_stats(root, cfg, lexical=False)
+    words = sum(scene.words for scene in scenes)
+    meta = {
+        "title": title or f"{root.name} · Proseview",
+        "description": description or (
+            f"{title or root.name}: {len(scenes)} scenes, {words:,} words. "
+            "Made with Proseview, a local dashboard for Markdown novels."
+        ),
+        "url": "",
+        "image": "",
+    }
+    if site_url:
+        meta["url"] = site_url.rstrip("/") + "/"
+    if preview_image is not None:
+        image_name = "preview" + preview_image.suffix.lower()
+        shutil.copyfile(preview_image, out / image_name)
+        meta["image"] = meta["url"] + image_name
+
     files = {
-        "index.html": build_dashboard(root, cfg, static_snapshot="demo" if demo else "read-only"),
+        "index.html": build_dashboard(
+            root, cfg, static_snapshot="demo" if demo else "read-only", snapshot_meta=meta
+        ),
         "analysis.json": json.dumps(build_analysis_payload(root, cfg)),
-        "scene-lexical.json": json.dumps(_scene_lexical(root, cfg)),
+        "scene-lexical.json": json.dumps(_scene_lexical(root, cfg, scenes)),
     }
     for name, text in files.items():
         text = _scrubbed(text, root)

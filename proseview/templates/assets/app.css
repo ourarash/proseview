@@ -5960,6 +5960,19 @@
         }
 
         @media (max-width: 640px) {
+            /* A phone: the toolbar is a column, but the search and the
+               Font/Theme menus kept their desktop widths and ran off the
+               right edge. */
+            .toolbar-actions {
+                width: 100%;
+            }
+
+            .dashboard-search-mount,
+            .dashboard-search-mount .search-box {
+                min-width: 0;
+                max-width: 100%;
+            }
+
             .discuss-panel {
                 width: 100vw;
             }

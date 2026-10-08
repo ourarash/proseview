@@ -8,7 +8,7 @@ section here becomes the release notes on GitHub.
 ### Added
 
 - **Edit notes in the file view**: story-bible pages, plans, and any other
-  Markdown file in the book now have an `Edit` button, with `Mod-S`,
+  Markdown file in the book now have an `Edit` button (or press `E`), with `Mod-S`,
   backups, and the same changed-on-disk check as scenes (keep your version,
   or discard it and reload). Frontmatter is kept exactly, and a note with a
   table or raw HTML is edited as plain Markdown so nothing in it is lost.

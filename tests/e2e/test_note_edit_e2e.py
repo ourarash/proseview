@@ -99,3 +99,26 @@ def test_a_note_changed_elsewhere_is_not_overwritten(page: Page, notes_server: P
     assert "Edited elsewhere." in note.read_text(encoding="utf-8")
     page.get_by_role("button", name="Discard mine and reload").click()
     expect(page.locator("#filePreviewBody")).to_contain_text("Edited elsewhere.")
+
+
+def test_e_opens_the_editor_on_a_note_and_on_a_scene(page: Page, notes_server: ProseviewServer):
+    page.goto(notes_server.url("/#/file/story-bible%2Fcharacters%2Falice.md"))
+    expect(page.get_by_role("button", name="Edit", exact=True)).to_be_visible()
+    page.locator("#filePreviewBody").click()
+    page.keyboard.press("e")
+    editor = page.locator(".file-edit-host .ProseMirror")
+    expect(editor).to_be_visible()
+    # Typing an "e" in the editor is just a letter.
+    editor.locator("p").first.click()
+    page.keyboard.press("End")
+    page.keyboard.type(" e")
+    expect(editor).to_contain_text(" e")
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.keyboard.press("Escape")
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+
+    page.goto(notes_server.url("/#/scene/ch01%2F01-down-the-rabbit-hole.md"))
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.locator("#sceneProseHost").click()
+    page.keyboard.press("e")
+    page.wait_for_function("window._pmEditMode === true")

@@ -37,6 +37,35 @@ jobs:
       - name: Run pytest
         run: pytest -q
 
+  epubcheck:
+    # The EPUB tests run EPUBCheck, the validator the stores use, when it is
+    # installed. Writers never install Java, so this is where it runs.
+    name: EPUBCheck
+    runs-on: ubuntu-latest
+    env:
+      EPUBCHECK_VERSION: "5.2.1"
+      PROSEVIEW_REQUIRE_EPUBCHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install EPUBCheck
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/epubcheck.zip" \
+            "https://github.com/w3c/epubcheck/releases/download/v${EPUBCHECK_VERSION}/epubcheck-${EPUBCHECK_VERSION}.zip"
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          echo "EPUBCHECK_JAR=$RUNNER_TEMP/epubcheck-${EPUBCHECK_VERSION}/epubcheck.jar" >> "$GITHUB_ENV"
+      - name: Install proseview
+        run: pip install -e ".[dev]"
+      - name: Run the EPUB tests with EPUBCheck
+        run: pytest -q -rs tests/test_epub.py tests/test_export_dashboard.py
+
   browser-e2e:
     name: browser end-to-end
     runs-on: ubuntu-latest

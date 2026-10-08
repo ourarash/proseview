@@ -50,7 +50,7 @@
   } else {
     config.title
   }
-  set text(size: 0.78em, tracking: 0.12em)
+  set text(size: 0.78em, tracking: 0.12em, hyphenate: false)
   align(center, smallcaps(label))
 }
 
@@ -89,7 +89,7 @@
   // bookmarks and the contents link to them; the opener draws them itself.
   show heading.where(level: 1): it => block(height: 0pt, above: 0pt, below: 0pt, hide(it.body))
   show heading.where(level: 2): it => block(above: 2em, below: 1.2em, width: 100%,
-    align(center, text(size: 1em, weight: "regular", tracking: 0.08em, smallcaps(it.body))))
+    align(center, text(size: 1em, weight: "regular", tracking: 0.08em, hyphenate: false, smallcaps(it.body))))
   show heading: it => if it.level > 2 {
     block(above: 1.4em, below: 0.8em, text(size: 1em, weight: "regular", style: "italic", it.body))
   } else { it }
@@ -110,6 +110,7 @@
   if not print { cover-page() }
   page(header: none, footer: none, {
     set par(first-line-indent: 0pt, justify: false)
+    set text(hyphenate: false)
     v(22%)
     align(center, {
       text(size: 2em, config.title)
@@ -137,6 +138,7 @@
     set par(first-line-indent: 0pt, justify: false)
     v(10%)
     align(center, text(size: 1.1em, tracking: 0.2em, upper("Contents")))
+    set text(hyphenate: false)
     v(2em)
     show outline.entry.where(level: 1): set block(above: 0.9em)
     context outline(title: none, depth: if query(heading.where(level: 2)).len() > 0 { 2 } else { 1 }, indent: 1.4em)
@@ -159,7 +161,8 @@
   }
   [#metadata("chapter") <chapter-start>]
   heading(level: 1, outline-label)
-  set par(first-line-indent: 0pt)
+  set par(first-line-indent: 0pt, justify: false)
+  set text(hyphenate: false)
   v(if print { 16% } else { 10% })
   align(center, {
     if number != none {
@@ -184,7 +187,8 @@
   }
   [#metadata("chapter") <chapter-start>]
   heading(level: 1, title)
-  set par(first-line-indent: 0pt)
+  set par(first-line-indent: 0pt, justify: false)
+  set text(hyphenate: false)
   v(6%)
   align(center, {
     text(size: 0.78em, tracking: 0.14em, upper(config.title))
@@ -272,7 +276,7 @@
   [#metadata("chapter") <chapter-start>]
   heading(level: 1, label)
   v(8%)
-  align(center, text(size: 1.3em, label))
+  align(center, text(size: 1.3em, hyphenate: false, label))
   v(2em)
 }
 

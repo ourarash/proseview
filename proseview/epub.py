@@ -24,7 +24,7 @@ from typing import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .book import Book, BookChapter, ExportError, SceneDocument, chapter_label, smart_punctuation
+from .book import SHORT_OPENER, Book, BookChapter, ExportError, SceneDocument, chapter_label, smart_punctuation
 from .book_styles import BookStyle
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, read_html, repository_src, straighten_tag_quotes, image_only
 
@@ -85,6 +85,10 @@ class _NavEntry:
     children: list["_NavEntry"] = field(default_factory=list)
 
 
+def _plain_length(children: list) -> int:
+    return sum(len(child.content) for child in children if child.type == "text")
+
+
 class _Markdown:
     """markdown-it configured for book prose, with image collection."""
 
@@ -121,6 +125,8 @@ class _Markdown:
                 continue
             if not first_done and token.type == "paragraph_open" and token.level == 0:
                 token.attrJoin("class", first_class)
+                if first_class == "opener" and _plain_length(tokens[index + 1].children or []) < SHORT_OPENER:
+                    token.attrJoin("class", "short")
                 first_done = True
             if token.type == "html_block":
                 token.content = self._html_block(token.content, source, owner, scene)

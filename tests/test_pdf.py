@@ -15,6 +15,7 @@ Covers:
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -119,7 +120,7 @@ def test_the_renderer_lays_out_everything_markdown_can_write(tmp_path: Path):
 def test_the_opener_keeps_formatting_word_by_word():
     renderer = TypstRenderer()
     out = renderer.render("*Every* word was “hers”.", RenderContext(None), opener=True)
-    assert out == "#opener([E], ([#emph[very]], [word], [was], [“hers”\\.],), joined: true)"
+    assert out == "#opener([E], ([#emph[very]], [word], [was], [“hers”\\.],), joined: true, short: true)"
     out = renderer.render("A cat sat.", RenderContext(None), opener=True)
     assert out.startswith("#opener([A], ([cat],") and "joined: false" in out
     out = renderer.render("“Curiouser!” cried Alice.", RenderContext(None), opener=True)
@@ -349,3 +350,38 @@ def test_cli_output_name_decides_the_format_when_none_is_given(tmp_path: Path, b
     assert out.read_bytes()[:2] == b"PK"
     with pytest.raises(SystemExit, match="does not match --format pdf-print"):
         cli.main(["export", "--root", str(book), "--format", "pdf-print", "--output", str(tmp_path / "x.epub")])
+
+
+def test_a_long_opener_gets_the_drop_cap_in_the_pdf():
+    long = "Alice was beginning to get very tired of sitting by her sister on the bank, " * 3
+    out = TypstRenderer().render(long, RenderContext(None), opener=True)
+    assert out.endswith("joined: true)") and "short" not in out
+
+
+def test_manuscript_embeds_liberation_serif(tmp_path: Path, book: Path):
+    import re
+
+    result = _pdf(tmp_path, book, fmt="pdf-share", style="manuscript", selection=Selection(picks=(("chapter", "1"),)))
+    data = result.path.read_bytes()
+    fonts = {name.split(b"+")[-1] for name in re.findall(rb"/BaseFont\s*/([A-Za-z0-9+-]+)", data)}
+    assert fonts and all(name.startswith(b"LiberationSerif") for name in fonts)
+    assert pdf_facts(data).unembedded_fonts == ()
+
+
+@pytest.mark.parametrize("pages", [24, 151, 301, 501, 701])
+def test_print_layout_meets_kdps_interior_rules(pages: int):
+    """KDP, no bleed: the trim size exactly, an outside margin of at least
+    0.25 in, and an inside margin that grows with the page count."""
+    from proseview.pdf import _Source
+
+    kdp_inside = {24: 0.375, 151: 0.5, 301: 0.625, 501: 0.75, 701: 0.875}[pages]
+    docs = number_documents(collect_scene_documents(DEMO, Config.load(DEMO))[:1])
+    book_ = build_book(docs, docs, title="T")
+    for trim, (width, height) in TRIM_SIZES.items():
+        config = _Source(book_, PdfOptions(layout="print", style=load_style("classic"), trim=trim)).config(gutter_for(pages))
+        assert f"page-width: {width}," in config and f"page-height: {height}," in config
+        inside = float(re.search(r"inside: ([\d.]+)in", config).group(1))
+        outside = float(re.search(r"outside: ([\d.]+)in", config).group(1))
+        top = float(re.search(r"top: ([\d.]+)in", config).group(1))
+        bottom = float(re.search(r"bottom: ([\d.]+)in", config).group(1))
+        assert inside >= kdp_inside and min(outside, top, bottom) >= 0.25

@@ -197,6 +197,12 @@ def smart_punctuation(text: str) -> str:
     return out.replace("'", "’")
 
 
+#: An opening paragraph shorter than this (in characters) is set without a
+#: drop cap: a two-line letter beside one line of text runs into the next
+#: paragraph. It still opens in small capitals.
+SHORT_OPENER = 140
+
+
 # --------------------------------------------------------------------------
 # Resolving a selection
 

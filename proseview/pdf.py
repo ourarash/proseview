@@ -26,7 +26,11 @@ from pathlib import Path
 from typing import Callable
 
 from .book import Book, BookChapter, ExportError, chapter_label, smart_punctuation
-from .book_styles import BookStyle
+from .book_styles import STYLES_DIR, BookStyle
+
+#: Fonts bundled with Proseview (see book_styles/fonts/README.md), on top of
+#: the ones Typst carries itself.
+FONTS_DIR = STYLES_DIR / "fonts"
 from .typst_render import RenderContext, TypstRenderer, escape, string
 
 PDF_LAYOUTS: tuple[str, ...] = ("print", "share")
@@ -266,9 +270,10 @@ class _Source:
         source = (self.config(gutter) + "\n" + self.body()).encode("utf-8")
         stamp = (self.options.timestamp or _dt.datetime.now(_dt.timezone.utc)).replace(microsecond=0)
         root = str(self.root) if self.root else None
+        fonts = [str(FONTS_DIR)]
         try:
             if first_page is None or self.root is None:
-                compiler = typst.Compiler(root=root, ignore_system_fonts=True)
+                compiler = typst.Compiler(root=root, font_paths=fonts, ignore_system_fonts=True)
                 if fmt == "pdf":
                     return compiler.compile(source, format="pdf", timestamp=stamp)
                 return compiler.compile(source, format="png", ppi=ppi or 72)
@@ -282,7 +287,7 @@ class _Source:
                 handle.write(source)
                 main = Path(handle.name)
             try:
-                compiler = typst.Compiler(str(main), root=root, ignore_system_fonts=True)
+                compiler = typst.Compiler(str(main), root=root, font_paths=fonts, ignore_system_fonts=True)
                 images = compiler.compile(format="png", ppi=ppi or 72)
                 found = json.loads(compiler.query("<first-text-page>", field="value") or "[]")
                 first_page.append(int(found[0]) if found else 1)

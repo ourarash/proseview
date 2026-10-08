@@ -9,7 +9,7 @@
 //   contents()                      a table of contents, or nothing
 //   chapter(number, title, outline) a chapter opener
 //   chapter-end()                   marks where a chapter's text ends
-//   opener(initial, words, joined)  a chapter's first paragraph
+//   opener(initial, words, joined, short)  a chapter's first paragraph
 //   noindent(body)                  a paragraph after a break or a title
 //   scene-break()                   between scenes, when titles are hidden
 //   scene-title(body)               a scene's title, when titles are shown
@@ -213,7 +213,13 @@
 // in small capitals for the first line, as the EPUB style draws it. The
 // words are measured into exactly two lines beside the letter; the rest of
 // the paragraph then runs the full width.
-#let opener(initial, words, joined: true) = context {
+#let opener(initial, words, joined: true, short: false) = context {
+  if short {
+    // Too short for a drop cap: small capitals, as the EPUB sets it.
+    let space = [ ]
+    let rest = words.join(space)
+    return par(first-line-indent: 0pt, text(tracking: 0.04em, smallcaps(if joined { [#initial#rest] } else { [#initial #rest] })))
+  }
   let cap = measure(text(top-edge: "cap-height", bottom-edge: "baseline", [H])).height
   let lead = par.leading.to-absolute()
   let drop-size = text.size * ((2 * cap + lead) / cap)

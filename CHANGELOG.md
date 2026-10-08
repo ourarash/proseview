@@ -3,7 +3,7 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
-## Unreleased
+## 0.3.1 — 2026-10-08
 
 ### Changed
 

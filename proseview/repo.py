@@ -343,6 +343,9 @@ def _file_node(path: Path, root: Path, preview_max: int) -> dict[str, Any]:
         "abs_path": str(path.resolve()),
         "is_file": True,
         "modified_at": _iso_mtime(path),
+        # The exact time, for the file view's editor: a save is refused when
+        # the file changed on disk after this.
+        "mtime": path.stat().st_mtime,
         "size": size,
         "is_text": is_text,
         "too_large": too_large,

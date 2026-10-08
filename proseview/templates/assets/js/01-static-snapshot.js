@@ -96,6 +96,7 @@
                 if (url.pathname === '/analysis.json') return realFetch('analysis.json', init);
                 if (url.pathname === '/api/scene/lexical') return sceneLexical(url);
                 if (url.pathname === '/save-scene' && window.PROSEVIEW_STATIC_EDITS) return demoSave();
+                if (url.pathname === '/api/files/save' && window.PROSEVIEW_STATIC_EDITS) return demoSave();
                 return Promise.resolve(jsonResponse({ok: false, error: 'This is a read-only snapshot.'}, 503));
             };
 

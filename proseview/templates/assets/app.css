@@ -7829,6 +7829,115 @@
             background: var(--surface-muted);
             color: var(--text-main);
         }
+        /* ── Editing a note in the file view ─────────────────────────────── */
+        .file-edit-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+            min-height: 32px;
+            padding: 5px 12px;
+            border: 1px solid var(--border-strong);
+            border-radius: 7px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .file-edit-btn:hover,
+        .file-edit-btn[aria-pressed="true"] {
+            border-color: var(--primary);
+            background: var(--button-hover);
+        }
+
+        .file-edit-btn:focus-visible,
+        .file-edit-action:focus-visible,
+        .file-edit-source:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
+            outline-offset: 2px;
+        }
+
+        .file-edit-bar {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-soft);
+        }
+
+        .file-edit-status {
+            flex: 1 1 auto;
+            color: var(--text-soft);
+            font-size: 13px;
+        }
+
+        .file-edit-conflict {
+            display: inline-flex;
+            gap: 8px;
+        }
+
+        .file-edit-action {
+            min-height: 32px;
+            padding: 5px 12px;
+            border: 1px solid var(--border-strong);
+            border-radius: 7px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .file-edit-action:disabled {
+            opacity: .5;
+            cursor: default;
+        }
+
+        .file-edit-primary {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: var(--text-inverse);
+            font-weight: 600;
+        }
+
+        .file-edit-host .ProseMirror {
+            min-height: 320px;
+            outline: none;
+        }
+
+        .file-edit-note {
+            margin: 0 0 10px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .file-edit-source {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px 14px;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13.5px;
+            line-height: 1.55;
+            resize: vertical;
+        }
+
+        html[data-static-snapshot="read-only"] #filePreviewEditBtn,
+        html[data-static-snapshot="read-only"] #fileEditBar {
+            display: none !important;
+        }
+
         /* ── Export dialog ────────────────────────────────────────────────
            Three steps (what, style, details with a preview), then progress
            and the finished file with its readiness check. Colours come from

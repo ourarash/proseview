@@ -563,9 +563,19 @@
                     <option value="docsify">Docsify</option>
                     <option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option>
                 </select>
+                <button type="button" id="filePreviewEditBtn" class="file-edit-btn" onclick="toggleFileEdit()" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg><span>Edit</span></button>
                 <a id="filePreviewEditorBtn" class="editor-btn" href="#" target="_blank" style="flex-shrink:0;" title=""></a>
                 <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="toggleScenePanel(this)" style="flex-shrink:0; cursor:pointer;" title="Show or hide the scene panel">&#9707; Panel</button>
             </div>
+        </div>
+        <div id="fileEditBar" class="file-edit-bar" role="region" aria-label="Editing this file" hidden>
+            <span id="fileEditStatus" class="file-edit-status" aria-live="polite"></span>
+            <span id="fileEditConflict" class="file-edit-conflict" hidden>
+                <button type="button" id="fileEditOverwrite" class="file-edit-action">Keep my version</button>
+                <button type="button" id="fileEditReload" class="file-edit-action">Discard mine and reload</button>
+            </span>
+            <button type="button" id="fileEditCancel" class="file-edit-action">Cancel</button>
+            <button type="button" id="fileEditSave" class="file-edit-action file-edit-primary" aria-keyshortcuts="Meta+S Control+S">Save</button>
         </div>
         <div id="filePreviewBody" class="modal-body repo-preview-body"></div>
     </div>

@@ -31,6 +31,9 @@ dependencies = [
     "markdown-it-py>=3.0",
     "PyYAML>=6.0",
     "ruamel.yaml>=0.17",
+    # PDF export. Wheels for macOS, Windows and Linux carry the Typst engine
+    # and its open-licence fonts, so writers install nothing else.
+    "typst>=0.15",
 ]
 
 [project.optional-dependencies]
@@ -65,6 +68,7 @@ proseview = [
     "skills/*/SKILL.md",
     "skills/*/agents/*.yaml",
     "book_styles/*/*.css",
+    "book_styles/*/*.typ",
     "book_styles/*/*.yaml",
     "templates/*.j2",
     "templates/assets/*",

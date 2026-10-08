@@ -162,11 +162,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     export_p = sub.add_parser(
-        "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB.",
+        "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB or PDF.",
         description=(
-            "Compile the manuscript, or a selection of it, into an EPUB. Nothing "
-            "else needs installing; --engine pandoc keeps the old pandoc path "
-            "for one more release."
+            "Compile the manuscript, or a selection of it, into an EPUB, a print-ready "
+            "PDF, or a PDF to share. Nothing else needs installing; --engine pandoc "
+            "keeps the old pandoc path for EPUBs for one more release."
         ),
     )
     export_p.add_argument(
@@ -174,12 +174,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to the novel repo (default: current directory).",
     )
     export_p.add_argument(
-        "--format", choices=["epub"], default="epub",
-        help="Output format (default: epub).",
+        "--format", choices=["epub", "pdf-print", "pdf-share", "all"], default="",
+        help=(
+            "epub (an e-book), pdf-print (a paperback interior), pdf-share (a PDF to "
+            "send to readers or agents), or all three (default: export.format, else epub)."
+        ),
     )
     export_p.add_argument(
         "--output", type=Path, default=None,
-        help="Destination file (default: <root>/exports/<book>-<date>.epub).",
+        help="Destination file (default: <root>/exports/<book>-<date>.epub or .pdf).",
     )
     pick = export_p.add_argument_group(
         "choosing what to export",
@@ -223,6 +226,27 @@ def _build_parser() -> argparse.ArgumentParser:
     look.add_argument(
         "--scene-titles", action=argparse.BooleanOptionalAction, default=None,
         help="Show scene titles as headings instead of scene breaks (default: the style's choice).",
+    )
+    pdf = export_p.add_argument_group("PDF options")
+    pdf.add_argument(
+        "--trim", choices=["5x8", "5.25x8", "5.5x8.5", "6x9", "a5"], default="",
+        help="Paperback trim size for pdf-print (default: export.trim, else 5.5x8.5).",
+    )
+    pdf.add_argument(
+        "--paper", choices=["letter", "a4"], default="",
+        help="Page size for pdf-share (default: export.paper, else Letter for US English, A4 otherwise).",
+    )
+    pdf.add_argument(
+        "--recto-chapters", action=argparse.BooleanOptionalAction, default=None,
+        help="Start every chapter on a right-hand page in pdf-print (default: on).",
+    )
+    pdf.add_argument(
+        "--watermark", default="", metavar="TEXT",
+        help='Faint text across every page of pdf-share, e.g. "Advance copy for Sam".',
+    )
+    pdf.add_argument(
+        "--contact", default="",
+        help="Contact details for a manuscript's title page (--style manuscript); use \\n between lines.",
     )
     look.add_argument(
         "--cover-image", type=Path, default=None,
@@ -640,22 +664,35 @@ def export_manuscript(args: argparse.Namespace) -> int:
             print(f"Saved selection {args.save_selection!r} to {root / '.proseview.yaml'}")
 
         identifier = cfg.export.identifier or new_book_identifier()
-        result = export_book(
-            root, cfg, args.output,
-            selection=selection,
-            title=args.title,
-            subtitle=args.subtitle,
-            author=args.author,
-            language=args.language,
-            identifier=identifier,
-            epub_version=args.epub_version,
-            engine=args.engine,
-            style=args.style,
-            scene_titles=args.scene_titles,
-            cover_image=args.cover_image,
-            css=args.css,
-            appendix_folders=args.appendix,
-        )
+        fmt = args.format or cfg.export.format or "epub"
+        formats = ["epub", "pdf-print", "pdf-share"] if fmt == "all" else [fmt]
+        if len(formats) > 1 and args.output is not None:
+            raise ExportError("--output names one file; leave it out with --format all")
+        results = [
+            export_book(
+                root, cfg, args.output,
+                selection=selection,
+                title=args.title,
+                subtitle=args.subtitle,
+                author=args.author,
+                language=args.language,
+                identifier=identifier,
+                epub_version=args.epub_version,
+                engine=args.engine,
+                style=args.style,
+                scene_titles=args.scene_titles,
+                cover_image=args.cover_image,
+                css=args.css,
+                appendix_folders=args.appendix,
+                fmt=each,
+                trim=args.trim,
+                paper=args.paper,
+                recto_chapters=args.recto_chapters,
+                watermark=args.watermark,
+                contact=args.contact.replace("\\n", "\n"),
+            )
+            for each in formats
+        ]
         if not cfg.export.identifier:
             save_book_identifier(root, identifier)
             print(f"Saved a book identifier to {root / '.proseview.yaml'}, so re-exports replace this book")
@@ -663,8 +700,10 @@ def export_manuscript(args: argparse.Namespace) -> int:
         raise SystemExit(str(exc)) from exc
     if args.output is None and ensure_gitignored(root):
         print("Added exports/ to .gitignore")
-    print(f"Wrote {result.path}")
-    print(scene_count_summary(result.book.scenes))
+    for result in results:
+        pages = f" ({result.pages} pages)" if result.pages else ""
+        print(f"Wrote {result.path}{pages}")
+    print(scene_count_summary(results[0].book.scenes))
     return 0
 
 

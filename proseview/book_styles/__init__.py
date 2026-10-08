@@ -1,10 +1,12 @@
 """Book styles: how an exported book looks.
 
-A style is a folder. ``epub.css`` styles the EPUB, and ``style.yaml`` holds
-the few choices a stylesheet cannot make on its own: how chapters are
-numbered, what a scene break looks like, and whether scene titles show.
-Adding a style is adding a folder here, or pointing ``--style`` at a folder
-of your own with the same two files.
+A style is a folder. ``epub.css`` styles the EPUB, ``pdf.typ`` lays out the
+PDFs (see the comment at the top of ``classic/pdf.typ`` for what it must
+define), and ``style.yaml`` holds the few choices neither can make on its
+own: how chapters are numbered, what a scene break looks like, and whether
+scene titles show. A style may have only one of the two designs; it then
+offers only those formats. Adding a style is adding a folder here, or
+pointing ``--style`` at a folder of your own.
 """
 
 from __future__ import annotations
@@ -21,21 +23,42 @@ class StyleError(ValueError):
     """A style that cannot be found or does not make sense."""
 
 
+#: Every export format, in the order the dialog offers them.
+FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share")
+
+
 @dataclass(frozen=True)
 class BookStyle:
     name: str
     path: Path
-    css: str
+    css: str | None
     chapter_numbering: str = "words"
     scene_break: str = "* * *"
     show_scene_titles: bool = False
+    pdf_template: str | None = None
+    description: str = ""
+    #: Formats ``style.yaml`` limits the style to; empty means all it can make.
+    declared_formats: tuple[str, ...] = ()
+
+    @property
+    def formats(self) -> tuple[str, ...]:
+        """The formats this style makes: EPUB with a stylesheet, PDFs with a template."""
+        return tuple(
+            fmt for fmt in FORMATS
+            if ((fmt == "epub" and self.css is not None) or (fmt != "epub" and self.pdf_template is not None))
+            and (not self.declared_formats or fmt in self.declared_formats)
+        )
+
+
+def _is_style(folder: Path) -> bool:
+    return (folder / "epub.css").is_file() or (folder / "pdf.typ").is_file()
 
 
 def available_styles() -> list[str]:
     """Names of the styles that ship with Proseview."""
     return sorted(
         entry.name for entry in STYLES_DIR.iterdir()
-        if entry.is_dir() and (entry / "epub.css").is_file()
+        if entry.is_dir() and _is_style(entry)
     )
 
 
@@ -55,11 +78,11 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
         candidates = [Path(wanted).expanduser()]
         if base is not None and not Path(wanted).is_absolute():
             candidates.insert(0, base / wanted)
-        folder = next((c for c in candidates if (c / "epub.css").is_file()), None)
+        folder = next((c for c in candidates if _is_style(c)), None)
     if folder is None:
         raise StyleError(
             f"No book style called {wanted!r}. Built-in styles: {', '.join(available_styles())}; "
-            "or pass a folder that holds an epub.css."
+            "or pass a folder that holds an epub.css or a pdf.typ."
         )
 
     settings: dict = {}
@@ -79,11 +102,20 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
     show_titles = settings.get("show_scene_titles", False)
     if not isinstance(show_titles, bool):
         raise StyleError(f"{settings_file}: show_scene_titles must be true or false")
+    declared = settings.get("formats") or []
+    if isinstance(declared, str):
+        declared = [declared]
+    if not isinstance(declared, list) or any(str(f) not in FORMATS for f in declared):
+        raise StyleError(f"{settings_file}: formats must list some of {', '.join(FORMATS)}")
+    css_file, pdf_file = folder / "epub.css", folder / "pdf.typ"
     return BookStyle(
         name=str(settings.get("name") or folder.name),
         path=folder,
-        css=(folder / "epub.css").read_text(encoding="utf-8"),
+        css=css_file.read_text(encoding="utf-8") if css_file.is_file() else None,
         chapter_numbering=numbering,
         scene_break=str(settings.get("scene_break", "* * *")),
         show_scene_titles=show_titles,
+        pdf_template=pdf_file.read_text(encoding="utf-8") if pdf_file.is_file() else None,
+        description=str(settings.get("description") or "").strip(),
+        declared_formats=tuple(str(f) for f in declared),
     )

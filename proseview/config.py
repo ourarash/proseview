@@ -128,6 +128,9 @@ class StoryConfig:
     day_field: str = "day"
 
 
+#: Accepted values for ``export.format``: what the dashboard made last.
+EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share", "all")
+
 #: Accepted values for ``export.epub_version``.
 EXPORT_EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")
 
@@ -172,6 +175,11 @@ class ExportConfig:
     language: str = ""
     epub_version: str = ""
     cover_image: str = ""
+    format: str = ""
+    trim: str = ""
+    paper: str = ""
+    recto_chapters: bool | None = None
+    contact: str = ""
 
     def selection(self, name: str) -> ExportSelection | None:
         wanted = name.strip().casefold()
@@ -571,6 +579,12 @@ def _coerce_export(v: Any) -> ExportConfig:
     selections = tuple(
         _coerce_export_selection(str(name), body) for name, body in raw_selections.items()
     )
+    recto = v.get("recto_chapters")
+    if recto is not None and not isinstance(recto, bool):
+        raise ConfigError("export.recto_chapters must be true or false")
+    fmt = _coerce_str(v.get("format", ""), "export.format").strip().lower()
+    if fmt and fmt not in EXPORT_FORMATS:
+        raise ConfigError(f"export.format must be one of {', '.join(EXPORT_FORMATS)}")
     epub_version = _coerce_str(v.get("epub_version", ""), "export.epub_version").strip().lower()
     if epub_version and epub_version not in EXPORT_EPUB_VERSIONS:
         raise ConfigError(f"export.epub_version must be one of {', '.join(EXPORT_EPUB_VERSIONS)}")
@@ -585,6 +599,11 @@ def _coerce_export(v: Any) -> ExportConfig:
         language=_coerce_str(v.get("language", ""), "export.language").strip(),
         epub_version=epub_version,
         cover_image=_coerce_str(v.get("cover_image", ""), "export.cover_image").strip(),
+        format=fmt,
+        trim=_coerce_str(v.get("trim", ""), "export.trim").strip().lower(),
+        paper=_coerce_str(v.get("paper", ""), "export.paper").strip().lower(),
+        recto_chapters=recto,
+        contact=_coerce_str(v.get("contact", ""), "export.contact").strip(),
     )
 
 

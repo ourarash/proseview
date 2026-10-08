@@ -1646,7 +1646,9 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send_json(job.snapshot())
             return
-        preview_match = re.fullmatch(r"/api/export/preview/([0-9a-f]{32})/(OEBPS/[A-Za-z0-9._/-]+)", path)
+        preview_match = re.fullmatch(
+            r"/api/export/preview/([0-9a-f]{32})/(OEBPS/[A-Za-z0-9._/-]+|page-\d{3}\.png)", path,
+        )
         if preview_match:
             token, name = preview_match.groups()
             data = self.export_previews.file(token, name)
@@ -1679,7 +1681,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             self.send_response(200)
-            self.send_header("Content-Type", "application/epub+zip")
+            pdf = target.suffix.lower() == ".pdf"
+            self.send_header("Content-Type", "application/pdf" if pdf else "application/epub+zip")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
             self.send_header("X-Content-Type-Options", "nosniff")

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .book import ExportError
+from .book import SHORT_OPENER, ExportError
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, image_only, read_html, straighten_tag_quotes
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -353,4 +353,8 @@ class TypstRenderer:
             # A link's words stay, unlinked: a drop-cap opener is no place for one.
         flush()
         body = ", ".join(f"[{word}]" for word in words)
-        return f"#opener([{escape(initial)}], ({body},), joined: {'true' if joined[0] else 'false'})"
+        short = sum(len(c.content) for c in children if c.type == "text") < SHORT_OPENER
+        return (
+            f"#opener([{escape(initial)}], ({body},), joined: {'true' if joined[0] else 'false'}"
+            + (", short: true)" if short else ")")
+        )

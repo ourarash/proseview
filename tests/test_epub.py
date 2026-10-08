@@ -117,9 +117,16 @@ def test_chapters_open_with_words_and_a_drop_cap_paragraph(tmp_path: Path):
     chapter = check_epub(path)["OEBPS/text/chapter-001.xhtml"].decode()
 
     assert '<span class="chapter-number">Chapter One</span> <span class="chapter-title">The Shop</span>' in chapter
-    assert '<p class="opener">Rena opened the shop.</p>' in chapter
+    # One short line: small capitals, but no drop cap hanging into the next paragraph.
+    assert '<p class="opener short">Rena opened the shop.</p>' in chapter
     # Smart punctuation, as pandoc gave it.
     assert "It was “early” – too early." in chapter
+
+
+def test_a_long_opening_paragraph_gets_the_drop_cap(tmp_path: Path):
+    path, _ = _export(tmp_path, selection=ExportSelection(picks=(("chapter", "1"),)))
+    chapter = check_epub(path)["OEBPS/text/chapter-001.xhtml"].decode()
+    assert '<p class="opener">Alice was beginning' in chapter
 
 
 def test_a_chapter_named_only_by_its_folder_shows_just_the_number(tmp_path: Path):

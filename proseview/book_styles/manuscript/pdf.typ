@@ -1,4 +1,5 @@
-// Manuscript: standard submission format, as agents and editors ask for it.
+// Manuscript: standard submission format, as agents and editors ask for it,
+// in Liberation Serif (Times New Roman's metrics, bundled and embedded).
 //
 // Defines the same functions as classic/pdf.typ (see the list there), laid
 // out the way a submission is: Letter or A4, 1 in margins, 12 pt type,
@@ -44,7 +45,9 @@
       rotate(-38deg, text(size: 30pt, fill: luma(235), config.watermark))
     },
   )
-  set text(font: "Libertinus Serif", size: 12pt, lang: config.lang, region: config.region, hyphenate: false)
+  // Liberation Serif has Times New Roman's metrics, so a page reads and
+  // counts the way agents expect, and it ships with Proseview to be embedded.
+  set text(font: "Liberation Serif", size: 12pt, lang: config.lang, region: config.region, hyphenate: false)
   set par(justify: false, leading: leading, spacing: leading, first-line-indent: (amount: 0.5in, all: true))
   set block(spacing: leading)
   show heading.where(level: 1): it => block(height: 0pt, above: 0pt, below: 0pt, hide(it.body))
@@ -127,7 +130,7 @@
 
 #let scene-title(body) = heading(level: 2, body)
 
-#let opener(initial, words, joined: true) = {
+#let opener(initial, words, joined: true, short: false) = {
   let rest = words.join([ ])
   par(if joined { [#initial#rest] } else { [#initial #rest] })
 }

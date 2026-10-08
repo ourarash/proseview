@@ -73,6 +73,15 @@ p.opener::first-letter {
   margin: 0.12em 0.1em 0 0;
 }
 
+/* A one-line opening paragraph keeps its small capitals but no drop cap,
+ * which would hang into the paragraph below. */
+p.opener.short::first-letter {
+  float: none;
+  font-size: 1em;
+  line-height: inherit;
+  margin: 0;
+}
+
 p.opener::first-line {
   font-variant: small-caps;
   letter-spacing: 0.04em;

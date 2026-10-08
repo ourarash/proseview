@@ -58,7 +58,7 @@ def available_styles() -> list[str]:
     """Names of the styles that ship with Proseview."""
     return sorted(
         entry.name for entry in STYLES_DIR.iterdir()
-        if entry.is_dir() and _is_style(entry)
+        if entry.is_dir() and entry.name != "fonts" and _is_style(entry)
     )
 
 

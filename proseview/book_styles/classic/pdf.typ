@@ -5,7 +5,8 @@
 // any pdf.typ that defines the same functions:
 //
 //   book(body)                      page set-up; wraps the whole document
-//   title-page()                    the title page (and its blank back, in print)
+//   title-page(verso)               the title page (and its blank back, in print)
+//   matter(kind, title, show-title, body)  a page before or after the story
 //   contents()                      a table of contents, or nothing
 //   chapter(number, title, outline) a chapter opener
 //   chapter-end()                   marks where a chapter's text ends
@@ -106,7 +107,7 @@
   }
 }
 
-#let title-page() = {
+#let title-page(verso: true) = {
   if not print { cover-page() }
   page(header: none, footer: none, {
     set par(first-line-indent: 0pt, justify: false)
@@ -128,8 +129,35 @@
       }
     })
   })
-  // The back of the title page stays blank, so chapter one opens on the right.
-  if print { page(header: none, footer: none, []) }
+  // The back of the title page stays blank (unless the copyright page takes
+  // it), so what follows opens on the right.
+  if print and verso { page(header: none, footer: none, []) }
+}
+
+// A page before or after the story. In print the copyright page takes the
+// back of the title page and the others open on a right-hand page.
+#let matter(kind, title, show-title, body) = {
+  if print and kind != "copyright" {
+    pagebreak(weak: true, to: "odd")
+  } else {
+    pagebreak(weak: true)
+  }
+  [#metadata("chapter") <chapter-start>]
+  set par(first-line-indent: 0pt, justify: false)
+  set text(hyphenate: false)
+  if show-title { heading(level: 1, title) }
+  if kind == "copyright" {
+    v(1fr)
+    text(size: 0.8em, body)
+  } else if kind in ("dedication", "epigraph") {
+    v(28%)
+    align(center, pad(x: 12%, emph(body)))
+  } else {
+    v(if print { 12% } else { 6% })
+    align(center, text(size: 1.05em, tracking: 0.2em, upper(title)))
+    v(2em)
+    if kind == "also-by" { align(center, body) } else { set par(justify: true); body }
+  }
 }
 
 #let contents() = {

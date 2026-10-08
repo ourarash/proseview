@@ -180,6 +180,11 @@ class ExportConfig:
     paper: str = ""
     recto_chapters: bool | None = None
     contact: str = ""
+    copyright_page: bool | None = None
+    isbn: str = ""
+    dedication: str = ""
+    also_by: str = ""
+    matter_files: bool | None = None
 
     def selection(self, name: str) -> ExportSelection | None:
         wanted = name.strip().casefold()
@@ -604,7 +609,25 @@ def _coerce_export(v: Any) -> ExportConfig:
         paper=_coerce_str(v.get("paper", ""), "export.paper").strip().lower(),
         recto_chapters=recto,
         contact=_coerce_str(v.get("contact", ""), "export.contact").strip(),
+        copyright_page=_coerce_optional_bool(v.get("copyright_page"), "export.copyright_page"),
+        isbn=_coerce_str(v.get("isbn", ""), "export.isbn").strip(),
+        dedication=_coerce_str(v.get("dedication", ""), "export.dedication").strip(),
+        also_by=_coerce_lines(v.get("also_by", ""), "export.also_by"),
+        matter_files=_coerce_optional_bool(v.get("matter_files"), "export.matter_files"),
     )
+
+
+def _coerce_lines(v: Any, key: str) -> str:
+    """A list of lines, or one string with a line each, as one string."""
+    if isinstance(v, list):
+        return "\n".join(str(item).strip() for item in v if str(item).strip())
+    return _coerce_str(v or "", key).strip()
+
+
+def _coerce_optional_bool(v: Any, key: str) -> bool | None:
+    if v is not None and not isinstance(v, bool):
+        raise ConfigError(f"{key} must be true or false")
+    return v
 
 
 def _export_tokens(v: Any, key: str) -> list[str]:

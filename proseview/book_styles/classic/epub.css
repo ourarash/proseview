@@ -216,6 +216,42 @@ nav[hidden] {
   max-height: 100%;
 }
 
+/* Front and back matter ------------------------------------------------ */
+
+.matter h1 {
+  font-size: 1.2em;
+  font-weight: normal;
+  letter-spacing: 0.15em;
+  text-align: center;
+  text-transform: uppercase;
+  margin: 2em 0 1.5em;
+}
+
+.matter-copyright {
+  margin-top: 40%;
+  font-size: 0.8em;
+}
+
+.matter-copyright p,
+.matter-dedication p,
+.matter-epigraph p {
+  text-indent: 0;
+  margin: 0 0 0.6em;
+}
+
+.matter-dedication,
+.matter-epigraph {
+  margin: 30% 10% 0;
+  text-align: center;
+  font-style: italic;
+}
+
+.matter-also-by p {
+  text-align: center;
+  text-indent: 0;
+  margin: 0.4em 0;
+}
+
 /* Appendices ---------------------------------------------------------- */
 
 .appendix h1 {

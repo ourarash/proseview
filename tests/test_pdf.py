@@ -338,7 +338,7 @@ def test_cli_pandoc_engine_is_epub_only(tmp_path: Path, book: Path):
 def test_titles_and_headings_are_never_hyphenated():
     """A title page reading "Wonder-land" looks like a mistake, not a style."""
     template = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "pdf.typ").read_text()
-    for function in ("#let title-page()", "#let chapter(", "#let single-scene(", "#let running-head()"):
+    for function in ("#let title-page(", "#let chapter(", "#let single-scene(", "#let running-head()"):
         body = template.split(function, 1)[1].split("\n#let ", 1)[0]
         assert "hyphenate: false" in body, function
 

@@ -88,6 +88,7 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
         "title": "", "subtitle": "", "author": "", "language": "en-US", "epub_version": "epub3",
         "style": "classic", "scene_titles": False, "cover_image": "", "format": "epub",
         "trim": "5.5x8.5", "paper": "letter", "recto_chapters": True, "contact": "", "watermark": "",
+        "copyright_page": True, "isbn": "", "dedication": "", "also_by": "", "matter_files": True,
     }
     styles = {style["name"]: style for style in data["styles"]}
     assert styles["classic"]["formats"] == ["epub", "pdf-print", "pdf-share"]

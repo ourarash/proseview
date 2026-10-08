@@ -25,6 +25,7 @@ from typing import Callable
 from .book import (
     AppendixSection,
     Book,
+    MatterPage,
     ExportError,
     SceneDocument,
     Selection,
@@ -286,6 +287,11 @@ def export_book(
     recto_chapters: bool | None = None,
     watermark: str = "",
     contact: str = "",
+    copyright_page: bool | None = None,
+    isbn: str = "",
+    dedication: str = "",
+    also_by: str = "",
+    matter_files: bool | None = None,
 ) -> ExportResult:
     """Export *selection* (default: the whole book) as an EPUB or a PDF.
 
@@ -318,7 +324,8 @@ def export_book(
         progress("Gathering your scenes", 0.0)
     book = prepare_book(
         root, cfg, selection, title=title, subtitle=subtitle, author=author, language=language,
-        identifier=identifier, appendix_folders=appendix_folders,
+        identifier=identifier, appendix_folders=appendix_folders, copyright_page=copyright_page,
+        isbn=isbn, dedication=dedication, also_by=also_by, matter_files=matter_files,
     )
 
     try:
@@ -381,6 +388,87 @@ def export_book(
     return ExportResult(output, book)
 
 
+#: Where a writer keeps pages that go before and after the story.
+FRONT_MATTER_DIR = "front-matter"
+BACK_MATTER_DIR = "back-matter"
+
+_MATTER_TITLES = {
+    "copyright": "Copyright", "dedication": "Dedication", "epigraph": "Epigraph", "foreword": "Foreword",
+    "preface": "Preface", "acknowledgements": "Acknowledgements", "about-the-author": "About the Author",
+    "also-by": "Also By", "afterword": "Afterword",
+}
+
+
+def _matter_kind(stem: str) -> str:
+    """What a file's name says it is: ``02-dedication`` is a dedication."""
+    name = re.sub(r"^[\d\s._-]+", "", stem.lower()).replace("_", "-")
+    for kind, words in (
+        ("copyright", ("copyright",)), ("dedication", ("dedication",)), ("epigraph", ("epigraph",)),
+        ("foreword", ("foreword",)), ("preface", ("preface",)),
+        ("acknowledgements", ("acknowledgement", "acknowledgment")),
+        ("about-the-author", ("about-the-author", "about-author", "author")),
+        ("also-by", ("also-by",)), ("afterword", ("afterword",)),
+    ):
+        if any(word in name for word in words):
+            return kind
+    return "other"
+
+
+def matter_files(root: Path) -> dict[str, list[MatterPage]]:
+    """The writer's own front and back matter: the Markdown in front-matter/ and back-matter/.
+
+    Files are taken in name order, so ``01-dedication.md`` comes before
+    ``02-epigraph.md``. A title comes from frontmatter or the file name.
+    """
+    found: dict[str, list[MatterPage]] = {"front": [], "back": []}
+    for side, folder in (("front", FRONT_MATTER_DIR), ("back", BACK_MATTER_DIR)):
+        directory = root / folder
+        if not directory.is_dir() or directory.is_symlink():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            if path.name.lower() == "readme.md" or path.is_symlink():
+                continue
+            fm, body = split_frontmatter(read_repo_text(path))
+            kind = _matter_kind(path.stem)
+            stem_title = re.sub(r"^[\d\s._-]+", "", path.stem).replace("-", " ").replace("_", " ").strip()
+            title = str(fm.get("title") or _MATTER_TITLES.get(kind) or stem_title.title() or kind).strip()
+            found[side].append(MatterPage(kind, title, body.strip(), f"{folder}/{path.name}"))
+    return found
+
+
+def build_matter(
+    root: Path, *, author: str, copyright_page: bool, isbn: str, dedication: str, also_by: str,
+    include_files: bool, today: _dt.date | None = None,
+) -> tuple[tuple[MatterPage, ...], tuple[MatterPage, ...]]:
+    """Front and back matter for a book: the writer's files, then the pages Proseview writes.
+
+    A file of a kind (``front-matter/dedication.md``) replaces the page
+    Proseview would write for it. Proseview's pages: a copyright page from
+    the author and year (and an ISBN when given), a dedication, and an
+    "Also by" list of the author's other books at the back.
+    """
+    files = matter_files(root) if include_files else {"front": [], "back": []}
+    front = list(files["front"])
+    back = list(files["back"])
+    kinds = {page.kind for page in front + back}
+    built_front: list[MatterPage] = []
+    if copyright_page and "copyright" not in kinds:
+        year = (today or _dt.date.today()).year
+        lines = [f"Copyright © {year} {author}".rstrip(), "", "All rights reserved."]
+        if isbn.strip():
+            lines += ["", f"ISBN {isbn.strip()}"]
+        built_front.append(MatterPage("copyright", "Copyright", "\n".join(lines)))
+    if dedication.strip() and "dedication" not in kinds:
+        built_front.append(MatterPage("dedication", "Dedication", dedication.strip()))
+    if also_by.strip() and "also-by" not in kinds:
+        titles = [line.strip(" -*") for line in also_by.splitlines() if line.strip(" -*")]
+        heading = f"Also by {author}" if author else "Also By"
+        back.append(MatterPage("also-by", heading, "\n\n".join(f"*{t}*" for t in titles)))
+    order = {"copyright": 0, "dedication": 1, "epigraph": 2}
+    front = sorted(built_front + front, key=lambda page: order.get(page.kind, 3))
+    return tuple(front), tuple(back)
+
+
 def prepare_book(
     root: Path,
     cfg: Config,
@@ -392,13 +480,22 @@ def prepare_book(
     language: str = "",
     identifier: str = "",
     appendix_folders: list[str] | None = None,
+    copyright_page: bool | None = None,
+    isbn: str = "",
+    dedication: str = "",
+    also_by: str = "",
+    matter_files: bool | None = None,
 ) -> Book:
-    """The :class:`Book` an export of *selection* would write, with saved details filled in."""
+    """The :class:`Book` an export of *selection* would write, with saved details filled in.
+
+    A whole book or a selection of chapters gets its front and back matter;
+    a single chapter or scene, sent to a reader for one piece, does not.
+    """
     saved = cfg.export
     documents = collect_scene_documents(root, cfg)
     selected = resolve_selection(documents, selection)
     appendices = [collect_appendix_documents(root, folder, cfg) for folder in appendix_folders or []]
-    return build_book(
+    book = build_book(
         documents,
         selected,
         title=title or saved.title or default_title(root),
@@ -410,6 +507,24 @@ def prepare_book(
         appendices=appendices,
         root=root.resolve(),
     )
+    if not book.has_contents:
+        return book
+    from dataclasses import replace
+
+    front, back = build_matter(
+        root,
+        author=book.author,
+        copyright_page=_first_set(copyright_page, saved.copyright_page, True),
+        isbn=isbn or saved.isbn,
+        dedication=dedication or saved.dedication,
+        also_by=also_by or saved.also_by,
+        include_files=_first_set(matter_files, saved.matter_files, True),
+    )
+    return replace(book, front_matter=front, back_matter=back)
+
+
+def _first_set(*values):
+    return next(value for value in values if value is not None)
 
 
 def _scaled(progress: Callable[[str, float], None], start: float, end: float) -> Callable[[str, float], None]:
@@ -534,6 +649,7 @@ def save_book_identifier(root: Path, identifier: str) -> None:
 BOOK_DETAIL_KEYS: tuple[str, ...] = (
     "title", "subtitle", "author", "language", "format", "epub_version", "style", "scene_titles",
     "trim", "paper", "recto_chapters", "contact", "cover_image",
+    "copyright_page", "isbn", "dedication", "also_by", "matter_files",
 )
 
 

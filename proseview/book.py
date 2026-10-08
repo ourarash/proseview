@@ -70,6 +70,41 @@ class AppendixSection:
     documents: list[tuple[str, str]]
 
 
+#: Front and back matter kinds, with what an EPUB calls them.
+MATTER_KINDS: dict[str, str] = {
+    "copyright": "copyright-page",
+    "dedication": "dedication",
+    "epigraph": "epigraph",
+    "foreword": "foreword",
+    "preface": "preface",
+    "prologue-note": "",
+    "acknowledgements": "acknowledgments",
+    "about-the-author": "",
+    "also-by": "",
+    "afterword": "afterword",
+    "other": "",
+}
+
+
+@dataclass(frozen=True)
+class MatterPage:
+    """A page before or after the story: a copyright page, a dedication, an "About the author".
+
+    ``source`` is the file it came from (``front-matter/dedication.md``), or
+    empty for a page Proseview wrote from the book's details.
+    """
+
+    kind: str
+    title: str
+    markdown: str
+    source: str = ""
+
+    @property
+    def shows_title(self) -> bool:
+        """Copyright, dedication and epigraph pages speak for themselves."""
+        return self.kind not in {"copyright", "dedication", "epigraph"}
+
+
 @dataclass(frozen=True)
 class BookChapter:
     """A run of selected scenes from one chapter.
@@ -98,6 +133,8 @@ class Book:
     #: A quiet line for the title page of a partial book, e.g. "Chapters 3, 7–9".
     note: str = ""
     subtitle: str = ""
+    front_matter: tuple[MatterPage, ...] = ()
+    back_matter: tuple[MatterPage, ...] = ()
     #: The source repository, for resolving images relative to each scene.
     root: Path | None = field(default=None, compare=False)
 

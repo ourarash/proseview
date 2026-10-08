@@ -34,7 +34,7 @@ def test_dashboard_contains_structural_markers():
 
     for marker in [
         "<!DOCTYPE html>",
-        '<html lang="en" data-theme="light">',
+        '<html lang="en" data-theme="graphite-dark">',
         'class="top-banner"',
         'id="themeToggle"',
         "Book-Wide Lexical Health",
@@ -63,7 +63,8 @@ def test_dashboard_emits_theme_bootstrap_and_token_blocks():
         "const storedKey = 'proseview-theme'",
         "const THEME_STORAGE_KEY = 'proseview-theme'",
         "localStorage.getItem(storedKey)",
-        "window.matchMedia('(prefers-color-scheme: dark)')",
+        # A first visit opens in Graphite Dark whatever the OS prefers.
+        "let theme = 'graphite-dark';",
         "document.documentElement.dataset.theme = theme;",
         "document.documentElement.dataset.theme = name;",
         ":root {",

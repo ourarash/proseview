@@ -88,6 +88,10 @@ let currentTab = 'overview';
 
         const THEME_STORAGE_KEY = 'proseview-theme';
         const THEME_ORDER = ['light', 'dark', 'docsify', 'hopscotch', 'graphite-light', 'graphite-dark'];
+        // What a first visit opens in. The <html> attribute and the pre-paint
+        // bootstrap in index.html.j2 repeat it; test_themes.py keeps all three
+        // in step.
+        const DEFAULT_THEME = 'graphite-dark';
         const THEME_LABELS = {
             light: 'Light',
             dark: 'Dark',

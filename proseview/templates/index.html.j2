@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}>
+<html lang="en" data-theme="graphite-dark"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <title>Manuscript Dashboard</title>
@@ -7,23 +7,20 @@
     <script id="proseview-bootstrap">
         (function() {
             const storedKey = 'proseview-theme';
-            let theme = 'light';
+            let theme = 'graphite-dark';
             try {
-                // Must stay in step with THEME_ORDER in 00-state.js. This runs
-                // before any other script so the theme is set before first
-                // paint, so it cannot read THEME_ORDER directly -- a value
-                // missing here is silently rejected on load and the reader's
-                // choice resets to light. test_themes.py guards the pair.
+                // Must stay in step with THEME_ORDER and DEFAULT_THEME in
+                // 00-state.js. This runs before any other script so the theme
+                // is set before first paint, so it cannot read them directly --
+                // a value missing here is silently rejected on load and the
+                // reader's choice resets to the default. test_themes.py guards
+                // both.
                 const allowed = ['light', 'dark', 'docsify', 'hopscotch',
                                  'graphite-light', 'graphite-dark'];
                 const stored = localStorage.getItem(storedKey);
-                if (allowed.indexOf(stored) >= 0) {
-                    theme = stored;
-                } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    theme = 'dark';
-                }
+                if (allowed.indexOf(stored) >= 0) theme = stored;
             } catch (err) {
-                theme = 'light';
+                theme = 'graphite-dark';
             }
             document.documentElement.dataset.theme = theme;
         })();

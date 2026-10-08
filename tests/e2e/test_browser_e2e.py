@@ -6803,6 +6803,13 @@ def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, 
     page.wait_for_selector("#analysisContent:not([hidden])")
     assert "/demo/analysis.json" in requested
 
+    # TODOs and notes can be read, not edited or deleted.
+    page.goto(snapshot_site + "#/tab/todos")
+    actions = page.locator(".note-entry-actions")
+    actions.first.wait_for(state="attached")
+    assert actions.count() > 0
+    assert all(not actions.nth(i).is_visible() for i in range(actions.count()))
+
     outside = [path for path in requested if not path.startswith("/demo/")]
     assert not outside, f"requests left the project path: {outside}"
 

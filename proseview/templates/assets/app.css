@@ -7845,7 +7845,10 @@
         html[data-static-snapshot] #utilityTabCodex,
         html[data-static-snapshot] #utilityTabClaude,
         html[data-static-snapshot] [data-tab="settings"],
-        html[data-static-snapshot] #selectionPill {
+        html[data-static-snapshot] #selectionPill,
+        html[data-static-snapshot] .note-entry-actions,
+        html[data-static-snapshot] .scene-card-fm-add,
+        html[data-static-snapshot] .fm-todo-cb {
             display: none !important;
         }
 

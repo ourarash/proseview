@@ -1,0 +1,121 @@
+"""Browser tests for the Export dialog, on a copy of the demo book.
+
+Clicks through the three steps the way a writer would: open Export from the
+top bar, pick one chapter, keep the Classic style, fill in the book details,
+check the preview, export, and read the finished screen. The exported file is
+then checked on disk, and the fixture itself is checked to be untouched.
+
+Opt-in, like the rest of the browser tier: ``pytest -m e2e_browser``.
+"""
+
+from __future__ import annotations
+
+import shutil
+import zipfile
+from pathlib import Path
+from typing import Iterator
+
+import pytest
+
+pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
+
+from playwright.sync_api import Page, expect  # noqa: E402
+
+from proseview.epub_check import structural_problems  # noqa: E402
+
+from .conftest import REPO_ROOT, ProseviewServer, _start_server, _stop_server  # noqa: E402
+
+pytestmark = pytest.mark.e2e_browser
+
+DEMO = REPO_ROOT / "fixtures" / "demo-book"
+
+
+@pytest.fixture
+def demo_book_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[ProseviewServer]:
+    root = tmp_path / "alice"
+    shutil.copytree(DEMO, root, ignore=shutil.ignore_patterns("exports", ".proseview"))
+    (root / ".git").mkdir()  # enough for the exports/ .gitignore entry
+    server = _start_server(root, agent_bin, fake_home)
+    try:
+        yield server
+    finally:
+        _stop_server(server)
+
+
+def test_export_one_chapter_from_the_dashboard(page: Page, demo_book_server: ProseviewServer):
+    fixture_config = (DEMO / ".proseview.yaml").read_bytes()
+    root = demo_book_server.root
+    page.goto(demo_book_server.url("/"))
+
+    page.get_by_role("button", name="Export").first.click()
+    dialog = page.locator("#exportDialog")
+    expect(dialog).to_be_visible()
+    expect(page.locator("#exportTotals")).to_contain_text("The whole book: 12 chapters, 39 scenes")
+
+    # Step 1: one chapter, from the "First three chapters" quick pick.
+    dialog.get_by_role("button", name="First three chapters").click()
+    page.locator('input[data-chapter="1"]').uncheck()
+    page.locator('input[data-chapter="2"]').uncheck()
+    expect(page.locator("#exportTotals")).to_have_text("1 chapter, 3 scenes, 1,697 words")
+    page.locator('[data-chapter-toggle="3"]').click()
+    expect(page.locator("#exportTree .export-scene-row")).to_have_count(3)
+    page.get_by_role("button", name="Next: Style").click()
+
+    # Step 2: Classic is chosen; scene titles stay off.
+    expect(page.get_by_role("radio", name="Classic")).to_be_checked()
+    expect(page.locator("#exportSceneTitles")).not_to_be_checked()
+    page.get_by_role("button", name="Next: Book details").click()
+
+    # Step 3: details and the preview of the styled pages.
+    page.get_by_label("Title", exact=True).fill("Alice's Adventures in Wonderland")
+    page.get_by_label("Author", exact=True).fill("Lewis Carroll")
+    frame = page.frame_locator("#exportPreviewFrame")
+    expect(frame.locator(".chapter-number")).to_have_text("Chapter Three")
+    expect(frame.locator("p.opener")).to_be_visible()
+    expect(page.locator("#exportPreviewStatus")).to_contain_text("page 1 of")
+    page.get_by_role("button", name="Next page").click()
+    expect(page.locator("#exportPreviewStatus")).to_contain_text("page 2 of")
+
+    page.get_by_role("button", name="Export EPUB").click()
+    done = page.locator("#exportDoneBox")
+    expect(done).to_contain_text("Your e-book is ready", timeout=30_000)
+    expect(done).to_contain_text("1 chapter, 3 scenes, 1,697 words")
+    expect(done).to_contain_text("Ready to share with readers")
+    expect(done.get_by_role("button", name="Show in folder")).to_be_visible()
+    download = done.get_by_role("link", name="Download")
+    expect(download).to_have_attribute("href", "/api/export/file?path=" + "exports%2F" + download.get_attribute("download"))
+
+    exported = sorted((root / "exports").glob("alices-adventures-in-wonderland-chapter-3-*.epub"))
+    assert len(exported) == 1
+    assert structural_problems(exported[0]) == []
+    with zipfile.ZipFile(exported[0]) as archive:
+        chapter = archive.read("OEBPS/text/chapter-001.xhtml").decode()
+    assert "Chapter Three" in chapter
+    config = (root / ".proseview.yaml").read_text()
+    assert "author: Lewis Carroll" in config and "identifier: urn:uuid:" in config
+    assert "exports/" in (root / ".gitignore").read_text()
+
+    page.get_by_role("button", name="Done").click()
+    expect(dialog).to_be_hidden()
+    expect(page.get_by_role("button", name="Export").first).to_be_focused()
+    # The run worked on a copy; the fixture is exactly as it was.
+    assert (DEMO / ".proseview.yaml").read_bytes() == fixture_config
+    assert not (DEMO / "exports").exists()
+
+
+def test_export_this_scene_from_the_file_browser(page: Page, demo_book_server: ProseviewServer):
+    page.goto(demo_book_server.url("/"))
+    page.locator('#sidebarTree [aria-label="More actions for ch05"]').click(force=True)
+    expect(page.locator("#sidebarContextMenu")).to_contain_text("Export this chapter…")
+    page.keyboard.press("Escape")
+
+    page.goto(demo_book_server.url("/#/scene/ch05%2F01-advice-from-a-caterpillar.md"))
+    page.locator("#sceneMoreBtn").click()
+    page.locator("#modalExportSceneBtn").click()
+    expect(page.locator("#exportTotals")).to_contain_text("1 chapter, 1 scene")
+    expect(page.locator('input[data-scene="ch05/01-advice-from-a-caterpillar"]')).to_be_checked()
+
+    # Keyboard: Escape closes the dialog and nothing was written.
+    page.keyboard.press("Escape")
+    expect(page.locator("#exportDialog")).to_be_hidden()
+    assert not (demo_book_server.root / "exports").exists()

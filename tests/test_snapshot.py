@@ -197,3 +197,21 @@ def test_the_snapshot_command_writes_the_site(tmp_path: Path, capsys):
     assert str(out) in capsys.readouterr().out
     assert main(["snapshot", "--root", str(root), "--out", str(out), "--demo"]) == 0
     assert 'data-static-snapshot="demo"' in (out / "index.html").read_text(encoding="utf-8")
+
+
+def test_a_snapshot_offers_no_export(tmp_path: Path):
+    """Export needs the local server to build the book, so a snapshot hides it.
+
+    The button and the scene menu entries are hidden by the snapshot's
+    stylesheet, and the dialog's script refuses to open without a server.
+    """
+    root = _novel(tmp_path)
+    write_snapshot(root, tmp_path / "site", demo=True)
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="exportOpenBtn"' in page
+    hidden = re.search(r"((?:html\[data-static-snapshot\][^{]*,\s*)+[^{]*)\{\s*display: none !important;", page)
+    assert hidden is not None
+    for selector in ("#exportOpenBtn", "#modalExportSceneBtn", "#modalExportChapterBtn", "#exportDialog"):
+        assert f"html[data-static-snapshot] {selector}" in hidden.group(1)
+    assert "if (window.PROSEVIEW_STATIC) return;" in page

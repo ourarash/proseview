@@ -5973,6 +5973,22 @@
                 max-width: 100%;
             }
 
+            /* The section tabs scroll inside their own strip rather than
+               widening the page, which made the browser shrink everything. */
+            .tab-nav {
+                max-width: 100%;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+
+            .tab-nav::-webkit-scrollbar {
+                display: none;
+            }
+
+            .tab-nav button {
+                flex: 0 0 auto;
+            }
+
             .discuss-panel {
                 width: 100vw;
             }

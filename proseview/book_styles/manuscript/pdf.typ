@@ -61,7 +61,10 @@
 
 #let cover-page() = none
 
-#let title-page() = page(header: none, {
+// A manuscript has no front or back matter: agents ask for the story.
+#let matter(kind, title, show-title, body) = none
+
+#let title-page(verso: true) = page(header: none, {
   set par(first-line-indent: 0pt, leading: 0.65em, spacing: 0.65em)
   grid(
     columns: (1fr, auto),

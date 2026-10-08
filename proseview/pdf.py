@@ -49,6 +49,10 @@ TRIM_LABELS: dict[str, str] = {
 }
 DEFAULT_TRIM = "5.5x8.5"
 
+#: About how many words a printed page holds at each trim size, for the
+#: "First 50 pages" pick. (A manuscript page holds about 250.)
+WORDS_PER_PAGE: dict[str, int] = {"5x8": 250, "5.25x8": 260, "5.5x8.5": 290, "6x9": 330, "a5": 290}
+
 PAPER_SIZES: dict[str, tuple[str, str]] = {"letter": ("8.5in", "11in"), "a4": ("210mm", "297mm")}
 PAPER_LABELS: dict[str, str] = {"letter": "US Letter", "a4": "A4"}
 
@@ -188,7 +192,11 @@ class _Source:
         book = self.book
         parts = [self.style.pdf_template.rstrip(), "", "#show: book", ""]
         if book.has_contents:
-            parts += ["#title-page()", "#contents()", ""]
+            # In print, a copyright page takes the back of the title page.
+            copyright_first = bool(book.front_matter) and book.front_matter[0].kind == "copyright"
+            parts.append(f"#title-page(verso: {'false' if copyright_first else 'true'})")
+            parts += [self._matter(page) for page in book.front_matter]
+            parts += ["#contents()", ""]
         elif self.options.layout == "share" and self.options.cover_image is not None:
             parts += ["#cover-page()", ""]
         if book.kind == "scene":
@@ -198,6 +206,7 @@ class _Source:
             for index, chapter in enumerate(book.chapters):
                 self._progress(f"Laying out chapter {chapter.number}", index / max(total, 1) * 0.5)
                 parts.append(self._chapter(chapter))
+        parts += [self._matter(page) for page in book.back_matter]
         for section in book.appendices:
             parts.append(self._appendix(section))
         return "\n\n".join(parts) + "\n"
@@ -246,6 +255,17 @@ class _Source:
             self.renderer.render(scene.markdown, self._ctx(scene), noindent=True),
             "#chapter-end()",
         ])
+
+    def _matter(self, page) -> str:
+        ctx = RenderContext(
+            root=self.root, source=Path(page.source) if page.source else None,
+            owner=f"The page {page.title!r}" + (f" ({page.source})" if page.source else ""), shift_headings=1,
+        )
+        body = self.renderer.render(page.markdown, ctx, noindent=True)
+        return (
+            f"#matter({string(page.kind)}, {self._content(page.title)}, {'true' if page.shows_title else 'false'})"
+            f"[\n{body}\n]\n\n#chapter-end()"
+        )
 
     def _appendix(self, section) -> str:
         lines = [f"#appendix({self._content('Appendix: ' + section.label)})"]

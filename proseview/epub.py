@@ -24,7 +24,10 @@ from typing import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .book import SHORT_OPENER, Book, BookChapter, ExportError, SceneDocument, chapter_label, smart_punctuation
+from .book import (
+    MATTER_KINDS, SHORT_OPENER, Book, BookChapter, ExportError, MatterPage, SceneDocument, chapter_label,
+    smart_punctuation,
+)
 from .book_styles import BookStyle
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, read_html, repository_src, straighten_tag_quotes, image_only
 
@@ -481,6 +484,24 @@ class _Writer:
         self.first_text_href = href
         self.nav.append(_NavEntry(scene.title, href))
 
+    def add_matter(self, page: MatterPage, name: str, *, body_type: str) -> None:
+        """A page before or after the story, marked as what it is for readers' navigation."""
+        href = f"text/{name}.xhtml"
+        epub_type = MATTER_KINDS.get(page.kind, "") if self.v3 else ""
+        parts = [f'<{self._section()} class="matter matter-{page.kind}" id="{name}"{self._type(epub_type) if epub_type else ""}>']
+        if page.shows_title:
+            parts.append(f"  <h1>{_txt(page.title)}</h1>")
+        parts.append(self.markdown.render(
+            page.markdown, source=Path(page.source) if page.source else None,
+            owner=f"The page {page.title!r}" + (f" ({page.source})" if page.source else ""),
+            shift_headings=1,
+        ))
+        parts.append(f"</{self._section()}>")
+        self._add(_Item(name, href, "application/xhtml+xml",
+                        self._page(page.title, "\n".join(parts), body_type=body_type)))
+        if page.shows_title:
+            self.nav.append(_NavEntry(page.title, href))
+
     def add_appendix(self, index: int, section) -> None:
         href = f"text/appendix-{index:02d}.xhtml"
         heading = f"Appendix: {section.label}"
@@ -685,6 +706,8 @@ class _Writer:
         toc_position = None
         if book.has_contents:
             self.add_title_page()
+            for index, page in enumerate(book.front_matter, start=1):
+                self.add_matter(page, f"front-{index:02d}", body_type="frontmatter")
             toc_position = len(self.spine)
         if book.kind == "scene":
             self._progress("Laying out the scene", 0.5)
@@ -696,6 +719,8 @@ class _Writer:
                 self.add_chapter(index, chapter)
         if book.appendices:
             self._progress("Adding the appendices", 0.95)
+        for index, page in enumerate(book.back_matter, start=1):
+            self.add_matter(page, f"back-{index:02d}", body_type="backmatter")
         for index, section in enumerate(book.appendices, start=1):
             self.add_appendix(index, section)
 

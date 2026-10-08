@@ -461,6 +461,16 @@
                     exportSelectionChanged(true);
                 });
             }
+            var wpp = (exportState.outline.words_per_page || {})[exportState.details.trim] || 290;
+            var fiftyPages = exportFirstPages(50 * wpp);
+            if (fiftyPages.size && fiftyPages.size < exportAllScenes().length) {
+                chip('First 50 pages', 'About ' + exportFormat(50 * wpp) + ' words at the '
+                    + exportState.details.trim.replace('x', ' × ') + ' trim size, in whole scenes', function() {
+                    exportApplyPreset(null);
+                    exportState.checked = exportFirstPages(50 * wpp);
+                    exportSelectionChanged(true);
+                });
+            }
             (exportState.outline.selections || []).forEach(function(saved) {
                 if (saved.error) {
                     var stale = chip(saved.name, saved.error, function() {}, 'is-stale');
@@ -478,6 +488,86 @@
                     exportSelectionChanged(true);
                 }, 'is-saved');
             });
+        }
+
+        function exportFirstPages(words) {
+            // Whole scenes from the start until the words would fill the pages.
+            var picked = new Set();
+            var total = 0;
+            exportState.outline.chapters.some(function(chapter) {
+                return chapter.scenes.some(function(scene) {
+                    if (total >= words) return true;
+                    picked.add(scene.key);
+                    total += scene.words;
+                    return false;
+                });
+            });
+            return picked;
+        }
+
+        var EXPORT_PICK_FIELDS = [
+            ['status', 'Status'], ['pov', 'Point of view'], ['characters', 'Character'], ['changed', 'Changed since'],
+        ];
+
+        function exportRenderPickBy() {
+            var facets = exportState.outline.facets || {};
+            var field = exportEl('exportPickField');
+            var current = field.value;
+            field.innerHTML = '';
+            EXPORT_PICK_FIELDS.forEach(function(spec) {
+                if (spec[0] === 'changed' || (facets[spec[0]] || []).length) field.add(new Option(spec[1], spec[0]));
+            });
+            if (current && Array.prototype.some.call(field.options, function(o) { return o.value === current; })) field.value = current;
+            exportRenderPickValues();
+        }
+
+        function exportRenderPickValues() {
+            var field = exportEl('exportPickField').value;
+            var values = exportEl('exportPickValue');
+            var date = exportEl('exportPickDate');
+            values.innerHTML = '';
+            values.hidden = field === 'changed';
+            date.hidden = field !== 'changed';
+            if (field === 'changed') {
+                if (!date.value) {
+                    var weekAgo = new Date(Date.now() - 7 * 864e5);
+                    date.value = weekAgo.toISOString().slice(0, 10);
+                }
+                return;
+            }
+            ((exportState.outline.facets || {})[field] || []).forEach(function(entry) {
+                values.add(new Option(entry.value + ' (' + exportPlural(entry.count, 'scene') + ')', entry.value));
+            });
+        }
+
+        function exportPickMatches(scene, field, value) {
+            if (field === 'changed') return !!scene.changed && scene.changed >= value;
+            if (field === 'characters') return (scene.characters || []).some(function(name) { return name === value; });
+            return scene[field] === value;
+        }
+
+        function exportApplyPickBy() {
+            var field = exportEl('exportPickField').value;
+            var value = field === 'changed' ? exportEl('exportPickDate').value : exportEl('exportPickValue').value;
+            if (!field || !value) return;
+            var picked = new Set();
+            exportState.outline.chapters.forEach(function(chapter) {
+                chapter.scenes.forEach(function(scene) {
+                    if (exportPickMatches(scene, field, value)) picked.add(scene.key);
+                });
+            });
+            if (!picked.size) {
+                sidebarShowToast('No scene matches that. Nothing was changed.', true);
+                return;
+            }
+            exportApplyPreset(null);
+            exportState.checked = picked;
+            exportState.outline.chapters.forEach(function(chapter) {
+                var state = exportChapterState(chapter);
+                if (state === 'some') exportState.expanded.add(chapter.number);
+            });
+            exportSelectionChanged(true);
+
         }
 
         function exportSelectionChanged(rerender) {
@@ -656,6 +746,18 @@
             exportEl('exportSubtitle').value = details.subtitle || '';
             exportEl('exportAuthor').value = details.author || '';
             exportEl('exportContact').value = details.contact || '';
+            exportEl('exportCopyright').checked = details.copyright_page !== false;
+            exportEl('exportIsbn').value = details.isbn || '';
+            exportEl('exportDedication').value = details.dedication || '';
+            exportEl('exportAlsoBy').value = details.also_by || '';
+            exportEl('exportMatterFiles').checked = details.matter_files !== false;
+            var files = exportState.outline.matter_files || [];
+            exportEl('exportMatterFiles').closest('label').hidden = !files.length;
+            exportEl('exportMatterFilesHint').textContent = files.length
+                ? files.map(function(file) { return file.title + ' (' + file.path + ')'; }).join(', ')
+                : '';
+            // A manuscript goes to an agent without front or back matter.
+            exportEl('exportMatter').hidden = details.style === 'manuscript';
             exportEl('exportContactGroup').hidden = details.style !== 'manuscript';
             var printOnly = exportFormats().length === 1 && exportFormats()[0] === 'pdf-print';
             exportEl('exportCoverLabel').textContent = printOnly ? 'Cover (for your records; printers take it separately)' : 'Cover';
@@ -679,6 +781,11 @@
             details.recto_chapters = exportEl('exportRecto').checked;
             details.watermark = exportEl('exportWatermark').value.trim();
             details.contact = exportEl('exportContact').value.trim();
+            details.copyright_page = exportEl('exportCopyright').checked;
+            details.isbn = exportEl('exportIsbn').value.trim();
+            details.dedication = exportEl('exportDedication').value.trim();
+            details.also_by = exportEl('exportAlsoBy').value.trim();
+            details.matter_files = exportEl('exportMatterFiles').checked;
             return details;
         }
 
@@ -1215,6 +1322,7 @@
 
         function exportRenderAll() {
             exportRenderQuickPicks();
+            exportRenderPickBy();
             exportSetReorder(exportState.reorder);
             exportRenderFormatAndStyle();
             exportRenderDetails();
@@ -1297,10 +1405,15 @@
                 else exportShowPreviewPage(Number(event.target.value), 0);
             });
             exportEl('exportPreviewFormat').addEventListener('change', function() { exportLoadPreview(); });
+            exportEl('exportPickField').addEventListener('change', exportRenderPickValues);
+            exportEl('exportPickApply').addEventListener('click', exportApplyPickBy);
             ['exportTrim', 'exportPaper', 'exportRecto'].forEach(function(id) {
                 exportEl(id).addEventListener('change', function() { exportReadDetails(); exportSchedulePreview(); });
             });
-            ['exportWatermark', 'exportContact'].forEach(function(id) {
+            ['exportCopyright', 'exportMatterFiles'].forEach(function(id) {
+                exportEl(id).addEventListener('change', function() { exportReadDetails(); exportSchedulePreview(); });
+            });
+            ['exportWatermark', 'exportContact', 'exportIsbn', 'exportDedication', 'exportAlsoBy'].forEach(function(id) {
                 exportEl(id).addEventListener('input', function() { exportReadDetails(); exportSchedulePreview(); });
             });
             exportEl('exportStep3').addEventListener('keydown', function(event) {

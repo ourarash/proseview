@@ -39,6 +39,7 @@ from .export import (
     default_title,
     ensure_gitignored,
     export_book,
+    matter_files,
     new_book_identifier,
     save_book_details,
     save_book_identifier,
@@ -46,7 +47,7 @@ from .export import (
     saved_cover_path,
 )
 from .lexical import count_words, prose_only
-from .pdf import DEFAULT_TRIM, PAPER_LABELS, PAPER_SIZES, TRIM_LABELS, TRIM_SIZES, default_paper
+from .pdf import DEFAULT_TRIM, PAPER_LABELS, PAPER_SIZES, TRIM_LABELS, TRIM_SIZES, WORDS_PER_PAGE, default_paper
 from .repo import resolve_visible_repository_path
 
 #: Cover formats a store accepts (no SVG), by extension.
@@ -98,6 +99,7 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
     ``details`` are the book details remembered from the last export.
     """
     documents = collect_scene_documents(root, cfg)
+    facts = _scene_facts(root, cfg, documents)
     chapters: list[dict[str, Any]] = []
     for doc in documents:
         if not chapters or chapters[-1]["number"] != doc.chapter_number:
@@ -118,6 +120,7 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             "words": words,
             "path": doc.path.as_posix(),
             "scene_path": scene_path(doc),
+            **facts[doc.key],
         })
 
     from .book import resolve_selection
@@ -159,6 +162,8 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             for name in (*EXPORT_FORMATS, "all")
         ],
         "trims": [{"name": name, "label": label} for name, label in TRIM_LABELS.items()],
+        "facets": _facets(facts),
+        "words_per_page": dict(WORDS_PER_PAGE),
         "papers": [{"name": name, "label": label} for name, label in PAPER_LABELS.items()],
         "details": {
             "title": saved.title,
@@ -175,8 +180,115 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             "recto_chapters": saved.recto_chapters if saved.recto_chapters is not None else True,
             "contact": saved.contact,
             "watermark": "",
+            "copyright_page": saved.copyright_page if saved.copyright_page is not None else True,
+            "isbn": saved.isbn,
+            "dedication": saved.dedication,
+            "also_by": saved.also_by,
+            "matter_files": saved.matter_files if saved.matter_files is not None else True,
         },
+        "matter_files": [
+            {"side": side, "path": page.source, "title": page.title}
+            for side, pages in matter_files(root).items() for page in pages
+        ],
     }
+
+
+def _character_names(root: Path, cfg: Config) -> list[str]:
+    """The cast, as the dashboard's presence chart names it."""
+    from .generator import character_name_from_file
+
+    if cfg.characters:
+        return [c.strip() for c in cfg.characters if c.strip()]
+    folder = root / cfg.characters_dir
+    return [character_name_from_file(p) for p in sorted(folder.glob("*.md"))] if folder.is_dir() else []
+
+
+def _changed_dates(root: Path, documents: list[SceneDocument]) -> dict[str, str]:
+    """When each scene last changed, as an ISO date.
+
+    From git where the novel is a repository (the last commit touching it,
+    or the file's own date when it has uncommitted changes), else the file's
+    modification date.
+    """
+    import datetime as dt
+    import subprocess
+
+    def file_date(path: Path) -> str:
+        try:
+            return dt.date.fromtimestamp((root / path).stat().st_mtime).isoformat()
+        except OSError:
+            return ""
+
+    dates = {doc.key: file_date(doc.path) for doc in documents}
+    if not (root / ".git").exists():
+        return dates
+    try:
+        log = subprocess.run(
+            ["git", "-C", str(root), "log", "--format=@%ct", "--name-only", "--", *{d.path.parts[0] for d in documents}],
+            capture_output=True, text=True, timeout=20, check=True,
+        ).stdout
+        dirty = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True, text=True, timeout=20, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return dates
+    committed: dict[str, str] = {}
+    stamp = ""
+    for line in log.splitlines():
+        if line.startswith("@"):
+            stamp = dt.date.fromtimestamp(int(line[1:])).isoformat()
+        elif line.strip() and line.strip() not in committed:
+            committed[line.strip()] = stamp
+    changed_now = {line[3:].strip().strip('"') for line in dirty.splitlines() if len(line) > 3}
+    for doc in documents:
+        posix = doc.path.as_posix()
+        if posix not in changed_now and posix in committed:
+            dates[doc.key] = committed[posix]
+    return dates
+
+
+def _scene_facts(root: Path, cfg: Config, documents: list[SceneDocument]) -> dict[str, dict[str, Any]]:
+    """Status, point of view, characters and last change for each scene, for the quick picks."""
+    import re
+
+    from .repo import read_repo_text
+    from .scenes import split_frontmatter
+
+    cast = _character_names(root, cfg)
+    changed = _changed_dates(root, documents)
+    facts: dict[str, dict[str, Any]] = {}
+    for doc in documents:
+        try:
+            fm, _ = split_frontmatter(read_repo_text(root / doc.path))
+        except OSError:
+            fm = {}
+        listed = fm.get("characters") or []
+        listed = [str(name).strip() for name in (listed if isinstance(listed, list) else [listed]) if str(name).strip()]
+        text = prose_only(doc.markdown)
+        named = [name for name in cast if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)]
+        characters = list(dict.fromkeys(listed + [n for n in named if n.casefold() not in {x.casefold() for x in listed}]))
+        facts[doc.key] = {
+            "status": str(fm.get("status") or "").strip(),
+            "pov": str(fm.get("pov") or "").strip(),
+            "characters": characters,
+            "changed": changed.get(doc.key, ""),
+        }
+    return facts
+
+
+def _facets(facts: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """The values the "Pick by" menus offer, most common first, with counts."""
+    from collections import Counter
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    for field in ("status", "pov", "characters"):
+        counts: Counter[str] = Counter()
+        for fact in facts.values():
+            values = fact[field] if field == "characters" else [fact[field]]
+            counts.update(value for value in values if value)
+        out[field] = [{"value": value, "count": count} for value, count in counts.most_common()]
+    return out
 
 
 def _style_entry(name: str) -> dict[str, Any]:
@@ -269,6 +381,11 @@ class ExportRequest:
     paper: str = "letter"
     recto_chapters: bool = True
     contact: str = ""
+    copyright_page: bool = True
+    isbn: str = ""
+    dedication: str = ""
+    also_by: str = ""
+    matter_files: bool = True
     #: Names one reader, so it is never remembered for the next export.
     watermark: str = ""
 
@@ -322,6 +439,18 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
     if not isinstance(contact, str) or len(contact) > 600:
         raise ExportError("The contact details must be text, at most a few lines")
     contact = "\n".join(" ".join(line.split()) for line in contact.splitlines() if line.strip())
+
+    def lines(key: str, limit: int = 2000) -> str:
+        value = raw.get(key, "")
+        if not isinstance(value, str) or len(value) > limit:
+            raise ExportError(f"The {key.replace('_', ' ')} must be text, at most a few lines")
+        return "\n".join(" ".join(line.split()) for line in value.splitlines() if line.strip())
+
+    def flag(key: str, default: bool) -> bool:
+        value = raw.get(key, default)
+        if not isinstance(value, bool):
+            raise ExportError(f"{key} must be true or false")
+        return value
     wanted = load_style(style)
     for each in (EXPORT_FORMATS if fmt == "all" else (fmt,)):
         if each not in wanted.formats:
@@ -343,6 +472,11 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
         recto_chapters=recto,
         contact=contact,
         watermark=text("watermark", 120),
+        copyright_page=flag("copyright_page", True),
+        isbn=text("isbn", 40),
+        dedication=lines("dedication", 1000),
+        also_by=lines("also_by", 2000),
+        matter_files=flag("matter_files", True),
     )
 
 
@@ -484,6 +618,8 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
     book = prepare_book(
         root, cfg, selection, title=options["title"], subtitle=options["subtitle"],
         author=options["author"], language=options["language"],
+        copyright_page=options["copyright_page"], isbn=options["isbn"], dedication=options["dedication"],
+        also_by=options["also_by"], matter_files=options["matter_files"],
     )
     shortened = len(book.chapters) > PREVIEW_CHAPTERS and book.kind != "scene"
     if shortened:
@@ -520,7 +656,8 @@ def _dialog_config(cfg: Config) -> Config:
     """
     from dataclasses import replace
 
-    blank = {key: (None if key in {"scene_titles", "recto_chapters"} else "") for key in BOOK_DETAIL_KEYS}
+    flags = {"scene_titles", "recto_chapters", "copyright_page", "matter_files"}
+    blank = {key: (None if key in flags else "") for key in BOOK_DETAIL_KEYS}
     return replace(cfg, export=replace(cfg.export, **blank))
 
 
@@ -540,6 +677,11 @@ def _book_options(root: Path, cfg: Config, details: ExportRequest) -> dict[str, 
         "recto_chapters": details.recto_chapters,
         "watermark": details.watermark,
         "contact": details.contact,
+        "copyright_page": details.copyright_page,
+        "isbn": details.isbn,
+        "dedication": details.dedication,
+        "also_by": details.also_by,
+        "matter_files": details.matter_files,
     }
 
 

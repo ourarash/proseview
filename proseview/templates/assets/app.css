@@ -8133,6 +8133,25 @@
             cursor: help;
         }
 
+        .export-pick-by {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .export-pick-label {
+            color: var(--text-soft);
+            font-size: 13px;
+        }
+
+        .export-select-sm {
+            min-height: 32px;
+            padding: 4px 8px;
+            font-size: 13px;
+        }
+
         .export-list-tools {
             display: flex;
             align-items: center;
@@ -8887,6 +8906,34 @@
         .export-option-group input[type="text"],
         .export-contact textarea {
             min-height: 38px;
+            padding: 7px 10px;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+        }
+
+        .export-matter {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .export-matter summary {
+            cursor: pointer;
+            font-weight: 650;
+        }
+
+        .export-matter[open] {
+            display: grid;
+            gap: 6px;
+        }
+
+        .export-matter input[type="text"],
+        .export-matter textarea {
+            min-height: 36px;
             padding: 7px 10px;
             border: 1px solid var(--border-strong);
             border-radius: 8px;

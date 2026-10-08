@@ -125,6 +125,16 @@
                 <div class="export-picks" role="group" aria-label="Quick picks">
                     <span class="export-label">Quick picks</span>
                     <div id="exportQuickPicks" class="export-chip-row"></div>
+                    <div id="exportPickBy" class="export-pick-by" role="group" aria-labelledby="exportPickByLabel">
+                        <span id="exportPickByLabel" class="export-pick-label">Or tick scenes by</span>
+                        <label class="sr-only" for="exportPickField">What to pick by</label>
+                        <select id="exportPickField" class="export-select export-select-sm"></select>
+                        <label class="sr-only" for="exportPickValue">Which</label>
+                        <select id="exportPickValue" class="export-select export-select-sm"></select>
+                        <label class="sr-only" for="exportPickDate">Changed since</label>
+                        <input id="exportPickDate" class="export-select export-select-sm" type="date" hidden>
+                        <button type="button" id="exportPickApply" class="export-btn">Tick these</button>
+                    </div>
                 </div>
                 <div class="export-list-tools">
                     <span id="exportListLabel" class="export-label">Chapters and scenes</span>
@@ -208,6 +218,24 @@
                         </div>
                         <input id="exportCoverInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" hidden>
                     </div>
+                    <details id="exportMatter" class="export-matter">
+                        <summary>Front and back matter</summary>
+                        <p class="export-hint">Pages before and after the story, for the whole book and for selections of chapters. A single chapter or scene goes without them.</p>
+                        <label class="export-toggle-row" for="exportCopyright">
+                            <input type="checkbox" id="exportCopyright" role="switch"><span class="export-switch-track" aria-hidden="true"></span>
+                            <span><strong>Copyright page</strong><span class="export-hint">“Copyright © year, your name. All rights reserved.”</span></span>
+                        </label>
+                        <label for="exportIsbn">ISBN <span class="export-optional">optional, printed on the copyright page</span></label>
+                        <input id="exportIsbn" type="text" maxlength="40" autocomplete="off">
+                        <label for="exportDedication">Dedication <span class="export-optional">optional</span></label>
+                        <textarea id="exportDedication" rows="2" maxlength="1000" placeholder="For Alice"></textarea>
+                        <label for="exportAlsoBy">Your other books <span class="export-optional">one title per line, for an “Also by” page</span></label>
+                        <textarea id="exportAlsoBy" rows="3" maxlength="2000"></textarea>
+                        <label class="export-toggle-row" for="exportMatterFiles">
+                            <input type="checkbox" id="exportMatterFiles" role="switch"><span class="export-switch-track" aria-hidden="true"></span>
+                            <span><strong>Your own pages</strong><span id="exportMatterFilesHint" class="export-hint"></span></span>
+                        </label>
+                    </details>
                     <p id="exportDetailsError" class="export-error" role="alert" hidden></p>
                 </div>
                 <div class="export-preview" aria-label="Preview">

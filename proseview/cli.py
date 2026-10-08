@@ -308,8 +308,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     snapshot_p.add_argument(
         "--demo", action="store_true",
-        help="Let visitors try edit mode too. Their saves stay in their browser tab; nothing is uploaded.",
+        help=(
+            "Let visitors try edit mode too (their saves stay in their browser tab; nothing is "
+            "uploaded), and Export, with ready-made books of the whole manuscript to download."
+        ),
     )
+    snapshot_p.add_argument(
+        "--book-title", default="",
+        help="Title on the demo's ready-made books (default: --title up to ' · ', else the folder name).",
+    )
+    snapshot_p.add_argument("--book-author", default="", help="Author on the demo's ready-made books.")
     snapshot_p.add_argument("--title", default="", help="Page title (default: '<folder> · Proseview').")
     snapshot_p.add_argument("--description", default="", help="Summary shown in link previews.")
     snapshot_p.add_argument(
@@ -726,6 +734,7 @@ def write_static_snapshot(args: argparse.Namespace) -> int:
             args.root, args.out, demo=args.demo,
             title=args.title, description=args.description,
             site_url=args.site_url, preview_image=args.preview_image,
+            book_title=args.book_title, book_author=args.book_author,
         )
     except SnapshotError as exc:
         raise SystemExit(str(exc)) from exc

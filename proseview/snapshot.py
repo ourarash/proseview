@@ -93,6 +93,8 @@ def write_snapshot(
     description: str = "",
     site_url: str = "",
     preview_image: Path | None = None,
+    book_title: str = "",
+    book_author: str = "",
 ) -> Path:
     """Write a copy of *root*'s dashboard into *out* and return it.
 
@@ -145,5 +147,29 @@ def write_snapshot(
             raise SnapshotError(f"{name} would publish the repository path {root}")
         (out / name).write_text(text, encoding="utf-8")
     shutil.copytree(TEMPLATE_DIR / "vendor", out / "vendor")
+    if demo:
+        # The demo has no server to build books, so the Export dialog serves
+        # ready-made ones of the whole book (see export_demo.py).
+        from .book import ExportError
+        from .export_demo import write_demo_exports
+
+        try:
+            write_demo_exports(
+                root, cfg, out,
+                title=book_title or (title.split(" · ")[0] if title else "") or root.name.replace("-", " ").title(),
+                author=book_author,
+            )
+        except ExportError as exc:
+            # A book that cannot be exported (a missing image, say) still
+            # makes a demo; its Export dialog says why there is nothing in it.
+            shutil.rmtree(out / "export", ignore_errors=True)
+            (out / "export").mkdir()
+            message = f"This demo has no books to download: {exc}"
+            (out / "export" / "outline.json").write_text(json.dumps({"ok": False, "error": message}))
+            (out / "export" / "files.json").write_text(json.dumps({"book": {}, "files": {}}))
+        for name in ("export/outline.json", "export/files.json"):
+            text = (out / name).read_text(encoding="utf-8")
+            if any(form in text for form in _path_forms(str(root))):
+                raise SnapshotError(f"{name} would publish the repository path {root}")
     (out / MARKER).write_text("Written by `proseview snapshot`; safe to replace.\n", encoding="utf-8")
     return out

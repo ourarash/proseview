@@ -2,7 +2,8 @@ name: Demo
 
 # Publishes the demo manuscript (fixtures/demo-book) to GitHub Pages, so anyone
 # can try Proseview in a browser without installing it -- editing included, with
-# saves that stay in the visitor's tab. Built with `proseview snapshot --demo`.
+# saves that stay in the visitor's tab, and Export, with ready-made EPUB and
+# PDF files of the whole book. Built with `proseview snapshot --demo`.
 
 on:
   push:
@@ -40,6 +41,7 @@ jobs:
         run: >-
           proseview snapshot --root fixtures/demo-book --out _site --demo
           --title "Alice's Adventures in Wonderland · Proseview demo"
+          --book-author "Lewis Carroll"
           --description "Try Proseview in your browser: a local dashboard for Markdown novels. Read, search, open the analysis, and edit a scene of Alice in Wonderland."
           --site-url https://ourarash.github.io/proseview/
           --preview-image docs/images/demo-preview.png

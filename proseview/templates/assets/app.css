@@ -8827,6 +8827,15 @@
             flex: 1 1 280px;
         }
 
+        .export-demo-note {
+            margin: 0;
+            padding: 8px 22px;
+            border-top: 1px solid var(--border);
+            background: var(--surface-soft);
+            color: var(--text-soft);
+            font-size: 12.5px;
+        }
+
         .export-footer {
             display: flex;
             align-items: center;
@@ -9130,10 +9139,13 @@
         html[data-static-snapshot] .note-entry-actions,
         html[data-static-snapshot] .scene-card-fm-add,
         html[data-static-snapshot] .fm-todo-cb,
-        html[data-static-snapshot] #exportOpenBtn,
-        html[data-static-snapshot] #modalExportSceneBtn,
-        html[data-static-snapshot] #modalExportChapterBtn,
-        html[data-static-snapshot] #exportDialog {
+        html[data-static-snapshot="read-only"] #exportOpenBtn,
+        html[data-static-snapshot="read-only"] #modalExportSceneBtn,
+        html[data-static-snapshot="read-only"] #modalExportChapterBtn,
+        html[data-static-snapshot="read-only"] #exportDialog,
+        html[data-static-snapshot] .export-save-row,
+        html[data-static-snapshot] #exportCoverLabel,
+        html[data-static-snapshot] #exportCoverDrop {
             display: none !important;
         }
 

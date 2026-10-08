@@ -6902,3 +6902,50 @@ def test_a_phone_opens_with_the_file_list_closed_until_asked(browser: Browser, s
         assert page.evaluate("document.documentElement.dataset.sidebar") != "closed"
     finally:
         desktop.close()
+
+
+@pytest.fixture
+def demo_book_site(tmp_path: Path) -> Iterator[str]:
+    """The hosted demo as GitHub Pages serves it: the demo book, under a project path."""
+    import shutil
+
+    book = tmp_path / "alice"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "fixtures" / "demo-book", book,
+                    ignore=shutil.ignore_patterns("exports", ".proseview"))
+    yield from _host_snapshot(book, tmp_path / "www", demo=True)
+
+
+def test_the_demo_offers_export_with_ready_made_books(page: Page, demo_book_site: str):
+    """Export works in the demo: real previews and a real download, all from
+    files beside the page, and nothing sent anywhere."""
+    sent: list[str] = []
+    requested: list[str] = []
+    page.on("request", lambda request: (sent if request.method != "GET" else requested).append(urlparse(request.url).path))
+
+    page.goto(demo_book_site, wait_until="load")
+    page.locator("#exportOpenBtn").click()
+    page.wait_for_selector("#exportTree .export-chapter")
+    assert page.locator("#exportDemoNote").is_visible()
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("radio", name="Print book (PDF)").check()
+    page.get_by_role("radio", name="Modern").check()
+    page.get_by_role("button", name="Next: Book details").click()
+    page.wait_for_selector("#exportPaperView img")
+    page.get_by_role("button", name="Export PDF").click()
+    page.wait_for_selector("#exportDoneBox h3")
+
+    download = page.locator("#exportDoneBox").get_by_role("link", name="Download")
+    href = download.get_attribute("href")
+    assert href.startswith("export/files/") and href.endswith("-modern-print.pdf")
+    assert page.locator("#exportDoneBox").get_by_role("button", name="Show in folder").count() == 0
+    assert sent == [], f"the demo sent something: {sent}"
+    assert all(path.startswith("/demo/") for path in requested if "/export/" in path), requested
+
+
+def test_a_demo_of_a_book_that_cannot_be_exported_says_why(page: Page, demo_site: str):
+    """The shared book has a scene with a missing image: no books, a plain reason."""
+    page.goto(demo_site, wait_until="load")
+    page.locator("#exportOpenBtn").click()
+    page.wait_for_selector("#exportTree .export-error")
+    assert "This demo has no books to download" in page.locator("#exportTree").inner_text()
+    assert "image that can't be found" in page.locator("#exportTree").inner_text()

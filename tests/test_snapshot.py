@@ -199,19 +199,37 @@ def test_the_snapshot_command_writes_the_site(tmp_path: Path, capsys):
     assert 'data-static-snapshot="demo"' in (out / "index.html").read_text(encoding="utf-8")
 
 
-def test_a_snapshot_offers_no_export(tmp_path: Path):
-    """Export needs the local server to build the book, so a snapshot hides it.
-
-    The button and the scene menu entries are hidden by the snapshot's
-    stylesheet, and the dialog's script refuses to open without a server.
-    """
+def test_a_read_only_snapshot_offers_no_export(tmp_path: Path):
+    """Export needs the local server to build the book, so a copy for readers hides it."""
     root = _novel(tmp_path)
-    write_snapshot(root, tmp_path / "site", demo=True)
+    write_snapshot(root, tmp_path / "site")
     page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
 
     assert 'id="exportOpenBtn"' in page
-    hidden = re.search(r"((?:html\[data-static-snapshot\][^{]*,\s*)+[^{]*)\{\s*display: none !important;", page)
+    hidden = re.search(r"((?:html\[data-static-snapshot[^{]*,\s*)+[^{]*)\{\s*display: none !important;", page)
     assert hidden is not None
     for selector in ("#exportOpenBtn", "#modalExportSceneBtn", "#modalExportChapterBtn", "#exportDialog"):
-        assert f"html[data-static-snapshot] {selector}" in hidden.group(1)
-    assert "if (window.PROSEVIEW_STATIC) return;" in page
+        assert f'html[data-static-snapshot="read-only"] {selector}' in hidden.group(1)
+    assert not (tmp_path / "site" / "export").exists()
+
+
+def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
+    """The demo has no server, so every style and format is built in advance."""
+    root = _novel(tmp_path)
+    write_snapshot(root, tmp_path / "site", demo=True, title="The Shop · demo", book_author="Rena Patel")
+    export = tmp_path / "site" / "export"
+
+    index = json.loads((export / "files.json").read_text())
+    assert set(index["files"]) == {
+        "classic-epub", "classic-pdf-print", "classic-pdf-share", "modern-epub", "modern-pdf-print",
+        "modern-pdf-share", "romance-epub", "romance-pdf-print", "romance-pdf-share", "manuscript-pdf-share",
+    }
+    for entry in index["files"].values():
+        assert (tmp_path / "site" / entry["path"]).stat().st_size == entry["size"] > 0
+        assert entry["checks"]["headline"]
+    assert index["files"]["classic-epub"]["name"] == "the-shop.epub"
+    outline = json.loads((export / "outline.json").read_text())
+    assert outline["demo"] is True and outline["details"]["author"] == "Rena Patel"
+    preview = json.loads((export / "previews" / "classic-pdf-print.json").read_text())
+    assert preview["token"] == "classic-pdf-print" and (export / "previews" / "classic-pdf-print" / "page-001.png").is_file()
+    assert str(root) not in (export / "outline.json").read_text()

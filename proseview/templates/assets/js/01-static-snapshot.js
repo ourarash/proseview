@@ -42,8 +42,57 @@
                 }));
             }
 
+            // Export, in the demo only: the books were built when the snapshot
+            // was written (export_demo.py), one per style and format, and the
+            // dialog's requests are answered from them.
+            let demoExports = null;
+            let lastExport = null;
+            function exportIndex() {
+                if (!demoExports) {
+                    demoExports = realFetch('export/files.json').then(function(response) { return response.json(); });
+                }
+                return demoExports;
+            }
+            function demoBody(init) {
+                try { return JSON.parse((init && init.body) || '{}'); } catch (error) { return {}; }
+            }
+            function demoFormats(details) {
+                const format = details.format || 'epub';
+                return format === 'all' ? ['epub', 'pdf-print', 'pdf-share'] : [format];
+            }
+            const notInDemo = 'The demo cannot save files. On your own computer, Proseview does this for you.';
+            function demoExport(url, init) {
+                const path = url.pathname;
+                if (path === '/api/export/outline') return realFetch('export/outline.json');
+                if (path === '/api/export/preview') {
+                    const body = demoBody(init);
+                    const details = body.details || {};
+                    const formats = demoFormats(details);
+                    const format = formats.indexOf(body.preview) >= 0 ? body.preview : formats[0];
+                    return realFetch('export/previews/' + (details.style || 'classic') + '-' + format + '.json');
+                }
+                if (path === '/api/export/start') {
+                    lastExport = demoBody(init).details || {};
+                    return Promise.resolve(jsonResponse({ok: true, id: 'demo', state: 'running', step: 'Starting', fraction: 0}, 202));
+                }
+                if (path === '/api/export/jobs/demo') {
+                    return exportIndex().then(function(index) {
+                        const details = lastExport || {};
+                        const files = demoFormats(details).map(function(format) {
+                            return index.files[(details.style || 'classic') + '-' + format];
+                        }).filter(Boolean);
+                        return jsonResponse({
+                            ok: true, id: 'demo', state: 'done', step: 'Done', fraction: 1,
+                            result: Object.assign({files: files, kind: 'book', saved_selection: ''}, index.book),
+                        });
+                    });
+                }
+                return Promise.resolve(jsonResponse({ok: false, error: notInDemo}, 400));
+            }
+
             window.fetch = function(input, init) {
                 const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin);
+                if (window.PROSEVIEW_STATIC_EDITS && url.pathname.indexOf('/api/export/') === 0) return demoExport(url, init);
                 if (url.pathname === '/analysis.json') return realFetch('analysis.json', init);
                 if (url.pathname === '/api/scene/lexical') return sceneLexical(url);
                 if (url.pathname === '/save-scene' && window.PROSEVIEW_STATIC_EDITS) return demoSave();

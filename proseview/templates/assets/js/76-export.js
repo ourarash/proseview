@@ -79,11 +79,25 @@
 
         // preset: null (whole book), {scene: key} or {chapterOf: key}, or
         // {folder: 'manuscript/ch01'} from the file browser.
+        // The read-only snapshot has no Export; the demo answers it from
+        // ready-made books of the whole manuscript (01-static-snapshot.js).
+        function exportAvailable() { return !window.PROSEVIEW_STATIC || !!window.PROSEVIEW_STATIC_EDITS; }
+        function exportIsDemo() { return !!window.PROSEVIEW_STATIC; }
+
+        function exportPreviewUrl(token, href) {
+            return exportIsDemo() ? 'export/previews/' + token + '/' + href : '/api/export/preview/' + token + '/' + href;
+        }
+
+        function exportFileUrl(file) {
+            return exportIsDemo() ? file.path : '/api/export/file?path=' + encodeURIComponent(file.path);
+        }
+
         function openExportDialog(preset) {
-            if (window.PROSEVIEW_STATIC) return;
+            if (!exportAvailable()) return;
             var dialog = exportEl('exportDialog');
             if (!dialog || dialog.open) return;
             exportState.returnFocus = document.activeElement;
+            exportEl('exportDemoNote').hidden = !exportIsDemo();
             exportState.preset = preset || null;
             exportState.step = 1;
             exportState.job = null;
@@ -122,7 +136,7 @@
 
         function exportMenuItemsFor(node) {
             // Called by the file browser's row menu (75-file-management.js).
-            if (window.PROSEVIEW_STATIC || !node) return [];
+            if (!exportAvailable() || !node) return [];
             if (node.is_file) {
                 if (!node.scene_path) return [];
                 var key = node.scene_path.replace(/\.md$/i, '');
@@ -972,7 +986,7 @@
                 var img = document.createElement('img');
                 img.className = 'export-paper-page';
                 img.alt = 'Page ' + (n + 1);
-                img.src = '/api/export/preview/' + data.token + '/' + data.pages[n].href;
+                img.src = exportPreviewUrl(data.token, data.pages[n].href);
                 view.appendChild(img);
             });
             view.setAttribute('aria-label', 'Preview of ' + (spread.length > 1
@@ -1019,7 +1033,7 @@
                 }
                 exportUpdatePageStatus();
             };
-            frame.src = '/api/export/preview/' + preview.token + '/' + page.href;
+            frame.src = exportPreviewUrl(preview.token, page.href);
         }
 
         function exportPageMetrics() {
@@ -1254,15 +1268,17 @@
             block.appendChild(meta);
             var actions = document.createElement('div');
             actions.className = 'export-file-actions';
-            actions.appendChild(exportButton('Open', index === 0 ? 'export-btn-primary' : '', function() {
-                exportPost('/api/export/open', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
-            }));
-            actions.appendChild(exportButton('Show in folder', '', function() {
-                exportPost('/api/export/reveal', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
-            }));
+            if (!exportIsDemo()) {
+                actions.appendChild(exportButton('Open', index === 0 ? 'export-btn-primary' : '', function() {
+                    exportPost('/api/export/open', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
+                }));
+                actions.appendChild(exportButton('Show in folder', '', function() {
+                    exportPost('/api/export/reveal', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
+                }));
+            }
             var download = document.createElement('a');
-            download.className = 'export-btn';
-            download.href = '/api/export/file?path=' + encodeURIComponent(file.path);
+            download.className = 'export-btn' + (exportIsDemo() && index === 0 ? ' export-btn-primary' : '');
+            download.href = exportFileUrl(file);
             download.setAttribute('download', file.name);
             download.textContent = 'Download';
             actions.appendChild(download);
@@ -1286,7 +1302,9 @@
             var meta = document.createElement('p');
             meta.className = 'export-hint';
             meta.textContent = exportPlural(result.chapters, 'chapter') + ', ' + exportPlural(result.scenes, 'scene') + ', '
-                + exportPlural(result.words, 'word') + ' · saved in the exports folder of your novel';
+                + exportPlural(result.words, 'word')
+                + (exportIsDemo() ? ' · the whole demo book, ready to download'
+                    : ' · saved in the exports folder of your novel');
             copy.appendChild(title);
             copy.appendChild(meta);
             head.appendChild(copy);

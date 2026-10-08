@@ -19,6 +19,12 @@ section here becomes the release notes on GitHub.
 - The demo book has TODOs and notes to show, and its first scene's
   frontmatter is back.
 
+### Fixed
+
+- TODO and NOTE comments no longer count as words, and no longer move reading
+  time, vocabulary, sentence rhythm, or the goal history. The annotations
+  themselves are found and shown as before.
+
 ## 0.3.0 — 2026-10-07
 
 ### Added

@@ -28,6 +28,7 @@ from .lexical import (
     calculate_lexical_stats,
     count_words,
     lexical_tokens,
+    prose_only,
     paragraph_blocks,
     LexicalStats,
 )
@@ -339,7 +340,10 @@ def collect_scene_stats(
         raw = read_repo_text(p)
         fm, body = split_frontmatter(raw)
         txt = extract_scene_text(body)
-        toks = [t for t in lexical_tokens(txt) if t not in sw and len(t) > 3]
+        # Measured without the TODOs and notes; *txt* keeps them, because
+        # their line anchors and the page itself need the scene as written.
+        prose = prose_only(txt)
+        toks = [t for t in lexical_tokens(prose) if t not in sw and len(t) > 3]
         global_counts.update(toks)
         # Lines in the original file before the extracted prose starts
         prefix = txt.lstrip("\n")[:60]
@@ -351,12 +355,12 @@ def collect_scene_stats(
         # writer says "that one is not prose".
         if not _is_scene(fm):
             continue
-        temp_scenes.append((p, fm, txt, toks, txt_line_offset))
+        temp_scenes.append((p, fm, txt, prose, toks, txt_line_offset))
 
-    for p, fm, txt, toks, txt_line_offset in temp_scenes:
-        words = count_words(txt)
-        lex = calculate_lexical_stats(txt) if lexical else _EMPTY_LEXICAL
-        st = analyze_style_shape(txt, sw)
+    for p, fm, txt, prose, toks, txt_line_offset in temp_scenes:
+        words = count_words(prose)
+        lex = calculate_lexical_stats(prose) if lexical else _EMPTY_LEXICAL
+        st = analyze_style_shape(prose, sw)
         scene_counts = Counter(toks)
         distinctive = []
         for word, count in scene_counts.most_common(20):
@@ -372,9 +376,9 @@ def collect_scene_stats(
             p.relative_to(root), str(fm.get("chapter", scene_chapter(p, man_dir))).strip(),
             str(fm.get("title", p.stem.replace("-", " ").title())).strip(),
             str(fm.get("status", "unknown")).strip() or "unknown",
-            txt, words, len(paragraph_blocks(txt)),
-            sum(1 for l in txt.splitlines() if l.lstrip().startswith("#")),
-            len(txt), max(1, math.ceil(words / 250)),
+            txt, words, len(paragraph_blocks(prose)),
+            sum(1 for l in prose.splitlines() if l.lstrip().startswith("#")),
+            len(prose), max(1, math.ceil(words / 250)),
             lex.tokens, lex.types, lex.ttr, lex.mattr, lex.mtld,
             float(st["avg_sentence_words"]), float(st["sent_len_stdev"]), float(st["dialogue_pct"]),
             float(st["avg_paragraph_words"]), float(st["short_paragraph_pct"]),

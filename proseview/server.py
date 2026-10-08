@@ -37,7 +37,7 @@ from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
     build_scene_data,
 )
-from .lexical import paragraph_blocks, calculate_lexical_stats
+from .lexical import paragraph_blocks, calculate_lexical_stats, prose_only
 from .repo import (
     backup_dir_for,
     record_file_backup,
@@ -1940,7 +1940,7 @@ class _Handler(BaseHTTPRequestHandler):
                 raw = scene_path.read_text("utf-8")
                 from proseview.scenes import split_frontmatter, extract_scene_text
                 _, body = split_frontmatter(raw)
-                txt = extract_scene_text(body)
+                txt = prose_only(extract_scene_text(body))
                 lex = calculate_lexical_stats(txt)
                 self._send_json({"ok": True, "mattr": lex.mattr, "mtld": lex.mtld})
             except Exception as exc:

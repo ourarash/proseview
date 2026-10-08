@@ -128,6 +128,46 @@ class StoryConfig:
     day_field: str = "day"
 
 
+#: Accepted values for ``export.selections.<name>.order``.
+EXPORT_SELECTION_ORDERS: tuple[str, ...] = ("book", "custom")
+
+
+@dataclass(frozen=True)
+class ExportSelection:
+    """A named choice of chapters and scenes to export.
+
+    *picks* are ``("chapter", token)`` or ``("scene", token)`` pairs, kept in
+    the order they were given so a ``custom`` order can follow them. Tokens are
+    resolved against the manuscript at export time, so scenes added later to a
+    picked chapter are included without editing the selection.
+    """
+
+    name: str = ""
+    picks: tuple[tuple[str, str], ...] = ()
+    order: str = "book"
+
+
+@dataclass(frozen=True)
+class ExportConfig:
+    """The ``export:`` block: what ``proseview export`` remembers.
+
+    ``identifier`` is written once by the first export and reused, so an
+    e-reader recognises a re-export as the same book rather than a new one.
+    """
+
+    identifier: str = ""
+    style: str = ""
+    scene_titles: bool | None = None
+    selections: tuple[ExportSelection, ...] = ()
+
+    def selection(self, name: str) -> ExportSelection | None:
+        wanted = name.strip().casefold()
+        for saved in self.selections:
+            if saved.name.casefold() == wanted:
+                return saved
+        return None
+
+
 @dataclass(frozen=True)
 class Config:
     manuscript_path: str = "manuscript/"
@@ -149,6 +189,7 @@ class Config:
     discuss: DiscussConfig = field(default_factory=DiscussConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
+    export: ExportConfig = field(default_factory=ExportConfig)
     max_backups: int = 50
 
     @property
@@ -222,6 +263,7 @@ class Config:
             discuss=_coerce_discuss(raw.get("discuss")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
+            export=_coerce_export(raw.get("export")),
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
         )
 
@@ -290,7 +332,7 @@ def _config_field_names() -> tuple[str, ...]:
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
-        "discuss", "max_backups",
+        "discuss", "export", "max_backups",
     )
 
 
@@ -500,3 +542,71 @@ def _coerce_story(v: Any) -> StoryConfig:
         thread_field=_coerce_str(thread_field, "story.thread_field") if thread_field else defaults.thread_field,
         day_field=_coerce_str(day_field, "story.day_field") if day_field else defaults.day_field,
     )
+
+
+def _coerce_export(v: Any) -> ExportConfig:
+    if v is None:
+        return ExportConfig()
+    if not isinstance(v, dict):
+        raise ConfigError("export must be a mapping")
+    scene_titles = v.get("scene_titles")
+    if scene_titles is not None and not isinstance(scene_titles, bool):
+        raise ConfigError("export.scene_titles must be true or false")
+    raw_selections = v.get("selections") or {}
+    if not isinstance(raw_selections, dict):
+        raise ConfigError("export.selections must map a name to its chapters and scenes")
+    selections = tuple(
+        _coerce_export_selection(str(name), body) for name, body in raw_selections.items()
+    )
+    return ExportConfig(
+        identifier=_coerce_str(v.get("identifier", ""), "export.identifier").strip(),
+        style=_coerce_str(v.get("style", ""), "export.style").strip(),
+        scene_titles=scene_titles,
+        selections=selections,
+    )
+
+
+def _export_tokens(v: Any, key: str) -> list[str]:
+    """A YAML scalar or list of chapter/scene tokens, as strings."""
+    if v is None:
+        return []
+    if isinstance(v, float) or (isinstance(v, list) and any(isinstance(i, float) for i in v)):
+        # YAML reads 3.10 as the number 3.1, which would quietly pick the
+        # wrong scene, so a chapter.scene number has to be written as text.
+        raise ConfigError(f"{key}: put chapter.scene numbers in quotes, like '3.10'")
+    if isinstance(v, (str, int)) and not isinstance(v, bool):
+        return [str(v)]
+    if isinstance(v, list) and all(
+        isinstance(item, (str, int)) and not isinstance(item, bool) for item in v
+    ):
+        return [str(item) for item in v]
+    raise ConfigError(f"{key} must be a name, a number, or a list of them")
+
+
+def _coerce_export_selection(name: str, v: Any) -> ExportSelection:
+    key = f"export.selections.{name}"
+    if not isinstance(v, dict):
+        raise ConfigError(f"{key} must be a mapping with chapters, scenes, or items")
+    order = str(v.get("order", "book")).strip().lower()
+    if order not in EXPORT_SELECTION_ORDERS:
+        raise ConfigError(f"{key}.order must be one of {', '.join(EXPORT_SELECTION_ORDERS)}")
+    picks: list[tuple[str, str]] = []
+    items = v.get("items")
+    if items is not None:
+        # The custom-order form: one {chapter: x} or {scene: y} per entry,
+        # because two separate lists cannot say how they interleave.
+        if not isinstance(items, list):
+            raise ConfigError(f"{key}.items must be a list")
+        for item in items:
+            if not (isinstance(item, dict) and len(item) == 1):
+                raise ConfigError(f"{key}.items entries look like `- chapter: 3` or `- scene: ch01/01-opening`")
+            (kind, token), = item.items()
+            if kind not in {"chapter", "scene"}:
+                raise ConfigError(f"{key}.items entries must be a chapter or a scene, not {kind!r}")
+            picks += [(kind, t) for t in _export_tokens(token, f"{key}.items")]
+    else:
+        picks += [("chapter", t) for t in _export_tokens(v.get("chapters"), f"{key}.chapters")]
+        picks += [("scene", t) for t in _export_tokens(v.get("scenes"), f"{key}.scenes")]
+    if not picks:
+        raise ConfigError(f"{key} picks no chapters or scenes")
+    return ExportSelection(name=name, picks=tuple(picks), order=order)

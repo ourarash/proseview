@@ -1,0 +1,12 @@
+# Romance: a large italic chapter title under a numeral framed by floral
+# ornaments, a drop cap, and a floral mark between scenes. It builds on
+# Classic: epub.css here is added after Classic's, and the PDFs use Classic's
+# layout with the choices under pdf: below.
+name: Romance
+description: Large italic chapter titles, numerals framed by florals, a floral mark between scenes.
+extends: classic
+chapter_numbering: number
+scene_break: "❦"
+pdf:
+  opener: romance
+  ornament: "❦"

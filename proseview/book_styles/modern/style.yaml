@@ -1,0 +1,13 @@
+# Modern: a clean serif text with sans-serif headings, a large numeral for
+# each chapter, no drop cap, and a pause of three dots between scenes.
+# It builds on Classic: epub.css here is added after Classic's, and the PDFs
+# use Classic's layout with the choices under pdf: below.
+name: Modern
+description: Clean serif text, sans-serif headings, a large numeral for each chapter.
+extends: classic
+chapter_numbering: number
+scene_break: "·  ·  ·"
+pdf:
+  heading_font: Noto Sans
+  opener: modern
+  drop_cap: false

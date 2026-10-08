@@ -1,0 +1,35 @@
+/* Romance, on top of Classic: a large italic chapter title under a numeral
+ * framed by floral ornaments, and a floral mark between scenes. */
+
+.chapter-number {
+  font-size: 1.5em;
+  font-style: italic;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chapter-number::before {
+  content: "\2766\00a0\00a0";
+  font-size: 0.6em;
+  font-style: normal;
+}
+
+.chapter-number::after {
+  content: "\00a0\00a0\2766";
+  font-size: 0.6em;
+  font-style: normal;
+}
+
+.chapter-title {
+  margin-top: 0.5em;
+  font-size: 1.6em;
+}
+
+.title-page h1 {
+  font-size: 2.4em;
+  font-style: italic;
+}
+
+.scene-break {
+  font-size: 1.3em;
+}

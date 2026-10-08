@@ -8491,6 +8491,34 @@
             margin-top: 4px;
         }
 
+        .export-style-modern .thumb-numeral {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .export-style-modern .thumb-title {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-style: normal;
+            font-size: 10px;
+        }
+
+        .export-style-romance .thumb-kicker {
+            font-size: 11px;
+            font-style: italic;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .export-style-romance .thumb-title {
+            font-size: 15px;
+        }
+
+        .export-style-romance .thumb-break {
+            font-size: 10px;
+        }
+
         .export-style-copy {
             display: grid;
             gap: 2px;
@@ -8926,9 +8954,17 @@
             font-weight: 650;
         }
 
-        .export-matter[open] {
+        .export-matter-body {
             display: grid;
             gap: 6px;
+            margin-top: 8px;
+        }
+
+        .export-matter-body > label:not(.export-toggle-row) {
+            margin-top: 6px;
+            color: var(--text-soft);
+            font-size: 12.5px;
+            font-weight: 700;
         }
 
         .export-matter input[type="text"],

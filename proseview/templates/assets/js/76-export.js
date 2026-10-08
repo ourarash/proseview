@@ -627,6 +627,31 @@
             return exportFormats().every(function(format) { return style.formats.indexOf(format) >= 0; });
         }
 
+        // A tiny page in each style, so a writer chooses by eye.
+        var EXPORT_THUMB_TEXT = 'lice was beginning to get very tired of sitting by her sister on the bank.';
+
+        function exportStyleThumb(name) {
+            if (name === 'manuscript') {
+                return '<span class="export-style-thumb export-style-manuscript" aria-hidden="true">'
+                    + '<span class="thumb-head">Carroll / ALICE / 1</span><span class="thumb-kicker">Chapter 1</span>'
+                    + '<span class="thumb-text">A' + EXPORT_THUMB_TEXT + '</span><span class="thumb-break">#</span></span>';
+            }
+            if (name === 'modern') {
+                return '<span class="export-style-thumb export-style-modern" aria-hidden="true">'
+                    + '<span class="thumb-numeral">1</span><span class="thumb-title">The Rabbit-Hole</span>'
+                    + '<span class="thumb-text">A' + EXPORT_THUMB_TEXT + '</span><span class="thumb-break">·&nbsp;&nbsp;·&nbsp;&nbsp;·</span></span>';
+            }
+            if (name === 'romance') {
+                return '<span class="export-style-thumb export-style-romance" aria-hidden="true">'
+                    + '<span class="thumb-kicker">&#10086; 1 &#10086;</span><span class="thumb-title">The Rabbit-Hole</span>'
+                    + '<span class="thumb-text"><span class="thumb-cap">A</span>' + EXPORT_THUMB_TEXT + '</span><span class="thumb-break">&#10086;</span></span>';
+            }
+            return '<span class="export-style-thumb export-style-' + name + '" aria-hidden="true">'
+                + '<span class="thumb-kicker">Chapter One</span><span class="thumb-title">The Rabbit-Hole</span>'
+                + '<span class="thumb-text"><span class="thumb-cap">A</span>' + EXPORT_THUMB_TEXT + '</span>'
+                + '<span class="thumb-break">*&nbsp;&nbsp;*&nbsp;&nbsp;*</span></span>';
+        }
+
         function exportRenderFormatAndStyle() {
             var details = exportState.details;
             var cards = exportEl('exportFormatCards');
@@ -705,15 +730,7 @@
                     exportSchedulePreview();
                 });
                 // A tiny page in the style itself, so a writer chooses by eye.
-                card.innerHTML = style.name === 'manuscript'
-                    ? '<span class="export-style-thumb export-style-manuscript" aria-hidden="true">'
-                        + '<span class="thumb-head">Carroll / ALICE / 1</span><span class="thumb-kicker">Chapter 1</span>'
-                        + '<span class="thumb-text">Alice was beginning to get very tired of sitting by her sister on the bank.</span>'
-                        + '<span class="thumb-break">#</span></span>'
-                    : '<span class="export-style-thumb export-style-' + style.name + '" aria-hidden="true">'
-                        + '<span class="thumb-kicker">Chapter One</span><span class="thumb-title">The Rabbit-Hole</span>'
-                        + '<span class="thumb-text"><span class="thumb-cap">A</span>lice was beginning to get very tired of sitting by her sister on the bank.</span>'
-                        + '<span class="thumb-break">*&nbsp;&nbsp;*&nbsp;&nbsp;*</span></span>';
+                card.innerHTML = exportStyleThumb(style.name);
                 card.insertBefore(input, card.firstChild);
                 var copy = document.createElement('span');
                 copy.className = 'export-style-copy';
@@ -730,9 +747,7 @@
             if (formats.indexOf('pdf-share') < 0 || formats.length > 1) {
                 var more = document.createElement('p');
                 more.className = 'export-hint export-style-more';
-                more.textContent = formats.length === 1 && formats[0] !== 'pdf-share'
-                    ? 'More styles are on the way. Manuscript format is under Shareable PDF.'
-                    : 'More styles are on the way.';
+                more.textContent = 'Manuscript format, for agents and editors, is under Shareable PDF.';
                 host.appendChild(more);
             }
         }

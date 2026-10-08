@@ -58,6 +58,8 @@ MAX_COVER_BYTES = 20 * 1024 * 1024
 _STYLE_BLURBS = {
     "classic": "Serif text, “Chapter One” openers with a drop cap, and a centred * * * between scenes.",
     "manuscript": "Standard submission format: 12 pt, double-spaced, “Surname / TITLE / page”.",
+    "modern": "Clean serif text, sans-serif headings, a large numeral for each chapter.",
+    "romance": "Large italic chapter titles, numerals framed by florals, a floral mark between scenes.",
 }
 
 _FORMAT_BLURBS = {
@@ -156,7 +158,7 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
         },
         "chapters": chapters,
         "selections": selections,
-        "styles": [_style_entry(name) for name in available_styles()],
+        "styles": [_style_entry(name) for name in sorted(available_styles(), key=_style_order)],
         "formats": [
             {"name": name, "label": FORMAT_LABELS.get(name, "All formats"), "blurb": _FORMAT_BLURBS[name]}
             for name in (*EXPORT_FORMATS, "all")
@@ -289,6 +291,11 @@ def _facets(facts: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]
             counts.update(value for value in values if value)
         out[field] = [{"value": value, "count": count} for value, count in counts.most_common()]
     return out
+
+
+def _style_order(name: str) -> tuple[int, str]:
+    """Classic first, then the other book styles, then Manuscript."""
+    return ({"classic": 0, "modern": 1, "romance": 2, "manuscript": 9}.get(name, 5), name)
 
 
 def _style_entry(name: str) -> dict[str, Any]:

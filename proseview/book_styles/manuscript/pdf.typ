@@ -96,7 +96,7 @@
   [#metadata(here().page()) <first-text-page>]
 }
 
-#let chapter(number, title, outline-label) = {
+#let chapter(number, title, outline-label, n: none) = {
   pagebreak(weak: true)
   start-body()
   heading(level: 1, outline-label)

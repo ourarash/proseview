@@ -376,7 +376,7 @@ class _Writer:
     def _chapter_nav_label(self, chapter: BookChapter) -> str:
         number, title = self._chapter_heading_parts(chapter)
         if number and title:
-            return f"{number}: {title}"
+            return f"{number}. {title}" if number.isdigit() else f"{number}: {title}"
         return title or number or f"Chapter {chapter.number}"
 
     # -- pages --------------------------------------------------------------
@@ -632,7 +632,8 @@ class _Writer:
             access_modes = ["textual"] + (["visual"] if has_images else [])
             meta += [f'    <meta property="schema:accessMode">{m}</meta>' for m in access_modes]
             meta.append('    <meta property="schema:accessModeSufficient">textual</meta>')
-            features = ["structuralNavigation", "readingOrder"]
+            # Reflowable text: the reader's own font, size and colours apply.
+            features = ["structuralNavigation", "readingOrder", "displayTransformability"]
             if book.has_contents:
                 features.append("tableOfContents")
             if has_images:

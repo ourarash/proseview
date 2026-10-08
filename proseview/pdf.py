@@ -114,6 +114,12 @@ def approximate_words(book: Book) -> str:
     return f"about {rounded:,} words"
 
 
+def _typst_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return string(str(value))
+
+
 def _length(inches: float) -> str:
     return f"{inches:g}in"
 
@@ -176,7 +182,10 @@ class _Source:
             **margins,
         }
         body = ",\n  ".join(f"{key}: {value}" for key, value in values.items())
-        return f"#let config = (\n  {body},\n)\n"
+        theme = ",\n  ".join(
+            f"{key.replace('_', '-')}: {_typst_value(value)}" for key, value in self.style.pdf_settings
+        )
+        return f"#let config = (\n  {body},\n)\n#let theme = (\n  {theme},\n)\n"
 
     def _inside(self, path: Path, what: str) -> Path:
         if self.root is None:
@@ -227,11 +236,12 @@ class _Source:
     def _chapter(self, chapter: BookChapter) -> str:
         number = chapter_label(chapter.number, self.style.chapter_numbering)
         title = chapter.title
-        outline_label = ": ".join(part for part in (number, title) if part) or f"Chapter {chapter.number}"
+        joiner = ". " if number.isdigit() else ": "
+        outline_label = joiner.join(part for part in (number, title) if part) or f"Chapter {chapter.number}"
         lines = [
             f"#chapter({self._content(number) if number else 'none'}, "
             f"{self._content(title) if title else ('none' if number else self._content(outline_label))}, "
-            f"{self._content(outline_label)})"
+            f"{self._content(outline_label)}, n: {chapter.number})"
         ]
         show_titles = self.options.show_scene_titles
         for i, scene in enumerate(chapter.scenes):

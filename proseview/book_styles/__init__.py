@@ -16,7 +16,7 @@ from pathlib import Path
 
 STYLES_DIR = Path(__file__).resolve().parent
 DEFAULT_STYLE = "classic"
-CHAPTER_NUMBERING: tuple[str, ...] = ("words", "numerals", "none")
+CHAPTER_NUMBERING: tuple[str, ...] = ("words", "numerals", "number", "none")
 
 
 class StyleError(ValueError):
@@ -39,6 +39,8 @@ class BookStyle:
     description: str = ""
     #: Formats ``style.yaml`` limits the style to; empty means all it can make.
     declared_formats: tuple[str, ...] = ()
+    #: Layout choices the shared PDF template reads (``pdf:`` in style.yaml).
+    pdf_settings: tuple[tuple[str, object], ...] = ()
 
     @property
     def formats(self) -> tuple[str, ...]:
@@ -50,8 +52,25 @@ class BookStyle:
         )
 
 
+#: What the shared PDF layout (classic/pdf.typ) can vary, with Classic's choices.
+PDF_DEFAULTS: dict[str, object] = {
+    "body_font": "Libertinus Serif",
+    "heading_font": "Libertinus Serif",
+    # classic: "Chapter One" in spaced capitals over an italic title.
+    # modern: a large numeral over the title, both in the heading font.
+    # romance: an italic numeral between ornaments over a large italic title.
+    "opener": "classic",
+    "drop_cap": True,
+    "ornament": "",
+}
+PDF_OPENERS = ("classic", "modern", "romance")
+
+
 def _is_style(folder: Path) -> bool:
-    return (folder / "epub.css").is_file() or (folder / "pdf.typ").is_file()
+    return (
+        (folder / "epub.css").is_file() or (folder / "pdf.typ").is_file()
+        or (folder / "style.yaml").is_file() and "extends:" in (folder / "style.yaml").read_text(encoding="utf-8")
+    )
 
 
 def available_styles() -> list[str]:
@@ -108,14 +127,38 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
     if not isinstance(declared, list) or any(str(f) not in FORMATS for f in declared):
         raise StyleError(f"{settings_file}: formats must list some of {', '.join(FORMATS)}")
     css_file, pdf_file = folder / "epub.css", folder / "pdf.typ"
+    css = css_file.read_text(encoding="utf-8") if css_file.is_file() else None
+    pdf_template = pdf_file.read_text(encoding="utf-8") if pdf_file.is_file() else None
+    pdf_settings = dict(PDF_DEFAULTS)
+
+    # A style may build on another: its stylesheet is added after the base
+    # one, and it lays out PDFs with the base template unless it has its own.
+    parent = settings.get("extends")
+    if parent:
+        if str(parent).casefold() == folder.name.casefold():
+            raise StyleError(f"{settings_file}: a style cannot extend itself")
+        base_style = load_style(str(parent))
+        if css is not None and base_style.css is not None:
+            css = base_style.css + "\n\n/* ---- " + str(settings.get("name") or folder.name) + " ---- */\n\n" + css
+        elif css is None:
+            css = base_style.css
+        pdf_template = pdf_template or base_style.pdf_template
+        pdf_settings.update(dict(base_style.pdf_settings))
+    own_pdf = settings.get("pdf") or {}
+    if not isinstance(own_pdf, dict) or any(key not in PDF_DEFAULTS for key in own_pdf):
+        raise StyleError(f"{settings_file}: pdf may set {', '.join(PDF_DEFAULTS)}")
+    pdf_settings.update(own_pdf)
+    if pdf_settings["opener"] not in PDF_OPENERS:
+        raise StyleError(f"{settings_file}: pdf.opener must be one of {', '.join(PDF_OPENERS)}")
     return BookStyle(
         name=str(settings.get("name") or folder.name),
         path=folder,
-        css=css_file.read_text(encoding="utf-8") if css_file.is_file() else None,
+        css=css,
         chapter_numbering=numbering,
         scene_break=str(settings.get("scene_break", "* * *")),
         show_scene_titles=show_titles,
-        pdf_template=pdf_file.read_text(encoding="utf-8") if pdf_file.is_file() else None,
+        pdf_template=pdf_template,
         description=str(settings.get("description") or "").strip(),
         declared_formats=tuple(str(f) for f in declared),
+        pdf_settings=tuple(pdf_settings.items()),
     )

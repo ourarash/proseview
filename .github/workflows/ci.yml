@@ -64,7 +64,7 @@ jobs:
       - name: Install proseview
         run: pip install -e ".[dev]"
       - name: Run the EPUB tests with EPUBCheck
-        run: pytest -q -rs tests/test_epub.py tests/test_export_dashboard.py
+        run: pytest -q -rs tests/test_epub.py tests/test_export_dashboard.py tests/test_matter.py tests/test_styles.py tests/test_raw_html.py
 
   browser-e2e:
     name: browser end-to-end

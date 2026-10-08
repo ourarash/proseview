@@ -214,3 +214,31 @@ def test_a_server_older_than_the_page_is_explained(page: Page, demo_book_server:
     page.goto(demo_book_server.url("/"))
     page.get_by_role("button", name="Export").first.click()
     expect(page.locator("#exportTree")).to_contain_text("Proseview was updated while it was running")
+
+
+def test_pick_by_character_in_the_modern_style_with_a_dedication(page: Page, demo_book_server: ProseviewServer):
+    root = demo_book_server.root
+    page.goto(demo_book_server.url("/"))
+    page.get_by_role("button", name="Export").first.click()
+    expect(page.locator("#exportTree .export-chapter").first).to_be_visible()
+
+    page.get_by_label("What to pick by").select_option("characters")
+    page.get_by_label("Which").select_option("Queen")
+    page.get_by_role("button", name="Tick these").click()
+    expect(page.locator("#exportTotals")).to_have_text("6 chapters, 15 scenes, 10,187 words")
+
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("radio", name="Modern").check()
+    page.get_by_role("button", name="Next: Book details").click()
+    page.locator("#exportMatter summary").click()
+    page.get_by_label("Dedication").fill("For Alice Liddell")
+    expect(page.frame_locator("#exportPreviewFrame").locator(".chapter-number")).to_have_text("6", timeout=20_000)
+
+    page.get_by_role("button", name="Export EPUB").click()
+    expect(page.locator("#exportDoneBox")).to_contain_text("Your e-book is ready", timeout=30_000)
+    (epub,) = (root / "exports").glob("*.epub")
+    with zipfile.ZipFile(epub) as archive:
+        pages = "".join(archive.read(n).decode() for n in archive.namelist() if n.endswith(".xhtml"))
+    assert "For Alice Liddell" in pages and "All rights reserved." in pages
+    config = (root / ".proseview.yaml").read_text()
+    assert "style: modern" in config and "dedication: For Alice Liddell" in config

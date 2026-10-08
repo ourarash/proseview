@@ -62,12 +62,15 @@ h3 + p,
   font-style: normal;
 }
 
-/* Drop cap and small-caps first line on a chapter's opening paragraph. */
+/* Drop cap and small-caps first line on a chapter's opening paragraph.
+ * The letter spans exactly two lines: its float is kept shorter than two
+ * line-heights (2 × 1.45em: here 2.75 × (0.9 + 0.12) = 2.8em), so the third line returns to the margin
+ * instead of stepping in around the float's last sliver. */
 p.opener::first-letter {
   float: left;
-  font-size: 3.4em;
-  line-height: 0.85;
-  margin: 0.06em 0.08em 0 0;
+  font-size: 2.75em;
+  line-height: 0.9;
+  margin: 0.12em 0.1em 0 0;
 }
 
 p.opener::first-line {

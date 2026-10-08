@@ -249,6 +249,44 @@ def test_a_partial_book_says_which_chapters_on_its_title_page(tmp_path: Path):
     assert '<p class="note">Chapters 3, 7–9</p>' in check_epub(path)["OEBPS/text/title.xhtml"].decode()
 
 
+@pytest.mark.parametrize("plain, typeset", [
+    ("Alice's Adventures", "Alice’s Adventures"),
+    ('The "Mad" Hatter', "The “Mad” Hatter"),
+    ("'Tis the Season", "‘Tis the Season"),
+    ("Wait... no -- yes --- maybe", "Wait… no – yes — maybe"),
+    ("O'Brien & Sons", "O’Brien & Sons"),
+])
+def test_smart_punctuation_matches_the_prose(plain: str, typeset: str):
+    from proseview.book import smart_punctuation
+
+    assert smart_punctuation(plain) == typeset
+
+
+def test_title_page_headings_and_metadata_get_curly_quotes(tmp_path: Path):
+    path, _ = _export(tmp_path, title="Alice's Adventures", author="Lewis 'Dodgson' Carroll")
+    files = check_epub(path)
+
+    title_page = files["OEBPS/text/title.xhtml"].decode()
+    assert '<h1 class="title">Alice’s Adventures</h1>' in title_page
+    assert "Lewis ‘Dodgson’ Carroll" in title_page
+    assert "<dc:title>Alice’s Adventures</dc:title>" in files["OEBPS/content.opf"].decode()
+    assert "Alice's" not in files["OEBPS/toc.ncx"].decode()
+
+
+def test_the_drop_cap_spans_two_lines_and_no_more():
+    """A float taller than two lines pushes the third line in around it."""
+    import re
+
+    css = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "epub.css").read_text()
+    body_line = float(re.search(r"body \{[^}]*line-height: ([\d.]+)", css).group(1))
+    rule = re.search(r"p\.opener::first-letter \{([^}]*)\}", css).group(1)
+    size = float(re.search(r"font-size: ([\d.]+)em", rule).group(1))
+    line = float(re.search(r"line-height: ([\d.]+)", rule).group(1))
+    top = float(re.search(r"margin: ([\d.]+)em", rule).group(1))
+
+    assert size * (line + top) < 2 * body_line
+
+
 def test_metadata_carries_title_author_language_and_identifier(tmp_path: Path):
     path, _ = _export(
         tmp_path, _novel(tmp_path), title="A Novel & More", author="Ari", language="en-GB",

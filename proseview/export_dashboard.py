@@ -31,7 +31,10 @@ from .epub import IMAGE_TYPES
 from .epub_check import readiness
 from .export import (
     BOOK_DETAIL_KEYS,
+    EXPORT_FORMATS,
     EXPORTS_DIR,
+    FORMAT_LABELS,
+    prepare_book,
     collect_scene_documents,
     default_title,
     ensure_gitignored,
@@ -43,6 +46,7 @@ from .export import (
     saved_cover_path,
 )
 from .lexical import count_words, prose_only
+from .pdf import DEFAULT_TRIM, PAPER_LABELS, PAPER_SIZES, TRIM_LABELS, TRIM_SIZES, default_paper
 from .repo import resolve_visible_repository_path
 
 #: Cover formats a store accepts (no SVG), by extension.
@@ -52,7 +56,20 @@ MAX_COVER_BYTES = 20 * 1024 * 1024
 
 _STYLE_BLURBS = {
     "classic": "Serif text, “Chapter One” openers with a drop cap, and a centred * * * between scenes.",
+    "manuscript": "Standard submission format: 12 pt, double-spaced, “Surname / TITLE / page”.",
 }
+
+_FORMAT_BLURBS = {
+    "epub": "For Apple Books, Kobo, Kindle and every e-reader.",
+    "pdf-print": "A paperback interior to upload to KDP or IngramSpark.",
+    "pdf-share": "A PDF to send to a reader, an agent or an editor.",
+    "all": "The e-book and both PDFs in one go.",
+}
+
+#: Chapters a PDF preview lays out. The whole book is laid out on export;
+#: the preview only needs enough pages to judge the look.
+PREVIEW_CHAPTERS = 3
+PREVIEW_PPI = 64
 
 
 def _words(scene: SceneDocument) -> int:
@@ -130,10 +147,13 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
         },
         "chapters": chapters,
         "selections": selections,
-        "styles": [
-            {"name": name, "label": load_style(name).name, "blurb": _STYLE_BLURBS.get(name, "")}
-            for name in available_styles()
+        "styles": [_style_entry(name) for name in available_styles()],
+        "formats": [
+            {"name": name, "label": FORMAT_LABELS.get(name, "All formats"), "blurb": _FORMAT_BLURBS[name]}
+            for name in (*EXPORT_FORMATS, "all")
         ],
+        "trims": [{"name": name, "label": label} for name, label in TRIM_LABELS.items()],
+        "papers": [{"name": name, "label": label} for name, label in PAPER_LABELS.items()],
         "details": {
             "title": saved.title,
             "subtitle": saved.subtitle,
@@ -143,7 +163,23 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             "style": saved.style or DEFAULT_STYLE,
             "scene_titles": bool(saved.scene_titles) if saved.scene_titles is not None else False,
             "cover_image": cover if cover_ok else "",
+            "format": saved.format or "epub",
+            "trim": saved.trim if saved.trim in TRIM_SIZES else DEFAULT_TRIM,
+            "paper": saved.paper if saved.paper in PAPER_SIZES else default_paper(saved.language or "en-US"),
+            "recto_chapters": saved.recto_chapters if saved.recto_chapters is not None else True,
+            "contact": saved.contact,
+            "watermark": "",
         },
+    }
+
+
+def _style_entry(name: str) -> dict[str, Any]:
+    style = load_style(name)
+    return {
+        "name": name,
+        "label": style.name,
+        "blurb": _STYLE_BLURBS.get(name, style.description),
+        "formats": list(style.formats),
     }
 
 
@@ -222,9 +258,20 @@ class ExportRequest:
     style: str = DEFAULT_STYLE
     scene_titles: bool = False
     cover_image: str = ""
+    format: str = "epub"
+    trim: str = DEFAULT_TRIM
+    paper: str = "letter"
+    recto_chapters: bool = True
+    contact: str = ""
+    #: Names one reader, so it is never remembered for the next export.
+    watermark: str = ""
 
     def details(self) -> dict[str, Any]:
         return {key: getattr(self, key) for key in BOOK_DETAIL_KEYS}
+
+    @property
+    def formats(self) -> tuple[str, ...]:
+        return EXPORT_FORMATS if self.format == "all" else (self.format,)
 
 
 def request_details(body: dict[str, Any]) -> ExportRequest:
@@ -253,6 +300,28 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
     scene_titles = raw.get("scene_titles", False)
     if not isinstance(scene_titles, bool):
         raise ExportError("scene_titles must be true or false")
+    fmt = text("format") or "epub"
+    if fmt not in (*EXPORT_FORMATS, "all"):
+        raise ExportError(f"Unknown format {fmt!r}")
+    trim = text("trim") or DEFAULT_TRIM
+    if trim not in TRIM_SIZES:
+        raise ExportError(f"Unknown trim size {trim!r}")
+    paper = text("paper") or default_paper(language)
+    if paper not in PAPER_SIZES:
+        raise ExportError(f"Unknown paper size {paper!r}")
+    recto = raw.get("recto_chapters", True)
+    if not isinstance(recto, bool):
+        raise ExportError("recto_chapters must be true or false")
+    contact = raw.get("contact", "")
+    if not isinstance(contact, str) or len(contact) > 600:
+        raise ExportError("The contact details must be text, at most a few lines")
+    contact = "\n".join(" ".join(line.split()) for line in contact.splitlines() if line.strip())
+    wanted = load_style(style)
+    for each in (EXPORT_FORMATS if fmt == "all" else (fmt,)):
+        if each not in wanted.formats:
+            raise ExportError(
+                f"The {wanted.name} style does not make {FORMAT_LABELS[each]}. Choose another style or format."
+            )
     return ExportRequest(
         title=text("title"),
         subtitle=text("subtitle"),
@@ -262,6 +331,12 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
         style=style,
         scene_titles=scene_titles,
         cover_image=text("cover_image", 1024),
+        format=fmt,
+        trim=trim,
+        paper=paper,
+        recto_chapters=recto,
+        contact=contact,
+        watermark=text("watermark", 120),
     )
 
 
@@ -368,22 +443,78 @@ def _page_list(files: dict[str, bytes]) -> list[dict[str, str]]:
 
 
 def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewCache) -> dict[str, Any]:
-    """Build the book exactly as Export would, in memory, and list its pages."""
+    """Build the book as Export would and list its pages.
+
+    An EPUB preview is the book itself, its XHTML pages shown in a frame. A
+    PDF preview is the first chapters laid out exactly as the PDF will be and
+    drawn as page images. With every format chosen, ``preview`` in the body
+    says which one to show.
+    """
     documents = collect_scene_documents(root, cfg)
     selection = selection_from_request(body, documents)
     details = request_details(body)
-    with tempfile.TemporaryDirectory() as tmp:
-        result = export_book(
-            root, cfg, Path(tmp) / "preview.epub",
-            selection=selection,
-            **_book_options(root, cfg, details),
-        )
-        with zipfile.ZipFile(result.path) as archive:
-            files = {name: archive.read(name) for name in archive.namelist()}
+    cfg = _dialog_config(cfg)
+    fmt = str(body.get("preview") or details.formats[0])
+    if fmt not in details.formats:
+        fmt = details.formats[0]
+    if fmt == "epub":
+        with tempfile.TemporaryDirectory() as tmp:
+            result = export_book(
+                root, cfg, Path(tmp) / "preview.epub", selection=selection, **_book_options(root, cfg, details),
+            )
+            with zipfile.ZipFile(result.path) as archive:
+                files = {name: archive.read(name) for name in archive.namelist()}
+        token = uuid.uuid4().hex
+        preview = Preview(token=token, files=files, pages=_page_list(files))
+        cache.add(preview)
+        return {"ok": True, "token": token, "pages": preview.pages, "kind": result.book.kind, "format": "epub"}
+
+    from dataclasses import replace
+
+    from .book_styles import load_style as _load
+    from .pdf import PdfOptions, render_pages
+
+    options = _book_options(root, cfg, details)
+    book = prepare_book(
+        root, cfg, selection, title=options["title"], subtitle=options["subtitle"],
+        author=options["author"], language=options["language"],
+    )
+    shortened = len(book.chapters) > PREVIEW_CHAPTERS and book.kind != "scene"
+    if shortened:
+        book = replace(book, chapters=book.chapters[:PREVIEW_CHAPTERS], appendices=())
+    images = render_pages(book, PdfOptions(
+        layout="print" if fmt == "pdf-print" else "share",
+        style=_load(details.style),
+        show_scene_titles=details.scene_titles,
+        trim=details.trim,
+        paper=details.paper,
+        recto_chapters=details.recto_chapters,
+        watermark=details.watermark,
+        cover_image=options["cover_image"],
+        contact=details.contact,
+    ), ppi=PREVIEW_PPI)
+    files = {f"page-{n:03d}.png": data for n, data in enumerate(images, start=1)}
     token = uuid.uuid4().hex
-    preview = Preview(token=token, files=files, pages=_page_list(files))
-    cache.add(preview)
-    return {"ok": True, "token": token, "pages": preview.pages, "kind": result.book.kind}
+    pages = [{"href": name, "label": f"Page {n}"} for n, name in enumerate(files, start=1)]
+    cache.add(Preview(token=token, files=files, pages=pages))
+    return {
+        "ok": True, "token": token, "pages": pages, "kind": book.kind, "format": fmt,
+        "spreads": fmt == "pdf-print",
+        "note": f"The preview shows the first {PREVIEW_CHAPTERS} chapters; the export has them all." if shortened else "",
+    }
+
+
+def _dialog_config(cfg: Config) -> Config:
+    """*cfg* without the remembered book details.
+
+    The dialog sends every detail itself, starting from the remembered ones,
+    so a field the writer cleared must stay clear rather than fall back to
+    what was saved last time.
+    """
+    from dataclasses import replace
+
+    blank = {key: (None if key in {"scene_titles", "recto_chapters"} else "") for key in BOOK_DETAIL_KEYS}
+    return replace(cfg, export=replace(cfg.export, **blank))
 
 
 def _book_options(root: Path, cfg: Config, details: ExportRequest) -> dict[str, Any]:
@@ -397,6 +528,11 @@ def _book_options(root: Path, cfg: Config, details: ExportRequest) -> dict[str, 
         "style": details.style,
         "scene_titles": details.scene_titles,
         "cover_image": _cover(root, details),
+        "trim": details.trim,
+        "paper": details.paper,
+        "recto_chapters": details.recto_chapters,
+        "watermark": details.watermark,
+        "contact": details.contact,
     }
 
 
@@ -491,16 +627,22 @@ class ExportJobs:
         identifier = cfg.export.identifier or new_book_identifier()
         options = _book_options(root, cfg, details)
         options["identifier"] = identifier
-        result = export_book(
-            root, cfg, None, selection=selection, **options,
-            progress=lambda step, fraction: self._progress(job, step, fraction * 0.9),
-        )
-        self._progress(job, "Checking the book", 0.92)
-        cover = options["cover_image"]
-        checks = readiness(
-            result.path, result.book, title_given=bool(details.title),
-            cover=cover.read_bytes() if cover else None,
-        )
+        formats = details.formats
+        cfg = _dialog_config(cfg)
+        files = []
+        book = None
+        for n, fmt in enumerate(formats):
+            share = (n / len(formats), (n + 1) / len(formats))
+            label = FORMAT_LABELS[fmt]
+
+            def report(step: str, fraction: float, share=share, label=label) -> None:
+                prefix = f"{label}: " if len(formats) > 1 else ""
+                self._progress(job, prefix + step, (share[0] + (share[1] - share[0]) * fraction) * 0.92)
+
+            result = export_book(root, cfg, None, selection=selection, fmt=fmt, progress=report, **options)
+            book = result.book
+            self._progress(job, "Checking the book", (share[1]) * 0.92)
+            files.append(self._file_entry(root, result, details, options))
         # Only a successful export is remembered, so a failed first try
         # leaves the config as it was.
         if not cfg.export.identifier:
@@ -511,19 +653,41 @@ class ExportJobs:
         ensure_gitignored(root)
         if self._on_written:
             self._on_written()
-        relative = result.path.relative_to(root.resolve()).as_posix()
-        size = result.path.stat().st_size
-        scenes = result.book.scenes
+        scenes = book.scenes
         return {
-            "path": relative,
-            "name": result.path.name,
-            "size": size,
-            "kind": result.book.kind,
-            "chapters": len(result.book.chapters),
+            "files": files,
+            "kind": book.kind,
+            "chapters": len(book.chapters),
             "scenes": len(scenes),
             "words": sum(_words(scene) for scene in scenes),
-            "checks": checks,
             "saved_selection": save_as,
+        }
+
+    @staticmethod
+    def _file_entry(root: Path, result, details: ExportRequest, options: dict) -> dict:
+        cover = options["cover_image"]
+        if result.format == "epub":
+            checks = readiness(
+                result.path, result.book, title_given=bool(details.title),
+                cover=cover.read_bytes() if cover else None,
+            )
+        else:
+            from .pdf_check import readiness as pdf_readiness
+
+            checks = pdf_readiness(
+                result.path, result.book,
+                layout="print" if result.format == "pdf-print" else "share",
+                trim=details.trim, paper=details.paper, style=details.style,
+                title_given=bool(details.title), contact=details.contact,
+            )
+        return {
+            "format": result.format,
+            "label": FORMAT_LABELS[result.format],
+            "path": result.path.relative_to(root.resolve()).as_posix(),
+            "name": result.path.name,
+            "size": result.path.stat().st_size,
+            "pages": result.pages,
+            "checks": checks,
         }
 
 
@@ -542,15 +706,15 @@ def _error_payload(root: Path, exc: ExportError) -> dict[str, Any]:
 def exported_file(root: Path, relative: str) -> Path:
     """Resolve a finished export for download, refusing anything else.
 
-    Only ``.epub`` files directly inside ``exports/`` qualify, so this route
-    cannot be used to read the rest of the novel or the machine.
+    Only ``.epub`` and ``.pdf`` files directly inside ``exports/`` qualify, so
+    this route cannot be used to read the rest of the novel or the machine.
     """
     try:
         path = resolve_visible_repository_path(root, relative)
     except ValueError as exc:
         raise ExportError(str(exc)) from exc
     exports = (root.resolve() / EXPORTS_DIR).resolve()
-    if path.parent != exports or path.suffix.lower() != ".epub" or not path.is_file():
+    if path.parent != exports or path.suffix.lower() not in {".epub", ".pdf"} or not path.is_file():
         raise ExportError("No such exported book")
     return path
 

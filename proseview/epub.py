@@ -142,6 +142,41 @@ class _Markdown:
         return kept
 
 
+def resolve_image(root: Path | None, src: str, source: Path | None, owner: str) -> Path:
+    """Find the file a scene's image points at, or explain why it cannot be used.
+
+    *source* is the scene's path below *root*, so a relative ``src`` is read
+    from the scene's own folder, and a ``/``-rooted one from the repository.
+    Every renderer uses these rules, so an image that works in the EPUB works
+    in the PDF too.
+    """
+    parsed = urlparse(src)
+    if parsed.scheme in {"http", "https"} or src.startswith("//"):
+        raise ExportError(
+            f"{owner} uses an image from the web ({src}). A book cannot load "
+            "images from the internet; save it into the repository and link that copy."
+        )
+    if parsed.scheme or not parsed.path:
+        raise ExportError(f"{owner} has an image Proseview cannot include: {src!r}")
+    if root is None:
+        raise ExportError(f"{owner} has an image, but the book has no folder to find it in")
+    root = root.resolve()
+    relative = Path(unquote(parsed.path))
+    base = (root / source).parent if source is not None else root
+    candidate = (root / relative.relative_to("/")) if relative.is_absolute() else base / relative
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise ExportError(f"{owner} links an image outside the repository: {src}")
+    if not resolved.is_file():
+        raise ExportError(f"{owner} has an image that can't be found: {src}")
+    if resolved.suffix.lower() not in IMAGE_TYPES:
+        raise ExportError(
+            f"{owner} has an image books cannot show ({resolved.suffix or 'no extension'}): "
+            f"{src}. Use PNG, JPEG, GIF, SVG or WebP."
+        )
+    return resolved
+
+
 class _Images:
     """Images referenced from scenes, copied into the book once each."""
 
@@ -157,30 +192,8 @@ class _Images:
             raise ExportError(str(exc), scene=scene) from None
 
     def _add(self, src: str, source: Path | None, owner: str) -> str:
-        parsed = urlparse(src)
-        if parsed.scheme in {"http", "https"} or src.startswith("//"):
-            raise ExportError(
-                f"{owner} uses an image from the web ({src}). E-books cannot load "
-                "images from the internet; save it into the repository and link that copy."
-            )
-        if parsed.scheme or not parsed.path:
-            raise ExportError(f"{owner} has an image Proseview cannot include: {src!r}")
-        if self.root is None:
-            raise ExportError(f"{owner} has an image, but the book has no folder to find it in")
-        relative = Path(unquote(parsed.path))
-        base = (self.root / source).parent if source is not None else self.root
-        candidate = (self.root / relative.relative_to("/")) if relative.is_absolute() else base / relative
-        resolved = candidate.resolve()
-        if not resolved.is_relative_to(self.root):
-            raise ExportError(f"{owner} links an image outside the repository: {src}")
-        if not resolved.is_file():
-            raise ExportError(f"{owner} has an image that can't be found: {src}")
-        media_type = IMAGE_TYPES.get(resolved.suffix.lower())
-        if media_type is None:
-            raise ExportError(
-                f"{owner} has an image e-readers cannot show ({resolved.suffix or 'no extension'}): "
-                f"{src}. Use PNG, JPEG, GIF, SVG or WebP."
-            )
+        resolved = resolve_image(self.root, src, source, owner)
+        media_type = IMAGE_TYPES[resolved.suffix.lower()]
         if resolved not in self._by_path:
             n = len(self.items) + 1
             href = f"images/image-{n:03d}{resolved.suffix.lower()}"
@@ -197,6 +210,8 @@ class _Writer:
             )
         if options.style is None:
             raise ExportError("An EPUB needs a book style")
+        if options.style.css is None:
+            raise ExportError(f"{options.style.name} has no e-book design. Choose another style for an EPUB.")
         self.book = book
         self.options = options
         self.style = options.style

@@ -216,6 +216,16 @@ def ensure_pandoc() -> str:
 class ExportResult:
     path: Path
     book: Book
+    format: str = "epub"
+    #: Pages in a PDF; 0 for an EPUB, whose pages depend on the reader.
+    pages: int = 0
+
+
+#: What ``--format`` and the dashboard can make. ``all`` makes every one.
+EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share")
+FORMAT_LABELS: dict[str, str] = {
+    "epub": "E-book (EPUB)", "pdf-print": "Print book (PDF)", "pdf-share": "Shareable PDF",
+}
 
 
 def _slug(text: str) -> str:
@@ -225,11 +235,14 @@ def _slug(text: str) -> str:
 
 def default_output_path(
     root: Path, book: Book, *, selection_name: str = "", today: _dt.date | None = None,
+    fmt: str = "epub", style: str = "",
 ) -> Path:
-    """``<root>/exports/<book>[-<part>]-<date>.epub``.
+    """``<root>/exports/<book>[-<part>][-<kind>]-<date>.<epub|pdf>``.
 
     A part of the book gets its own name, so exporting chapter three does not
-    overwrite the day's full-book export.
+    overwrite the day's full-book export, and each format its own, so the
+    print interior (``-print``) and a manuscript (``-manuscript``) never
+    overwrite the reading copy.
     """
     if selection_name:
         part = _slug(selection_name)
@@ -241,8 +254,10 @@ def default_output_path(
         part = "selection"
     else:
         part = ""
-    stem = "-".join(bit for bit in (_slug(book.title), part, (today or _dt.date.today()).isoformat()) if bit)
-    return root / EXPORTS_DIR / f"{stem}.epub"
+    variant = "print" if fmt == "pdf-print" else ("manuscript" if style == "manuscript" else "")
+    date = (today or _dt.date.today()).isoformat()
+    stem = "-".join(bit for bit in (_slug(book.title), part, variant, date) if bit)
+    return root / EXPORTS_DIR / f"{stem}.{'epub' if fmt == 'epub' else 'pdf'}"
 
 
 def export_book(
@@ -265,8 +280,17 @@ def export_book(
     toc_depth: int = 2,
     appendix_folders: list[str] | None = None,
     progress: Callable[[str, float], None] | None = None,
+    fmt: str = "epub",
+    trim: str = "",
+    paper: str = "",
+    recto_chapters: bool | None = None,
+    watermark: str = "",
+    contact: str = "",
 ) -> ExportResult:
-    """Export *selection* (default: the whole book) as an EPUB.
+    """Export *selection* (default: the whole book) as an EPUB or a PDF.
+
+    *fmt* is ``epub``, ``pdf-print`` (a paperback interior at *trim*) or
+    ``pdf-share`` (a Letter or A4 reading copy, optionally watermarked).
 
     *output* defaults to a dated file under ``exports/``. Book details left
     empty fall back to those saved under ``export:`` in ``.proseview.yaml``
@@ -284,27 +308,31 @@ def export_book(
         raise ExportError(f"Unknown EPUB version {epub_version!r}; expected one of {', '.join(EPUB_VERSIONS)}")
     if engine not in ENGINES:
         raise ExportError(f"Unknown export engine {engine!r}; expected one of {', '.join(ENGINES)}")
+    if fmt not in EXPORT_FORMATS:
+        raise ExportError(f"Unknown format {fmt!r}; expected one of {', '.join(EXPORT_FORMATS)}")
+    if engine == "pandoc" and fmt != "epub":
+        raise ExportError("The pandoc engine only makes EPUBs; leave out --engine for a PDF")
     pandoc = ensure_pandoc() if engine == "pandoc" else ""
 
     if progress:
         progress("Gathering your scenes", 0.0)
-    documents = collect_scene_documents(root, cfg)
-    selected = resolve_selection(documents, selection)
-    appendices = [collect_appendix_documents(root, folder, cfg) for folder in appendix_folders or []]
-    book = build_book(
-        documents,
-        selected,
-        title=title or saved.title or default_title(root),
-        subtitle=subtitle or saved.subtitle,
-        author=author or saved.author,
-        language=language,
-        identifier=identifier or cfg.export.identifier,
-        selection=selection,
-        appendices=appendices,
-        root=root.resolve(),
+    book = prepare_book(
+        root, cfg, selection, title=title, subtitle=subtitle, author=author, language=language,
+        identifier=identifier, appendix_folders=appendix_folders,
     )
 
-    output = (output or default_output_path(root, book, selection_name=selection.name if selection else "")).resolve()
+    try:
+        book_style = load_style(style or saved.style, base=root) if engine == "builtin" else None
+    except StyleError as exc:
+        raise ExportError(str(exc)) from exc
+    if book_style is not None and fmt not in book_style.formats:
+        offered = ", ".join(FORMAT_LABELS[f] for f in book_style.formats) or "nothing"
+        raise ExportError(f"The {book_style.name} style makes {offered}, not {FORMAT_LABELS[fmt]}. Choose another style.")
+
+    output = (output or default_output_path(
+        root, book, selection_name=selection.name if selection else "", fmt=fmt,
+        style=book_style.path.name if book_style else "",
+    )).resolve()
     if output.is_dir():
         raise ExportError(f"Output path {output} is a directory; pass a file path")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -316,14 +344,30 @@ def export_book(
         )
         return ExportResult(output, book)
 
-    try:
-        book_style = load_style(style or cfg.export.style, base=root)
-    except StyleError as exc:
-        raise ExportError(str(exc)) from exc
     if scene_titles is None:
         scene_titles = cfg.export.scene_titles
     if scene_titles is None:
         scene_titles = book_style.show_scene_titles
+    if fmt != "epub":
+        from .pdf import PdfOptions, write_pdf
+
+        if recto_chapters is None:
+            recto_chapters = saved.recto_chapters if saved.recto_chapters is not None else True
+        result = write_pdf(book, output, PdfOptions(
+            layout="print" if fmt == "pdf-print" else "share",
+            style=book_style,
+            show_scene_titles=scene_titles,
+            trim=trim or saved.trim or "5.5x8.5",
+            paper=paper or saved.paper,
+            recto_chapters=recto_chapters,
+            watermark=watermark,
+            cover_image=cover_image,
+            contact=contact or saved.contact,
+            progress=_scaled(progress, 0.05, 0.9) if progress else None,
+        ))
+        if progress:
+            progress("Finishing the PDF", 0.95)
+        return ExportResult(output, book, fmt, result.pages)
     write_epub(book, output, EpubOptions(
         version=epub_version,
         style=book_style,
@@ -335,6 +379,37 @@ def export_book(
     if progress:
         progress("Packing the book", 0.95)
     return ExportResult(output, book)
+
+
+def prepare_book(
+    root: Path,
+    cfg: Config,
+    selection: Selection | None = None,
+    *,
+    title: str = "",
+    subtitle: str = "",
+    author: str = "",
+    language: str = "",
+    identifier: str = "",
+    appendix_folders: list[str] | None = None,
+) -> Book:
+    """The :class:`Book` an export of *selection* would write, with saved details filled in."""
+    saved = cfg.export
+    documents = collect_scene_documents(root, cfg)
+    selected = resolve_selection(documents, selection)
+    appendices = [collect_appendix_documents(root, folder, cfg) for folder in appendix_folders or []]
+    return build_book(
+        documents,
+        selected,
+        title=title or saved.title or default_title(root),
+        subtitle=subtitle or saved.subtitle,
+        author=author or saved.author,
+        language=language or saved.language or "en-US",
+        identifier=identifier or saved.identifier,
+        selection=selection,
+        appendices=appendices,
+        root=root.resolve(),
+    )
 
 
 def _scaled(progress: Callable[[str, float], None], start: float, end: float) -> Callable[[str, float], None]:
@@ -457,7 +532,8 @@ def save_book_identifier(root: Path, identifier: str) -> None:
 
 #: The book details the dashboard remembers under ``export:``, in file order.
 BOOK_DETAIL_KEYS: tuple[str, ...] = (
-    "title", "subtitle", "author", "language", "epub_version", "style", "scene_titles", "cover_image",
+    "title", "subtitle", "author", "language", "format", "epub_version", "style", "scene_titles",
+    "trim", "paper", "recto_chapters", "contact", "cover_image",
 )
 
 

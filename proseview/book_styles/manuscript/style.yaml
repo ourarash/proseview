@@ -1,0 +1,11 @@
+# Manuscript: standard submission format for agents and editors. 12 pt,
+# double-spaced, 1 inch margins, "Chapter 1" a third of the way down the
+# page, a centred # between scenes, a title page with your contact details
+# and the word count, and "Surname / TITLE / page" at the top of each page.
+# It is a PDF to send, so it has no e-book or print design.
+name: Manuscript
+description: Standard submission format for agents and editors.
+chapter_numbering: numerals
+scene_break: "#"
+show_scene_titles: false
+formats: [pdf-share]

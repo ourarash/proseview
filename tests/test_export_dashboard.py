@@ -86,9 +86,13 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
     assert data["book"]["words"] == sum(c["words"] for c in data["chapters"])
     assert data["details"] == {
         "title": "", "subtitle": "", "author": "", "language": "en-US", "epub_version": "epub3",
-        "style": "classic", "scene_titles": False, "cover_image": "",
+        "style": "classic", "scene_titles": False, "cover_image": "", "format": "epub",
+        "trim": "5.5x8.5", "paper": "letter", "recto_chapters": True, "contact": "", "watermark": "",
     }
-    assert data["styles"][0]["name"] == "classic"
+    styles = {style["name"]: style for style in data["styles"]}
+    assert styles["classic"]["formats"] == ["epub", "pdf-print", "pdf-share"]
+    assert styles["manuscript"]["formats"] == ["pdf-share"]
+    assert [f["name"] for f in data["formats"]] == ["epub", "pdf-print", "pdf-share", "all"]
 
 
 def test_outline_word_counts_leave_out_todo_comments(book: Path):
@@ -357,22 +361,23 @@ def test_route_export_job_runs_to_a_dated_file_and_remembers_details(client, boo
 
     assert done["state"] == "done", done
     result = done["result"]
-    assert result["path"].startswith("exports/alices-adventures-chapter-2-") and result["path"].endswith(".epub")
-    assert (book / result["path"]).is_file()
+    (file,) = result["files"]
+    assert file["path"].startswith("exports/alices-adventures-chapter-2-") and file["path"].endswith(".epub")
+    assert (book / file["path"]).is_file()
     assert result["chapters"] == 1 and result["scenes"] == 3 and result["words"] > 0
-    assert result["checks"]["headline"] == "Ready to share with readers"
+    assert file["checks"]["headline"] == "Ready to share with readers"
 
     config = (book / ".proseview.yaml").read_text()
     assert "title: Alice's Adventures" in config and "author: Lewis Carroll" in config
     assert "identifier: urn:uuid:" in config
     assert Config.load(book).export.title == "Alice's Adventures"
 
-    status, headers, data = client.request("GET", f"/api/export/file?path={result['path']}")
+    status, headers, data = client.request("GET", f"/api/export/file?path={file['path']}")
     assert status == 200 and data[:2] == b"PK"
     assert headers["Content-Disposition"].startswith("attachment;")
 
-    assert client.json("POST", "/api/export/reveal", {"path": result["path"]})[0] == 200
-    assert client.opened == [(book.resolve() / result["path"], True)]
+    assert client.json("POST", "/api/export/reveal", {"path": file["path"]})[0] == 200
+    assert client.opened == [(book.resolve() / file["path"], True)]
 
 
 def test_route_export_failure_names_the_scene(client, book: Path):
@@ -422,3 +427,64 @@ def test_export_routes_that_change_things_need_the_page_session(client):
     for path in ("/api/export/start", "/api/export/preview", "/api/export/cover", "/api/export/selections"):
         status, data = client.json("POST", path, {"details": {}}, token="wrong")
         assert status == 403, path
+
+
+# -- PDF from the dashboard ------------------------------------------------------------
+
+
+def test_route_pdf_preview_draws_the_first_chapters_as_pages(client):
+    status, data = client.json("POST", "/api/export/preview", {
+        "details": {"title": "Alice", "format": "pdf-print", "trim": "5x8"},
+    })
+    assert status == 200 and data["format"] == "pdf-print" and data["spreads"] is True
+    assert "first 3 chapters" in data["note"]
+    assert data["pages"][0] == {"href": "page-001.png", "label": "Page 1"}
+    status, headers, png_bytes = client.request("GET", f"/api/export/preview/{data['token']}/page-001.png")
+    assert status == 200 and headers["Content-Type"] == "image/png" and png_bytes[:4] == b"\x89PNG"
+    # A 5 × 8 in page at the preview's resolution.
+    assert image_size(png_bytes) == (320, 512)
+
+
+def test_route_preview_of_all_formats_shows_the_one_asked_for(client):
+    _, data = client.json("POST", "/api/export/preview", {
+        "selection": {"order": "book", "items": [{"kind": "chapter", "id": "1"}]},
+        "details": {"format": "all"}, "preview": "pdf-share",
+    })
+    assert data["format"] == "pdf-share" and data["spreads"] is False and data["note"] == ""
+
+
+def test_route_exports_all_three_formats_and_checks_each(client, book: Path):
+    _, job = client.json("POST", "/api/export/start", {
+        "selection": {"order": "book", "items": [{"kind": "chapter", "id": "4"}]},
+        "details": {"format": "all", "author": "Lewis Carroll", "watermark": "For Sam", "trim": "6x9"},
+    })
+    done = client.wait(job["id"])
+    assert done["state"] == "done", done
+    files = {f["format"]: f for f in done["result"]["files"]}
+
+    assert list(files) == ["epub", "pdf-print", "pdf-share"]
+    assert files["pdf-print"]["name"].startswith("alice-chapter-4-print-")
+    assert files["pdf-print"]["pages"] > 0 and files["epub"]["pages"] == 0
+    assert files["pdf-print"]["checks"]["headline"] == "A 6 × 9 in proof of this part, ready to print"
+    assert files["pdf-share"]["checks"]["ready"]
+    status, headers, data = client.request("GET", f"/api/export/file?path={files['pdf-share']['path']}")
+    assert status == 200 and headers["Content-Type"] == "application/pdf" and data[:5] == b"%PDF-"
+    config = Config.load(book).export
+    assert (config.format, config.trim) == ("all", "6x9")
+    # The watermark names one reader; it is never remembered.
+    assert "For Sam" not in (book / ".proseview.yaml").read_text()
+
+
+def test_route_refuses_a_style_that_cannot_make_the_format(client):
+    status, data = client.json("POST", "/api/export/start", {"details": {"format": "epub", "style": "manuscript"}})
+    assert status == 400 and "The Manuscript style does not make E-book (EPUB)" in data["error"]
+
+
+def test_a_cleared_detail_stays_cleared(client, book: Path):
+    save_book_details(book, Config.load(book), {"subtitle": "Old subtitle", "author": "Old Name"})
+    _, data = client.json("POST", "/api/export/preview", {
+        "selection": {"order": "book", "items": [{"kind": "chapter", "id": "1"}, {"kind": "chapter", "id": "2"}]},
+        "details": {"subtitle": "", "author": ""},
+    })
+    status, _, title_page = client.request("GET", f"/api/export/preview/{data['token']}/OEBPS/text/title.xhtml")
+    assert status == 200 and b"Old subtitle" not in title_page and b"Old Name" not in title_page

@@ -130,6 +130,60 @@ def test_a_plain_snapshot_offers_no_editing_and_a_demo_one_does(tmp_path: Path):
     assert "window.PROSEVIEW_STATIC_EDITS = true" in demo
 
 
+def test_a_snapshot_without_history_leaves_out_the_recent_changes_card(tmp_path: Path):
+    """A reader cannot act on "Git is not available"; to them it reads as broken.
+
+    The writer's own dashboard still says it, because they can do something
+    about it.
+    """
+    root = _novel(tmp_path)
+    write_snapshot(root, tmp_path / "site")
+    html = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    assert "Git is not available" not in html
+    assert "Git is not available" in build_dashboard(root, Config.load(root))
+
+
+def test_a_snapshot_describes_itself_to_link_previews(tmp_path: Path):
+    """A link to the demo posted anywhere unfurls with a title, a summary and
+    a picture, instead of "Manuscript Dashboard" and nothing else."""
+    root = _novel(tmp_path)
+    out = tmp_path / "site"
+    image = tmp_path / "shot.png"
+    image.write_bytes(b"\x89PNG not really")
+    write_snapshot(
+        root, out,
+        title="My Novel <draft>",
+        description="A first look & a test.",
+        site_url="https://example.org/novel",
+        preview_image=image,
+    )
+    html = (out / "index.html").read_text(encoding="utf-8")
+    assert "<title>My Novel &lt;draft&gt;</title>" in html
+    assert '<meta property="og:title" content="My Novel &lt;draft&gt;">' in html
+    assert '<meta name="description" content="A first look &amp; a test.">' in html
+    assert '<meta property="og:description" content="A first look &amp; a test.">' in html
+    assert '<meta property="og:url" content="https://example.org/novel/">' in html
+    assert '<meta property="og:image" content="https://example.org/novel/preview.png">' in html
+    assert '<meta name="twitter:card" content="summary_large_image">' in html
+    assert (out / "preview.png").read_bytes() == image.read_bytes()
+
+
+def test_a_snapshot_names_itself_without_being_told(tmp_path: Path):
+    root = _novel(tmp_path)
+    write_snapshot(root, tmp_path / "site")
+    html = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    assert "<title>my-novel · Proseview</title>" in html
+    assert re.search(r'<meta name="description" content="my-novel: \d+ scenes, [\d,]+ words', html)
+    assert "og:image" not in html and "og:url" not in html
+
+
+def test_a_preview_image_needs_the_address_it_will_be_served_from(tmp_path: Path):
+    image = tmp_path / "shot.png"
+    image.write_bytes(b"\x89PNG")
+    with pytest.raises(SnapshotError, match="site URL"):
+        write_snapshot(_novel(tmp_path), tmp_path / "site", preview_image=image)
+
+
 def test_the_served_dashboard_is_not_a_snapshot():
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     assert "window.PROSEVIEW_STATIC = false" in html

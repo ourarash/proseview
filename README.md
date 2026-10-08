@@ -164,7 +164,8 @@ writes the dashboard as static files any web host can serve, GitHub Pages
 included. Readers can browse scenes, search, and read the analysis; nothing on
 it edits, and no server runs. Paths from your machine are replaced by the
 folder's name. `--demo` also lets visitors try edit mode; what they save stays
-in their browser tab. The live demo is built that way.
+in their browser tab. `--title`, `--site-url` and `--preview-image` decide how a
+link to it unfurls when shared. The live demo is built that way.
 
 ## ⚙️ Configuration
 

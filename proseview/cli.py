@@ -222,6 +222,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--demo", action="store_true",
         help="Let visitors try edit mode too. Their saves stay in their browser tab; nothing is uploaded.",
     )
+    snapshot_p.add_argument("--title", default="", help="Page title (default: '<folder> · Proseview').")
+    snapshot_p.add_argument("--description", default="", help="Summary shown in link previews.")
+    snapshot_p.add_argument(
+        "--site-url", default="",
+        help="Address the snapshot will be served from, for link previews.",
+    )
+    snapshot_p.add_argument(
+        "--preview-image", type=Path, default=None,
+        help="Image shown in link previews; needs --site-url.",
+    )
 
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
@@ -534,7 +544,11 @@ def write_static_snapshot(args: argparse.Namespace) -> int:
     from .snapshot import SnapshotError, write_snapshot
 
     try:
-        out = write_snapshot(args.root, args.out, demo=args.demo)
+        out = write_snapshot(
+            args.root, args.out, demo=args.demo,
+            title=args.title, description=args.description,
+            site_url=args.site_url, preview_image=args.preview_image,
+        )
     except SnapshotError as exc:
         raise SystemExit(str(exc)) from exc
     print(f"Wrote a {'demo' if args.demo else 'read-only'} snapshot to {out}")

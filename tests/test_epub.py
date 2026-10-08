@@ -433,11 +433,30 @@ def _epubcheck_command() -> list[str] | None:
 EPUBCHECK = _epubcheck_command()
 
 
+def test_epubcheck_is_present_where_it_is_required():
+    """CI sets PROSEVIEW_REQUIRE_EPUBCHECK, so a broken install fails instead of skipping."""
+    if os.environ.get("PROSEVIEW_REQUIRE_EPUBCHECK"):
+        assert EPUBCHECK is not None, "EPUBCheck is required here: put epubcheck on PATH or set EPUBCHECK_JAR"
+
+
 @pytest.mark.skipif(EPUBCHECK is None, reason="EPUBCheck is not installed (epubcheck on PATH, or EPUBCHECK_JAR and Java)")
 @pytest.mark.parametrize("version", ["epub3", "epub2"])
 @pytest.mark.parametrize("kind", list(SELECTIONS))
 def test_epubcheck_passes_for_every_selection_type(tmp_path: Path, kind: str, version: str):
     path, _ = _export(tmp_path, selection=SELECTIONS[kind], epub_version=version,
                       appendix_folders=["plans"], author="Lewis Carroll")
+    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(EPUBCHECK is None, reason="EPUBCheck is not installed (epubcheck on PATH, or EPUBCHECK_JAR and Java)")
+@pytest.mark.parametrize("version", ["epub3", "epub2"])
+def test_epubcheck_passes_with_a_subtitle_cover_and_scene_titles(tmp_path: Path, version: str):
+    """What the dashboard adds on top of the CLI's usual book."""
+    cover = REPO_ROOT / "docs" / "images" / "dashboard.png"
+    path, _ = _export(
+        tmp_path, title="Alice's Adventures", subtitle="A \"Wonderland\" Tale", author="Lewis Carroll",
+        cover_image=cover, scene_titles=True, epub_version=version,
+    )
     result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr

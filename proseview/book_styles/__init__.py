@@ -41,6 +41,8 @@ class BookStyle:
     declared_formats: tuple[str, ...] = ()
     #: Layout choices the shared PDF template reads (``pdf:`` in style.yaml).
     pdf_settings: tuple[tuple[str, object], ...] = ()
+    #: Bundled fonts the EPUB carries, for a face e-readers will not have.
+    epub_fonts: tuple[Path, ...] = ()
 
     @property
     def formats(self) -> tuple[str, ...]:
@@ -56,6 +58,8 @@ class BookStyle:
 PDF_DEFAULTS: dict[str, object] = {
     "body_font": "Libertinus Serif",
     "heading_font": "Libertinus Serif",
+    # Chapter and book titles, when they differ from the text (Romance's script).
+    "title_font": "",
     # classic: "Chapter One" in spaced capitals over an italic title.
     # modern: a large numeral over the title, both in the heading font.
     # romance: an italic numeral between ornaments over a large italic title.
@@ -148,6 +152,12 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
     if not isinstance(own_pdf, dict) or any(key not in PDF_DEFAULTS for key in own_pdf):
         raise StyleError(f"{settings_file}: pdf may set {', '.join(PDF_DEFAULTS)}")
     pdf_settings.update(own_pdf)
+    fonts = settings.get("epub_fonts") or []
+    if not isinstance(fonts, list) or not all((STYLES_DIR / "fonts" / str(f)).is_file() for f in fonts):
+        raise StyleError(f"{settings_file}: epub_fonts must list fonts bundled in book_styles/fonts")
+    epub_fonts = tuple(STYLES_DIR / "fonts" / str(f) for f in fonts)
+    if parent and not epub_fonts:
+        epub_fonts = base_style.epub_fonts
     if pdf_settings["opener"] not in PDF_OPENERS:
         raise StyleError(f"{settings_file}: pdf.opener must be one of {', '.join(PDF_OPENERS)}")
     return BookStyle(
@@ -161,4 +171,5 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
         description=str(settings.get("description") or "").strip(),
         declared_formats=tuple(str(f) for f in declared),
         pdf_settings=tuple(pdf_settings.items()),
+        epub_fonts=epub_fonts,
     )

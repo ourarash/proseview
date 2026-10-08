@@ -8512,7 +8512,9 @@
         }
 
         .export-style-romance .thumb-title {
-            font-size: 15px;
+            font-family: "Snell Roundhand", "Apple Chancery", "Segoe Script", cursive;
+            font-style: normal;
+            font-size: 16px;
         }
 
         .export-style-romance .thumb-break {

@@ -34,6 +34,13 @@
 #let modern = theme.opener == "modern"
 #let romance = theme.opener == "romance"
 #let heading-text(..args) = text(font: theme.heading-font, ..args)
+// Titles in their own face where the style has one (Romance's script),
+// else italic in the text face.
+#let title-text(size, body) = if theme.title-font != "" {
+  text(font: theme.title-font, size: size * 1.35, body)
+} else {
+  text(size: size, style: "italic", body)
+}
 #let leading = 0.62em
 
 // Front matter and the blank left-hand page before a chapter carry no
@@ -121,7 +128,7 @@
     v(22%)
     align(center, {
       if modern { heading-text(size: 2em, weight: "bold", config.title) }
-      else if romance { text(size: 2.4em, style: "italic", config.title) }
+      else if romance { title-text(2.4em, config.title) }
       else { text(size: 2em, config.title) }
       if romance and theme.ornament != "" { v(0.8em); text(size: 1.4em, theme.ornament) }
       if config.subtitle != "" {
@@ -164,7 +171,7 @@
   } else {
     v(if print { 12% } else { 6% })
     align(center, if modern { heading-text(size: 1.2em, weight: "bold", title) }
-      else if romance { text(size: 1.5em, style: "italic", title) }
+      else if romance { title-text(1.5em, title) }
       else { text(size: 1.05em, tracking: 0.2em, upper(title)) })
     v(2em)
     if kind == "also-by" { align(center, body) } else { set par(justify: true); body }
@@ -225,7 +232,7 @@
       }
       if title != none {
         v(0.7em)
-        text(size: 2.2em, style: "italic", title)
+        title-text(2.2em, title)
       }
     })
   } else {

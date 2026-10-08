@@ -219,7 +219,7 @@ def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
     write_snapshot(root, tmp_path / "site", demo=True, title="The Shop · demo", book_author="Rena Patel")
     export = tmp_path / "site" / "export"
 
-    index = json.loads((export / "files.json").read_text())
+    index = json.loads((export / "files.json").read_text(encoding="utf-8"))
     assert set(index["files"]) == {
         "classic-epub", "classic-pdf-print", "classic-pdf-share", "modern-epub", "modern-pdf-print",
         "modern-pdf-share", "romance-epub", "romance-pdf-print", "romance-pdf-share", "manuscript-pdf-share",
@@ -228,8 +228,8 @@ def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
         assert (tmp_path / "site" / entry["path"]).stat().st_size == entry["size"] > 0
         assert entry["checks"]["headline"]
     assert index["files"]["classic-epub"]["name"] == "the-shop.epub"
-    outline = json.loads((export / "outline.json").read_text())
+    outline = json.loads((export / "outline.json").read_text(encoding="utf-8"))
     assert outline["demo"] is True and outline["details"]["author"] == "Rena Patel"
-    preview = json.loads((export / "previews" / "classic-pdf-print.json").read_text())
+    preview = json.loads((export / "previews" / "classic-pdf-print.json").read_text(encoding="utf-8"))
     assert preview["token"] == "classic-pdf-print" and (export / "previews" / "classic-pdf-print" / "page-001.png").is_file()
-    assert str(root) not in (export / "outline.json").read_text()
+    assert str(root) not in (export / "outline.json").read_text(encoding="utf-8")

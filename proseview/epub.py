@@ -249,9 +249,12 @@ def resolve_image(root: Path | None, src: str, source: Path | None, owner: str) 
     if root is None:
         raise ExportError(f"{owner} has an image, but the book has no folder to find it in")
     root = root.resolve()
-    relative = Path(unquote(parsed.path))
+    raw = unquote(parsed.path)
     base = (root / source).parent if source is not None else root
-    candidate = (root / relative.relative_to("/")) if relative.is_absolute() else base / relative
+    # A leading "/" means "from the book's folder". Checked on the text, not
+    # with Path.is_absolute(): on Windows "/manuscript/x.png" has no drive,
+    # so it is not absolute, and would be joined onto the scene's folder.
+    candidate = root / raw.lstrip("/") if raw.startswith("/") else base / raw
     resolved = candidate.resolve()
     if not resolved.is_relative_to(root):
         raise ExportError(f"{owner} links an image outside the repository: {src}")

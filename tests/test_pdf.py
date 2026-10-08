@@ -201,11 +201,11 @@ def test_every_selection_type_lays_out(tmp_path: Path, book: Path, kind: str, fm
 def test_a_scene_image_is_printed_and_a_missing_one_names_its_scene(tmp_path: Path, book: Path):
     shutil.copy(REPO_ROOT / "docs" / "images" / "dashboard.png", book / "manuscript" / "ch02" / "pool.png")
     scene = book / "manuscript" / "ch02" / "02-the-pool-of-tears.md"
-    scene.write_text(scene.read_text() + "\n![The pool](pool.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The pool](pool.png)\n")
     result = _pdf(tmp_path, book, selection=Selection(picks=(("chapter", "2"),)))
     assert b"/Subtype /Image" in result.path.read_bytes() or b"/Subtype/Image" in result.path.read_bytes()
 
-    scene.write_text(scene.read_text() + "\n![Gone](gone.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![Gone](gone.png)\n")
     with pytest.raises(ExportError) as caught:
         _pdf(tmp_path, book, selection=Selection(picks=(("chapter", "2"),)))
     assert caught.value.scene == "ch02/02-the-pool-of-tears"
@@ -295,7 +295,7 @@ def test_each_format_gets_its_own_file_name(book: Path):
 
 def test_pdf_settings_are_read_from_the_config(tmp_path: Path, book: Path):
     (book / ".proseview.yaml").write_text(
-        (book / ".proseview.yaml").read_text()
+        (book / ".proseview.yaml").read_text(encoding="utf-8")
         + "export:\n  format: pdf-print\n  trim: 6x9\n  recto_chapters: false\n  author: Lewis Carroll\n"
     )
     cfg = Config.load(book)
@@ -310,7 +310,7 @@ def test_pdf_settings_are_read_from_the_config(tmp_path: Path, book: Path):
     ("export:\n  recto_chapters: maybe\n", "export.recto_chapters"),
 ])
 def test_bad_pdf_settings_are_refused(tmp_path: Path, raw: str, message: str):
-    (tmp_path / ".proseview.yaml").write_text(raw)
+    (tmp_path / ".proseview.yaml").write_text(raw, encoding="utf-8")
     with pytest.raises(ConfigError, match=message):
         Config.load(tmp_path)
 
@@ -337,14 +337,14 @@ def test_cli_pandoc_engine_is_epub_only(tmp_path: Path, book: Path):
 
 def test_titles_and_headings_are_never_hyphenated():
     """A title page reading "Wonder-land" looks like a mistake, not a style."""
-    template = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "pdf.typ").read_text()
+    template = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "pdf.typ").read_text(encoding="utf-8")
     for function in ("#let title-page(", "#let chapter(", "#let single-scene(", "#let running-head()"):
         body = template.split(function, 1)[1].split("\n#let ", 1)[0]
         assert "hyphenate: false" in body, function
 
 
 def test_cli_output_name_decides_the_format_when_none_is_given(tmp_path: Path, book: Path):
-    (book / ".proseview.yaml").write_text((book / ".proseview.yaml").read_text() + "export:\n  format: pdf-share\n")
+    (book / ".proseview.yaml").write_text((book / ".proseview.yaml").read_text(encoding="utf-8") + "export:\n  format: pdf-share\n")
     out = tmp_path / "book.epub"
     assert cli.main(["export", "--root", str(book), "--chapters", "1", "--output", str(out)]) == 0
     assert out.read_bytes()[:2] == b"PK"

@@ -63,7 +63,7 @@ def test_modern_and_romance_build_on_classic():
 def test_a_bad_style_is_explained(tmp_path: Path, yaml: str, message: str):
     folder = tmp_path / "mine"
     folder.mkdir()
-    (folder / "style.yaml").write_text(yaml)
+    (folder / "style.yaml").write_text(yaml, encoding="utf-8")
     with pytest.raises(StyleError, match=message):
         load_style(str(folder))
 
@@ -71,8 +71,8 @@ def test_a_bad_style_is_explained(tmp_path: Path, yaml: str, message: str):
 def test_a_style_of_your_own_can_extend_a_built_in_one(tmp_path: Path):
     folder = tmp_path / "mine"
     folder.mkdir()
-    (folder / "style.yaml").write_text("name: Mine\nextends: modern\nscene_break: '~'\n")
-    (folder / "epub.css").write_text("body { color: #222; }\n")
+    (folder / "style.yaml").write_text("name: Mine\nextends: modern\nscene_break: '~'\n", encoding="utf-8")
+    (folder / "epub.css").write_text("body { color: #222; }\n", encoding="utf-8")
     mine = load_style(str(folder))
     assert mine.name == "Mine" and mine.scene_break == "~"
     assert mine.css.endswith("body { color: #222; }\n") and "Modern" in mine.css

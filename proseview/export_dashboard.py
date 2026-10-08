@@ -227,11 +227,11 @@ def _changed_dates(root: Path, documents: list[SceneDocument]) -> dict[str, str]
     try:
         log = subprocess.run(
             ["git", "-C", str(root), "log", "--format=@%ct", "--name-only", "--", *{d.path.parts[0] for d in documents}],
-            capture_output=True, text=True, timeout=20, check=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, check=True,
         ).stdout
         dirty = subprocess.run(
             ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
-            capture_output=True, text=True, timeout=20, check=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, check=True,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return dates

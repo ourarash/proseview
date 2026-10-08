@@ -165,8 +165,8 @@ def write_snapshot(
             shutil.rmtree(out / "export", ignore_errors=True)
             (out / "export").mkdir()
             message = f"This demo has no books to download: {exc}"
-            (out / "export" / "outline.json").write_text(json.dumps({"ok": False, "error": message}))
-            (out / "export" / "files.json").write_text(json.dumps({"book": {}, "files": {}}))
+            (out / "export" / "outline.json").write_text(json.dumps({"ok": False, "error": message}), encoding="utf-8")
+            (out / "export" / "files.json").write_text(json.dumps({"book": {}, "files": {}}), encoding="utf-8")
         for name in ("export/outline.json", "export/files.json"):
             text = (out / name).read_text(encoding="utf-8")
             if any(form in text for form in _path_forms(str(root))):

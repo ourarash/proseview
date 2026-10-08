@@ -151,6 +151,31 @@ def paragraph_blocks(text: str) -> list[str]:
     return [b for b in blocks if not b.startswith("#")]
 
 
+#: An HTML comment, where a writer keeps TODOs and notes (``<!-- TODO: ... -->``).
+#: It never reaches past its own ``-->``, so two comments cannot swallow the
+#: prose between them.
+_COMMENT = r"<!--(?:(?!-->).)*-->"
+_LEADING_COMMENT_RE = re.compile(r"\A[ \t]*" + _COMMENT + r"[ \t]*(?:\n\n|\n?\Z)", re.DOTALL)
+_PARAGRAPH_COMMENT_RE = re.compile(r"\n\n[ \t]*" + _COMMENT + r"[ \t]*(?=\n\n|\n?\Z)", re.DOTALL)
+_INLINE_COMMENT_RE = re.compile(r"[ \t]*" + _COMMENT, re.DOTALL)
+
+
+def prose_only(text: str) -> str:
+    """*text* without its HTML comments: the prose a reader would read.
+
+    TODOs and notes live in comments. Counted as prose they made annotating a
+    scene look like writing it, and moved every measure taken from it. A
+    comment that is a paragraph of its own goes with its paragraph break, and
+    one inside a paragraph with the space before it, so the prose left over
+    is what it would be had the comment never been written.
+
+    Measure this; keep the original wherever lines or offsets are needed.
+    """
+    text = _LEADING_COMMENT_RE.sub("", text)
+    text = _PARAGRAPH_COMMENT_RE.sub("", text)
+    return _INLINE_COMMENT_RE.sub("", text)
+
+
 def count_words(text: str) -> int:
     return len(WORD_RE.findall(text))
 

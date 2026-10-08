@@ -1998,7 +1998,9 @@ def test_dashboard_renders_the_scene_table_and_charts(page: Page, server: Prosev
     table = page.locator("#sceneTable").inner_text()
     assert SCENE_REL in table
     assert LARGE_SCENE_REL in table
-    assert "10,069" in table, "word counts are not rendered in the scene table"
+    # The prose alone, as the seeder tallies it: the four NOTE comments seeded
+    # into the scene are annotations, not words (they made this 10,069).
+    assert "10,037" in table, "word counts are not rendered in the scene table"
 
 
 

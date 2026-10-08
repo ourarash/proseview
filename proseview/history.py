@@ -30,7 +30,7 @@ if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
 
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
-from .lexical import calculate_lexical_stats, count_words
+from .lexical import calculate_lexical_stats, count_words, prose_only
 from .repo import CONTEXT_SKIP_DIRS
 from .scenes import resolve_manuscript_dir
 
@@ -187,7 +187,7 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
         if code != 0:
             continue
         _, body = split_frontmatter(content)
-        text = extract_scene_text(body)
+        text = prose_only(extract_scene_text(body))
         total_words += count_words(text)
         scene_count += 1
         rel_parts = Path(p).parts[strip:]

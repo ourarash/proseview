@@ -48,7 +48,7 @@ def test_modern_and_romance_build_on_classic():
     assert modern.css.startswith(classic.css) and "/* ---- Modern ---- */" in modern.css
     assert modern.pdf_template == classic.pdf_template == romance.pdf_template
     assert dict(modern.pdf_settings) == {
-        "body_font": "Libertinus Serif", "heading_font": "Noto Sans", "opener": "modern",
+        "body_font": "Libertinus Serif", "heading_font": "Noto Sans", "title_font": "", "opener": "modern",
         "drop_cap": False, "ornament": "",
     }
     assert dict(romance.pdf_settings)["opener"] == "romance" and dict(romance.pdf_settings)["drop_cap"] is True
@@ -120,11 +120,47 @@ def test_romance_frames_the_numeral_in_florals():
 
 
 @pytest.mark.skipif(EPUBCHECK is None, reason="EPUBCheck is not installed")
+@pytest.mark.parametrize("version", ["epub3", "epub2"])
 @pytest.mark.parametrize("style", ["modern", "romance"])
-def test_epubcheck_passes_for_modern_and_romance(tmp_path: Path, style: str):
+def test_epubcheck_passes_for_modern_and_romance(tmp_path: Path, style: str, version: str):
     root = tmp_path / "alice"
     shutil.copytree(DEMO, root, ignore=shutil.ignore_patterns("exports", ".proseview"))
     path = export_book(root, Config.load(root), tmp_path / "b.epub", style=style, author="Lewis Carroll",
-                       dedication="For Alice").path
+                       dedication="For Alice", epub_version=version).path
     result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_romance_sets_titles_in_a_script_it_carries(tmp_path: Path):
+    """Great Vibes is bundled, embedded in the PDF, and packed into the EPUB."""
+    import re
+
+    romance = load_style("romance")
+    assert dict(romance.pdf_settings)["title_font"] == "Great Vibes"
+    assert [font.name for font in romance.epub_fonts] == ["GreatVibes-Regular.ttf"]
+
+    result = export_book(DEMO, Config.load(DEMO), tmp_path / "r.pdf", style="romance", fmt="pdf-print",
+                         selection=Selection(picks=(("chapter", "2"),)))
+    fonts = {n.split(b"+")[-1] for n in re.findall(rb"/BaseFont\s*/([A-Za-z0-9+-]+)", result.path.read_bytes())}
+    assert b"GreatVibes-Regular" in fonts
+    assert pdf_facts(result.path.read_bytes()).unembedded_fonts == ()
+
+    for version, media_type in (("epub3", "font/ttf"), ("epub2", "application/x-font-truetype")):
+        path = export_book(DEMO, Config.load(DEMO), tmp_path / f"r-{version}.epub", style="romance",
+                           epub_version=version).path
+        with zipfile.ZipFile(path) as archive:
+            opf = archive.read("OEBPS/content.opf").decode()
+            css = archive.read("OEBPS/styles/book.css").decode()
+            assert archive.read("OEBPS/fonts/GreatVibes-Regular.ttf")[:4] == b"\x00\x01\x00\x00"
+        assert f'href="fonts/GreatVibes-Regular.ttf" media-type="{media_type}"' in opf
+        assert 'src: url("../fonts/GreatVibes-Regular.ttf")' in css
+        assert structural_problems(path) == []
+
+
+def test_other_styles_carry_no_fonts(tmp_path: Path):
+    for style in ("classic", "modern"):
+        assert load_style(style).epub_fonts == ()
+        path = export_book(DEMO, Config.load(DEMO), tmp_path / f"{style}.epub", style=style,
+                           selection=Selection(picks=(("chapter", "1"),))).path
+        with zipfile.ZipFile(path) as archive:
+            assert not [n for n in archive.namelist() if n.startswith("OEBPS/fonts/")]

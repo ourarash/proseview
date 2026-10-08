@@ -385,6 +385,11 @@ class _Writer:
     # -- pages --------------------------------------------------------------
 
     def add_stylesheets(self) -> None:
+        for n, font in enumerate(self.style.epub_fonts, start=1):
+            # A face e-readers will not have (Romance's script) travels with
+            # the book; the style's stylesheet points at fonts/<file>.
+            media_type = "font/ttf" if self.v3 else "application/x-font-truetype"
+            self._add(_Item(f"font-{n}", f"fonts/{font.name}", media_type, font.read_bytes()), in_spine=False)
         self._add(_Item("style", "styles/book.css", "text/css", self.style.css.encode("utf-8")), in_spine=False)
         self.stylesheets.append("styles/book.css")
         for n, sheet in enumerate(self.options.css, start=1):

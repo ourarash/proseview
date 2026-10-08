@@ -198,8 +198,10 @@ contents page you can click, and bookmarks for every chapter.
 **Modern** has a clean serif text with sans-serif headings, a large numeral
 for each chapter, no drop cap, and a pause of three dots between scenes.
 
-**Romance** has a large italic chapter title under a numeral framed by floral
-ornaments, a drop cap, and a floral mark between scenes.
+**Romance** sets chapter titles and the book's title in a flowing script
+(Great Vibes), under a numeral framed by floral ornaments, with a drop cap
+and a floral mark between scenes. The script travels inside the e-book, so
+every e-reader shows it.
 
 **Manuscript** is standard submission format, for a Shareable PDF only:
 12 pt Liberation Serif (the same letter widths as Times New Roman), double-spaced, 1 inch margins, every paragraph indented, "Chapter 1"
@@ -219,8 +221,8 @@ A chapter whose first paragraph is a single line keeps its small capitals but
 no drop cap, which would otherwise hang into the paragraph below.
 
 PDFs use the open-licence fonts that come with Proseview (Libertinus Serif
-for the text, Noto Sans for Modern's headings, Liberation Serif for
-Manuscript), never the fonts installed on your computer, so a book looks the
+for the text, Noto Sans for Modern's headings, Great Vibes for Romance's
+titles, Liberation Serif for Manuscript), never the fonts installed on your computer, so a book looks the
 same on every machine and every font is embedded in the file.
 
 A style is a folder holding `epub.css` for the e-book and `pdf.typ` (a
@@ -230,8 +232,9 @@ plus an optional `style.yaml` (chapter numbering as `words`, `numerals`,
 `formats` to limit what it makes). A style can build on another with
 `extends: classic`: its stylesheet is added after the base one, and its PDFs
 use the base layout with the choices it sets under `pdf:` (`body_font`,
-`heading_font`, `opener` as `classic`, `modern` or `romance`, `drop_cap`,
-`ornament`). That is all Modern and Romance are. Point `--style` at a folder of your own to use it, and add
+`heading_font`, `title_font`, `opener` as `classic`, `modern` or `romance`,
+`drop_cap`, `ornament`); `epub_fonts` lists bundled fonts the e-book should
+carry. That is all Modern and Romance are. Point `--style` at a folder of your own to use it, and add
 `--css` for small overrides on top of an e-book style. The comment at the top
 of the built-in `classic/pdf.typ` lists what a PDF template defines.
 

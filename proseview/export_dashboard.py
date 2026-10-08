@@ -59,7 +59,7 @@ _STYLE_BLURBS = {
     "classic": "Serif text, “Chapter One” openers with a drop cap, and a centred * * * between scenes.",
     "manuscript": "Standard submission format: 12 pt, double-spaced, “Surname / TITLE / page”.",
     "modern": "Clean serif text, sans-serif headings, a large numeral for each chapter.",
-    "romance": "Large italic chapter titles, numerals framed by florals, a floral mark between scenes.",
+    "romance": "Chapter titles in a flowing script, numerals framed by florals, a floral mark between scenes.",
 }
 
 _FORMAT_BLURBS = {

@@ -1,5 +1,13 @@
-/* Romance, on top of Classic: a large italic chapter title under a numeral
- * framed by floral ornaments, and a floral mark between scenes. */
+/* Romance, on top of Classic: a chapter title in a script face under a
+ * numeral framed by floral ornaments, and a floral mark between scenes.
+ * The script (Great Vibes, SIL Open Font License) travels in the EPUB. */
+
+@font-face {
+  font-family: "Great Vibes";
+  font-style: normal;
+  font-weight: normal;
+  src: url("../fonts/GreatVibes-Regular.ttf");
+}
 
 .chapter-number {
   font-size: 1.5em;
@@ -20,14 +28,17 @@
   font-style: normal;
 }
 
-.chapter-title {
-  margin-top: 0.5em;
-  font-size: 1.6em;
+.chapter-title,
+.chapter-heading .chapter-title:only-child {
+  margin-top: 0.4em;
+  font-family: "Great Vibes", "Snell Roundhand", "Apple Chancery", cursive;
+  font-size: 2.2em;
+  font-style: normal;
 }
 
 .title-page h1 {
-  font-size: 2.4em;
-  font-style: italic;
+  font-family: "Great Vibes", "Snell Roundhand", "Apple Chancery", cursive;
+  font-size: 3em;
 }
 
 .scene-break {

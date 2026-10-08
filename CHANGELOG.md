@@ -9,8 +9,8 @@ section here becomes the release notes on GitHub.
 
 - **Modern and Romance** book styles, for the e-book and both PDFs. Modern:
   sans-serif headings, a large numeral for each chapter, no drop cap.
-  Romance: large italic titles, numerals framed by florals, a floral mark
-  between scenes. A style of your own can build on any style with
+  Romance: chapter titles in a flowing script (Great Vibes, carried inside
+  the e-book), numerals framed by florals, a floral mark between scenes. A style of your own can build on any style with
   `extends:`.
 - **Front and back matter**: a copyright page (with an optional ISBN), a
   dedication, an "Also by" page, and your own pages from `front-matter/` and

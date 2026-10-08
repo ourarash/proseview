@@ -14,6 +14,8 @@ section here becomes the release notes on GitHub.
 - A snapshot can describe itself to link previews (`--title`,
   `--description`, `--site-url`, `--preview-image`), and leaves out the
   recent-changes card when the repository has no git history.
+- A snapshot no longer offers to edit or delete TODOs and notes, add
+  frontmatter, or tick off a frontmatter TODO; none of those can be saved.
 - The demo book has TODOs and notes to show, and its first scene's
   frontmatter is back.
 

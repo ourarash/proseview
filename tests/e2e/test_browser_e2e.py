@@ -6837,3 +6837,24 @@ def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, dem
     page.reload(wait_until="load")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
     assert "A sentence from the demo." not in page.locator("#sceneProseHost").inner_text()
+
+
+
+# ── first visit ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_a_first_visit_opens_in_graphite_dark_and_a_choice_is_kept(
+    browser: Browser, server: ProseviewServer, scheme: str
+):
+    """Graphite Dark is the default on either OS setting; picking a theme sticks."""
+    context = browser.new_context(color_scheme=scheme)
+    try:
+        page = context.new_page()
+        page.goto(server.base_url, wait_until="load")
+        assert page.evaluate("document.documentElement.dataset.theme") == "graphite-dark"
+        page.evaluate("localStorage.setItem('proseview-theme', 'light')")
+        page.reload(wait_until="load")
+        assert page.evaluate("document.documentElement.dataset.theme") == "light"
+    finally:
+        context.close()

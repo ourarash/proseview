@@ -1,7 +1,7 @@
 
         function currentTheme() {
             const t = document.documentElement.dataset.theme;
-            return THEME_ORDER.includes(t) ? t : 'light';
+            return THEME_ORDER.includes(t) ? t : DEFAULT_THEME;
         }
 
         function cssVar(name) {

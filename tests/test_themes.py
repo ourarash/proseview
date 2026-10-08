@@ -149,6 +149,27 @@ def test_bootstrap_theme_allowlist_matches_theme_order():
     )
 
 
+def test_every_copy_of_the_default_theme_names_graphite_dark():
+    """A first visit opens in Graphite Dark, whatever ran first.
+
+    The default is written three times: the ``<html>`` attribute that holds
+    before any script runs, the pre-paint bootstrap, and DEFAULT_THEME, which
+    the bundle falls back to. If they disagree, the page flashes one theme and
+    settles on another.
+    """
+    import re
+
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    state = (REPO_ROOT / "proseview" / "templates" / "assets" / "js" / "00-state.js").read_text(
+        encoding="utf-8"
+    )
+    html_attr = re.search(r'<html lang="en" data-theme="([^"]+)"', template)
+    bootstrap = re.search(r"const storedKey = 'proseview-theme';\s*let theme = '([^']+)';", template)
+    constant = re.search(r"const DEFAULT_THEME = '([^']+)';", state)
+    assert html_attr and bootstrap and constant, "could not find every copy of the default theme"
+    assert {html_attr.group(1), bootstrap.group(1), constant.group(1)} == {"graphite-dark"}
+
+
 def test_every_theme_is_offered_in_the_toolbar_menu():
     """The toolbar picker must list what THEME_ORDER supports.
 

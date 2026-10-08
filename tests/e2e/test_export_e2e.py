@@ -176,3 +176,41 @@ def test_manuscript_asks_for_contact_details(page: Page, demo_book_server: Prose
     expect(page.locator("#exportPaperView img").first).to_be_visible(timeout=20_000)
     # The preview opens on the first page of text, after the title page.
     expect(page.locator("#exportPagePick")).to_have_value("1")
+
+
+@pytest.mark.allow_js_errors("Failed to load resource", "net::ERR_FAILED", "403")
+def test_a_server_that_stopped_or_restarted_is_explained(page: Page, demo_book_server: ProseviewServer):
+    """The browser only says "Failed to fetch"; the dialog says what to do."""
+    page.goto(demo_book_server.url("/"))
+    page.get_by_role("button", name="Export").first.click()
+    expect(page.locator("#exportTree .export-chapter").first).to_be_visible()
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("button", name="Next: Book details").click()
+
+    # The server has gone away: nothing answers.
+    page.route("**/api/export/start", lambda route: route.abort())
+    page.get_by_role("button", name="Export EPUB").click()
+    done = page.locator("#exportDoneBox")
+    expect(done).to_contain_text("The e-book could not be made")
+    expect(done).to_contain_text("Proseview has stopped running")
+    expect(done).not_to_contain_text("Failed to fetch")
+    expect(done.get_by_role("button", name="Reload page")).to_be_visible()
+
+    # The server restarted: this page's session belongs to the old run.
+    page.unroute("**/api/export/start")
+    page.route("**/api/export/start", lambda route: route.fulfill(
+        status=403, content_type="application/json",
+        body='{"ok": false, "error": "invalid or missing page session"}',
+    ))
+    page.get_by_role("button", name="Back").click()
+    page.get_by_role("button", name="Export EPUB").click()
+    expect(done).to_contain_text("This page was opened by an earlier run of Proseview")
+
+
+def test_a_server_older_than_the_page_is_explained(page: Page, demo_book_server: ProseviewServer):
+    page.route("**/api/export/outline", lambda route: route.fulfill(
+        status=200, content_type="application/json", body='{"ok": true, "chapters": []}',
+    ))
+    page.goto(demo_book_server.url("/"))
+    page.get_by_role("button", name="Export").first.click()
+    expect(page.locator("#exportTree")).to_contain_text("Proseview was updated while it was running")

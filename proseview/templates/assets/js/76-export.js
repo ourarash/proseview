@@ -35,13 +35,36 @@
 
         function exportPlural(n, noun) { return exportFormat(n) + ' ' + noun + (n === 1 ? '' : 's'); }
 
+        //: What the dialog needs the server to understand. A server started
+        //: before an update keeps its old code while the page picks up the new
+        //: one; this tells them apart.
+        var EXPORT_API = 3;
+
+        var EXPORT_MESSAGES = {
+            offline: 'Proseview has stopped running, so this could not be done. '
+                + 'Start it again (the same way you started it before), then reload this page.',
+            stale: 'This page was opened by an earlier run of Proseview. Reload the page and try again.',
+            outdated: 'Proseview was updated while it was running. Stop it, start it again, then reload this page.',
+        };
+
+        function exportError(message, code, data) {
+            var error = new Error(message);
+            error.code = code || '';
+            error.data = data || {};
+            return error;
+        }
+
         function exportFetchJson(url, options) {
-            return fetch(url, options).then(function(response) {
+            return fetch(url, options).catch(function() {
+                // The browser says only "Failed to fetch": nothing answered.
+                throw exportError(EXPORT_MESSAGES.offline, 'offline');
+            }).then(function(response) {
                 return response.json().catch(function() { return {}; }).then(function(data) {
+                    if (response.status === 403 && /page session/.test(data.error || '')) {
+                        throw exportError(EXPORT_MESSAGES.stale, 'stale', data);
+                    }
                     if (!response.ok || data.ok === false) {
-                        var error = new Error(data.error || 'Something went wrong. Please try again.');
-                        error.data = data;
-                        throw error;
+                        throw exportError(data.error || 'Something went wrong. Please try again.', '', data);
                     }
                     return data;
                 });
@@ -69,6 +92,7 @@
             exportShowStep(1);
             dialog.showModal();
             exportFetchJson('/api/export/outline').then(function(outline) {
+                if (!(outline.api >= EXPORT_API)) throw exportError(EXPORT_MESSAGES.outdated, 'outdated');
                 exportState.outline = outline;
                 exportState.details = Object.assign({}, outline.details);
                 exportApplyPreset(exportState.preset);
@@ -81,6 +105,10 @@
                 item.className = 'export-error';
                 item.setAttribute('role', 'alert');
                 item.textContent = error.message;
+                if (error.code) {
+                    item.appendChild(document.createTextNode(' '));
+                    item.appendChild(exportButton('Reload page', 'export-btn-primary', function() { location.reload(); }));
+                }
                 exportEl('exportTree').appendChild(item);
             });
         }
@@ -991,13 +1019,14 @@
                 exportState.job = job.id;
                 exportPoll(job.id);
             }).catch(function(error) {
-                exportShowFailure({message: error.message});
+                exportShowFailure({message: error.message, code: error.code});
             });
         }
 
-        function exportPoll(id) {
+        function exportPoll(id, misses) {
             if (exportState.job !== id) return;
             exportFetchJson('/api/export/jobs/' + id).then(function(job) {
+                misses = 0;
                 exportSetProgress(job.fraction, job.step);
                 if (job.state === 'running') {
                     setTimeout(function() { exportPoll(id); }, 250);
@@ -1007,7 +1036,16 @@
                 } else {
                     exportShowFailure(job.error || {});
                 }
-            }).catch(function(error) { exportShowFailure({message: error.message}); });
+            }).catch(function(error) {
+                // A dropped request or two is not a stopped server; keep asking
+                // for a few seconds before saying so.
+                misses = (misses || 0) + 1;
+                if (error.code === 'offline' && misses < 12) {
+                    setTimeout(function() { exportPoll(id, misses); }, 500);
+                    return;
+                }
+                exportShowFailure({message: error.message, code: error.code});
+            });
         }
 
         function exportFormatSize(bytes) {
@@ -1153,7 +1191,9 @@
             card.className = 'export-checks has-error';
             card.setAttribute('role', 'alert');
             var title = document.createElement('h3');
-            title.textContent = 'The e-book could not be made';
+            var format = exportState.details ? exportState.details.format : 'epub';
+            title.textContent = format === 'all' ? 'The books could not be made'
+                : (format === 'epub' ? 'The e-book could not be made' : 'The PDF could not be made');
             var message = document.createElement('p');
             message.textContent = error.message || 'Something went wrong. Please try again.';
             card.appendChild(title);
@@ -1162,6 +1202,9 @@
                 card.appendChild(exportButton('Open the scene', 'export-btn-primary', function() {
                     exportOpenScene(error.scene_path);
                 }));
+            }
+            if (error.code === 'stale' || error.code === 'outdated' || error.code === 'offline') {
+                card.appendChild(exportButton('Reload page', 'export-btn-primary', function() { location.reload(); }));
             }
             box.appendChild(card);
             exportShowStep('done');

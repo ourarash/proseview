@@ -496,3 +496,41 @@ def test_a_cleared_detail_stays_cleared(client, book: Path):
     })
     status, _, title_page = client.request("GET", f"/api/export/preview/{data['token']}/OEBPS/text/title.xhtml")
     assert status == 200 and b"Old subtitle" not in title_page and b"Old Name" not in title_page
+
+
+# -- when something goes wrong underneath ------------------------------------------------
+
+
+class _Panic(BaseException):
+    """What a Rust panic inside Typst arrives as: not an Exception."""
+
+
+def test_outline_says_which_dialog_it_serves(client):
+    from proseview.export_dashboard import EXPORT_API
+
+    _, data = client.json("GET", "/api/export/outline")
+    assert data["api"] == EXPORT_API >= 3
+
+
+def test_a_crash_in_a_route_is_answered_not_dropped(client, monkeypatch):
+    import proseview.server as server_module
+
+    def explode(*args, **kwargs):
+        raise _Panic("typst panicked")
+
+    monkeypatch.setattr(server_module, "build_preview", explode)
+    status, data = client.json("POST", "/api/export/preview", {"details": {}})
+    assert status == 500 and "Something went wrong while doing that (typst panicked)" in data["error"]
+
+
+def test_a_crash_in_an_export_job_fails_the_job_in_plain_words(client, monkeypatch):
+    from proseview import export_dashboard
+
+    def explode(*args, **kwargs):
+        raise _Panic("typst panicked")
+
+    monkeypatch.setattr(export_dashboard, "export_book", explode)
+    _, job = client.json("POST", "/api/export/start", {"details": {}})
+    done = client.wait(job["id"])
+    assert done["state"] == "failed"
+    assert done["error"]["message"].startswith("The export stopped unexpectedly: typst panicked.")

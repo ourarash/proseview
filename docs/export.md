@@ -1,10 +1,17 @@
-# EPUB export
+# Exporting your book: EPUB and PDF
 
 [← back to the README](../README.md)
 
-Proseview turns your manuscript, or any part of it, into an EPUB e-book
-ready for Apple Books, Kobo, Kindle Direct Publishing or a reader's
-e-reader. Nothing else needs installing: Proseview writes the EPUB itself.
+Proseview turns your manuscript, or any part of it, into:
+
+- an **e-book (EPUB)** for Apple Books, Kobo, Kindle Direct Publishing and
+  every e-reader;
+- a **print book (PDF)**: a paperback interior to upload to KDP or
+  IngramSpark, at the trim size you choose;
+- a **shareable PDF**: a copy to send to a beta reader, an agent or an
+  editor, as a finished-looking book or in standard manuscript format.
+
+Nothing else needs installing: Proseview writes all three itself.
 
 ## Exporting from the dashboard
 
@@ -17,19 +24,39 @@ Click **Export** in the top bar. The dialog has three steps:
    selection you have saved. To put things in a different order (a synopsis
    packet, one character's arc), turn on **Reorder** and drag them, or use the
    arrow buttons. **Save this selection…** keeps what you ticked under a name.
-2. **Style.** Choose the look of the book (Classic for now; more styles are
-   on the way), whether scene titles show, and the e-book format. EPUB 3 is
-   what the stores expect; EPUB 2 is only for older e-readers.
+2. **Format and style.** Choose *E-book (EPUB)*, *Print book (PDF)*,
+   *Shareable PDF*, or *All formats* to make the three at once. Each shows
+   the few options it needs:
+   - e-book: EPUB 3 is what the stores expect; EPUB 2 is only for older
+     e-readers;
+   - print book: the **trim size** (5 × 8, 5.25 × 8, 5.5 × 8.5, 6 × 9 in, or
+     A5; 5.5 × 8.5 in is the most common for novels), and whether chapters
+     start on a right-hand page, as most printed novels do;
+   - shareable PDF: US Letter or A4, and an optional **watermark** such as
+     "Advance copy for Sam", printed faintly across every page. The watermark
+     names one reader, so it is never remembered for the next export.
+
+   Then choose the style (see [How it looks](#how-it-looks)) and whether
+   scene titles show.
 3. **Book details.** The title, subtitle, author and cover. Drop a cover
    image on the box or choose one; it is saved in your novel's folder as
-   `cover.jpg` (or `.png`). Beside the form is a preview of the book as an
-   e-reader will show it: use the arrows to turn pages and the menu to jump to
-   a chapter.
+   `cover.jpg` (or `.png`). With the Manuscript style you also give your
+   contact details for its title page. Beside the form is a preview, laid out
+   exactly as the export will be: an e-reader page for an EPUB, facing pages
+   for a print book, single pages for a shareable PDF. Use the arrows to turn
+   pages and the menu to jump. A PDF preview lays out the first three
+   chapters, so it stays quick on a long novel; the export has them all.
 
-Click **Export EPUB**. When the book is ready you can **Open** it in your
-e-book app, **Show in folder**, or **Download** a copy. Books land in an
-`exports/` folder inside your novel, named after the book and the day, e.g.
-`alices-adventures-in-wonderland-2026-10-08.epub`.
+Click **Export**. When the book is ready you can **Open** it, **Show in
+folder**, or **Download** a copy. Books land in an `exports/` folder inside
+your novel, named after the book and the day:
+
+| Format | File |
+| --- | --- |
+| E-book | `alices-adventures-in-wonderland-2026-10-08.epub` |
+| Print book | `alices-adventures-in-wonderland-print-2026-10-08.pdf` |
+| Shareable PDF | `alices-adventures-in-wonderland-2026-10-08.pdf` |
+| Manuscript | `alices-adventures-in-wonderland-manuscript-2026-10-08.pdf` |
 
 To export just one scene or chapter, right-click it in the file browser (or
 use its **…** button), or open the scene and use the **…** menu in its
@@ -54,6 +81,17 @@ rather than a store, so it is only checked for soundness: **Ready to share
 with readers**. If a scene uses an image that cannot be found, the export
 stops, names the scene, and offers to open it.
 
+A PDF is read back and checked too: every page is the size you chose, every
+font is embedded (KDP rejects an interior with a missing font), and a
+paperback has the 24 to 828 pages KDP prints. A whole book that passes is
+**Ready to upload to KDP as a 5.5 × 8.5 in paperback interior**. A
+manuscript without contact details asks for them, since an agent needs a way
+to reply.
+
+The print PDF is the *interior* only. KDP and IngramSpark take the cover as a
+separate file sized for your page count and paper, so the cover you choose
+here goes on the e-book and the shareable PDF, not inside the print book.
+
 The dashboard remembers the book's details in `.proseview.yaml`, so the next
 export starts where you left off (see [What Proseview remembers](#what-proseview-remembers)).
 
@@ -62,6 +100,11 @@ export starts where you left off (see [What Proseview remembers](#what-proseview
 ```bash
 proseview export --root /path/to/your/novel --author "Your Name"
 # → exports/your-novel-2026-10-08.epub
+proseview export --format pdf-print --trim 6x9
+# → exports/your-novel-print-2026-10-08.pdf
+proseview export --format pdf-share --watermark "Advance copy for Sam"
+proseview export --format pdf-share --style manuscript --contact "you@example.com\n+1 555 0100"
+proseview export --format all          # the e-book and both PDFs
 ```
 
 Scenes are compiled in the same order the dashboard counts them, and titles
@@ -136,20 +179,40 @@ export:
 
 ## How it looks
 
-Books use the **Classic** style: a serif body, chapter openers reading
-"Chapter One" above the chapter's title, a drop cap and small-caps first line,
-and a centred `*   *   *` between scenes. Scene titles are hidden, because
-novels mark a change of scene with the break rather than a heading. To show
-them as headings (and list them in the table of contents):
+**Classic** is a traditional novel, and looks the same in the e-book and the
+PDFs: a serif body, chapter openers reading "Chapter One" above the chapter's
+title, a two-line drop cap with a small-caps first line, and a centred
+`*   *   *` between scenes. In print it adds running heads (the author on
+left-hand pages, the title on right-hand ones), page numbers, no head on a
+chapter's opening page, and an inside margin that widens with the page count
+so no words disappear into the fold. The shareable PDF adds the cover, a
+contents page you can click, and bookmarks for every chapter.
+
+**Manuscript** is standard submission format, for a Shareable PDF only:
+12 pt type, double-spaced, 1 inch margins, every paragraph indented, "Chapter 1"
+a third of the way down the page, a centred `#` between scenes, a title page
+with your name, contact details and the word count ("about 85,000 words"),
+and "Surname / TITLE / page" at the top of each page.
+
+Scene titles are hidden, because novels mark a change of scene with the break
+rather than a heading. To show them as headings (and list them in the table
+of contents):
 
 ```bash
 proseview export --scene-titles
 ```
 
-A style is a folder holding `epub.css` and an optional `style.yaml` (chapter
-numbering as `words`, `numerals` or `none`; the scene-break text; whether scene
-titles show). Point `--style` at a folder of your own to use it, and add
-`--css` for small overrides on top of the style.
+PDFs use the open-licence fonts that come with Proseview (Libertinus Serif
+for the text), never the fonts installed on your computer, so a book looks
+the same on every machine and every font is embedded in the file.
+
+A style is a folder holding `epub.css` for the e-book and `pdf.typ` (a
+[Typst](https://typst.app/docs/) template) for the PDFs, either or both,
+plus an optional `style.yaml` (chapter numbering as `words`, `numerals` or
+`none`; the scene-break text; whether scene titles show; `formats` to limit
+what it makes). Point `--style` at a folder of your own to use it, and add
+`--css` for small overrides on top of an e-book style. The comment at the top
+of the built-in `classic/pdf.typ` lists what a PDF template defines.
 
 Defaults for these go in `.proseview.yaml` (see below).
 
@@ -165,7 +228,12 @@ export:
   title: Alice's Adventures in Wonderland
   author: Lewis Carroll
   language: en-GB
+  format: epub          # pdf-print, pdf-share or all
   epub_version: epub3   # or epub2
+  trim: 5.5x8.5         # 5x8, 5.25x8, 6x9 or a5
+  paper: letter         # or a4
+  recto_chapters: true  # print chapters open on a right-hand page
+  contact: "you@example.com\n+1 555 0100"   # a manuscript's title page
   style: classic
   scene_titles: false
   cover_image: cover.jpg   # a path inside the novel's folder
@@ -202,7 +270,7 @@ table-of-contents depth so they do not compete with your chapters.
 ## What goes into the book
 
 - **Images** in a scene (`![The bridge at night](images/bridge.png)`) are
-  copied into the EPUB. PNG, JPEG, GIF, SVG and WebP work. An image that cannot
+  copied into the book. PNG, JPEG, GIF, SVG and WebP work. An image that cannot
   be found, sits outside the repository, or is a web address stops the export
   and names the scene, because an e-book cannot load images from the internet.
 - **Links** to web pages stay clickable. Links to other files in your
@@ -218,14 +286,15 @@ table-of-contents depth so they do not compete with your chapters.
 `epub2` for older readers), `--cover-image` (JPEG, PNG, GIF or WebP),
 repeatable `--css`, repeatable `--appendix`, `--chapters`, `--scenes`,
 `--order`, `--selection`, `--save-selection`, `--list-selections`, `--style`,
-`--scene-titles` / `--no-scene-titles`, `--format` (`epub` for now), and
-`--engine`.
+`--scene-titles` / `--no-scene-titles`, `--format` (`epub`, `pdf-print`,
+`pdf-share` or `all`), `--trim`, `--paper`, `--recto-chapters` /
+`--no-recto-chapters`, `--watermark`, `--contact`, and `--engine`.
 
 ### The pandoc engine
 
 `--engine pandoc` builds the EPUB with [pandoc](https://pandoc.org/installing.html)
 the way earlier versions did, for one more release while the built-in writer
-settles. It honours selections, the identifier and every option above except
+settles. It makes EPUBs only. It honours selections, the identifier and every option above except
 `--style` and `--scene-titles`, and it needs pandoc installed
 (`brew install pandoc` or `apt install pandoc`). It will be removed in a later
 release.

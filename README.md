@@ -101,10 +101,11 @@ it happens is visible instead of inferred. Hover any scene for its card.
   inline, or move them to Proseview Trash from the row menu or right-click.
 - 🕹️ **File history.** Versions of a scene, restored through a diff you
   can read first.
-- 📦 **EPUB export.** The Export button turns the whole book, a chapter, a
-  scene, or any mix of them into a styled EPUB, with a preview, a check that
-  it is ready for the stores, and nothing else to install. `proseview export`
-  does the same from the command line. [Export guide →](docs/export.md)
+- 📦 **EPUB and PDF export.** The Export button turns the whole book, a
+  chapter, a scene, or any mix of them into a styled e-book, a print-ready
+  paperback interior, or a PDF to share (in manuscript format for agents),
+  with a preview, a check that it is ready for the stores, and nothing else
+  to install. `proseview export` does the same from the command line. [Export guide →](docs/export.md)
 - 🔁 **Live reload, deep links, themes.** Save in your editor and the page
   follows. Every scene has a URL. Six themes, seven fonts.
 - 🧪 **Tested.** A unit suite plus a browser tier that drives the real UI.
@@ -191,7 +192,7 @@ discuss:
 - [Configuration reference](docs/configuration.md)
 - [Working with AI](docs/ai.md)
 - [The analytics](docs/analytics.md)
-- [EPUB export](docs/export.md)
+- [Exporting: EPUB and PDF](docs/export.md)
 
 ## 🛣️ Status
 

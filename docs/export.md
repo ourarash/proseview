@@ -2,23 +2,78 @@
 
 [← back to the README](../README.md)
 
+Proseview turns your manuscript, or any part of it, into an EPUB e-book
+ready for Apple Books, Kobo, Kindle Direct Publishing or a reader's
+e-reader. Nothing else needs installing: Proseview writes the EPUB itself.
+
+## Exporting from the dashboard
+
+Click **Export** in the top bar. The dialog has three steps:
+
+1. **What to export.** Every chapter is ticked to start with. Untick
+   chapters, or open one with its arrow to tick single scenes. The line at
+   the bottom keeps count: "3 chapters, 14 scenes, 41,200 words". Quick picks
+   fill the ticks for you: *Whole book*, *First three chapters*, and any
+   selection you have saved. To put things in a different order (a synopsis
+   packet, one character's arc), turn on **Reorder** and drag them, or use the
+   arrow buttons. **Save this selection…** keeps what you ticked under a name.
+2. **Style.** Choose the look of the book (Classic for now; more styles are
+   on the way), whether scene titles show, and the e-book format. EPUB 3 is
+   what the stores expect; EPUB 2 is only for older e-readers.
+3. **Book details.** The title, subtitle, author and cover. Drop a cover
+   image on the box or choose one; it is saved in your novel's folder as
+   `cover.jpg` (or `.png`). Beside the form is a preview of the book as an
+   e-reader will show it: use the arrows to turn pages and the menu to jump to
+   a chapter.
+
+Click **Export EPUB**. When the book is ready you can **Open** it in your
+e-book app, **Show in folder**, or **Download** a copy. Books land in an
+`exports/` folder inside your novel, named after the book and the day, e.g.
+`alices-adventures-in-wonderland-2026-10-08.epub`.
+
+To export just one scene or chapter, right-click it in the file browser (or
+use its **…** button), or open the scene and use the **…** menu in its
+toolbar: **Export this scene** and **Export this chapter** open the dialog
+with that part already ticked.
+
+### Is it ready for the stores?
+
+After every export Proseview checks the book and says so in plain words:
+**Ready for Apple Books, Kobo and KDP**, or what to fix first, each with a
+button that takes you there:
+
+- the title is still the folder's name, or the author is missing
+- there is no cover, or it is too small (stores ask for at least 1600 px on
+  the short side; 1600 × 2560 px is a safe size) or wider than a book
+- an image has no description (the text between the brackets in
+  `![The bridge at night](images/bridge.png)`), which readers who listen to
+  the book hear, and which European stores now ask for
+
+A part of the book (a chapter, a scene, a selection) is meant for readers
+rather than a store, so it is only checked for soundness: **Ready to share
+with readers**. If a scene uses an image that cannot be found, the export
+stops, names the scene, and offers to open it.
+
+The dashboard remembers the book's details in `.proseview.yaml`, so the next
+export starts where you left off (see [What Proseview remembers](#what-proseview-remembers)).
+
+## Exporting from the command line
+
 ```bash
 proseview export --root /path/to/your/novel --author "Your Name"
 # → exports/your-novel-2026-10-08.epub
 ```
 
-Nothing else needs installing: Proseview writes the EPUB itself. Scenes are
-compiled in the same order the dashboard counts them, and titles and chapters
-use frontmatter where present and fall back to the filename and folder, exactly
-as the scene table does. Files marked `scene: false` are left out, as the
-dashboard leaves them out.
+Scenes are compiled in the same order the dashboard counts them, and titles
+and chapters use frontmatter where present and fall back to the filename and
+folder, exactly as the scene table does. Files marked `scene: false` are left
+out, as the dashboard leaves them out.
 
-Books land in an `exports/` folder inside your novel, named after the book and
-the day. In a git repository, the first export adds `exports/` to your
-`.gitignore` so a book is never committed by accident. `--output` writes
-anywhere else instead.
+`--output` writes anywhere else instead of `exports/`. In a git repository,
+the first export adds `exports/` to your `.gitignore` so a book is never
+committed by accident.
 
-## Choosing what to export
+### Choosing what to export
 
 With no options, the whole book is exported with a title page and a table of
 contents. To export part of it:
@@ -52,7 +107,7 @@ A part of the book gets its own file name (`my-novel-chapter-3-…`,
 `my-novel-scene-the-fall-…`), so it never overwrites the full book, and its own
 identifier, so an e-reader keeps it apart from the novel.
 
-### Saved selections
+#### Saved selections
 
 Name a selection to reuse it:
 
@@ -96,15 +151,28 @@ numbering as `words`, `numerals` or `none`; the scene-break text; whether scene
 titles show). Point `--style` at a folder of your own to use it, and add
 `--css` for small overrides on top of the style.
 
-Defaults for these go in `.proseview.yaml`:
+Defaults for these go in `.proseview.yaml` (see below).
+
+## What Proseview remembers
+
+Everything under `export:` in `.proseview.yaml` is shared by the dashboard
+and the command line. The dashboard writes the book details after each
+successful export; the command line reads them as its defaults, and a flag
+given on the command line wins for that run.
 
 ```yaml
 export:
+  title: Alice's Adventures in Wonderland
+  author: Lewis Carroll
+  language: en-GB
+  epub_version: epub3   # or epub2
   style: classic
   scene_titles: false
+  cover_image: cover.jpg   # a path inside the novel's folder
+  identifier: urn:uuid:…
 ```
 
-## Book identifier
+### Book identifier
 
 The first export saves a book identifier to `.proseview.yaml`:
 
@@ -146,7 +214,7 @@ table-of-contents depth so they do not compete with your chapters.
 
 ## All options
 
-`--output`, `--title`, `--author`, `--language`, `--epub-version` (`epub3`, or
+`--output`, `--title`, `--subtitle`, `--author`, `--language`, `--epub-version` (`epub3`, or
 `epub2` for older readers), `--cover-image` (JPEG, PNG, GIF or WebP),
 repeatable `--css`, repeatable `--appendix`, `--chapters`, `--scenes`,
 `--order`, `--selection`, `--save-selection`, `--list-selections`, `--style`,

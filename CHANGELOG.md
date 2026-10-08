@@ -5,14 +5,23 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
-### Fixed
-
-- When Claude cannot answer -- an exhausted plan, an API error -- the dock
-  says why, instead of "Claude could not finish: success".
-
-## Unreleased
-
 ### Added
+
+- **Export from the dashboard.** An Export button in the top bar opens a
+  three-step dialog: tick the chapters and scenes to include (or reorder
+  them by dragging), pick the style and whether scene titles show, then fill
+  in the title, subtitle, author and cover while a preview shows the styled
+  pages. "Export this scene" and "Export this chapter" in the file browser's
+  menu and the scene viewer's menu open it with that part already ticked.
+  The finished book can be opened, shown in its folder, or downloaded.
+- After each export a plain-language check says whether the book is ready
+  for Apple Books, Kobo and KDP, or what to fix first: a missing title or
+  author, a cover too small or too wide for stores, an image without a
+  description. An image that cannot be found names its scene, with a button
+  to open it.
+- The dashboard remembers the book's details under `export:` in
+  `.proseview.yaml`, and `proseview export` uses them as its defaults. New
+  `--subtitle` option.
 
 - Export part of the book: one chapter, one scene, several chapters (gaps
   allowed), hand-picked scenes, or a custom order, with `--chapters`,
@@ -25,6 +34,7 @@ section here becomes the release notes on GitHub.
 - The Classic book style: serif body, "Chapter One" openers with a drop cap,
   and a centred break between scenes. Scene titles are hidden by default;
   `--scene-titles` shows them. `--style` takes a folder of your own.
+- CI runs EPUBCheck, the validator the stores use, on every selection type.
 
 ### Changed
 
@@ -40,6 +50,14 @@ section here becomes the release notes on GitHub.
 
 - Files marked `scene: false` are left out of an export, as the dashboard
   leaves them out.
+- When Claude cannot answer -- an exhausted plan, an API error -- the dock
+  says why, instead of "Claude could not finish: success".
+- Title pages, headings and the contents get the same curly quotes and
+  dashes as the prose ("Alice’s", not "Alice's").
+- The Classic drop cap spans exactly two lines; the third line no longer
+  steps in around it.
+- A single exported chapter or scene passes EPUBCheck: its contents page is
+  no longer listed as a landmark outside the reading order.
 
 ## 0.3.1 — 2026-10-08
 

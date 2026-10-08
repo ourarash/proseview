@@ -322,8 +322,13 @@ def client(book: Path, monkeypatch):
     thread.start()
     c = _Client(f"http://127.0.0.1:{httpd.server_address[1]}", "token")
     c.opened = opened
+    c.root = book
     yield c
     httpd.shutdown()
+
+
+def client_root(client) -> Path:
+    return client.root
 
 
 def test_route_outline(client):
@@ -438,11 +443,14 @@ def test_route_pdf_preview_draws_the_first_chapters_as_pages(client):
     })
     assert status == 200 and data["format"] == "pdf-print" and data["spreads"] is True
     assert "first 3 chapters" in data["note"]
+    # Title page, its blank back, then chapter one.
+    assert data["first_text_page"] == 3
+    assert not list((client_root(client) / ".proseview").glob("*.typ"))
     assert data["pages"][0] == {"href": "page-001.png", "label": "Page 1"}
     status, headers, png_bytes = client.request("GET", f"/api/export/preview/{data['token']}/page-001.png")
     assert status == 200 and headers["Content-Type"] == "image/png" and png_bytes[:4] == b"\x89PNG"
     # A 5 × 8 in page at the preview's resolution.
-    assert image_size(png_bytes) == (320, 512)
+    assert image_size(png_bytes) == (550, 880)
 
 
 def test_route_preview_of_all_formats_shows_the_one_asked_for(client):

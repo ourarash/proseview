@@ -115,7 +115,7 @@
                 </div>
                 <ol class="export-steps" aria-label="Export steps">
                     <li><button type="button" data-export-step="1" aria-current="step"><span class="export-step-num" aria-hidden="true">1</span>What to export</button></li>
-                    <li><button type="button" data-export-step="2"><span class="export-step-num" aria-hidden="true">2</span>Style</button></li>
+                    <li><button type="button" data-export-step="2"><span class="export-step-num" aria-hidden="true">2</span>Format and style</button></li>
                     <li><button type="button" data-export-step="3"><span class="export-step-num" aria-hidden="true">3</span>Book details</button></li>
                 </ol>
                 <button type="button" class="export-close" data-export-close aria-label="Close export">&times;</button>
@@ -147,7 +147,32 @@
                 </div>
             </section>
 
-            <section id="exportStep2" class="export-body export-style" data-export-panel="2" aria-label="Style" hidden>
+            <section id="exportStep2" class="export-body export-style" data-export-panel="2" aria-label="Format and style" hidden>
+                <fieldset class="export-fieldset">
+                    <legend class="export-label">Format</legend>
+                    <div id="exportFormatCards" class="export-format-cards"></div>
+                </fieldset>
+                <div class="export-format-options">
+                    <div id="exportPrintOptions" class="export-option-group" hidden>
+                        <label for="exportTrim"><strong>Trim size</strong><span class="export-hint">The size of the printed page. 5.5 × 8.5 in is the most common for novels.</span></label>
+                        <select id="exportTrim" class="export-select"></select>
+                        <label class="export-toggle-row" for="exportRecto">
+                            <input type="checkbox" id="exportRecto" role="switch"><span class="export-switch-track" aria-hidden="true"></span>
+                            <span><strong>Start chapters on a right-hand page</strong><span class="export-hint">As most printed novels do; it can leave a blank page before a chapter.</span></span>
+                        </label>
+                    </div>
+                    <div id="exportShareOptions" class="export-option-group" hidden>
+                        <label for="exportPaper"><strong>Page size</strong></label>
+                        <select id="exportPaper" class="export-select"></select>
+                        <label for="exportWatermark"><strong>Watermark</strong> <span class="export-optional">optional</span><span class="export-hint">Faint text across every page, to discourage forwarding. Not remembered.</span></label>
+                        <input id="exportWatermark" type="text" maxlength="120" placeholder="Advance copy for Sam" autocomplete="off">
+                    </div>
+                    <fieldset id="exportEpubOptions" class="export-fieldset export-option-group">
+                        <legend class="export-label-plain"><strong>E-book version</strong></legend>
+                        <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub3" checked><span><strong>EPUB 3</strong> (recommended)<span class="export-hint">What Apple Books, Kobo and Kindle Direct Publishing expect.</span></span></label>
+                        <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub2"><span><strong>EPUB 2</strong><span class="export-hint">Only for older e-readers that cannot open EPUB 3.</span></span></label>
+                    </fieldset>
+                </div>
                 <fieldset class="export-fieldset">
                     <legend class="export-label">Book style</legend>
                     <div id="exportStyleCards" class="export-style-cards"></div>
@@ -156,11 +181,6 @@
                     <input type="checkbox" id="exportSceneTitles" role="switch"><span class="export-switch-track" aria-hidden="true"></span>
                     <span><strong>Show scene titles</strong><span class="export-hint">Off, scenes are separated by a centred * * *, as in most novels. On, each scene starts with its title and the contents lists it.</span></span>
                 </label>
-                <fieldset class="export-fieldset">
-                    <legend class="export-label">E-book format</legend>
-                    <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub3" checked><span><strong>EPUB 3</strong> (recommended)<span class="export-hint">What Apple Books, Kobo and Kindle Direct Publishing expect.</span></span></label>
-                    <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub2"><span><strong>EPUB 2</strong><span class="export-hint">Only for older e-readers that cannot open EPUB 3.</span></span></label>
-                </fieldset>
             </section>
 
             <section id="exportStep3" class="export-body export-details" data-export-panel="3" aria-label="Book details" hidden>
@@ -171,6 +191,10 @@
                     <input id="exportSubtitle" type="text" maxlength="300" autocomplete="off">
                     <label for="exportAuthor">Author</label>
                     <input id="exportAuthor" type="text" maxlength="300" autocomplete="name" placeholder="Your name as readers will see it">
+                    <div id="exportContactGroup" class="export-contact" hidden>
+                        <label for="exportContact">Contact details <span class="export-optional">for the manuscript’s title page</span></label>
+                        <textarea id="exportContact" rows="3" maxlength="600" placeholder="you@example.com&#10;+1 555 0100" autocomplete="off"></textarea>
+                    </div>
                     <span class="export-label" id="exportCoverLabel">Cover</span>
                     <div id="exportCoverDrop" class="export-cover-drop" aria-labelledby="exportCoverLabel">
                         <img id="exportCoverImg" class="export-cover-thumb" alt="" hidden>
@@ -188,19 +212,22 @@
                 </div>
                 <div class="export-preview" aria-label="Preview">
                     <div class="export-preview-nav">
+                        <label class="sr-only" for="exportPreviewFormat">Preview</label>
+                        <select id="exportPreviewFormat" class="export-page-pick export-preview-format" hidden></select>
                         <button type="button" id="exportPrevPage" class="export-icon-btn" aria-label="Previous page">&#8249;</button>
                         <label class="sr-only" for="exportPagePick">Go to</label>
                         <select id="exportPagePick" class="export-page-pick"></select>
                         <button type="button" id="exportNextPage" class="export-icon-btn" aria-label="Next page">&#8250;</button>
                     </div>
                     <div class="export-reader"><iframe id="exportPreviewFrame" title="Preview of the e-book" sandbox="allow-same-origin" tabindex="-1"></iframe></div>
+                    <div id="exportPaperView" class="export-paper-view" role="img" aria-label="Preview of the PDF pages" hidden></div>
                     <p id="exportPreviewStatus" class="export-preview-status" aria-live="polite"></p>
                 </div>
             </section>
 
             <section id="exportStepRun" class="export-body export-run" data-export-panel="run" aria-label="Exporting" hidden>
                 <div class="export-run-box">
-                    <p class="export-run-title">Making your e-book</p>
+                    <p id="exportRunTitle" class="export-run-title">Making your e-book</p>
                     <div id="exportProgress" class="export-progress" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
                     <p id="exportRunStep" class="export-run-step" aria-live="polite">Starting</p>
                 </div>

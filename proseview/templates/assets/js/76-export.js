@@ -23,7 +23,7 @@
 
         var EXPORT_STEP_HINTS = {
             1: 'Choose what goes into the e-book.',
-            2: 'Choose how the book looks.',
+            2: 'Choose the kind of book and how it looks.',
             3: 'Check the details readers and stores will see.',
             run: 'This takes a few seconds.',
             done: '',
@@ -493,26 +493,109 @@
 
         // ── Step 2: style ────────────────────────────────────────────────────
 
-        function exportRenderStyles() {
+        var EXPORT_FORMAT_ICONS = {
+            'epub': '<path d="M5 4h9a5 5 0 0 1 5 5v11H8a3 3 0 0 1-3-3z"/><path d="M8 20a3 3 0 0 1 0-6h11"/>',
+            'pdf-print': '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 14h7M9 17h5"/>',
+            'pdf-share': '<path d="M7 3h8l4 4v14H7z"/><path d="M3 12h8m-3-3 3 3-3 3"/>',
+            'all': '<path d="M4 6h10v14H4z"/><path d="M8 3h10v14"/>',
+        };
+
+        function exportFormats() {
+            var format = exportState.details.format;
+            return format === 'all' ? ['epub', 'pdf-print', 'pdf-share'] : [format];
+        }
+
+        function exportStyleFits(style) {
+            return exportFormats().every(function(format) { return style.formats.indexOf(format) >= 0; });
+        }
+
+        function exportRenderFormatAndStyle() {
+            var details = exportState.details;
+            var cards = exportEl('exportFormatCards');
+            cards.innerHTML = '';
+            exportState.outline.formats.forEach(function(format) {
+                var card = document.createElement('label');
+                card.className = 'export-format-card';
+                var input = document.createElement('input');
+                input.type = 'radio';
+                input.name = 'exportFormat';
+                input.value = format.name;
+                input.checked = details.format === format.name;
+                input.addEventListener('change', function() {
+                    details.format = format.name;
+                    exportState.preview = null;
+                    exportEl('exportPreviewFormat').innerHTML = '';
+                    exportRenderFormatAndStyle();
+                    exportUpdateButtons();
+                });
+                card.appendChild(input);
+                card.insertAdjacentHTML('beforeend', '<svg class="export-format-icon" viewBox="0 0 24 24" aria-hidden="true">'
+                    + EXPORT_FORMAT_ICONS[format.name] + '</svg>');
+                var copy = document.createElement('span');
+                copy.className = 'export-format-copy';
+                var name = document.createElement('strong');
+                name.textContent = format.label;
+                var blurb = document.createElement('span');
+                blurb.className = 'export-hint';
+                blurb.textContent = format.blurb;
+                copy.appendChild(name);
+                copy.appendChild(blurb);
+                card.appendChild(copy);
+                cards.appendChild(card);
+            });
+
+            var formats = exportFormats();
+            exportEl('exportEpubOptions').hidden = formats.indexOf('epub') < 0;
+            exportEl('exportPrintOptions').hidden = formats.indexOf('pdf-print') < 0;
+            exportEl('exportShareOptions').hidden = formats.indexOf('pdf-share') < 0;
+            var trim = exportEl('exportTrim');
+            trim.innerHTML = '';
+            exportState.outline.trims.forEach(function(option) {
+                trim.add(new Option(option.label, option.name, false, option.name === details.trim));
+            });
+            var paper = exportEl('exportPaper');
+            paper.innerHTML = '';
+            exportState.outline.papers.forEach(function(option) {
+                paper.add(new Option(option.label, option.name, false, option.name === details.paper));
+            });
+            exportEl('exportRecto').checked = details.recto_chapters !== false;
+            exportEl('exportWatermark').value = details.watermark || '';
+            exportEl('exportSceneTitles').checked = !!details.scene_titles;
+            document.querySelectorAll('input[name="exportEpubVersion"]').forEach(function(radio) {
+                radio.checked = radio.value === details.epub_version;
+            });
+
+            // A style that cannot make the chosen format is not offered; if the
+            // chosen one cannot, Classic (which makes everything) takes over.
+            var styles = exportState.outline.styles.filter(exportStyleFits);
+            if (!styles.some(function(style) { return style.name === details.style; })) {
+                details.style = styles.length ? styles[0].name : 'classic';
+            }
             var host = exportEl('exportStyleCards');
             host.innerHTML = '';
-            exportState.outline.styles.forEach(function(style) {
+            styles.forEach(function(style) {
                 var card = document.createElement('label');
                 card.className = 'export-style-card';
                 var input = document.createElement('input');
                 input.type = 'radio';
                 input.name = 'exportStyle';
                 input.value = style.name;
-                input.checked = exportState.details.style === style.name;
+                input.checked = details.style === style.name;
                 input.addEventListener('change', function() {
-                    exportState.details.style = style.name;
+                    details.style = style.name;
+                    exportRenderDetails();
                     exportSchedulePreview();
                 });
                 // A tiny page in the style itself, so a writer chooses by eye.
-                card.innerHTML = '<span class="export-style-thumb export-style-' + style.name + '" aria-hidden="true">'
-                    + '<span class="thumb-kicker">Chapter One</span><span class="thumb-title">The Rabbit-Hole</span>'
-                    + '<span class="thumb-text"><span class="thumb-cap">A</span>lice was beginning to get very tired of sitting by her sister on the bank.</span>'
-                    + '<span class="thumb-break">*&nbsp;&nbsp;*&nbsp;&nbsp;*</span></span>';
+                card.innerHTML = style.name === 'manuscript'
+                    ? '<span class="export-style-thumb export-style-manuscript" aria-hidden="true">'
+                        + '<span class="thumb-head">Carroll / ALICE / 1</span><span class="thumb-kicker">Chapter 1</span>'
+                        + '<span class="thumb-text">Alice was beginning to get very tired of sitting by her sister on the bank.</span>'
+                        + '<span class="thumb-break">#</span></span>'
+                    : '<span class="export-style-thumb export-style-' + style.name + '" aria-hidden="true">'
+                        + '<span class="thumb-kicker">Chapter One</span><span class="thumb-title">The Rabbit-Hole</span>'
+                        + '<span class="thumb-text"><span class="thumb-cap">A</span>lice was beginning to get very tired of sitting by her sister on the bank.</span>'
+                        + '<span class="thumb-break">*&nbsp;&nbsp;*&nbsp;&nbsp;*</span></span>';
                 card.insertBefore(input, card.firstChild);
                 var copy = document.createElement('span');
                 copy.className = 'export-style-copy';
@@ -526,14 +609,14 @@
                 card.appendChild(copy);
                 host.appendChild(card);
             });
-            var more = document.createElement('p');
-            more.className = 'export-hint export-style-more';
-            more.textContent = 'More styles are on the way.';
-            host.appendChild(more);
-            exportEl('exportSceneTitles').checked = !!exportState.details.scene_titles;
-            document.querySelectorAll('input[name="exportEpubVersion"]').forEach(function(radio) {
-                radio.checked = radio.value === exportState.details.epub_version;
-            });
+            if (formats.indexOf('pdf-share') < 0 || formats.length > 1) {
+                var more = document.createElement('p');
+                more.className = 'export-hint export-style-more';
+                more.textContent = formats.length === 1 && formats[0] !== 'pdf-share'
+                    ? 'More styles are on the way. Manuscript format is under Shareable PDF.'
+                    : 'More styles are on the way.';
+                host.appendChild(more);
+            }
         }
 
         // ── Step 3: details and preview ──────────────────────────────────────
@@ -544,6 +627,14 @@
             exportEl('exportTitle').placeholder = exportState.outline.book.default_title;
             exportEl('exportSubtitle').value = details.subtitle || '';
             exportEl('exportAuthor').value = details.author || '';
+            exportEl('exportContact').value = details.contact || '';
+            exportEl('exportContactGroup').hidden = details.style !== 'manuscript';
+            var printOnly = exportFormats().length === 1 && exportFormats()[0] === 'pdf-print';
+            exportEl('exportCoverLabel').textContent = printOnly ? 'Cover (for your records; printers take it separately)' : 'Cover';
+            // A manuscript has no cover page.
+            var noCover = details.style === 'manuscript';
+            exportEl('exportCoverLabel').hidden = noCover;
+            exportEl('exportCoverDrop').hidden = noCover;
             exportRenderCover();
         }
 
@@ -555,6 +646,11 @@
             details.scene_titles = exportEl('exportSceneTitles').checked;
             var version = document.querySelector('input[name="exportEpubVersion"]:checked');
             details.epub_version = version ? version.value : 'epub3';
+            details.trim = exportEl('exportTrim').value || details.trim;
+            details.paper = exportEl('exportPaper').value || details.paper;
+            details.recto_chapters = exportEl('exportRecto').checked;
+            details.watermark = exportEl('exportWatermark').value.trim();
+            details.contact = exportEl('exportContact').value.trim();
             return details;
         }
 
@@ -632,9 +728,31 @@
             status.textContent = 'Updating preview…';
             var keepHref = exportState.preview && exportState.preview.pages[exportState.pageIndex]
                 ? exportState.preview.pages[exportState.pageIndex].href : '';
-            exportPost('/api/export/preview', {selection: exportSelectionPayload(), details: exportReadDetails()}).then(function(data) {
+            var formats = exportFormats();
+            var chooser = exportEl('exportPreviewFormat');
+            chooser.hidden = formats.length < 2;
+            if (formats.length > 1 && !chooser.options.length) {
+                exportState.outline.formats.forEach(function(format) {
+                    if (formats.indexOf(format.name) >= 0) chooser.add(new Option(format.label, format.name));
+                });
+            }
+            var wanted = formats.length > 1 ? (chooser.value || formats[0]) : formats[0];
+            if (exportState.preview && exportState.preview.format !== wanted) keepHref = '';
+            exportPost('/api/export/preview', {
+                selection: exportSelectionPayload(), details: exportReadDetails(), preview: wanted,
+            }).then(function(data) {
                 if (seq !== exportState.previewSeq) return;
                 exportState.preview = data;
+                var paper = data.format !== 'epub';
+                exportEl('exportPreviewFrame').parentElement.hidden = paper;
+                exportEl('exportPaperView').hidden = !paper;
+                exportEl('exportPreviewFrame').title = paper ? '' : 'Preview of the e-book';
+                if (paper) {
+                    exportRenderPaperPicker(data);
+                    var kept = keepHref ? data.pages.findIndex(function(page) { return page.href === keepHref; }) : -1;
+                    exportShowSpread(kept >= 0 ? kept : exportFirstPdfPage(data));
+                    return;
+                }
                 var keep = data.pages.findIndex(function(page) { return page.href === keepHref; });
                 exportState.pageIndex = keep >= 0 ? keep : exportFirstTextPage(data.pages);
                 var pick = exportEl('exportPagePick');
@@ -651,6 +769,71 @@
                 if (seq !== exportState.previewSeq) return;
                 status.textContent = error.message;
             });
+        }
+
+        // ── PDF preview: page images, as spreads for a printed book ──────────
+
+        function exportSpreadOf(data, index) {
+            // A printed book opens with page 1 alone on the right; after that
+            // pages face each other in pairs (2–3, 4–5, …).
+            if (!data.spreads || index === 0) return data.spreads ? [index] : [index];
+            var left = index % 2 === 1 ? index : index - 1;
+            return left + 1 < data.pages.length ? [left, left + 1] : [left];
+        }
+
+        function exportSpreads(data) {
+            var spreads = [];
+            for (var i = 0; i < data.pages.length; ) {
+                var spread = exportSpreadOf(data, i);
+                spreads.push(spread);
+                i = spread[spread.length - 1] + 1;
+            }
+            return spreads;
+        }
+
+        function exportFirstPdfPage(data) {
+            // Open on the first page of text, past the title page and contents.
+            return Math.max(0, Math.min((data.first_text_page || 1) - 1, data.pages.length - 1));
+        }
+
+        function exportRenderPaperPicker(data) {
+            var pick = exportEl('exportPagePick');
+            pick.innerHTML = '';
+            exportSpreads(data).forEach(function(spread) {
+                var label = spread.length > 1
+                    ? 'Pages ' + (spread[0] + 1) + '–' + (spread[1] + 1)
+                    : 'Page ' + (spread[0] + 1);
+                pick.add(new Option(label, String(spread[0])));
+            });
+        }
+
+        function exportShowSpread(index) {
+            var data = exportState.preview;
+            if (!data || !data.pages.length) return;
+            index = Math.max(0, Math.min(index, data.pages.length - 1));
+            var spread = exportSpreadOf(data, index);
+            exportState.pageIndex = spread[0];
+            var view = exportEl('exportPaperView');
+            view.innerHTML = '';
+            view.classList.toggle('is-spread', !!data.spreads);
+            if (data.spreads && spread.length === 1 && spread[0] === 0) view.classList.add('is-first');
+            else view.classList.remove('is-first');
+            spread.forEach(function(n) {
+                var img = document.createElement('img');
+                img.className = 'export-paper-page';
+                img.alt = 'Page ' + (n + 1);
+                img.src = '/api/export/preview/' + data.token + '/' + data.pages[n].href;
+                view.appendChild(img);
+            });
+            view.setAttribute('aria-label', 'Preview of ' + (spread.length > 1
+                ? 'pages ' + (spread[0] + 1) + ' and ' + (spread[1] + 1) : 'page ' + (spread[0] + 1)));
+            exportEl('exportPagePick').value = String(spread[0]);
+            var last = spread[spread.length - 1];
+            exportEl('exportPrevPage').disabled = spread[0] === 0;
+            exportEl('exportNextPage').disabled = last >= data.pages.length - 1;
+            var where = spread.length > 1 ? 'Pages ' + (spread[0] + 1) + '–' + (last + 1) : 'Page ' + (spread[0] + 1);
+            exportEl('exportPreviewStatus').textContent = where + ' of ' + data.pages.length
+                + (data.note ? ' · ' + data.note : '');
         }
 
         function exportFirstTextPage(pages) {
@@ -714,6 +897,12 @@
         }
 
         function exportTurnPage(direction) {
+            var data = exportState.preview;
+            if (data && data.format !== 'epub') {
+                var spread = exportSpreadOf(data, exportState.pageIndex);
+                exportShowSpread(direction > 0 ? spread[spread.length - 1] + 1 : spread[0] - 1);
+                return;
+            }
             var metrics = exportPageMetrics();
             if (!metrics) return;
             if (direction > 0 && metrics.current < metrics.total) {
@@ -744,7 +933,10 @@
             });
             exportEl('exportStepHint').textContent = EXPORT_STEP_HINTS[step] || '';
             exportEl('exportDialog').classList.toggle('is-finished', !numeric);
-            if (step === 3) exportLoadPreview();
+            if (step === 3) {
+                exportRenderDetails();
+                exportLoadPreview();
+            }
             exportUpdateButtons();
         }
 
@@ -756,9 +948,10 @@
             back.hidden = step === 1 || step === 'run';
             next.hidden = step === 'run';
             next.disabled = !exportState.outline || (step !== 'done' && nothing);
-            if (step === 1) next.textContent = 'Next: Style';
+            var format = exportState.details ? exportState.details.format : 'epub';
+            if (step === 1) next.textContent = 'Next: Format and style';
             else if (step === 2) next.textContent = 'Next: Book details';
-            else if (step === 3) next.textContent = 'Export EPUB';
+            else if (step === 3) next.textContent = format === 'all' ? 'Export all three' : (format === 'epub' ? 'Export EPUB' : 'Export PDF');
             else if (step === 'done') next.textContent = 'Done';
             if (step === 'done') back.textContent = 'Export again';
             else back.textContent = 'Back';
@@ -790,6 +983,8 @@
 
         function exportStart() {
             var details = exportReadDetails();
+            exportEl('exportRunTitle').textContent = details.format === 'all' ? 'Making your books'
+                : (details.format === 'epub' ? 'Making your e-book' : 'Laying out your PDF');
             exportSetProgress(0, 'Starting');
             exportShowStep('run');
             exportPost('/api/export/start', {selection: exportSelectionPayload(), details: details}).then(function(job) {
@@ -840,7 +1035,10 @@
                     exportOpenScene(finding.scene + '.md');
                 });
             }
-            var fields = {title: ['exportTitle', 'Add the title'], author: ['exportAuthor', 'Add the author'], cover: ['exportCoverChoose', 'Choose a cover']};
+            var fields = {
+                title: ['exportTitle', 'Add the title'], author: ['exportAuthor', 'Add the author'],
+                cover: ['exportCoverChoose', 'Choose a cover'], contact: ['exportContact', 'Add contact details'],
+            };
             var field = fields[finding.fix];
             if (!field) return null;
             return exportButton(field[1], 'export-btn-quiet', function() {
@@ -849,51 +1047,13 @@
             });
         }
 
-        function exportShowDone(result) {
-            var box = exportEl('exportDoneBox');
-            box.innerHTML = '';
-            var head = document.createElement('div');
-            head.className = 'export-done-head';
-            head.innerHTML = '<span class="export-done-icon" aria-hidden="true">&#10003;</span>';
-            var copy = document.createElement('div');
-            var title = document.createElement('h3');
-            title.textContent = 'Your e-book is ready';
-            var file = document.createElement('p');
-            file.className = 'export-file';
-            file.textContent = result.name;
-            var meta = document.createElement('p');
-            meta.className = 'export-hint';
-            meta.textContent = exportFormatSize(result.size) + ' · ' + exportPlural(result.chapters, 'chapter') + ', '
-                + exportPlural(result.scenes, 'scene') + ', ' + exportPlural(result.words, 'word')
-                + ' · saved in the exports folder of your novel';
-            copy.appendChild(title);
-            copy.appendChild(file);
-            copy.appendChild(meta);
-            head.appendChild(copy);
-            box.appendChild(head);
-
-            var actions = document.createElement('div');
-            actions.className = 'export-file-actions';
-            actions.appendChild(exportButton('Open', 'export-btn-primary', function() {
-                exportPost('/api/export/open', {path: result.path}).catch(function(error) { sidebarShowToast(error.message, true); });
-            }));
-            actions.appendChild(exportButton('Show in folder', '', function() {
-                exportPost('/api/export/reveal', {path: result.path}).catch(function(error) { sidebarShowToast(error.message, true); });
-            }));
-            var download = document.createElement('a');
-            download.className = 'export-btn';
-            download.href = '/api/export/file?path=' + encodeURIComponent(result.path);
-            download.setAttribute('download', result.name);
-            download.textContent = 'Download';
-            actions.appendChild(download);
-            box.appendChild(actions);
-
-            var checks = result.checks || {findings: []};
+        function exportChecksCard(checks, id) {
+            checks = checks || {findings: []};
             var card = document.createElement('section');
             card.className = 'export-checks ' + (checks.ready ? 'is-ready' : 'has-findings');
-            card.setAttribute('aria-labelledby', 'exportChecksTitle');
+            card.setAttribute('aria-labelledby', id);
             var headline = document.createElement('h4');
-            headline.id = 'exportChecksTitle';
+            headline.id = id;
             headline.innerHTML = '<span aria-hidden="true">' + (checks.ready ? '&#10003;' : '!') + '</span> ';
             headline.appendChild(document.createTextNode(checks.headline || ''));
             card.appendChild(headline);
@@ -911,7 +1071,70 @@
                 });
                 card.appendChild(list);
             }
-            box.appendChild(card);
+            return card;
+        }
+
+        function exportFileBlock(file, index, several) {
+            var block = document.createElement('section');
+            block.className = 'export-file-block';
+            block.setAttribute('aria-label', file.label);
+            if (several) {
+                var label = document.createElement('h4');
+                label.className = 'export-file-label';
+                label.textContent = file.label;
+                block.appendChild(label);
+            }
+            var name = document.createElement('p');
+            name.className = 'export-file';
+            name.textContent = file.name;
+            var meta = document.createElement('p');
+            meta.className = 'export-hint';
+            meta.textContent = exportFormatSize(file.size) + (file.pages ? ' · ' + exportPlural(file.pages, 'page') : '');
+            block.appendChild(name);
+            block.appendChild(meta);
+            var actions = document.createElement('div');
+            actions.className = 'export-file-actions';
+            actions.appendChild(exportButton('Open', index === 0 ? 'export-btn-primary' : '', function() {
+                exportPost('/api/export/open', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
+            }));
+            actions.appendChild(exportButton('Show in folder', '', function() {
+                exportPost('/api/export/reveal', {path: file.path}).catch(function(error) { sidebarShowToast(error.message, true); });
+            }));
+            var download = document.createElement('a');
+            download.className = 'export-btn';
+            download.href = '/api/export/file?path=' + encodeURIComponent(file.path);
+            download.setAttribute('download', file.name);
+            download.textContent = 'Download';
+            actions.appendChild(download);
+            block.appendChild(actions);
+            block.appendChild(exportChecksCard(file.checks, 'exportChecksTitle' + index));
+            return block;
+        }
+
+        function exportShowDone(result) {
+            var box = exportEl('exportDoneBox');
+            box.innerHTML = '';
+            var files = result.files || [];
+            var several = files.length > 1;
+            var head = document.createElement('div');
+            head.className = 'export-done-head';
+            head.innerHTML = '<span class="export-done-icon" aria-hidden="true">&#10003;</span>';
+            var copy = document.createElement('div');
+            var title = document.createElement('h3');
+            title.textContent = several ? 'Your books are ready'
+                : (files[0] && files[0].format !== 'epub' ? 'Your PDF is ready' : 'Your e-book is ready');
+            var meta = document.createElement('p');
+            meta.className = 'export-hint';
+            meta.textContent = exportPlural(result.chapters, 'chapter') + ', ' + exportPlural(result.scenes, 'scene') + ', '
+                + exportPlural(result.words, 'word') + ' · saved in the exports folder of your novel';
+            copy.appendChild(title);
+            copy.appendChild(meta);
+            head.appendChild(copy);
+            box.appendChild(head);
+            var list = document.createElement('div');
+            list.className = 'export-file-list' + (several ? ' is-several' : '');
+            files.forEach(function(file, index) { list.appendChild(exportFileBlock(file, index, several)); });
+            box.appendChild(list);
             if (result.saved_selection) {
                 var saved = document.createElement('p');
                 saved.className = 'export-hint';
@@ -919,7 +1142,8 @@
                 box.appendChild(saved);
             }
             exportShowStep('done');
-            box.focus();
+            box.scrollTop = 0;
+            box.focus({preventScroll: true});
         }
 
         function exportShowFailure(error) {
@@ -949,7 +1173,7 @@
         function exportRenderAll() {
             exportRenderQuickPicks();
             exportSetReorder(exportState.reorder);
-            exportRenderStyles();
+            exportRenderFormatAndStyle();
             exportRenderDetails();
             exportUpdateButtons();
         }
@@ -1026,7 +1250,15 @@
             exportEl('exportPrevPage').addEventListener('click', function() { exportTurnPage(-1); });
             exportEl('exportNextPage').addEventListener('click', function() { exportTurnPage(1); });
             exportEl('exportPagePick').addEventListener('change', function(event) {
-                exportShowPreviewPage(Number(event.target.value), 0);
+                if (exportState.preview && exportState.preview.format !== 'epub') exportShowSpread(Number(event.target.value));
+                else exportShowPreviewPage(Number(event.target.value), 0);
+            });
+            exportEl('exportPreviewFormat').addEventListener('change', function() { exportLoadPreview(); });
+            ['exportTrim', 'exportPaper', 'exportRecto'].forEach(function(id) {
+                exportEl(id).addEventListener('change', function() { exportReadDetails(); exportSchedulePreview(); });
+            });
+            ['exportWatermark', 'exportContact'].forEach(function(id) {
+                exportEl(id).addEventListener('input', function() { exportReadDetails(); exportSchedulePreview(); });
             });
             exportEl('exportStep3').addEventListener('keydown', function(event) {
                 if (event.target.matches('input, select, textarea')) return;

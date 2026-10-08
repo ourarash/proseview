@@ -269,16 +269,25 @@ table-of-contents depth so they do not compete with your chapters.
 
 ## What goes into the book
 
-- **Images** in a scene (`![The bridge at night](images/bridge.png)`) are
-  copied into the book. PNG, JPEG, GIF, SVG and WebP work. An image that cannot
+- **Images** in a scene (`![The bridge at night](images/bridge.png)`, or an
+  HTML `<img>` tag) are copied into the book. PNG, JPEG, GIF, SVG and WebP work. An image that cannot
   be found, sits outside the repository, or is a web address stops the export
   and names the scene, because an e-book cannot load images from the internet.
 - **Links** to web pages stay clickable. Links to other files in your
   repository, such as a character sheet, keep their text but lose the link,
   since there is nothing in the book for them to open.
 - **TODO and NOTE comments** never reach the book, and neither does any other
-  HTML comment. Other raw HTML is shown as text rather than passed through, so
-  one stray tag cannot make the book unreadable.
+  HTML comment.
+- **HTML** in a scene is understood rather than printed. An `<img>` tag is a
+  picture, like a Markdown image: its `src` can be a path in the book or the
+  dashboard's own `/repo-asset/...` address, its `alt` becomes the image
+  description, and `width="600"` is read as a share of the page (600 pixels
+  is the full width, 300 half). `<br>` is a line break; `<em>`/`<i>`,
+  `<strong>`/`<b>`, `<sup>` and `<sub>` keep their meaning; `<p>` and `<div>`
+  are paragraphs, centred with `align="center"` or `<center>`. Any other tag
+  is left out and its text kept, and `<script>`, `<style>` and `<iframe>`
+  are left out with everything inside them. Tags written with curly quotes
+  (as word processors type them) or over several lines work too.
 
 ## All options
 

@@ -16,7 +16,7 @@
 //   single-scene(chapter, title)    the header of a single exported scene
 //   appendix(label)                 an appendix heading
 //   appendix-document(title)        one document inside an appendix
-//   book-image(path, alt)           an image from a scene
+//   book-image(path, alt, width)    an image from a scene; width is a share of the page
 //
 // config holds: layout ("print" or "share"), title, subtitle, author, note,
 // lang, region, page-width, page-height, inside, outside, top, bottom, size,
@@ -283,5 +283,5 @@
 #let appendix-document(title) = block(above: 1.8em, below: 0.9em,
   text(size: 1.1em, weight: "bold", title))
 
-#let book-image(path, alt: "") = block(above: 1em, below: 1em, width: 100%,
-  align(center, image(path, alt: alt, width: 80%)))
+#let book-image(path, alt: "", width: 80%) = block(above: 1em, below: 1em, width: 100%,
+  align(center, image(path, alt: alt, width: width)))

@@ -113,7 +113,7 @@ def test_the_renderer_lays_out_everything_markdown_can_write(tmp_path: Path):
     assert '#link("https://example.com")[web link]' in source
     assert "file link" in source and "rena.md" not in source
     assert "#enum(start: 3," in source
-    assert "\\<b\\>raw html\\<\\/b\\>" in source
+    assert "#strong[raw html]" in source and "\\<b" not in source
 
 
 def test_the_opener_keeps_formatting_word_by_word():
@@ -340,3 +340,12 @@ def test_titles_and_headings_are_never_hyphenated():
     for function in ("#let title-page()", "#let chapter(", "#let single-scene(", "#let running-head()"):
         body = template.split(function, 1)[1].split("\n#let ", 1)[0]
         assert "hyphenate: false" in body, function
+
+
+def test_cli_output_name_decides_the_format_when_none_is_given(tmp_path: Path, book: Path):
+    (book / ".proseview.yaml").write_text((book / ".proseview.yaml").read_text() + "export:\n  format: pdf-share\n")
+    out = tmp_path / "book.epub"
+    assert cli.main(["export", "--root", str(book), "--chapters", "1", "--output", str(out)]) == 0
+    assert out.read_bytes()[:2] == b"PK"
+    with pytest.raises(SystemExit, match="does not match --format pdf-print"):
+        cli.main(["export", "--root", str(book), "--format", "pdf-print", "--output", str(tmp_path / "x.epub")])

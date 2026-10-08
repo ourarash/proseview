@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .book import ExportError
+from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, image_only, read_html, straighten_tag_quotes
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -46,7 +47,7 @@ def _markdown():
     from markdown_it import MarkdownIt
 
     return MarkdownIt(
-        "commonmark", {"html": False, "typographer": True}
+        "commonmark", {"html": True, "typographer": True}
     ).enable(["table", "strikethrough", "replacements", "smartquotes"])
 
 
@@ -79,7 +80,7 @@ class TypstRenderer:
         *noindent*, it starts flush left, as a paragraph after a scene break
         or a title does.
         """
-        tokens = self._md.parse(_COMMENT_RE.sub("", text))
+        tokens = self._md.parse(straighten_tag_quotes(_COMMENT_RE.sub("", text)))
         out, _ = self._blocks(tokens, 0, ctx, opener=opener, stop=None, noindent=noindent)
         return "\n\n".join(part for part in out if part.strip())
 
@@ -95,6 +96,11 @@ class TypstRenderer:
                 return parts, i + 1
             if kind == "paragraph_open":
                 inline = tokens[i + 1]
+                if image_only(inline.children or []):
+                    # A picture on its own: not the drop-cap paragraph.
+                    parts.append(self._inline(inline.children or [], ctx).strip())
+                    i += 3
+                    continue
                 if opener and first_paragraph and token.level == 0:
                     parts.append(self._opener(inline.children or [], ctx))
                 elif noindent and first_paragraph and token.level == 0:
@@ -131,7 +137,7 @@ class TypstRenderer:
                 table, i = self._table(tokens, i + 1, ctx)
                 parts.append(table)
             elif kind == "html_block":
-                parts.append(escape(token.content))
+                parts.append(self._html_block(token.content, ctx))
                 i += 1
             else:
                 i += 1
@@ -176,8 +182,16 @@ class TypstRenderer:
     def _inline(self, children: list, ctx: RenderContext) -> str:
         out: list[str] = []
         stack: list[str] = []  # what each open mark closes with
+        marks = MarkStack()  # marks opened by inline HTML
         for child in children:
             kind = child.type
+            if kind == "html_inline":
+                if not marks.skipping:
+                    out.append(self._html_inline(read_html(child.content), marks, ctx))
+                marks.track_skips(child.content)
+                continue
+            if marks.skipping:
+                continue
             if kind == "text":
                 out.append(escape(child.content))
             elif kind == "softbreak":
@@ -203,23 +217,73 @@ class TypstRenderer:
             elif kind == "link_close":
                 out.append(stack.pop() if stack else "")
             elif kind == "image":
-                out.append(self._image(child, ctx))
-            elif kind == "html_inline":
-                out.append(escape(child.content))
+                alt = "".join(c.content for c in (child.children or []) if c.type == "text") or child.content
+                out.append(self._image(str(child.attrGet("src") or ""), alt, None, ctx))
+        out += ["]" for _ in marks.drain()]
         out += reversed(stack)
         return "".join(out)
 
-    def _image(self, child, ctx: RenderContext) -> str:
+    def _image(self, src: str, alt: str, width: float | None, ctx: RenderContext) -> str:
         from .epub import resolve_image
 
         try:
-            path = resolve_image(ctx.root, str(child.attrGet("src") or ""), ctx.source, ctx.owner)
+            path = resolve_image(ctx.root, src, ctx.source, ctx.owner)
         except ExportError as exc:
             raise ExportError(str(exc), scene=ctx.scene) from None
         relative = path.relative_to(ctx.root.resolve()).as_posix()
         ctx.images.append(Path(relative))
-        alt = "".join(c.content for c in (child.children or []) if c.type == "text") or child.content
-        return f"#book-image({string('/' + relative)}, alt: {string(alt)})"
+        size = f", width: {round(width * 100)}%" if width else ""
+        return f"#book-image({string('/' + relative)}, alt: {string(alt)}{size})"
+
+    # -- raw HTML -------------------------------------------------------------------
+
+    _MARKS = {"em": "#emph[", "strong": "#strong[", "sup": "#super[", "sub": "#sub["}
+
+    def _html_inline(self, events: list, marks: MarkStack, ctx: RenderContext) -> str:
+        out = []
+        for event in events:
+            if isinstance(event, HtmlText):
+                out.append(escape(event.text))
+            elif isinstance(event, HtmlBreak):
+                out.append("#linebreak()")
+            elif isinstance(event, HtmlImage):
+                out.append(self._image(event.src, event.alt, event.width, ctx))
+            elif isinstance(event, HtmlOpen) and event.mark in self._MARKS:
+                marks.push(event.mark)
+                out.append(self._MARKS[event.mark])
+            elif isinstance(event, HtmlClose) and event.mark in self._MARKS:
+                out += ["]" for mark in marks.pop(event.mark) if mark in self._MARKS]
+        return "".join(out)
+
+    def _html_block(self, html: str, ctx: RenderContext) -> str:
+        """A block of raw HTML as paragraphs and images, centred where it asked to be."""
+        blocks: list[str] = []
+        current: list = []
+        centred = 0
+
+        def place(body: str) -> None:
+            blocks.append(f"#align(center)[{body}]" if centred else body)
+
+        def flush() -> None:
+            marks = MarkStack()
+            body = self._html_inline(current, marks, ctx).strip()
+            body += "]" * len([m for m in marks.drain() if m in self._MARKS])
+            current.clear()
+            if body:
+                place(body)
+
+        for event in read_html(html):
+            if isinstance(event, HtmlImage):
+                flush()
+                place(self._image(event.src, event.alt, event.width, ctx))
+            elif isinstance(event, (HtmlOpen, HtmlClose)) and event.mark in {"para", "center"}:
+                flush()
+                if event.mark == "center":
+                    centred = max(0, centred + (1 if isinstance(event, HtmlOpen) else -1))
+            else:
+                current.append(event)
+        flush()
+        return "\n\n".join(blocks)
 
     # -- the drop-cap paragraph ---------------------------------------------------
 
@@ -233,7 +297,8 @@ class TypstRenderer:
         """
         if not children or children[0].type not in {"text", "em_open", "strong_open"}:
             return self._inline(children, ctx)
-        if any(c.type == "image" for c in children):
+        if any(c.type in {"image", "html_inline"} for c in children):
+            # Inline HTML (an image, a mark) is laid out as an ordinary paragraph.
             return self._inline(children, ctx)
         # The initial is the first letter with any opening punctuation before
         # it ("“C"), as CSS's ::first-letter takes it.

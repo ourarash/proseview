@@ -7,6 +7,19 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **Modern and Romance** book styles, for the e-book and both PDFs. Modern:
+  sans-serif headings, a large numeral for each chapter, no drop cap.
+  Romance: large italic titles, numerals framed by florals, a floral mark
+  between scenes. A style of your own can build on any style with
+  `extends:`.
+- **Front and back matter**: a copyright page (with an optional ISBN), a
+  dedication, an "Also by" page, and your own pages from `front-matter/` and
+  `back-matter/`, for the whole book and selections of chapters.
+- **Smarter quick picks**: tick scenes by status, point of view, character,
+  or "changed since" a date, or take the first 50 pages.
+- **Export in the live demo**: every step, real previews, and ready-made
+  EPUB and PDF downloads of the whole demo book in each style.
+
 - **PDF export.** *Print book (PDF)* lays the book out as a paperback
   interior ready for KDP or IngramSpark: a trim size (5 × 8, 5.25 × 8,
   5.5 × 8.5, 6 × 9 in, or A5), mirrored margins with a gutter sized for the
@@ -75,6 +88,10 @@ section here becomes the release notes on GitHub.
 - `proseview export --output book.epub` makes an EPUB even when the last
   dashboard export was a PDF; a file name that contradicts `--format` is
   refused.
+- Manuscript format uses Liberation Serif, which has Times New Roman's
+  letter widths, bundled so it is the same on every computer.
+- A chapter opening with a one-line paragraph gets small capitals but no drop
+  cap, which used to hang into the next paragraph.
 - When Claude cannot answer -- an exhausted plan, an API error -- the dock
   says why, instead of "Claude could not finish: success".
 - Title pages, headings and the contents get the same curly quotes and

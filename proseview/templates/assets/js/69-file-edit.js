@@ -1,0 +1,322 @@
+        // ── Editing notes in the file view ───────────────────────────────────────
+        // Markdown outside the manuscript (the story bible, plans, outlines)
+        // opens in the file view. Edit turns that view into an editor: the
+        // scenes' own rich editor when the note round-trips through it intact,
+        // otherwise the note's Markdown as plain text, so a table or a bit of
+        // HTML is never rewritten by the act of editing. Saves go through
+        // /api/files/save, which keeps the frontmatter, backs up the version it
+        // replaces, and refuses to overwrite a file changed in another editor.
+
+        var fileEdit = {
+            path: '',
+            mode: '',          // 'rich' or 'source'
+            view: null,        // the ProseMirror view in rich mode
+            textarea: null,    // the textarea in source mode
+            frontmatter: '',
+            mtime: null,
+            dirty: false,
+            saving: false,
+            original: '',
+        };
+
+        // Safe to call before this file's state exists: the dashboard renders
+        // a file named in the URL while the page is still loading.
+        function fileEditActive() { return typeof fileEdit !== 'undefined' && !!fileEdit && !!fileEdit.path; }
+
+        function fileEditAllowed(node) {
+            if (!node || !node.is_text || node.too_large || node.body === null) return false;
+            if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return false;
+            return !window.PROSEVIEW_STATIC || !!window.PROSEVIEW_STATIC_EDITS;
+        }
+
+        // Called by renderRepoFile every time the file view shows a file.
+        function fileEditAfterRender(node) {
+            var button = document.getElementById('filePreviewEditBtn');
+            if (button) button.hidden = !fileEditAllowed(node);
+        }
+
+        function splitNoteHeader(raw) {
+            // Mirrors split_note_header in server.py: the frontmatter block is
+            // kept exactly as written and is not part of what is edited.
+            var lines = raw.split('\n');
+            if (lines.length && lines[0].trim() === '---') {
+                for (var i = 1; i < lines.length; i++) {
+                    var t = lines[i].trim();
+                    if (t === '---' || t === '...') {
+                        return {header: lines.slice(0, i + 1).join('\n') + '\n', body: lines.slice(i + 1).join('\n').replace(/^\n+/, '')};
+                    }
+                }
+            }
+            return {header: '', body: raw};
+        }
+
+        function fileEditParser(PM) {
+            return new PM.MarkdownParser(
+                PM.mySchema,
+                PM.defaultMarkdownParser.tokenizer,
+                Object.assign({}, PM.defaultMarkdownParser.tokens, {
+                    html_block: {node: 'annotation', getAttrs: function(tok) { return {raw: tok.content.trim()}; }},
+                    html_inline: {ignore: true},
+                })
+            );
+        }
+
+        function fileEditSerializer(PM) {
+            var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
+                annotation: function(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
+            });
+            return new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks);
+        }
+
+        function fileEditWords(text) {
+            return (String(text).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).join(' ');
+        }
+
+        // Why a note must be edited as plain text, or '' when the rich editor keeps it intact.
+        function fileEditPlainReason(body) {
+            var PM = window._PM;
+            if (!PM) return 'the editor is still loading';
+            if (/^\s*\|.*\|\s*$/m.test(body) && /^\s*\|?\s*:?-{3,}/m.test(body)) return 'it has a table';
+            // HTML on a line of its own is kept as a block; HTML inside a line
+            // would be dropped by the rich editor.
+            var inline = body.replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*<[^>\n]+>[ \t]*$/gm, '');
+            if (/<\/?[a-zA-Z][^>\n]*>/.test(inline)) return 'it has HTML in its lines';
+            try {
+                var doc = fileEditParser(PM).parse(body);
+                var back = fileEditSerializer(PM).serialize(doc);
+                if (fileEditWords(back) !== fileEditWords(body)) return 'it uses Markdown the editor cannot keep exactly';
+            } catch (error) {
+                return 'it uses Markdown the editor cannot keep exactly';
+            }
+            return '';
+        }
+
+        function fileEditStatus(text) {
+            var status = document.getElementById('fileEditStatus');
+            if (status) status.textContent = text;
+        }
+
+        function fileEditSetDirty(dirty) {
+            fileEdit.dirty = dirty;
+            var save = document.getElementById('fileEditSave');
+            if (save) save.disabled = !dirty || fileEdit.saving;
+            fileEditStatus(dirty ? 'Unsaved changes' : (fileEdit.mode === 'source'
+                ? 'Editing the Markdown as text' : 'Editing'));
+        }
+
+        function toggleFileEdit() {
+            if (fileEditActive()) {
+                cancelFileEdit();
+                return;
+            }
+            var path = (typeof sidebarCurrentPath === 'function' && sidebarCurrentPath())
+                || document.getElementById('filePreviewTitle').textContent;
+            startFileEdit(path);
+        }
+
+        function startFileEdit(path) {
+            if (!path || fileEditActive()) return;
+            fileEditStatus('Opening…');
+            // Always from disk: the cached copy may be older than the file.
+            fetch('/repo-file?path=' + encodeURIComponent(path), {cache: 'no-store'}).then(function(response) {
+                return response.json();
+            }).then(function(data) {
+                if (!data || !data.ok || !data.node || !fileEditAllowed(data.node)) {
+                    throw new Error((data && data.error) || 'This file cannot be edited here.');
+                }
+                if (typeof repoFileByPath !== 'undefined') repoFileByPath[path] = data.node;
+                mountFileEditor(data.node);
+            }).catch(function(error) {
+                if (typeof sidebarShowToast === 'function') sidebarShowToast(error.message, true);
+            });
+        }
+
+        function mountFileEditor(node) {
+            var parts = splitNoteHeader(node.body);
+            var body = document.getElementById('filePreviewBody');
+            var reason = fileEditPlainReason(parts.body);
+            fileEdit.path = node.path;
+            fileEdit.frontmatter = parts.header;
+            fileEdit.mtime = node.mtime;
+            fileEdit.original = parts.body;
+            fileEdit.mode = reason ? 'source' : 'rich';
+            body.replaceChildren();
+            body.classList.add('is-editing');
+
+            if (fileEdit.mode === 'rich') {
+                var PM = window._PM;
+                var host = document.createElement('div');
+                host.className = 'file-edit-host';
+                body.appendChild(host);
+                var plugins = [
+                    PM.history(),
+                    PM.keymap(Object.assign({}, PM.baseKeymap, {
+                        'Mod-z': PM.undo, 'Mod-y': PM.redo, 'Mod-Shift-z': PM.redo,
+                        'Mod-b': PM.toggleMark(PM.mySchema.marks.strong),
+                        'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
+                        'Mod-s': function() { saveFileEdit(false); return true; },
+                        'Escape': function() { cancelFileEdit(); return true; },
+                    })),
+                ];
+                if (PM.inputRules && PM.wrappingInputRule) {
+                    plugins.push(PM.inputRules({rules: [
+                        PM.wrappingInputRule(/^\s*([-+*])\s$/, PM.mdSchema.nodes.bullet_list, {tight: true}),
+                        PM.wrappingInputRule(/^(\d+)\.\s$/, PM.mdSchema.nodes.ordered_list, function(m) { return {order: +m[1], tight: true}; }),
+                    ]}));
+                }
+                fileEdit.view = new PM.EditorView(host, {
+                    state: PM.EditorState.create({doc: fileEditParser(PM).parse(parts.body), plugins: plugins}),
+                    dispatchTransaction: function(tr) {
+                        fileEdit.view.updateState(fileEdit.view.state.apply(tr));
+                        if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
+                    },
+                    nodeViews: {annotation: PM.createAnnotationNodeView},
+                });
+                fileEdit.view.focus();
+            } else {
+                var note = document.createElement('p');
+                note.className = 'file-edit-note';
+                note.textContent = 'This note opens as plain Markdown because ' + reason
+                    + ', so it is saved exactly as you type it.';
+                var area = document.createElement('textarea');
+                area.className = 'file-edit-source';
+                area.value = parts.body;
+                area.setAttribute('aria-label', 'Markdown of ' + node.path);
+                area.spellcheck = true;
+                area.addEventListener('input', function() {
+                    if (!fileEdit.dirty) fileEditSetDirty(true);
+                    fileEditAutosize(area);
+                });
+                area.addEventListener('keydown', function(event) {
+                    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                        event.preventDefault();
+                        saveFileEdit(false);
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        cancelFileEdit();
+                    }
+                });
+                body.appendChild(note);
+                body.appendChild(area);
+                fileEdit.textarea = area;
+                fileEditAutosize(area);
+                area.focus();
+            }
+            document.getElementById('fileEditBar').hidden = false;
+            document.getElementById('fileEditConflict').hidden = true;
+            var button = document.getElementById('filePreviewEditBtn');
+            button.querySelector('span').textContent = 'Editing';
+            button.setAttribute('aria-pressed', 'true');
+            fileEditSetDirty(false);
+        }
+
+        function fileEditAutosize(area) {
+            area.style.height = 'auto';
+            area.style.height = Math.max(320, area.scrollHeight + 4) + 'px';
+        }
+
+        function fileEditContent() {
+            if (fileEdit.mode === 'rich' && fileEdit.view) return fileEditSerializer(window._PM).serialize(fileEdit.view.state.doc);
+            return fileEdit.textarea ? fileEdit.textarea.value : '';
+        }
+
+        function unmountFileEditor() {
+            if (fileEdit.view) fileEdit.view.destroy();
+            fileEdit.view = null;
+            fileEdit.textarea = null;
+            fileEdit.path = '';
+            fileEdit.dirty = false;
+            fileEdit.saving = false;
+            document.getElementById('fileEditBar').hidden = true;
+            document.getElementById('filePreviewBody').classList.remove('is-editing');
+            var button = document.getElementById('filePreviewEditBtn');
+            if (button) {
+                button.querySelector('span').textContent = 'Edit';
+                button.removeAttribute('aria-pressed');
+            }
+        }
+
+        function cancelFileEdit(force) {
+            if (!fileEditActive()) return;
+            if (fileEdit.dirty && !force && !window.confirm('Discard your changes to ' + fileEdit.path + '?')) return;
+            var path = fileEdit.path;
+            unmountFileEditor();
+            var node = typeof repoFileByPath !== 'undefined' ? repoFileByPath[path] : null;
+            if (node) renderRepoFile(node, {route: false});
+        }
+
+        function saveFileEdit(overwrite) {
+            if (!fileEditActive() || fileEdit.saving) return;
+            if (!fileEdit.dirty && !overwrite) {
+                cancelFileEdit(true);
+                return;
+            }
+            var path = fileEdit.path;
+            var content = fileEditContent();
+            fileEdit.saving = true;
+            document.getElementById('fileEditSave').disabled = true;
+            fileEditStatus('Saving…');
+            if (typeof _pendingSelfReloads !== 'undefined') _pendingSelfReloads++;
+            fetch('/api/files/save', {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify({path: path, content: content, open_mtime: fileEdit.mtime, overwrite: !!overwrite}),
+            }).then(function(response) {
+                return response.json().catch(function() { return {}; }).then(function(data) {
+                    return {status: response.status, data: data};
+                });
+            }).then(function(result) {
+                fileEdit.saving = false;
+                if (result.status === 409) {
+                    fileEditStatus('This file changed on disk since you opened it.');
+                    document.getElementById('fileEditConflict').hidden = false;
+                    document.getElementById('fileEditSave').disabled = true;
+                    return;
+                }
+                if (!result.data.ok) {
+                    fileEditSetDirty(true);
+                    fileEditStatus('Not saved: ' + (result.data.error || 'something went wrong'));
+                    return;
+                }
+                var raw = fileEdit.frontmatter ? fileEdit.frontmatter + '\n' + content.replace(/\n+$/, '') + '\n' : content.replace(/\n+$/, '') + '\n';
+                var cached = (typeof repoFileByPath !== 'undefined' && repoFileByPath[path]) || {path: path, name: path.split('/').pop()};
+                cached.body = raw;
+                cached.mtime = result.data.mtime;
+                cached.size = new Blob([raw]).size;
+                if (typeof repoFileByPath !== 'undefined') repoFileByPath[path] = cached;
+                unmountFileEditor();
+                renderRepoFile(cached, {route: false});
+                if (typeof sidebarShowToast === 'function') sidebarShowToast('Saved ' + path + '.');
+            }).catch(function() {
+                fileEdit.saving = false;
+                fileEditSetDirty(true);
+                fileEditStatus('Not saved: Proseview could not be reached. Is it still running?');
+            });
+        }
+
+        (function initFileEdit() {
+            var save = document.getElementById('fileEditSave');
+            if (!save) return;
+            save.addEventListener('click', function() { saveFileEdit(false); });
+            document.getElementById('fileEditCancel').addEventListener('click', function() { cancelFileEdit(); });
+            document.getElementById('fileEditOverwrite').addEventListener('click', function() { saveFileEdit(true); });
+            document.getElementById('fileEditReload').addEventListener('click', function() {
+                var path = fileEdit.path;
+                unmountFileEditor();
+                if (typeof repoFileByPath !== 'undefined') delete repoFileByPath[path];
+                previewRepoFile(path, {route: false});
+            });
+            window.addEventListener('beforeunload', function(event) {
+                if (fileEdit.dirty) {
+                    event.preventDefault();
+                    event.returnValue = '';
+                }
+            });
+            // The rich editor loads after the page; show Edit once it is there.
+            window.addEventListener('proseview:editor-ready', function() {
+                if (document.documentElement.dataset.view !== 'file') return;
+                var path = typeof sidebarCurrentPath === 'function' ? sidebarCurrentPath() : '';
+                var node = path && typeof repoFileByPath !== 'undefined' ? repoFileByPath[path] : null;
+                if (node) fileEditAfterRender(node);
+            });
+        })();

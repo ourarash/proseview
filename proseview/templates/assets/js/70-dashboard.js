@@ -638,6 +638,9 @@
         function renderRepoFile(node, options) {
             options = options || {};
             var path = node.path;
+            // Showing a file ends any edit of the one shown before; the
+            // unsaved-changes guard has already asked when it mattered.
+            if (typeof fileEditActive === 'function' && fileEditActive()) unmountFileEditor();
             saveActiveScrollPosition();
             highlightSidebarItem(path);
             if (options.route !== false) routeToHash('/file/' + encodeURIComponent(path), true);
@@ -675,6 +678,7 @@
             document.documentElement.dataset.view = 'file';
             restoreActiveScrollPosition();
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
+            if (typeof fileEditAfterRender === 'function') fileEditAfterRender(node);
             if (options.focus) document.getElementById('filePreviewTitle').focus({ preventScroll: true });
             return node;
         }

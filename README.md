@@ -43,6 +43,11 @@ filter verbs, sensory language, passive voice.
 `Edit` turns the page you were reading into the page you type into — same
 typography, same highlights. `Mod-S` saves to the file, and the stats update.
 
+Story-bible pages, plans, and other Markdown notes open in the file view with
+their own `Edit` button. Frontmatter is kept as it is. A note with a table or
+raw HTML opens as plain Markdown, so it is saved exactly as typed. Like
+scenes, each save keeps a backup and won't overwrite a change made elsewhere.
+
 ![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
 ### Agent tabs
@@ -99,6 +104,9 @@ or what to fix.
 - 📖 **Reading view and WYSIWYG editor.** The same typographic page, with
   `Edit` toggled on. `Mod-S` saves; a conflict guard checks the file mtime
   so a change made in your own editor is never silently overwritten.
+- 📝 **Editable notes.** Story bible, plans, and any other Markdown file in
+  the book get the same `Edit` and `Save`, with backups and the same
+  conflict guard. Notes with tables or HTML are edited as plain Markdown.
 - 🎨 **Editorial highlights.** Nine prose passes over any scene, switched
   on from the Analysis panel with a match count each: repetition, passive
   voice, filter verbs, crutch words, hyperbole, lyrical reach, sensory

@@ -200,16 +200,16 @@ def test_the_snapshot_command_writes_the_site(tmp_path: Path, capsys):
 
 
 def test_a_read_only_snapshot_offers_no_export(tmp_path: Path):
-    """Export needs the local server to build the book, so a copy for readers hides it."""
+    """Export and note editing need the local server, so a copy for readers hides them."""
     root = _novel(tmp_path)
     write_snapshot(root, tmp_path / "site")
     page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
 
     assert 'id="exportOpenBtn"' in page
-    hidden = re.search(r"((?:html\[data-static-snapshot[^{]*,\s*)+[^{]*)\{\s*display: none !important;", page)
-    assert hidden is not None
-    for selector in ("#exportOpenBtn", "#modalExportSceneBtn", "#modalExportChapterBtn", "#exportDialog"):
-        assert f'html[data-static-snapshot="read-only"] {selector}' in hidden.group(1)
+    hidden = " ".join(re.findall(r"((?:html\[data-static-snapshot[^{]*,\s*)+[^{]*)\{\s*display: none !important;", page))
+    for selector in ("#exportOpenBtn", "#modalExportSceneBtn", "#modalExportChapterBtn", "#exportDialog",
+                     "#filePreviewEditBtn", "#fileEditBar"):
+        assert f'html[data-static-snapshot="read-only"] {selector}' in hidden
     assert not (tmp_path / "site" / "export").exists()
 
 

@@ -865,6 +865,69 @@ def save_scene_content(
 
 
 
+#: What the dashboard may edit outside the manuscript: Markdown notes.
+NOTE_SUFFIXES = frozenset({".md", ".markdown"})
+
+
+def split_note_header(raw: str) -> tuple[str, str]:
+    """``(frontmatter block, body)`` of a note; the block is empty when it has none.
+
+    The block runs from the opening ``---`` line to its closing ``---`` (or
+    ``...``) line, exactly as written, so a save leaves it byte for byte.
+    """
+    lines = raw.splitlines(keepends=True)
+    if lines and lines[0].strip() == "---":
+        for index in range(1, len(lines)):
+            if lines[index].strip() in {"---", "..."}:
+                header = "".join(lines[: index + 1])
+                return header, "".join(lines[index + 1:]).lstrip("\n")
+    return "", raw
+
+
+def resolve_note_write_target(path: str, repo_root: str) -> Path:
+    """The Markdown note *path* (relative to the book) names, or why it cannot be saved.
+
+    Only an existing ``.md`` file inside the book qualifies, reached without
+    ``..``, hidden or tooling folders, or symlinks (the same rule as every
+    other file route), so nothing outside the book can be written.
+    """
+    root = Path(repo_root).resolve()
+    try:
+        target = resolve_visible_repository_path(root, path)
+    except ValueError as exc:
+        raise PermissionError(str(exc)) from exc
+    if target.suffix.lower() not in NOTE_SUFFIXES:
+        raise PermissionError("Only Markdown files can be edited in the dashboard")
+    if not target.is_file():
+        raise FileNotFoundError(f"No such file: {path}")
+    return target
+
+
+def save_note_content(
+    path: str,
+    content: str,
+    open_mtime: float,
+    repo_root: str,
+    overwrite: bool = False,
+) -> tuple[Path, float]:
+    """Replace a Markdown note's body, keeping its frontmatter; return the file and its new mtime.
+
+    The same guards as a scene save: a file changed on disk since the editor
+    opened is refused (unless *overwrite*), and the version replaced goes to
+    the file's history first.
+    """
+    resolved = resolve_note_write_target(path, repo_root)
+    if not overwrite and abs(resolved.stat().st_mtime - open_mtime) > 0.01:
+        raise _FileConflictError("File was modified since editor opened")
+    raw = read_repo_text(resolved)
+    header, _ = split_note_header(raw)
+    body = content.rstrip("\n") + "\n"
+    new_raw = f"{header}\n{body}" if header else body
+    _create_file_backup(resolved, raw, new_raw, "Manual Save", repo_root)
+    _atomic_write_text(resolved, new_raw)
+    return resolved, resolved.stat().st_mtime
+
+
 def render_scene_diff_html(
     old_raw: str,
     new_raw: str,
@@ -1326,6 +1389,34 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(exc)}, 400)
         except OSError as exc:
             self._send_json({"ok": False, "error": f"File operation failed: {exc}"}, 500)
+
+    def _handle_note_save(self) -> None:
+        """Save a Markdown note edited in the file view (story bible, plans, …)."""
+        try:
+            body = self._read_json_limited()
+            relative = str(body.get("path") or "")
+            content = body.get("content")
+            if not isinstance(content, str):
+                raise ContextError("content must be text")
+            try:
+                open_mtime = float(body.get("open_mtime"))
+            except (TypeError, ValueError) as exc:
+                raise ContextError("open_mtime must be a number") from exc
+            target, mtime = save_note_content(
+                relative, content, open_mtime, self.repo_root, overwrite=bool(body.get("overwrite")),
+            )
+            self.invalidate("content", (relative,))
+            self._send_json({"ok": True, "path": relative, "mtime": mtime})
+        except _FileConflictError:
+            self._send_json({"ok": False, "conflict": True, "error": "The file changed on disk since you opened it"}, 409)
+        except PermissionError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 403)
+        except FileNotFoundError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 404)
+        except (ContextError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+        except OSError as exc:
+            self._send_json({"ok": False, "error": f"Could not save: {exc}"}, 500)
 
     @staticmethod
     def _is_loopback_authority(value: str) -> bool:
@@ -2269,6 +2360,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path in {"/api/files/create", "/api/files/rename", "/api/files/delete"}:
             self._handle_file_mutation(path)
+            return
+        if path == "/api/files/save":
+            self._handle_note_save()
             return
         if path.startswith("/api/export/"):
             self._handle_export_post(path)

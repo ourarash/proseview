@@ -738,6 +738,10 @@
         }
 
         function guardDirtySceneNavigation() {
+            if (document.documentElement.dataset.view === 'file') {
+                // An unsaved edit of a note in the file view counts too.
+                return typeof fileEdit !== 'undefined' && fileEdit.dirty;
+            }
             return document.documentElement.dataset.view === 'scene' && _pmEditMode && _pmDirty;
         }
 

@@ -7,6 +7,14 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **Edit notes in the file view**: story-bible pages, plans, and any other
+  Markdown file in the book now have an `Edit` button, with `Mod-S`,
+  backups, and the same changed-on-disk check as scenes (keep your version,
+  or discard it and reload). Frontmatter is kept exactly, and a note with a
+  table or raw HTML is edited as plain Markdown so nothing in it is lost.
+  Only existing `.md` files inside the book can be saved this way: hidden and
+  tooling folders and symlinks are refused. In `--demo`, saves stay in the
+  tab. A read-only copy still offers no editing.
 - **Modern and Romance** book styles, for the e-book and both PDFs. Modern:
   sans-serif headings, a large numeral for each chapter, no drop cap.
   Romance: chapter titles in a flowing script (Great Vibes, carried inside

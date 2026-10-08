@@ -28,6 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "Jinja2>=3.1",
+    "markdown-it-py>=3.0",
     "PyYAML>=6.0",
     "ruamel.yaml>=0.17",
 ]
@@ -63,6 +64,8 @@ exclude = ["tests*", "fixtures*"]
 proseview = [
     "skills/*/SKILL.md",
     "skills/*/agents/*.yaml",
+    "book_styles/*/*.css",
+    "book_styles/*/*.yaml",
     "templates/*.j2",
     "templates/assets/*",
     "templates/assets/js/*",

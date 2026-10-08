@@ -1,0 +1,278 @@
+/* Classic: a traditional novel.
+ *
+ * Kept to CSS that e-readers actually honour. Readers override fonts and
+ * margins with their own settings, so this sets sensible defaults and
+ * leaves room for the reader's choices rather than fighting them.
+ */
+
+body {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+  line-height: 1.45;
+  margin: 0 5%;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  widows: 2;
+  orphans: 2;
+}
+
+p {
+  margin: 0;
+  text-indent: 1.5em;
+}
+
+/* No indent where a paragraph opens a chapter, follows a heading, or
+ * follows a scene break: the space already says "new paragraph". */
+p.opener,
+p.first,
+h1 + p,
+h2 + p,
+h3 + p,
+.scene-break + p {
+  text-indent: 0;
+}
+
+/* Chapter openers ---------------------------------------------------- */
+
+.chapter-heading {
+  margin: 3em 0 2.5em;
+  text-align: center;
+  font-weight: normal;
+  page-break-before: always;
+  break-before: page;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.chapter-number {
+  display: block;
+  font-size: 0.75em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.chapter-title {
+  display: block;
+  margin-top: 0.6em;
+  font-size: 1.15em;
+  font-style: italic;
+}
+
+.chapter-heading .chapter-title:only-child {
+  font-style: normal;
+}
+
+/* Drop cap and small-caps first line on a chapter's opening paragraph. */
+p.opener::first-letter {
+  float: left;
+  font-size: 3.4em;
+  line-height: 0.85;
+  margin: 0.06em 0.08em 0 0;
+}
+
+p.opener::first-line {
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+
+/* Scenes ------------------------------------------------------------- */
+
+.scene-break {
+  margin: 1.2em 0;
+  text-align: center;
+  text-indent: 0;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.scene-title {
+  margin: 2em 0 1em;
+  font-size: 1em;
+  font-weight: normal;
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+  text-align: center;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+/* A single exported scene: a small header in place of a chapter opener. */
+.scene-header {
+  margin: 2em 0 2.5em;
+  text-align: center;
+}
+
+.scene-header .book-title,
+.scene-header .scene-chapter {
+  margin: 0;
+  text-indent: 0;
+  font-size: 0.8em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.scene-header h1 {
+  margin: 0.8em 0 0;
+  font-size: 1.3em;
+  font-weight: normal;
+  font-style: italic;
+}
+
+/* Title page and contents -------------------------------------------- */
+
+.title-page {
+  margin-top: 25%;
+  text-align: center;
+}
+
+.title-page h1 {
+  font-size: 2em;
+  font-weight: normal;
+  margin: 0 0 1em;
+}
+
+.title-page p {
+  text-indent: 0;
+  margin: 0.5em 0;
+}
+
+.title-page .author {
+  font-size: 1.15em;
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+}
+
+.title-page .note {
+  margin-top: 3em;
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+nav h1,
+.contents h1 {
+  font-size: 1.2em;
+  font-weight: normal;
+  letter-spacing: 0.15em;
+  text-align: center;
+  text-transform: uppercase;
+  margin: 2em 0 1.5em;
+}
+
+nav ol,
+.contents ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+nav li,
+.contents li {
+  margin: 0.4em 0;
+}
+
+nav ol ol,
+.contents ol ol {
+  margin-left: 1.5em;
+  font-size: 0.9em;
+}
+
+nav a,
+.contents a {
+  text-decoration: none;
+}
+
+nav[hidden] {
+  display: none;
+}
+
+/* Cover --------------------------------------------------------------- */
+
+.cover {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.cover img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Appendices ---------------------------------------------------------- */
+
+.appendix h1 {
+  font-size: 1.4em;
+  font-weight: normal;
+  text-align: center;
+  margin: 2em 0 1.5em;
+}
+
+.appendix h2 {
+  font-size: 1.1em;
+  margin: 2em 0 0.8em;
+}
+
+.appendix h3,
+.appendix h4,
+.appendix h5,
+.appendix h6 {
+  font-size: 1em;
+  margin: 1.4em 0 0.6em;
+}
+
+.appendix p {
+  text-align: left;
+  text-indent: 0;
+  margin: 0 0 0.8em;
+}
+
+/* Everything else Markdown can produce -------------------------------- */
+
+blockquote {
+  margin: 1em 2em;
+  font-style: italic;
+}
+
+blockquote p {
+  text-indent: 0;
+}
+
+ul,
+ol {
+  margin: 0.8em 0 0.8em 1.5em;
+  text-align: left;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid currentColor;
+  margin: 1.5em 25%;
+  opacity: 0.4;
+}
+
+img {
+  max-width: 100%;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+th,
+td {
+  border: 1px solid currentColor;
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+
+pre,
+code {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+pre {
+  white-space: pre-wrap;
+  text-align: left;
+}

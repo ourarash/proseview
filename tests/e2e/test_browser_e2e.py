@@ -6801,6 +6801,15 @@ def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, 
     page.keyboard.press("e")
     assert page.evaluate("window._pmEditMode") is not True
 
+    # Nor can a note: no Edit button, and E does nothing.
+    page.goto(snapshot_site + "#/file/plans%2Fstructure-notes.md", wait_until="load")
+    page.wait_for_selector("#filePreviewBody:not(:empty)")
+    assert page.locator("#filePreviewEditBtn").is_hidden()
+    page.locator("#filePreviewBody").click()
+    page.keyboard.press("e")
+    page.wait_for_timeout(200)
+    assert page.locator("#fileEditBar").is_hidden()
+
     page.goto(snapshot_site + "#/tab/analysis")
     page.wait_for_selector("#analysisContent:not([hidden])")
     assert "/demo/analysis.json" in requested

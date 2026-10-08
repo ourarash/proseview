@@ -312,6 +312,19 @@
                     event.returnValue = '';
                 }
             });
+            // E opens the editor, as it does on a scene.
+            document.addEventListener('keydown', function(event) {
+                if (event.key !== 'e' && event.key !== 'E') return;
+                if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) return;
+                if (document.documentElement.dataset.view !== 'file' || fileEditActive()) return;
+                var target = event.target;
+                var tag = (target && target.tagName || '').toUpperCase();
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (target && target.isContentEditable)) return;
+                var button = document.getElementById('filePreviewEditBtn');
+                if (!button || button.hidden || button.getClientRects().length === 0) return;
+                event.preventDefault();
+                toggleFileEdit();
+            });
             // The rich editor loads after the page; show Edit once it is there.
             window.addEventListener('proseview:editor-ready', function() {
                 if (document.documentElement.dataset.view !== 'file') return;

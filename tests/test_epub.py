@@ -454,7 +454,7 @@ def test_epubcheck_is_present_where_it_is_required():
 def test_epubcheck_passes_for_every_selection_type(tmp_path: Path, kind: str, version: str):
     path, _ = _export(tmp_path, selection=SELECTIONS[kind], epub_version=version,
                       appendix_folders=["plans"], author="Lewis Carroll")
-    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
+    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -467,5 +467,5 @@ def test_epubcheck_passes_with_a_subtitle_cover_and_scene_titles(tmp_path: Path,
         tmp_path, title="Alice's Adventures", subtitle="A \"Wonderland\" Tale", author="Lewis Carroll",
         cover_image=cover, scene_titles=True, epub_version=version,
     )
-    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
+    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr

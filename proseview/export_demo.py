@@ -101,7 +101,7 @@ def write_demo_exports(root: Path, cfg: Config, out: Path, *, title: str, author
                     path = previews_dir / key / member
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
-                (previews_dir / f"{key}.json").write_text(json.dumps({"ok": True, "token": key, **preview}))
+                (previews_dir / f"{key}.json").write_text(json.dumps({"ok": True, "token": key, **preview}), encoding="utf-8")
                 index[key] = {
                     "format": fmt,
                     "label": FORMAT_LABELS[fmt],
@@ -116,6 +116,6 @@ def write_demo_exports(root: Path, cfg: Config, out: Path, *, title: str, author
     data["details"].update(details)
     data["demo"] = True
     data["selections"] = []
-    (target / "outline.json").write_text(json.dumps(data))
-    (target / "files.json").write_text(json.dumps({"book": totals, "files": index}))
+    (target / "outline.json").write_text(json.dumps(data), encoding="utf-8")
+    (target / "files.json").write_text(json.dumps({"book": totals, "files": index}), encoding="utf-8")
     return index

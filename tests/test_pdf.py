@@ -201,11 +201,11 @@ def test_every_selection_type_lays_out(tmp_path: Path, book: Path, kind: str, fm
 def test_a_scene_image_is_printed_and_a_missing_one_names_its_scene(tmp_path: Path, book: Path):
     shutil.copy(REPO_ROOT / "docs" / "images" / "dashboard.png", book / "manuscript" / "ch02" / "pool.png")
     scene = book / "manuscript" / "ch02" / "02-the-pool-of-tears.md"
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The pool](pool.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The pool](pool.png)\n", encoding="utf-8")
     result = _pdf(tmp_path, book, selection=Selection(picks=(("chapter", "2"),)))
     assert b"/Subtype /Image" in result.path.read_bytes() or b"/Subtype/Image" in result.path.read_bytes()
 
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n![Gone](gone.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![Gone](gone.png)\n", encoding="utf-8")
     with pytest.raises(ExportError) as caught:
         _pdf(tmp_path, book, selection=Selection(picks=(("chapter", "2"),)))
     assert caught.value.scene == "ch02/02-the-pool-of-tears"
@@ -296,7 +296,7 @@ def test_each_format_gets_its_own_file_name(book: Path):
 def test_pdf_settings_are_read_from_the_config(tmp_path: Path, book: Path):
     (book / ".proseview.yaml").write_text(
         (book / ".proseview.yaml").read_text(encoding="utf-8")
-        + "export:\n  format: pdf-print\n  trim: 6x9\n  recto_chapters: false\n  author: Lewis Carroll\n"
+        + "export:\n  format: pdf-print\n  trim: 6x9\n  recto_chapters: false\n  author: Lewis Carroll\n", encoding="utf-8"
     )
     cfg = Config.load(book)
     assert (cfg.export.format, cfg.export.trim, cfg.export.recto_chapters) == ("pdf-print", "6x9", False)
@@ -344,7 +344,7 @@ def test_titles_and_headings_are_never_hyphenated():
 
 
 def test_cli_output_name_decides_the_format_when_none_is_given(tmp_path: Path, book: Path):
-    (book / ".proseview.yaml").write_text((book / ".proseview.yaml").read_text(encoding="utf-8") + "export:\n  format: pdf-share\n")
+    (book / ".proseview.yaml").write_text((book / ".proseview.yaml").read_text(encoding="utf-8") + "export:\n  format: pdf-share\n", encoding="utf-8")
     out = tmp_path / "book.epub"
     assert cli.main(["export", "--root", str(book), "--chapters", "1", "--output", str(out)]) == 0
     assert out.read_bytes()[:2] == b"PK"

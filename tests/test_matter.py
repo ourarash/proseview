@@ -123,7 +123,7 @@ def test_epubcheck_passes_with_front_and_back_matter(tmp_path: Path, book: Path,
     (book / "back-matter" / "about-the-author.md").write_text("Lewis Carroll taught mathematics.\n", encoding="utf-8")
     path = export_book(book, Config.load(book), tmp_path / "b.epub", author="Lewis Carroll", epub_version=version,
                        dedication="For Alice", also_by="Sylvie and Bruno", isbn="978-1-23").path
-    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
+    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -148,7 +148,7 @@ def test_manuscript_leaves_out_front_and_back_matter(tmp_path: Path, book: Path)
 def test_matter_settings_are_remembered_and_read_by_the_cli(tmp_path: Path, book: Path):
     (book / ".proseview.yaml").write_text(
         (book / ".proseview.yaml").read_text(encoding="utf-8")
-        + "export:\n  dedication: For Alice Liddell\n  also_by:\n    - Sylvie and Bruno\n  copyright_page: false\n"
+        + "export:\n  dedication: For Alice Liddell\n  also_by:\n    - Sylvie and Bruno\n  copyright_page: false\n", encoding="utf-8"
     )
     out = tmp_path / "b.epub"
     assert cli.main(["export", "--root", str(book), "--output", str(out)]) == 0
@@ -178,7 +178,7 @@ def test_changed_dates_come_from_git_and_uncommitted_edits(book: Path):
     for command in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "draft"]):
         subprocess.run(["git", "-C", str(book), *command], check=True, env=env, capture_output=True)
     edited = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    edited.write_text(edited.read_text(encoding="utf-8") + "\nA new line.\n")
+    edited.write_text(edited.read_text(encoding="utf-8") + "\nA new line.\n", encoding="utf-8")
 
     scenes = {s["key"]: s for c in outline(book, Config.load(book))["chapters"] for s in c["scenes"]}
     assert scenes["ch01/01-down-the-rabbit-hole"]["changed"] == "2026-01-02"

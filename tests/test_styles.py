@@ -126,5 +126,5 @@ def test_epubcheck_passes_for_modern_and_romance(tmp_path: Path, style: str):
     shutil.copytree(DEMO, root, ignore=shutil.ignore_patterns("exports", ".proseview"))
     path = export_book(root, Config.load(root), tmp_path / "b.epub", style=style, author="Lewis Carroll",
                        dedication="For Alice").path
-    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, timeout=300)
+    result = subprocess.run([*EPUBCHECK, str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr

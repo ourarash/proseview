@@ -99,7 +99,7 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
 def test_outline_word_counts_leave_out_todo_comments(book: Path):
     scene = book / "manuscript" / "ch01" / "01-down-the-rabbit-hole.md"
     before = outline(book, Config.load(book))["chapters"][0]["scenes"][0]["words"]
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n<!-- TODO: five more words here -->\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n<!-- TODO: five more words here -->\n", encoding="utf-8")
 
     assert outline(book, Config.load(book))["chapters"][0]["scenes"][0]["words"] == before
 
@@ -108,7 +108,7 @@ def test_outline_resolves_saved_selections_and_flags_stale_ones(book: Path):
     (book / ".proseview.yaml").write_text(
         (book / ".proseview.yaml").read_text(encoding="utf-8")
         + "export:\n  selections:\n    Opening:\n      chapters: [ch01]\n"
-        + "    Gone:\n      scenes: [ch99/01-nowhere]\n"
+        + "    Gone:\n      scenes: [ch99/01-nowhere]\n", encoding="utf-8"
     )
     selections = {s["name"]: s for s in outline(book, Config.load(book))["selections"]}
 
@@ -215,7 +215,7 @@ def test_a_chapter_for_readers_is_only_checked_for_soundness(book: Path, tmp_pat
 def test_an_image_without_a_description_names_its_scene(book: Path, tmp_path: Path):
     (book / "manuscript" / "ch02" / "art.png").write_bytes(png(2, 2))
     scene = book / "manuscript" / "ch02" / "02-the-pool-of-tears.md"
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n![](art.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![](art.png)\n", encoding="utf-8")
     result = export_book(book, Config.load(book), tmp_path / "book.epub", author="L. C.")
     checks = readiness(result.path, result.book, title_given=True, cover=None)
 
@@ -226,7 +226,7 @@ def test_an_image_without_a_description_names_its_scene(book: Path, tmp_path: Pa
 
 def test_a_missing_image_names_the_scene_to_open(book: Path, tmp_path: Path):
     scene = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n", encoding="utf-8")
 
     with pytest.raises(ExportError) as caught:
         export_book(book, Config.load(book), tmp_path / "book.epub")
@@ -388,7 +388,7 @@ def test_route_export_job_runs_to_a_dated_file_and_remembers_details(client, boo
 
 def test_route_export_failure_names_the_scene(client, book: Path):
     scene = book / "manuscript" / "ch03" / "02-the-caucus-race.md"
-    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n")
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n![The race](race.png)\n", encoding="utf-8")
     _, job = client.json("POST", "/api/export/start", {"details": {}})
     done = client.wait(job["id"])
 

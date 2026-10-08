@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .book import Book, BookChapter, ExportError, SceneDocument, chapter_label
+from .book import Book, BookChapter, ExportError, SceneDocument, chapter_label, smart_punctuation
 from .book_styles import BookStyle
 
 EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")
@@ -42,6 +42,11 @@ _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 def _esc(text: str) -> str:
     return html.escape(str(text), quote=True)
+
+
+def _txt(text: str) -> str:
+    """Escape text a reader sees, with the same curly quotes and dashes as the prose."""
+    return _esc(smart_punctuation(str(text)))
 
 
 def _slug(text: str) -> str:
@@ -227,7 +232,7 @@ class _Writer:
             )
         body_attr = self._type(body_type) if body_type else ""
         page = (
-            f"{head}    <title>{_esc(title)}</title>\n{links}\n</head>\n"
+            f"{head}    <title>{_txt(title)}</title>\n{links}\n</head>\n"
             f"<body{body_attr}>\n{body}\n</body>\n</html>\n"
         )
         return page.encode("utf-8")
@@ -291,18 +296,18 @@ class _Writer:
         self.cover_href = "text/cover.xhtml"
         body = (
             f'<{self._section()} class="cover"{self._type("cover")}>\n'
-            f'  <img src="../{href}" alt="{_esc(self.book.title)}" />\n</{self._section()}>'
+            f'  <img src="../{href}" alt="{_txt(self.book.title)}" />\n</{self._section()}>'
         )
         self._add(_Item("cover", self.cover_href, "application/xhtml+xml", self._page("Cover", body)))
 
     def add_title_page(self) -> None:
         book = self.book
         lines = [f'<{self._section()} class="title-page"{self._type("titlepage")}>',
-                 f'  <h1 class="title">{_esc(book.title)}</h1>']
+                 f'  <h1 class="title">{_txt(book.title)}</h1>']
         if book.author:
-            lines.append(f'  <p class="author">{_esc(book.author)}</p>')
+            lines.append(f'  <p class="author">{_txt(book.author)}</p>')
         if book.note:
-            lines.append(f'  <p class="note">{_esc(book.note)}</p>')
+            lines.append(f'  <p class="note">{_txt(book.note)}</p>')
         lines.append(f"</{self._section()}>")
         self._add(_Item("title-page", "text/title.xhtml", "application/xhtml+xml",
                         self._page(book.title, "\n".join(lines), body_type="frontmatter")))
@@ -313,9 +318,9 @@ class _Writer:
         number, title = self._chapter_heading_parts(chapter)
         spans = []
         if number:
-            spans.append(f'<span class="chapter-number">{_esc(number)}</span>')
+            spans.append(f'<span class="chapter-number">{_txt(number)}</span>')
         if title or not number:
-            spans.append(f'<span class="chapter-title">{_esc(title or f"Chapter {chapter.number}")}</span>')
+            spans.append(f'<span class="chapter-title">{_txt(title or f"Chapter {chapter.number}")}</span>')
         parts = [
             f'<{self._section()} class="chapter" id="{anchor}"{self._type("chapter")}>',
             f'  <h1 class="chapter-heading">{" ".join(spans)}</h1>',
@@ -329,7 +334,7 @@ class _Writer:
                 parts.append(f"  {self._scene_break()}")
             parts.append(f'  <{self._section()} class="scene" id="{scene_id}">')
             if show_titles:
-                parts.append(f'    <h2 class="scene-title">{_esc(scene.title)}</h2>')
+                parts.append(f'    <h2 class="scene-title">{_txt(scene.title)}</h2>')
                 entry.children.append(_NavEntry(scene.title, f"{href}#{scene_id}"))
             first = "opener" if i == 0 else "first"
             parts.append(self._render_scene(scene, first_class=first, shift=2))
@@ -346,10 +351,10 @@ class _Writer:
         chapter = self.book.chapters[0]
         number, title = self._chapter_heading_parts(chapter)
         where = " · ".join(part for part in (number, title) if part)
-        header = [f'<header class="scene-header">', f'  <p class="book-title">{_esc(self.book.title)}</p>']
+        header = [f'<header class="scene-header">', f'  <p class="book-title">{_txt(self.book.title)}</p>']
         if where:
-            header.append(f'  <p class="scene-chapter">{_esc(where)}</p>')
-        header.append(f'  <h1 class="scene-heading">{_esc(scene.title)}</h1>')
+            header.append(f'  <p class="scene-chapter">{_txt(where)}</p>')
+        header.append(f'  <h1 class="scene-heading">{_txt(scene.title)}</h1>')
         header.append("</header>")
         if not self.v3:
             header = [line.replace("<header", "<div").replace("</header>", "</div>") for line in header]
@@ -368,7 +373,7 @@ class _Writer:
         href = f"text/appendix-{index:02d}.xhtml"
         heading = f"Appendix: {section.label}"
         parts = [f'<{self._section()} class="appendix" id="appendix-{index}"{self._type("appendix")}>',
-                 f"  <h1>{_esc(heading)}</h1>"]
+                 f"  <h1>{_txt(heading)}</h1>"]
         entry = _NavEntry(heading, href)
         ids: set[str] = set()
         anchors: list[tuple[str, str]] = []
@@ -381,13 +386,13 @@ class _Writer:
             anchors.append((doc_title, anchor))
         if len(section.documents) > 1:
             parts.append('  <ul class="appendix-contents">')
-            parts += [f'    <li><a href="#{a}">{_esc(t)}</a></li>' for t, a in anchors]
+            parts += [f'    <li><a href="#{a}">{_txt(t)}</a></li>' for t, a in anchors]
             parts.append("  </ul>")
         for (doc_title, content), (_, anchor) in zip(section.documents, anchors):
             # The document's own H1 gives way to the folder-derived title, and
             # its remaining headings sit two levels down, as with pandoc.
             body = re.sub(r"^# [^\n]*\n*", "", content, count=1).strip()
-            parts.append(f'  <h2 id="{anchor}">{_esc(doc_title)}</h2>')
+            parts.append(f'  <h2 id="{anchor}">{_txt(doc_title)}</h2>')
             parts.append(self.markdown.render(
                 body, source=None, owner=f"Appendix document {doc_title!r}", shift_headings=2,
             ))
@@ -403,7 +408,7 @@ class _Writer:
         lines = [f"{indent}<ol>"]
         for entry in entries:
             href = entry.href.removeprefix("text/") if relative else entry.href
-            line = f'{indent}  <li><a href="{_esc(href)}">{_esc(entry.label)}</a>'
+            line = f'{indent}  <li><a href="{_esc(href)}">{_txt(entry.label)}</a>'
             if entry.children:
                 lines.append(line)
                 lines += self._nav_list(entry.children, indent + "    ", relative=relative)
@@ -413,20 +418,24 @@ class _Writer:
         lines.append(f"{indent}</ol>")
         return lines
 
-    def nav_page(self) -> bytes:
-        """The contents page: the EPUB 3 nav document, or a plain page for EPUB 2."""
+    def nav_page(self, *, in_spine: bool) -> bytes:
+        """The contents page: the EPUB 3 nav document, or a plain page for EPUB 2.
+
+        A landmark may only point at a page in the reading order, so the
+        contents landmark is left out when the page is kept out of the spine.
+        """
         if self.v3:
             body = [f'<nav epub:type="toc" id="toc" role="doc-toc">', "  <h1>Contents</h1>"]
             body += self._nav_list(self.nav, "  ", relative=True)
             body.append("</nav>")
-            landmarks = [('toc', 'nav.xhtml#toc', 'Contents')]
+            landmarks = [('toc', 'nav.xhtml#toc', 'Contents')] if in_spine else []
             if self.first_text_href:
                 landmarks.append(("bodymatter", self.first_text_href.removeprefix("text/"), "Start of book"))
             if self.cover_href:
                 landmarks.insert(0, ("cover", self.cover_href.removeprefix("text/"), "Cover"))
             body.append('<nav epub:type="landmarks" id="landmarks" hidden="hidden">')
             body.append("  <h1>Landmarks</h1>\n  <ol>")
-            body += [f'    <li><a epub:type="{t}" href="{h}">{_esc(label)}</a></li>' for t, h, label in landmarks]
+            body += [f'    <li><a epub:type="{t}" href="{h}">{_txt(label)}</a></li>' for t, h, label in landmarks]
             body.append("  </ol>\n</nav>")
         else:
             body = ['<div class="contents">', "  <h1>Contents</h1>"]
@@ -443,7 +452,7 @@ class _Writer:
             for entry in entries:
                 counter += 1
                 out.append(f'{indent}<navPoint id="nav-{counter}" playOrder="{counter}">')
-                out.append(f"{indent}  <navLabel><text>{_esc(entry.label)}</text></navLabel>")
+                out.append(f"{indent}  <navLabel><text>{_txt(entry.label)}</text></navLabel>")
                 out.append(f'{indent}  <content src="{_esc(entry.href)}" />')
                 out += points(entry.children, indent + "  ")
                 out.append(f"{indent}</navPoint>")
@@ -459,10 +468,10 @@ class _Writer:
             '    <meta name="dtb:totalPageCount" content="0" />',
             '    <meta name="dtb:maxPageNumber" content="0" />',
             "  </head>",
-            f"  <docTitle><text>{_esc(self.book.title)}</text></docTitle>",
+            f"  <docTitle><text>{_txt(self.book.title)}</text></docTitle>",
         ]
         if self.book.author:
-            lines.append(f"  <docAuthor><text>{_esc(self.book.author)}</text></docAuthor>")
+            lines.append(f"  <docAuthor><text>{_txt(self.book.author)}</text></docAuthor>")
         lines.append("  <navMap>")
         lines += points(self.nav, "    ")
         lines += ["  </navMap>", "</ncx>", ""]
@@ -476,11 +485,11 @@ class _Writer:
         if self.v3:
             meta += [
                 f'    <dc:identifier id="book-id">{_esc(book.identifier)}</dc:identifier>',
-                f"    <dc:title>{_esc(book.title)}</dc:title>",
+                f"    <dc:title>{_txt(book.title)}</dc:title>",
                 f"    <dc:language>{_esc(book.language)}</dc:language>",
             ]
             if book.author:
-                meta.append(f'    <dc:creator id="creator">{_esc(book.author)}</dc:creator>')
+                meta.append(f'    <dc:creator id="creator">{_txt(book.author)}</dc:creator>')
             meta.append(f'    <meta property="dcterms:modified">{modified.strftime("%Y-%m-%dT%H:%M:%SZ")}</meta>')
             access_modes = ["textual"] + (["visual"] if has_images else [])
             meta += [f'    <meta property="schema:accessMode">{m}</meta>' for m in access_modes]
@@ -499,12 +508,12 @@ class _Writer:
         else:
             meta += [
                 f'    <dc:identifier id="book-id" opf:scheme="UUID">{_esc(book.identifier)}</dc:identifier>',
-                f"    <dc:title>{_esc(book.title)}</dc:title>",
+                f"    <dc:title>{_txt(book.title)}</dc:title>",
                 f"    <dc:language>{_esc(book.language)}</dc:language>",
                 f'    <dc:date opf:event="modification">{modified.strftime("%Y-%m-%d")}</dc:date>',
             ]
             if book.author:
-                meta.append(f'    <dc:creator opf:role="aut">{_esc(book.author)}</dc:creator>')
+                meta.append(f'    <dc:creator opf:role="aut">{_txt(book.author)}</dc:creator>')
         if self.options.cover_image:
             meta.append('    <meta name="cover" content="cover-image" />')
 
@@ -565,7 +574,7 @@ class _Writer:
             self.add_appendix(index, section)
 
         nav_href = "text/nav.xhtml"
-        nav_item = _Item("nav", nav_href, "application/xhtml+xml", self.nav_page(),
+        nav_item = _Item("nav", nav_href, "application/xhtml+xml", self.nav_page(in_spine=toc_position is not None),
                          properties="nav" if self.v3 else "")
         self.items.append(nav_item)
         if toc_position is not None:

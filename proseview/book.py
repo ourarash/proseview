@@ -167,6 +167,27 @@ def number_documents(documents: list[SceneDocument]) -> list[SceneDocument]:
     return numbered
 
 
+_OPENS_QUOTE = r"(^|(?<=[\s(\[{—–-]))"
+
+
+def smart_punctuation(text: str) -> str:
+    """Typeset plain text the way scene prose is typeset.
+
+    Scene bodies go through markdown-it's typographer, but titles, author
+    names and chapter names never pass through Markdown, so without this a
+    title page reads "Alice's" beside a chapter that reads "Alice’s". Quotes
+    open after a space or bracket and close everywhere else, which also makes
+    a mid-word ``'`` an apostrophe.
+    """
+    if not text:
+        return text
+    out = text.replace("---", "—").replace("--", "–").replace("...", "…")
+    out = re.sub(_OPENS_QUOTE + '"', "“", out)
+    out = out.replace('"', "”")
+    out = re.sub(_OPENS_QUOTE + "'(?=\\w)", "‘", out)
+    return out.replace("'", "’")
+
+
 # --------------------------------------------------------------------------
 # Resolving a selection
 

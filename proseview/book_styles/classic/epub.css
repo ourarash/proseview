@@ -139,6 +139,12 @@ p.opener::first-line {
   margin: 0.5em 0;
 }
 
+.title-page h1 + .subtitle {
+  margin: -0.4em 0 1.6em;
+  font-size: 1.1em;
+  font-style: italic;
+}
+
 .title-page .author {
   font-size: 1.15em;
   font-variant: small-caps;

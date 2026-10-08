@@ -20,6 +20,7 @@ import html
 import re
 import zipfile
 from dataclasses import dataclass, field
+from typing import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -63,6 +64,8 @@ class EpubOptions:
     cover_image: Path | None = None
     css: tuple[Path, ...] = ()
     modified: _dt.datetime | None = None
+    #: Called as ``progress(step, fraction)`` while the book is laid out.
+    progress: Callable[[str, float], None] | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -100,6 +103,7 @@ class _Markdown:
         owner: str,
         shift_headings: int = 0,
         first_class: str = "",
+        scene: str = "",
     ) -> str:
         tokens = self._md.parse(_COMMENT_RE.sub("", text))
         first_done = not first_class
@@ -111,10 +115,10 @@ class _Markdown:
                 token.attrJoin("class", first_class)
                 first_done = True
             if token.children:
-                token.children = self._inline(token.children, source, owner)
+                token.children = self._inline(token.children, source, owner, scene)
         return self._md.renderer.render(tokens, self._md.options, {})
 
-    def _inline(self, children: list, source: Path | None, owner: str) -> list:
+    def _inline(self, children: list, source: Path | None, owner: str, scene: str = "") -> list:
         """Embed images, and unwrap links that would dangle inside the book.
 
         A link to another repository file (a character sheet, a plan) or to
@@ -126,7 +130,7 @@ class _Markdown:
         dropping: list[bool] = []
         for child in children:
             if child.type == "image":
-                child.attrSet("src", self._images.add(str(child.attrGet("src") or ""), source, owner))
+                child.attrSet("src", self._images.add(str(child.attrGet("src") or ""), source, owner, scene))
             elif child.type == "link_open":
                 href = str(child.attrGet("href") or "")
                 dropping.append(urlparse(href).scheme not in {"http", "https", "mailto"})
@@ -146,7 +150,13 @@ class _Images:
         self.items: list[_Item] = []
         self._by_path: dict[Path, str] = {}
 
-    def add(self, src: str, source: Path | None, owner: str) -> str:
+    def add(self, src: str, source: Path | None, owner: str, scene: str = "") -> str:
+        try:
+            return self._add(src, source, owner)
+        except ExportError as exc:
+            raise ExportError(str(exc), scene=scene) from None
+
+    def _add(self, src: str, source: Path | None, owner: str) -> str:
         parsed = urlparse(src)
         if parsed.scheme in {"http", "https"} or src.startswith("//"):
             raise ExportError(
@@ -248,7 +258,7 @@ class _Writer:
     def _render_scene(self, scene: SceneDocument, *, first_class: str, shift: int) -> str:
         return self.markdown.render(
             scene.markdown, source=scene.path, owner=self._scene_owner(scene),
-            shift_headings=shift, first_class=first_class,
+            shift_headings=shift, first_class=first_class, scene=scene.key,
         )
 
     def _scene_break(self) -> str:
@@ -304,6 +314,8 @@ class _Writer:
         book = self.book
         lines = [f'<{self._section()} class="title-page"{self._type("titlepage")}>',
                  f'  <h1 class="title">{_txt(book.title)}</h1>']
+        if book.subtitle:
+            lines.append(f'  <p class="subtitle">{_txt(book.subtitle)}</p>')
         if book.author:
             lines.append(f'  <p class="author">{_txt(book.author)}</p>')
         if book.note:
@@ -351,7 +363,7 @@ class _Writer:
         chapter = self.book.chapters[0]
         number, title = self._chapter_heading_parts(chapter)
         where = " · ".join(part for part in (number, title) if part)
-        header = [f'<header class="scene-header">', f'  <p class="book-title">{_txt(self.book.title)}</p>']
+        header = ['<header class="scene-header">', f'  <p class="book-title">{_txt(self.book.title)}</p>']
         if where:
             header.append(f'  <p class="scene-chapter">{_txt(where)}</p>')
         header.append(f'  <h1 class="scene-heading">{_txt(scene.title)}</h1>')
@@ -425,7 +437,7 @@ class _Writer:
         contents landmark is left out when the page is kept out of the spine.
         """
         if self.v3:
-            body = [f'<nav epub:type="toc" id="toc" role="doc-toc">', "  <h1>Contents</h1>"]
+            body = ['<nav epub:type="toc" id="toc" role="doc-toc">', "  <h1>Contents</h1>"]
             body += self._nav_list(self.nav, "  ", relative=True)
             body.append("</nav>")
             landmarks = [('toc', 'nav.xhtml#toc', 'Contents')] if in_spine else []
@@ -486,8 +498,13 @@ class _Writer:
             meta += [
                 f'    <dc:identifier id="book-id">{_esc(book.identifier)}</dc:identifier>',
                 f"    <dc:title>{_txt(book.title)}</dc:title>",
-                f"    <dc:language>{_esc(book.language)}</dc:language>",
             ]
+            if book.subtitle:
+                meta += [
+                    f'    <dc:title id="subtitle">{_txt(book.subtitle)}</dc:title>',
+                    '    <meta refines="#subtitle" property="title-type">subtitle</meta>',
+                ]
+            meta.append(f"    <dc:language>{_esc(book.language)}</dc:language>")
             if book.author:
                 meta.append(f'    <dc:creator id="creator">{_txt(book.author)}</dc:creator>')
             meta.append(f'    <meta property="dcterms:modified">{modified.strftime("%Y-%m-%dT%H:%M:%SZ")}</meta>')
@@ -557,6 +574,10 @@ class _Writer:
 
     # -- assembly -------------------------------------------------------------
 
+    def _progress(self, step: str, fraction: float) -> None:
+        if self.options.progress is not None:
+            self.options.progress(step, fraction)
+
     def build(self) -> list[_Item]:
         book = self.book
         self.add_stylesheets()
@@ -566,10 +587,15 @@ class _Writer:
             self.add_title_page()
             toc_position = len(self.spine)
         if book.kind == "scene":
+            self._progress("Laying out the scene", 0.5)
             self.add_single_scene(book.chapters[0].scenes[0])
         else:
+            total = len(book.chapters)
             for index, chapter in enumerate(book.chapters, start=1):
+                self._progress(f"Laying out chapter {chapter.number}", (index - 1) / max(total, 1))
                 self.add_chapter(index, chapter)
+        if book.appendices:
+            self._progress("Adding the appendices", 0.95)
         for index, section in enumerate(book.appendices, start=1):
             self.add_appendix(index, section)
 

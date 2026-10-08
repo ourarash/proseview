@@ -20,6 +20,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .book import (
     AppendixSection,
@@ -251,10 +252,11 @@ def export_book(
     *,
     selection: Selection | None = None,
     title: str = "",
+    subtitle: str = "",
     author: str = "",
-    language: str = "en-US",
+    language: str = "",
     identifier: str = "",
-    epub_version: str = "epub3",
+    epub_version: str = "",
     engine: str = "builtin",
     style: str = "",
     scene_titles: bool | None = None,
@@ -262,27 +264,39 @@ def export_book(
     css: list[Path] | None = None,
     toc_depth: int = 2,
     appendix_folders: list[str] | None = None,
+    progress: Callable[[str, float], None] | None = None,
 ) -> ExportResult:
     """Export *selection* (default: the whole book) as an EPUB.
 
-    *output* defaults to a dated file under ``exports/``. *identifier*
-    defaults to the one saved in ``.proseview.yaml``; this function never
-    writes the config itself (see :func:`ensure_book_identifier`).
+    *output* defaults to a dated file under ``exports/``. Book details left
+    empty fall back to those saved under ``export:`` in ``.proseview.yaml``
+    (the dashboard keeps them there), then to the folder name, ``en-US`` and
+    EPUB 3. This function never writes the config itself (see
+    :func:`save_book_identifier` and :func:`save_book_details`).
+    *progress* is called as ``progress(step, fraction)`` along the way.
     """
+    saved = cfg.export
+    epub_version = epub_version or saved.epub_version or "epub3"
+    language = language or saved.language or "en-US"
+    if cover_image is None and saved.cover_image:
+        cover_image = saved_cover_path(root, saved.cover_image)
     if epub_version not in EPUB_VERSIONS:
         raise ExportError(f"Unknown EPUB version {epub_version!r}; expected one of {', '.join(EPUB_VERSIONS)}")
     if engine not in ENGINES:
         raise ExportError(f"Unknown export engine {engine!r}; expected one of {', '.join(ENGINES)}")
     pandoc = ensure_pandoc() if engine == "pandoc" else ""
 
+    if progress:
+        progress("Gathering your scenes", 0.0)
     documents = collect_scene_documents(root, cfg)
     selected = resolve_selection(documents, selection)
     appendices = [collect_appendix_documents(root, folder, cfg) for folder in appendix_folders or []]
     book = build_book(
         documents,
         selected,
-        title=title or root.resolve().name.replace("-", " ").title(),
-        author=author,
+        title=title or saved.title or default_title(root),
+        subtitle=subtitle or saved.subtitle,
+        author=author or saved.author,
         language=language,
         identifier=identifier or cfg.export.identifier,
         selection=selection,
@@ -316,8 +330,33 @@ def export_book(
         show_scene_titles=scene_titles,
         cover_image=cover_image,
         css=tuple(css or ()),
+        progress=_scaled(progress, 0.05, 0.9) if progress else None,
     ))
+    if progress:
+        progress("Packing the book", 0.95)
     return ExportResult(output, book)
+
+
+def _scaled(progress: Callable[[str, float], None], start: float, end: float) -> Callable[[str, float], None]:
+    """Map a renderer's 0–1 progress into one slice of the whole export."""
+    return lambda step, fraction: progress(step, start + (end - start) * fraction)
+
+
+def default_title(root: Path) -> str:
+    """The title used when none is given: the novel's folder name, tidied."""
+    return root.resolve().name.replace("-", " ").replace("_", " ").title()
+
+
+def saved_cover_path(root: Path, value: str) -> Path:
+    """Resolve ``export.cover_image`` (a path inside the novel) for reading.
+
+    A cover outside the folder or behind a symlink is refused rather than
+    read, the same rule the dashboard's file routes follow.
+    """
+    try:
+        return resolve_visible_repository_path(root, value)
+    except ValueError as exc:
+        raise ExportError(f"The saved cover image {value!r} is not a file inside this book: {exc}") from exc
 
 
 def export_epub(root: Path, cfg: Config, output: Path, **options) -> Path:
@@ -414,6 +453,41 @@ def save_book_identifier(root: Path, identifier: str) -> None:
     succeeds, so a failed first attempt leaves the config untouched.
     """
     _edit_export_config(root, lambda block: block.__setitem__("identifier", identifier))
+
+
+#: The book details the dashboard remembers under ``export:``, in file order.
+BOOK_DETAIL_KEYS: tuple[str, ...] = (
+    "title", "subtitle", "author", "language", "epub_version", "style", "scene_titles", "cover_image",
+)
+
+
+def save_book_details(root: Path, cfg: Config, details: dict) -> bool:
+    """Remember *details* under ``export:`` so the next export starts from them.
+
+    Only keys in :data:`BOOK_DETAIL_KEYS` are written. An empty value removes
+    its key, so clearing a field in the dashboard really clears it. Nothing is
+    written when nothing changed, which keeps a writer's hand-edited config
+    file untouched by a plain re-export. Returns whether the file changed.
+    """
+    current = {key: getattr(cfg.export, key) for key in BOOK_DETAIL_KEYS}
+    wanted = dict(current)
+    for key in BOOK_DETAIL_KEYS:
+        if key in details:
+            value = details[key]
+            wanted[key] = value if isinstance(value, bool) or value is None else str(value).strip()
+    if wanted == current:
+        return False
+
+    def change(block) -> None:
+        for key in BOOK_DETAIL_KEYS:
+            value = wanted[key]
+            if value in ("", None):
+                block.pop(key, None)
+            elif value != current[key] or key not in block:
+                block[key] = value
+
+    _edit_export_config(root, change)
+    return True
 
 
 def save_selection(root: Path, cfg: Config, selection: Selection) -> Selection:

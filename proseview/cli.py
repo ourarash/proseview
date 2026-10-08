@@ -224,17 +224,26 @@ def _build_parser() -> argparse.ArgumentParser:
         "--scene-titles", action=argparse.BooleanOptionalAction, default=None,
         help="Show scene titles as headings instead of scene breaks (default: the style's choice).",
     )
-    look.add_argument("--cover-image", type=Path, default=None, help="Cover image (JPEG, PNG, GIF or WebP).")
+    look.add_argument(
+        "--cover-image", type=Path, default=None,
+        help="Cover image: JPEG, PNG, GIF or WebP (default: export.cover_image).",
+    )
     look.add_argument(
         "--css", type=Path, action="append", default=None,
         help="Extra stylesheet, applied after the style. Repeatable.",
     )
-    export_p.add_argument("--title", default="", help="Title metadata (default: the repo folder name).")
-    export_p.add_argument("--author", default="", help="Author metadata.")
-    export_p.add_argument("--language", default="en-US", help="Language metadata (default: en-US).")
     export_p.add_argument(
-        "--epub-version", choices=["epub3", "epub2"], default="epub3",
-        help="Try epub2 for older readers (default: epub3).",
+        "--title", default="",
+        help="Title (default: export.title in .proseview.yaml, else the repo folder name).",
+    )
+    export_p.add_argument("--subtitle", default="", help="Subtitle (default: export.subtitle).")
+    export_p.add_argument("--author", default="", help="Author (default: export.author).")
+    export_p.add_argument(
+        "--language", default="", help="Language (default: export.language, else en-US).",
+    )
+    export_p.add_argument(
+        "--epub-version", choices=["epub3", "epub2"], default="",
+        help="Try epub2 for older readers (default: export.epub_version, else epub3).",
     )
     export_p.add_argument(
         "--engine", choices=["builtin", "pandoc"], default="builtin",
@@ -635,6 +644,7 @@ def export_manuscript(args: argparse.Namespace) -> int:
             root, cfg, args.output,
             selection=selection,
             title=args.title,
+            subtitle=args.subtitle,
             author=args.author,
             language=args.language,
             identifier=identifier,

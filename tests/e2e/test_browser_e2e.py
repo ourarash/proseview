@@ -6858,3 +6858,28 @@ def test_a_first_visit_opens_in_graphite_dark_and_a_choice_is_kept(
         assert page.evaluate("document.documentElement.dataset.theme") == "light"
     finally:
         context.close()
+
+
+def test_a_phone_opens_with_the_file_list_closed_until_asked(browser: Browser, server: ProseviewServer):
+    """On a phone the open file list took over half the screen on first load.
+
+    It starts closed there, and opening it is remembered like any other choice.
+    """
+    context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    try:
+        page = context.new_page()
+        page.goto(server.base_url, wait_until="load")
+        assert page.evaluate("document.documentElement.dataset.sidebar") == "closed"
+        page.evaluate("setSidebarOpen(true)")
+        page.reload(wait_until="load")
+        assert page.evaluate("document.documentElement.dataset.sidebar") != "closed"
+    finally:
+        context.close()
+
+    desktop = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = desktop.new_page()
+        page.goto(server.base_url, wait_until="load")
+        assert page.evaluate("document.documentElement.dataset.sidebar") != "closed"
+    finally:
+        desktop.close()

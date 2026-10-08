@@ -66,6 +66,9 @@ _FORMAT_BLURBS = {
     "all": "The e-book and both PDFs in one go.",
 }
 
+#: The version of what the Export dialog asks of the server (see outline()).
+EXPORT_API = 3
+
 #: Chapters a PDF preview lays out. The whole book is laid out on export;
 #: the preview only needs enough pages to judge the look.
 PREVIEW_CHAPTERS = 3
@@ -140,6 +143,9 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             cover_ok = False
     return {
         "ok": True,
+        # Raised whenever the dialog starts needing something new from the
+        # server, so a page newer than a long-running server can say so.
+        "api": EXPORT_API,
         "book": {
             "default_title": default_title(root),
             "words": sum(chapter["words"] for chapter in chapters),
@@ -616,8 +622,11 @@ class ExportJobs:
             except (ConfigError, StyleError) as exc:
                 job.error = {"message": str(exc)}
                 job.state = "failed"
-            except Exception as exc:  # noqa: BLE001 -- the page must hear about it
-                job.error = {"message": f"The export stopped unexpectedly: {exc}"}
+            except BaseException as exc:  # noqa: BLE001 -- even a crash inside Typst must reach the page
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                job.error = {"message": f"The export stopped unexpectedly: {exc or exc.__class__.__name__}. "
+                             "Please try again; if it happens twice, report it with this message."}
                 job.state = "failed"
 
     def _export(self, job: ExportJob, root: Path, selection, details: ExportRequest, save_as: str) -> dict:

@@ -1637,6 +1637,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(export_outline(root, Config.load(root)))
             except (ExportError, ValueError) as exc:
                 self._send_export_error(exc)
+            except Exception as exc:  # noqa: BLE001 -- answer rather than drop the connection
+                self._send_json({"ok": False, "error": f"Could not read the book: {exc}"}, 500)
             return
         job_match = re.fullmatch(r"/api/export/jobs/([0-9a-f]{32})", path)
         if job_match:
@@ -1735,6 +1737,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_export_error(exc)
         except OSError as exc:
             self._send_json({"ok": False, "error": f"Could not do that: {exc}"}, 500)
+        except BaseException as exc:  # noqa: BLE001 -- answer rather than drop the connection
+            # Anything else (a crash inside Typst arrives as a BaseException)
+            # would otherwise close the connection unanswered, and the page
+            # could only say "Failed to fetch".
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
+            self._send_json({
+                "ok": False,
+                "error": f"Something went wrong while doing that ({exc or exc.__class__.__name__}). "
+                         "Please try again; if it happens twice, report it with this message.",
+            }, 500)
 
     def _handle_ai_client(self, body: dict[str, Any]) -> None:
         client_id = str(body.get("client_id") or "").strip()

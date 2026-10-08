@@ -7,6 +7,22 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **PDF export.** *Print book (PDF)* lays the book out as a paperback
+  interior ready for KDP or IngramSpark: a trim size (5 × 8, 5.25 × 8,
+  5.5 × 8.5, 6 × 9 in, or A5), mirrored margins with a gutter sized for the
+  page count, running heads, page numbers, and chapters opening on a
+  right-hand page. *Shareable PDF* is a Letter or A4 copy with the cover, a
+  clickable contents page, bookmarks, and an optional watermark naming the
+  reader. Both come from the same book as the EPUB, in the same Classic
+  style, and both are in the Export dialog (with a page-spread preview) and
+  on the command line (`--format pdf-print`, `pdf-share` or `all`, `--trim`,
+  `--paper`, `--watermark`). Nothing else needs installing.
+- The **Manuscript** style: standard submission format for agents and
+  editors, with your contact details and the word count on the title page
+  (`--style manuscript --contact …`).
+- Each PDF is checked after export: the page size, embedded fonts, KDP's
+  page limits, and a manuscript's contact details.
+
 - **Export from the dashboard.** An Export button in the top bar opens a
   three-step dialog: tick the chapters and scenes to include (or reorder
   them by dragging), pick the style and whether scene titles show, then fill

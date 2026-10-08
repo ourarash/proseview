@@ -21,6 +21,8 @@ characters:
 
 # Sentence First, Verdict Afterwards
 
+<!-- NOTE[ending]: The Queen's line is the turn. Everything after it should move fast. -->
+
 “No, no!” said the Queen. “Sentence first—verdict afterwards.”
 
 “Stuff and nonsense!” said Alice loudly. “The idea of having the sentence first!”

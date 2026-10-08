@@ -10,6 +10,7 @@ on:
     paths:
       - "proseview/**"
       - "fixtures/demo-book/**"
+      - "docs/images/demo-preview.png"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -36,7 +37,12 @@ jobs:
       - name: Install proseview
         run: pip install .
       - name: Write the snapshot
-        run: proseview snapshot --root fixtures/demo-book --out _site --demo
+        run: >-
+          proseview snapshot --root fixtures/demo-book --out _site --demo
+          --title "Alice's Adventures in Wonderland · Proseview demo"
+          --description "Try Proseview in your browser: a local dashboard for Markdown novels. Read, search, open the analysis, and edit a scene of Alice in Wonderland."
+          --site-url https://ourarash.github.io/proseview/
+          --preview-image docs/images/demo-preview.png
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

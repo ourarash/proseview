@@ -106,6 +106,119 @@
             <div class="sidebar-dialog-actions"><button type="button" data-dialog-cancel>Cancel</button><button id="sidebarDeleteConfirm" class="sidebar-dialog-danger" type="submit">Delete</button></div>
         </form>
     </dialog>
+    <dialog id="exportDialog" class="export-dialog" aria-labelledby="exportDialogTitle" aria-describedby="exportStepHint">
+        <div class="export-shell">
+            <header class="export-header">
+                <div class="export-heading">
+                    <h2 id="exportDialogTitle">Export</h2>
+                    <p id="exportStepHint" class="export-step-hint">Choose what goes into the e-book.</p>
+                </div>
+                <ol class="export-steps" aria-label="Export steps">
+                    <li><button type="button" data-export-step="1" aria-current="step"><span class="export-step-num" aria-hidden="true">1</span>What to export</button></li>
+                    <li><button type="button" data-export-step="2"><span class="export-step-num" aria-hidden="true">2</span>Style</button></li>
+                    <li><button type="button" data-export-step="3"><span class="export-step-num" aria-hidden="true">3</span>Book details</button></li>
+                </ol>
+                <button type="button" class="export-close" data-export-close aria-label="Close export">&times;</button>
+            </header>
+
+            <section id="exportStep1" class="export-body export-what" data-export-panel="1" aria-label="What to export">
+                <div class="export-picks" role="group" aria-label="Quick picks">
+                    <span class="export-label">Quick picks</span>
+                    <div id="exportQuickPicks" class="export-chip-row"></div>
+                </div>
+                <div class="export-list-tools">
+                    <span id="exportListLabel" class="export-label">Chapters and scenes</span>
+                    <div class="export-list-actions">
+                        <button type="button" id="exportExpandAll" class="export-link-btn">Show all scenes</button>
+                        <label class="export-switch"><input type="checkbox" id="exportReorder" role="switch"><span class="export-switch-track" aria-hidden="true"></span>Reorder</label>
+                    </div>
+                </div>
+                <p id="exportReorderNote" class="export-note" hidden>Drag items, or use the arrow buttons, to set the order of the book. Turn Reorder off to change what is included.</p>
+                <ul id="exportTree" class="export-tree" aria-label="Chapters and scenes"></ul>
+                <ol id="exportOrder" class="export-order" aria-label="Order of the exported book" hidden></ol>
+                <div class="export-save-row">
+                    <button type="button" id="exportSaveToggle" class="export-link-btn" aria-expanded="false" aria-controls="exportSaveForm">Save this selection…</button>
+                    <form id="exportSaveForm" class="export-save-form" hidden>
+                        <label for="exportSaveName">Name</label>
+                        <input id="exportSaveName" type="text" maxlength="80" placeholder="Beta readers, part one" autocomplete="off" required>
+                        <button type="submit" class="export-btn">Save</button>
+                        <button type="button" class="export-btn export-btn-quiet" data-export-save-cancel>Cancel</button>
+                    </form>
+                </div>
+            </section>
+
+            <section id="exportStep2" class="export-body export-style" data-export-panel="2" aria-label="Style" hidden>
+                <fieldset class="export-fieldset">
+                    <legend class="export-label">Book style</legend>
+                    <div id="exportStyleCards" class="export-style-cards"></div>
+                </fieldset>
+                <label class="export-toggle-row" for="exportSceneTitles">
+                    <input type="checkbox" id="exportSceneTitles" role="switch"><span class="export-switch-track" aria-hidden="true"></span>
+                    <span><strong>Show scene titles</strong><span class="export-hint">Off, scenes are separated by a centred * * *, as in most novels. On, each scene starts with its title and the contents lists it.</span></span>
+                </label>
+                <fieldset class="export-fieldset">
+                    <legend class="export-label">E-book format</legend>
+                    <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub3" checked><span><strong>EPUB 3</strong> (recommended)<span class="export-hint">What Apple Books, Kobo and Kindle Direct Publishing expect.</span></span></label>
+                    <label class="export-radio-row"><input type="radio" name="exportEpubVersion" value="epub2"><span><strong>EPUB 2</strong><span class="export-hint">Only for older e-readers that cannot open EPUB 3.</span></span></label>
+                </fieldset>
+            </section>
+
+            <section id="exportStep3" class="export-body export-details" data-export-panel="3" aria-label="Book details" hidden>
+                <div class="export-fields">
+                    <label for="exportTitle">Title</label>
+                    <input id="exportTitle" type="text" maxlength="300" autocomplete="off">
+                    <label for="exportSubtitle">Subtitle <span class="export-optional">optional</span></label>
+                    <input id="exportSubtitle" type="text" maxlength="300" autocomplete="off">
+                    <label for="exportAuthor">Author</label>
+                    <input id="exportAuthor" type="text" maxlength="300" autocomplete="name" placeholder="Your name as readers will see it">
+                    <span class="export-label" id="exportCoverLabel">Cover</span>
+                    <div id="exportCoverDrop" class="export-cover-drop" aria-labelledby="exportCoverLabel">
+                        <img id="exportCoverImg" class="export-cover-thumb" alt="" hidden>
+                        <div class="export-cover-copy">
+                            <p id="exportCoverStatus">Drop an image here, or choose one.</p>
+                            <p id="exportCoverHint" class="export-hint">JPEG or PNG, at least 1600 × 2560 px for stores.</p>
+                            <div class="export-cover-actions">
+                                <button type="button" id="exportCoverChoose" class="export-btn">Choose image…</button>
+                                <button type="button" id="exportCoverRemove" class="export-btn export-btn-quiet" hidden>Remove</button>
+                            </div>
+                        </div>
+                        <input id="exportCoverInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" hidden>
+                    </div>
+                    <p id="exportDetailsError" class="export-error" role="alert" hidden></p>
+                </div>
+                <div class="export-preview" aria-label="Preview">
+                    <div class="export-preview-nav">
+                        <button type="button" id="exportPrevPage" class="export-icon-btn" aria-label="Previous page">&#8249;</button>
+                        <label class="sr-only" for="exportPagePick">Go to</label>
+                        <select id="exportPagePick" class="export-page-pick"></select>
+                        <button type="button" id="exportNextPage" class="export-icon-btn" aria-label="Next page">&#8250;</button>
+                    </div>
+                    <div class="export-reader"><iframe id="exportPreviewFrame" title="Preview of the e-book" sandbox="allow-same-origin" tabindex="-1"></iframe></div>
+                    <p id="exportPreviewStatus" class="export-preview-status" aria-live="polite"></p>
+                </div>
+            </section>
+
+            <section id="exportStepRun" class="export-body export-run" data-export-panel="run" aria-label="Exporting" hidden>
+                <div class="export-run-box">
+                    <p class="export-run-title">Making your e-book</p>
+                    <div id="exportProgress" class="export-progress" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+                    <p id="exportRunStep" class="export-run-step" aria-live="polite">Starting</p>
+                </div>
+            </section>
+
+            <section id="exportStepDone" class="export-body export-done" data-export-panel="done" aria-label="Finished" hidden>
+                <div id="exportDoneBox" class="export-done-box" tabindex="-1"></div>
+            </section>
+
+            <footer class="export-footer">
+                <p id="exportTotals" class="export-totals" aria-live="polite"></p>
+                <div class="export-actions">
+                    <button type="button" id="exportBack" class="export-btn">Back</button>
+                    <button type="button" id="exportNext" class="export-btn export-btn-primary">Next</button>
+                </div>
+            </footer>
+        </div>
+    </dialog>
     <div id="sidebarFileToast" class="sidebar-file-toast" role="status" aria-live="polite" hidden></div>
 
     <main id="mainContent">
@@ -128,6 +241,7 @@
             <button data-tab="settings" onclick="showTab('settings')">Settings</button>
         </nav>
         <div class="toolbar-actions">
+            <button id="exportOpenBtn" class="theme-toggle export-open-btn" type="button" onclick="openExportDialog()" aria-haspopup="dialog" title="Export the book as an e-book"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 19h14"></path></svg><span class="theme-toggle-label">Export</span></button>
             <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg><span>Files</span></button>
             <div id="dashboardSearchMount" class="dashboard-search-mount">
                 <div id="searchMenu" class="search-menu">
@@ -422,6 +536,8 @@
                 <div id="modalHeaderExtras" class="scene-toolbar-menu-wrap"><button id="sceneMoreBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('sceneMoreMenu', this)" aria-label="More scene actions" aria-haspopup="dialog" aria-controls="sceneMoreMenu" aria-expanded="false" title="More scene actions">&#8230;</button><div id="sceneMoreMenu" class="scene-toolbar-popover scene-more-menu" role="dialog" aria-label="More scene actions" hidden>
                     <button id="modalRefreshBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();refreshContent()"><span aria-hidden="true">&#8635;</span> Refresh from disk</button>
                     <a id="modalEditorBtn" class="scene-toolbar-menu-action" target="_blank" title="Open in {{ editor_label }}"><span aria-hidden="true">&#8599;</span> Open in {{ editor_label }}</a>
+                    <button id="modalExportSceneBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('scene')"><span aria-hidden="true">&#8615;</span> Export this scene…</button>
+                    <button id="modalExportChapterBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('chapter')"><span aria-hidden="true">&#8615;</span> Export this chapter…</button>
                     <button id="modalFocusBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();toggleFocusMode()" aria-pressed="false" aria-keyshortcuts="F"><span aria-hidden="true">&#9681;</span> Focus layout</button>
                     <button id="modalFullscreenBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();toggleFullscreen()" aria-pressed="false" aria-keyshortcuts="Shift+F"><span aria-hidden="true">&#8597;</span> Full screen</button>
                 </div></div>

@@ -148,6 +148,11 @@
                 }));
                 menu.appendChild(document.createElement('hr'));
             }
+            var exportItems = typeof exportMenuItemsFor === 'function' ? exportMenuItemsFor(node) : [];
+            exportItems.forEach(function(item) {
+                menu.appendChild(sidebarMenuButton(item.label, item.action, item.run));
+            });
+            if (exportItems.length) menu.appendChild(document.createElement('hr'));
             menu.appendChild(sidebarMenuButton('Copy path', 'copy-path', function() {
                 sidebarCopyNodePath(node, anchor, false);
             }));

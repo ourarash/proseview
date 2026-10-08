@@ -3,8 +3,11 @@
 Covers:
 - scenes are collected in reading order, with dashboard title/chapter fallbacks
 - the compiled Markdown groups chapters as ``#`` and scenes as ``##``
-- a missing pandoc fails with an actionable message rather than a traceback
-- a real EPUB is produced when pandoc is installed (skipped otherwise)
+- a missing pandoc fails with an actionable message, but only on the pandoc engine
+- a real EPUB is produced by the built-in writer, and by pandoc when installed
+
+The built-in EPUB writer's markup, selections, and the CLI flags have their
+own tests in ``test_epub.py`` and ``test_book.py``.
 """
 
 from __future__ import annotations
@@ -111,7 +114,26 @@ def test_missing_pandoc_explains_how_to_install_it(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr("proseview.export.shutil.which", lambda _name: None)
 
     with pytest.raises(ExportError, match="pandoc is required"):
-        export_epub(_repo(tmp_path), Config(), tmp_path / "out.epub")
+        export_epub(_repo(tmp_path), Config(), tmp_path / "out.epub", engine="pandoc")
+
+
+def test_the_builtin_engine_needs_no_pandoc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("proseview.export.shutil.which", lambda _name: None)
+
+    output = export_epub(_repo(tmp_path), Config(), tmp_path / "out.epub")
+
+    assert output.is_file()
+
+
+def test_files_marked_not_a_scene_are_left_out_as_the_dashboard_leaves_them(tmp_path: Path):
+    root = _repo(tmp_path)
+    (root / "manuscript" / "ch02" / "00-notes.md").write_text(
+        "---\nscene: false\n---\n\nWorking notes.\n", encoding="utf-8",
+    )
+
+    documents = collect_scene_documents(root, Config())
+
+    assert all("Working notes" not in d.markdown for d in documents)
 
 
 def test_unknown_epub_version_is_rejected_before_shelling_out(tmp_path: Path):
@@ -122,6 +144,11 @@ def test_unknown_epub_version_is_rejected_before_shelling_out(tmp_path: Path):
 def test_summary_counts_scenes_chapters_and_words(tmp_path: Path):
     summary = scene_count_summary(collect_scene_documents(_repo(tmp_path), Config()))
     assert summary.startswith("3 scenes across 3 chapters, ")
+
+
+def test_summary_does_not_say_one_scenes(tmp_path: Path):
+    documents = collect_scene_documents(_repo(tmp_path), Config())[:1]
+    assert scene_count_summary(documents) == "1 scene across 1 chapter, 4 words"
 
 
 def _with_plans(tmp_path: Path) -> Path:
@@ -208,10 +235,16 @@ def test_candidate_appendix_folders_lists_what_you_can_append(tmp_path: Path):
     assert all(name not in {"manuscript", ".hidden", "empty-dir"} for name, _ in folders)
 
 
-@pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
-def test_appendix_reaches_the_epub(tmp_path: Path):
+ENGINES = [
+    "builtin",
+    pytest.param("pandoc", marks=pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")),
+]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_appendix_reaches_the_epub(tmp_path: Path, engine: str):
     root = _with_plans(tmp_path)
-    output = export_epub(root, Config(), tmp_path / "out.epub", appendix_folders=["plans"])
+    output = export_epub(root, Config(), tmp_path / "out.epub", appendix_folders=["plans"], engine=engine)
 
     with zipfile.ZipFile(output) as book:
         text = b"".join(
@@ -221,11 +254,11 @@ def test_appendix_reaches_the_epub(tmp_path: Path):
     assert "Appendix: Plans" in text
 
 
-@pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
-def test_epub_export_produces_a_readable_book(tmp_path: Path):
+@pytest.mark.parametrize("engine", ENGINES)
+def test_epub_export_produces_a_readable_book(tmp_path: Path, engine: str):
     output = export_epub(
         _repo(tmp_path), Config(), tmp_path / "out" / "book.epub",
-        title="A Novel", author="Ari",
+        title="A Novel", author="Ari", engine=engine,
     )
 
     assert output.is_file() and output.stat().st_size > 0
@@ -238,7 +271,22 @@ def test_epub_export_produces_a_readable_book(tmp_path: Path):
     assert "Rena opened the shop." in text
 
 
-@pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
-def test_demo_fixture_exports_end_to_end(tmp_path: Path):
-    output = export_epub(FIXTURE, Config.load(FIXTURE), tmp_path / "demo.epub")
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_selection_reaches_both_engines(tmp_path: Path, engine: str):
+    from proseview.config import ExportSelection
+
+    output = export_epub(
+        _repo(tmp_path), Config(), tmp_path / "part.epub", engine=engine,
+        selection=ExportSelection(picks=(("chapter", "3"),)),
+    )
+
+    with zipfile.ZipFile(output) as book:
+        text = b"".join(book.read(n) for n in book.namelist() if n.endswith(".xhtml")).decode("utf-8")
+    assert "The ledger balanced." in text
+    assert "Rena opened the shop." not in text
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_demo_fixture_exports_end_to_end(tmp_path: Path, engine: str):
+    output = export_epub(FIXTURE, Config.load(FIXTURE), tmp_path / "demo.epub", engine=engine)
     assert output.is_file() and output.stat().st_size > 0

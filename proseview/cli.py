@@ -162,8 +162,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     export_p = sub.add_parser(
-        "export", help="Compile the manuscript into an EPUB (requires pandoc).",
-        description="Compile the manuscript into a single document via pandoc.",
+        "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB.",
+        description=(
+            "Compile the manuscript, or a selection of it, into an EPUB. Nothing "
+            "else needs installing; --engine pandoc keeps the old pandoc path "
+            "for one more release."
+        ),
     )
     export_p.add_argument(
         "--root", type=Path, default=Path.cwd(),
@@ -175,7 +179,55 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     export_p.add_argument(
         "--output", type=Path, default=None,
-        help="Destination file (default: <root>/output/<repo>.epub).",
+        help="Destination file (default: <root>/exports/<book>-<date>.epub).",
+    )
+    pick = export_p.add_argument_group(
+        "choosing what to export",
+        "With none of these, the whole book is exported.",
+    )
+    pick.add_argument(
+        "--chapters", action=_PickAction, kind="chapter", dest="picks", default=None, metavar="LIST",
+        help=(
+            "Chapters by number, range, folder or title, comma-separated: "
+            "--chapters 3,7-9 or --chapters ch03. Repeatable."
+        ),
+    )
+    pick.add_argument(
+        "--scenes", action=_PickAction, kind="scene", dest="picks", default=None, metavar="LIST",
+        help=(
+            "Scenes by path, file name, title, or chapter.scene number, "
+            "comma-separated: --scenes ch01/02-down-down-down,4.1. Repeatable."
+        ),
+    )
+    pick.add_argument(
+        "--order", choices=["book", "custom"], default="book",
+        help="book keeps manuscript order (default); custom keeps the order you listed.",
+    )
+    pick.add_argument(
+        "--selection", default="", metavar="NAME",
+        help="Export a selection saved under export.selections in .proseview.yaml.",
+    )
+    pick.add_argument(
+        "--save-selection", default="", metavar="NAME",
+        help="Save the chapters and scenes picked here under NAME, then export them.",
+    )
+    pick.add_argument(
+        "--list-selections", action="store_true",
+        help="List saved selections, then exit.",
+    )
+    look = export_p.add_argument_group("how it looks")
+    look.add_argument(
+        "--style", default="", metavar="NAME",
+        help="Book style: a built-in name (classic) or a folder holding epub.css (default: classic).",
+    )
+    look.add_argument(
+        "--scene-titles", action=argparse.BooleanOptionalAction, default=None,
+        help="Show scene titles as headings instead of scene breaks (default: the style's choice).",
+    )
+    look.add_argument("--cover-image", type=Path, default=None, help="Cover image (JPEG, PNG, GIF or WebP).")
+    look.add_argument(
+        "--css", type=Path, action="append", default=None,
+        help="Extra stylesheet, applied after the style. Repeatable.",
     )
     export_p.add_argument("--title", default="", help="Title metadata (default: the repo folder name).")
     export_p.add_argument("--author", default="", help="Author metadata.")
@@ -184,10 +236,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--epub-version", choices=["epub3", "epub2"], default="epub3",
         help="Try epub2 for older readers (default: epub3).",
     )
-    export_p.add_argument("--cover-image", type=Path, default=None, help="Cover image passed to pandoc.")
     export_p.add_argument(
-        "--css", type=Path, action="append", default=None,
-        help="Stylesheet to embed. Repeatable.",
+        "--engine", choices=["builtin", "pandoc"], default="builtin",
+        help=(
+            "builtin needs nothing installed (default). pandoc uses an installed "
+            "pandoc as before; it ignores --style and --scene-titles, and will be "
+            "removed in a later release."
+        ),
     )
     export_p.add_argument(
         "--appendix", action="append", default=None, metavar="FOLDER",
@@ -289,6 +344,26 @@ def _build_parser() -> argparse.ArgumentParser:
     # working as a synonym for ``proseview serve --root X``.
     _add_serve_args(parser)
     return parser
+
+
+class _PickAction(argparse.Action):
+    """Collect --chapters and --scenes into one ordered list of picks.
+
+    Both flags share a destination so ``--order custom`` can follow the
+    order they were typed in, interleaved.
+    """
+
+    def __init__(self, option_strings, dest, kind: str, **kwargs):
+        self.kind = kind
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        picks = list(getattr(namespace, self.dest, None) or [])
+        tokens = [token.strip() for token in str(values).split(",") if token.strip()]
+        if not tokens:
+            parser.error(f"{option_string} needs at least one name")
+        picks += [(self.kind, token) for token in tokens]
+        setattr(namespace, self.dest, picks)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -497,18 +572,24 @@ def proposal_action(args: argparse.Namespace) -> int:
 
 
 def export_manuscript(args: argparse.Namespace) -> int:
-    """Compile the manuscript to a file. pandoc is imported lazily on purpose."""
-    from .config import Config
+    """Compile the manuscript, or a selection of it, to a file."""
+    from .config import Config, ConfigError, ExportSelection
     from .export import (
         ExportError,
         candidate_appendix_folders,
-        collect_scene_documents,
-        export_epub,
+        ensure_gitignored,
+        export_book,
+        new_book_identifier,
+        save_book_identifier,
+        save_selection,
         scene_count_summary,
     )
 
     root = args.root.resolve()
-    cfg = Config.load(root)
+    try:
+        cfg = Config.load(root)
+    except ConfigError as exc:
+        raise SystemExit(f"{root / '.proseview.yaml'}: {exc}") from exc
 
     if args.list_appendix_folders:
         folders = candidate_appendix_folders(root, cfg)
@@ -520,23 +601,60 @@ def export_manuscript(args: argparse.Namespace) -> int:
             print(f"  {name:<20} {count} file{'s' if count != 1 else ''}")
         return 0
 
-    output = args.output or (root / "output" / f"{root.name}.epub")
+    if args.list_selections:
+        if not cfg.export.selections:
+            print("No saved selections. Save one with --chapters/--scenes and --save-selection NAME.")
+            return 0
+        print("Saved selections (export with --selection NAME):")
+        for saved in cfg.export.selections:
+            described = ", ".join(f"{kind} {token}" for kind, token in saved.picks)
+            order = " (custom order)" if saved.order == "custom" else ""
+            print(f"  {saved.name}: {described}{order}")
+        return 0
+
+    picks = tuple(args.picks or ())
+    selection: ExportSelection | None = None
     try:
-        written = export_epub(
-            root, cfg, Path(output),
+        if args.selection:
+            if picks:
+                raise ExportError("Use --selection or --chapters/--scenes, not both")
+            selection = cfg.export.selection(args.selection)
+            if selection is None:
+                names = ", ".join(saved.name for saved in cfg.export.selections) or "none saved yet"
+                raise ExportError(f"No saved selection called {args.selection!r} ({names})")
+        elif picks:
+            selection = ExportSelection(name=args.save_selection, picks=picks, order=args.order)
+        if args.save_selection:
+            if not picks:
+                raise ExportError("--save-selection needs --chapters or --scenes to save")
+            save_selection(root, cfg, selection)
+            print(f"Saved selection {args.save_selection!r} to {root / '.proseview.yaml'}")
+
+        identifier = cfg.export.identifier or new_book_identifier()
+        result = export_book(
+            root, cfg, args.output,
+            selection=selection,
             title=args.title,
             author=args.author,
             language=args.language,
+            identifier=identifier,
             epub_version=args.epub_version,
+            engine=args.engine,
+            style=args.style,
+            scene_titles=args.scene_titles,
             cover_image=args.cover_image,
             css=args.css,
             appendix_folders=args.appendix,
         )
-        summary = scene_count_summary(collect_scene_documents(root, cfg))
+        if not cfg.export.identifier:
+            save_book_identifier(root, identifier)
+            print(f"Saved a book identifier to {root / '.proseview.yaml'}, so re-exports replace this book")
     except ExportError as exc:
         raise SystemExit(str(exc)) from exc
-    print(f"Wrote {written}")
-    print(summary)
+    if args.output is None and ensure_gitignored(root):
+        print("Added exports/ to .gitignore")
+    print(f"Wrote {result.path}")
+    print(scene_count_summary(result.book.scenes))
     return 0
 
 

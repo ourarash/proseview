@@ -37,3 +37,6 @@ spike-structured-output.json
 
 # Scratch video from scripts/record_demo_clips.py
 docs/_clips/
+
+# Books written by `proseview export` (the demo book included)
+exports/

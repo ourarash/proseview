@@ -1,0 +1,14 @@
+# Classic: a traditional novel. Serif body, "Chapter One" openers with a
+# drop cap and a small-caps first line, and a centred ornament between scenes.
+name: Classic
+
+# words ("Chapter One"), numerals ("Chapter 1") or none.
+chapter_numbering: words
+
+# Shown, centred, between scenes when scene titles are hidden. Plain
+# asterisks render in every e-reader font; fancier glyphs do not.
+scene_break: "*   *   *"
+
+# Novels hide scene titles and mark the change of scene with the break
+# above. `proseview export --scene-titles` shows them as headings instead.
+show_scene_titles: false

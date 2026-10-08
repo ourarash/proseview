@@ -4,7 +4,8 @@
 
 **[Try the live demo →](https://ourarash.github.io/proseview/)** The dashboard for
 *Alice's Adventures in Wonderland*, in your browser: read, search, open the
-analysis, and edit a scene. Nothing to install, and your edits never leave the tab.
+analysis, edit a scene, and export the book as an EPUB or a PDF. Nothing to
+install, and your edits never leave the tab.
 
 Proseview reads a folder of Markdown scenes and reports lexical health,
 pacing, character presence, and revision history. The same pages can be read,
@@ -67,6 +68,21 @@ it happens is visible instead of inferred. Hover any scene for its card.
 
 ![The Timeline tab showing chapter proportion, words per scene, three storyline lanes, and reading order against story order, with a scene card on hover](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-timeline.gif)
 
+### Export: EPUB and PDF
+
+Click **Export** to turn the whole book, a chapter, a scene, or any mix of
+them into an e-book for Apple Books, Kobo and Kindle, a paperback interior
+ready for KDP or IngramSpark, or a PDF to share, as a finished-looking book or
+in manuscript format for agents. Pick chapters and scenes by hand, by status,
+point of view or character; choose a style (Classic, Modern, Romance or
+Manuscript); and see the pages, laid out exactly as the file will be, before
+you export. A check afterwards says whether the book is ready for the stores
+or what to fix.
+
+![The Export dialog's second step: format cards for E-book, Print book, Shareable PDF and All formats, the print book's trim size and right-hand chapter option, and thumbnails of the Classic, Modern and Romance styles](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/export-formats.png)
+
+![The Export dialog's third step: title, author and cover beside a preview of the print book showing two facing pages with running heads and page numbers](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/export-preview.png)
+
 ### Character presence
 
 ![The Analysis tab's character presence timeline, tracking how often each character is mentioned across all twelve chapters](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/analytics.png)
@@ -103,9 +119,12 @@ it happens is visible instead of inferred. Hover any scene for its card.
   can read first.
 - 📦 **EPUB and PDF export.** The Export button turns the whole book, a
   chapter, a scene, or any mix of them into a styled e-book, a print-ready
-  paperback interior, or a PDF to share (in manuscript format for agents),
-  with a preview, a check that it is ready for the stores, and nothing else
-  to install. `proseview export` does the same from the command line. [Export guide →](docs/export.md)
+  paperback interior (5 × 8 to 6 × 9 in, or A5), or a PDF to share, in four
+  styles including standard manuscript format for agents. Pick scenes by
+  status, point of view or character, add a copyright page, dedication and
+  "Also by" page, preview the pages, and get a plain-language check that the
+  book is ready for the stores. Nothing else to install; `proseview export`
+  does the same from the command line. [Export guide →](docs/export.md)
 - 🔁 **Live reload, deep links, themes.** Save in your editor and the page
   follows. Every scene has a URL. Six themes, seven fonts.
 - 🧪 **Tested.** A unit suite plus a browser tier that drives the real UI.
@@ -166,8 +185,9 @@ proseview snapshot --root /path/to/your/novel --out ~/my-novel-site
 writes the dashboard as static files any web host can serve, GitHub Pages
 included. Readers can browse scenes, search, and read the analysis; nothing on
 it edits, and no server runs. Paths from your machine are replaced by the
-folder's name. `--demo` also lets visitors try edit mode; what they save stays
-in their browser tab. `--title`, `--site-url` and `--preview-image` decide how a
+folder's name. `--demo` also lets visitors try edit mode (what they save stays
+in their browser tab) and Export, with ready-made EPUB and PDF files of the
+whole book in every style to download. `--title`, `--site-url` and `--preview-image` decide how a
 link to it unfurls when shared. The live demo is built that way.
 
 ## ⚙️ Configuration

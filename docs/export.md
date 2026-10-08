@@ -20,8 +20,13 @@ Click **Export** in the top bar. The dialog has three steps:
 1. **What to export.** Every chapter is ticked to start with. Untick
    chapters, or open one with its arrow to tick single scenes. The line at
    the bottom keeps count: "3 chapters, 14 scenes, 41,200 words". Quick picks
-   fill the ticks for you: *Whole book*, *First three chapters*, and any
-   selection you have saved. To put things in a different order (a synopsis
+   fill the ticks for you: *Whole book*, *First three chapters*, *First 50
+   pages* (estimated from the trim size, in whole scenes), and any selection
+   you have saved. **Or tick scenes by** a scene's *status* or *point of view*
+   (the `status:` and `pov:` in its frontmatter), a *character* (listed under
+   `characters:`, or named in the text, as the presence chart counts them),
+   or *changed since* a date (from git, or the file's date), for instance to
+   send beta readers only what changed since their last round. To put things in a different order (a synopsis
    packet, one character's arc), turn on **Reorder** and drag them, or use the
    arrow buttons. **Save this selection…** keeps what you ticked under a name.
 2. **Format and style.** Choose *E-book (EPUB)*, *Print book (PDF)*,
@@ -41,7 +46,9 @@ Click **Export** in the top bar. The dialog has three steps:
 3. **Book details.** The title, subtitle, author and cover. Drop a cover
    image on the box or choose one; it is saved in your novel's folder as
    `cover.jpg` (or `.png`). With the Manuscript style you also give your
-   contact details for its title page. Beside the form is a preview, laid out
+   contact details for its title page. **Front and back matter** (see
+   [below](#front-and-back-matter)) opens a few more fields: the copyright
+   page, an ISBN, a dedication and your other books. Beside the form is a preview, laid out
    exactly as the export will be: an e-reader page for an EPUB, facing pages
    for a print book, single pages for a shareable PDF. Use the arrows to turn
    pages and the menu to jump. A PDF preview lays out the first three
@@ -188,8 +195,14 @@ chapter's opening page, and an inside margin that widens with the page count
 so no words disappear into the fold. The shareable PDF adds the cover, a
 contents page you can click, and bookmarks for every chapter.
 
+**Modern** has a clean serif text with sans-serif headings, a large numeral
+for each chapter, no drop cap, and a pause of three dots between scenes.
+
+**Romance** has a large italic chapter title under a numeral framed by floral
+ornaments, a drop cap, and a floral mark between scenes.
+
 **Manuscript** is standard submission format, for a Shareable PDF only:
-12 pt type, double-spaced, 1 inch margins, every paragraph indented, "Chapter 1"
+12 pt Liberation Serif (the same letter widths as Times New Roman), double-spaced, 1 inch margins, every paragraph indented, "Chapter 1"
 a third of the way down the page, a centred `#` between scenes, a title page
 with your name, contact details and the word count ("about 85,000 words"),
 and "Surname / TITLE / page" at the top of each page.
@@ -202,19 +215,48 @@ of contents):
 proseview export --scene-titles
 ```
 
+A chapter whose first paragraph is a single line keeps its small capitals but
+no drop cap, which would otherwise hang into the paragraph below.
+
 PDFs use the open-licence fonts that come with Proseview (Libertinus Serif
-for the text), never the fonts installed on your computer, so a book looks
-the same on every machine and every font is embedded in the file.
+for the text, Noto Sans for Modern's headings, Liberation Serif for
+Manuscript), never the fonts installed on your computer, so a book looks the
+same on every machine and every font is embedded in the file.
 
 A style is a folder holding `epub.css` for the e-book and `pdf.typ` (a
 [Typst](https://typst.app/docs/) template) for the PDFs, either or both,
-plus an optional `style.yaml` (chapter numbering as `words`, `numerals` or
-`none`; the scene-break text; whether scene titles show; `formats` to limit
-what it makes). Point `--style` at a folder of your own to use it, and add
+plus an optional `style.yaml` (chapter numbering as `words`, `numerals`,
+`number` or `none`; the scene-break text; whether scene titles show;
+`formats` to limit what it makes). A style can build on another with
+`extends: classic`: its stylesheet is added after the base one, and its PDFs
+use the base layout with the choices it sets under `pdf:` (`body_font`,
+`heading_font`, `opener` as `classic`, `modern` or `romance`, `drop_cap`,
+`ornament`). That is all Modern and Romance are. Point `--style` at a folder of your own to use it, and add
 `--css` for small overrides on top of an e-book style. The comment at the top
 of the built-in `classic/pdf.typ` lists what a PDF template defines.
 
 Defaults for these go in `.proseview.yaml` (see below).
+
+## Front and back matter
+
+A whole book, or a selection of several chapters, gets pages before and after
+the story. A single chapter or scene, sent to a reader for that one piece,
+and a manuscript for an agent, go without.
+
+- **Copyright page**, on by default: "Copyright © 2026 Your Name. All rights
+  reserved.", and the ISBN when you give one. In a print book it sits on the
+  back of the title page.
+- **Dedication**, when you write one.
+- **Also by**: list your other books, one per line, for a page at the back.
+- **Your own pages**: Markdown files in a `front-matter/` or `back-matter/`
+  folder in your novel, in name order, for an epigraph, a foreword,
+  acknowledgements, "About the Author", anything. Number them to set the
+  order (`01-epigraph.md`). A file named for a kind of page
+  (`dedication.md`, `copyright.md`) replaces the one Proseview would write.
+
+Front matter comes after the title page and before the contents; back matter
+after the last chapter. E-readers learn what each page is, and the back
+matter is listed in the contents.
 
 ## What Proseview remembers
 
@@ -234,6 +276,11 @@ export:
   paper: letter         # or a4
   recto_chapters: true  # print chapters open on a right-hand page
   contact: "you@example.com\n+1 555 0100"   # a manuscript's title page
+  copyright_page: true
+  isbn: 978-1-23456-789-0
+  dedication: For Alice
+  also_by: [Through the Looking-Glass]
+  matter_files: true    # include front-matter/ and back-matter/
   style: classic
   scene_titles: false
   cover_image: cover.jpg   # a path inside the novel's folder
@@ -251,6 +298,15 @@ export:
 
 Every later export reuses it, so an e-reader replaces last week's copy instead
 of shelving a second book. Keep it once you have shared or published the book.
+
+## In the online demo
+
+The [live demo](https://ourarash.github.io/proseview/) has no Proseview
+running behind it, so it cannot build what you pick. Its Export dialog works
+all the same, with every step and real previews, and downloads a ready-made
+copy of the whole demo book in the format and style you chose. `proseview
+snapshot --demo` builds those copies for any book (`--book-title` and
+`--book-author` name them).
 
 ## Appendices
 

@@ -10,6 +10,37 @@ section here becomes the release notes on GitHub.
 - When Claude cannot answer -- an exhausted plan, an API error -- the dock
   says why, instead of "Claude could not finish: success".
 
+## Unreleased
+
+### Added
+
+- Export part of the book: one chapter, one scene, several chapters (gaps
+  allowed), hand-picked scenes, or a custom order, with `--chapters`,
+  `--scenes` and `--order custom`. A single chapter or scene comes without a
+  table of contents, and a single scene gets a small header naming the book
+  and chapter.
+- Saved selections: `--save-selection "Beta readers part 1"` remembers what
+  you picked in `.proseview.yaml`, and `--selection` exports it again.
+  `--list-selections` shows them.
+- The Classic book style: serif body, "Chapter One" openers with a drop cap,
+  and a centred break between scenes. Scene titles are hidden by default;
+  `--scene-titles` shows them. `--style` takes a folder of your own.
+
+### Changed
+
+- `proseview export` writes the EPUB itself and no longer needs pandoc.
+  `--engine pandoc` keeps the old path for one more release.
+- Exports land in `exports/` inside the novel, named after the book and the
+  day (`my-novel-2026-10-08.epub`), and the first export adds `exports/` to
+  the novel's `.gitignore`. `--output` still writes anywhere.
+- The book keeps one identifier, saved under `export:` in `.proseview.yaml`,
+  so an e-reader replaces an earlier export instead of adding a second copy.
+
+### Fixed
+
+- Files marked `scene: false` are left out of an export, as the dashboard
+  leaves them out.
+
 ## 0.3.1 — 2026-10-08
 
 ### Changed

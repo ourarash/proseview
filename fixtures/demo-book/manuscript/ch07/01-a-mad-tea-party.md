@@ -39,6 +39,8 @@ Alice looked all round the table, but there was nothing on it but tea. “I don�
 
 “You should learn not to make personal remarks,” Alice said with some severity; “it’s very rude.”
 
+<!-- TODO: Decide whether the riddle stays unanswered or gets a payoff at the trial. -->
+
 The Hatter opened his eyes very wide on hearing this; but all he *said* was, “Why is a raven like a writing-desk?”
 
 “Come, we shall have some fun now!” thought Alice. “I’m glad they’ve begun asking riddles.—I believe I can guess that,” she added aloud.

@@ -30,10 +30,12 @@ def test_the_module_reports_the_packaged_version():
 
 
 def test_the_changelog_describes_the_packaged_version():
+    # Work not yet released collects under "Unreleased"; the newest version
+    # section is the one a tag publishes.
     headings = [
         line.split()[1]
         for line in (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
-        if line.startswith("## ")
+        if line.startswith("## ") and line.split()[1] != "Unreleased"
     ]
     assert headings, "CHANGELOG.md has no version sections"
     assert headings[0] == _packaged_version(), "the newest changelog section is not the packaged version"

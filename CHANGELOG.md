@@ -3,6 +3,19 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
+## Unreleased
+
+### Changed
+
+- Graphite Dark is the default theme. A theme you picked is kept.
+- On a phone the dashboard lays out for the screen: the file list starts
+  closed, and the search and theme menus fit instead of running off the edge.
+- A snapshot can describe itself to link previews (`--title`,
+  `--description`, `--site-url`, `--preview-image`), and leaves out the
+  recent-changes card when the repository has no git history.
+- The demo book has TODOs and notes to show, and its first scene's
+  frontmatter is back.
+
 ## 0.3.0 — 2026-10-07
 
 ### Added

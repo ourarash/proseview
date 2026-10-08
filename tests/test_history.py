@@ -150,6 +150,34 @@ def test_history_cache_roundtrip(tmp_path: Path):
     assert reloaded.get("abc123") == row
 
 
+def test_rows_cached_under_an_older_measure_are_measured_again(tmp_path: Path):
+    """A cached row keeps the numbers of the rule that counted it.
+
+    When the count itself changes -- TODO and NOTE comments stopped counting
+    as words -- rows cached before it would keep the old totals beside new
+    ones, and the goal history would show a drop nobody wrote.
+    """
+    import json
+    from proseview.history import HISTORY_MEASURE
+
+    row = {
+        "sha": "abc123", "committed_at": "2026-01-01T00:00:00+00:00", "total_words": 1000,
+        "scene_count": 1, "chapter_count": 1, "mattr": 0.7, "mtld": 80.0,
+        "characters_active": [], "tool_version": "0.3.0",
+    }
+    path = tmp_path / ".proseview" / "history-cache.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"abc123": row}), encoding="utf-8")
+    assert HistoryCache(tmp_path).get("abc123") is None
+
+    path.write_text(json.dumps({"abc123": {**row, "measure": HISTORY_MEASURE}}), encoding="utf-8")
+    cache = HistoryCache(tmp_path)
+    assert cache.get("abc123").total_words == 1000
+    cache.put(cache.get("abc123"))
+    cache.save()
+    assert json.loads(path.read_text(encoding="utf-8"))["abc123"]["measure"] == HISTORY_MEASURE
+
+
 def test_history_cache_tolerates_corrupt_json(tmp_path: Path):
     path = tmp_path / ".proseview" / "history-cache.json"
     path.parent.mkdir(parents=True)

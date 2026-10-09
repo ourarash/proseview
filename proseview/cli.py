@@ -114,8 +114,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="proseview",
         description=(
-            "A local dashboard and AI harness for Markdown-first novel "
-            "repositories."
+            "A writing studio for novels in plain Markdown."
         ),
     )
     sub = parser.add_subparsers(dest="cmd")

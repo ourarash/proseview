@@ -10,6 +10,7 @@ Opt-in, like the rest of the browser tier: ``pytest -m e2e_browser``.
 
 from __future__ import annotations
 
+import base64
 import os
 import shutil
 from pathlib import Path
@@ -26,6 +27,9 @@ from .conftest import REPO_ROOT, ProseviewServer, _start_server, _stop_server  #
 pytestmark = pytest.mark.e2e_browser
 
 DEMO = REPO_ROOT / "fixtures" / "demo-book"
+
+#: A 1x1 PNG.
+PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
 #: Obsidian-style Markdown the editor has no syntax for. A save must leave it
 #: as written rather than escape or reformat it.
@@ -54,6 +58,10 @@ def notes_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[P
     )
     (root / "manuscript" / "ch01" / "04-vault.md").write_text(VAULT_SCENE, encoding="utf-8")
     (root / "story-bible" / "vault.md").write_text("---\ntitle: Vault\n---\n\n" + VAULT_BODY, encoding="utf-8")
+    chapter = root / "manuscript" / "ch01"
+    (chapter / "map.png").write_bytes(base64.b64decode(PIXEL_PNG))
+    (chapter / "loose-notes.txt").write_text("Check the tide tables.\n", encoding="utf-8")
+    (chapter / "draft.docx").write_bytes(b"PK\x03\x04\x14\x00\xff\xfe\x00\x00")
     server = _start_server(root, agent_bin, fake_home)
     try:
         yield server
@@ -180,3 +188,23 @@ def test_saving_a_note_leaves_untouched_vault_markdown_as_written(page: Page, no
     expect(page.locator("#fileEditBar")).to_be_hidden()
     assert note.read_text(encoding="utf-8") == "---\ntitle: Vault\n---\n\n" + VAULT_BODY.replace(
         "Jack met [[Jack Mercer]] at the docks.", "Jack met \\[\\[Jack Mercer\\]\\] at the docks. He waved.")
+
+
+def test_images_and_other_files_beside_the_scenes_can_be_opened(page: Page, notes_server: ProseviewServer):
+    page.goto(notes_server.url("/#/file/manuscript%2Fch01%2Fmap.png"))
+    image = page.locator("#filePreviewBody .repo-image img")
+    expect(image).to_be_visible()
+    page.wait_for_function("() => document.querySelector('#filePreviewBody .repo-image img').naturalWidth === 1")
+
+    page.goto(notes_server.url("/#/file/manuscript%2Fch01%2Floose-notes.txt"))
+    expect(page.locator("#filePreviewBody pre")).to_have_text("Check the tide tables.\n")
+    expect(page.get_by_role("button", name="Edit", exact=True)).to_be_hidden()
+
+    page.goto(notes_server.url("/#/file/manuscript%2Fch01%2Fdraft.docx"))
+    expect(page.locator("#filePreviewBody .repo-warn")).to_contain_text("cannot open draft.docx")
+
+    # They are listed beside the scenes, and none of them became a scene.
+    page.goto(notes_server.url("/"))
+    tree = page.get_by_role("tree", name="Repository files")
+    expect(tree.locator('.file-link[data-path="manuscript/ch01/map.png"]')).to_be_attached()
+    assert page.evaluate("Object.keys(meta).every(p => p.endsWith('.md'))")

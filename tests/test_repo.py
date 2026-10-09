@@ -274,6 +274,27 @@ def test_sidebar_lists_nested_manuscript_notes_as_plain_files(tmp_path: Path):
     assert nested and nested["is_scene"] is False and nested["scene_path"] is None
 
 
+def test_sidebar_lists_images_and_other_files_beside_the_prose(tmp_path: Path):
+    """They can be found and opened from the file browser, but are never scenes."""
+    chapter = tmp_path / "manuscript" / "ch01"
+    chapter.mkdir(parents=True)
+    (chapter / "01-opening.md").write_text("scene", encoding="utf-8")
+    (chapter / "map.png").write_bytes(b"\x89PNG\r\n")
+    (chapter / "notes.txt").write_text("loose notes", encoding="utf-8")
+    (chapter / ".DS_Store").write_bytes(b"\0")
+
+    tree = build_sidebar_tree(tmp_path, Config())
+
+    names = [child["name"] for child in _find_descendant(tree, "manuscript/ch01")["children"]]
+    assert names == ["01-opening.md", "map.png", "notes.txt"]
+    for rel in ("manuscript/ch01/map.png", "manuscript/ch01/notes.txt"):
+        node = _find_descendant(tree, rel)
+        assert node["is_scene"] is False and not node.get("scene_path")
+    from proseview.scenes import iter_scene_paths
+
+    assert [p.name for p in iter_scene_paths(tmp_path / "manuscript")] == ["01-opening.md"]
+
+
 @pytest.mark.parametrize(
     "relative,expected",
     [

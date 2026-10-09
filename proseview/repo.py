@@ -408,7 +408,7 @@ def _file_node_scene(path: Path, root: Path, manuscript_subdir: str) -> dict[str
 
 
 def _dir_node_manuscript(path: Path, root: Path, manuscript_subdir: str) -> dict[str, Any] | None:
-    """Walk the manuscript directory and mark .md files as scene nodes."""
+    """Walk the manuscript directory, marking .md files as scene nodes."""
     children: list[dict[str, Any]] = []
     try:
         entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
@@ -423,6 +423,10 @@ def _dir_node_manuscript(path: Path, root: Path, manuscript_subdir: str) -> dict
                 children.append(sub)
         elif child.is_file() and child.suffix.lower() in {".md", ".markdown"}:
             children.append(_file_node_scene(child, root, manuscript_subdir))
+        elif child.is_file():
+            # Images and other files beside the prose are listed so they can
+            # be found and opened, but they are never scenes.
+            children.append(_file_node_meta(child, root))
     return {
         "name": path.name,
         "path": path.relative_to(root).as_posix(),

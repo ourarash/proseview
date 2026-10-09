@@ -27,6 +27,22 @@ pytestmark = pytest.mark.e2e_browser
 
 DEMO = REPO_ROOT / "fixtures" / "demo-book"
 
+#: Obsidian-style Markdown the editor has no syntax for. A save must leave it
+#: as written rather than escape or reformat it.
+VAULT_BODY = """Jack met [[Jack Mercer]] at the docks.
+
+> [!note] Continuity
+> He limps on the left side.
+
+![[map-of-the-harbor]]
+
+- rope
+- _salt_
+
+It was ==important==, and _meant_.
+"""
+VAULT_SCENE = "---\ntitle: The Vault\n---\n\n" + VAULT_BODY
+
 
 @pytest.fixture
 def notes_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[ProseviewServer]:
@@ -36,6 +52,8 @@ def notes_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[P
         "---\ntitle: Who knows whom\n---\n\n# Relationships\n\n| Who | Knows |\n| --- | --- |\n| Alice | the Cat |\n",
         encoding="utf-8",
     )
+    (root / "manuscript" / "ch01" / "04-vault.md").write_text(VAULT_SCENE, encoding="utf-8")
+    (root / "story-bible" / "vault.md").write_text("---\ntitle: Vault\n---\n\n" + VAULT_BODY, encoding="utf-8")
     server = _start_server(root, agent_bin, fake_home)
     try:
         yield server
@@ -122,3 +140,43 @@ def test_e_opens_the_editor_on_a_note_and_on_a_scene(page: Page, notes_server: P
     page.locator("#sceneProseHost").click()
     page.keyboard.press("e")
     page.wait_for_function("window._pmEditMode === true")
+
+
+def _type_at_end_of(page: Page, host: str, needle: str, text: str) -> None:
+    page.locator(host + " p", has_text=needle).click()
+    page.keyboard.press("End")
+    page.keyboard.type(text)
+
+
+def test_saving_a_scene_leaves_untouched_vault_markdown_as_written(page: Page, notes_server: ProseviewServer):
+    scene = notes_server.root / "manuscript" / "ch01" / "04-vault.md"
+    page.goto(notes_server.url("/#/scene/ch01%2F04-vault.md"))
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+
+    # A change typed and taken back still saves: the file must not move.
+    _type_at_end_of(page, "#sceneProseHost", "It was", "x")
+    page.keyboard.press("Backspace")
+    page.keyboard.press("ControlOrMeta+s")
+    page.wait_for_selector(".scene-edit-bar.is-saved")
+    assert scene.read_text(encoding="utf-8") == VAULT_SCENE
+
+    _type_at_end_of(page, "#sceneProseHost", "It was", " Truly.")
+    page.keyboard.press("ControlOrMeta+s")
+    page.wait_for_function("() => window._pmDirty === false")
+    assert scene.read_text(encoding="utf-8") == VAULT_SCENE.replace(
+        "It was ==important==, and _meant_.", "It was ==important==, and *meant*. Truly.")
+
+
+def test_saving_a_note_leaves_untouched_vault_markdown_as_written(page: Page, notes_server: ProseviewServer):
+    note = notes_server.root / "story-bible" / "vault.md"
+    page.goto(notes_server.url("/#/file/story-bible%2Fvault.md"))
+    page.get_by_role("button", name="Edit", exact=True).click()
+    expect(page.locator(".file-edit-host .ProseMirror")).to_be_visible()
+    _type_at_end_of(page, ".file-edit-host", "Jack met", " He waved.")
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+    assert note.read_text(encoding="utf-8") == "---\ntitle: Vault\n---\n\n" + VAULT_BODY.replace(
+        "Jack met [[Jack Mercer]] at the docks.", "Jack met \\[\\[Jack Mercer\\]\\] at the docks. He waved.")

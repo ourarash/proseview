@@ -30,6 +30,9 @@
             );
 
             var doc = parser.parse(markdown);
+            // What each block was in the file, so a save leaves untouched
+            // blocks byte for byte (see 12-lossless-markdown.js).
+            _pmSourceBlocks = markdownSourceBlocks(PM.defaultMarkdownParser.tokenizer, markdown, doc, sceneEditorSerializer(PM));
 
             var lnPlugin = _buildLnPlugin();
 
@@ -194,16 +197,19 @@
             _pmView.focus();
         }
 
-        function serializeSceneEditorMarkdown() {
-            if (!_pmView || !window._PM) return '';
-            var PM = window._PM;
+        function sceneEditorSerializer(PM) {
             var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
                 annotation: function(state, node) {
                     state.write(node.attrs.raw);
                     state.closeBlock(node);
                 }
             });
-            return new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks).serialize(_pmView.state.doc);
+            return new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks);
+        }
+
+        function serializeSceneEditorMarkdown() {
+            if (!_pmView || !window._PM) return '';
+            return serializeKeepingSource(_pmSourceBlocks, _pmView.state.doc, sceneEditorSerializer(window._PM));
         }
 
         function currentSceneLiveDocumentSnapshot() {

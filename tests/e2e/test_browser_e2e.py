@@ -277,6 +277,8 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.fill("#discussInput", "Explain this scene")
     page.evaluate("sendDiscussQuestion(); sendDiscussQuestion()")
     wait_for_discuss_answer(page, "<script>hostile()</script>")
+    # The answer can land a moment before the strip says the turn finished.
+    page.wait_for_function("() => document.querySelector('#discussPanel').innerText.includes('Answered in')")
     panel_text = page.locator("#discussPanel").inner_text()
     # The turn reports itself in the strip, in writer language, instead of
     # leaving a pile of protocol nouns below the answer it produced.

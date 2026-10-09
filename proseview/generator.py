@@ -43,6 +43,7 @@ from .scenes import (
     scene_is_outlier,
     scene_mattr_median,
     scene_mtld_median,
+    resolve_manuscript_dir,
     sort_scenes,
 )
 
@@ -735,6 +736,11 @@ def render_html_report(
         "editor_label_json": _js_json(editor_label),
         "repo_tree_json": _js_json(tree_nodes),
         "sidebar_tree_json": _js_json(sidebar_nodes),
+        # No manuscript/ folder: the whole folder is the manuscript, so new
+        # files can go at its top level.
+        "sidebar_whole_folder_json": _js_json(
+            resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve() == root.resolve()
+        ),
         "repository_tree_json": _js_json(repository_nodes),
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
         "images_config_json": _js_json(

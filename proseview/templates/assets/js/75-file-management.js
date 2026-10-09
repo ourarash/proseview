@@ -203,6 +203,12 @@
             var select = document.getElementById('sidebarCreateLocation');
             if (!select) return;
             select.innerHTML = '';
+            if (typeof sidebarWholeFolder !== 'undefined' && sidebarWholeFolder) {
+                var top = document.createElement('option');
+                top.value = '';
+                top.textContent = 'Top level';
+                select.appendChild(top);
+            }
             sidebarWalk(sidebarTree, function(node) {
                 if (node.is_file) return;
                 var option = document.createElement('option');
@@ -218,6 +224,7 @@
         function sidebarDefaultCreateParent() {
             var current = sidebarCurrentPath();
             if (current) return current.split('/').slice(0, -1).join('/');
+            if (typeof sidebarWholeFolder !== 'undefined' && sidebarWholeFolder) return '';
             var manuscript = (sidebarTree || []).find(function(node) { return !node.is_file && node.path === 'manuscript'; });
             return manuscript ? manuscript.path : ((sidebarTree || []).find(function(node) { return !node.is_file; }) || {}).path || '';
         }
@@ -229,7 +236,7 @@
             if (!nameInput || !location || !preview) return;
             var name = nameInput.value.trim();
             if (_sidebarCreateKind === 'file' && name && !name.toLowerCase().endsWith('.md')) name += '.md';
-            preview.textContent = name ? 'Creates ' + location.value + '/' + name : 'Enter one name; folders are not created automatically.';
+            preview.textContent = name ? 'Creates ' + (location.value ? location.value + '/' : '') + name : 'Enter one name; folders are not created automatically.';
         }
 
         function sidebarOpenCreateDialog(kind, parent, dirtyAlreadyHandled) {

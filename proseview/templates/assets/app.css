@@ -9251,6 +9251,7 @@
         html[data-static-snapshot] .scene-card-fm-add,
         html[data-static-snapshot] .fm-todo-cb,
         html[data-static-snapshot="read-only"] #exportOpenBtn,
+        html[data-static-snapshot="read-only"] #modalPreviewPdfBtn,
         html[data-static-snapshot="read-only"] #modalExportSceneBtn,
         html[data-static-snapshot="read-only"] #modalExportChapterBtn,
         html[data-static-snapshot="read-only"] #exportDialog,

@@ -2,8 +2,10 @@
 
 [← back to the README](../README.md)
 
-`proseview` works with zero config against any folder of Markdown. Drop a
-`.proseview.yaml` at the repo root if you want to customize:
+`proseview` works with zero config against a book in `manuscript/`. Without
+that folder it opens as plain Markdown until you choose where the book is,
+which writes `manuscript_path` here. Drop a `.proseview.yaml` at the repo root
+if you want to customize:
 
 ```yaml
 # Whether rendered Markdown may load images: all | local | off.
@@ -14,8 +16,9 @@ images:
   mode: all
   remote_in_agent_output: true
 
-# Where the manuscript lives. Default: manuscript/, falling back to the
-# repo root when that folder does not exist. Use ./ to force the root.
+# Where the manuscript lives: chapter folders of scene files. Default:
+# manuscript/. Use ./ when the whole folder is the book. If the folder does
+# not exist, Proseview opens everything as plain Markdown until you choose.
 manuscript_path: manuscript/
 
 # Where character bios live. Default: story-bible/characters

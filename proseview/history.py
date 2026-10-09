@@ -171,12 +171,13 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
     if code != 0:
         return _empty_row(sha, _committed_at_for(root, sha))
 
-    # Mirrors iter_scene_paths: any depth, no README, no tool directories. The
-    # old `len(parts) >= 3` here was the two-level assumption again, and would
-    # have reported zero words for every flat or deeply nested manuscript.
+    strip_parts = 0 if at_root else len(Path(manuscript_prefix.rstrip("/")).parts)
+    # Mirrors iter_scene_paths: a scene sits in the manuscript or in a chapter
+    # folder; no README, no tool directories.
     paths = [
         p for p in out.splitlines()
         if p.endswith(".md")
+        and len(Path(p).parts) - strip_parts <= 2
         and Path(p).name.lower() != "readme.md"
         and not Path(p).name.startswith(".")
         and p.startswith(manuscript_prefix)

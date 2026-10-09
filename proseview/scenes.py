@@ -253,30 +253,33 @@ def _is_scene(fm: dict[str, object]) -> bool:
 
 
 def resolve_manuscript_dir(root: Path, manuscript_subdir: str) -> Path:
-    """Return the directory scenes are read from.
+    """Return the directory scenes are read from: ``root/<manuscript_path>``.
 
-    Normally ``root/manuscript``. When that does not exist the whole repo is
-    treated as the manuscript, which is what makes Proseview usable against an
-    Obsidian vault or any other flat folder of Markdown: point it at the folder
-    and the scenes are simply the ``.md`` files in it.
+    ``manuscript_path: .`` makes the whole folder the manuscript. The folder
+    may not exist: Proseview then has no scenes and opens the folder as plain
+    Markdown (see :func:`manuscript_missing`), rather than guessing which of
+    its files are the book.
     """
     subdir = manuscript_subdir.strip("/")
     if not subdir or subdir == ".":
         return root
-    candidate = root / subdir
-    return candidate if candidate.is_dir() else root
+    return root / subdir
+
+
+def manuscript_missing(root: Path, manuscript_subdir: str) -> bool:
+    """True when there is no manuscript folder, so the book features are off."""
+    return not resolve_manuscript_dir(root, manuscript_subdir).is_dir()
 
 
 def iter_scene_paths(manuscript_dir: Path) -> list[Path]:
-    """Every Markdown file under *manuscript_dir*, at any depth.
+    """The scenes in *manuscript_dir*: its Markdown files, and those of its
+    chapter folders.
 
-    The old rule was exactly two levels -- ``manuscript/<chapter>/<scene>.md``
-    -- which meant a flat folder or a nested one indexed as nothing at all, and
-    the dashboard came up empty with no explanation. Any depth is accepted now,
-    including files sitting directly in the manuscript root.
-
-    Hidden directories and tool directories are skipped, so pointing at a repo
-    root or an Obsidian vault does not sweep in ``.git`` or ``.obsidian``.
+    A scene sits directly in the manuscript or directly in a chapter folder
+    (``manuscript/<chapter>/<scene>.md``). Anything deeper, such as
+    ``ch02/review/notes.md``, is a note about the book and opens as a file,
+    which is also how the file browser treats it. READMEs, hidden files and
+    tool folders are skipped.
     """
     if not manuscript_dir.is_dir():
         return []
@@ -284,6 +287,8 @@ def iter_scene_paths(manuscript_dir: Path) -> list[Path]:
     paths: list[Path] = []
     for path in sorted(manuscript_dir.rglob("*.md")):
         relative = path.relative_to(manuscript_dir)
+        if len(relative.parts) > 2:
+            continue
         if any(part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in relative.parts[:-1]):
             continue
         if path.name.startswith(".") or path.name.lower() == "readme.md":
@@ -295,10 +300,8 @@ def iter_scene_paths(manuscript_dir: Path) -> list[Path]:
 def scene_chapter(path: Path, manuscript_dir: Path) -> str:
     """Default chapter label for a scene, when frontmatter does not name one.
 
-    The first directory below the manuscript root, so the conventional
-    ``manuscript/ch01/01-opening.md`` still groups under ``ch01`` and a deeper
-    ``manuscript/ch01/drafts/01.md`` groups with it rather than splitting off.
-    Files directly in the root fall back to the root's own name.
+    The chapter folder, so ``manuscript/ch01/01-opening.md`` groups under
+    ``ch01``. Files directly in the manuscript fall back to its own name.
     """
     relative = path.relative_to(manuscript_dir)
     return relative.parts[0] if len(relative.parts) > 1 else manuscript_dir.name

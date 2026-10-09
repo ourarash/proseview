@@ -175,12 +175,22 @@ def _portable_entry_name(value: str) -> str:
     return name
 
 
+def lists_whole_folder(root: Path, cfg: Config) -> bool:
+    """True when the file browser lists the whole folder: it is the manuscript
+    (``manuscript_path: .``), or there is no manuscript folder at all."""
+    from .scenes import manuscript_missing, resolve_manuscript_dir
+
+    resolved = root.resolve()
+    return (
+        resolve_manuscript_dir(resolved, cfg.manuscript_subdir) == resolved
+        or manuscript_missing(resolved, cfg.manuscript_subdir)
+    )
+
+
 def _managed_repository_roots(root: Path, cfg: Config) -> tuple[Path, ...]:
     """Existing top-level folders represented by the file-browser sidebar."""
-    from .scenes import resolve_manuscript_dir
-
     resolved_root = root.resolve()
-    if resolve_manuscript_dir(resolved_root, cfg.manuscript_subdir) == resolved_root:
+    if lists_whole_folder(resolved_root, cfg):
         # The whole folder is the manuscript, and the sidebar lists all of it.
         return (resolved_root,)
     configured = (cfg.manuscript_subdir, *cfg.repo_tab.folders)
@@ -324,12 +334,13 @@ def scene_relative_path(rel: str, manuscript_subdir: str) -> str | None:
     """Return the scene-index key for *rel*, or ``None`` when it is not a scene.
 
     Mirrors ``scenes.iter_scene_paths``, which is what actually populates the
-    client's scene index: only ``*.md`` files exactly one directory below the
-    manuscript root are scenes, and READMEs are skipped. Deeper manuscript
+    client's scene index for files in chapter folders, and READMEs are
+    skipped. Deeper manuscript
     notes (``manuscript/ch05/review/foo.md``) are ordinary repository files —
     flagging them as scenes routes the client to a scene it cannot find.
     """
-    prefix = manuscript_subdir.rstrip("/") + "/"
+    subdir = manuscript_subdir.strip("/")
+    prefix = "" if subdir in {"", "."} else subdir + "/"
     if not rel.startswith(prefix):
         return None
     scene_rel = rel[len(prefix):]
@@ -506,17 +517,19 @@ def build_sidebar_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
     follow as metadata-only nodes; their file bodies live in ``repoTree`` /
     ``repoFileByPath`` and are looked up there at click time.
     """
-    from .scenes import iter_scene_paths, resolve_manuscript_dir
+    from .scenes import iter_scene_paths, manuscript_missing, resolve_manuscript_dir
 
     nodes: list[dict[str, Any]] = []
 
     ms = root / cfg.manuscript_subdir
-    whole_folder = resolve_manuscript_dir(root, cfg.manuscript_subdir) == root
+    whole_folder = lists_whole_folder(root, cfg)
     if whole_folder:
-        # No manuscript folder: the whole folder is the manuscript (an
-        # Obsidian vault, a flat pile of chapters), so list all of it, with
-        # the scenes the dashboard indexed marked as scenes.
-        scene_keys = {path.relative_to(root).as_posix() for path in iter_scene_paths(root)}
+        # The whole folder is the manuscript (``manuscript_path: .``), or there
+        # is no manuscript folder and Proseview is a Markdown viewer: list all
+        # of it, with any scenes marked as scenes.
+        scene_keys = set() if manuscript_missing(root, cfg.manuscript_subdir) else {
+            path.relative_to(root).as_posix() for path in iter_scene_paths(root)
+        }
         root_node = _dir_node_manuscript(root, root, "", scene_keys)
         nodes.extend(root_node["children"] if root_node else [])
     elif ms.exists() and ms.is_dir():

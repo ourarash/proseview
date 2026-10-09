@@ -24,6 +24,17 @@ section here becomes the release notes on GitHub.
   the outermost folder that holds scenes itself, so `Part One/Chapter 1`
   and `Part One/Chapter 2` are two chapters, and `ch01/drafts` still
   belongs to `ch01`.
+- **No guessing where the book is.** Without a manuscript folder, Proseview
+  opens the folder as plain Markdown: reading, editing, search and the agents
+  work on every file, and a note on the dashboard asks where the book is.
+  *Choose manuscript folder…* saves `manuscript_path` (a folder, or `./` for
+  the whole folder) and turns on the scene counts, Analysis, Timeline, Goals
+  and Export. It used to treat any folder without `manuscript/` as the book,
+  so a vault's character sheets became chapters.
+- A scene is a Markdown file in the manuscript folder or in a chapter folder.
+  Anything deeper, such as a chapter's `review/` notes, opens as a file and
+  no longer counts toward scenes or words, as the file browser already
+  showed it.
 - Export reads Obsidian's Markdown: a `[[wikilink]]` prints as its text (or
   alias), `![[picture.png]]` embeds the picture found in the vault, a
   `> [!note] Title` callout is a quotation under its title, and
@@ -38,15 +49,15 @@ section here becomes the release notes on GitHub.
   selecting is no longer dropped. The scene chip can be removed as before.
 - A scene with HTML inside a line (`<br>`, `<span>`) opened blank. The HTML
   now shows as text and is saved as written.
-- A folder with no `manuscript/` subfolder (an Obsidian vault, a flat folder
-  of chapters) showed an empty file browser, no Analysis numbers for a scene,
-  and refused to create, rename or delete files. All of that works now, and
-  a new file can go at the top level, so an empty folder can get its first.
+- A folder with no `manuscript/` subfolder showed an empty file browser, no
+  Analysis numbers for a scene, and refused to create, rename or delete
+  files. All of that works now, and a new file can go at the top level, so an
+  empty folder can get its first.
 - Editing a paragraph that is wrapped at a fixed width (say 80 columns) wrote
   it back as one long line. It keeps its wrapping now, and only the lines
   around the edit change.
-- Codex and Claude could not open a conversation about a scene in a folder
-  with no `manuscript/` subfolder.
+- Codex and Claude could not open a conversation about a scene when the
+  whole folder is the manuscript.
 - A folder without git printed a Python warning in the terminal; it is a
   plain line now. The dashboard says the folder has no git history instead
   of "Git is not available", and Est. Finish says it is counted at your

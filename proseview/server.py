@@ -124,6 +124,18 @@ def _remove_runtime_file(root: Path, port: int) -> None:
         pass
 
 
+def _validated_manuscript_path(root: Path, value: object) -> str:
+    """``manuscript_path`` as the dashboard may set it: ``.`` for the whole
+    folder, or an existing visible folder inside it."""
+    text = str(value or "").strip().strip("/")
+    if text in {"", "."}:
+        return "./"
+    target = resolve_visible_repository_path(root.resolve(), text)
+    if not target.is_dir():
+        raise ValueError(f"{text} is not a folder in this book")
+    return target.relative_to(root.resolve()).as_posix() + "/"
+
+
 def _normalize_ai_scene_file(repo_root: str, value: str) -> str:
     rel = str(value or "").strip().replace("\\", "/")
     if not rel:
@@ -1865,6 +1877,8 @@ class _Handler(BaseHTTPRequestHandler):
                     kwargs[k] = str(v)
                 elif k in ["mattr_band", "mtld_band"]:
                     kwargs[k] = (float(v[0]), float(v[1]))
+                elif k == "manuscript_path":
+                    kwargs[k] = _validated_manuscript_path(Path(self.repo_root), v)
             
             new_cfg = cfg.with_overrides(**kwargs)
             new_cfg.save(Path(self.repo_root))
@@ -2806,6 +2820,7 @@ class _Handler(BaseHTTPRequestHandler):
                     body["content"],
                     float(body.get("open_mtime") or 0) if overwrite else float(body["open_mtime"]),
                     self.repo_root,
+                    Config.load(Path(self.repo_root)).manuscript_subdir,
                     source="Overwrote Disk Version" if overwrite else "Manual Save",
                     overwrite=overwrite,
                 )

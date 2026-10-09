@@ -159,7 +159,10 @@
             menu.appendChild(sidebarMenuButton('Copy relative path', 'copy-relative-path', function() {
                 sidebarCopyNodePath(node, anchor, true);
             }));
-            var protectedRoot = Number(anchor.dataset.depth || '0') === 0;
+            // A top-level folder is the manuscript or a configured folder and
+            // keeps its name, unless the whole folder is what is listed.
+            var wholeFolder = typeof sidebarWholeFolder !== 'undefined' && sidebarWholeFolder;
+            var protectedRoot = !wholeFolder && Number(anchor.dataset.depth || '0') === 0;
             if (!protectedRoot) {
                 menu.appendChild(document.createElement('hr'));
                 menu.appendChild(sidebarMenuButton('Rename', 'rename', function() {

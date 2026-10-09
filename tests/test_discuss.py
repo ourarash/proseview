@@ -345,3 +345,12 @@ def test_codex_setup_notices_go_to_the_terminal_not_the_dock(capsys):
 
     other = sanitize_agent_message({"method": "warning", "params": {"threadId": "t", "message": "Model is overloaded"}})
     assert [event["message"] for event in other] == ["Model is overloaded"]
+
+
+def test_context_builder_finds_a_scene_in_a_folder_without_manuscript(tmp_path: Path):
+    """In a vault the scene path is relative to the folder itself."""
+    (tmp_path / "Part One").mkdir()
+    (tmp_path / "Part One" / "01 Rain.md").write_text("It rained.\n", encoding="utf-8")
+    bundle = ContextBuilder(tmp_path).build({"kind": "scene", "path": "Part One/01 Rain.md"}, "Why rain?")
+    assert [item.path for item in bundle.items] == ["Part One/01 Rain.md"]
+    assert "It rained." in bundle.prompt

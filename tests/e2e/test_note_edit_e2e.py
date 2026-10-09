@@ -202,6 +202,11 @@ def test_images_and_other_files_beside_the_scenes_can_be_opened(page: Page, note
 
     page.goto(notes_server.url("/#/file/manuscript%2Fch01%2Fdraft.docx"))
     expect(page.locator("#filePreviewBody .repo-warn")).to_contain_text("cannot open draft.docx")
+    # E on a file that cannot be edited says so, quietly.
+    page.locator("#filePreviewBody").click()
+    page.keyboard.press("e")
+    expect(page.locator("#sidebarFileToast")).to_have_text("Only Markdown files can be edited in Proseview.")
+    expect(page.locator("#fileEditBar")).to_be_hidden()
 
     # They are listed beside the scenes, and none of them became a scene.
     page.goto(notes_server.url("/"))

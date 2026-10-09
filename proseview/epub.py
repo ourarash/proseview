@@ -29,6 +29,7 @@ from .book import (
     smart_punctuation,
 )
 from .book_styles import BookStyle
+from .obsidian import plain_obsidian
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, read_html, repository_src, straighten_tag_quotes, image_only
 
 EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")
@@ -115,6 +116,7 @@ class _Markdown:
         first_class: str = "",
         scene: str = "",
     ) -> str:
+        text = plain_obsidian(text, self._images.root)
         tokens = self._md.parse(straighten_tag_quotes(_COMMENT_RE.sub("", text)))
         first_done = not first_class
         for index, token in enumerate(tokens):

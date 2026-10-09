@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .book import SHORT_OPENER, ExportError
+from .obsidian import plain_obsidian
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, image_only, read_html, straighten_tag_quotes
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -80,6 +81,7 @@ class TypstRenderer:
         *noindent*, it starts flush left, as a paragraph after a scene break
         or a title does.
         """
+        text = plain_obsidian(text, ctx.root.resolve() if ctx.root else None)
         tokens = self._md.parse(straighten_tag_quotes(_COMMENT_RE.sub("", text)))
         out, _ = self._blocks(tokens, 0, ctx, opener=opener, stop=None, noindent=noindent)
         return "\n\n".join(part for part in out if part.strip())

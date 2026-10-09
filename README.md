@@ -190,9 +190,11 @@ proseview --root /path/to/your/novel
 `[claude]` adds the SDK the Claude tab needs; plain `pipx install proseview`
 is everything else. A browser tab opens at `http://localhost:7842`. Press Ctrl-C to stop.
 
-Point it at any folder of Markdown. If there is no `manuscript/` directory the
-whole folder is the manuscript, so an Obsidian vault or a flat pile of chapter
-files works with no configuration.
+Proseview's book features read a `manuscript/` folder: one folder per
+chapter, one Markdown file per scene. Point it at a folder without one, such as
+an Obsidian vault, and it opens as plain Markdown you can read, edit and
+search; **Choose manuscript folder…** on the dashboard tells it where the book
+is (or that the whole folder is), and the rest switches on.
 
 ```text
 my-novel/

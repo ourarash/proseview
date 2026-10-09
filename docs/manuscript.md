@@ -6,8 +6,9 @@ back gracefully on what is not.
 
 [← back to the README](../README.md)
 
-A Proseview scene is any `.md` file under the manuscript directory, at any
-depth. The conventional layout is:
+The book lives in one folder, `manuscript/` unless `manuscript_path` says
+otherwise. Each folder in it is a chapter, and each `.md` file in a chapter is
+a scene:
 
 ```text
 my-novel/
@@ -20,29 +21,32 @@ my-novel/
 └── .proseview.yaml          # optional
 ```
 
-**Already have a folder of Markdown?** Point Proseview at it. If there is no
-`manuscript/` directory, the whole folder is the manuscript — so an Obsidian
-vault, a flat pile of chapter files, or any nesting you already use works with
-no configuration and no reorganising:
+Files sitting directly in the manuscript folder are scenes too, in a chapter
+named after the folder. Anything deeper than a chapter folder, such as
+`ch02/review/notes.md`, is a note about the book: it opens as a file and does
+not count toward scenes or words. A scene can also opt out with
+`scene: false` in its frontmatter, and a `chapter:` in frontmatter always
+overrides the folder name. Folders and files are read in name order.
+`README.md`, dotfiles, hidden folders and tool directories such as
+`.obsidian/`, `.git/` and `node_modules/` are never scenes.
+
+**No manuscript folder?** Proseview does not guess which files are the book.
+It opens the folder as Markdown: you can read, edit and search every file and
+ask Codex or Claude about it, and a short note on the dashboard asks where the
+book is. **Choose manuscript folder…** writes `manuscript_path` to
+`.proseview.yaml`, and the scene counts, Analysis, Timeline, Goals and Export
+switch on. Pick a folder, or the whole folder (`manuscript_path: ./`), which
+suits a flat pile of chapter files or a vault whose top-level folders are the
+chapters:
 
 ```text
 my-vault/                    my-novel/
-├── daily.md                 ├── 01-opening.md
-├── chapters/                ├── 02-meeting.md
-│   └── one.md               └── 03-aftermath.md
+├── Chapter 1/               ├── 01-opening.md
+│   └── 01-arrival.md        ├── 02-meeting.md
+├── Chapter 2/               └── 03-aftermath.md
+│   └── 01-rain.md
 └── .obsidian/   (skipped)
 ```
-
-A file inside the manuscript that is not prose — a `review/` folder, a
-per-chapter outline — can opt out with `scene: false` in its frontmatter, so it
-stays browsable without counting toward scene or word totals.
-
-Scenes group into chapters by their first folder below the manuscript root, and
-a `chapter:` in frontmatter always overrides that. Folders and files are read in
-name order. `README.md`, dotfiles, hidden folders, and tool directories such as
-`.obsidian/`, `.git/`, and `node_modules/` are never indexed; nor are extensions
-other than `.md`. Set `manuscript_path` to point somewhere else, or to `./` to
-force the repo root.
 
 Git is optional for the core dashboard, but revision history, goals, streaks,
 and recent changes require the root to be a Git worktree.

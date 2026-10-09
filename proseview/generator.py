@@ -31,7 +31,9 @@ from .highlights import PASS_NAMES, compute_scene_highlights
 from .history import HistoryRow, load_history, working_copy_delta
 from .lexical import QUOTE_RE, FILTER_VERBS, calculate_lexical_stats
 from .related import find_related
-from .repo import build_repository_tree, build_sidebar_tree, build_tree, read_repo_text, recent_changes
+from .repo import (
+    build_repository_tree, build_sidebar_tree, build_tree, lists_whole_folder, read_repo_text, recent_changes,
+)
 from .story import story_payload
 from .scenes import (
     BaselineStats,
@@ -43,7 +45,7 @@ from .scenes import (
     scene_is_outlier,
     scene_mattr_median,
     scene_mtld_median,
-    resolve_manuscript_dir,
+    manuscript_missing,
     sort_scenes,
 )
 
@@ -739,9 +741,11 @@ def render_html_report(
         "sidebar_tree_json": _js_json(sidebar_nodes),
         # No manuscript/ folder: the whole folder is the manuscript, so new
         # files can go at its top level.
-        "sidebar_whole_folder_json": _js_json(
-            resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve() == root.resolve()
-        ),
+        "sidebar_whole_folder_json": _js_json(lists_whole_folder(root, cfg)),
+        # No manuscript folder: the folder opens as plain Markdown, and the
+        # book features wait for the writer to say where the book is.
+        "manuscript_missing": manuscript_missing(root, cfg.manuscript_subdir),
+        "manuscript_path_text": cfg.manuscript_subdir,
         "repository_tree_json": _js_json(repository_nodes),
         "repo_preview_max": cfg.repo_tab.preview_max_bytes,
         "images_config_json": _js_json(

@@ -1136,14 +1136,16 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def bare_repo(tmp_path: Path) -> Path:
-    """A manuscript with no frontmatter, no story bible, no config.
+    """A manuscript with no frontmatter and no story bible.
 
-    The Obsidian case: someone points Proseview at a folder of prose. Every
-    metadata-driven panel has nothing to work with, which is exactly the state
-    a silently-empty chart is indistinguishable from.
+    The Obsidian case: someone points Proseview at a folder of prose and
+    names the whole folder the manuscript. Every metadata-driven panel has
+    nothing to work with, which is exactly the state a silently-empty chart is
+    indistinguishable from.
     """
     root = tmp_path / "bare"
     root.mkdir()
+    (root / ".proseview.yaml").write_text("manuscript_path: .\n", encoding="utf-8")
     for name, text in [
         ("one.md", "She counted the boats twice, and then a third time.\n"),
         ("two.md", "The tide went out without her, and the quay went quiet.\n"),

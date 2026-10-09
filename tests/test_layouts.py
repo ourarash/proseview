@@ -25,6 +25,7 @@ from proseview.config import Config  # noqa: E402
 from proseview.scenes import (  # noqa: E402
     collect_scene_stats,
     iter_scene_paths,
+    manuscript_missing,
     resolve_manuscript_dir,
     scene_chapter,
 )
@@ -69,28 +70,30 @@ def test_flat_folder_of_markdown_is_indexed(tmp_path: Path):
     assert {s.chapter for s in scenes} == {"manuscript"}
 
 
-def test_deeply_nested_scenes_are_indexed_and_group_by_first_directory(tmp_path: Path):
+def test_files_below_a_chapter_folder_are_notes_not_scenes(tmp_path: Path):
+    """A scene is in the manuscript or in a chapter folder; deeper is a note,
+    which is also how the file browser opens it."""
     write(tmp_path / "manuscript" / "ch01" / "01.md")
-    write(tmp_path / "manuscript" / "ch01" / "drafts" / "02.md")
+    write(tmp_path / "manuscript" / "ch01" / "review" / "notes.md")
     write(tmp_path / "manuscript" / "ch01" / "drafts" / "old" / "03.md")
 
     scenes = collect_scene_stats(tmp_path, "manuscript")
 
-    assert len(scenes) == 3
-    assert {s.chapter for s in scenes} == {"ch01"}, \
-        "a deeper draft belongs to its chapter, not to a chapter of its own"
+    assert [s.path.name for s in scenes] == ["01.md"]
 
 
-def test_a_vault_with_no_manuscript_directory_uses_the_repo_root(tmp_path: Path):
-    """The Obsidian case: point it at the folder and it just works."""
+def test_a_folder_without_its_manuscript_folder_has_no_scenes(tmp_path: Path):
+    """Nothing is guessed: with no manuscript folder there is no book yet,
+    and the dashboard opens the folder as plain Markdown."""
     vault = tmp_path / "my-vault"
     write(vault / "daily.md")
     write(vault / "chapters" / "one.md")
 
-    assert resolve_manuscript_dir(vault, "manuscript") == vault
-
-    scenes = collect_scene_stats(vault, "manuscript")
-    assert {s.path.name for s in scenes} == {"daily.md", "one.md"}
+    assert resolve_manuscript_dir(vault, "manuscript") == vault / "manuscript"
+    assert manuscript_missing(vault, "manuscript")
+    assert collect_scene_stats(vault, "manuscript") == []
+    # Saying the whole folder is the book makes it one.
+    assert {s.path.name for s in collect_scene_stats(vault, ".")} == {"daily.md", "one.md"}
 
 
 def test_explicit_dot_manuscript_path_selects_the_root(tmp_path: Path):
@@ -185,7 +188,7 @@ def test_saving_a_scene_works_in_a_vault(tmp_path: Path):
     scene = write(vault / "chapters" / "one.md")
 
     save_scene_content(
-        str(scene), "Rewritten prose.\n", scene.stat().st_mtime, str(vault), "manuscript"
+        str(scene), "Rewritten prose.\n", scene.stat().st_mtime, str(vault), "."
     )
 
     assert "Rewritten prose." in scene.read_text(encoding="utf-8")
@@ -217,6 +220,7 @@ def test_git_history_covers_a_vault(tmp_path: Path):
     vault = tmp_path / "vault"
     write(vault / "chapters" / "one.md")
     write(vault / "daily.md")
+    (vault / ".proseview.yaml").write_text("manuscript_path: .\n", encoding="utf-8")
     env = {
         "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@e",
         "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@e",
@@ -242,6 +246,7 @@ def test_export_collects_scenes_from_a_flat_vault(tmp_path: Path):
     vault = tmp_path / "vault"
     write(vault / "one.md")
     write(vault / "chapters" / "two.md")
+    (vault / ".proseview.yaml").write_text("manuscript_path: .\n", encoding="utf-8")
 
     documents = collect_scene_documents(vault, Config.load(vault))
 
@@ -270,7 +275,7 @@ def test_scene_false_keeps_a_file_out_of_the_index(tmp_path: Path, value: str):
 
 def test_files_without_the_key_are_still_scenes(tmp_path: Path):
     write(tmp_path / "manuscript" / "ch01" / "01.md")
-    write(tmp_path / "manuscript" / "ch01" / "review" / "notes.md")
+    write(tmp_path / "manuscript" / "ch01" / "02.md")
 
     assert len(collect_scene_stats(tmp_path, "manuscript")) == 2
 
@@ -289,8 +294,9 @@ def test_a_manuscript_with_no_frontmatter_still_works(tmp_path: Path):
     (tmp_path / "two.md").write_text("The tide went out without her.\n", encoding="utf-8")
     (tmp_path / "notes").mkdir()
     (tmp_path / "notes" / "idea.md").write_text("A thought.\n", encoding="utf-8")
+    (tmp_path / ".proseview.yaml").write_text("manuscript_path: .\n", encoding="utf-8")
 
-    scenes = collect_scene_stats(tmp_path, "manuscript")
+    scenes = collect_scene_stats(tmp_path, ".")
 
     assert len(scenes) == 3
     assert {s.title for s in scenes} == {"One", "Two", "Idea"}
@@ -309,7 +315,7 @@ def test_frontmatter_free_scenes_have_no_story_fields_but_do_not_raise(tmp_path:
     (tmp_path / "one.md").write_text("Prose.\n", encoding="utf-8")
     (tmp_path / "two.md").write_text("More prose.\n", encoding="utf-8")
 
-    model = build_story_model(collect_scene_stats(tmp_path, "manuscript"), Config())
+    model = build_story_model(collect_scene_stats(tmp_path, "."), Config())
 
     assert model.bands, "the shape layer works from word counts alone"
     assert not model.threads, "no thread: means no storylines"

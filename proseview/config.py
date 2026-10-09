@@ -322,7 +322,9 @@ class Config:
             data = {}
 
         defaults = Config()
-        
+
+        if self.manuscript_path != defaults.manuscript_path or "manuscript_path" in data:
+            data["manuscript_path"] = self.manuscript_path
         if self.target_words != defaults.target_words or "target_words" in data:
             data["target_words"] = self.target_words
         if self.daily_target != defaults.daily_target or "daily_target" in data:

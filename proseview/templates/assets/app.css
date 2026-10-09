@@ -4046,6 +4046,80 @@
             font-size: 13px;
         }
 
+        /* No manuscript folder: the dashboard is a Markdown viewer, and the
+           book features wait for the writer to say where the book is. */
+        html[data-manuscript="missing"] .tab-nav,
+        html[data-manuscript="missing"] .tab-panel,
+        html[data-manuscript="missing"] #exportOpenBtn,
+        html[data-manuscript="missing"] .top-banner .banner-stat,
+        html[data-manuscript="missing"] .top-banner .goals-banner {
+            display: none !important;
+        }
+
+        .manuscript-setup {
+            max-width: 720px;
+            margin: 8px 0 32px;
+            padding: 24px 28px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            line-height: 1.55;
+        }
+
+        .manuscript-setup h2 {
+            margin: 0 0 8px;
+            font-size: 18px;
+        }
+
+        .manuscript-setup-layout {
+            margin: 12px 0;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: var(--surface-muted);
+            font-size: 12px;
+        }
+
+        .manuscript-setup-note {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .manuscript-setup-btn {
+            border: 0;
+            border-radius: 8px;
+            padding: 8px 16px;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .manuscript-chooser-options {
+            display: grid;
+            gap: 6px;
+            margin: 12px 0;
+            max-height: 50vh;
+            overflow: auto;
+        }
+
+        .manuscript-chooser-option {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            column-gap: 8px;
+            align-items: center;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .manuscript-chooser-option span {
+            grid-column: 2;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
         .sidebar-tree-note {
             margin: 10px 16px;
             color: var(--text-muted);

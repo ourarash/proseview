@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="graphite-dark"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}>
+<html lang="en" data-theme="graphite-dark"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}{% if manuscript_missing %} data-manuscript="missing"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -348,6 +348,29 @@
         </div>
     </div>
 
+    {% if manuscript_missing %}
+    <section id="manuscriptSetup" class="manuscript-setup" aria-labelledby="manuscriptSetupTitle">
+        <h2 id="manuscriptSetupTitle">This folder is open as Markdown files</h2>
+        <p>Read, edit and search any file here, and ask Codex or Claude about it. The book features (scene counts, Analysis, Timeline, Goals and Export) need to know where the book is: a manuscript folder of chapter folders, one Markdown file per scene.</p>
+        <pre class="manuscript-setup-layout">manuscript/
+  ch01/
+    01-opening.md
+    02-meeting.md
+  ch02/
+    01-aftermath.md</pre>
+        <p class="manuscript-setup-note">No <code>{{ manuscript_path_text }}/</code> folder was found here. Choose the folder that holds the book, or create one.</p>
+        <button type="button" id="manuscriptSetupBtn" class="manuscript-setup-btn" onclick="openManuscriptChooser()">Choose manuscript folder…</button>
+    </section>
+    <dialog id="manuscriptChooser" class="sidebar-file-dialog" aria-labelledby="manuscriptChooserTitle">
+        <form method="dialog" onsubmit="event.preventDefault(); saveManuscriptChoice();">
+            <h2 id="manuscriptChooserTitle">Where is the book?</h2>
+            <p>Each folder inside it is a chapter, and each Markdown file in a chapter is a scene. This is saved as <code>manuscript_path</code> in <code>.proseview.yaml</code>.</p>
+            <div id="manuscriptChooserOptions" class="manuscript-chooser-options" role="radiogroup" aria-label="Manuscript folder"></div>
+            <p id="manuscriptChooserError" class="sidebar-dialog-error" role="alert" hidden></p>
+            <div class="sidebar-dialog-actions"><button type="button" value="cancel" onclick="document.getElementById('manuscriptChooser').close()">Cancel</button><button type="submit" class="sidebar-dialog-primary">Use this folder</button></div>
+        </form>
+    </dialog>
+    {% endif %}
     <div id="tab-overview" class="tab-panel active">
         <div class="dashboard-grid kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
             <div class="card kpi-card">

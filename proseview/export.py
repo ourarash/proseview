@@ -115,7 +115,10 @@ def collect_scene_documents(
     """
     manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
     if not manuscript_dir.is_dir():
-        raise ExportError(f"No manuscript directory at {manuscript_dir}")
+        raise ExportError(
+            f"There is no manuscript folder ({cfg.manuscript_subdir}/) to export. Choose one in the "
+            "dashboard, or set manuscript_path in .proseview.yaml (use . for the whole folder)."
+        )
 
     documents: list[SceneDocument] = []
     for path in iter_scene_paths(manuscript_dir):

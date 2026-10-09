@@ -88,13 +88,8 @@ def test_compiled_markdown_nests_scenes_under_chapter_headings(tmp_path: Path):
 
 
 def test_a_folder_with_no_markdown_fails_clearly(tmp_path: Path):
-    """A missing ``manuscript/`` is no longer an error by itself.
-
-    The whole folder is treated as the manuscript in that case, so the honest
-    complaint is that there is nothing to export -- not that a directory the
-    user never had is absent.
-    """
-    with pytest.raises(ExportError, match="No scenes found"):
+    """Without a manuscript folder the error says how to name one."""
+    with pytest.raises(ExportError, match="There is no manuscript folder .* manuscript_path"):
         collect_scene_documents(tmp_path, Config())
 
     (tmp_path / "manuscript").mkdir()
@@ -102,10 +97,10 @@ def test_a_folder_with_no_markdown_fails_clearly(tmp_path: Path):
         collect_scene_documents(tmp_path, Config())
 
 
-def test_export_reads_a_flat_folder_with_no_manuscript_directory(tmp_path: Path):
+def test_export_reads_a_flat_folder_that_is_its_own_manuscript(tmp_path: Path):
     (tmp_path / "one.md").write_text("---\ntitle: One\n---\n\n# One\n\nProse.\n", encoding="utf-8")
 
-    documents = collect_scene_documents(tmp_path, Config())
+    documents = collect_scene_documents(tmp_path, Config(manuscript_path="./"))
 
     assert [d.title for d in documents] == ["One"]
 

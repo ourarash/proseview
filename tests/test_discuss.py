@@ -348,9 +348,10 @@ def test_codex_setup_notices_go_to_the_terminal_not_the_dock(capsys):
 
 
 def test_context_builder_finds_a_scene_in_a_folder_without_manuscript(tmp_path: Path):
-    """In a vault the scene path is relative to the folder itself."""
+    """When the whole folder is the book, a scene path is relative to it."""
     (tmp_path / "Part One").mkdir()
     (tmp_path / "Part One" / "01 Rain.md").write_text("It rained.\n", encoding="utf-8")
+    (tmp_path / ".proseview.yaml").write_text("manuscript_path: .\n", encoding="utf-8")
     bundle = ContextBuilder(tmp_path).build({"kind": "scene", "path": "Part One/01 Rain.md"}, "Why rain?")
     assert [item.path for item in bundle.items] == ["Part One/01 Rain.md"]
     assert "It rained." in bundle.prompt

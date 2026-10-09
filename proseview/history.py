@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import warnings
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -103,7 +103,9 @@ def _warn_no_git_once(message: str = "not a git repo; skipping Goals panel") -> 
     global _GIT_WARNED
     if _GIT_WARNED:
         return
-    warnings.warn(f"proseview: {message}", stacklevel=3)
+    # A plain line, not a Python warning: the writer reads it in the terminal
+    # Proseview runs in, where a warning shows a source line and a class name.
+    print(f"proseview: {message}", file=sys.stderr)
     _GIT_WARNED = True
 
 

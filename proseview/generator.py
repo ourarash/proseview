@@ -203,7 +203,7 @@ def _render_recent_changes_card(
     editor_label = _editor_label(cfg)
 
     if not git_available:
-        inner = "<p>Git is not available; recent changes cannot be determined.</p>"
+        inner = "<p>Recent changes come from git history, and this folder has none.</p>"
     elif not entries:
         inner = "<p>No files changed in the last 7 days.</p>"
     else:
@@ -627,7 +627,7 @@ def render_html_report(
         recent_git = True
     recent_card = _render_recent_changes_card(recent_entries, bool(recent_git), cfg)
     if static_snapshot and not recent_git:
-        # A reader of a snapshot cannot act on "Git is not available";
+        # A reader of a snapshot cannot act on a note about git history;
         # to them it only reads as something broken.
         recent_card = ""
 
@@ -720,6 +720,7 @@ def render_html_report(
         "percent_target_width": f"{min(100, percent_target):.1f}",
         "scene_count": len(scenes),
         "days_to_finish": days_to_finish,
+        "daily_target_text": f"{daily_target:,}",
         "goals_banner_html": goals_banner_html,
         "goals_card_wrapper": goals_card_wrapper,
         "recent_changes_card": recent_card,

@@ -29,6 +29,7 @@ from time import perf_counter
 from typing import Callable, Any
 
 from .config import Config
+from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
 from .export import ExportError
@@ -1501,7 +1502,7 @@ class _Handler(BaseHTTPRequestHandler):
         message = str(exc) or exc.__class__.__name__
         if isinstance(exc, CodexAuthError):
             status = 401
-        elif isinstance(exc, (CodexUnavailableError, CodexProtocolError)):
+        elif isinstance(exc, (CodexUnavailableError, CodexProtocolError, ClaudeUnavailableError, ClaudeProtocolError)):
             status = 503
         elif isinstance(exc, ContextError):
             status = 409 if any(word in message.lower() for word in ("stale", "already", "not active", "busy")) else 400

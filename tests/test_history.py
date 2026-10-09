@@ -14,7 +14,6 @@ import os
 import shutil
 import subprocess
 import sys
-import warnings
 from pathlib import Path
 
 import pytest
@@ -90,14 +89,13 @@ def test_iter_manuscript_commits_filters_and_orders(tiny_book: Path):
         assert any(p.startswith("manuscript/") for p in c.changed_paths)
 
 
-def test_iter_manuscript_commits_on_non_git_warns_once(tmp_path: Path):
+def test_iter_manuscript_commits_on_non_git_says_so_once(tmp_path: Path, capsys):
     history._GIT_WARNED = False
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        list(iter_manuscript_commits(tmp_path, Config()))
-        list(iter_manuscript_commits(tmp_path, Config()))
-    messages = [str(w.message) for w in captured]
-    assert sum("not a git repo" in m for m in messages) == 1
+    list(iter_manuscript_commits(tmp_path, Config()))
+    list(iter_manuscript_commits(tmp_path, Config()))
+    err = capsys.readouterr().err
+    assert err.count("not a git repo") == 1
+    assert "Warning" not in err
 
 
 def test_stats_for_commit_matches_head_snapshot(tiny_book: Path):

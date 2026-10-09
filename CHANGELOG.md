@@ -32,6 +32,13 @@ section here becomes the release notes on GitHub.
   around the edit change.
 - Codex and Claude could not open a conversation about a scene in a folder
   with no `manuscript/` subfolder.
+- A folder without git printed a Python warning in the terminal; it is a
+  plain line now. The dashboard says the folder has no git history instead
+  of "Git is not available", and Est. Finish says it is counted at your
+  daily target.
+- The Actionable Insights card had a white border in dark themes.
+- With Claude Code not installed, asking for Claude's models was a server
+  error rather than "unavailable".
 
 ## 0.4.1 — 2026-10-08
 

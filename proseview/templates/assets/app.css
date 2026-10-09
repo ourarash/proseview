@@ -7832,11 +7832,11 @@
         }
 
         .warning-card {
-            background-color: color-mix(in srgb, var(--button-danger) 5%, transparent);
+            background-color: color-mix(in srgb, var(--danger) 5%, transparent);
         }
 
         .warning-card .card-title {
-            color: var(--button-danger) !important;
+            color: var(--danger) !important;
         }
 
         .actionable-insight-item {

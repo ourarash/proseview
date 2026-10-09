@@ -319,3 +319,15 @@ def test_save_scene_atomic_no_truncation_on_bad_content(tmp_path):
     assert len(result) > 10
     assert "---" in result
     assert "New prose." in result
+
+
+def test_a_missing_claude_cli_is_unavailable_not_a_server_error():
+    """The dock asks for Claude's models even when Claude is not installed."""
+    from proseview.claude_agent_client import ClaudeUnavailableError
+    from proseview.server import _Handler
+
+    sent: list[tuple[dict, int]] = []
+    handler = _Handler.__new__(_Handler)
+    handler._send_json = lambda payload, status=200: sent.append((payload, status))  # type: ignore[method-assign]
+    handler._send_discuss_error(ClaudeUnavailableError("Claude Code CLI is not installed or is not on PATH"))
+    assert sent == [({"ok": False, "error": "Claude Code CLI is not installed or is not on PATH"}, 503)]

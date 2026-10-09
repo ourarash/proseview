@@ -285,7 +285,7 @@
         <div class="banner-stat"><span class="label">Total Words</span><span class="value">{{ total_words_text }} / <button type="button" style="background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--text-muted);" onclick="showTab('settings')" title="Change goal in Settings">{{ target_words_text }}</button></span></div>
         <div class="banner-stat banner-progress"><span class="label">Goal Progress: {{ percent_target_text }}%</span><div class="range-bar" style="margin-top:8px;"><div class="target-zone" style="background:var(--banner-progress-fill); width:{{ percent_target_width }}%;"></div></div></div>
         <div class="banner-stat"><span class="label">Scenes</span><span class="value">{{ scene_count }}</span></div>
-        <div class="banner-stat banner-finish"><span class="label">Est. Finish</span><span class="value">{{ days_to_finish }} days</span></div>
+        <div class="banner-stat banner-finish" title="At your daily target of {{ daily_target_text }} words"><span class="label">Est. Finish</span><span class="value">{{ days_to_finish }} days</span></div>
         {{ goals_banner_html | safe }}
     </header>
 
@@ -369,8 +369,8 @@
         </div>
         
         <div id="actionableInsightsSection" class="dashboard-grid" style="grid-template-columns: 1fr; margin-bottom: 24px; display: none;">
-            <div class="card warning-card" style="border-color: var(--button-danger);">
-                <div class="card-header"><h2 class="card-title" style="color: var(--button-danger);">Actionable Insights</h2></div>
+            <div class="card warning-card" style="border-color: var(--danger);">
+                <div class="card-header"><h2 class="card-title" style="color: var(--danger);">Actionable Insights</h2></div>
                 <ul id="actionableInsightsList" style="margin: 0; padding-left: 20px; line-height: 1.5;"></ul>
             </div>
         </div>

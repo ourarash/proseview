@@ -153,7 +153,10 @@ Raw model reasoning is never forwarded to the browser.
 Continuity and canon questions come back with citations, and suggested edits
 arrive as proposals you accept or reject before anything is written.
 
-Everything else works without an agent installed. [Details →](docs/ai.md)
+Everything else works without an agent installed. For the Claude tab, install
+Proseview with its `claude` extra (`pipx install "proseview[claude]"`, or
+`pipx inject proseview claude-agent-sdk` for an existing install).
+[Details →](docs/ai.md)
 
 ## 🚀 Quick start
 

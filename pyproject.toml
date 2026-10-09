@@ -37,6 +37,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The Claude tab in the dock. Codex needs nothing extra.
+# `pipx install "proseview[claude]"`, or `pipx inject proseview claude-agent-sdk`.
+claude = [
+    "claude-agent-sdk>=0.2",
+]
 dev = [
     "pytest>=7",
     "pytest-xdist>=3.5",

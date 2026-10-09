@@ -90,3 +90,37 @@ def test_a_vault_creates_renames_and_trashes_files_anywhere(page: Page, vault_se
     rename.press("Enter")
     page.wait_for_function("() => !!document.querySelector('.dir-toggle[data-path=\"Part One/Chapitre Un – Café\"]')")
     assert (root / "Part One" / "Chapitre Un – Café" / "01 Café.md").is_file()
+
+
+@pytest.fixture
+def server_without_agents(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[ProseviewServer]:
+    """No codex or claude anywhere on PATH, as on a writer's fresh machine."""
+    root = tmp_path / "flat"
+    root.mkdir()
+    (root / "chapter-01.md").write_text("It was a dark night.\n", encoding="utf-8")
+    empty_bin = tmp_path / "bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("PATH", str(empty_bin))
+    server = _start_server(root, empty_bin, fake_home)
+    try:
+        yield server
+    finally:
+        _stop_server(server)
+
+
+@pytest.mark.allow_http_errors("/api/discuss/")
+@pytest.mark.allow_js_errors("503", "Service Unavailable")
+@pytest.mark.parametrize("agent,command", [("codex", "npm install -g @openai/codex"), ("claude", "claude")])
+def test_a_tab_whose_agent_is_not_installed_says_how_to_install_it(
+    page: Page, server_without_agents: ProseviewServer, agent: str, command: str
+):
+    page.goto(server_without_agents.url("/#/scene/chapter-01.md"))
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    state = page.locator("#discussLog .discuss-empty-state")
+    expect(state).to_contain_text("is not connected")
+    expect(state.locator(".discuss-empty-steps")).to_contain_text(command)
+    expect(page.locator("#discussComposerArea")).to_be_hidden()
+    expect(page.locator(".discuss-story-action")).to_have_count(0)

@@ -110,7 +110,10 @@
                 exportState.outline = outline;
                 exportState.details = Object.assign({}, outline.details);
                 exportApplyPreset(exportState.preset);
+                // "Preview as PDF" skips to the preview in the format it names.
+                if (exportState.preset && exportState.preset.format) exportState.details.format = exportState.preset.format;
                 exportRenderAll();
+                if (exportState.preset && exportState.preset.step) exportShowStep(exportState.preset.step);
                 var first = exportEl('exportTree').querySelector('input');
                 if (first && !exportState.preset) first.focus();
             }).catch(function(error) {
@@ -131,7 +134,8 @@
             var scenePath = typeof currentScenePath === 'function' ? currentScenePath() : null;
             if (!scenePath) return;
             var key = scenePath.replace(/\.md$/i, '');
-            openExportDialog(what === 'chapter' ? {chapterOf: key} : {scene: key});
+            if (what === 'pdf') openExportDialog({scene: key, format: 'pdf-share', step: 3});
+            else openExportDialog(what === 'chapter' ? {chapterOf: key} : {scene: key});
         }
 
         function exportMenuItemsFor(node) {

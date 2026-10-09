@@ -14,12 +14,12 @@
             // handlers that never match and the parser throws
             // "Token type `html_block` not supported".
             //
-            // ``html_inline`` (raw HTML inside a paragraph) is dropped
-            // silently because the annotation node is block-level; nothing
-            // in this app produces inline HTML on purpose.
+            // Inline HTML (raw HTML inside a paragraph) stays as literal
+            // text; see tokenizerKeepingInlineHtml.
+            var tokenizer = tokenizerKeepingInlineHtml(PM.defaultMarkdownParser.tokenizer);
             var parser = new PM.MarkdownParser(
                 PM.mySchema,
-                PM.defaultMarkdownParser.tokenizer,
+                tokenizer,
                 Object.assign({}, PM.defaultMarkdownParser.tokens, {
                     html_block: {
                         node: 'annotation',
@@ -32,7 +32,7 @@
             var doc = parser.parse(markdown);
             // What each block was in the file, so a save leaves untouched
             // blocks byte for byte (see 12-lossless-markdown.js).
-            _pmSourceBlocks = markdownSourceBlocks(PM.defaultMarkdownParser.tokenizer, markdown, doc, sceneEditorSerializer(PM));
+            _pmSourceBlocks = markdownSourceBlocks(tokenizer, markdown, doc, sceneEditorSerializer(PM));
 
             var lnPlugin = _buildLnPlugin();
 

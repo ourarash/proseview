@@ -54,20 +54,23 @@ const schema = new Schema({
     }),
     marks: mdSchema.spec.marks,
 });
-const parser = new MarkdownParser(schema, defaultMarkdownParser.tokenizer,
+let parser;
+const makeParser = () => new MarkdownParser(schema, tokenizer,
     Object.assign({}, defaultMarkdownParser.tokens, {
         html_block: { node: 'annotation', getAttrs: tok => ({ raw: tok.content.trim() }) },
-        html_inline: { ignore: true },
     }));
 const serializer = new MarkdownSerializer(Object.assign({}, defaultMarkdownSerializer.nodes, {
     annotation(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
 }), defaultMarkdownSerializer.marks);
-const { markdownSourceBlocks, serializeKeepingSource } = new Function(
-    readFileSync(%(helper)s, 'utf8') + '\nreturn { markdownSourceBlocks, serializeKeepingSource };')();
+const { markdownSourceBlocks, serializeKeepingSource, tokenizerKeepingInlineHtml } = new Function(
+    readFileSync(%(helper)s, 'utf8')
+    + '\nreturn { markdownSourceBlocks, serializeKeepingSource, tokenizerKeepingInlineHtml };')();
+const tokenizer = tokenizerKeepingInlineHtml(defaultMarkdownParser.tokenizer);
+parser = makeParser();
 
 const { markdown, edit } = JSON.parse(readFileSync(0, 'utf8'));
 let doc = parser.parse(markdown);
-const saved = markdownSourceBlocks(defaultMarkdownParser.tokenizer, markdown, doc, serializer);
+const saved = markdownSourceBlocks(tokenizer, markdown, doc, serializer);
 const blocks = [];
 doc.forEach(node => blocks.push(node));
 if (edit.append !== undefined) {
@@ -123,3 +126,11 @@ def test_a_deleted_block_leaves_the_rest_as_written(tmp_path: Path):
 def test_deleting_the_last_block_keeps_the_final_newline(tmp_path: Path):
     out = _save(tmp_path, NOTE, remove=7)
     assert out == NOTE.replace("\n\nLast line with a [[link|alias]].\n", "\n", 1)
+
+
+def test_inline_html_is_kept_as_text_rather_than_breaking_the_editor(tmp_path: Path):
+    """``<br>`` inside a paragraph once made the parser throw, blanking the scene."""
+    markdown = "He said it was important.<br>\nThen he left.\n\nA <span>quiet</span> morning.\n"
+    assert _save(tmp_path, markdown) == markdown
+    edited = _save(tmp_path, markdown, block=1, append=" Rain.")
+    assert edited == "He said it was important.<br>\nThen he left.\n\nA <span>quiet</span> morning. Rain.\n"

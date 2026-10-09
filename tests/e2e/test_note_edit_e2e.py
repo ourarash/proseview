@@ -185,12 +185,17 @@ def test_saving_a_scene_leaves_untouched_vault_markdown_as_written(page: Page, n
     _type_at_end_of(page, "#sceneProseHost", "It was", "x")
     page.keyboard.press("Backspace")
     page.keyboard.press("ControlOrMeta+s")
-    page.wait_for_selector(".scene-edit-bar.is-saved")
+    page.wait_for_function("window._pmEditMode === false")
     assert scene.read_text(encoding="utf-8") == VAULT_SCENE
 
+    # A fresh page, so the save's own reload cannot land mid-edit.
+    page.reload()
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
     _type_at_end_of(page, "#sceneProseHost", "It was", " Truly.")
     page.keyboard.press("ControlOrMeta+s")
-    page.wait_for_function("() => window._pmDirty === false")
+    page.wait_for_function("window._pmEditMode === false")
     assert scene.read_text(encoding="utf-8") == VAULT_SCENE.replace(
         "It was ==important==, and _meant_.", "It was ==important==, and *meant*. Truly.")
 
@@ -231,3 +236,23 @@ def test_images_and_other_files_beside_the_scenes_can_be_opened(page: Page, note
     tree = page.get_by_role("tree", name="Repository files")
     expect(tree.locator('.file-link[data-path="manuscript/ch01/map.png"]')).to_be_attached()
     assert page.evaluate("Object.keys(meta).every(p => p.endsWith('.md'))")
+
+
+def test_cmd_s_closes_a_note_and_e_picks_up_where_it_stopped(page: Page, notes_server: ProseviewServer):
+    sheet = notes_server.root / "story-bible" / "characters" / "alice.md"
+    page.goto(notes_server.url("/#/file/story-bible%2Fcharacters%2Falice.md"))
+    page.get_by_role("button", name="Edit", exact=True).click()
+    editor = page.locator(".file-edit-host .ProseMirror")
+    editor.locator("p").first.click()
+    page.keyboard.press("End")
+    page.keyboard.type(" She is seven.")
+    page.keyboard.press("ControlOrMeta+s")
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+
+    page.locator("#filePreviewBody").click()
+    page.keyboard.press("e")
+    expect(editor).to_be_visible()
+    page.keyboard.type(" And a half.")
+    page.keyboard.press("ControlOrMeta+s")
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+    assert "She is seven. And a half." in sheet.read_text(encoding="utf-8")

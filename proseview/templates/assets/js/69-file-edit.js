@@ -12,6 +12,7 @@
             mode: '',          // 'rich' or 'source'
             view: null,        // the ProseMirror view in rich mode
             sourceBlocks: null, // the note's blocks as written (12-lossless-markdown.js)
+            lastCaret: null,    // {path, pos} when the editor last closed
             textarea: null,    // the textarea in source mode
             frontmatter: '',
             mtime: null,
@@ -233,6 +234,10 @@
                     },
                     nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView},
                 });
+                if (fileEdit.lastCaret && fileEdit.lastCaret.path === node.path) {
+                    var at = doc.resolve(Math.max(0, Math.min(fileEdit.lastCaret.pos, doc.content.size)));
+                    fileEdit.view.dispatch(fileEdit.view.state.tr.setSelection(PM.TextSelection.near(at)).scrollIntoView());
+                }
                 fileEdit.view.focus();
             } else {
                 var note = document.createElement('p');
@@ -282,7 +287,11 @@
         }
 
         function unmountFileEditor() {
-            if (fileEdit.view) fileEdit.view.destroy();
+            if (fileEdit.view) {
+                // Where the caret was, so E picks up from there.
+                fileEdit.lastCaret = {path: fileEdit.path, pos: fileEdit.view.state.selection.head};
+                fileEdit.view.destroy();
+            }
             fileEdit.view = null;
             fileEdit.sourceBlocks = null;
             fileEdit.textarea = null;

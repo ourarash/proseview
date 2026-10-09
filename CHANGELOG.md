@@ -13,6 +13,8 @@ section here becomes the release notes on GitHub.
 - The agent composer is quieter: New conversation and History are icons
   beside the agent's name, presets are small chips, and the attach button
   and model sit beside Send.
+- `Mod-S` saves and returns to reading, in scenes as in notes, as the Save
+  button does. `E` reopens the editor where the caret was.
 
 ### Fixed
 

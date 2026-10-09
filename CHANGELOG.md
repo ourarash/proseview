@@ -15,15 +15,6 @@ section here becomes the release notes on GitHub.
   and model sit beside Send.
 - `Mod-S` saves and returns to reading, in scenes as in notes, as the Save
   button does. `E` reopens the editor where the caret was.
-
-- Notes are not scenes: Markdown in a folder named Characters, Notes,
-  Research, Review, Story Bible, Templates or Attachments (any case, at any
-  depth) is listed in the file browser but left out of scene counts, word
-  totals and exports. A vault's character sheets no longer become chapters.
-- A book split into parts gets a chapter per chapter folder: the chapter is
-  the outermost folder that holds scenes itself, so `Part One/Chapter 1`
-  and `Part One/Chapter 2` are two chapters, and `ch01/drafts` still
-  belongs to `ch01`.
 - **No guessing where the book is.** Without a manuscript folder, Proseview
   opens the folder as plain Markdown: reading, editing, search and the agents
   work on every file, and a note on the dashboard asks where the book is.

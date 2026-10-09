@@ -11,6 +11,7 @@
             path: '',
             mode: '',          // 'rich' or 'source'
             view: null,        // the ProseMirror view in rich mode
+            sourceBlocks: null, // the note's blocks as written (12-lossless-markdown.js)
             textarea: null,    // the textarea in source mode
             frontmatter: '',
             mtime: null,
@@ -164,8 +165,10 @@
                         PM.wrappingInputRule(/^(\d+)\.\s$/, PM.mdSchema.nodes.ordered_list, function(m) { return {order: +m[1], tight: true}; }),
                     ]}));
                 }
+                var doc = fileEditParser(PM).parse(parts.body);
+                fileEdit.sourceBlocks = markdownSourceBlocks(PM.defaultMarkdownParser.tokenizer, parts.body, doc, fileEditSerializer(PM));
                 fileEdit.view = new PM.EditorView(host, {
-                    state: PM.EditorState.create({doc: fileEditParser(PM).parse(parts.body), plugins: plugins}),
+                    state: PM.EditorState.create({doc: doc, plugins: plugins}),
                     dispatchTransaction: function(tr) {
                         fileEdit.view.updateState(fileEdit.view.state.apply(tr));
                         if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
@@ -216,13 +219,14 @@
         }
 
         function fileEditContent() {
-            if (fileEdit.mode === 'rich' && fileEdit.view) return fileEditSerializer(window._PM).serialize(fileEdit.view.state.doc);
+            if (fileEdit.mode === 'rich' && fileEdit.view) return serializeKeepingSource(fileEdit.sourceBlocks, fileEdit.view.state.doc, fileEditSerializer(window._PM));
             return fileEdit.textarea ? fileEdit.textarea.value : '';
         }
 
         function unmountFileEditor() {
             if (fileEdit.view) fileEdit.view.destroy();
             fileEdit.view = null;
+            fileEdit.sourceBlocks = null;
             fileEdit.textarea = null;
             fileEdit.path = '';
             fileEdit.dirty = false;

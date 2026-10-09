@@ -40,7 +40,7 @@ from .repo import (
 )
 from .highlights import compute_scene_highlights, strip_markdown_for_offsets
 from .lexical import build_content_stopwords, top_repeated_content_words
-from .scenes import extract_scene_text, split_frontmatter
+from .scenes import extract_scene_text, resolve_manuscript_dir, split_frontmatter
 
 
 QUESTION_MAX = 32 * 1024
@@ -598,7 +598,11 @@ class ContextBuilder:
         kind = str(document.get("kind") or "")
         value = str(document.get("path") or "")
         if kind == "scene":
-            return self._relative_target(f"{self.cfg.manuscript_subdir}/{value}")
+            # A scene path is relative to the manuscript folder, which is the
+            # whole folder when there is no manuscript/ subfolder.
+            manuscript = resolve_manuscript_dir(self.root, self.cfg.manuscript_subdir)
+            prefix = manuscript.relative_to(self.root).as_posix()
+            return self._relative_target(value if prefix == "." else f"{prefix}/{value}")
         if kind == "file":
             return self._relative_target(value)
         raise ContextError("document kind must be 'scene' or 'file'")

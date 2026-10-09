@@ -390,7 +390,7 @@ def _browser_editor_text(scene_text: str) -> str:
 def _resolve_line_col_target(repo_root: str, scene_rel: str, loc: dict[str, Any]) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
-    scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+    scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / scene_rel).resolve()
     raw = read_repo_text(scene_path)
     start = _line_col_to_offset(raw, int(loc["start_line"]), int(loc["start_col"]))
     end = _line_col_to_offset(raw, int(loc["end_line"]), int(loc["end_col"]))
@@ -433,7 +433,7 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
             raise ValueError("range must have start >= 0 and end > start")
         root = Path(repo_root).resolve()
         cfg = Config.load(root)
-        scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+        scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / scene_rel).resolve()
         raw = read_repo_text(scene_path)
         _fm, body = split_frontmatter(raw)
         editor_text = _browser_editor_text(extract_scene_text(body))
@@ -448,7 +448,7 @@ def _resolve_ai_target(repo_root: str, scene_rel: str, quote: str, range_value: 
 
     root = Path(repo_root).resolve()
     cfg = Config.load(root)
-    scene_path = (root / cfg.manuscript_subdir / scene_rel).resolve()
+    scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / scene_rel).resolve()
     raw = read_repo_text(scene_path)
     _fm, body = split_frontmatter(raw)
     if _HTML_COMMENT_RE.search(quote):
@@ -1930,7 +1930,7 @@ class _Handler(BaseHTTPRequestHandler):
                 elif action == "validate":
                     scene_rel = _normalize_ai_scene_file(self.repo_root, str(prop["file"]))
                     cfg = Config.load(Path(self.repo_root))
-                    target = Path(self.repo_root) / cfg.manuscript_subdir / scene_rel
+                    target = resolve_manuscript_dir(Path(self.repo_root), cfg.manuscript_subdir) / scene_rel
                     expected_mtime = prop.get("source_mtime_ns")
                     if expected_mtime is not None and target.stat().st_mtime_ns != int(expected_mtime):
                         prop["status"] = "stale"
@@ -1990,8 +1990,8 @@ class _Handler(BaseHTTPRequestHandler):
                 import hashlib
                 root = Path(self.repo_root).resolve()
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / rel).resolve()
+                manuscript_root = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
                 if not scene_path.is_relative_to(manuscript_root):
                     self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
                     return
@@ -2139,8 +2139,8 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 root = Path(self.repo_root)
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / rel).resolve()
+                manuscript_root = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
                 if not scene_path.is_relative_to(manuscript_root):
                     self._send_json({"ok": False, "error": "path outside manuscript"}, 403)
                     return
@@ -2174,8 +2174,8 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 root = Path(self.repo_root)
                 cfg = Config.load(root)
-                scene_path = (root / cfg.manuscript_subdir / rel).resolve()
-                manuscript_root = (root / cfg.manuscript_subdir).resolve()
+                scene_path = (resolve_manuscript_dir(root, cfg.manuscript_subdir) / rel).resolve()
+                manuscript_root = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
                 if not scene_path.is_relative_to(manuscript_root) or not scene_path.exists():
                     self._send_json({"ok": False, "error": "invalid scene path"}, 403)
                     return

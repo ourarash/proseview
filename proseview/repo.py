@@ -383,7 +383,9 @@ def _dir_node(path: Path, root: Path, preview_max: int, excluded: set[str]) -> d
     }
 
 
-def _file_node_scene(path: Path, root: Path, manuscript_subdir: str) -> dict[str, Any]:
+def _file_node_scene(
+    path: Path, root: Path, manuscript_subdir: str, scene_keys: set[str] | None = None,
+) -> dict[str, Any]:
     """Lightweight node for a manuscript Markdown file (body omitted).
 
     Files the scene index does not carry (READMEs, notes nested below a
@@ -391,7 +393,10 @@ def _file_node_scene(path: Path, root: Path, manuscript_subdir: str) -> dict[str
     click handler previews them instead of opening an absent scene.
     """
     rel = path.relative_to(root).as_posix()
-    scene_path = scene_relative_path(rel, manuscript_subdir)
+    if scene_keys is not None:
+        scene_path = rel if rel in scene_keys else None
+    else:
+        scene_path = scene_relative_path(rel, manuscript_subdir)
     return {
         "name": path.name,
         "path": rel,
@@ -407,22 +412,28 @@ def _file_node_scene(path: Path, root: Path, manuscript_subdir: str) -> dict[str
     }
 
 
-def _dir_node_manuscript(path: Path, root: Path, manuscript_subdir: str) -> dict[str, Any] | None:
-    """Walk the manuscript directory, marking .md files as scene nodes."""
+def _dir_node_manuscript(
+    path: Path, root: Path, manuscript_subdir: str, scene_keys: set[str] | None = None,
+) -> dict[str, Any] | None:
+    """Walk the manuscript directory, marking .md files as scene nodes.
+
+    *scene_keys*, when given, says exactly which files are scenes; it is used
+    when the whole folder is the manuscript and there is no subfolder prefix.
+    """
     children: list[dict[str, Any]] = []
     try:
         entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
     except OSError:
         entries = []
     for child in entries:
-        if _is_hidden(child.name):
+        if _is_hidden(child.name) or child.name in CONTEXT_SKIP_DIRS:
             continue
         if child.is_dir():
-            sub = _dir_node_manuscript(child, root, manuscript_subdir)
+            sub = _dir_node_manuscript(child, root, manuscript_subdir, scene_keys)
             if sub is not None:
                 children.append(sub)
         elif child.is_file() and child.suffix.lower() in {".md", ".markdown"}:
-            children.append(_file_node_scene(child, root, manuscript_subdir))
+            children.append(_file_node_scene(child, root, manuscript_subdir, scene_keys))
         elif child.is_file():
             # Images and other files beside the prose are listed so they can
             # be found and opened, but they are never scenes.
@@ -487,16 +498,26 @@ def build_sidebar_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
     follow as metadata-only nodes; their file bodies live in ``repoTree`` /
     ``repoFileByPath`` and are looked up there at click time.
     """
+    from .scenes import iter_scene_paths, resolve_manuscript_dir
+
     nodes: list[dict[str, Any]] = []
 
     ms = root / cfg.manuscript_subdir
-    if ms.exists() and ms.is_dir():
+    whole_folder = resolve_manuscript_dir(root, cfg.manuscript_subdir) == root
+    if whole_folder:
+        # No manuscript folder: the whole folder is the manuscript (an
+        # Obsidian vault, a flat pile of chapters), so list all of it, with
+        # the scenes the dashboard indexed marked as scenes.
+        scene_keys = {path.relative_to(root).as_posix() for path in iter_scene_paths(root)}
+        root_node = _dir_node_manuscript(root, root, "", scene_keys)
+        nodes.extend(root_node["children"] if root_node else [])
+    elif ms.exists() and ms.is_dir():
         ms_node = _dir_node_manuscript(ms, root, cfg.manuscript_subdir)
         if ms_node is not None:
             nodes.append(ms_node)
 
     excluded = {cfg.manuscript_subdir}
-    for name in cfg.repo_tab.folders:
+    for name in [] if whole_folder else cfg.repo_tab.folders:
         trimmed = name.strip("/").strip()
         if not trimmed or trimmed in excluded:
             continue

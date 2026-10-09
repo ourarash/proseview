@@ -27,6 +27,11 @@ section here becomes the release notes on GitHub.
   of chapters) showed an empty file browser, no Analysis numbers for a scene,
   and refused to create, rename or delete files. All of that works now, and
   a new file can go at the top level, so an empty folder can get its first.
+- Editing a paragraph that is wrapped at a fixed width (say 80 columns) wrote
+  it back as one long line. It keeps its wrapping now, and only the lines
+  around the edit change.
+- Codex and Claude could not open a conversation about a scene in a folder
+  with no `manuscript/` subfolder.
 
 ## 0.4.1 — 2026-10-08
 

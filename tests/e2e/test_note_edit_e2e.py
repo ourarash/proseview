@@ -255,4 +255,5 @@ def test_cmd_s_closes_a_note_and_e_picks_up_where_it_stopped(page: Page, notes_s
     page.keyboard.type(" And a half.")
     page.keyboard.press("ControlOrMeta+s")
     expect(page.locator("#fileEditBar")).to_be_hidden()
-    assert "She is seven. And a half." in sheet.read_text(encoding="utf-8")
+    # The paragraph keeps its wrapping, so the words may break across lines.
+    assert "She is seven. And a half." in " ".join(sheet.read_text(encoding="utf-8").split())

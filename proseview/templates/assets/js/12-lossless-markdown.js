@@ -58,17 +58,88 @@
             var blocks = [];
             doc.forEach(function(node, _offset, index) {
                 var end = index + 1 < starts.length ? at(starts[index + 1]) : markdown.length;
-                blocks.push({serialized: _serializeBlock(serializer, doc, node), source: markdown.slice(at(starts[index]), end)});
+                blocks.push({
+                    type: node.type.name,
+                    serialized: _serializeBlock(serializer, doc, node),
+                    source: markdown.slice(at(starts[index]), end),
+                });
             });
             return {prefix: markdown.slice(0, at(starts[0])), blocks: blocks, tail: /\n*$/.exec(markdown)[0]};
+        }
+
+        // The old block an edited block replaced: the one at the same place
+        // between the nearest unchanged blocks, when as many blocks were
+        // there before as now.
+        function _counterpart(match, k, old) {
+            var before = k - 1, after = k + 1;
+            while (before >= 0 && match[before] === -1) before--;
+            while (after < match.length && match[after] === -1) after++;
+            var oldStart = before >= 0 ? match[before] + 1 : 0;
+            var oldEnd = after < match.length ? match[after] : old.length;
+            if (oldEnd - oldStart !== after - before - 1) return null;
+            return old[oldStart + (k - before - 1)] || null;
+        }
+
+        // A word that would start a list, heading, quote, rule or HTML block
+        // if a wrapped line began with it.
+        var _BLOCK_START = /^(?:[-+*>|]|#{1,6}|\d{1,9}[.)]|[=-]+|`{3,}.*|~{3,}.*|<.*)$/;
+
+        // An edited paragraph keeps the lines its source had, so a writer who
+        // wraps at 80 columns does not get the paragraph back as one long
+        // line and only the lines around the edit change. Unchanged lines at
+        // the start and end of the paragraph are written exactly as they were;
+        // the changed words between them are wrapped to the paragraph's width
+        // (or kept on one line when its lines are short, as in a chat log).
+        function _keepWrap(text, type, before) {
+            if (type !== 'paragraph' || !before || before.type !== 'paragraph') return text;
+            var oldLines = before.source.replace(/\n\s*$/, '').split('\n');
+            if (oldLines.length < 2) return text;
+            var words = function(line) { return line.replace(/\\$/, '').trim().split(/\s+/).filter(Boolean); };
+            // The new words, each marked when a hard break follows it.
+            var tokens = [];
+            text.split('\n').forEach(function(segment, index, all) {
+                var row = words(segment);
+                row.forEach(function(word, at) { tokens.push({word: word, hard: index < all.length - 1 && at === row.length - 1}); });
+            });
+            var fits = function(line, from) {
+                var row = words(line);
+                if (!row.length || from + row.length > tokens.length) return 0;
+                for (var i = 0; i < row.length; i++) if (tokens[from + i].word !== row[i]) return 0;
+                return row.length;
+            };
+            var head = 0, used = 0;
+            while (head < oldLines.length) {
+                var taken = fits(oldLines[head], used);
+                if (!taken) break;
+                used += taken; head++;
+            }
+            var tail = oldLines.length, end = tokens.length;
+            while (tail > head) {
+                var row = words(oldLines[tail - 1]);
+                if (!row.length || end - row.length < used || !fits(oldLines[tail - 1], end - row.length)) break;
+                end -= row.length; tail--;
+            }
+            // Words added at the end of a kept line belong on that line.
+            if (head && used < end) { head--; used -= words(oldLines[head]).length; }
+            var width = Math.max.apply(null, oldLines.map(function(line) { return line.replace(/\s+$/, '').length; }));
+            var hardBreak = oldLines.some(function(line) { return / {2,}$/.test(line); }) ? '  ' : '\\';
+            var middle = [], current = '';
+            tokens.slice(used, end).forEach(function(token) {
+                var wrap = width >= 40 && current && (current + ' ' + token.word).length > width && !_BLOCK_START.test(token.word);
+                if (wrap) { middle.push(current); current = ''; }
+                current = current ? current + ' ' + token.word : token.word;
+                if (token.hard) { middle.push(current + hardBreak); current = ''; }
+            });
+            if (current) middle.push(current);
+            return oldLines.slice(0, head).concat(middle, oldLines.slice(tail)).join('\n');
         }
 
         // *doc* as Markdown, writing each block that is unchanged since
         // *saved* (from markdownSourceBlocks) exactly as it was in the file.
         function serializeKeepingSource(saved, doc, serializer) {
             if (!saved) return serializer.serialize(doc);
-            var now = [];
-            doc.forEach(function(node) { now.push(_serializeBlock(serializer, doc, node)); });
+            var now = [], types = [];
+            doc.forEach(function(node) { now.push(_serializeBlock(serializer, doc, node)); types.push(node.type.name); });
             var old = saved.blocks;
             // Pair unchanged blocks in order (longest common subsequence),
             // after skipping the common head and tail, so an inserted scene
@@ -104,7 +175,7 @@
                     out += old[src].source;
                     continue;
                 }
-                var text = (src !== -1 ? old[src].source : now[k]).replace(/\n\s*$/, '');
+                var text = src !== -1 ? old[src].source.replace(/\n\s*$/, '') : _keepWrap(now[k], types[k], _counterpart(match, k, old));
                 out += last ? text + saved.tail : text + '\n\n';
             }
             return out;

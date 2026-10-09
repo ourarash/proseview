@@ -134,3 +134,33 @@ def test_inline_html_is_kept_as_text_rather_than_breaking_the_editor(tmp_path: P
     assert _save(tmp_path, markdown) == markdown
     edited = _save(tmp_path, markdown, block=1, append=" Rain.")
     assert edited == "He said it was important.<br>\nThen he left.\n\nA <span>quiet</span> morning. Rain.\n"
+
+
+WRAPPED = """As the next few weeks passed, our email exchange never settled into anything
+solid. We sent each other jokes, short replies, and funny videos. Then
+nothing for hours, sometimes days.
+
+Campus made that kind of caution easy.
+"""
+
+
+def test_an_edited_paragraph_keeps_its_line_wrapping(tmp_path: Path):
+    """A writer who wraps at 80 columns does not get one long line back."""
+    out = _save(tmp_path, WRAPPED, block=0, append=" I would check my inbox - 1. then again.")
+    first = out.split("\n\n")[0].split("\n")
+    assert max(len(line) for line in first) <= 80
+    assert " ".join(first) == (
+        "As the next few weeks passed, our email exchange never settled into anything solid. "
+        "We sent each other jokes, short replies, and funny videos. Then nothing for hours, "
+        "sometimes days. I would check my inbox - 1. then again."
+    )
+    # No wrapped line may start a list, which would change what it means.
+    assert not any(line.startswith(("- ", "1. ")) for line in first[1:])
+    assert out.endswith("\n\nCampus made that kind of caution easy.\n")
+
+
+def test_an_edit_moves_only_the_line_breaks_around_it(tmp_path: Path):
+    out = _save(tmp_path, WRAPPED, block=0, append=" Again.")
+    assert out == WRAPPED.replace("sometimes days.", "sometimes days. Again.", 1)
+    chat = "Amir: hi\nNima: hey\nAmir: you up?\n\nEnd.\n"
+    assert _save(tmp_path, chat, block=0, append=" no") == "Amir: hi\nNima: hey\nAmir: you up? no\n\nEnd.\n"

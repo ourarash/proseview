@@ -3069,6 +3069,26 @@ def test_file_explorer_folder_menu_renames_and_trashes_nonempty_folders(
     assert len(trashed) == 1 and trashed[0].read_bytes() == b""
 
 
+def test_file_explorer_keeps_open_folders_open_after_a_change(page: Page, server: ProseviewServer):
+    """A change reloads the page; the folders the writer had open stay open."""
+    open_dashboard(page, server)
+    tree = page.get_by_role("tree", name="Repository files")
+    characters = tree.locator(".dir-toggle").filter(has_text=re.compile(r"^characters$")).first
+    characters.click()
+    assert characters.get_attribute("aria-expanded") == "true"
+
+    tree.locator(".file-link").filter(has_text=re.compile(r"^lowe\.md$")).first.click(button="right")
+    page.locator("#sidebarContextMenu").get_by_role("menuitem", name="Delete…").click()
+    page.locator("dialog[open]").get_by_role("button", name="Delete", exact=True).click()
+    page.wait_for_function(
+        "() => ![...document.querySelectorAll('#sidebarTree .file-link')].some(el => el.textContent === 'lowe.md')"
+    )
+    assert not (server.root / "story-bible/characters/lowe.md").exists()
+    characters = tree.locator(".dir-toggle").filter(has_text=re.compile(r"^characters$")).first
+    assert characters.get_attribute("aria-expanded") == "true"
+    assert characters.locator("xpath=..").evaluate("li => li.classList.contains('expanded')")
+
+
 def test_file_creation_never_discards_a_dirty_scene_without_confirmation(
     page: Page,
     server: ProseviewServer,

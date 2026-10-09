@@ -81,13 +81,23 @@
             container.setAttribute('role', 'tree');
             container.setAttribute('aria-label', 'Repository files');
             container.innerHTML = '';
+            // Folders that were open before a file change reloaded the page.
+            var restored = null;
+            try {
+                restored = JSON.parse(sessionStorage.getItem('proseview-sidebar-expanded') || 'null');
+                sessionStorage.removeItem('proseview-sidebar-expanded');
+            } catch (e) {}
+            _sidebarExpandedBefore = Array.isArray(restored) ? new Set(restored) : null;
             container.appendChild(buildSidebarList(sidebarTree, 0));
+            _sidebarExpandedBefore = null;
             const first = container.querySelector('[role="treeitem"]');
             if (first) first.tabIndex = 0;
             // The tree is rendered lazily (first open) and rebuilt wholesale,
             // so re-apply whatever the active document is.
             applySidebarReveal();
         }
+
+        var _sidebarExpandedBefore = null;
 
         function buildSidebarList(nodes, depth) {
             const ul = document.createElement('ul');
@@ -163,7 +173,9 @@
                 tog.className = 'dir-toggle';
                 tog.setAttribute('role', 'treeitem');
                 tog.setAttribute('aria-level', String(depth + 1));
-                tog.setAttribute('aria-expanded', depth === 0 ? 'true' : 'false');
+                const open = _sidebarExpandedBefore ? _sidebarExpandedBefore.has(node.path) : depth === 0;
+                tog.setAttribute('aria-expanded', open ? 'true' : 'false');
+                tog.dataset.path = node.path;
                 tog.tabIndex = -1;
                 tog.appendChild(sidebarIcon('chevron'));
                 tog.appendChild(sidebarIcon('folder'));
@@ -176,7 +188,7 @@
                 if (typeof sidebarAttachRowActions === 'function') sidebarAttachRowActions(node, li, tog, depth);
                 if (node.children && node.children.length)
                     li.appendChild(buildSidebarList(node.children, depth + 1));
-                if (depth === 0) li.classList.add('expanded');
+                if (open) li.classList.add('expanded');
             }
             return li;
         }

@@ -272,6 +272,20 @@
             try { sessionStorage.setItem('proseview-file-flash', message); } catch (error) {}
         }
 
+        // The reload after a change would otherwise close every folder.
+        // renderSidebarTree reopens these, following a rename.
+        function sidebarRememberExpanded(data) {
+            var open = [];
+            document.querySelectorAll('#sidebarTree li.expanded > .dir-toggle').forEach(function(toggle) {
+                var path = toggle.dataset.path || '';
+                var moved = data.old_path && (path === data.old_path || path.indexOf(data.old_path + '/') === 0);
+                if (data.operation === 'rename' && moved) path = data.path + path.slice(data.old_path.length);
+                else if (data.operation === 'delete' && (path === data.path || path.indexOf(data.path + '/') === 0)) return;
+                open.push(path);
+            });
+            try { sessionStorage.setItem('proseview-sidebar-expanded', JSON.stringify(open)); } catch (error) {}
+        }
+
         function sidebarFinishMutation(data, activeBefore, routeBefore) {
             var hash = window.location.hash;
             if (data.operation === 'create') {
@@ -300,6 +314,7 @@
                 }
                 sidebarStoreFlash('Moved ' + data.path + ' to Proseview Trash.');
             }
+            sidebarRememberExpanded(data);
             history.replaceState(history.state, '', hash || '#/tab/overview');
             location.reload();
         }

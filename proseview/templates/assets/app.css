@@ -7797,6 +7797,15 @@
             margin: 1.5em 0;
         }
 
+        /* A table in a note: shown, not edited, written back as it was. */
+        .pm-raw-block {
+            margin: 1em 0;
+            padding: 2px 0 2px 12px;
+            border-left: 3px solid var(--border);
+            cursor: default;
+            user-select: none;
+        }
+
         .scene-edit-divider {
             width: 1px;
             height: 16px;

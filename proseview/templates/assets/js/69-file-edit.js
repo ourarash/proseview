@@ -63,20 +63,59 @@
             return {header: '', body: raw};
         }
 
+        // The scene tokenizer plus tables. A table at the top of the note
+        // becomes one table_raw token holding its source lines, which the
+        // parser turns into a read-only raw_block; a save writes it back as
+        // it was. Scenes keep the stock tokenizer.
+        var _fileEditTokenizer = null;
+        function fileEditTokenizer(PM) {
+            if (_fileEditTokenizer) return _fileEditTokenizer;
+            var md = new PM.defaultMarkdownParser.tokenizer.constructor('commonmark', {html: true}).enable('table');
+            _fileEditTokenizer = {parse: function(src, env) {
+                var lines = src.split('\n');
+                var tokens = md.parse(src, env);
+                var out = [];
+                for (var i = 0; i < tokens.length; i++) {
+                    var t = tokens[i];
+                    if (t.type !== 'table_open' || t.level !== 0 || !t.map) { out.push(t); continue; }
+                    var raw = new t.constructor('table_raw', '', 0);
+                    raw.map = t.map;
+                    raw.block = true;
+                    raw.content = lines.slice(t.map[0], t.map[1]).join('\n').replace(/\s+$/, '');
+                    out.push(raw);
+                    while (i < tokens.length && !(tokens[i].type === 'table_close' && tokens[i].level === 0)) i++;
+                }
+                return out;
+            }};
+            return _fileEditTokenizer;
+        }
+
         function fileEditParser(PM) {
             return new PM.MarkdownParser(
                 PM.mySchema,
-                PM.defaultMarkdownParser.tokenizer,
+                fileEditTokenizer(PM),
                 Object.assign({}, PM.defaultMarkdownParser.tokens, {
                     html_block: {node: 'annotation', getAttrs: function(tok) { return {raw: tok.content.trim()}; }},
                     html_inline: {ignore: true},
+                    table_raw: {node: 'raw_block', getAttrs: function(tok) { return {raw: tok.content}; }},
                 })
             );
+        }
+
+        // A table shown as a table, kept out of the editing.
+        function fileEditRawBlockView(node) {
+            var dom = document.createElement('div');
+            dom.className = 'pm-raw-block';
+            dom.contentEditable = 'false';
+            dom.title = 'Tables are kept as written. Change them in your text editor.';
+            renderSafeMarkdown(dom, node.attrs.raw, {basePath: fileEdit.path});
+            return {dom: dom, ignoreMutation: function() { return true; }};
         }
 
         function fileEditSerializer(PM) {
             var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
                 annotation: function(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
+                raw_block: function(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
             });
             return new PM.MarkdownSerializer(nodes, PM.defaultMarkdownSerializer.marks);
         }
@@ -89,7 +128,14 @@
         function fileEditPlainReason(body) {
             var PM = window._PM;
             if (!PM) return 'the editor is still loading';
-            if (/^\s*\|.*\|\s*$/m.test(body) && /^\s*\|?\s*:?-{3,}/m.test(body)) return 'it has a table';
+            // A table inside a list or a quote has no block of its own to keep.
+            try {
+                if (fileEditTokenizer(PM).parse(body, {}).some(function(t) { return t.type === 'table_open'; })) {
+                    return 'it has a table inside a list or quote';
+                }
+            } catch (error) {
+                return 'it uses Markdown the editor cannot keep exactly';
+            }
             // HTML on a line of its own is kept as a block; HTML inside a line
             // would be dropped by the rich editor.
             var inline = body.replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*<[^>\n]+>[ \t]*$/gm, '');
@@ -178,14 +224,14 @@
                     ]}));
                 }
                 var doc = fileEditParser(PM).parse(parts.body);
-                fileEdit.sourceBlocks = markdownSourceBlocks(PM.defaultMarkdownParser.tokenizer, parts.body, doc, fileEditSerializer(PM));
+                fileEdit.sourceBlocks = markdownSourceBlocks(fileEditTokenizer(PM), parts.body, doc, fileEditSerializer(PM));
                 fileEdit.view = new PM.EditorView(host, {
                     state: PM.EditorState.create({doc: doc, plugins: plugins}),
                     dispatchTransaction: function(tr) {
                         fileEdit.view.updateState(fileEdit.view.state.apply(tr));
                         if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
                     },
-                    nodeViews: {annotation: PM.createAnnotationNodeView},
+                    nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView},
                 });
                 fileEdit.view.focus();
             } else {

@@ -47,7 +47,7 @@ Leave off `[claude]` if you will not use the Claude tab. [Quick start →](#-qui
   rewrites only the paragraphs you changed.
 - 📝 **Editable notes.** Story bible, plans, and any other Markdown file in
   the book get the same `Edit` and `Save`, with backups and the same
-  conflict guard. Notes with tables or HTML are edited as plain Markdown.
+  conflict guard. Notes with HTML inside their lines are edited as plain Markdown.
 - 📁 **File browser.** Create empty Markdown files and folders, rename them
   inline, or move them to Proseview Trash from the row menu or right-click.
 - 🔎 **Repository search.** `Mod-K` from anywhere — paths, metadata, TODOs,
@@ -123,8 +123,9 @@ filter verbs, sensory language, passive voice.
 typography, same highlights. `Mod-S` saves to the file, and the stats update.
 
 Story-bible pages, plans, and other Markdown notes open in the file view with
-their own `Edit` button (or press `E`). Frontmatter is kept as it is. A note with a table or
-raw HTML opens as plain Markdown, so it is saved exactly as typed. Like
+their own `Edit` button (or press `E`). Frontmatter is kept as it is. Tables
+show as tables and are saved as written; a note with HTML inside its lines
+opens as plain Markdown, so it is saved exactly as typed. Like
 scenes, each save keeps a backup and won't overwrite a change made elsewhere.
 A save rewrites only the paragraphs you changed, so Obsidian `[[wikilinks]]`,
 callouts and embeds elsewhere in the file stay exactly as written.

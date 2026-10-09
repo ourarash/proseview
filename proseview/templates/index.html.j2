@@ -1048,8 +1048,17 @@
             return new AnnotationNodeView(node, view, getPos);
         }
 
+        // A block the note editor shows but does not edit (a table), written
+        // back exactly as it was. See 69-file-edit.js.
+        const rawBlockSpec = {
+            attrs: { raw: { default: '' } },
+            group: 'block', atom: true, selectable: false,
+            parseDOM: [],
+            toDOM() { return ['div', { class: 'pm-raw-block', contenteditable: 'false' }]; }
+        };
+
         const mySchema = new Schema({
-            nodes: mdSchema.spec.nodes.addToEnd('annotation', annotationSpec),
+            nodes: mdSchema.spec.nodes.addToEnd('annotation', annotationSpec).addToEnd('raw_block', rawBlockSpec),
             marks: mdSchema.spec.marks
         });
 

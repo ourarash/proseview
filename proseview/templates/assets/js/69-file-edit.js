@@ -30,6 +30,18 @@
             return !window.PROSEVIEW_STATIC || !!window.PROSEVIEW_STATIC_EDITS;
         }
 
+        // Why the file on show cannot be edited, for E pressed on it; '' when
+        // it can be (the editor may just be loading).
+        function fileEditRefusal() {
+            if (window.PROSEVIEW_STATIC && !window.PROSEVIEW_STATIC_EDITS) return 'This copy is read-only.';
+            var path = typeof sidebarCurrentPath === 'function' ? sidebarCurrentPath() : '';
+            var node = path && typeof repoFileByPath !== 'undefined' ? repoFileByPath[path] : null;
+            if (!node) return '';
+            if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return 'Only Markdown files can be edited in Proseview.';
+            if (node.too_large) return 'This file is too large to edit in Proseview.';
+            return '';
+        }
+
         // Called by renderRepoFile every time the file view shows a file.
         function fileEditAfterRender(node) {
             var button = document.getElementById('filePreviewEditBtn');
@@ -325,7 +337,11 @@
                 var tag = (target && target.tagName || '').toUpperCase();
                 if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (target && target.isContentEditable)) return;
                 var button = document.getElementById('filePreviewEditBtn');
-                if (!button || button.hidden || button.getClientRects().length === 0) return;
+                if (!button || button.hidden || button.getClientRects().length === 0) {
+                    var why = fileEditRefusal();
+                    if (why && typeof sidebarShowToast === 'function') sidebarShowToast(why);
+                    return;
+                }
                 event.preventDefault();
                 toggleFileEdit();
             });

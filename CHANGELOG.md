@@ -3,6 +3,27 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
+## 0.4.1 — 2026-10-08
+
+### Added
+
+- **Preview a scene as a PDF**: press `P` in the scene view, or choose
+  *Preview as PDF…* from its More menu, to open Export on the shareable-PDF
+  preview of just that scene.
+- The file browser lists images and other files beside the scenes. Images
+  show in the file view, text files open read-only, and anything else says
+  Proseview cannot open it. None of them count as scenes or go into an export.
+- Pressing `E` on a file that cannot be edited, such as an image, says why
+  in a short note instead of doing nothing.
+
+### Fixed
+
+- Creating, renaming or deleting in the file browser no longer closes every
+  open folder.
+- Codex's notice about unknown requirements set by a managed account
+  ("Ignoring unknown `features` requirement …") goes to the terminal once
+  instead of appearing in the dock on every conversation.
+
 ## 0.4.0 — 2026-10-08
 
 ### Added

@@ -88,6 +88,9 @@ section here becomes the release notes on GitHub.
   the novel's `.gitignore`. `--output` still writes anywhere.
 - The book keeps one identifier, saved under `export:` in `.proseview.yaml`,
   so an e-reader replaces an earlier export instead of adding a second copy.
+- The Claude tab's SDK installs as an extra: `pipx install "proseview[claude]"`,
+  or `pipx inject proseview claude-agent-sdk` for an existing install. The
+  dock gives that command when the SDK is missing.
 
 ### Fixed
 
@@ -108,6 +111,9 @@ section here becomes the release notes on GitHub.
   steps in around it.
 - A single exported chapter or scene passes EPUBCheck: its contents page is
   no longer listed as a landmark outside the reading order.
+- Saving a scene or note leaves every block you did not edit exactly as
+  written. `[[wikilinks]]`, `> [!note]` callouts, `![[embeds]]`, `-` bullets
+  and `_italic_` used to come back escaped or reformatted on every save.
 
 ## 0.3.1 — 2026-10-08
 

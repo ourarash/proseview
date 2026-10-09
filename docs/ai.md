@@ -99,11 +99,17 @@ Three places where AI shows up, all opt-in:
    project conversation. `New conversation` starts a blank discussion while
    keeping the previous one available there.
 
-   The Claude tab needs `claude-agent-sdk` installed alongside the Claude Code
-   CLI:
+   The Claude tab needs the Claude Code CLI and Proseview's `claude` extra,
+   which brings in `claude-agent-sdk`:
 
    ```bash
-   pip install claude-agent-sdk
+   pipx install "proseview[claude]"
+   ```
+
+   If Proseview is already installed with pipx, add the SDK to it instead:
+
+   ```bash
+   pipx inject proseview claude-agent-sdk
    ```
 
    Its session runs with a fixed read-only tool allowlist and without loading

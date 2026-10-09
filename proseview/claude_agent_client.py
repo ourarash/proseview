@@ -393,7 +393,9 @@ class ClaudeAgentClient:
             import claude_agent_sdk as sdk
         except ImportError as exc:
             raise ClaudeUnavailableError(
-                "claude-agent-sdk is not installed; install it to use Claude for Discuss"
+                "claude-agent-sdk is not installed. To use Claude, run "
+                "pipx inject proseview claude-agent-sdk "
+                '(or install Proseview with pipx install "proseview[claude]")'
             ) from exc
         if not shutil.which("claude"):
             raise ClaudeUnavailableError("Claude Code CLI is not installed or is not on PATH")

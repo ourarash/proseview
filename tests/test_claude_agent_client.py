@@ -813,3 +813,16 @@ def test_the_roster_reports_the_configured_default(tmp_path):
         assert ladders == {("low", "medium", "high", "xhigh", "max")}
     finally:
         client.close()
+
+
+def test_a_missing_sdk_says_how_to_install_it(monkeypatch):
+    import sys
+
+    from proseview.claude_agent_client import ClaudeUnavailableError
+
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
+    client = ClaudeAgentClient(cwd=".", on_message=lambda message: None)
+    with pytest.raises(ClaudeUnavailableError) as raised:
+        client.inspect_capabilities()
+    assert "pipx inject proseview claude-agent-sdk" in str(raised.value)
+    assert 'pipx install "proseview[claude]"' in str(raised.value)

@@ -16,6 +16,21 @@ section here becomes the release notes on GitHub.
 - `Mod-S` saves and returns to reading, in scenes as in notes, as the Save
   button does. `E` reopens the editor where the caret was.
 
+- Notes are not scenes: Markdown in a folder named Characters, Notes,
+  Research, Review, Story Bible, Templates or Attachments (any case, at any
+  depth) is listed in the file browser but left out of scene counts, word
+  totals and exports. A vault's character sheets no longer become chapters.
+- A book split into parts gets a chapter per chapter folder: the chapter is
+  the outermost folder that holds scenes itself, so `Part One/Chapter 1`
+  and `Part One/Chapter 2` are two chapters, and `ch01/drafts` still
+  belongs to `ch01`.
+- Export reads Obsidian's Markdown: a `[[wikilink]]` prints as its text (or
+  alias), `![[picture.png]]` embeds the picture found in the vault, a
+  `> [!note] Title` callout is a quotation under its title, and
+  `==highlights==` keep their words.
+- A Codex or Claude tab whose agent is not installed says so and shows the
+  commands to install it, instead of offering passes that can only fail.
+
 ### Fixed
 
 - A selection sent to Codex or Claude (Ask, Quick critique and the other

@@ -2174,8 +2174,9 @@ def test_discuss_tab_shows_ai_not_connected_empty_state_without_codex(page: Page
     # Named per agent now that there are two tabs, and reporting the real
     # reason rather than assuming a missing Codex CLI.
     assert "Codex is not connected" in log_text
-    assert "Proseview runs entirely locally" in log_text
+    assert "Everything else works without one" in log_text
     assert "Codex CLI is not installed or is not on PATH" in log_text
+    assert "npm install -g @openai/codex" in log_text
     
     # Verify the composer is hidden
     assert page.locator("#discussComposerArea").is_hidden()

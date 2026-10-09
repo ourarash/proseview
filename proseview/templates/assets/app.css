@@ -4046,6 +4046,24 @@
             font-size: 13px;
         }
 
+        .sidebar-tree-note {
+            margin: 10px 16px;
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .discuss-empty-steps {
+            margin: 6px 0 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: var(--surface-muted);
+            font-size: 12px;
+            text-align: left;
+            white-space: pre-wrap;
+            user-select: all;
+        }
+
         .discuss-heading {
             min-width: 0;
             display: flex;

@@ -543,28 +543,9 @@
                 if (msg.includes('Codex') || msg.includes('API key') || msg.includes('app-server')
                     || msg.includes('claude-agent-sdk') || msg.includes('Claude Code')) {
                     setDiscussConnection('Not connected', '');
-                    // Built as nodes, not markup: the reason is an error string
-                    // and must never be interpolated into innerHTML.
-                    var empty = document.createElement('div');
-                    empty.className = 'discuss-empty-state';
-                    var icon = document.createElement('div');
-                    icon.className = 'discuss-empty-icon';
-                    icon.textContent = '🤖';
-                    var heading = document.createElement('h3');
-                    heading.textContent = label + ' is not connected';
-                    var blurb = document.createElement('p');
-                    blurb.className = 'discuss-empty-blurb';
-                    blurb.textContent = 'Proseview runs entirely locally, but you can connect an AI agent '
-                        + 'to discuss your manuscript, fix continuity errors, and review pacing.';
-                    var reason = document.createElement('p');
-                    reason.className = 'discuss-empty-reason';
-                    var em = document.createElement('em');
-                    em.textContent = msg;
-                    reason.appendChild(em);
-                    [icon, heading, blurb, reason].forEach(function(node) { empty.appendChild(node); });
                     var log = document.getElementById('discussLog');
                     log.textContent = '';
-                    log.appendChild(empty);
+                    log.appendChild(discussNotInstalledState(label, msg));
                     document.getElementById('discussComposerArea').hidden = true;
                     document.getElementById('discussAnnouncement').textContent = label + ' is not connected.';
                     return;
@@ -1965,6 +1946,48 @@
 
         var _discussReviewedTurn = '';
 
+        // What a tab shows when its agent cannot run here: why, and the
+        // commands that fix it. Built as nodes, not markup: the reason is an
+        // error string and must never be interpolated into innerHTML.
+        function discussNotInstalledState(label, reasonText) {
+            var empty = elementWith('discuss-empty-state');
+            empty.appendChild(elementWith('discuss-empty-icon', '🤖'));
+            var heading = document.createElement('h3');
+            heading.textContent = label + ' is not connected';
+            empty.appendChild(heading);
+            empty.appendChild(elementWith('discuss-empty-blurb',
+                'Proseview drives the agent you have installed, under your own login. Everything else works without one.'));
+            var reason = elementWith('discuss-empty-reason');
+            var em = document.createElement('em');
+            em.textContent = String(reasonText || '');
+            reason.appendChild(em);
+            empty.appendChild(reason);
+            var text = String(reasonText || '');
+            var how, steps;
+            if (/claude-agent-sdk/.test(text)) {
+                how = 'Run this in a terminal, then restart Proseview:';
+                steps = ['pipx inject proseview claude-agent-sdk'];
+            } else if (/Claude/.test(label)) {
+                how = 'Install Claude Code from claude.com/claude-code, sign in once in a terminal, then reopen this tab:';
+                steps = ['claude'];
+            } else {
+                how = 'Install Codex and sign in once in a terminal, then reopen this tab:';
+                steps = ['npm install -g @openai/codex', 'codex'];
+            }
+            empty.appendChild(elementWith('discuss-empty-blurb', how));
+            var code = document.createElement('pre');
+            code.className = 'discuss-empty-steps';
+            code.textContent = steps.join('\n');
+            empty.appendChild(code);
+            var more = document.createElement('a');
+            more.href = 'https://github.com/ourarash/proseview/blob/main/docs/ai.md';
+            more.target = '_blank';
+            more.rel = 'noopener';
+            more.textContent = 'How the AI features work';
+            empty.appendChild(more);
+            return empty;
+        }
+
         function renderDiscussSnapshot() {
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
@@ -2003,7 +2026,14 @@
             var hasNoDiscussActivity = !(snapshot.messages || []).length
                 && !(snapshot.progress || []).length
                 && !(snapshot.tasks || []).length;
-            if (hasNoDiscussActivity) {
+            // An agent that is not installed has nothing to offer but how to
+            // install it; the passes and the composer would only fail.
+            var notInstalled = snapshot.connection === 'Unavailable'
+                && /not installed|not on PATH/i.test(snapshot.unavailable_reason || '');
+            document.getElementById('discussComposerArea').hidden = notInstalled && hasNoDiscussActivity;
+            if (notInstalled && hasNoDiscussActivity) {
+                log.appendChild(discussNotInstalledState(discussAgentLabel(), snapshot.unavailable_reason));
+            } else if (hasNoDiscussActivity) {
                 var empty = elementWith('discuss-empty');
                 var title = document.createElement('strong');
                 if (_discussRepositoryAction) {

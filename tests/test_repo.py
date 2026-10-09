@@ -295,6 +295,26 @@ def test_sidebar_lists_images_and_other_files_beside_the_prose(tmp_path: Path):
     assert [p.name for p in iter_scene_paths(tmp_path / "manuscript")] == ["01-opening.md"]
 
 
+def test_sidebar_lists_a_folder_without_a_manuscript_subfolder(tmp_path: Path):
+    """An Obsidian vault or a flat folder of chapters is all manuscript.
+
+    The sidebar used to look only in ``manuscript/`` and came up empty.
+    """
+    (tmp_path / ".obsidian").mkdir()
+    (tmp_path / "Part One" / "Chapter 1").mkdir(parents=True)
+    (tmp_path / "Part One" / "Chapter 1" / "01 Café.md").write_text("scene", encoding="utf-8")
+    (tmp_path / "chapter-02.md").write_text("scene", encoding="utf-8")
+    (tmp_path / "map.png").write_bytes(b"\x89PNG")
+
+    tree = build_sidebar_tree(tmp_path, Config())
+
+    assert [node["name"] for node in tree] == ["Part One", "chapter-02.md", "map.png"]
+    cafe = _find_descendant(tree, "Part One/Chapter 1/01 Café.md")
+    assert cafe["is_scene"] is True and cafe["scene_path"] == "Part One/Chapter 1/01 Café.md"
+    assert _find_descendant(tree, "chapter-02.md")["scene_path"] == "chapter-02.md"
+    assert _find_descendant(tree, "map.png")["is_scene"] is False
+
+
 @pytest.mark.parametrize(
     "relative,expected",
     [

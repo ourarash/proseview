@@ -21,6 +21,11 @@ section here becomes the release notes on GitHub.
 - A selection sent to Codex or Claude (Ask, Quick critique and the other
   passes) takes its whole scene along, and an "Attach current" made before
   selecting is no longer dropped. The scene chip can be removed as before.
+- A scene with HTML inside a line (`<br>`, `<span>`) opened blank. The HTML
+  now shows as text and is saved as written.
+- A folder with no `manuscript/` subfolder (an Obsidian vault, a flat folder
+  of chapters) showed an empty file browser and no Analysis numbers for a
+  scene. Both work now.
 
 ## 0.4.1 — 2026-10-08
 

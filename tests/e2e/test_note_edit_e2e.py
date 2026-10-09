@@ -46,6 +46,8 @@ VAULT_BODY = """Jack met [[Jack Mercer]] at the docks.
 It was ==important==, and _meant_.
 """
 VAULT_SCENE = "---\ntitle: The Vault\n---\n\n" + VAULT_BODY
+#: A table inside a quote has no block of its own, so the note opens as text.
+QUOTED_TABLE = "# Quoted\n\n> | Who | Knows |\n> | --- | --- |\n> | Alice | the Cat |\n"
 
 
 @pytest.fixture
@@ -56,6 +58,7 @@ def notes_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[P
         "---\ntitle: Who knows whom\n---\n\n# Relationships\n\n| Who | Knows |\n| --- | --- |\n| Alice | the Cat |\n",
         encoding="utf-8",
     )
+    (root / "story-bible" / "quoted.md").write_text(QUOTED_TABLE, encoding="utf-8")
     (root / "manuscript" / "ch01" / "04-vault.md").write_text(VAULT_SCENE, encoding="utf-8")
     (root / "story-bible" / "vault.md").write_text("---\ntitle: Vault\n---\n\n" + VAULT_BODY, encoding="utf-8")
     chapter = root / "manuscript" / "ch01"
@@ -92,28 +95,43 @@ def test_edit_a_character_sheet_and_save_it(page: Page, notes_server: ProseviewS
     assert text.startswith("---\nname: Alice\nrole: protagonist\n---\n") and "She keeps a diary." in text
 
 
-def test_a_note_with_a_table_is_edited_as_plain_markdown(page: Page, notes_server: ProseviewServer):
+def test_a_note_with_a_table_keeps_the_table_and_edits_the_rest(page: Page, notes_server: ProseviewServer):
     note = notes_server.root / "story-bible" / "relationships.md"
     page.goto(notes_server.url("/#/file/story-bible%2Frelationships.md"))
     page.get_by_role("button", name="Edit", exact=True).click()
-    expect(page.locator(".file-edit-note")).to_contain_text("because it has a table")
-    source = page.get_by_label("Markdown of story-bible/relationships.md")
-    source.fill(source.input_value() + "| Alice | the Hatter |\n")
-    source.press("ControlOrMeta+s")
+    editor = page.locator(".file-edit-host .ProseMirror")
+    expect(editor.locator(".pm-raw-block table")).to_contain_text("the Cat")
+    editor.locator("h1").click()
+    page.keyboard.press("End")
+    page.keyboard.type(" so far")
+    page.keyboard.press("ControlOrMeta+s")
 
     expect(page.locator("#fileEditBar")).to_be_hidden()
     assert note.read_text(encoding="utf-8") == (
-        "---\ntitle: Who knows whom\n---\n\n# Relationships\n\n| Who | Knows |\n| --- | --- |\n"
-        "| Alice | the Cat |\n| Alice | the Hatter |\n"
+        "---\ntitle: Who knows whom\n---\n\n# Relationships so far\n\n| Who | Knows |\n| --- | --- |\n"
+        "| Alice | the Cat |\n"
     )
+
+
+def test_a_note_with_a_table_in_a_quote_is_edited_as_plain_markdown(page: Page, notes_server: ProseviewServer):
+    note = notes_server.root / "story-bible" / "quoted.md"
+    page.goto(notes_server.url("/#/file/story-bible%2Fquoted.md"))
+    page.get_by_role("button", name="Edit", exact=True).click()
+    expect(page.locator(".file-edit-note")).to_contain_text("because it has a table inside a list or quote")
+    source = page.get_by_label("Markdown of story-bible/quoted.md")
+    source.fill(source.input_value() + "> | Alice | the Hatter |\n")
+    source.press("ControlOrMeta+s")
+
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+    assert note.read_text(encoding="utf-8") == QUOTED_TABLE + "> | Alice | the Hatter |\n"
 
 
 @pytest.mark.allow_js_errors("409")
 def test_a_note_changed_elsewhere_is_not_overwritten(page: Page, notes_server: ProseviewServer):
-    note = notes_server.root / "story-bible" / "relationships.md"
-    page.goto(notes_server.url("/#/file/story-bible%2Frelationships.md"))
+    note = notes_server.root / "story-bible" / "quoted.md"
+    page.goto(notes_server.url("/#/file/story-bible%2Fquoted.md"))
     page.get_by_role("button", name="Edit", exact=True).click()
-    source = page.get_by_label("Markdown of story-bible/relationships.md")
+    source = page.get_by_label("Markdown of story-bible/quoted.md")
     expect(source).to_be_visible()  # the editor has read the file
     note.write_text(note.read_text(encoding="utf-8") + "\nEdited elsewhere.\n", encoding="utf-8")
     later = note.stat().st_mtime + 5

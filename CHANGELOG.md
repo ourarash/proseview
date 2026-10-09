@@ -3,6 +3,14 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
+## Unreleased
+
+### Changed
+
+- A note with a table opens in the rich editor. The table shows as a table
+  and is saved exactly as written; change it in your text editor. A table
+  inside a list or quote still opens the note as plain Markdown.
+
 ## 0.4.1 — 2026-10-08
 
 ### Added

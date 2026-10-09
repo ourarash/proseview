@@ -3201,21 +3201,29 @@ def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
 # ── editor round-trip fidelity ──────────────────────────────────────────────
 
 
-def test_cmd_s_saves_without_exiting_edit_mode(page: Page, server: ProseviewServer):
+def test_cmd_s_saves_and_returns_to_reading_and_e_picks_up_there(page: Page, server: ProseviewServer):
     path = server.scene_path()
-    before = path.read_text(encoding="utf-8")
 
     open_scene(page, server)
     enter_edit_mode(page)
     append_to_paragraph(page, "The loft smelled of cold coffee", " The kettle ticked.")
+    caret = page.evaluate("_pmView.state.selection.head")
     save_scene(page)
 
     _wait_until(lambda: "The kettle ticked." in path.read_text(encoding="utf-8"),
                 message="Mod-S did not reach the file")
-                
-    # Check that it did NOT drop out of edit mode
-    assert page.evaluate("window._pmEditMode") is True, "Cmd+S exited edit mode"
-    page.wait_for_selector(".scene-edit-bar.is-saved")
+    # Edit is a mode entered on purpose; saving finishes it.
+    page.wait_for_function("() => window._pmEditMode === false")
+
+    # E goes back to where the writing stopped.
+    page.locator("#sceneProseHost").click(position={"x": 1, "y": 1})
+    page.keyboard.press("e")
+    page.wait_for_function("() => window._pmEditMode === true")
+    assert page.evaluate("_pmView.state.selection.head") == caret
+    page.keyboard.type(" Then quiet.")
+    save_scene(page)
+    _wait_until(lambda: "The kettle ticked. Then quiet." in path.read_text(encoding="utf-8"),
+                message="the second save did not continue from the caret")
 
 
 def test_typing_saves_the_edit_and_preserves_everything_else(page: Page, server: ProseviewServer):
@@ -3381,8 +3389,6 @@ def test_second_edit_session_saves_without_a_false_conflict(
     save_scene(page)
     _wait_until(lambda: "First pass." in path.read_text(encoding="utf-8"), timeout=15,
                 message="first save never landed")
-
-    page.locator("#sceneEditBar .scene-edit-cancel").click()
     page.wait_for_function("() => window._pmEditMode === false")
 
     enter_edit_mode(page)
@@ -6894,8 +6900,6 @@ def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, dem
     assert page.locator("#sceneEditBar .scene-edit-save").is_visible()
     append_to_paragraph(page, "The loft smelled of cold coffee", " A sentence from the demo.")
     save_scene(page)
-    page.wait_for_selector("#sceneEditBar.is-saved")
-    page.locator("#sceneEditBar .scene-edit-cancel").click()
     page.wait_for_function("() => window._pmEditMode === false")
     assert "A sentence from the demo." in page.locator("#sceneProseHost").inner_text()
     assert sent == [], f"the demo sent something: {sent}"

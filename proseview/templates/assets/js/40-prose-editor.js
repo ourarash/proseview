@@ -65,11 +65,9 @@
                     },
                     'Mod-Shift-8': function() { window.toggleList('bullet_list'); return true; },
                     'Mod-Shift-7': function() { window.toggleList('ordered_list'); return true; },
-                    // Saving with the keyboard keeps you writing; the Save
-                    // button is the one that finishes and leaves edit mode.
-                    // saveSceneEdit guards on `exitEditMode !== false`, so
-                    // this has to be passed explicitly.
-                    'Mod-s': function() { saveSceneEdit(null, false); return true; }
+                    // Edit is a mode you enter on purpose, so saving finishes
+                    // it, as the Save button does. E brings the caret back.
+                    'Mod-s': function() { saveSceneEdit(); return true; }
                 }))
             ].filter(Boolean);
 
@@ -194,6 +192,13 @@
             _pmOpenMtime = meta[p] && meta[p].mtime;
             setPmDirty(false);
             _applyEditingProseClass();
+            // Back to the caret of the last edit of this scene, unless the
+            // writer has since put it somewhere else.
+            if (_pmLastCaret && _pmLastCaret.path === p && _pmView.state.selection.head <= 1) {
+                var size = _pmView.state.doc.content.size;
+                var at = _pmView.state.doc.resolve(Math.max(0, Math.min(_pmLastCaret.pos, size)));
+                _pmView.dispatch(_pmView.state.tr.setSelection(window._PM.TextSelection.near(at)));
+            }
             _pmView.focus();
         }
 
@@ -392,6 +397,8 @@
             var btn = document.getElementById('sceneEditBtn');
             if (btn) btn.textContent = '✏ Edit';
             var p = paths[curIdx];
+            // Where the caret was, so E picks up from there.
+            if (_pmView) _pmLastCaret = {path: p, pos: _pmView.state.selection.head};
             var scrollEl = document.querySelector('#sceneModal .modal-content');
             var bodyEl = document.getElementById('modalBody');
             var oldScroll = 0;

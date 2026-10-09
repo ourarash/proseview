@@ -42,7 +42,7 @@ Leave off `[claude]` if you will not use the Claude tab. [Quick start →](#-qui
 ### ✍️ Write
 
 - 📖 **Reading view and WYSIWYG editor.** The same typographic page, with
-  `Edit` toggled on. `Mod-S` saves; a conflict guard checks the file mtime
+  `Edit` toggled on. `Mod-S` saves and returns to reading; a conflict guard checks the file mtime
   so a change made in your own editor is never silently overwritten. A save
   rewrites only the paragraphs you changed.
 - 📝 **Editable notes.** Story bible, plans, and any other Markdown file in
@@ -120,7 +120,7 @@ filter verbs, sensory language, passive voice.
 ### Editing
 
 `Edit` turns the page you were reading into the page you type into — same
-typography, same highlights. `Mod-S` saves to the file, and the stats update.
+typography, same highlights. `Mod-S` saves to the file and returns to reading, and the stats update; `E` picks up where you left off.
 
 Story-bible pages, plans, and other Markdown notes open in the file view with
 their own `Edit` button (or press `E`). Frontmatter is kept as it is. Tables

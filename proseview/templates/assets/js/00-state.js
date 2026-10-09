@@ -277,6 +277,7 @@ let currentTab = 'overview';
         var _pmConflictDraft = null;
         var _pmSaveInFlight = false;
         var _pmSourceBlocks = null;
+        var _pmLastCaret = null;
         // Counts SSE reload events we expect to be triggered by our own
         // /save-scene calls. Decremented (with a tail timeout) when the
         // event arrives, so reloadOrDefer can skip the page reload our

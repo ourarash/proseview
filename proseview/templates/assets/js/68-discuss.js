@@ -504,7 +504,9 @@
             input.value = requestedAutoRun ? '' : _discussPreservedDraft;
             if (requestedSelection || requestedAction) {
                 _discussDraftDocument = Object.assign({}, doc);
-                _discussIncludeCurrentDocument = false;
+                // A passage is judged in its scene: the whole file goes along
+                // with it unless the writer removes it.
+                _discussIncludeCurrentDocument = !!requestedSelection;
             } else if (input.value && !_discussDraftDocument) {
                 _discussDraftDocument = Object.assign({}, doc);
             }
@@ -587,7 +589,7 @@
                     ? trigger : document.querySelector('#sceneModal .scene-back-btn');
                 _discussSelection = options.selection;
                 _discussDraftDocument = Object.assign({}, doc);
-                _discussIncludeCurrentDocument = false;
+                _discussIncludeCurrentDocument = !!options.selection;
                 _discussSelectionRange = options.selectionRange || null;
                 _discussSelectionSnapshot = options.selectionSnapshot || null;
                 _discussSelectionSourceTaskId = options.selectionSourceTaskId || null;

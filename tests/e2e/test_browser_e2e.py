@@ -270,7 +270,8 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    # A selection brings its scene along.
+    assert page.locator("#discussContext .discuss-chip-current").count() == 1
     assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
     page.fill("#discussInput", "Explain this scene")
@@ -298,7 +299,9 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     conversation_id = page.evaluate("() => window._discussConversationId")
     page.locator("#sceneModal .nav-btn").nth(1).click()
     page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    # The selection is still attached, so its scene stays with it; the scene
+    # now on screen is not added.
+    assert page.locator("#discussContext .discuss-chip-current").inner_text().startswith(SCENE_REL)
     assert page.evaluate("() => window._discussConversationId") == conversation_id
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
@@ -5499,7 +5502,8 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert quote in page.locator("#discussSelectionChip").inner_text()
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
+    # The passage is asked about in its scene, so the scene goes along.
+    assert page.locator("#discussContext .discuss-chip-current").count() == 1
     assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about this selection…"
     assert page.locator("#discussSend").inner_text() == "Send"
 
@@ -5744,6 +5748,30 @@ def test_a_critique_answers_in_the_conversation_and_keeps_its_subject(
     assert "Critique the provided text" in asked
     assert "Provide a clear suggested fix" in asked
     assert "Selection" in page.locator("#discussSelectionChip").inner_text()
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_a_critique_of_a_selection_reads_the_whole_scene(page: Page, server: ProseviewServer, agent: str):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionCritiqueBtn")
+    page.click("[data-selection-action='quick_critique']")
+
+    wait_for_discuss_answer(page, "Fake answer")
+    sent = question_requests[-1]
+    assert sent["action_id"] == "quick_critique"
+    assert sent["include_current_document"] is True
+    assert sent["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert SCENE_REL in page.locator("#discussContext .discuss-chip-current").inner_text()
+
 
 def test_quick_critique_queues_while_another_tab_restores_history(
     page: Page, server: ProseviewServer

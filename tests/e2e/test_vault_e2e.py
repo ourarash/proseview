@@ -62,3 +62,31 @@ def test_a_vault_lists_its_files_and_opens_a_scene_with_inline_html(page: Page, 
     page.keyboard.press("ControlOrMeta+s")
     page.wait_for_function("window._pmEditMode === false")
     assert (vault_server.root / SCENE).read_text(encoding="utf-8") == BODY.replace("It rained.", "It rained. Hard.")
+
+
+def test_a_vault_creates_renames_and_trashes_files_anywhere(page: Page, vault_server: ProseviewServer):
+    root = vault_server.root
+    page.goto(vault_server.url("/"))
+    tree = page.get_by_role("tree", name="Repository files")
+    expect(tree).to_be_visible()
+
+    page.get_by_role("button", name="Create a file or folder").click()
+    page.get_by_role("menuitem", name="New file").click()
+    dialog = page.get_by_role("dialog", name="New file")
+    location = dialog.get_by_label("Location")
+    assert location.evaluate("s => s.options[0].textContent") == "Top level"
+    location.select_option("")
+    dialog.get_by_label("Name").fill("Été")
+    expect(dialog).to_contain_text("Creates Été.md")
+    dialog.get_by_role("button", name="Create", exact=True).click()
+    page.wait_for_function("() => location.hash.includes('%C3%89t%C3%A9.md')")
+    assert (root / "Été.md").read_bytes() == b""
+
+    folder = tree.locator('.dir-toggle[data-path="Part One/Chapter 1"]')
+    folder.click(button="right")
+    page.locator("#sidebarContextMenu").get_by_role("menuitem", name="Rename").click()
+    rename = page.get_by_label("New name for Chapter 1")
+    rename.fill("Chapitre Un – Café")
+    rename.press("Enter")
+    page.wait_for_function("() => !!document.querySelector('.dir-toggle[data-path=\"Part One/Chapitre Un – Café\"]')")
+    assert (root / "Part One" / "Chapitre Un – Café" / "01 Café.md").is_file()

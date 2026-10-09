@@ -177,7 +177,12 @@ def _portable_entry_name(value: str) -> str:
 
 def _managed_repository_roots(root: Path, cfg: Config) -> tuple[Path, ...]:
     """Existing top-level folders represented by the file-browser sidebar."""
+    from .scenes import resolve_manuscript_dir
+
     resolved_root = root.resolve()
+    if resolve_manuscript_dir(resolved_root, cfg.manuscript_subdir) == resolved_root:
+        # The whole folder is the manuscript, and the sidebar lists all of it.
+        return (resolved_root,)
     configured = (cfg.manuscript_subdir, *cfg.repo_tab.folders)
     managed: list[Path] = []
     for value in configured:
@@ -227,7 +232,10 @@ def create_repository_entry(
     never overwritten. The returned path is repository-relative POSIX text.
     """
     resolved_root = root.resolve()
-    parent, _managed = _resolve_managed_repository_path(resolved_root, cfg, parent_path)
+    if not str(parent_path or "").strip("/").strip() and resolved_root in _managed_repository_roots(resolved_root, cfg):
+        parent = resolved_root  # the top level of a folder that is all manuscript
+    else:
+        parent, _managed = _resolve_managed_repository_path(resolved_root, cfg, parent_path)
     if not parent.is_dir():
         raise FileNotFoundError("parent folder does not exist")
     entry_name = _entry_name_for_kind(name, kind)

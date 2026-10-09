@@ -396,6 +396,22 @@ def test_create_repository_entry_never_overwrites_or_reaches_unmanaged_paths(tmp
     assert not (tmp_path / "private" / "escape.md").exists()
 
 
+def test_a_folder_without_manuscript_manages_files_anywhere_in_it(tmp_path: Path):
+    """In a vault the whole folder is the manuscript, so the file browser can
+    create, rename and trash anywhere in it, but never the folder itself."""
+    cfg = Config()
+    (tmp_path / "Part One" / "Chapter 2").mkdir(parents=True)
+
+    created = create_repository_entry(tmp_path, cfg, "Part One/Chapter 2", "02 Été à Montréal", "file")
+    assert created == "Part One/Chapter 2/02 Été à Montréal.md"
+    renamed = rename_repository_entry(tmp_path, cfg, "Part One/Chapter 2", "Chapitre Deux")
+    assert renamed == "Part One/Chapitre Deux"
+    assert (tmp_path / "Part One" / "Chapitre Deux" / "02 Été à Montréal.md").is_file()
+    assert create_repository_entry(tmp_path, cfg, "", "loose", "file") == "loose.md"
+    trash_repository_entry(tmp_path, cfg, "loose.md")
+    assert not (tmp_path / "loose.md").exists()
+
+
 def test_create_repository_entry_rejects_symlinked_parent(tmp_path: Path):
     cfg = _managed_repo(tmp_path)
     outside = tmp_path / "outside"

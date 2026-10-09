@@ -24,8 +24,9 @@ section here becomes the release notes on GitHub.
 - A scene with HTML inside a line (`<br>`, `<span>`) opened blank. The HTML
   now shows as text and is saved as written.
 - A folder with no `manuscript/` subfolder (an Obsidian vault, a flat folder
-  of chapters) showed an empty file browser and no Analysis numbers for a
-  scene. Both work now.
+  of chapters) showed an empty file browser, no Analysis numbers for a scene,
+  and refused to create, rename or delete files. All of that works now, and
+  a new file can go at the top level, so an empty folder can get its first.
 
 ## 0.4.1 — 2026-10-08
 

@@ -332,3 +332,16 @@ def test_protocol_adapter_never_forwards_raw_reasoning():
     assert raw_delta == []
     assert summary_delta[0]["type"] == "progress.delta"
     assert "SECRET" not in json.dumps(started + raw_delta + summary_delta)
+
+
+def test_codex_setup_notices_go_to_the_terminal_not_the_dock(capsys):
+    notice = (
+        "Ignoring unknown `features` requirement `ultrafast_mode` from requirements layers: "
+        "enterprise-managed requirements Ultra Fast mode access (rbac-ultrafast-mode)"
+    )
+    assert sanitize_agent_message({"method": "configWarning", "params": {"summary": notice, "details": None}}) == []
+    assert sanitize_agent_message({"method": "warning", "params": {"threadId": "t", "message": notice}}) == []
+    assert capsys.readouterr().err.count("ultrafast_mode") == 1
+
+    other = sanitize_agent_message({"method": "warning", "params": {"threadId": "t", "message": "Model is overloaded"}})
+    assert [event["message"] for event in other] == ["Model is overloaded"]

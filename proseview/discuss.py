@@ -1314,6 +1314,21 @@ def _safe_json_value(value: Any, limit: int = 16_384) -> Any | None:
     return json.loads(encoded)
 
 
+#: Codex names requirements set by a managed account that this Codex build
+#: does not know ("Ignoring unknown `features` requirement ..."), on every
+#: start and every thread. They are about the writer's Codex setup, not the
+#: conversation, so they go to the terminal once rather than into the dock.
+_CODEX_SETUP_NOTICE = re.compile(r"^Ignoring unknown `[^`]*` requirement")
+_codex_setup_notices_logged: set[str] = set()
+
+
+def _log_codex_setup_notice(message: str) -> None:
+    if message in _codex_setup_notices_logged:
+        return
+    _codex_setup_notices_logged.add(message)
+    print(f"proseview: Codex: {message}", file=sys.stderr)
+
+
 def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
     """Translate one app-server notification without exposing raw reasoning.
 
@@ -1393,7 +1408,11 @@ def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             return [{"type": "activity.updated", **common, "activity": activity}]
         return []
     if method in {"warning", "configWarning"}:
-        return [{"type": "warning", **common, "message": _bounded_text(params.get("message") or params.get("summary"))}]
+        message = _bounded_text(params.get("message") or params.get("summary"))
+        if _CODEX_SETUP_NOTICE.match(message or ""):
+            _log_codex_setup_notice(message)
+            return []
+        return [{"type": "warning", **common, "message": message}]
     if method == "error":
         error = params.get("error") if isinstance(params.get("error"), dict) else {}
         return [{"type": "error", **common, "message": _bounded_text(error.get("message"))}]

@@ -4048,6 +4048,61 @@
 
         .discuss-heading {
             min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .discuss-heading-title {
+            min-width: 0;
+        }
+
+        /* New conversation and History: per-conversation, so they sit with
+           the agent's name rather than in the composer. */
+        .discuss-conversation-actions {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex: 0 0 auto;
+        }
+
+        .discuss-conversation-actions .discuss-secondary {
+            font-size: 11px;
+            padding: 3px 7px;
+        }
+
+        .discuss-icon-button {
+            width: 28px;
+            height: 28px;
+            display: inline-grid;
+            place-items: center;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .discuss-icon-button svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .discuss-icon-button:hover,
+        .discuss-icon-button:focus-visible {
+            color: var(--text-main);
+            background: var(--surface-muted);
+        }
+
+        .discuss-icon-button:disabled {
+            opacity: .45;
+            cursor: default;
         }
 
         .discuss-heading[hidden] {
@@ -5202,14 +5257,17 @@
 
         .discuss-presets-inline {
             display: flex;
-            flex: 1 1 180px;
+            flex: 1 1 0;
             min-width: 0;
             gap: 4px;
+            overflow: hidden;
         }
 
         .discuss-preset-inline {
-            flex: 1 1 0;
+            flex: 0 1 auto;
             min-width: 0;
+            max-width: 100%;
+            font-size: 11px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -5217,7 +5275,7 @@
             border-radius: 999px;
             background: var(--surface-muted);
             color: var(--text-main);
-            padding: 4px 8px;
+            padding: 2px 9px;
             cursor: pointer;
         }
 
@@ -5369,13 +5427,12 @@
             overflow-wrap: anywhere;
         }
 
-        .discuss-composer-actions,
         .discuss-send-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            margin-bottom: 6px;
+            margin-top: 6px;
         }
 
         .discuss-composer-action-group {

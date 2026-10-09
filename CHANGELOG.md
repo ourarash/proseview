@@ -10,6 +10,15 @@ section here becomes the release notes on GitHub.
 - A note with a table opens in the rich editor. The table shows as a table
   and is saved exactly as written; change it in your text editor. A table
   inside a list or quote still opens the note as plain Markdown.
+- The agent composer is quieter: New conversation and History are icons
+  beside the agent's name, presets are small chips, and the attach button
+  and model sit beside Send.
+
+### Fixed
+
+- A selection sent to Codex or Claude (Ask, Quick critique and the other
+  passes) takes its whole scene along, and an "Attach current" made before
+  selecting is no longer dropped. The scene chip can be removed as before.
 
 ## 0.4.1 — 2026-10-08
 

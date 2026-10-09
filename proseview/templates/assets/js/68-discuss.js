@@ -3355,7 +3355,7 @@ function loadDiscussDiffMode(mode) {
                 : 'Ask anything about your story…';
             node.hidden = !(_discussSelection && (presets.length || recents.length));
             if (!node.hidden) {
-                var label = document.createElement('strong'); label.textContent = 'Presets'; node.appendChild(label);
+                var label = document.createElement('strong'); label.className = 'sr-only'; label.textContent = 'Presets'; node.appendChild(label);
                 var inline = elementWith('discuss-presets-inline');
                 presets.slice(0, 3).forEach(function(value) {
                     var button = document.createElement('button');

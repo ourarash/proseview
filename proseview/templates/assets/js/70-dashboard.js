@@ -635,6 +635,13 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        function repoFileNote(text) {
+            const note = document.createElement('div');
+            note.className = 'repo-warn';
+            note.textContent = text;
+            return note;
+        }
+
         function renderRepoFile(node, options) {
             options = options || {};
             var path = node.path;
@@ -653,11 +660,25 @@
             editorBtn.textContent = '\u2197';
             editorBtn.title = 'Open in ' + editorLabel;
             const body = document.getElementById('filePreviewBody');
-            if (node.too_large) {
+            const imageUrl = /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(node.name) && typeof repoAssetUrl === 'function'
+                ? repoAssetUrl('/' + node.path) : null;
+            if (imageUrl) {
+                const figure = document.createElement('figure');
+                figure.className = 'repo-image';
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = node.name;
+                img.onerror = function() {
+                    figure.replaceChildren(repoFileNote('This image could not be shown here.'));
+                };
+                figure.appendChild(img);
+                body.replaceChildren(figure);
+            } else if (node.too_large) {
                 const limitKb = (repoPreviewMax / 1024).toFixed(0);
                 body.innerHTML = '<div class="repo-warn">This file is ' + sizeKb + ' KB, above the ' + limitKb + ' KB preview limit.</div>';
             } else if (!node.is_text || node.body === null) {
-                body.innerHTML = '<div class="repo-warn">Preview not available for this file type.</div>';
+                body.replaceChildren(repoFileNote('Proseview can only show text and images, so it cannot open '
+                    + node.name + '. Open it in another app.'));
             } else {
                 const lname = node.name.toLowerCase();
                 if (lname.endsWith('.md') || lname.endsWith('.markdown')) {

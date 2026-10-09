@@ -2907,6 +2907,15 @@
             font-family: Inter, system-ui, sans-serif;
             line-height: 1.55;
         }
+        .repo-image {
+            margin: 20px 30px;
+        }
+        .repo-image img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+        }
 
         .chart-frame {
             height: 250px;

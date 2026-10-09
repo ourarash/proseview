@@ -517,7 +517,7 @@
         function aiBuildMarkdownParser(PM) {
             return new PM.MarkdownParser(
                 PM.mySchema,
-                PM.defaultMarkdownParser.tokenizer,
+                tokenizerKeepingInlineHtml(PM.defaultMarkdownParser.tokenizer),
                 Object.assign({}, PM.defaultMarkdownParser.tokens, {
                     html_block: {
                         node: 'annotation',

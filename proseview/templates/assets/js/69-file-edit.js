@@ -74,7 +74,7 @@
             var md = new PM.defaultMarkdownParser.tokenizer.constructor('commonmark', {html: true}).enable('table');
             _fileEditTokenizer = {parse: function(src, env) {
                 var lines = src.split('\n');
-                var tokens = md.parse(src, env);
+                var tokens = tokenizerKeepingInlineHtml(md).parse(src, env);
                 var out = [];
                 for (var i = 0; i < tokens.length; i++) {
                     var t = tokens[i];

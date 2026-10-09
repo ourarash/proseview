@@ -9,6 +9,22 @@
         // writes a block that still serializes the same as its source, and only
         // edited or new blocks go through the serializer.
 
+        // *tokenizer* with inline HTML (`<br>`, `<span>`) kept as literal
+        // text. The editor has no node for it: ProseMirror's parser throws on
+        // the token (which left the scene blank), and dropping it would lose
+        // it on save.
+        function tokenizerKeepingInlineHtml(tokenizer) {
+            return {parse: function(src, env) {
+                var tokens = tokenizer.parse(src, env);
+                tokens.forEach(function(token) {
+                    (token.children || []).forEach(function(child) {
+                        if (child.type === 'html_inline') child.type = 'text';
+                    });
+                });
+                return tokens;
+            }};
+        }
+
         // One document holding just *node*, as the serializer writes it.
         function _serializeBlock(serializer, doc, node) {
             return serializer.serialize(doc.type.create(doc.attrs, node));

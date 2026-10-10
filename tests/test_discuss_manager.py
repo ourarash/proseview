@@ -849,7 +849,50 @@ def test_manager_serializes_one_document_and_filters_raw_reasoning(tmp_path: Pat
     assert "RAW SECRET" not in str(snapshot)
     assert snapshot["progress"] == ["Reading context"]
     assert clients[0].max_active == 1
-    assert "First document." in clients[0].prompts[0]
+    assert "Open file: manuscript/one.md" in clients[0].prompts[0]
+    manager.close()
+
+
+def test_an_ordinary_question_says_where_the_writer_is_and_sends_no_files(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    (root / "story-bible").mkdir()
+    (root / "story-bible" / "alice.md").write_text("Alice is seven.\n", encoding="utf-8")
+    mention = "story-bible/alice.md"
+
+    manager.submit(
+        cid,
+        client_request_id="mentions",
+        question=f"Does this contradict @{mention}?",
+        attachments=[{"kind": "file", "path": mention}],
+        include_current_document=True,
+    )
+    _wait_for(lambda: bool(clients[0].prompts))
+    prompt = clients[0].prompts[0]
+    assert prompt.startswith("PROSEVIEW CONTEXT\nOpen file: manuscript/one.md\nMentioned: " + mention)
+    assert prompt.endswith(f"USER QUESTION\nDoes this contradict @{mention}?")
+    # No file text, and no instructions about how to answer.
+    assert "First document." not in prompt and "Alice is seven." not in prompt
+    assert "BEGIN UNTRUSTED DOCUMENT" not in prompt
+    assert "Discuss only" not in prompt
+
+    # An unsaved draft is not on disk to be read, so it goes along.
+    scene = root / "manuscript" / "one.md"
+    manager.submit(
+        cid,
+        client_request_id="draft",
+        question="And now?",
+        live_document={"content": "# One\n\nA draft not yet saved.\n", "base_mtime": scene.stat().st_mtime},
+    )
+    _wait_for(lambda: len(clients[0].prompts) == 2)
+    assert "Unsaved draft of manuscript/one.md" in clients[0].prompts[1]
+    assert "A draft not yet saved." in clients[0].prompts[1]
     manager.close()
 
 

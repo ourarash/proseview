@@ -123,9 +123,11 @@ def test_discuss_http_flow_is_document_aware_private_and_idempotent(server: Pros
 
     records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
     prompt = records[-1]["params"]["input"][0]["text"]
-    assert "Opening Ledger" in prompt
+    # The open file and the mention by path; the agent reads them itself.
+    assert "Open file: manuscript/ch01/01-opening.md" in prompt
+    assert "Opening Ledger" not in prompt
     assert "selection sentinel" in prompt
-    assert "book-plan.md" in prompt
+    assert "Mentioned: plans/book-plan.md" in prompt
     assert "Explain the ledger" in prompt
     # A question may write, but through an edit Prosview reviews: the sandbox
     # stays read-only, so a shell command that writes has to ask.

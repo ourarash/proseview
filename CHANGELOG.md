@@ -53,6 +53,10 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- After Proseview or Codex restarted, the next question in a conversation
+  started a new one ("The previous agent conversation was unavailable"),
+  and Codex lost what had been said. The saved conversation is now resumed;
+  only one that no longer exists is replaced.
 - The reading font changed nothing under the Graphite themes (the default):
   the theme set its own font over the one chosen.
 - Pressing `E` (or leaving edit mode) no longer moves the page: the

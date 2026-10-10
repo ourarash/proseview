@@ -3675,6 +3675,7 @@ class DiscussManager:
                 done = threading.Event()
                 conversation.active_done = done
                 recovered_missing_thread = False
+                resumed_thread = False
                 while True:
                     thread_id = conversation.thread_id or self._start_thread(conversation, client, queued.document)
                     task = conversation.tasks.get(queued.task_id or "")
@@ -3730,6 +3731,18 @@ class DiscussManager:
                     except Exception as exc:
                         if recovered_missing_thread or not _is_thread_unavailable(exc):
                             raise
+                        # A thread saved on disk but not loaded by this agent
+                        # process -- the usual state after Proseview or Codex
+                        # restarts -- is resumed, keeping the conversation and
+                        # everything the agent remembers of it. Only a thread
+                        # that cannot be resumed is replaced.
+                        if not resumed_thread and "not loaded" in str(exc).lower():
+                            resumed_thread = True
+                            try:
+                                client.request("thread/resume", {"threadId": thread_id, "cwd": str(self.root)})
+                                continue
+                            except Exception:
+                                pass
                         self._forget_thread(conversation)
                         conversation.add_notice(
                             "warning",

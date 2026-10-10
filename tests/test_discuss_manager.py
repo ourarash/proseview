@@ -2564,3 +2564,33 @@ def test_a_file_that_was_announced_is_not_called_unreviewable(tmp_path: Path):
     assert [row["path"] for row in review["files"]] == ["manuscript/one.md"]
     assert review["unreviewable"] == []
     manager.close()
+
+
+def test_a_saved_thread_the_agent_has_not_loaded_is_resumed_not_replaced(tmp_path: Path, monkeypatch):
+    """After a restart Codex has the conversation on disk but not loaded, and
+    turn/start says "thread not loaded". Proseview started a new conversation
+    then, so the agent lost everything said before."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    clients: list[_FakeClient] = []
+
+    def factory(callback, _agent=None):
+        client = _FakeClient(callback)
+        clients.append(client)
+        return client
+
+    manager = DiscussManager(root, client_factory=factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    manager.submit(cid, client_request_id="q1", question="First question.")
+    _wait_for(lambda: len(manager.get_snapshot(cid)["messages"]) >= 2)
+    thread_id = manager._get(cid).thread_id
+    clients[0].unloaded.add(thread_id)
+
+    manager.submit(cid, client_request_id="q2", question="Second question.")
+    _wait_for(lambda: len(manager.get_snapshot(cid)["messages"]) >= 4)
+
+    assert clients[0].resumes == [thread_id]
+    assert manager._get(cid).thread_id == thread_id
+    notices = " ".join(str(n.get("message")) for n in manager.get_snapshot(cid).get("notices", []))
+    assert "was unavailable" not in notices
+    manager.close()

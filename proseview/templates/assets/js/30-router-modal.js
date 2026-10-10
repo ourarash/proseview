@@ -298,6 +298,11 @@
             const slider = document.getElementById('modalFontSize');
             if (modalBody) modalBody.style.fontSize = size + 'px';
             if (slider) slider.value = String(size);
+            // The book reads at the same size, from the same menu.
+            const bookBody = document.getElementById('bookBody');
+            const bookSlider = document.getElementById('bookFontSize');
+            if (bookBody) bookBody.style.fontSize = size + 'px';
+            if (bookSlider) bookSlider.value = String(size);
             try {
                 localStorage.setItem(MODAL_FONT_SIZE_STORAGE_KEY, String(size));
             } catch (err) {

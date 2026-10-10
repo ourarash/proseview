@@ -403,10 +403,13 @@
         function applyReadingMeasure(px) {
             const measure = normalizeReadingMeasure(px);
             document.documentElement.style.setProperty('--reading-measure', measure + 'px');
-            const slider = document.getElementById('modalMeasure');
-            if (slider && Number(slider.value) !== measure) slider.value = String(measure);
-            const out = document.getElementById('modalMeasureOut');
-            if (out) out.textContent = _charsPerLine(measure) + ' chars';
+            // The scene's menu and the book's.
+            ['modalMeasure', 'bookMeasure'].forEach(function(id) {
+                const slider = document.getElementById(id);
+                if (slider && Number(slider.value) !== measure) slider.value = String(measure);
+                const out = document.getElementById(id + 'Out');
+                if (out) out.textContent = _charsPerLine(measure) + ' chars';
+            });
             return measure;
         }
 

@@ -156,3 +156,19 @@ def test_read_the_book_from_a_scene(page: Page, book_server: ProseviewServer):
     # Leaving the book from here goes to the dashboard, not back to the scene.
     page.get_by_role("button", name="← Overview").click()
     expect(page.locator("#sceneTable")).to_be_visible()
+
+
+def test_the_book_has_the_reading_appearance_menu(page: Page, book_server: ProseviewServer):
+    page.goto(book_server.url("/#/book"), wait_until="load")
+    page.get_by_role("button", name="Reading appearance").click()
+    menu = page.locator("#bookAppearanceMenu")
+    expect(menu).to_be_visible()
+    body = page.locator("#bookBody")
+    menu.get_by_label("Line width").fill("600")
+    menu.get_by_label("Text size").fill("22")
+    assert body.evaluate("el => el.getBoundingClientRect().width") == 600
+    assert body.evaluate("el => getComputedStyle(el).fontSize") == "22px"
+    # The scene view reads with the same settings.
+    assert page.evaluate("localStorage.getItem(MODAL_FONT_SIZE_STORAGE_KEY)") == "22"
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()

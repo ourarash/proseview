@@ -112,6 +112,8 @@
             var size = null;
             try { size = parseInt(localStorage.getItem(MODAL_FONT_SIZE_STORAGE_KEY), 10); } catch (e) {}
             body.style.fontSize = size ? normalizeModalFontSize(size) + 'px' : '';
+            var sizeSlider = document.getElementById('bookFontSize');
+            if (sizeSlider && size) sizeSlider.value = String(normalizeModalFontSize(size));
             var editBtn = document.getElementById('bookEditBtn');
             if (editBtn) editBtn.hidden = !canEdit;
             _bookRenderToc(chapters);
@@ -309,6 +311,7 @@
             _bookReturn = false;
             renderBook();
             toggleBookToc(false);
+            if (typeof syncReadingMeasure === 'function') syncReadingMeasure();
             _bookHideSidebar();
             document.documentElement.dataset.view = 'book';
             _bookCurrent = null;

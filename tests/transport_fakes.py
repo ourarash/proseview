@@ -47,6 +47,10 @@ class CodexFakeClient:
         self.capabilities = {"reasoning_summary": True}
         self.config = {"model": "gpt-5.6-sol", "model_reasoning_effort": "xhigh"}
         self.threads: dict[str, dict] = {}
+        # Threads on disk that this app-server has not loaded, as after a
+        # restart: turn/start refuses them until thread/resume.
+        self.unloaded: set[str] = set()
+        self.resumes: list[str] = []
         self._lock = threading.Lock()
 
     def inspect_capabilities(self):
@@ -69,6 +73,12 @@ class CodexFakeClient:
             if thread is None:
                 raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
             return {"thread": thread}
+        if method == "thread/resume":
+            if params["threadId"] not in self.threads:
+                raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            self.unloaded.discard(params["threadId"])
+            self.resumes.append(params["threadId"])
+            return {"thread": self.threads[params["threadId"]]}
         if method == "thread/start":
             self.next_thread += 1
             thread = {"id": f"thread-{self.next_thread}", "turns": []}
@@ -80,6 +90,8 @@ class CodexFakeClient:
                 raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
             if params["threadId"] not in self.threads:
                 raise CodexRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            if params["threadId"] in self.unloaded:
+                raise CodexRequestError(f"thread not loaded: {params['threadId']}", code=-32000)
             self.next_turn += 1
             turn_id = f"turn-{self.next_turn}"
             thread_id = params["threadId"]

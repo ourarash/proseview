@@ -7143,3 +7143,14 @@ def test_turn_steps_read_the_command_inside_the_shell_and_keep_the_agents_notes(
         ("done", "Reading ch01/01.md"),
     ]
     assert rows[1]["command"].startswith("bash -lc")
+
+
+def test_shell_commands_are_coloured(page: Page, server: ProseviewServer):
+    open_dashboard(page, server)
+    parts = page.evaluate("""() => Array.from(
+        fillShellHighlight(document.createElement('code'), "rg -n 'tea party' manuscript | head -50").childNodes
+    ).map(node => [node.className || '', node.textContent])""")
+    assert parts == [
+        ["sh-cmd", "rg"], ["", " "], ["sh-flag", "-n"], ["", " "], ["sh-string", "'tea party'"], ["", " "],
+        ["", "manuscript"], ["", " "], ["sh-op", "|"], ["", " "], ["sh-cmd", "head"], ["", " "], ["sh-flag", "-50"],
+    ]

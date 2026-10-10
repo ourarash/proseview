@@ -94,6 +94,19 @@ def open_scene(page: Page, server: ProseviewServer, rel: str = SCENE_REL) -> Non
     page.wait_for_selector("#sceneProseHost .ProseMirror")
 
 
+def scene_content_box(page: Page) -> dict | None:
+    """Where the scene's own content starts: its frontmatter, then its prose.
+
+    The frontmatter sits above the prose as part of the scene, so "the prose
+    leads" now means the scene's content leads; the width is the prose's.
+    """
+    top = page.locator("#sceneFrontmatter").bounding_box()
+    prose = page.locator("#sceneProseHost").bounding_box()
+    if not top or not prose:
+        return None
+    return {**prose, "y": top["y"]}
+
+
 def open_scene_appearance(page: Page) -> None:
     if not page.locator("#sceneAppearanceMenu").is_visible():
         page.locator("#sceneAppearanceBtn").focus()
@@ -2444,7 +2457,7 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     )
     # With the toolbar hidden the prose owns the top of the window -- 60px is
     # the reading column's own gutter, and nothing else sits above it.
-    prose_box = page.locator("#sceneProseHost").bounding_box()
+    prose_box = scene_content_box(page)
     assert prose_box and prose_box["y"] <= 80
 
     reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
@@ -2682,7 +2695,7 @@ def test_one_dock_shows_one_thing_at_a_time(
     assert page.locator("#sceneDetailsPane").is_hidden()
     assert page.locator("#discussLog").is_hidden()
 
-    prose = page.locator("#sceneProseHost").bounding_box()
+    prose = scene_content_box(page)
     assert prose and prose["y"] < 400
 
 
@@ -2693,7 +2706,7 @@ def test_compact_scene_leads_with_prose_and_context_reflows_beside_the_dock(
     page.set_viewport_size({"width": 1024, "height": 768})
     open_scene(page, server)
 
-    prose = page.locator("#sceneProseHost").bounding_box()
+    prose = scene_content_box(page)
     assert prose and prose["y"] < 400, "secondary UI still pushes prose out of the opening viewport"
 
     open_scene_details(page)
@@ -2757,7 +2770,7 @@ def test_the_dock_overlays_rather_than_squeezing_the_prose_to_a_ribbon(
     page.wait_for_function(
         "() => document.documentElement.dataset.utilityOverlay !== 'true'"
     )
-    prose = page.locator("#sceneProseHost").bounding_box()
+    prose = scene_content_box(page)
     assert prose and prose["y"] < 400 and prose["width"] > 400
     assert page.evaluate("() => getComputedStyle(document.body).marginRight") == "0px"
 
@@ -3873,7 +3886,7 @@ def test_compact_utility_docks_remove_retracted_sidebar_from_keyboard_order(
 def test_wide_scene_defaults_to_manuscript_first(page: Page, server: ProseviewServer):
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
-    prose = page.locator("#sceneProseHost").bounding_box()
+    prose = scene_content_box(page)
     assert prose and prose["y"] < 300
     assert prose["width"] <= 780
 

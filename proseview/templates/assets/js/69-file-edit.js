@@ -50,6 +50,12 @@
             if (button) button.hidden = !fileEditAllowed(node);
         }
 
+        // The text between a header's --- fences.
+        function frontmatterInner(header) {
+            var lines = String(header || '').replace(/\n$/, '').split('\n');
+            return lines.length >= 2 ? lines.slice(1, -1).join('\n') : '';
+        }
+
         function splitNoteHeader(raw) {
             // Mirrors split_note_header in server.py: the frontmatter block is
             // kept exactly as written and is not part of what is edited.
@@ -198,11 +204,16 @@
             var reason = fileEditPlainReason(parts.body);
             fileEdit.path = node.path;
             fileEdit.frontmatter = parts.header;
+            fileEdit.frontmatterDraft = null;
             fileEdit.mtime = node.mtime;
             fileEdit.original = parts.body;
             fileEdit.mode = reason ? 'source' : 'rich';
             body.replaceChildren();
             body.classList.add('is-editing');
+            var fmHost = document.createElement('div');
+            fmHost.id = 'fileFrontmatter';
+            body.appendChild(fmHost);
+            renderFileFrontmatter();
 
             if (fileEdit.mode === 'rich') {
                 var PM = window._PM;
@@ -277,6 +288,34 @@
             fileEditSetDirty(false);
         }
 
+        // The file's frontmatter as a YAML box above the editor, or a button
+        // to add one.
+        function renderFileFrontmatter() {
+            var host = document.getElementById('fileFrontmatter');
+            if (!host) return;
+            host.replaceChildren();
+            if (!fileEdit.frontmatter && fileEdit.frontmatterDraft === null) {
+                host.appendChild(addFrontmatterButton(function() {
+                    fileEdit.frontmatterDraft = '';
+                    renderFileFrontmatter();
+                    host.querySelector('textarea').focus();
+                }));
+                return;
+            }
+            var text = fileEdit.frontmatterDraft !== null ? fileEdit.frontmatterDraft : frontmatterInner(fileEdit.frontmatter);
+            var editor = frontmatterEditor(text, function(value) {
+                fileEdit.frontmatterDraft = value;
+                if (!fileEdit.dirty) fileEditSetDirty(true);
+            });
+            editor.querySelector('textarea').addEventListener('keydown', function(event) {
+                if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                    event.preventDefault();
+                    saveFileEdit(false);
+                }
+            });
+            host.appendChild(editor);
+        }
+
         function fileEditAutosize(area) {
             area.style.height = 'auto';
             area.style.height = Math.max(320, area.scrollHeight + 4) + 'px';
@@ -325,6 +364,9 @@
             }
             var path = fileEdit.path;
             var content = fileEditContent();
+            var frontmatter = fileEdit.frontmatterDraft !== null && fileEdit.frontmatterDraft !== frontmatterInner(fileEdit.frontmatter)
+                ? fileEdit.frontmatterDraft : null;
+            showFrontmatterError(document.getElementById('fileFrontmatter'), '');
             fileEdit.saving = true;
             document.getElementById('fileEditSave').disabled = true;
             fileEditStatus('Saving…');
@@ -332,7 +374,7 @@
             fetch('/api/files/save', {
                 method: 'POST',
                 headers: pvHeaders(),
-                body: JSON.stringify({path: path, content: content, open_mtime: fileEdit.mtime, overwrite: !!overwrite}),
+                body: JSON.stringify({path: path, content: content, open_mtime: fileEdit.mtime, overwrite: !!overwrite, frontmatter: frontmatter}),
             }).then(function(response) {
                 return response.json().catch(function() { return {}; }).then(function(data) {
                     return {status: response.status, data: data};
@@ -347,10 +389,17 @@
                 }
                 if (!result.data.ok) {
                     fileEditSetDirty(true);
-                    fileEditStatus('Not saved: ' + (result.data.error || 'something went wrong'));
+                    var message = result.data.error || 'something went wrong';
+                    if (/frontmatter/i.test(message)) showFrontmatterError(document.getElementById('fileFrontmatter'), message);
+                    fileEditStatus('Not saved: ' + message);
                     return;
                 }
-                var raw = fileEdit.frontmatter ? fileEdit.frontmatter + '\n' + content.replace(/\n+$/, '') + '\n' : content.replace(/\n+$/, '') + '\n';
+                var header = fileEdit.frontmatter;
+                if (frontmatter !== null) {
+                    var inner = frontmatter.replace(/^\n+|\n+$/g, '');
+                    header = inner ? '---\n' + inner + '\n---\n' : '';
+                }
+                var raw = header ? header + '\n' + content.replace(/\n+$/, '') + '\n' : content.replace(/\n+$/, '') + '\n';
                 var cached = (typeof repoFileByPath !== 'undefined' && repoFileByPath[path]) || {path: path, name: path.split('/').pop()};
                 cached.body = raw;
                 cached.mtime = result.data.mtime;

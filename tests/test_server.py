@@ -331,3 +331,49 @@ def test_a_missing_claude_cli_is_unavailable_not_a_server_error():
     handler._send_json = lambda payload, status=200: sent.append((payload, status))  # type: ignore[method-assign]
     handler._send_discuss_error(ClaudeUnavailableError("Claude Code CLI is not installed or is not on PATH"))
     assert sent == [({"ok": False, "error": "Claude Code CLI is not installed or is not on PATH"}, 503)]
+
+
+def test_a_save_can_replace_the_frontmatter_exactly_as_typed(tmp_path):
+    from proseview.server import save_note_content, save_scene_content
+
+    scene = tmp_path / "manuscript" / "ch01" / "01.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text("---\ntitle: Old\nstatus: draft\n---\n\nThe prose.\n", encoding="utf-8")
+    save_scene_content(
+        str(scene), "The prose.\n", scene.stat().st_mtime, str(tmp_path),
+        frontmatter="title: New   # renamed\nstatus: revised\ncharacters: [Mira, Tom]",
+    )
+    assert scene.read_text(encoding="utf-8") == (
+        "---\ntitle: New   # renamed\nstatus: revised\ncharacters: [Mira, Tom]\n---\n\nThe prose.\n"
+    )
+
+    note = tmp_path / "story-bible" / "mira.md"
+    note.parent.mkdir()
+    note.write_text("Mira's sheet.\n", encoding="utf-8")
+    save_note_content("story-bible/mira.md", "Mira's sheet.\n", note.stat().st_mtime, str(tmp_path), frontmatter="name: Mira")
+    assert note.read_text(encoding="utf-8") == "---\nname: Mira\n---\n\nMira's sheet.\n"
+
+
+def test_frontmatter_that_is_not_yaml_saves_nothing(tmp_path):
+    from proseview.server import save_scene_content
+
+    scene = tmp_path / "manuscript" / "ch01" / "01.md"
+    scene.parent.mkdir(parents=True)
+    scene.write_text("---\ntitle: Old\n---\n\nThe prose.\n", encoding="utf-8")
+    before = scene.read_bytes()
+    with pytest.raises(ValueError, match="not valid YAML on line 2"):
+        save_scene_content(str(scene), "Changed.\n", scene.stat().st_mtime, str(tmp_path), frontmatter="title: x\ncast: [a, b")
+    assert scene.read_bytes() == before
+
+
+def test_each_scene_carries_its_own_frontmatter_text(tmp_path):
+    """The index reads every file before measuring any; the frontmatter once
+    came from whichever file was read last."""
+    from proseview.scenes import collect_scene_stats
+
+    for name, title in (("01.md", "One"), ("02.md", "Two")):
+        path = tmp_path / "manuscript" / "ch01" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"---\ntitle: {title}\n---\n\nProse.\n", encoding="utf-8")
+    scenes = collect_scene_stats(tmp_path, "manuscript")
+    assert [s.frontmatter_text for s in scenes] == ["title: One", "title: Two"]

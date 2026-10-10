@@ -5,6 +5,14 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
+### Added
+
+- **Frontmatter you can see and edit.** A scene's or file's frontmatter
+  shows above the prose as highlighted YAML, and in edit mode it is a box
+  saved exactly as typed (or added, for a file without one). YAML that does
+  not parse is not saved; the box says on which line. In the file view the
+  frontmatter used to render as one large heading.
+
 ### Changed
 
 - A Markdown file with a table opens in the rich editor. The table shows as a

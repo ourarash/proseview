@@ -121,6 +121,9 @@ filter verbs, sensory language, passive voice.
 
 `Edit` turns the page you were reading into the page you type into — same
 typography, same highlights. `Mod-S` saves to the file and returns to reading, and the stats update; `E` picks up where you left off.
+A scene's frontmatter sits above its prose as the YAML it is, and in edit mode
+it is a box you can change too; a typo that is not YAML is pointed out, not
+saved.
 
 Story-bible pages, plans, and other Markdown files open in the file view with
 their own `Edit` button (or press `E`). Frontmatter is kept as it is. Tables
@@ -254,8 +257,6 @@ Proseview is alpha. Everything described above works today. Still unfinished:
 
 - 🚧 Skills on the Claude tab. Codex discovers them today; Claude's picker
   is still empty.
-- 🚧 Frontmatter editor (status, where, todos) inside the scene viewer
-  so you don't need to drop into your text editor for routine fields.
 
 See [plans/roadmap.md](plans/roadmap.md) for the full punch list.
 

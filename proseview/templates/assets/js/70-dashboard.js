@@ -686,7 +686,13 @@
                         body.innerHTML = '<div class="repo-warn">This file is ' + sizeKb + ' KB \u2014 too large for inline rendering. <a class="editor-btn" href="' + editorBtn.href + '" target="_blank">\u2197 Open in ' + escHtml(editorLabel) + '</a></div>';
                     } else {
                         body.replaceChildren();
-                        renderSafeMarkdown(body, node.body, {basePath: node.path});
+                        // Frontmatter shows as the YAML it is, not as Markdown
+                        // (where its closing --- made it one giant heading).
+                        var parts = typeof splitNoteHeader === 'function' ? splitNoteHeader(node.body) : {header: '', body: node.body};
+                        if (parts.header) body.appendChild(renderFrontmatterBlock(frontmatterInner(parts.header)));
+                        var prose = document.createElement('div');
+                        body.appendChild(prose);
+                        renderSafeMarkdown(prose, parts.body, {basePath: node.path});
                     }
                 } else {
                     body.innerHTML = '';

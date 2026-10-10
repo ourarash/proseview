@@ -4120,6 +4120,59 @@
             font-size: 12px;
         }
 
+        /* Frontmatter, shown as the YAML it is above a scene or a file. */
+        .fm-block,
+        .fm-editor {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            margin: 0 0 24px;
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-muted);
+            color: var(--text-main);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .fm-editor {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .fm-key { color: var(--chart-danger, var(--danger)); }
+        .fm-string { color: var(--chart-success, var(--success)); }
+        .fm-number { color: var(--chart-warning, var(--primary)); }
+        .fm-comment { color: var(--text-muted); font-style: italic; }
+        .fm-colon,
+        .fm-dash { color: var(--text-muted); }
+
+        .fm-error {
+            margin: -16px 0 20px;
+            color: var(--danger);
+            font-size: 13px;
+        }
+
+        .fm-add {
+            margin: 0 0 16px;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        #sceneFrontmatter {
+            max-width: var(--reading-measure, 760px);
+            margin: 0 auto;
+        }
+
         .sidebar-tree-note {
             margin: 10px 16px;
             color: var(--text-muted);

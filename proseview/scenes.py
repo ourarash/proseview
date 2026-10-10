@@ -72,6 +72,9 @@ class SceneStats:
     todos: list
     notes: list
     txt_line_offset: int
+    #: The frontmatter exactly as written, between its ``---`` lines, or None
+    #: when the file has none. Shown and edited above the scene's prose.
+    frontmatter_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -223,6 +226,38 @@ def parse_simple_yaml(text: str) -> dict[str, object]:
     return data
 
 
+def frontmatter_text(text: str) -> str | None:
+    """The frontmatter of *text* exactly as written, or None when it has none."""
+    match = FRONTMATTER_RE.match(text)
+    return match.group(1) if match else None
+
+
+def replace_frontmatter(raw: str, text: str) -> str:
+    """*raw* with its frontmatter replaced by *text*, exactly as typed.
+
+    A file without frontmatter gets a block; blank *text* removes it. *text*
+    must be YAML that reads as a mapping, or ValueError says where it is not,
+    so a typo cannot quietly drop every field Proseview reads from it.
+    """
+    import yaml
+
+    try:
+        parsed = yaml.safe_load(text) if text.strip() else None
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f" on line {mark.line + 1}" if mark is not None else ""
+        problem = getattr(exc, "problem", None) or str(exc)
+        raise ValueError(f"The frontmatter is not valid YAML{where}: {problem}") from None
+    if parsed is not None and not isinstance(parsed, dict):
+        raise ValueError("The frontmatter must be fields, one `name: value` per line")
+    match = FRONTMATTER_RE.match(raw)
+    body = raw[match.end():] if match else raw
+    if not text.strip():
+        return body.lstrip("\n")
+    block = "---\n" + text.strip("\n") + "\n---\n"
+    return block + body if match else block + "\n" + body
+
+
 def split_frontmatter(text: str) -> tuple[dict[str, object], str]:
     match = FRONTMATTER_RE.match(text)
     if not match:
@@ -358,9 +393,9 @@ def collect_scene_stats(
         # writer says "that one is not prose".
         if not _is_scene(fm):
             continue
-        temp_scenes.append((p, fm, txt, prose, toks, txt_line_offset))
+        temp_scenes.append((p, fm, txt, prose, toks, txt_line_offset, frontmatter_text(raw)))
 
-    for p, fm, txt, prose, toks, txt_line_offset in temp_scenes:
+    for p, fm, txt, prose, toks, txt_line_offset, fm_text in temp_scenes:
         words = count_words(prose)
         lex = calculate_lexical_stats(prose) if lexical else _EMPTY_LEXICAL
         st = analyze_style_shape(prose, sw)
@@ -391,6 +426,7 @@ def collect_scene_stats(
             float(st["energy_score"]), float(st["repetition_score"]),
             st["repetition_examples"], st["top_dialogue"], flavor,
             loc, fm, scan_todos(fm, txt, txt_line_offset), scan_notes(fm, txt, txt_line_offset), txt_line_offset,
+            fm_text,
         ))
     return scenes
 

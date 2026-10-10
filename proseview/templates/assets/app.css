@@ -2408,6 +2408,180 @@
             }
         }
 
+        /* The e-reader bar: a hairline of progress, scene and chapter skips,
+           and where you are, which opens the chapter list. Quiet until used. */
+        .book-nav {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 6;
+            background: color-mix(in srgb, var(--bg-app) 92%, transparent);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border-top: 1px solid var(--border);
+            font: 12px/1.4 Inter, system-ui, sans-serif;
+            color: var(--text-muted);
+        }
+
+        html:not([data-sidebar="closed"]) .book-nav {
+            left: var(--sidebar-w);
+        }
+
+        .book-nav-progress {
+            height: 2px;
+            background: transparent;
+        }
+
+        .book-nav-progress span {
+            display: block;
+            width: 0;
+            height: 100%;
+            background: var(--primary);
+            opacity: 0.7;
+        }
+
+        .book-nav-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 4px 12px 6px;
+            position: relative;
+        }
+
+        .book-nav-btn,
+        .book-nav-where {
+            border: 0;
+            background: none;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .book-nav-btn {
+            width: 34px;
+            height: 30px;
+            font-size: 17px;
+            line-height: 1;
+        }
+
+        .book-nav-btn:hover,
+        .book-nav-where:hover,
+        .book-nav-where[aria-expanded="true"] {
+            background: var(--surface-muted);
+            color: var(--text-main);
+        }
+
+        .book-nav-where-wrap {
+            position: relative;
+            flex: 0 1 auto;
+            min-width: 0;
+        }
+
+        .book-nav-where {
+            max-width: 100%;
+            padding: 6px 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .book-nav-pct {
+            position: absolute;
+            right: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .book-toc {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            width: min(340px, calc(100vw - 32px));
+            max-height: min(60vh, 420px);
+            overflow-y: auto;
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-card);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, .22);
+        }
+
+        .book-toc-item {
+            display: block;
+            width: 100%;
+            padding: 7px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: none;
+            color: var(--text-soft);
+            font: 13px/1.4 Inter, system-ui, sans-serif;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .book-toc-item:hover,
+        .book-toc-item:focus-visible {
+            background: var(--surface-muted);
+            color: var(--text-main);
+            outline: none;
+        }
+
+        .book-toc-item[aria-current="true"] {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* The bottom of the screen is the reading bar's. */
+        html[data-view="book"] .static-snapshot-note {
+            display: none;
+        }
+
+        .book-intro {
+            position: fixed;
+            top: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 7;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            width: min(560px, calc(100vw - 32px));
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-card);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, .22);
+            color: var(--text-soft);
+            font: 13px/1.5 Inter, system-ui, sans-serif;
+        }
+
+        .book-intro[hidden] {
+            display: none;
+        }
+
+        .book-intro p {
+            margin: 0;
+        }
+
+        .book-intro strong {
+            color: var(--text-main);
+        }
+
+        .book-intro-close {
+            flex-shrink: 0;
+            border: 0;
+            background: none;
+            color: var(--text-muted);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
         .file-preview-header {
             display: flex;
             align-items: center;
@@ -9888,8 +10062,7 @@
 
             /* In a scene or a file the note would sit above the toolbar. */
             html[data-view="scene"] .static-snapshot-note,
-            html[data-view="file"] .static-snapshot-note,
-            html[data-view="book"] .static-snapshot-note {
+            html[data-view="file"] .static-snapshot-note {
                 display: none;
             }
 
@@ -9929,6 +10102,27 @@
             .book-header .file-preview-controls .appearance-picker,
             .book-header .file-preview-controls select {
                 display: none;
+            }
+
+            .book-nav-pct {
+                position: static;
+                margin-left: 4px;
+            }
+
+            #bookTitle {
+                font-size: 13px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .book-header {
+                flex-wrap: nowrap;
+            }
+
+            .book-intro {
+                top: auto;
+                bottom: 56px;
             }
 
             /* No margin to sit in: Edit heads the scene instead. */

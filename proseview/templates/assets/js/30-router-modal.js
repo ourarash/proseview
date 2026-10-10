@@ -808,7 +808,7 @@
             if (backToBook && options.route !== false) {
                 routeToHash('/book/' + encodeURIComponent(backToBook), true);
                 if (reloadIfDashboardStale()) return true;
-                openBookView(backToBook, {route: false});
+                openBookView(backToBook, {route: false, returning: true});
                 return true;
             }
             if (options.route !== false) routeToHash('/tab/' + currentTab, true);

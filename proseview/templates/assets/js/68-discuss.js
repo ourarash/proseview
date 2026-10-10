@@ -2198,16 +2198,15 @@
                 : 'Clear assistance results from this conversation';
             var pendingApproval = (snapshot.approvals || []).some(function(approval) { return approval.status === 'pending'; });
             var newConversation = document.getElementById('discussNewConversation');
-            var newConversationHint = document.getElementById('discussNewConversationHint');
             var unavailableReason = '';
             if (snapshot.active_turn_id) unavailableReason = 'Stop ' + discussAgentLabel() + ' before starting a new conversation.';
             else if (snapshot.active_request_id) unavailableReason = 'Wait for ' + discussAgentLabel() + ' to start this question before starting a new conversation.';
             else if ((snapshot.queue || []).length) unavailableReason = 'Remove or wait for queued items before starting a new conversation.';
             else if (pendingApproval) unavailableReason = 'Resolve the ' + discussAgentLabel() + ' approval request before starting a new conversation.';
-            newConversation.disabled = !!unavailableReason;
-            newConversation.title = unavailableReason;
-            if (newConversationHint.textContent !== unavailableReason) newConversationHint.textContent = unavailableReason;
-            newConversationHint.hidden = !unavailableReason;
+            // Why it is unavailable is the button's tooltip, not a line in the
+            // panel: aria-disabled rather than disabled, which would hide it.
+            newConversation.setAttribute('aria-disabled', unavailableReason ? 'true' : 'false');
+            newConversation.title = unavailableReason || 'New conversation';
             log.setAttribute('aria-busy', snapshot.active_turn_id ? 'true' : 'false');
             renderDiscussModelChip();
             renderDiscussTurnStatus(snapshot);
@@ -3891,7 +3890,7 @@ function loadDiscussDiffMode(mode) {
 
         function openNewDiscussConversationDialog() {
             var button = document.getElementById('discussNewConversation');
-            if (!_discussConversationId || button.disabled) return;
+            if (!_discussConversationId || button.getAttribute('aria-disabled') === 'true') return;
             var dialog = document.getElementById('discussNewConversationDialog');
             var error = document.getElementById('discussNewConversationError');
             var status = document.getElementById('discussNewConversationStatus');

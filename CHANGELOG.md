@@ -34,7 +34,8 @@ section here becomes the release notes on GitHub.
   line kept it from looking at the repository at all. A quiet line at the
   top of the panel says which file it knows you are in. `@` mentions stay
   in the question as `@path`, as in the Codex and Claude extensions, and
-  send the path rather than the file. The text of the open file goes along
+  send the path rather than the file. They show as tinted chips in the
+  question box, and the file browser's ⋯ menu has "Mention in chat". The text of the open file goes along
   only when it has unsaved edits, which are not on disk to be read.
   Structured passes (critique, continuity, canon changes) are unchanged.
 

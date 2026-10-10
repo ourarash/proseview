@@ -718,7 +718,8 @@
                 <div id="discussTaskMode" class="discuss-task-mode" hidden></div>
                 <div id="discussSkillsPicker" class="discuss-skills-picker" hidden></div>
                 <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about your project</label>
-                <textarea id="discussInput" rows="3" maxlength="32768" aria-describedby="discussHint" placeholder="Ask anything about your story…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea>
+                <div class="discuss-input-wrap"><div id="discussInputMirror" class="discuss-input-mirror" aria-hidden="true"></div>
+                <textarea id="discussInput" rows="3" maxlength="32768" aria-describedby="discussHint" placeholder="Ask anything about your story…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea></div>
                 <span id="discussHint" class="sr-only">Enter to send, Shift+Enter for a new line</span>
                 <div class="discuss-send-row">
                     <div class="discuss-composer-action-group">

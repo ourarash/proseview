@@ -2948,7 +2948,7 @@ def test_file_explorer_copies_absolute_and_repository_relative_paths(
     row.click(button="right")
     menu = page.locator("#sidebarContextMenu")
     assert menu.get_by_role("menuitem").all_inner_texts() == [
-        "Copy path", "Copy relative path", "Rename", "Delete…"
+        "Mention in chat", "Copy path", "Copy relative path", "Rename", "Delete…"
     ]
     menu.get_by_role("menuitem", name="Copy relative path", exact=True).click()
     page.wait_for_function("value => window.__sidebarCopiedPath === value", arg=relative)
@@ -3020,7 +3020,7 @@ def test_file_explorer_folder_menu_renames_and_trashes_nonempty_folders(
     story_bible.click(button="right")
     root_menu = page.locator("#sidebarContextMenu")
     assert root_menu.get_by_role("menuitem").all_inner_texts() == [
-        "New file here", "New folder here", "Copy path", "Copy relative path"
+        "New file here", "New folder here", "Mention in chat", "Copy path", "Copy relative path"
     ]
     root_menu.get_by_role("menuitem", name="New folder here").click()
 
@@ -7088,3 +7088,23 @@ def test_entering_and_leaving_edit_mode_does_not_move_the_page(page: Page, serve
     page.wait_for_function("window._pmEditMode === false")
     page.wait_for_timeout(200)
     assert _reading_position(page) == before
+
+
+def test_mentions_read_as_chips_and_the_file_browser_can_add_one(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.evaluate("setSidebarOpen(true)")
+    # The file browser's menu puts a file into the question, as @ would.
+    page.locator('.sidebar-row-more[aria-label="More actions for book-plan.md"]').click()
+    page.get_by_role("menuitem", name="Mention in chat").click()
+    page.wait_for_function("() => document.getElementById('discussInput').value === '@plans/book-plan.md '")
+
+    page.locator("#discussInput").press_sequentially("against @02-wa")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    page.locator("#discussInput").press("Enter")
+    page.locator("#discussInput").press_sequentially("please.")
+    assert page.input_value("#discussInput") == "@plans/book-plan.md against @manuscript/ch01/02-walk.md please."
+    marks = page.locator("#discussInputMirror mark.discuss-mention")
+    assert marks.all_inner_texts() == ["@plans/book-plan.md", "@manuscript/ch01/02-walk.md"]
+    # A path that is not in the project is just text.
+    page.fill("#discussInput", "mail me @nowhere.md")
+    assert marks.count() == 0

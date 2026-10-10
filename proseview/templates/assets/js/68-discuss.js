@@ -3886,6 +3886,7 @@ function loadDiscussDiffMode(mode) {
             // and Claude extensions write it; it is read back out on send.
             var token = '@' + choice.path + ' ';
             input.value = input.value.slice(0, mention.start) + token + input.value.slice(mention.end);
+            paintDiscussMentions();
             input.setSelectionRange(mention.start + token.length, mention.start + token.length);
             closeDiscussContextPicker();
             saveDiscussDraft();
@@ -3893,26 +3894,106 @@ function loadDiscussDiffMode(mode) {
             input.focus();
         }
 
-        // The files and folders the question @-mentions, longest path first so
-        // `@plans/book-plan.md` is not read as the folder `@plans`.
-        function discussMentionsIn(text) {
+        // Where the question @-mentions a file or folder, longest path first
+        // so `@plans/book-plan.md` is not read as the folder `@plans`.
+        function discussMentionRanges(text) {
             var candidates = discussContextCandidates().slice().sort(function(a, b) { return b.path.length - a.path.length; });
-            var found = [];
+            var ranges = [];
             var pattern = /(^|\s)@/g;
             var match;
             while ((match = pattern.exec(text))) {
-                var rest = text.slice(match.index + match[0].length);
+                var at = match.index + match[0].length;
+                var rest = text.slice(at);
                 var hit = candidates.filter(function(candidate) {
                     if (rest.indexOf(candidate.path) !== 0) return false;
                     var next = rest.charAt(candidate.path.length);
                     return !next || /[\s,.;:!?)\]'"]/.test(next) || (candidate.kind === 'folder' && next === '/');
                 })[0];
-                if (hit && !found.some(function(item) { return item.path === hit.path; })) {
-                    found.push({kind: hit.kind, path: hit.path});
-                }
+                if (hit) ranges.push({start: at - 1, end: at + hit.path.length, kind: hit.kind, path: hit.path});
             }
+            return ranges;
+        }
+
+        function discussMentionsIn(text) {
+            var found = [];
+            discussMentionRanges(text).forEach(function(range) {
+                if (!found.some(function(item) { return item.path === range.path; })) {
+                    found.push({kind: range.kind, path: range.path});
+                }
+            });
             return found;
         }
+
+        // A textarea cannot style part of its text, so a copy of it sits
+        // behind, with the mentions marked; the real text is drawn on top.
+        function paintDiscussMentions() {
+            var input = document.getElementById('discussInput');
+            var mirror = document.getElementById('discussInputMirror');
+            if (!input || !mirror) return;
+            var text = input.value;
+            mirror.replaceChildren();
+            var last = 0;
+            discussMentionRanges(text).forEach(function(range) {
+                mirror.appendChild(document.createTextNode(text.slice(last, range.start)));
+                var mark = document.createElement('mark');
+                mark.className = 'discuss-mention';
+                mark.textContent = text.slice(range.start, range.end);
+                mirror.appendChild(mark);
+                last = range.end;
+            });
+            // The trailing space keeps a last empty line its height.
+            mirror.appendChild(document.createTextNode(text.slice(last) + ' '));
+            mirror.scrollTop = input.scrollTop;
+        }
+
+        // Put `@path ` into the question, opening the panel first if needed:
+        // the file browser's "Mention in chat" does this.
+        function mentionInDiscuss(path) {
+            var insert = function() {
+                var input = document.getElementById('discussInput');
+                if (!input) return;
+                var start = input.selectionStart === undefined ? input.value.length : input.selectionStart;
+                var before = input.value.slice(0, start);
+                var token = (before && !/\s$/.test(before) ? ' ' : '') + '@' + path + ' ';
+                input.setRangeText(token, start, input.selectionEnd, 'end');
+                paintDiscussMentions();
+                saveDiscussDraft();
+                input.focus();
+                document.getElementById('discussAnnouncement').textContent = 'Mentioned ' + path;
+            };
+            var input = document.getElementById('discussInput');
+            if (_discussConversationId && input && input.getClientRects().length) { insert(); return; }
+            if (discussDocument()) {
+                var opened = _discussConversationId;
+                showDiscussAgentTab(_discussAgent || 'codex');
+                if (opened && input && input.getClientRects().length) { insert(); return; }
+                var tries = 0;
+                (function wait() {
+                    if (_discussConversationId) insert();
+                    else if (tries++ < 50) setTimeout(wait, 100);
+                })();
+                return;
+            }
+            if (typeof sidebarShowToast === 'function') sidebarShowToast('Open a scene or file first, then mention ' + path + ' in the chat.');
+        }
+
+        (function initDiscussMentionPaint() {
+            var input = document.getElementById('discussInput');
+            if (!input) return;
+            // Every way the question changes repaints it, including code that
+            // sets the value directly.
+            var native = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+            Object.defineProperty(input, 'value', {
+                configurable: true,
+                get: function() { return native.get.call(this); },
+                set: function(next) { native.set.call(this, next); paintDiscussMentions(); }
+            });
+            input.addEventListener('input', paintDiscussMentions);
+            input.addEventListener('scroll', function() {
+                var mirror = document.getElementById('discussInputMirror');
+                if (mirror) mirror.scrollTop = input.scrollTop;
+            });
+        })();
 
         function openDiscussContextPicker() {
             var input = document.getElementById('discussInput');

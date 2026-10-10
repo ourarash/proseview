@@ -153,6 +153,13 @@
                 menu.appendChild(sidebarMenuButton(item.label, item.action, item.run));
             });
             if (exportItems.length) menu.appendChild(document.createElement('hr'));
+            // A snapshot (the online demo) has no agent to mention it to.
+            if (typeof mentionInDiscuss === 'function' && !window.PROSEVIEW_STATIC) {
+                menu.appendChild(sidebarMenuButton('Mention in chat', 'mention', function() {
+                    mentionInDiscuss(node.path);
+                }));
+                menu.appendChild(document.createElement('hr'));
+            }
             menu.appendChild(sidebarMenuButton('Copy path', 'copy-path', function() {
                 sidebarCopyNodePath(node, anchor, false);
             }));

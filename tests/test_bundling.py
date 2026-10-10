@@ -346,10 +346,13 @@ def test_template_contains_search_input_and_panel():
     # Dashboard search is inline and wide. The same menu is moved into the
     # dialog only from routed scene/file views.
     mount_start = template.find('id="dashboardSearchMount"')
-    font_start = template.find('id="fontMenu"', mount_start)
+    font_start = template.find('id="themeMenu"', mount_start)
     assert mount_start >= 0 and font_start > mount_start
     dashboard_search_html = template[mount_start:font_start]
     assert 'id="searchBox"' in dashboard_search_html
+    # The reading font is chosen where there is reading: the scene and file
+    # views. On the dashboard the picker changed nothing visible.
+    assert 'id="fontMenu"' not in template
     assert 'aria-label="Close search"' in dashboard_search_html
     assert 'aria-label="Close scene and return to dashboard"' in template
 

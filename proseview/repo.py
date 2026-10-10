@@ -16,7 +16,7 @@ with ``json.dumps``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import re
@@ -611,83 +611,108 @@ def build_sidebar_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
     return nodes
 
 
+def _git_uncommitted(root: Path) -> set[str] | None:
+    """Repo-relative paths with changes not yet committed, or None without git."""
+    from .history import is_git_repo  # avoid circular at module level
+    import subprocess as _sp
+
+    if not is_git_repo(root):
+        return None
+    try:
+        result = _sp.run(
+            ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
+            cwd=root, capture_output=True, timeout=30, check=False,
+        )
+    except (FileNotFoundError, _sp.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    paths: set[str] = set()
+    records = result.stdout.decode("utf-8", errors="replace").split("\0")
+    skip_next = False
+    for record in records:
+        if skip_next:  # the source path of a rename
+            skip_next = False
+            continue
+        if len(record) < 4:
+            continue
+        status, path = record[:2], record[3:]
+        if "R" in status or "C" in status:
+            skip_next = True
+        paths.add(path)
+    return paths
+
+
 def recent_changes(
     root: Path,
     cfg: Config,
-    since: str = "7 days ago",
+    since: timedelta = timedelta(days=7),
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Return files changed in the last ``since`` period from git log.
+    """Files in the book changed on disk within *since*, newest first.
 
-    Returns ``(entries, git_available)``.  When git is unavailable or ``root``
-    is not the worktree top-level the list is empty and the flag is ``False``.
+    Read from the files' modification dates, so an edit counts the moment it
+    is saved, committed or not, and a folder without git has the list too.
+    In a git repository each entry also says whether it has changes that are
+    not committed yet. Returns ``(entries, True)``; the flag is kept for the
+    callers' shape.
 
     Each entry carries:
       path          relative path from repo root (forward slashes)
       abs_path      resolved absolute path string
       is_scene      True when the file is in the client's scene index
-      scene_path    path relative to manuscript_subdir for scenes, else None
-      modified_at   ISO date string of the most-recent touching commit
+      scene_path    the scene's key in that index, else None
+      modified_at   ISO time of the file's last modification
+      uncommitted   True when git has the file as changed or new
     """
-    from .history import is_git_repo  # avoid circular at module level
-    import subprocess as _sp
+    from .scenes import iter_scene_paths, resolve_manuscript_dir
 
-    if not is_git_repo(root):
-        return [], False
+    resolved = root.resolve()
+    manuscript_dir = resolve_manuscript_dir(resolved, cfg.manuscript_subdir)
+    scene_keys = {
+        path.resolve(): path.relative_to(manuscript_dir).as_posix()
+        for path in iter_scene_paths(manuscript_dir)
+    } if manuscript_dir.is_dir() else {}
+    if lists_whole_folder(resolved, cfg):
+        folders = [resolved]
+    else:
+        folders = [manuscript_dir] + [resolved / name.strip("/") for name in cfg.repo_tab.folders if name.strip("/")]
+    cutoff = datetime.now().timestamp() - since.total_seconds()
+    uncommitted = _git_uncommitted(resolved) or set()
 
-    content_dirs: list[str] = [cfg.manuscript_path, *list(cfg.repo_tab.folders)]
-
-    try:
-        result = _sp.run(
-            [
-                "git", "log",
-                "--since", since,
-                "-z",
-                "--name-only",
-                "--diff-filter=AM",
-                "--pretty=format:__PV_DATE__ %ai%x00",
-                "--first-parent",
-                "--",
-                *content_dirs,
-            ],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=30,
-            check=False,
-        )
-    except (FileNotFoundError, _sp.TimeoutExpired):
-        return [], False
-
-    if result.returncode != 0:
-        return [], False
-
-    # NUL delimiters preserve filenames exactly. Git's default newline format
-    # C-quotes names containing quotes, tabs, or newlines; treating that quoted
-    # representation as a real path both breaks navigation and makes correct
-    # destination-specific escaping impossible.
-    #
-    # Sentinel records supply the date; all other non-empty records are file
-    # paths. Deduplicate by path, keeping the first (most-recent) occurrence.
-    entries: dict[str, dict[str, Any]] = {}
-    current_date = ""
-    for raw in result.stdout.split("\0"):
-        line = raw.lstrip("\n")
-        if not line:
+    found: dict[str, tuple[float, Path]] = {}
+    for folder in folders:
+        if not folder.is_dir():
             continue
-        if line.startswith("__PV_DATE__ "):
-            current_date = line[len("__PV_DATE__ "):]
-        elif line not in entries:
-            scene_rel = scene_relative_path(line, cfg.manuscript_subdir)
-            entries[line] = {
-                "path": line,
-                "abs_path": str((root / line).resolve()),
-                "is_scene": scene_rel is not None,
-                "scene_path": scene_rel,
-                "modified_at": current_date,
-            }
+        for current, dirs, files in os.walk(folder):
+            dirs[:] = [
+                d for d in dirs
+                if not _is_hidden(d) and d not in CONTEXT_SKIP_DIRS and not (Path(current) == resolved and d == "exports")
+            ]
+            for name in files:
+                if _is_hidden(name):
+                    continue
+                path = Path(current) / name
+                try:
+                    if path.is_symlink():
+                        continue
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    continue
+                if mtime >= cutoff:
+                    found[path.relative_to(resolved).as_posix()] = (mtime, path)
 
-    return list(entries.values()), True
+    entries: list[dict[str, Any]] = []
+    for rel, (mtime, path) in sorted(found.items(), key=lambda item: item[1][0], reverse=True):
+        scene_path = scene_keys.get(path.resolve())
+        entries.append({
+            "path": rel,
+            "abs_path": str(path.resolve()),
+            "is_scene": scene_path is not None,
+            "scene_path": scene_path,
+            "modified_at": datetime.fromtimestamp(mtime).astimezone().isoformat(timespec="seconds"),
+            "uncommitted": rel in uncommitted,
+        })
+    return entries, True
 
 
 def build_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:

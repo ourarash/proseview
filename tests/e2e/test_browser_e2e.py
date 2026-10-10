@@ -3724,22 +3724,7 @@ def test_dashboard_appearance_listboxes_are_keyboard_operable_and_persist(
     server: ProseviewServer,
 ):
     open_dashboard(page, server)
-    font = page.get_by_role("button", name="Pick reading font")
-    font.focus()
-    page.keyboard.press("Enter")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("Enter")
-    assert page.evaluate("document.documentElement.dataset.font") == "literary"
-    assert page.evaluate("document.activeElement.id") == "fontToggle"
-
-    font.focus()
-    page.keyboard.press("Enter")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("Tab")
-    assert page.evaluate("localStorage.getItem('proseview-font')") == "inter"
-    page.reload(wait_until="load")
-    assert page.evaluate("document.documentElement.dataset.font") == "inter"
-
+    assert page.get_by_role("button", name="Pick reading font").count() == 0
     theme = page.locator("#themeToggle")
     theme.focus()
     page.keyboard.press("Enter")
@@ -3749,15 +3734,7 @@ def test_dashboard_appearance_listboxes_are_keyboard_operable_and_persist(
     assert page.evaluate("document.activeElement.id") == "themeToggle"
 
     page.reload(wait_until="load")
-    assert page.evaluate("document.documentElement.dataset.font") == "inter"
     assert page.evaluate("document.documentElement.dataset.theme") == "graphite-dark"
-
-    font.focus()
-    page.keyboard.press("Enter")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("Escape")
-    assert page.evaluate("document.documentElement.dataset.font") == "inter"
-    assert page.evaluate("document.activeElement.id") == "fontToggle"
 
 
 def test_scene_analysis_and_character_controls_are_keyboard_operable(

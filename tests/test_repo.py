@@ -555,3 +555,42 @@ def test_windows_line_endings_read_as_newlines(tmp_path: Path):
     path = tmp_path / "scene.md"
     path.write_bytes(b"---\r\ntitle: One\r\n---\r\n\r\nProse.\r\n")
     assert read_repo_text(path) == "---\ntitle: One\n---\n\nProse.\n"
+
+
+def test_recently_modified_reads_file_dates_and_marks_uncommitted_work(tmp_path: Path):
+    """It used to list only files in commits from the last seven days, so a
+    writer with a week of unsaved-to-git edits saw "No files changed"."""
+    import os
+    import subprocess
+    import time
+
+    from proseview.repo import recent_changes
+
+    chapter = tmp_path / "manuscript" / "ch01"
+    chapter.mkdir(parents=True)
+    old = chapter / "01.md"
+    old.write_text("Old prose.\n", encoding="utf-8")
+    committed = chapter / "02.md"
+    committed.write_text("Committed today.\n", encoding="utf-8")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@t"}
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "seed"]):
+        subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
+    month_ago = time.time() - 30 * 86400
+    os.utime(old, (month_ago, month_ago))
+    edited = chapter / "03.md"
+    edited.write_text("Written today, not committed.\n", encoding="utf-8")
+
+    entries, available = recent_changes(tmp_path, Config())
+
+    assert available is True
+    assert [e["path"] for e in entries] == ["manuscript/ch01/03.md", "manuscript/ch01/02.md"]
+    assert [e["uncommitted"] for e in entries] == [True, False]
+    assert entries[0]["is_scene"] and entries[0]["scene_path"] == "ch01/03.md"
+
+    # Without git the list is the same, just with nothing marked.
+    plain = tmp_path / "plain"
+    (plain / "manuscript" / "ch01").mkdir(parents=True)
+    (plain / "manuscript" / "ch01" / "01.md").write_text("Prose.\n", encoding="utf-8")
+    entries, _ = recent_changes(plain, Config())
+    assert [(e["path"], e["uncommitted"]) for e in entries] == [("manuscript/ch01/01.md", False)]

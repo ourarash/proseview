@@ -130,17 +130,14 @@ def test_a_plain_snapshot_offers_no_editing_and_a_demo_one_does(tmp_path: Path):
     assert "window.PROSEVIEW_STATIC_EDITS = true" in demo
 
 
-def test_a_snapshot_without_history_leaves_out_the_recent_changes_card(tmp_path: Path):
-    """A reader cannot act on a note about git history; to them it reads as broken.
-
-    The writer's own dashboard still says it, because they can do something
-    about it.
-    """
+def test_a_snapshot_leaves_out_the_recent_changes_card(tmp_path: Path):
+    """What the author touched this week is not something a reader of a
+    published copy acts on; the author's own dashboard lists it."""
     root = _novel(tmp_path)
     write_snapshot(root, tmp_path / "site")
     html = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
-    assert "Recent changes come from git history" not in html
-    assert "Recent changes come from git history" in build_dashboard(root, Config.load(root))
+    assert "Recently Modified" not in html
+    assert "Recently Modified" in build_dashboard(root, Config.load(root))
 
 
 def test_a_snapshot_describes_itself_to_link_previews(tmp_path: Path):

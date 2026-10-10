@@ -17,6 +17,12 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Recently Modified** lists what changed on disk in the last seven days,
+  newest first, with when, and marks files with changes not yet committed.
+  It used to read only commits, so a week of uncommitted writing showed "No
+  files changed", and a folder without git showed nothing.
+- The dashboard no longer has a Font picker: it changed nothing there. The
+  reading font is chosen in the scene and file views.
 - A Markdown file with a table opens in the rich editor. The table shows as a
   table and is saved exactly as written; change it in your text editor. A
   table inside a list or quote still opens the file as plain Markdown.

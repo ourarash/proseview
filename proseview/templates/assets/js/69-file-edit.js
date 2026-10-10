@@ -243,7 +243,7 @@
             } else {
                 var note = document.createElement('p');
                 note.className = 'file-edit-note';
-                note.textContent = 'This note opens as plain Markdown because ' + reason
+                note.textContent = 'This file opens as plain Markdown because ' + reason
                     + ', so it is saved exactly as you type it.';
                 var area = document.createElement('textarea');
                 area.className = 'file-edit-source';

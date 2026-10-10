@@ -7,23 +7,23 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
-- A note with a table opens in the rich editor. The table shows as a table
-  and is saved exactly as written; change it in your text editor. A table
-  inside a list or quote still opens the note as plain Markdown.
+- A Markdown file with a table opens in the rich editor. The table shows as a
+  table and is saved exactly as written; change it in your text editor. A
+  table inside a list or quote still opens the file as plain Markdown.
 - The agent composer is quieter: New conversation and History are icons
   beside the agent's name, presets are small chips, and the attach button
   and model sit beside Send.
-- `Mod-S` saves and returns to reading, in scenes as in notes, as the Save
+- `Mod-S` saves and returns to reading, in scenes as in other files, as the Save
   button does. `E` reopens the editor where the caret was.
 - **No guessing where the book is.** Without a manuscript folder, Proseview
   opens the folder as plain Markdown: reading, editing, search and the agents
-  work on every file, and a note on the dashboard asks where the book is.
+  work on every file, and a message on the dashboard asks where the book is.
   *Choose manuscript folder…* saves `manuscript_path` (a folder, or `./` for
   the whole folder) and turns on the scene counts, Analysis, Timeline, Goals
   and Export. It used to treat any folder without `manuscript/` as the book,
   so a vault's character sheets became chapters.
 - A scene is a Markdown file in the manuscript folder or in a chapter folder.
-  Anything deeper, such as a chapter's `review/` notes, opens as a file and
+  Anything deeper, such as a file in a chapter's `review/` folder, opens as a file and
   no longer counts toward scenes or words, as the file browser already
   showed it.
 - Export reads Obsidian's Markdown: a `[[wikilink]]` prints as its text (or

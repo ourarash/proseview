@@ -23,7 +23,7 @@ my-novel/
 
 Files sitting directly in the manuscript folder are scenes too, in a chapter
 named after the folder. Anything deeper than a chapter folder, such as
-`ch02/review/notes.md`, is a note about the book: it opens as a file and does
+`ch02/review/notes.md`, is not a scene: it opens as a file and does
 not count toward scenes or words. A scene can also opt out with
 `scene: false` in its frontmatter, and a `chapter:` in frontmatter always
 overrides the folder name. Folders and files are read in name order.
@@ -32,7 +32,7 @@ overrides the folder name. Folders and files are read in name order.
 
 **No manuscript folder?** Proseview does not guess which files are the book.
 It opens the folder as Markdown: you can read, edit and search every file and
-ask Codex or Claude about it, and a short note on the dashboard asks where the
+ask Codex or Claude about it, and a short message on the dashboard asks where the
 book is. **Choose manuscript folder…** writes `manuscript_path` to
 `.proseview.yaml`, and the scene counts, Analysis, Timeline, Goals and Export
 switch on. Pick a folder, or the whole folder (`manuscript_path: ./`), which

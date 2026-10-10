@@ -132,7 +132,10 @@ def test_the_document_and_question_reach_the_agent(session):
     prompt = session.client.prompts[-1]
     assert "USER QUESTION" in prompt
     assert "Whose voice is this?" in prompt
-    assert "First document." in prompt
+    # Where the writer is, as an editor extension says it; the agent reads
+    # the file itself.
+    assert "Open file: manuscript/one.md" in prompt
+    assert "First document." not in prompt
 
 
 def test_the_project_conversation_survives_document_navigation(session):
@@ -152,8 +155,8 @@ def test_the_project_conversation_survives_document_navigation(session):
         document={"kind": "scene", "path": "two.md"},
     )
     _wait_for(lambda: len(session.client.prompts) == 2)
-    assert "Second document." in session.client.prompts[-1]
-    assert "First document." not in session.client.prompts[-1]
+    assert "Open file: manuscript/two.md" in session.client.prompts[-1]
+    assert "manuscript/one.md" not in session.client.prompts[-1]
     assert session.manager.list_conversations(session.cid)["conversations"]
 
 

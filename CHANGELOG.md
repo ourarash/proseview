@@ -20,6 +20,18 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Codex and Claude are told where you are, the way the editor extensions
+  do it.** Every question says which file is open (and your selection, if
+  it is in the panel), and the agent reads the file from the project when
+  it needs to. There is no "Attach current" any more, and no Proseview
+  instruction telling the agent to discuss only what was attached; that
+  line kept it from looking at the repository at all. A quiet line at the
+  top of the panel says which file it knows you are in. `@` mentions stay
+  in the question as `@path`, as in the Codex and Claude extensions, and
+  send the path rather than the file. The text of the open file goes along
+  only when it has unsaved edits, which are not on disk to be read.
+  Structured passes (critique, continuity, canon changes) are unchanged.
+
 - **Proseview fits a phone.** The online demo and the dashboard read on a
   phone screen: a compact banner, one row of buttons, a two-column scene
   table, card headers that stack, the character chart's legend under the

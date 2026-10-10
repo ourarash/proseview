@@ -3153,46 +3153,29 @@ function loadDiscussDiffMode(mode) {
         function renderDiscussContext() {
             var context = document.getElementById('discussContext'); context.replaceChildren();
             var doc = discussTurnDocument();
-            if (doc && _discussIncludeCurrentDocument) {
+            if (doc && _discussPendingAction && _discussIncludeCurrentDocument) {
+                // A selection action judges the passage in its scene, so the
+                // whole file goes along with it unless the writer removes it.
                 var current = elementWith('discuss-chip discuss-chip-current', doc.path);
-                current.title = 'File attached to the next question';
+                current.title = 'File sent with this action';
                 var removeCurrent = document.createElement('button');
                 removeCurrent.type = 'button'; removeCurrent.textContent = '×';
                 removeCurrent.setAttribute('aria-label', 'Remove current document ' + doc.path);
                 removeCurrent.onclick = function() {
                     _discussIncludeCurrentDocument = false;
-                    if (!document.getElementById('discussInput').value && !_discussSelection
-                        && !_discussPendingAction && !_discussRepositoryAction) {
-                        _discussDraftDocument = null;
-                    }
                     saveDiscussDraft();
                     renderDiscussContext();
                     document.getElementById('discussAnnouncement').textContent = 'Document removed from context';
                 };
                 current.appendChild(removeCurrent); context.appendChild(current);
-            } else if (!_discussSelection && !_discussPendingAction && !_discussRepositoryAction) {
-                var visibleDocument = discussDocument();
-                if (visibleDocument) {
-                    var attachCurrent = document.createElement('button');
-                    attachCurrent.type = 'button';
-                    attachCurrent.className = 'discuss-chip discuss-chip-attach';
-                    attachCurrent.textContent = 'Attach current · ' + visibleDocument.path;
-                    attachCurrent.setAttribute('aria-label', 'Attach current document ' + visibleDocument.path);
-                    attachCurrent.onclick = function() {
-                        _discussDraftDocument = Object.assign({}, visibleDocument);
-                        _discussIncludeCurrentDocument = true;
-                        saveDiscussDraft();
-                        renderDiscussContext();
-                        document.getElementById('discussAnnouncement').textContent = visibleDocument.path + ' attached to the next question';
-                    };
-                    context.appendChild(attachCurrent);
-                }
+            } else if (doc && !_discussRepositoryAction) {
+                // What an editor extension calls IDE context: the agent is told
+                // which file is open and reads it from the project itself.
+                var sees = elementWith('discuss-sees', discussAgentLabel() + ' knows you are in ' + doc.path);
+                sees.title = 'Each question says which file is open; ' + discussAgentLabel()
+                    + ' reads it from the project when the question needs it. Type @ to mention other files.';
+                context.appendChild(sees);
             }
-            _discussAttachments.forEach(function(attachment, index) {
-                var chip = elementWith('discuss-chip', attachment.path);
-                var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Remove ' + attachment.path);
-                remove.onclick = function() { _discussAttachments.splice(index, 1); renderDiscussContext(); }; chip.appendChild(remove); context.appendChild(chip);
-            });
             var selection = document.getElementById('discussSelectionChip');
             selection.hidden = !_discussSelection;
             selection.replaceChildren();
@@ -3864,15 +3847,36 @@ function loadDiscussDiffMode(mode) {
             var input = document.getElementById('discussInput');
             var mention = _discussMentionRange;
             if (!choice || !mention) return;
-            if (!_discussAttachments.some(function(item) { return item.kind === choice.kind && item.path === choice.path; })) {
-                _discussAttachments.push({kind: choice.kind, path: choice.path});
-            }
-            input.value = input.value.slice(0, mention.start) + input.value.slice(mention.end);
-            input.setSelectionRange(mention.start, mention.start);
+            // The mention stays in the question, as @path, the way the Codex
+            // and Claude extensions write it; it is read back out on send.
+            var token = '@' + choice.path + ' ';
+            input.value = input.value.slice(0, mention.start) + token + input.value.slice(mention.end);
+            input.setSelectionRange(mention.start + token.length, mention.start + token.length);
             closeDiscussContextPicker();
-            renderDiscussContext();
-            document.getElementById('discussAnnouncement').textContent = 'Attached ' + choice.path;
+            saveDiscussDraft();
+            document.getElementById('discussAnnouncement').textContent = 'Mentioned ' + choice.path;
             input.focus();
+        }
+
+        // The files and folders the question @-mentions, longest path first so
+        // `@plans/book-plan.md` is not read as the folder `@plans`.
+        function discussMentionsIn(text) {
+            var candidates = discussContextCandidates().slice().sort(function(a, b) { return b.path.length - a.path.length; });
+            var found = [];
+            var pattern = /(^|\s)@/g;
+            var match;
+            while ((match = pattern.exec(text))) {
+                var rest = text.slice(match.index + match[0].length);
+                var hit = candidates.filter(function(candidate) {
+                    if (rest.indexOf(candidate.path) !== 0) return false;
+                    var next = rest.charAt(candidate.path.length);
+                    return !next || /[\s,.;:!?)\]'"]/.test(next) || (candidate.kind === 'folder' && next === '/');
+                })[0];
+                if (hit && !found.some(function(item) { return item.path === hit.path; })) {
+                    found.push({kind: hit.kind, path: hit.path});
+                }
+            }
+            return found;
         }
 
         function openDiscussContextPicker() {
@@ -3997,11 +4001,15 @@ function loadDiscussDiffMode(mode) {
                 document: turnDocument,
                 selection: _discussSelection,
                 selection_range: _discussSelectionRange,
-                live_document: _discussLiveDocument,
-                attachments: _discussAttachments,
+                // Unsaved edits are not on disk for the agent to read.
+                live_document: _discussLiveDocument || discussLiveDocumentFor(turnDocument),
+                attachments: discussMentionsIn(question).concat(_discussAttachments.filter(function(item) {
+                    return question.indexOf('@' + item.path) < 0;
+                })),
                 include_current_document: _discussIncludeCurrentDocument,
                 skill: _discussSelectedSkill
             }).then(function() {
+                _discussAttachments = [];
                 rememberDiscussInstruction(question); input.value = '';
                 if (!_discussSelection && !_discussIncludeCurrentDocument) _discussDraftDocument = null;
                 saveDiscussDraft(); _discussSelectedSkill = null;

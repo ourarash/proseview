@@ -4742,6 +4742,15 @@
             white-space: nowrap;
         }
 
+        .discuss-sees {
+            font-size: 11px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+
         .discuss-chip-attach {
             cursor: pointer;
             border-style: dashed;

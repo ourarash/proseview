@@ -283,8 +283,8 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-    # A selection brings its scene along.
-    assert page.locator("#discussContext .discuss-chip-current").count() == 1
+    # The agent is told which file is open, and reads it itself.
+    assert "knows you are in" in page.locator("#discussContext .discuss-sees").inner_text()
     assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
     page.fill("#discussInput", "Explain this scene")
@@ -314,9 +314,8 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     conversation_id = page.evaluate("() => window._discussConversationId")
     page.locator("#sceneModal .nav-btn").nth(1).click()
     page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
-    # The selection is still attached, so its scene stays with it; the scene
-    # now on screen is not added.
-    assert page.locator("#discussContext .discuss-chip-current").inner_text().startswith(SCENE_REL)
+    # The selection is still attached, so the question is still about its scene.
+    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
     assert page.evaluate("() => window._discussConversationId") == conversation_id
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
@@ -329,7 +328,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
-def test_discuss_current_document_is_opt_in_and_does_not_follow_navigation(
+def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
     page: Page, server: ProseviewServer, agent: str
 ):
     question_requests: list[dict] = []
@@ -348,51 +347,33 @@ def test_discuss_current_document_is_opt_in_and_does_not_follow_navigation(
         arg=agent,
     )
 
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    attach_current = page.get_by_role(
-        "button", name=f"Attach current document {SCENE_REL}"
-    )
-    assert attach_current.is_visible()
+    # Like an editor extension: the open file is part of every question, and
+    # there is nothing to attach.
+    sees = page.locator("#discussContext .discuss-sees")
+    assert SCENE_REL in sees.inner_text()
+    assert page.locator("#discussContext .discuss-chip-attach").count() == 0
 
     page.fill("#discussInput", "What makes an opening effective?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
-    assert question_requests[-1]["include_current_document"] is False
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
 
-    attach_current.click()
-    current_chip = page.locator("#discussContext .discuss-chip-current")
-    assert SCENE_REL in current_chip.inner_text()
-    page.fill("#discussInput", "Compare this attached opening with the next scene")
+    # A question started in one scene is about that scene, even after moving on.
+    page.fill("#discussInput", "Compare this opening with the next scene")
     page.locator("#sceneModal .nav-btn").nth(1).click()
     page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
     next_path = page.evaluate("() => paths[curIdx]")
-
-    assert SCENE_REL in current_chip.inner_text()
-    assert next_path not in current_chip.inner_text()
+    assert SCENE_REL in sees.inner_text()
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
-    assert question_requests[-1]["include_current_document"] is True
 
-    page.click("#discussClose")
-    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
-    page.wait_for_function(
-        "() => document.querySelector('#discussConnection').innerText.startsWith('Live')"
-    )
-    current_chip = page.locator("#discussContext .discuss-chip-current")
-    assert SCENE_REL in current_chip.inner_text()
-
-    current_chip.get_by_role(
-        "button", name=f"Remove current document {SCENE_REL}"
-    ).click()
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
-
-    page.fill("#discussInput", "Continue without reading either scene")
+    # The next one is about where the writer is now.
+    page.wait_for_function("next => document.querySelector('#discussContext .discuss-sees').innerText.includes(next)", arg=next_path)
+    page.fill("#discussInput", "And this one?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
-    assert question_requests[-1]["include_current_document"] is False
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -429,8 +410,8 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
     assert page.evaluate("() => window._discussEventSource.__navigationTest") is True
     assert page.locator("#discussLog .discuss-message").count() == original_messages
     assert page.input_value("#discussInput") == "Compare the image I was reading"
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    # The draft is still about the scene it was started in, and says so.
+    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
 
     page.click("#discussSend")
     page.wait_for_function(
@@ -442,7 +423,7 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
     assert question_requests[-1]["include_current_document"] is False
 
     # Once the draft is sent, the next turn follows the scene now on screen.
-    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    page.wait_for_function("next => document.querySelector('#discussContext .discuss-sees').innerText.includes(next)", arg=next_path)
     page.fill("#discussInput", "What changes in this scene?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
@@ -482,7 +463,7 @@ def test_discuss_migrates_legacy_draft_and_clearing_it_follows_the_new_scene(
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
 
     page.fill("#discussInput", "")
-    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    assert next_path in page.locator("#discussContext .discuss-sees").inner_text()
     page.fill("#discussInput", "Use the scene now on screen")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
@@ -581,7 +562,7 @@ def test_discuss_reopens_the_newest_saved_provider_draft(
         "agent => sessionStorage.getItem('proseview-draft:' + agent)", agent
     ) == "New unsent draft"
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role("button", name=f"Attach current document {SCENE_REL}").is_visible()
+    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -625,7 +606,7 @@ def test_discuss_restores_an_inactive_providers_legacy_draft_on_its_source_file(
 
     assert page.input_value("#discussInput") == "Released draft for the next scene"
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role("button", name=f"Attach current document {next_path}").is_visible()
+    assert next_path in page.locator("#discussContext .discuss-sees").inner_text()
     assert page.evaluate("key => sessionStorage.getItem(key)", legacy_key) is None
 
 
@@ -1168,7 +1149,7 @@ def test_discuss_context_picker_attaches_only_the_files_the_writer_selects(
     assert context_button.get_attribute("aria-label") == "Add files and more"
     assert "+ Context" not in page.locator("#discussComposerArea").inner_text()
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role("button", name=f"Attach current document {SCENE_REL}").is_visible()
+    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
     page.locator("#discussInput").press("@")
     page.wait_for_selector("#discussContextPicker", state="visible")
     assert page.locator("#discussContextOptions").get_attribute("role") == "listbox"
@@ -1185,17 +1166,15 @@ def test_discuss_context_picker_attaches_only_the_files_the_writer_selects(
     assert "manuscript/ch01/02-walk.md" in page.locator("#discussContextOptions").inner_text()
     page.locator("#discussInput").press("Enter")
     page.wait_for_selector("#discussContextPicker", state="hidden")
-    assert page.locator("#discussInput").input_value() == "Compare "
-    assert "manuscript/ch01/02-walk.md" in page.locator("#discussContext").inner_text()
-    page.locator("#discussInput").press_sequentially("@check_continuity")
+    # The mention stays in the question, as the Codex and Claude extensions write it.
+    assert page.locator("#discussInput").input_value() == "Compare @manuscript/ch01/02-walk.md "
+    page.locator("#discussInput").press_sequentially("with @check_continuity")
     page.wait_for_selector("#discussContextPicker", state="visible")
     assert "scripts/check_continuity.py" in page.locator("#discussContextOptions").inner_text()
     page.locator("#discussInput").press("Enter")
-    assert "scripts/check_continuity.py" in page.locator("#discussContext").inner_text()
-    assert page.locator("#discussContext .discuss-chip-current").count() == 0
-
-    question = "Compare BROWSER OMIT CURRENT DOCUMENT SENTINEL"
-    page.fill("#discussInput", question)
+    page.locator("#discussInput").press_sequentially("BROWSER MENTION SENTINEL")
+    question = "Compare @manuscript/ch01/02-walk.md with @scripts/check_continuity.py BROWSER MENTION SENTINEL"
+    assert page.locator("#discussInput").input_value() == question
     page.locator("#discussSend").click()
     wait_for_discuss_answer(page, "<script>hostile()</script>")
 
@@ -1205,9 +1184,10 @@ def test_discuss_context_picker_attaches_only_the_files_the_writer_selects(
         for record in reversed(records)
         if question in json.dumps(record)
     )
+    # Paths, not contents: the agent opens what it needs.
     assert "Opening Ledger" not in prompt
-    assert "manuscript/ch01/02-walk.md" in prompt
-    assert "def check_continuity" in prompt
+    assert "Mentioned: manuscript/ch01/02-walk.md, scripts/check_continuity.py" in prompt
+    assert "def check_continuity" not in prompt
     assert question in prompt
 
 
@@ -1218,15 +1198,13 @@ def test_discuss_approval_and_file_navigation(page: Page, server: ProseviewServe
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert page.get_by_role(
-        "button", name="Attach current document plans/book-plan.md"
-    ).is_visible()
+    assert 'plans/book-plan.md' in page.locator("#discussContext .discuss-sees").inner_text()
 
     page.get_by_role("button", name="Add files and more").click()
     page.wait_for_selector("#discussContextPicker", state="visible")
     page.locator("#discussInput").press_sequentially("plans")
     page.locator("#discussContextOptions [data-path='plans']").click()
-    assert "plans" in page.locator("#discussContext").inner_text()
+    assert page.locator("#discussInput").input_value().startswith("@plans ")
 
     page.fill("#discussInput", "REQUEST_APPROVAL")
     page.press("#discussInput", "Enter")
@@ -5503,8 +5481,8 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert quote in page.locator("#discussSelectionChip").inner_text()
-    # The passage is asked about in its scene, so the scene goes along.
-    assert page.locator("#discussContext .discuss-chip-current").count() == 1
+    # The passage is asked about in its scene, which the agent is told is open.
+    assert page.locator("#discussContext .discuss-sees").count() == 1
     assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about this selection…"
     assert page.locator("#discussSend").inner_text() == "Send"
 
@@ -5532,7 +5510,7 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
         and any(question in record["params"]["input"][0]["text"] for question in questions)
     ]
     assert len(prompts) == 2
-    assert all(f"BEGIN USER SELECTION\n{quote}\nEND USER SELECTION" in prompt for prompt in prompts)
+    assert all(f"Selected text in the open file:\n{quote}" in prompt for prompt in prompts)
 
     page.locator("#discussSelectionChip button").click()
     assert page.locator("#discussSelectionChip").is_hidden()
@@ -5771,7 +5749,6 @@ def test_a_critique_of_a_selection_reads_the_whole_scene(page: Page, server: Pro
     assert sent["action_id"] == "quick_critique"
     assert sent["include_current_document"] is True
     assert sent["document"] == {"kind": "scene", "path": SCENE_REL}
-    assert SCENE_REL in page.locator("#discussContext .discuss-chip-current").inner_text()
 
 
 def test_quick_critique_queues_while_another_tab_restores_history(

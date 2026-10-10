@@ -313,3 +313,24 @@ def test_a_files_frontmatter_shows_as_yaml_and_edits(page: Page, notes_server: P
     expect(page.locator("#fileEditBar")).to_be_hidden()
     assert sheet.read_text(encoding="utf-8").startswith("---\nname: Alice\nrole: heroine\n---\n")
     expect(page.locator("#filePreviewBody .fm-block")).to_contain_text("role: heroine")
+
+
+def test_frontmatter_folds_away_quietly_and_stays_coloured_while_editing(page: Page, notes_server: ProseviewServer):
+    page.goto(notes_server.url("/#/scene/ch01%2F01-down-the-rabbit-hole.md"))
+    toggle = page.locator("#sceneFrontmatter .fm-toggle")
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    toggle.click()
+    expect(page.locator("#sceneFrontmatter .fm-block")).to_be_hidden()
+    expect(toggle).to_have_text("▸ Frontmatter · 12 fields")
+    # Remembered: the next scene opens folded too.
+    page.reload()
+    expect(page.locator("#sceneFrontmatter .fm-toggle")).to_have_attribute("aria-expanded", "false")
+    page.locator("#sceneFrontmatter .fm-toggle").click()
+
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+    box = page.get_by_label("Frontmatter (YAML)")
+    box.fill("title: Down the Rabbit-Hole\nstatus: revised  # after the read-through")
+    under = page.locator("#sceneFrontmatter .fm-under")
+    expect(under.locator(".fm-key")).to_have_text(["title", "status"])
+    expect(under.locator(".fm-comment")).to_have_text("  # after the read-through")

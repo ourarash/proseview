@@ -4121,12 +4121,41 @@
         }
 
         /* Frontmatter, shown as the YAML it is above a scene or a file. */
+        .fm {
+            margin: 0 0 24px;
+        }
+
+        /* Folds the frontmatter away: a quiet label, not a control that
+           competes with the prose. */
+        .fm-toggle {
+            display: block;
+            margin: 0 0 6px;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 11px;
+            letter-spacing: .04em;
+            opacity: .65;
+            cursor: pointer;
+        }
+
+        .fm-toggle:hover,
+        .fm-toggle:focus-visible {
+            opacity: 1;
+        }
+
+        .fm.is-collapsed > :not(.fm-toggle) {
+            display: none;
+        }
+
         .fm-block,
         .fm-editor {
             display: block;
             box-sizing: border-box;
             width: 100%;
-            margin: 0 0 24px;
+            margin: 0;
             padding: 14px 16px;
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -4135,13 +4164,32 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 13px;
             line-height: 1.6;
+            letter-spacing: normal;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
+            tab-size: 2;
+        }
+
+        /* Editing: clear text in a box over the highlighted copy, so the
+           colours stay while typing. */
+        .fm-edit-area {
+            position: relative;
         }
 
         .fm-editor {
-            resize: vertical;
-            min-height: 80px;
+            position: absolute;
+            inset: 0;
+            height: 100%;
+            background: transparent;
+            color: transparent;
+            caret-color: var(--text-main);
+            resize: none;
+            overflow: hidden;
+        }
+
+        .fm-editor:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
         }
 
         .fm-key { color: var(--chart-danger, var(--danger)); }

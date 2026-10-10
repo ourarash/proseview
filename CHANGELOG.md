@@ -10,8 +10,10 @@ section here becomes the release notes on GitHub.
 - **Frontmatter you can see and edit.** A scene's or file's frontmatter
   shows above the prose as highlighted YAML, and in edit mode it is a box
   saved exactly as typed (or added, for a file without one). YAML that does
-  not parse is not saved; the box says on which line. In the file view the
-  frontmatter used to render as one large heading.
+  not parse is not saved; the box says on which line. The colours stay
+  while you type, and a quiet "Frontmatter" label above it folds it away to
+  one line (remembered for every file). In the file view the frontmatter
+  used to render as one large heading.
 
 ### Changed
 

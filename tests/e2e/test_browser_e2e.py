@@ -5610,6 +5610,17 @@ def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: Prosev
         "document.activeElement?.getAttribute('aria-label')"
     ) == "Add to favorites: Recent only prompt"
 
+    # A menu: Escape puts it away and gives focus back to its button, and so
+    # does a click anywhere else.
+    page.keyboard.press("Escape")
+    assert page.locator("#discussPresetsPopover").is_hidden()
+    assert page.locator("#discussPanel").is_visible()
+    assert page.evaluate("document.activeElement?.getAttribute('aria-label')") == "More presets and recent instructions"
+    page.keyboard.press("Enter")
+    assert page.locator("#discussPresetsPopover").is_visible()
+    page.locator("#discussInput").click()
+    assert page.locator("#discussPresetsPopover").is_hidden()
+
 
 def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
     page: Page, server: ProseviewServer

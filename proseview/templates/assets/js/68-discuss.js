@@ -3318,6 +3318,25 @@ function loadDiscussDiffMode(mode) {
             details.appendChild(popover); node.appendChild(details);
         }
 
+        // A menu: Escape or a click elsewhere puts it away. Escape is taken
+        // before the page's own handlers, which would otherwise claim it.
+        document.addEventListener('keydown', function(event) {
+            if (event.key !== 'Escape') return;
+            var menu = document.querySelector('.discuss-presets-more[open]');
+            if (!menu) return;
+            event.preventDefault();
+            event.stopPropagation();
+            menu.open = false;
+            var summary = menu.querySelector('summary');
+            if (summary) summary.focus();
+        }, true);
+
+        document.addEventListener('mousedown', function(event) {
+            document.querySelectorAll('.discuss-presets-more[open]').forEach(function(menu) {
+                if (!menu.contains(event.target)) menu.open = false;
+            });
+        });
+
         function discussTaskModeControlKey(element) {
             return element.className + '|' + (element.getAttribute('aria-label') || element.textContent);
         }

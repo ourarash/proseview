@@ -132,6 +132,7 @@
             if (pvSel) pvSel.value = theme;
             const mSel = document.getElementById('modalThemeSelect');
             if (mSel) mSel.value = theme;
+            if (typeof syncAppearancePickers === 'function') syncAppearancePickers();
         }
 
         function selectTheme(name) {
@@ -211,6 +212,7 @@
             if (sel) sel.value = font;
             const msel = document.getElementById('modalFontSelect');
             if (msel) msel.value = font;
+            if (typeof syncAppearancePickers === 'function') syncAppearancePickers();
         }
 
         let committedFont = null;

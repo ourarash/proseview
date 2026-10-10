@@ -1277,6 +1277,12 @@
             // return a /repo-asset/ URL, or null if it escapes the repository.
             var raw = String(src || '').trim();
             if (!raw) return null;
+            // Already a /repo-asset/ URL (the scene view writes those): take
+            // the path back out rather than prefixing it a second time.
+            if (/^\/repo-asset\//.test(raw)) {
+                try { raw = '/' + decodeURIComponent(raw.slice('/repo-asset/'.length)); }
+                catch (error) { return null; }
+            }
             var parts = [];
             if (raw.charAt(0) !== '/') {
                 var baseDir = String(basePath || '').split('/');

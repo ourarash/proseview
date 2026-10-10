@@ -4150,8 +4150,11 @@
             display: none;
         }
 
-        .fm-block,
-        .fm-editor {
+        /* .fm first: .modal-body pre and .repo-preview-body pre would otherwise
+           give the highlighted copy a different font size and padding from
+           the edit box over it, and the caret would sit off its letters. */
+        .fm .fm-block,
+        .fm .fm-editor {
             display: block;
             box-sizing: border-box;
             width: 100%;
@@ -4176,7 +4179,7 @@
             position: relative;
         }
 
-        .fm-editor {
+        .fm .fm-editor {
             position: absolute;
             inset: 0;
             height: 100%;

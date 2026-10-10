@@ -60,7 +60,11 @@
         var FRONTMATTER_COLLAPSED_KEY = 'proseview-frontmatter-collapsed';
 
         function _fmCollapsed() {
-            try { return localStorage.getItem(FRONTMATTER_COLLAPSED_KEY) === 'true'; } catch (e) { return false; }
+            // Until a choice is made, folded on a phone, where it would fill the screen.
+            var stored = null;
+            try { stored = localStorage.getItem(FRONTMATTER_COLLAPSED_KEY); } catch (e) {}
+            if (stored === null) return window.innerWidth < 640;
+            return stored === 'true';
         }
 
         function _fmFieldCount(text) {

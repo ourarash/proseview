@@ -9651,3 +9651,141 @@
         html:has(#sceneEditBar:not([hidden])) .static-snapshot-note {
             display: none;
         }
+
+        /* ── Phone ─────────────────────────────────────────────────────────
+           Many people meet Proseview first through the demo link, on a phone.
+           There the desktop layout stacked into a first screen of nothing but
+           banner and buttons, a four-column scene table broke every name in
+           three, and the demo note sat on the text. Last in the sheet, so it
+           wins over the wider-screen rules above. */
+        @media (max-width: 640px) {
+            body {
+                -webkit-text-size-adjust: 100%;
+                padding: 12px 14px;
+            }
+
+            /* Total words and scenes are already in the banner. */
+            .kpi-grid .kpi-card:nth-child(-n+2) {
+                display: none;
+            }
+
+            .toolbar-actions .theme-toggle-kicker {
+                display: none;
+            }
+
+            .top-banner {
+                padding: 14px 16px;
+                gap: 10px 18px;
+                margin-bottom: 16px;
+                justify-content: flex-start;
+            }
+
+            .dashboard-identity {
+                flex: 1 1 100%;
+            }
+
+            .banner-stat {
+                text-align: left;
+            }
+
+            .banner-stat .value {
+                font-size: 18px;
+            }
+
+            .banner-stat .label {
+                font-size: 10px;
+            }
+
+            .app-toolbar {
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+
+            .toolbar-actions {
+                gap: 8px;
+                justify-content: flex-start;
+            }
+
+            /* The section tabs scroll; the fading edge says so. */
+            .tab-nav {
+                -webkit-mask-image: linear-gradient(to right, #000 80%, transparent);
+                mask-image: linear-gradient(to right, #000 80%, transparent);
+            }
+
+            .dashboard-grid {
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+
+            .card {
+                padding: 16px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr 1fr !important;
+                margin-bottom: 16px !important;
+            }
+
+            .kpi-card {
+                padding: 12px 14px;
+            }
+
+            .kpi-label {
+                font-size: 11px;
+                margin-bottom: 4px;
+            }
+
+            .kpi-value {
+                font-size: 20px;
+            }
+
+            /* A card's title and its explanation stack instead of sharing
+               a line two words wide. */
+            .card-header {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .card-header .section-note {
+                flex-basis: 100%;
+                margin-left: 0 !important;
+            }
+
+            /* Scenes: the scene and its words. The chapter is already the
+               group heading, and the keywords do not fit. */
+            #sceneTable th:nth-child(2),
+            #sceneTable td:nth-child(2),
+            #sceneTable th:nth-child(4),
+            #sceneTable td:nth-child(4) {
+                display: none;
+            }
+
+            #sceneTable .scene-table-link {
+                overflow-wrap: anywhere;
+                word-break: normal;
+            }
+
+            /* In a scene or a file the note would sit above the toolbar. */
+            html[data-view="scene"] .static-snapshot-note,
+            html[data-view="file"] .static-snapshot-note {
+                display: none;
+            }
+
+            /* The demo note reads once at the top instead of covering text. */
+            .static-snapshot-note {
+                position: static;
+                max-width: none;
+                margin: -12px -14px 12px;
+                border-width: 0 0 1px;
+                border-radius: 0;
+                box-shadow: none;
+                padding: 8px 16px;
+                text-align: center;
+            }
+
+            .fm .fm-block,
+            .fm .fm-editor {
+                font-size: 12px;
+                padding: 10px 12px;
+            }
+        }

@@ -17,6 +17,12 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Proseview fits a phone.** The online demo and the dashboard read on a
+  phone screen: a compact banner, one row of buttons, a two-column scene
+  table, card headers that stack, the character chart's legend under the
+  plot, and the demo note at the top of the page instead of over the text.
+  On a phone a scene's frontmatter starts folded.
+
 - **Recently Modified** lists what changed on disk in the last seven days,
   newest first, with when, and marks files with changes not yet committed.
   It used to read only commits, so a week of uncommitted writing showed "No

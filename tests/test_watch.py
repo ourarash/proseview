@@ -40,12 +40,14 @@ def test_wait_for_change_debounces_before_returning(tmp_path: Path):
     baseline = snapshot_paths(tmp_path, Config())
     sleeps: list[float] = []
 
+    # Each edit changes the size too: on Windows a rewrite can land in the
+    # same mtime tick, and a same-size one would then look unchanged.
     def fake_sleep(seconds: float) -> None:
         sleeps.append(seconds)
         if len(sleeps) == 1:
-            scene.write_text("draft two", encoding="utf-8")
+            scene.write_text("draft two, longer", encoding="utf-8")
         elif len(sleeps) == 2:
-            plan.write_text("plan two", encoding="utf-8")
+            plan.write_text("plan two, longer", encoding="utf-8")
 
     current, changed = wait_for_change(
         tmp_path,

@@ -131,9 +131,11 @@
             if (chartRefs.locationChart) { chartRefs.locationChart.destroy(); }
             if (chartRefs.coOccurChart) { chartRefs.coOccurChart.destroy(); }
 
-            chartRefs.presenceChart = makeChart('presenceChart', 250, {
+            // On a phone the legend goes below the plot, and takes height from it.
+            var phone = window.innerWidth < 640;
+            chartRefs.presenceChart = makeChart('presenceChart', phone ? 460 : 250, {
                 type: 'line', data: presenceChartData,
-                options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
+                options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: phone ? 'bottom' : 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
             });
 
             chartRefs.locationChart = makeChart('locationChart', 250, {

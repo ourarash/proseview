@@ -35,6 +35,8 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- An image written as a `/repo-asset/...` URL (as in `<img src=...>`) showed
+  in the scene but not in the file view, where it was prefixed twice.
 - A repository that encrypts files with git-crypt failed to open with
   "'utf-8' codec can't decode byte": the word history read old versions
   straight from git, still encrypted. It now reads them through the

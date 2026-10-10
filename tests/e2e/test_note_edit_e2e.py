@@ -64,6 +64,9 @@ def notes_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[P
     chapter = root / "manuscript" / "ch01"
     (chapter / "map.png").write_bytes(base64.b64decode(PIXEL_PNG))
     (chapter / "loose-notes.txt").write_text("Check the tide tables.\n", encoding="utf-8")
+    (root / "story-bible" / "harbor.md").write_text(
+        '# Harbor\n\n<img src="/repo-asset/manuscript/ch01/map.png" alt="The harbor map">\n', encoding="utf-8",
+    )
     (chapter / "draft.docx").write_bytes(b"PK\x03\x04\x14\x00\xff\xfe\x00\x00")
     server = _start_server(root, agent_bin, fake_home)
     try:
@@ -257,3 +260,11 @@ def test_cmd_s_closes_a_note_and_e_picks_up_where_it_stopped(page: Page, notes_s
     expect(page.locator("#fileEditBar")).to_be_hidden()
     # The paragraph keeps its wrapping, so the words may break across lines.
     assert "She is seven. And a half." in " ".join(sheet.read_text(encoding="utf-8").split())
+
+
+def test_an_image_written_as_a_repo_asset_url_shows_in_the_file_view(page: Page, notes_server: ProseviewServer):
+    """The URL was prefixed a second time, /repo-asset/repo-asset/..., and 404ed."""
+    page.goto(notes_server.url("/#/file/story-bible%2Fharbor.md"))
+    image = page.locator("#filePreviewBody img[alt='The harbor map']")
+    expect(image).to_have_attribute("src", "/repo-asset/manuscript/ch01/map.png")
+    page.wait_for_function("() => document.querySelector(\"#filePreviewBody img[alt='The harbor map']\").naturalWidth === 1")

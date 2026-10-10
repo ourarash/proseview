@@ -19,6 +19,7 @@ import math
 import re
 import statistics
 from collections import Counter, defaultdict
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -196,6 +197,20 @@ def _html_esc(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
+def _recent_when(iso: str) -> str:
+    """``today 18:07``, ``yesterday 09:12`` or ``Oct 3`` for a modification time."""
+    try:
+        moment = datetime.fromisoformat(iso)
+    except ValueError:
+        return ""
+    days = (datetime.now(moment.tzinfo).date() - moment.date()).days
+    if days == 0:
+        return "today " + moment.strftime("%H:%M")
+    if days == 1:
+        return "yesterday " + moment.strftime("%H:%M")
+    return moment.strftime("%b ") + str(moment.day)
+
+
 def _render_recent_changes_card(
     entries: list[dict[str, object]],
     git_available: bool,
@@ -204,9 +219,7 @@ def _render_recent_changes_card(
     """Return the Recently Modified card wrapped in a full-width grid row."""
     editor_label = _editor_label(cfg)
 
-    if not git_available:
-        inner = "<p>Recent changes come from git history, and this folder has none.</p>"
-    elif not entries:
+    if not entries:
         inner = "<p>No files changed in the last 7 days.</p>"
     else:
         rows: list[str] = []
@@ -229,11 +242,17 @@ def _render_recent_changes_card(
                 f'{data_attr} onclick="{onclick}" title="Open {_html_esc(path)}">'
                 f"{_html_esc(path)}</button>"
             )
+            when = _recent_when(str(entry.get("modified_at") or ""))
+            badge = (
+                '<span class="recent-uncommitted" title="Changed since the last commit">not committed</span>'
+                if entry.get("uncommitted") else ""
+            )
             rows.append(
                 f'<div style="display:flex; align-items:center; justify-content:space-between;'
                 f' padding:10px 0; border-bottom:1px solid var(--border);">'
                 f"{path_link}"
-                f'<span style="flex-shrink:0; margin-left:12px;">{open_btn}</span>'
+                f'<span style="flex-shrink:0; margin-left:12px; display:flex; align-items:center; gap:10px;">'
+                f'{badge}<span class="recent-when">{_html_esc(when)}</span>{open_btn}</span>'
                 f"</div>"
             )
         inner = "".join(rows)
@@ -629,9 +648,9 @@ def render_html_report(
     elif recent_git is None:
         recent_git = True
     recent_card = _render_recent_changes_card(recent_entries, bool(recent_git), cfg)
-    if static_snapshot and not recent_git:
-        # A reader of a snapshot cannot act on a note about git history;
-        # to them it only reads as something broken.
+    if static_snapshot:
+        # What the author touched this week, and what they have not
+        # committed, is not something a reader of a published copy acts on.
         recent_card = ""
 
     target_words = cfg.target_words

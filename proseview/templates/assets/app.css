@@ -4120,6 +4120,22 @@
             font-size: 12px;
         }
 
+        /* Recent-changes card: when, and whether git has it yet. */
+        .recent-when {
+            color: var(--text-muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .recent-uncommitted {
+            padding: 1px 7px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
         /* Frontmatter, shown as the YAML it is above a scene or a file. */
         .fm {
             margin: 0 0 24px;

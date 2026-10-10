@@ -820,6 +820,11 @@
                 }
             }
             if (e.key === 'Escape') {
+                // Escape in the Codex panel belongs to the panel, not to a
+                // selection still showing in the scene behind it.
+                const pill = document.getElementById('selectionPill');
+                if (document.activeElement && document.activeElement.closest('#discussPanel')
+                    && !(pill && pill.contains(document.activeElement))) return;
                 if (closeVisibleSelectionSubsurface()) {
                     e.preventDefault();
                     e.stopImmediatePropagation();

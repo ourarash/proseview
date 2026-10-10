@@ -51,6 +51,7 @@ from .repo import (
     atomic_write_text as _atomic_write_text,
     create_repository_entry,
     read_repo_text,
+    require_utf8_file,
     rename_repository_entry,
     resolve_visible_repository_path,
     scene_relative_path,
@@ -868,6 +869,7 @@ def save_scene_content(
         if abs(current_mtime - open_mtime) > 0.01:
             raise _FileConflictError("File was modified since editor opened")
 
+    require_utf8_file(resolved)
     raw = read_repo_text(resolved)
     new_raw = compose_scene_raw(raw, content)
 
@@ -932,6 +934,7 @@ def save_note_content(
     resolved = resolve_note_write_target(path, repo_root)
     if not overwrite and abs(resolved.stat().st_mtime - open_mtime) > 0.01:
         raise _FileConflictError("File was modified since editor opened")
+    require_utf8_file(resolved)
     raw = read_repo_text(resolved)
     header, _ = split_note_header(raw)
     body = content.rstrip("\n") + "\n"
@@ -2194,7 +2197,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if not scene_path.is_relative_to(manuscript_root) or not scene_path.exists():
                     self._send_json({"ok": False, "error": "invalid scene path"}, 403)
                     return
-                raw = scene_path.read_text("utf-8")
+                raw = read_repo_text(scene_path)
                 from proseview.scenes import split_frontmatter, extract_scene_text
                 _, body = split_frontmatter(raw)
                 txt = prose_only(extract_scene_text(body))
@@ -2780,6 +2783,7 @@ class _Handler(BaseHTTPRequestHandler):
                 with backup_file.open("r", encoding="utf-8") as f:
                     meta = json.load(f)
                 
+                require_utf8_file(scene_path)
                 raw = read_repo_text(scene_path)
                 new_raw = meta["content"]
                 if not new_raw.endswith("\n"):

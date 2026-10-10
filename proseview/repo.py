@@ -78,8 +78,8 @@ def _iso_mtime(path: Path) -> str:
     )
 
 
-def read_repo_text(path: Path) -> str:
-    """Read a file that came from the user's repository.
+def decode_repo_bytes(payload: bytes) -> tuple[str, bool]:
+    """``(text, is_utf8)`` for bytes from the user's repository.
 
     ``utf-8-sig``, not ``utf-8``: a byte-order mark is invisible but it sits
     *before* the ``---`` that opens frontmatter, so the block fails to match and
@@ -87,9 +87,43 @@ def read_repo_text(path: Path) -> str:
     metadata leaks into the prose, inflating word counts and polluting search.
     Files exported from Word or written by Windows editors carry one routinely.
 
-    Identical to ``utf-8`` when no BOM is present.
+    Anything else still reads, so one odd file cannot take the page down:
+    UTF-16 by its byte-order mark, otherwise Windows-1252, which is what
+    older Windows editors wrote. *is_utf8* is False then, and such a file is
+    not saved back from the dashboard (see :func:`require_utf8_file`).
     """
-    return path.read_text(encoding="utf-8-sig")
+    try:
+        return payload.decode("utf-8-sig"), True
+    except UnicodeDecodeError:
+        pass
+    if payload[:2] in {b"\xff\xfe", b"\xfe\xff"}:
+        try:
+            return payload.decode("utf-16"), False
+        except UnicodeDecodeError:
+            pass
+    return payload.decode("cp1252", errors="replace"), False
+
+
+def read_repo_text(path: Path) -> str:
+    """Read a file that came from the user's repository (see :func:`decode_repo_bytes`)."""
+    return decode_repo_bytes(path.read_bytes())[0]
+
+
+def require_utf8_file(path: Path) -> None:
+    """Refuse to save over a file that is not UTF-8 on disk.
+
+    It was shown through a fallback decoding; writing it back as UTF-8 would
+    silently change every accented letter's bytes for whatever else reads it.
+    """
+    try:
+        payload = path.read_bytes()
+    except OSError:
+        return
+    if not decode_repo_bytes(payload)[1]:
+        raise ValueError(
+            f"{path.name} is not saved as UTF-8, so Proseview will not rewrite it. "
+            "Save it as UTF-8 in your editor to edit it here."
+        )
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -355,8 +389,19 @@ def _file_node(path: Path, root: Path, preview_max: int) -> dict[str, Any]:
     size = path.stat().st_size
     too_large = size > preview_max
     body = _read_utf8_text(path, preview_max)
+    not_utf8 = False
+    if body is None and not too_large and path.suffix.lower() in TEXT_SUFFIXES:
+        # A Markdown or text file in another encoding still shows; it is
+        # just not edited here (see require_utf8_file).
+        try:
+            payload = path.read_bytes()
+        except OSError:
+            payload = b"\x00"
+        if b"\x00" not in payload:
+            body, not_utf8 = decode_repo_bytes(payload)[0], True
     is_text = body is not None or (too_large and path.suffix.lower() in TEXT_SUFFIXES)
     return {
+        "not_utf8": not_utf8,
         "name": path.name,
         "path": rel,
         "abs_path": str(path.resolve()),

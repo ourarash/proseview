@@ -26,7 +26,7 @@
         function fileEditActive() { return typeof fileEdit !== 'undefined' && !!fileEdit && !!fileEdit.path; }
 
         function fileEditAllowed(node) {
-            if (!node || !node.is_text || node.too_large || node.body === null) return false;
+            if (!node || !node.is_text || node.too_large || node.body === null || node.not_utf8) return false;
             if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return false;
             return !window.PROSEVIEW_STATIC || !!window.PROSEVIEW_STATIC_EDITS;
         }
@@ -40,6 +40,7 @@
             if (!node) return '';
             if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return 'Only Markdown files can be edited in Proseview.';
             if (node.too_large) return 'This file is too large to edit in Proseview.';
+            if (node.not_utf8) return 'This file is not saved as UTF-8, so Proseview shows it but does not edit it.';
             return '';
         }
 

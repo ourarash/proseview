@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
 from .lexical import calculate_lexical_stats, count_words, prose_only
-from .repo import CONTEXT_SKIP_DIRS
+from .repo import CONTEXT_SKIP_DIRS, decode_repo_bytes
 from .scenes import resolve_manuscript_dir
 
 
@@ -73,13 +73,40 @@ class WorkingCopyDelta:
 
 
 def _run_git(root: Path, args: list[str]) -> tuple[int, str, str]:
+    """Run git; its output decoded as UTF-8, never raising on odd bytes."""
+    code, out, err = _run_git_bytes(root, args)
+    return code, out.decode("utf-8", errors="replace"), err.decode("utf-8", errors="replace")
+
+
+def _run_git_bytes(root: Path, args: list[str]) -> tuple[int, bytes, bytes]:
     try:
-        result = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, check=False,
-        )
+        result = subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
     except FileNotFoundError:
-        return 127, "", "git executable not found"
+        return 127, b"", b"git executable not found"
     return result.returncode, result.stdout, result.stderr
+
+
+#: How git-crypt marks an encrypted blob.
+_GIT_CRYPT_MAGIC = b"\x00GITCRYPT"
+
+
+def git_blob_text(root: Path, sha: str, path: str) -> str | None:
+    """A committed version of *path* as text, or None when it is not text.
+
+    Read through the repository's filters (``cat-file --filters``), so a
+    git-crypt repository that is unlocked gives back the plain file, as the
+    working tree shows it. A blob that is still encrypted, or binary, is
+    None: it is left out rather than counted as words or shown as prose.
+    """
+    code, out, _ = _run_git_bytes(root, ["cat-file", "--filters", f"{sha}:{path}"])
+    if code != 0:
+        code, out, _ = _run_git_bytes(root, ["show", f"{sha}:{path}"])
+        if code != 0:
+            return None
+    if out.startswith(_GIT_CRYPT_MAGIC) or b"\x00" in out[:8000]:
+        return None
+    text, _is_utf8 = decode_repo_bytes(out)
+    return text
 
 
 def is_git_repo(root: Path) -> bool:
@@ -192,8 +219,8 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
     chapters: set[str] = set()
     pieces: list[str] = []
     for p in paths:
-        code, content, _ = _run_git(root, ["show", f"{sha}:{p}"])
-        if code != 0:
+        content = git_blob_text(root, sha, p)
+        if content is None:
             continue
         _, body = split_frontmatter(content)
         text = prose_only(extract_scene_text(body))

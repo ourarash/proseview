@@ -2379,7 +2379,7 @@ class DiscussManager:
                     raise ContextError("historical action has no unique source document")
                 path = self.context._document_target(task_document)
                 stat = path.stat()
-                raw = path.read_text(encoding="utf-8")
+                raw = read_repo_text(path)
                 selection_range = target["range"]
                 if target["source_revision"]:
                     target_matches = (
@@ -2739,7 +2739,7 @@ class DiscussManager:
         """
         target_path = self.context._document_target(document)
         stat = target_path.stat()
-        source_raw = target_path.read_text(encoding="utf-8")
+        source_raw = read_repo_text(target_path)
         source_revision = _scene_source_revision(source_raw)
         raw = live_content if live_content is not None else source_raw
         scope_note = ""
@@ -3936,7 +3936,7 @@ class DiscussManager:
             if stat.st_mtime_ns != int(target["mtime_ns"]):
                 task["status"] = "stale"
                 raise ContextError("The scene changed after this action started. Reselect the passage and try again.")
-            raw = path.read_text(encoding="utf-8")
+            raw = read_repo_text(path)
             source_revision = str(target.get("source_revision") or "")
             if source_revision and _scene_source_revision(raw) != source_revision:
                 task["status"] = "stale"

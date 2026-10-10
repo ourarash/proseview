@@ -35,6 +35,14 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- A repository that encrypts files with git-crypt failed to open with
+  "'utf-8' codec can't decode byte": the word history read old versions
+  straight from git, still encrypted. It now reads them through the
+  repository's filters (plain text when the repository is unlocked) and
+  skips any that are still not text.
+- One file in another encoding (Windows-1252, UTF-16) no longer breaks the
+  dashboard. It shows as text, and Proseview declines to save over it rather
+  than rewrite it as UTF-8.
 - A selection sent to Codex or Claude (Ask, Quick critique and the other
   passes) takes its whole scene along, and an "Attach current" made before
   selecting is no longer dropped. The scene chip can be removed as before.

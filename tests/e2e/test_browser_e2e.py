@@ -1558,10 +1558,12 @@ def test_active_codex_turn_explains_new_conversation_and_has_explicit_stop(
 
     stop = page.get_by_role("button", name="Stop Codex")
     stop.wait_for(state="visible")
-    assert page.locator("#discussNewConversation").is_disabled()
-    hint = page.locator("#discussNewConversationHint")
-    assert hint.is_visible()
-    assert "Stop Codex before starting a new conversation" in hint.inner_text()
+    new_conversation = page.locator("#discussNewConversation")
+    # Unavailable, and why is its tooltip rather than a line in the panel.
+    assert new_conversation.get_attribute("aria-disabled") == "true"
+    assert new_conversation.get_attribute("title") == "Stop Codex before starting a new conversation."
+    new_conversation.click(force=True)
+    assert page.locator("#discussNewConversationDialog").is_hidden()
 
     stopping = page.evaluate(
         """() => new Promise(resolve => {
@@ -1578,8 +1580,8 @@ def test_active_codex_turn_explains_new_conversation_and_has_explicit_stop(
     )
     assert stopping == "Stopping…"
     page.wait_for_selector("#discussStop", state="hidden")
-    page.wait_for_function("() => !document.getElementById('discussNewConversation').disabled")
-    assert hint.is_hidden()
+    page.wait_for_function("() => document.getElementById('discussNewConversation').getAttribute('aria-disabled') === 'false'")
+    assert new_conversation.get_attribute("title") == "New conversation"
 
 
 def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explicit(
@@ -1605,7 +1607,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     page.fill("#discussInput", "Continue after refresh")
     page.press("#discussInput", "Enter")
     page.wait_for_function("() => document.querySelectorAll('.discuss-message.assistant').length === 2")
-    page.wait_for_function("() => !document.getElementById('discussNewConversation').disabled")
+    page.wait_for_function("() => document.getElementById('discussNewConversation').getAttribute('aria-disabled') === 'false'")
     assert page.locator("#discussConnection").inner_text().startswith("Live")
 
     # new_conversation refuses while a turn is still winding down. The rendered

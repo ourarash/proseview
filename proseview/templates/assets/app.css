@@ -4666,7 +4666,8 @@
             background: var(--surface-muted);
         }
 
-        .discuss-icon-button:disabled {
+        .discuss-icon-button:disabled,
+        .discuss-icon-button[aria-disabled="true"] {
             opacity: .45;
             cursor: default;
         }
@@ -6008,12 +6009,6 @@
             gap: 6px;
         }
 
-        .discuss-control-hint {
-            margin: -2px 0 6px;
-            color: var(--text-muted);
-            font-size: 10px;
-            line-height: 1.35;
-        }
 
         /* Model chip: what the next turn will run as, where the turn is typed. */
         .discuss-model-wrap {

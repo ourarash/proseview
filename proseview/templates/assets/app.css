@@ -5893,6 +5893,13 @@
             overflow-wrap: anywhere;
         }
 
+        /* Shell lines, wherever a command is shown. */
+        .shell-hl .sh-cmd { color: var(--hl-sensory-text, #2aa198); font-weight: 600; }
+        .shell-hl .sh-flag { color: var(--hl-first-person-text, #b58900); }
+        .shell-hl .sh-string { color: var(--hl-comedy-text, #859900); }
+        .shell-hl .sh-op { color: var(--hl-hyperbole-text, #d33682); }
+        .shell-hl .sh-num { color: var(--hl-lyrical-text, #6c71c4); }
+
         .discuss-turn-command[hidden] {
             display: none;
         }

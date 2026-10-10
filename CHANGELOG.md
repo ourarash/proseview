@@ -20,11 +20,15 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Codex and Claude may read any file in the project**, as in the VS Code
+  extensions. Proseview's standing instructions used to tell the agent to ask
+  before looking beyond the open scene. New conversations get the new rule.
+
 - **The steps say what the agent did.** Codex runs everything as
   `bash -lc "…"`, so every step read "Running bash". Now the command inside
   is read: "Reading ch03/07-day-94-silence.md", "Searching for “laptop” in
   manuscript", "Listing plans", "Checking the history". Click a step to see
-  the exact command. What the agent says between commands appears among the
+  the exact command, coloured like a shell line (as approval requests are too). What the agent says between commands appears among the
   steps in its own voice, and the line under "Codex is working" wraps to two
   lines instead of being cut off.
 

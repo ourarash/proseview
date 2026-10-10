@@ -1632,6 +1632,33 @@
             return words;
         }
 
+        // Fill *node* with *command*, coloured as a shell line: the program,
+        // its flags, quoted strings, and the operators between commands.
+        function fillShellHighlight(node, command) {
+            node.replaceChildren();
+            node.classList.add('shell-hl');
+            var text = String(command || '');
+            var pattern = /("(?:[^"\\]|\\.)*"?|'[^']*'?)|(&&|\|\||[|;<>]+|\$\()|(\s+)|(--?\w[\w-]*(?:=\S*)?)|([^\s"'|;&<>]+)/g;
+            var expectCommand = true;
+            var match;
+            var add = function(className, value) {
+                if (!className) { node.appendChild(document.createTextNode(value)); return; }
+                var span = document.createElement('span');
+                span.className = className;
+                span.textContent = value;
+                node.appendChild(span);
+            };
+            while ((match = pattern.exec(text))) {
+                if (match[1] !== undefined) { add('sh-string', match[1]); expectCommand = false; }
+                else if (match[2] !== undefined) { add('sh-op', match[2]); expectCommand = true; }
+                else if (match[3] !== undefined) { add('', match[3]); }
+                else if (match[4] !== undefined) { add('sh-flag', match[4]); }
+                else if (expectCommand && !/=/.test(match[5])) { add('sh-cmd', match[5]); expectCommand = false; }
+                else { add(/^\d+([,.]\d+)*p?$/.test(match[5]) ? 'sh-num' : '', match[5]); }
+            }
+            return node;
+        }
+
         // Agents run everything as `bash -lc "…"`; the command is inside.
         function discussInnerCommand(command) {
             var words = discussShellWords(command);
@@ -2024,7 +2051,7 @@
                     item.title = command;
                     var code = document.createElement('code');
                     code.className = 'discuss-turn-command';
-                    code.textContent = command;
+                    fillShellHighlight(code, command);
                     code.hidden = _discussOpenCommands[command] !== true;
                     item.classList.add('has-command');
                     item.tabIndex = 0;
@@ -2789,10 +2816,15 @@
                 // Input typed into a command already running, not a new command.
                 card.appendChild(document.createTextNode(approval.reason || 'Codex wants to type into a command it is running.'));
                 if (approval.input) { var input = document.createElement('code'); input.textContent = 'Input: ' + approval.input; card.appendChild(input); }
-                if (approval.command) { var running = document.createElement('code'); running.textContent = 'Running: ' + approval.command; card.appendChild(running); }
+                if (approval.command) {
+                    var running = document.createElement('code');
+                    running.appendChild(document.createTextNode('Running: '));
+                    running.appendChild(fillShellHighlight(document.createElement('span'), discussInnerCommand(approval.command)));
+                    card.appendChild(running);
+                }
             } else {
                 card.appendChild(document.createTextNode(approval.reason || approval.kind || 'Codex requested an action.'));
-                if (approval.command) { var code = document.createElement('code'); code.textContent = approval.command; card.appendChild(code); }
+                if (approval.command) { var code = document.createElement('code'); fillShellHighlight(code, discussInnerCommand(approval.command)); card.appendChild(code); }
             }
             if (approval.grant_root) { var root = document.createElement('code'); root.textContent = 'Write access: ' + approval.grant_root; card.appendChild(root); }
             if (approval.network) { var network = document.createElement('code'); network.textContent = 'Network: ' + JSON.stringify(approval.network); card.appendChild(network); }

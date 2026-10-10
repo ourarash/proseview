@@ -1613,31 +1613,116 @@
             return parts.slice(-2).join('/');
         }
 
+        // Split a shell command into words, honouring quotes. Enough for the
+        // commands agents run; not a shell.
+        function discussShellWords(text) {
+            var words = [], current = '', quote = '', any = false;
+            for (var i = 0; i < text.length; i++) {
+                var ch = text.charAt(i);
+                if (quote) {
+                    if (ch === quote) quote = '';
+                    else if (ch === '\\' && quote === '"' && i + 1 < text.length) current += text.charAt(++i);
+                    else current += ch;
+                } else if (ch === '"' || ch === "'") { quote = ch; any = true; }
+                else if (/\s/.test(ch)) { if (current || any) words.push(current); current = ''; any = false; }
+                else if (ch === '\\' && i + 1 < text.length) current += text.charAt(++i);
+                else current += ch;
+            }
+            if (current || any) words.push(current);
+            return words;
+        }
+
+        // Agents run everything as `bash -lc "…"`; the command is inside.
+        function discussInnerCommand(command) {
+            var words = discussShellWords(command);
+            var shell = (words[0] || '').split('/').pop();
+            if (/^(ba|z|da|k)?sh$/.test(shell)) {
+                var flag = words.findIndex(function(word) { return /^-[a-z]*c$/.test(word); });
+                if (flag >= 0 && words[flag + 1] !== undefined) return words[flag + 1];
+            }
+            return command;
+        }
+
+        function discussPathWords(words) {
+            return words.slice(1).filter(function(word) {
+                return word && word.charAt(0) !== '-' && !/^\d+(,\d+)?p?$/.test(word) && !/^['"]?\d/.test(word)
+                    && word.indexOf('/dev/') !== 0;
+            });
+        }
+
+        function discussListPhrase(paths) {
+            var shown = paths.slice(0, 2).map(discussShortPath);
+            return paths.length > 2
+                ? shown.join(', ') + ' and ' + (paths.length - 2) + ' more'
+                : shown.join(' and ');
+        }
+
+        // One part of a pipeline, said in writer language, or '' when it is
+        // plumbing (cd, a pipe into head) not worth a step of its own.
+        function discussSegmentPhrase(segment) {
+            var words = discussShellWords(segment.trim());
+            var name = (words[0] || '').split('/').pop();
+            if (!name || name === 'cd' || name === 'echo' || name === 'printf' || name === 'true') return '';
+            if (name === 'rg' || name === 'grep' || name === 'ugrep' || name === 'ag') {
+                var args = words.slice(1);
+                var pattern = '', rest = [];
+                for (var k = 0; k < args.length; k++) {
+                    var word = args[k];
+                    if (word === '-e' || word === '--regexp') { pattern = args[++k] || pattern; continue; }
+                    if (/^-(g|t|m|A|B|C|-glob|-type|-max-count)$/.test(word)) { k++; continue; }
+                    if (word.charAt(0) === '-') continue;
+                    if (!pattern) pattern = word; else rest.push(word);
+                }
+                if (!pattern) return 'Searching the project';
+                return 'Searching for “' + pattern + '”' + (rest.length ? ' in ' + discussListPhrase(rest) : '');
+            }
+            if (/^(cat|head|tail|sed|nl|less|more|bat|awk)$/.test(name)) {
+                var files = discussPathWords(words).filter(function(word) { return /[./]/.test(word) && !/^s\//.test(word); });
+                return files.length ? 'Reading ' + discussListPhrase(files) : '';
+            }
+            if (name === 'wc') {
+                var counted = discussPathWords(words);
+                return counted.length ? 'Counting words in ' + discussListPhrase(counted) : 'Counting words';
+            }
+            if (/^(ls|find|fd|tree)$/.test(name)) {
+                var where = discussPathWords(words).filter(function(word) { return word !== '.' && word.indexOf('*') < 0; })[0];
+                return where ? 'Listing ' + discussShortPath(where) : 'Looking through the project';
+            }
+            if (name === 'git') {
+                var sub = words[1] || '';
+                if (sub === 'log' || sub === 'blame' || sub === 'show') return 'Checking the history';
+                if (sub === 'diff' || sub === 'status') return 'Checking what changed';
+                return 'Using git';
+            }
+            if (/^python\d?(\.\d+)?$/.test(name) || name === 'node') return 'Running a script';
+            if (name === 'mkdir' || name === 'touch' || name === 'cp' || name === 'mv') return 'Arranging files';
+            return 'Running ' + name;
+        }
+
         // Protocol nouns are not writer language. "commandExecution · failed"
         // says nothing about what was tried, and a search that matched nothing
         // is an outcome rather than an error.
         function discussCommandPhrase(activity) {
-            var command = String(activity.command || '').trim();
-            var head = command.split(/\s+/)[0] || '';
-            var name = head.split('/').pop();
-            var quoted = command.match(/(["'])(.*?)\1/);
-            var term = quoted ? quoted[2] : '';
-            if (name === 'grep' || name === 'rg' || name === 'ugrep') {
-                return term ? 'Searching for “' + term + '”' : 'Searching the manuscript';
+            var command = discussInnerCommand(String(activity.command || '').trim());
+            if (!command) return 'Running a command';
+            var phrases = [];
+            command.split(/\s*(?:&&|\|\||;|\|)\s*/).forEach(function(segment) {
+                var phrase = discussSegmentPhrase(segment);
+                if (phrase && phrases.indexOf(phrase) < 0) phrases.push(phrase);
+            });
+            if (!phrases.length) {
+                // Only plumbing (an echo, a cd): name it rather than say nothing.
+                var first = (discussShellWords(command)[0] || '').split('/').pop();
+                return first ? 'Running ' + first : 'Running a command';
             }
-            if (name === 'cat' || name === 'head' || name === 'tail' || name === 'sed') {
-                var target = command.split(/\s+/).filter(function(part) { return part.indexOf('-') !== 0; }).pop();
-                return target && target !== name ? 'Reading ' + discussShortPath(target) : 'Reading a file';
-            }
-            if (name === 'ls' || name === 'find' || name === 'fd') return 'Looking through files';
-            if (name === 'git') return 'Checking the repository';
-            return command ? 'Running ' + name : 'Running a command';
+            return phrases.slice(0, 2).join(', then ') + (phrases.length > 2 ? '…' : '');
         }
 
         function discussActivityPhrase(activity) {
             var kind = activity.kind || '';
             var tool = String(activity.tool || '');
             if (kind === 'commandExecution') return discussCommandPhrase(activity);
+            if (kind === 'commentary') return String(activity.text || '');
             if (kind === 'fileChange') {
                 var changes = activity.changes || [];
                 var path = changes.length ? discussShortPath(changes[0].path) : '';
@@ -1690,13 +1775,15 @@
             var rows = discussTurnActivities(snapshot, turnId).map(function(activity) {
                 var phrase = discussActivityPhrase(activity);
                 var status = activity.status || '';
-                if (status === 'inProgress') return {text: phrase, state: running ? 'now' : 'settled'};
+                if (activity.kind === 'commentary') return {text: phrase, state: 'note'};
+                var command = String(activity.command || '');
+                if (status === 'inProgress') return {text: phrase, state: running ? 'now' : 'settled', command: command};
                 if (status === 'failed') {
                     return phrase.indexOf('Searching') === 0
-                        ? {text: phrase + ' — no matches', state: 'empty'}
-                        : {text: phrase + ' — failed', state: 'failed'};
+                        ? {text: phrase + ' — no matches', state: 'empty', command: command}
+                        : {text: phrase + ' — failed', state: 'failed', command: command};
                 }
-                return {text: phrase, state: 'done'};
+                return {text: phrase, state: 'done', command: String(activity.command || '')};
             });
             (snapshot.approvals || []).forEach(function(approval) {
                 if (approval.status === 'pending' || approval.status === 'resolving') return;
@@ -1790,6 +1877,8 @@
             var button = discussApprovalDecisionButton(card);
             if (button) button.focus();
         }
+
+        var _discussOpenCommands = {};
 
         function toggleDiscussTurnTrail() {
             _discussTurnTrailOpen = !_discussTurnTrailOpen;
@@ -1928,6 +2017,30 @@
                 var text = document.createElement('span');
                 text.textContent = row.text;
                 item.appendChild(text);
+                // The exact command, a click away: the phrase is a reading of
+                // it, and a writer who wants to check can.
+                var command = row.command ? discussInnerCommand(row.command) : '';
+                if (command) {
+                    item.title = command;
+                    var code = document.createElement('code');
+                    code.className = 'discuss-turn-command';
+                    code.textContent = command;
+                    code.hidden = _discussOpenCommands[command] !== true;
+                    item.classList.add('has-command');
+                    item.tabIndex = 0;
+                    item.setAttribute('role', 'button');
+                    item.setAttribute('aria-expanded', code.hidden ? 'false' : 'true');
+                    var flip = function() {
+                        code.hidden = !code.hidden;
+                        _discussOpenCommands[command] = !code.hidden;
+                        item.setAttribute('aria-expanded', code.hidden ? 'false' : 'true');
+                    };
+                    item.onclick = flip;
+                    item.onkeydown = function(event) {
+                        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); flip(); }
+                    };
+                    item.appendChild(code);
+                }
                 trail.appendChild(item);
             });
         }

@@ -7108,3 +7108,38 @@ def test_mentions_read_as_chips_and_the_file_browser_can_add_one(page: Page, ser
     # A path that is not in the project is just text.
     page.fill("#discussInput", "mail me @nowhere.md")
     assert marks.count() == 0
+
+
+def test_turn_steps_read_the_command_inside_the_shell_and_keep_the_agents_notes(page: Page, server: ProseviewServer):
+    open_dashboard(page, server)
+    phrases = page.evaluate("""() => [
+        `/bin/zsh -lc "sed -n '1,200p' manuscript/ch03/07-day-94-silence.md"`,
+        `bash -lc "cd /x && rg -n -i 'tea party' manuscript story-bible | head -50"`,
+        `bash -lc "ls -la plans"`,
+        `bash -lc "cat a.md b.md c.md"`,
+        `bash -lc "git log --oneline -5"`,
+        `bash -lc "printf hello"`,
+    ].map(command => discussCommandPhrase({command}))""")
+    assert phrases == [
+        "Reading ch03/07-day-94-silence.md",
+        "Searching for “tea party” in manuscript and story-bible",
+        "Listing plans",
+        "Reading a.md, b.md and 1 more",
+        "Checking the history",
+        "Running printf",
+    ]
+
+    snapshot = {
+        "activities": [
+            {"id": "note-1", "kind": "commentary", "status": "completed", "text": "I'll compare the two chapters.", "turn_id": "t"},
+            {"id": "c1", "kind": "commandExecution", "status": "completed", "turn_id": "t",
+             "command": "bash -lc \"sed -n 1,80p manuscript/ch01/01.md\""},
+        ],
+        "approvals": [],
+    }
+    rows = page.evaluate("snapshot => discussTurnTrailRows(snapshot, 't', false)", snapshot)
+    assert [(row["state"], row["text"]) for row in rows] == [
+        ("note", "I'll compare the two chapters."),
+        ("done", "Reading ch01/01.md"),
+    ]
+    assert rows[1]["command"].startswith("bash -lc")

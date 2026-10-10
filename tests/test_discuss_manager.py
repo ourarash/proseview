@@ -655,6 +655,34 @@ def test_critique_evidence_accepts_typographic_quotes_outer_wrappers_and_whitesp
         }), task)
 
 
+def test_what_codex_says_between_commands_is_a_step_in_its_place(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"}, "codex")["conversation_id"]
+    client = manager._client_for("codex")
+    client.hold_next_turn = True
+    manager.submit(cid, client_request_id="notes-1", question="Compare the chapters")
+    _wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] is not None)
+    turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    thread_id = next(iter(client.threads))
+    common = {"threadId": thread_id, "turnId": turn_id}
+    client.callback({"method": "item/completed", "params": {**common, "item": {
+        "type": "agentMessage", "id": "msg-1", "phase": "commentary", "text": "I'll compare the two chapters.",
+    }}})
+    client.callback({"method": "item/completed", "params": {**common, "item": {
+        "type": "commandExecution", "id": "cmd-1", "status": "completed", "command": "bash -lc 'cat one.md'",
+    }}})
+
+    rows = manager.get_snapshot(cid)["activities"]
+    assert [(row["kind"], row.get("text") or row.get("command")) for row in rows] == [
+        ("commentary", "I'll compare the two chapters."),
+        ("commandExecution", "bash -lc 'cat one.md'"),
+    ]
+    assert rows[0]["turn_id"] == turn_id
+    manager.stop(cid, turn_id)
+    manager.close()
+
+
 def test_a_finished_tool_keeps_the_command_it_started_with(tmp_path: Path, monkeypatch):
     """The Claude transport reports a start and an outcome as two messages.
 

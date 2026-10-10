@@ -1904,7 +1904,7 @@ class _Conversation:
                 "status": status,
                 "duration_ms": int((time.monotonic() - self.active_turn_started_monotonic) * 1000),
                 "finished_at": time.time(),
-                "steps": len(self.activities),
+                "steps": sum(1 for row in self.activities.values() if row.get("kind") != "commentary"),
                 "error": _bounded_text(error, 4000),
                 "turn_id": self.active_turn_id or "",
                 "client_request_id": self.active_request_id or "",
@@ -3966,7 +3966,19 @@ class DiscussManager:
                             "client_request_id": conversation.active_request_id or "",
                         })
                 else:
-                    conversation.progress.append(str(event.get("text") or ""))
+                    text = str(event.get("text") or "")
+                    conversation.progress.append(text)
+                    # What the agent says between commands ("I'll compare the
+                    # two chapters") is a step too, in its place among them.
+                    if text.strip():
+                        note_id = f"note-{event.get('item_id') or len(conversation.activities)}"
+                        conversation.activities[note_id] = {
+                            "id": note_id,
+                            "kind": "commentary",
+                            "status": "completed",
+                            "text": _bounded_text(text.strip(), 2000),
+                            "turn_id": event.get("turn_id") or conversation.active_turn_id or "",
+                        }
             elif event_type == "progress.delta":
                 text = str(event.get("text") or "")
                 # A heartbeat repeated twenty times is still one fact. Codex

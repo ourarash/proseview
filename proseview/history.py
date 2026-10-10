@@ -106,7 +106,7 @@ def git_blob_text(root: Path, sha: str, path: str) -> str | None:
     if out.startswith(_GIT_CRYPT_MAGIC) or b"\x00" in out[:8000]:
         return None
     text, _is_utf8 = decode_repo_bytes(out)
-    return text
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def is_git_repo(root: Path) -> bool:

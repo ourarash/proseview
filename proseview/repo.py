@@ -105,8 +105,13 @@ def decode_repo_bytes(payload: bytes) -> tuple[str, bool]:
 
 
 def read_repo_text(path: Path) -> str:
-    """Read a file that came from the user's repository (see :func:`decode_repo_bytes`)."""
-    return decode_repo_bytes(path.read_bytes())[0]
+    """Read a file that came from the user's repository (see :func:`decode_repo_bytes`).
+
+    Line endings come back as ``\n``, as text-mode reading gives them, so a
+    Windows checkout's ``\r\n`` does not leak into what is parsed and saved.
+    """
+    text = decode_repo_bytes(path.read_bytes())[0]
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def require_utf8_file(path: Path) -> None:

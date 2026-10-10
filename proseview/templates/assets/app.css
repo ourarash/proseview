@@ -10099,11 +10099,6 @@
                 padding-right: 0;
             }
 
-            .book-header .file-preview-controls .appearance-picker,
-            .book-header .file-preview-controls select {
-                display: none;
-            }
-
             .book-nav-pct {
                 position: static;
                 margin-left: 4px;
@@ -10118,6 +10113,19 @@
 
             .book-header {
                 flex-wrap: nowrap;
+            }
+
+            /* Each scene has its own Edit on a phone. */
+            #bookEditBtn {
+                display: none;
+            }
+
+            #bookAppearanceMenu {
+                position: fixed;
+                top: 64px;
+                left: 16px;
+                right: 16px;
+                width: auto;
             }
 
             .book-intro {

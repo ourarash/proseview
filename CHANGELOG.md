@@ -9,8 +9,9 @@ section here becomes the release notes on GitHub.
 
 - **Read the book.** "Read the book" on the dashboard shows the whole
   manuscript as one continuous text, the way an e-reader would: every scene
-  in book order under its chapter's heading, in the reading font and theme,
-  with the file browser out of the way. A note says what the mode is the
+  in book order under its chapter's heading, with the file browser out of
+  the way. Its Aa menu is the scene view's: text size, line width, font and
+  theme. A note says what the mode is the
   first few times. A quiet bar at the bottom shows how far through you are,
   skips by scene or chapter (arrow keys too), and opens a chapter list.
   Edit beside a scene (or E) opens it in the editor, and leaving it brings

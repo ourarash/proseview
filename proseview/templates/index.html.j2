@@ -595,21 +595,13 @@
                 <div id="bookWhere" class="repo-preview-sub"></div>
             </div>
             <div class="file-preview-controls">
-                <select id="bookFontSelect" class="font-select-inline" onchange="selectFont(this.value)" title="Reading font">
-                    <option value="reader">Reader</option>
-                    <option value="literary">Literary</option>
-                    <option value="inter">Inter</option>
-                    <option value="georgia">Georgia</option>
-                    <option value="baskerville">Baskerville</option>
-                    <option value="sans">Sans</option>
-                    <option value="mono">Mono</option>
-                </select>
-                <select id="bookThemeSelect" class="font-select-inline" onchange="selectTheme(this.value)" title="Color theme">
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="docsify">Docsify</option>
-                    <option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option>
-                </select>
+                <div class="scene-toolbar-menu-wrap"><button id="bookAppearanceBtn" type="button" class="back-btn book-appearance-btn" onclick="toggleSceneToolbarMenu('bookAppearanceMenu', this)" aria-label="Reading appearance" aria-haspopup="dialog" aria-controls="bookAppearanceMenu" aria-expanded="false" title="Text size, line width, font and theme">Aa</button><section id="bookAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Reading appearance" hidden>
+                    <div class="scene-toolbar-menu-heading">Reading appearance</div>
+                    <label class="scene-toolbar-field scene-toolbar-size-field" for="bookFontSize"><span>Text size</span><input id="bookFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)"></label>
+                    <label class="scene-toolbar-field scene-toolbar-size-field" for="bookMeasure"><span>Line width</span><input id="bookMeasure" type="range" min="480" max="1100" step="20" value="760" oninput="updateReadingMeasure(this.value)"><output id="bookMeasureOut" for="bookMeasure"></output></label>
+                    <label class="scene-toolbar-field" for="bookFontSelect"><span>Font</span><select class="font-select-inline" id="bookFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></label>
+                    <label class="scene-toolbar-field" for="bookThemeSelect"><span>Theme</span><select class="font-select-inline" id="bookThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option></select></label>
+                </section></div>
                 <button type="button" id="bookEditBtn" class="file-edit-btn" onclick="openBookScene(bookCurrentScene(), true)" aria-keyshortcuts="E" title="Edit the scene you are reading (E)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg><span>Edit</span></button>
             </div>
         </div>

@@ -43,6 +43,11 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- The file browser shows where you are: opening a scene from its address,
+  or with Next and Previous, now expands its chapter folder and selects it,
+  as opening it from the sidebar always did.
+- Pressing `E` right after a save could have the scene re-render under the
+  new edit, losing what was typed, when the save's own refresh arrived late.
 - An image written as a `/repo-asset/...` URL (as in `<img src=...>`) showed
   in the scene but not in the file view, where it was prefixed twice.
 - A repository that encrypts files with git-crypt failed to open with

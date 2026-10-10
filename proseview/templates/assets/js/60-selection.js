@@ -1056,6 +1056,14 @@
                 if (!r.ok) throw new Error('Refresh failed: ' + r.status);
                 return r.json();
             }).then(function(data) {
+                // The writer may have opened the editor while this was in
+                // flight; re-rendering now would replace the editor under
+                // them and drop what they typed. Their save's conflict check
+                // covers a real change on disk.
+                if (_pmEditMode || paths[curIdx] !== scenePath) {
+                    if (data.meta && data.meta[scenePath] && !_pmEditMode) meta[scenePath] = data.meta[scenePath];
+                    return;
+                }
                 if (data.contents && data.contents[scenePath] !== undefined) {
                     var oldContent = contents[scenePath] || '';
                     var newContent = data.contents[scenePath];

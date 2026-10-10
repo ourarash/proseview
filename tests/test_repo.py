@@ -545,3 +545,13 @@ def test_a_file_in_another_encoding_reads_and_is_not_rewritten(tmp_path: Path):
     with pytest.raises(ValueError, match="not saved as UTF-8"):
         save_note_content("manuscript/ch01/01.md", "Rewritten.", old.stat().st_mtime, str(tmp_path))
     assert old.read_bytes() == before
+
+
+def test_windows_line_endings_read_as_newlines(tmp_path: Path):
+    """Reading bytes, not text, once let a checkout's \\r\\n through, so a save
+    on Windows doubled every line of frontmatter."""
+    from proseview.repo import read_repo_text
+
+    path = tmp_path / "scene.md"
+    path.write_bytes(b"---\r\ntitle: One\r\n---\r\n\r\nProse.\r\n")
+    assert read_repo_text(path) == "---\ntitle: One\n---\n\nProse.\n"

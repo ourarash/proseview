@@ -6641,6 +6641,23 @@ def test_unticking_everything_puts_the_whole_edit_back(page: Page, server: Prose
     assert CHANGED_SENTENCE not in text and CHANGED_SECOND not in text
 
 
+def test_a_new_conversation_leaves_the_edits_and_drops_their_review(page: Page, server: ProseviewServer) -> None:
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    _review_card(page)
+    wait_for_discuss_idle(page)
+
+    page.click("#discussNewConversation")
+    page.click("#discussNewConversationConfirm")
+    page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.wait_for_function("() => !document.querySelector('.discuss-review')")
+    # Leaving the conversation keeps what it did.
+    assert CHANGED_SENTENCE in scene.read_text(encoding="utf-8")
+    page.evaluate("refreshDiscussReview()")
+    page.wait_for_timeout(400)
+    assert page.locator(".discuss-review").count() == 0
+
+
 def test_undo_all_puts_the_whole_edit_back_without_unticking(page: Page, server: ProseviewServer) -> None:
     scene = server.root / "manuscript" / "ch01" / "01-opening.md"
     open_scene(page, server)

@@ -3591,6 +3591,9 @@ class DiscussManager:
         conversation.active_turn_started_monotonic = None
         conversation.active_turn_phase = ""
         conversation.last_turn = {}
+        # The last conversation's edits are already saved; leaving it accepts
+        # them, rather than carrying its review into a conversation it is not part of.
+        conversation.file_before = {}
         conversation.connection = "Live"
         conversation.unavailable_reason = ""
 

@@ -358,3 +358,35 @@ def test_the_frontmatter_box_lines_up_with_its_colours(page: Page, notes_server:
     page.get_by_role("button", name="Edit", exact=True).click()
     expect(page.locator("#fileFrontmatter .fm-editor")).to_be_visible()
     assert page.evaluate(_TEXT_METRICS, "#fileFrontmatter") == []
+
+
+def _reading_style(page: Page, selector: str) -> list:
+    return page.evaluate("""(selector) => [
+        getComputedStyle(document.querySelector(selector)).fontFamily.split(',')[0].replace(/"/g, ''),
+        document.documentElement.dataset.theme]""", selector)
+
+
+def test_font_and_theme_show_while_hovered_and_go_back_if_not_chosen(page: Page, notes_server: ProseviewServer):
+    page.goto(notes_server.url("/#/file/story-bible%2Fcharacters%2Falice.md"))
+    page.evaluate("selectTheme('graphite-dark')")
+    body = "#filePreviewBody p"
+    expect(page.locator(body).first).to_be_visible()
+    start = _reading_style(page, body)
+
+    font = page.locator("#file-preview-panel .appearance-picker[data-kind=font], .appearance-picker[data-kind=font]").first
+    font.get_by_role("button").click()
+    # The Graphite themes used to override every font choice.
+    font.get_by_role("option", name="Mono").hover()
+    assert _reading_style(page, body)[0] == "ui-monospace"
+    page.mouse.move(5, 600)
+    assert _reading_style(page, body) == start
+    font.get_by_role("option", name="Georgia").click()
+    assert _reading_style(page, body)[0] == "Georgia"
+    assert page.evaluate("localStorage.getItem('proseview-font')") == "georgia"
+
+    theme = page.locator(".appearance-picker[data-kind=theme]").first
+    theme.get_by_role("button").click()
+    theme.get_by_role("option", name="Light", exact=True).hover()
+    assert _reading_style(page, body)[1] == "light"
+    page.keyboard.press("Escape")
+    assert _reading_style(page, body)[1] == "graphite-dark"

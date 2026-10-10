@@ -2786,7 +2786,7 @@ function openDiscussReviewModal(path) {
     _currentDiscussDiffString = null;
     document.getElementById('discussDiffModalTitle').textContent = path;
     document.getElementById('discussDiffModalNote').textContent =
-        'Already in the file. Untick anything you want put back, then keep the rest from the card.';
+        'Already saved in the file. Untick anything you want undone, then finish from the card.';
     var overlay = document.getElementById('discussDiffModalOverlay');
     overlay.hidden = false;
     _discussReturnFocus = document.activeElement;
@@ -2937,7 +2937,7 @@ function loadDiscussDiffMode(mode) {
 
             function paint() {
                 row.classList.toggle('discuss-review-block-off', !box.checked);
-                state.textContent = box.checked ? 'Keeping' : 'Putting back';
+                state.textContent = box.checked ? 'Kept' : 'Will be undone';
             }
             box.onchange = function() {
                 keep[block.id] = box.checked;
@@ -2998,12 +2998,17 @@ function loadDiscussDiffMode(mode) {
 
             var boxes = [];
 
+            // The changes are already in the file. The card says so, and its
+            // one decision is what, if anything, to undo.
             function syncCount() {
                 var on = boxes.filter(function(box) { return box.checked; }).length;
-                count.textContent = on === boxes.length
-                    ? 'Keeping all ' + boxes.length
-                    : 'Keeping ' + on + ' of ' + boxes.length;
-                apply.textContent = on ? 'Keep ' + on : 'Undo all of it';
+                var off = boxes.length - on;
+                var plural = function(n) { return n + (n === 1 ? ' change' : ' changes'); };
+                count.textContent = off
+                    ? 'Undoing ' + off + ' of ' + boxes.length
+                    : discussAgentLabel() + ' changed this file · ' + plural(boxes.length) + ' · saved';
+                apply.textContent = !off ? 'Looks good' : (on ? 'Undo ' + plural(off) : 'Undo all');
+                undoAll.hidden = !on;
             }
 
             (file.blocks || []).forEach(function(block) {
@@ -3013,6 +3018,13 @@ function loadDiscussDiffMode(mode) {
             });
 
             var actions = elementWith('discuss-review-actions');
+            actions.appendChild(elementWith('discuss-review-hint', 'Already saved. Untick anything you want undone.'));
+            var undoAll = document.createElement('button');
+            undoAll.type = 'button';
+            undoAll.className = 'discuss-review-undo-all';
+            undoAll.textContent = 'Undo all';
+            undoAll.onclick = function() { applyDiscussReview(file, [], undoAll); };
+            actions.appendChild(undoAll);
             var apply = document.createElement('button');
             apply.type = 'button';
             apply.className = 'discuss-primary';
@@ -3037,7 +3049,7 @@ function loadDiscussDiffMode(mode) {
             })
                 .then(function(res) {
                     document.getElementById('discussAnnouncement').textContent = res.dropped
-                        ? 'Kept ' + res.kept.length + ' of ' + res.total + ' changes in ' + file.path
+                        ? 'Undid ' + (res.total - res.kept.length) + ' of ' + res.total + ' changes in ' + file.path
                         : 'Kept every change in ' + file.path;
                     delete _discussReviewKeep[file.path];
                     refreshDiscussReview();

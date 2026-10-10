@@ -20,6 +20,12 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **A change Codex or Claude made reads as made.** The review card says
+  "Codex changed this file · 7 changes · saved" instead of "Keeping all 7".
+  The ticks stay: untick what you want undone. The button is "Looks good"
+  when everything stays, "Undo 2 changes" when some does not, and there is
+  a quiet "Undo all".
+
 - **Codex and Claude are told where you are, the way the editor extensions
   do it.** Every question says which file is open (and your selection, if
   it is in the panel), and the agent reads the file from the project when

@@ -6405,6 +6405,8 @@
         }
 
         #discussInput {
+            position: relative;
+            display: block;
             width: 100%;
             min-height: 70px;
             max-height: 180px;
@@ -6413,10 +6415,41 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 9px 10px;
-            background: var(--surface-card);
+            /* The mirror behind draws the box; the text sits on top of it. */
+            background: transparent;
             color: var(--text-main);
             font: inherit;
             line-height: 1.4;
+        }
+
+        .discuss-input-wrap {
+            position: relative;
+            border-radius: 8px;
+            background: var(--surface-card);
+        }
+
+        .discuss-input-mirror {
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            border: 1px solid transparent;
+            padding: 9px 10px;
+            overflow: hidden;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            font: inherit;
+            line-height: 1.4;
+            color: transparent;
+            pointer-events: none;
+        }
+
+        /* An @mention reads as a chip: the same text, on a tint. */
+        .discuss-input-mirror .discuss-mention {
+            color: transparent;
+            background: color-mix(in srgb, var(--primary) 22%, transparent);
+            border-radius: 4px;
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
         }
 
         #discussHint {

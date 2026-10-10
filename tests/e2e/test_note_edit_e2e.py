@@ -268,3 +268,48 @@ def test_an_image_written_as_a_repo_asset_url_shows_in_the_file_view(page: Page,
     image = page.locator("#filePreviewBody img[alt='The harbor map']")
     expect(image).to_have_attribute("src", "/repo-asset/manuscript/ch01/map.png")
     page.wait_for_function("() => document.querySelector(\"#filePreviewBody img[alt='The harbor map']\").naturalWidth === 1")
+
+
+SCENE_ONE = "ch01/01-down-the-rabbit-hole.md"
+
+
+@pytest.mark.allow_http_errors("/save-scene")
+@pytest.mark.allow_js_errors("400")
+def test_a_scene_shows_its_frontmatter_and_edits_it(page: Page, notes_server: ProseviewServer):
+    scene = notes_server.root / "manuscript" / SCENE_ONE
+    before = scene.read_text(encoding="utf-8")
+    page.goto(notes_server.url("/#/scene/ch01%2F01-down-the-rabbit-hole.md"))
+    block = page.locator("#sceneFrontmatter .fm-block")
+    expect(block).to_contain_text("title: Down the Rabbit-Hole")
+    expect(block.locator(".fm-key").first).to_have_text("title")
+
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+    box = page.get_by_label("Frontmatter (YAML)")
+    # Not YAML: nothing is written, and the box says where.
+    box.fill(box.input_value() + "\ncast: [Alice, the Rabbit")
+    page.keyboard.press("ControlOrMeta+s")
+    expect(page.locator("#sceneFrontmatter .fm-error")).to_contain_text("not valid YAML")
+    assert scene.read_text(encoding="utf-8") == before
+
+    box.fill(box.input_value().replace("status: drafted", "status: revised").replace("\ncast: [Alice, the Rabbit", ""))
+    page.keyboard.press("ControlOrMeta+s")
+    page.wait_for_function("window._pmEditMode === false")
+    after = scene.read_text(encoding="utf-8")
+    assert after == before.replace("status: drafted", "status: revised")
+
+
+def test_a_files_frontmatter_shows_as_yaml_and_edits(page: Page, notes_server: ProseviewServer):
+    sheet = notes_server.root / "story-bible" / "characters" / "alice.md"
+    page.goto(notes_server.url("/#/file/story-bible%2Fcharacters%2Falice.md"))
+    expect(page.locator("#filePreviewBody .fm-block")).to_contain_text("role: protagonist")
+    # The closing --- no longer turns the frontmatter into a heading.
+    expect(page.locator("#filePreviewBody h2", has_text="name:")).to_have_count(0)
+
+    page.get_by_role("button", name="Edit", exact=True).click()
+    box = page.get_by_label("Frontmatter (YAML)")
+    box.fill(box.input_value().replace("role: protagonist", "role: heroine"))
+    page.get_by_role("button", name="Save", exact=True).click()
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+    assert sheet.read_text(encoding="utf-8").startswith("---\nname: Alice\nrole: heroine\n---\n")
+    expect(page.locator("#filePreviewBody .fm-block")).to_contain_text("role: heroine")

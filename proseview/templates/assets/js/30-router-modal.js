@@ -703,7 +703,7 @@
             // Context and tasks live in the scene panel, not above the prose:
             // a disclosure here pushed the reading column down and reflowed it
             // on every toggle. The prose starts at the top and stays there.
-            b.innerHTML = '<div id="sceneProseHost"></div>';
+            b.innerHTML = '<div id="sceneFrontmatter"></div><div id="sceneProseHost"></div>';
             if (!window._sceneContextBody) {
                 window._sceneContextBody = document.createElement('div');
                 window._sceneContextBody.id = 'sceneContextBody';
@@ -711,6 +711,7 @@
             }
             window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
             if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
+            if (typeof renderSceneFrontmatter === 'function') renderSceneFrontmatter(p);
             if (window._PM) {
                 mountProseView(p);
                 if (window._lastExternalChangeIndices && window._lastExternalChangeIndices.length > 0) {

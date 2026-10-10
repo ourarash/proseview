@@ -401,6 +401,7 @@ def build_scene_data(
             "todos": scene.todos,
             "notes": scene.notes,
             "txt_line_offset": scene.txt_line_offset,
+            "frontmatter_text": scene.frontmatter_text,
             "mtime": (root / scene.path).stat().st_mtime,
             # A stable token for the exact Markdown source that produced the
             # browser's ProseMirror document. Selection offsets belong to that

@@ -58,7 +58,7 @@ from .repo import (
     trash_repository_entry,
 )
 from .scenes import (
-    collect_scene_stats, extract_scene_text, resolve_manuscript_dir, split_frontmatter,
+    collect_scene_stats, extract_scene_text, replace_frontmatter, resolve_manuscript_dir, split_frontmatter,
 )
 from .watch import watch as _watch
 from urllib.parse import unquote, urlparse, parse_qs
@@ -851,8 +851,12 @@ def save_scene_content(
     manuscript_subdir: str = "manuscript",
     source: str = "Manual Save",
     overwrite: bool = False,
+    frontmatter: str | None = None,
 ) -> None:
     """Atomically replace the prose body of a scene file.
+
+    *frontmatter*, when given, replaces the frontmatter block too, exactly as
+    typed (see :func:`replace_frontmatter`); otherwise it is kept as it is.
 
     Validates the path is under manuscript/, detects concurrent edits via mtime,
     recomputes the prose boundary from the live file, and writes atomically.
@@ -872,6 +876,8 @@ def save_scene_content(
     require_utf8_file(resolved)
     raw = read_repo_text(resolved)
     new_raw = compose_scene_raw(raw, content)
+    if frontmatter is not None:
+        new_raw = replace_frontmatter(new_raw, frontmatter)
 
     _create_file_backup(resolved, raw, new_raw, source, repo_root)
 
@@ -924,6 +930,7 @@ def save_note_content(
     open_mtime: float,
     repo_root: str,
     overwrite: bool = False,
+    frontmatter: str | None = None,
 ) -> tuple[Path, float]:
     """Replace a Markdown note's body, keeping its frontmatter; return the file and its new mtime.
 
@@ -939,6 +946,8 @@ def save_note_content(
     header, _ = split_note_header(raw)
     body = content.rstrip("\n") + "\n"
     new_raw = f"{header}\n{body}" if header else body
+    if frontmatter is not None:
+        new_raw = replace_frontmatter(new_raw, frontmatter)
     _create_file_backup(resolved, raw, new_raw, "Manual Save", repo_root)
     _atomic_write_text(resolved, new_raw)
     return resolved, resolved.stat().st_mtime
@@ -1418,8 +1427,10 @@ class _Handler(BaseHTTPRequestHandler):
                 open_mtime = float(body.get("open_mtime"))
             except (TypeError, ValueError) as exc:
                 raise ContextError("open_mtime must be a number") from exc
+            frontmatter = body.get("frontmatter")
             target, mtime = save_note_content(
                 relative, content, open_mtime, self.repo_root, overwrite=bool(body.get("overwrite")),
+                frontmatter=frontmatter if isinstance(frontmatter, str) else None,
             )
             self.invalidate("content", (relative,))
             self._send_json({"ok": True, "path": relative, "mtime": mtime})
@@ -2827,6 +2838,7 @@ class _Handler(BaseHTTPRequestHandler):
                     Config.load(Path(self.repo_root)).manuscript_subdir,
                     source="Overwrote Disk Version" if overwrite else "Manual Save",
                     overwrite=overwrite,
+                    frontmatter=body.get("frontmatter") if isinstance(body.get("frontmatter"), str) else None,
                 )
                 self.invalidate()
                 # Return the post-save mtime so the client can update its
@@ -2846,6 +2858,10 @@ class _Handler(BaseHTTPRequestHandler):
             except _FileConflictError:
                 # Shape is the documented contract; tests/e2e assert it exactly.
                 self._send_json({"conflict": True}, 409)
+            except ValueError as exc:
+                # Frontmatter that is not YAML, or a file not saved as UTF-8:
+                # the writer's to fix, so say what and keep the edit open.
+                self._send_json({"ok": False, "error": str(exc)}, 400)
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
         else:

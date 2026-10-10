@@ -190,6 +190,8 @@
             if (btn) btn.textContent = '✗ Cancel';
             var p = paths[curIdx];
             _pmOpenMtime = meta[p] && meta[p].mtime;
+            _pmFrontmatterDraft = null;
+            renderSceneFrontmatter(p);
             setPmDirty(false);
             _applyEditingProseClass();
             // Back to the caret of the last edit of this scene, unless the
@@ -200,6 +202,37 @@
                 _pmView.dispatch(_pmView.state.tr.setSelection(window._PM.TextSelection.near(at)));
             }
             _pmView.focus();
+        }
+
+        // The scene's frontmatter above its prose: highlighted while reading,
+        // a YAML box in edit mode.
+        function renderSceneFrontmatter(p) {
+            var host = document.getElementById('sceneFrontmatter');
+            if (!host) return;
+            host.replaceChildren();
+            var text = meta[p] ? meta[p].frontmatter_text : null;
+            if (_pmEditMode && (text === null || text === undefined) && _pmFrontmatterDraft === null) {
+                host.appendChild(addFrontmatterButton(function() {
+                    _pmFrontmatterDraft = '';
+                    renderSceneFrontmatter(p);
+                    var area = host.querySelector('textarea');
+                    if (area) area.focus();
+                }));
+            } else if (_pmEditMode) {
+                var editor = frontmatterEditor(_pmFrontmatterDraft !== null ? _pmFrontmatterDraft : (text || ''), function(value) {
+                    _pmFrontmatterDraft = value;
+                    if (!_pmDirty) setPmDirty(true);
+                });
+                editor.querySelector('textarea').addEventListener('keydown', function(event) {
+                    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                        event.preventDefault();
+                        saveSceneEdit();
+                    }
+                });
+                host.appendChild(editor);
+            } else if (text !== null && text !== undefined) {
+                host.appendChild(renderFrontmatterBlock(text));
+            }
         }
 
         function sceneEditorSerializer(PM) {
@@ -228,7 +261,11 @@
             if (_pmSaveInFlight) return;
             var p = paths[curIdx];
             var markdown = serializeSceneEditorMarkdown();
+            var savedFrontmatter = (meta[p] && meta[p].frontmatter_text) || '';
+            var frontmatter = _pmFrontmatterDraft !== null && _pmFrontmatterDraft !== savedFrontmatter
+                ? _pmFrontmatterDraft : null;
             _pmSaveInFlight = true;
+            showFrontmatterError(document.getElementById('sceneFrontmatter'), '');
 
             // Stay in edit mode while the request is in flight; reflect
             // progress in the pill instead of yanking the bar away.
@@ -237,7 +274,9 @@
             // The save will trigger an SSE "reload" event via the server's
             // file-watcher invalidation. Mark it expected so reloadOrDefer
             // can swallow it (else we'd get a jolting full page reload).
-            _pendingSelfReloads++;
+            // A frontmatter change moves story fields the whole dashboard
+            // shows, so that reload is wanted and is let through.
+            if (frontmatter === null) _pendingSelfReloads++;
             if (_pendingSelfReloadTimer) clearTimeout(_pendingSelfReloadTimer);
             _pendingSelfReloadTimer = setTimeout(function() {
                 _pendingSelfReloads = 0;
@@ -252,6 +291,7 @@
                     abs_path: absPath,
                     content: markdown,
                     open_mtime: _pmOpenMtime,
+                    frontmatter: frontmatter,
                     // Set only by the conflict dialog's explicit "mine wins".
                     // The server still backs up the version it replaces.
                     overwrite: !!overwrite
@@ -270,7 +310,18 @@
             }).then(function(data) {
                 if (!data) return;
                 _pmSaveInFlight = false;
-                if (!data.ok) { setPmDirty(true); return; }
+                if (!data.ok) {
+                    setPmDirty(true);
+                    var message = data.error || 'The scene could not be saved.';
+                    if (!/frontmatter/i.test(message) || !showFrontmatterError(document.getElementById('sceneFrontmatter'), message)) {
+                        alert('Save failed: ' + message);
+                    }
+                    return;
+                }
+                if (frontmatter !== null && meta[p]) {
+                    meta[p].frontmatter_text = frontmatter.replace(/^\n+|\n+$/g, '') || null;
+                    _pmFrontmatterDraft = null;
+                }
                 if (data.mtime) _pmOpenMtime = data.mtime;
                 // meta is the baseline every later write reads: the next edit
                 // session and the annotation endpoints. refreshContent() would
@@ -406,6 +457,8 @@
                 oldScroll = scrollEl.scrollTop;
                 if (bodyEl) bodyEl.style.minHeight = scrollEl.scrollHeight + 'px';
             }
+            _pmFrontmatterDraft = null;
+            renderSceneFrontmatter(p);
             mountProseView(p);
             if (scrollEl) {
                 scrollEl.scrollTop = oldScroll;

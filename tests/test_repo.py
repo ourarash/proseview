@@ -516,3 +516,32 @@ def test_trash_repository_entry_rejects_a_symlinked_trash_directory(tmp_path: Pa
 
     assert scene.read_text(encoding="utf-8") == "keep me"
     assert list(elsewhere.iterdir()) == []
+
+
+def test_a_file_in_another_encoding_reads_and_is_not_rewritten(tmp_path: Path):
+    """One Windows-1252 scene used to fail the whole page with a decode error."""
+    from proseview.repo import _file_node, read_repo_text, require_utf8_file
+    from proseview.scenes import collect_scene_stats
+    from proseview.server import save_note_content
+
+    chapter = tmp_path / "manuscript" / "ch01"
+    chapter.mkdir(parents=True)
+    old = chapter / "01.md"
+    old.write_bytes("Café au lait, déjà vu.\n".encode("cp1252"))
+    (chapter / "02.md").write_text("Plain prose.\n", encoding="utf-8")
+    utf16 = tmp_path / "notes.md"
+    utf16.write_bytes("Notes in UTF-16.\n".encode("utf-16"))
+
+    assert read_repo_text(old) == "Café au lait, déjà vu.\n"
+    assert read_repo_text(utf16) == "Notes in UTF-16.\n"
+    assert len(collect_scene_stats(tmp_path, "manuscript")) == 2
+
+    node = _file_node(old, tmp_path, 100_000)
+    assert node["body"] == "Café au lait, déjà vu.\n" and node["not_utf8"] is True
+
+    with pytest.raises(ValueError, match="not saved as UTF-8"):
+        require_utf8_file(old)
+    before = old.read_bytes()
+    with pytest.raises(ValueError, match="not saved as UTF-8"):
+        save_note_content("manuscript/ch01/01.md", "Rewritten.", old.stat().st_mtime, str(tmp_path))
+    assert old.read_bytes() == before

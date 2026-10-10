@@ -202,3 +202,55 @@ def test_working_copy_delta_on_non_git_returns_zero(tmp_path: Path):
     delta = working_copy_delta(tmp_path, Config(), [])
     assert delta.words_added_today == 0
     assert delta.scenes_touched_today == 0
+
+
+def _encrypted_book(tmp_path: Path, *, unlocked: bool) -> Path:
+    """A repo whose committed Markdown is stored the way git-crypt stores it.
+
+    The clean filter writes a git-crypt header and scrambled bytes, so a blob
+    read without the smudge filter is not text. With *unlocked*, the smudge
+    filter is configured and reading through filters gives the plain file.
+    """
+    repo = tmp_path / "crypt"
+    (repo / "manuscript" / "ch01").mkdir(parents=True)
+    (repo / "manuscript" / "ch01" / "01.md").write_text("Café prose in four words.\n", encoding="utf-8")
+    (repo / ".gitattributes").write_text("*.md filter=crypt\n", encoding="utf-8")
+    clean = tmp_path / "clean.py"
+    clean.write_text(
+        "import sys\nb = sys.stdin.buffer.read()\n"
+        "sys.stdout.buffer.write(b'\\x00GITCRYPT\\x00' + bytes(x ^ 0xF9 for x in b))\n",
+        encoding="utf-8",
+    )
+    smudge = tmp_path / "smudge.py"
+    smudge.write_text(
+        "import sys\nb = sys.stdin.buffer.read()\n"
+        "sys.stdout.buffer.write(bytes(x ^ 0xF9 for x in b[10:]) if b.startswith(b'\\x00GITCRYPT') else b)\n",
+        encoding="utf-8",
+    )
+    python = Path(sys.executable).as_posix()
+    _run(["git", "init", "-q", "-b", "main"], repo)
+    _run(["git", "config", "filter.crypt.clean", f'"{python}" "{clean.as_posix()}"'], repo)
+    _run(["git", "add", "."], repo)
+    _run(["git", "commit", "-q", "-m", "seed"], repo)
+    if not unlocked:
+        _run(["git", "config", "--unset", "filter.crypt.clean"], repo)
+    else:
+        _run(["git", "config", "filter.crypt.smudge", f'"{python}" "{smudge.as_posix()}"'], repo)
+    return repo
+
+
+def test_history_reads_an_unlocked_git_crypt_repo_through_its_filters(tmp_path: Path):
+    repo = _encrypted_book(tmp_path, unlocked=True)
+    commits = list(iter_manuscript_commits(repo, Config()))
+    row = stats_for_commit(repo, commits[-1].sha, Config())
+    assert row.total_words == 5 and row.scene_count == 1
+
+
+def test_history_skips_encrypted_blobs_instead_of_failing(tmp_path: Path):
+    """A locked git-crypt repo used to take the whole dashboard down with a
+    UnicodeDecodeError from ``git show``."""
+    repo = _encrypted_book(tmp_path, unlocked=False)
+    commits = list(iter_manuscript_commits(repo, Config()))
+    row = stats_for_commit(repo, commits[-1].sha, Config())
+    assert row.total_words == 0 and row.scene_count == 0
+    assert load_history(repo, Config()) is not None

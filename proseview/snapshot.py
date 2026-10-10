@@ -21,6 +21,7 @@ from pathlib import Path
 from .config import Config
 from .generator import TEMPLATE_DIR, build_analysis_payload, build_dashboard
 from .lexical import calculate_lexical_stats, prose_only
+from .repo import read_repo_text
 from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
 
 #: Written into every snapshot, so a rebuild may clear the folder it finds and
@@ -59,7 +60,7 @@ def _scene_lexical(root: Path, cfg: Config, scenes: list) -> dict[str, dict[str,
     for scene in scenes:
         key = scene.path.as_posix()
         key = key[len(prefix):] if key.startswith(prefix) else key
-        _, body = split_frontmatter((root / scene.path).read_text(encoding="utf-8"))
+        _, body = split_frontmatter(read_repo_text(root / scene.path))
         stats = calculate_lexical_stats(prose_only(extract_scene_text(body)))
         rows[key] = {"ok": True, "mattr": stats.mattr, "mtld": stats.mtld}
     return rows

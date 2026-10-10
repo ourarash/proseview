@@ -4,6 +4,7 @@
             if (route.kind === 'tab') return '/tab/' + (VALID_TABS.includes(route.arg) ? route.arg : 'overview');
             if (route.kind === 'scene' && route.arg) return '/scene/' + route.arg;
             if (route.kind === 'file' && route.arg) return '/file/' + route.arg;
+            if (route.kind === 'book') return '/book';
             return '/tab/' + (currentTab || 'overview');
         }
 
@@ -11,6 +12,8 @@
             const route = parseHashRoute();
             if (route && route.kind === 'scene') return document.querySelector('#sceneModal .modal-content');
             if (route && route.kind === 'file') return document.getElementById('filePreviewBody');
+            // The book keeps its place by scene, in its URL.
+            if (route && route.kind === 'book') return null;
             return window;
         }
 
@@ -800,7 +803,14 @@
             if (editBar) editBar.hidden = true;
             if (window._resetEditBarPosition) window._resetEditBarPosition();
             exitFocusMode();
+            var backToBook = typeof bookTakeReturn === 'function' ? bookTakeReturn() : null;
             delete document.documentElement.dataset.view;
+            if (backToBook && options.route !== false) {
+                routeToHash('/book/' + encodeURIComponent(backToBook), true);
+                if (reloadIfDashboardStale()) return true;
+                openBookView(backToBook, {route: false});
+                return true;
+            }
             if (options.route !== false) routeToHash('/tab/' + currentTab, true);
             if (reloadIfDashboardStale()) return true;
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();

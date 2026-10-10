@@ -280,6 +280,9 @@ let currentTab = 'overview';
         var _pmLastCaret = null;
         // The frontmatter as typed in edit mode, or null when it is untouched.
         var _pmFrontmatterDraft = null;
+        // Until when a scroll of the reading column is Proseview keeping the
+        // page still, not the writer: the toolbar does not hide or show for it.
+        var _sceneScrollIsOursUntil = 0;
         // Counts SSE reload events we expect to be triggered by our own
         // /save-scene calls. Decremented (with a tail timeout) when the
         // event arrives, so reloadOrDefer can skip the page reload our

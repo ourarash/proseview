@@ -45,6 +45,9 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- Pressing `E` (or leaving edit mode) no longer moves the page: the
+  paragraph you were reading stays where it was, even though the
+  frontmatter box and the editor's spacing change above it.
 - The file browser shows where you are: opening a scene from its address,
   or with Next and Previous, now expands its chapter folder and selects it,
   as opening it from the sidebar always did.

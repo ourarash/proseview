@@ -7057,3 +7057,35 @@ def test_the_file_browser_reveals_the_scene_being_read(page: Page, server: Prose
     revealed = _revealed(page)
     assert revealed["path"].startswith("manuscript/ch01/")
     assert all(revealed["open"]) and revealed["visible"]
+
+
+def _reading_position(page: Page) -> tuple[str, int]:
+    return tuple(page.evaluate("""() => {
+        const top = document.querySelector('#sceneModal .modal-content').getBoundingClientRect().top;
+        const p = [...document.querySelectorAll('#sceneProseHost .ProseMirror > *')]
+            .find(el => el.getBoundingClientRect().bottom > top + 1);
+        return [p.textContent.slice(0, 40), Math.round(p.getBoundingClientRect().top - top)];
+    }"""))
+
+
+def test_entering_and_leaving_edit_mode_does_not_move_the_page(page: Page, server: ProseviewServer):
+    """Whatever edit mode changes above the paragraph being read -- here the
+    frontmatter box is made taller than the block it replaces -- the page
+    stays where it was."""
+    open_scene(page, server, LARGE_SCENE_REL)
+    page.add_style_tag(content=".fm-edit-area { margin-top: 140px; } .fm-add { margin-top: 140px; }")
+    page.evaluate("document.querySelector('#sceneModal .modal-content').scrollTo({top: 2400, behavior: 'instant'})")
+    page.wait_for_timeout(200)
+    before = _reading_position(page)
+
+    page.keyboard.press("e")
+    page.wait_for_function("window._pmEditMode === true")
+    page.wait_for_timeout(200)
+    assert _reading_position(page) == before
+
+    # Leave as the keyboard does (a pointer click on the bar would first make
+    # the test runner scroll it into view).
+    page.evaluate("cancelSceneEdit()")
+    page.wait_for_function("window._pmEditMode === false")
+    page.wait_for_timeout(200)
+    assert _reading_position(page) == before

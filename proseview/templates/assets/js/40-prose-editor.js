@@ -170,6 +170,64 @@
             _pmView.dispatch(tr);
         }
 
+        // The paragraph at the top of the reading view and where it sits, so
+        // switching into or out of edit mode -- which swaps the frontmatter
+        // block and the editor's own spacing -- leaves the page where it was.
+        // Top-level blocks of the scene as [{index, dom}], by document
+        // position: the DOM also holds widgets (line numbers, affordances)
+        // that differ between reading and editing, so DOM order is not it.
+        function _sceneBlocks() {
+            var blocks = [];
+            if (!_pmView) return blocks;
+            _pmView.state.doc.forEach(function(node, offset, index) {
+                var dom = _pmView.nodeDOM(offset);
+                if (dom && dom.getBoundingClientRect) blocks.push({index: index, dom: dom});
+            });
+            return blocks;
+        }
+
+        function _sceneReadingAnchor() {
+            var scrollEl = document.querySelector('#sceneModal .modal-content');
+            if (!scrollEl || !_pmView) return null;
+            var top = scrollEl.getBoundingClientRect().top;
+            var blocks = _sceneBlocks();
+            for (var i = 0; i < blocks.length; i++) {
+                var rect = blocks[i].dom.getBoundingClientRect();
+                if (rect.bottom > top + 1) return {scrollEl: scrollEl, index: blocks[i].index, offset: rect.top - top};
+            }
+            return null;
+        }
+
+        function _restoreSceneReadingAnchor(anchor) {
+            if (!anchor) return;
+            var block = _sceneBlocks().filter(function(b) { return b.index === anchor.index; })[0];
+            if (!block) return;
+            var top = anchor.scrollEl.getBoundingClientRect().top;
+            var delta = (block.dom.getBoundingClientRect().top - top) - anchor.offset;
+            // Instantly: the reading column scrolls smoothly, and an animated
+            // correction is itself the jump this exists to prevent.
+            if (delta) {
+                _sceneScrollIsOursUntil = performance.now() + 100;
+                anchor.scrollEl.scrollTo({top: anchor.scrollEl.scrollTop + delta, behavior: 'instant'});
+            }
+        }
+
+        // Hold the anchor for the next moments too: the remounted editor
+        // decorates its blocks (line numbers, highlights) a frame or two later,
+        // which moves them again. Stops as soon as the writer scrolls.
+        function _holdSceneReadingAnchor(anchor) {
+            if (!anchor) return;
+            _restoreSceneReadingAnchor(anchor);
+            var expected = anchor.scrollEl.scrollTop;
+            [16, 60, 150, 300].forEach(function(delay) {
+                setTimeout(function() {
+                    if (Math.abs(anchor.scrollEl.scrollTop - expected) > 1) return;
+                    _restoreSceneReadingAnchor(anchor);
+                    expected = anchor.scrollEl.scrollTop;
+                }, delay);
+            });
+        }
+
         function toggleSceneEdit() {
             // A snapshot has nowhere to save to, so reading is all it offers --
             // unless it is the demo, whose saves stay in the visitor's tab.
@@ -182,6 +240,7 @@
                 render();
                 if (!_pmView) return;
             }
+            var anchor = _sceneReadingAnchor();
             _pmEditMode = true;
             _pmView.setProps({ editable: function() { return true; } });
             var editBar = document.getElementById('sceneEditBar');
@@ -201,7 +260,30 @@
                 var at = _pmView.state.doc.resolve(Math.max(0, Math.min(_pmLastCaret.pos, size)));
                 _pmView.dispatch(_pmView.state.tr.setSelection(window._PM.TextSelection.near(at)));
             }
+            // Pressing E does not move the page. A caret that is not on screen
+            // goes to the paragraph being read, so typing does not jump either.
+            _restoreSceneReadingAnchor(anchor);
+            if (anchor) {
+                var coords = null;
+                try { coords = _pmView.coordsAtPos(_pmView.state.selection.head); } catch (e) {}
+                var view = anchor.scrollEl.getBoundingClientRect();
+                if (!coords || coords.top < view.top + 80 || coords.bottom > view.bottom - 80) {
+                    // The first paragraph that starts on screen, clear of the
+                    // editor's scroll margin, so placing the caret scrolls nothing.
+                    var blocks = _sceneBlocks();
+                    var block = null;
+                    for (var i = 0; i < blocks.length && !block; i++) {
+                        if (blocks[i].index >= anchor.index && blocks[i].dom.getBoundingClientRect().top >= view.top + 80) block = blocks[i].dom;
+                    }
+                    try {
+                        if (!block) throw new Error('no paragraph on screen');
+                        var pos = _pmView.posAtDOM(block, 0);
+                        _pmView.dispatch(_pmView.state.tr.setSelection(window._PM.TextSelection.near(_pmView.state.doc.resolve(pos))));
+                    } catch (e) {}
+                }
+            }
             _pmView.focus();
+            _holdSceneReadingAnchor(anchor);
         }
 
         // The scene's frontmatter above its prose: highlighted while reading,
@@ -431,6 +513,8 @@
             // is in flight. Exiting now would let it mutate hidden editor
             // state and make the durable file disagree with the page.
             if (_pmSaveInFlight) return false;
+            // Before anything changes the layout.
+            var anchor = _sceneReadingAnchor();
             if (typeof aiDiscardAppliedProposals === 'function') aiDiscardAppliedProposals();
             _pmEditMode = false;
             _pmSaveInFlight = false;
@@ -452,21 +536,12 @@
             if (_pmView) _pmLastCaret = {path: p, pos: _pmView.state.selection.head};
             var scrollEl = document.querySelector('#sceneModal .modal-content');
             var bodyEl = document.getElementById('modalBody');
-            var oldScroll = 0;
-            if (scrollEl) {
-                oldScroll = scrollEl.scrollTop;
-                if (bodyEl) bodyEl.style.minHeight = scrollEl.scrollHeight + 'px';
-            }
+            if (scrollEl && bodyEl) bodyEl.style.minHeight = scrollEl.scrollHeight + 'px';
             _pmFrontmatterDraft = null;
             renderSceneFrontmatter(p);
             mountProseView(p);
-            if (scrollEl) {
-                scrollEl.scrollTop = oldScroll;
-                setTimeout(function() {
-                    scrollEl.scrollTop = oldScroll;
-                    if (bodyEl) bodyEl.style.minHeight = '';
-                }, 50);
-            }
+            if (bodyEl) bodyEl.style.minHeight = '';
+            _holdSceneReadingAnchor(anchor);
             return true;
         }
 

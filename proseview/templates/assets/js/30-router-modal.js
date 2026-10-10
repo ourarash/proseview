@@ -429,6 +429,7 @@
             var current = event.target.scrollTop;
             var delta = current - _sceneToolbarLastScrollTop;
             _sceneToolbarLastScrollTop = current;
+            if (performance.now() < _sceneScrollIsOursUntil) return;
             if (_sceneToolbarMode !== 'auto' || sceneToolbarReducedMotion()) return;
             if (document.querySelector('#sceneModal .modal-content.modal-focus')) return;
             if (current < 24 || delta < -8) {

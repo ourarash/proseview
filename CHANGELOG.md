@@ -20,6 +20,14 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **The steps say what the agent did.** Codex runs everything as
+  `bash -lc "…"`, so every step read "Running bash". Now the command inside
+  is read: "Reading ch03/07-day-94-silence.md", "Searching for “laptop” in
+  manuscript", "Listing plans", "Checking the history". Click a step to see
+  the exact command. What the agent says between commands appears among the
+  steps in its own voice, and the line under "Codex is working" wraps to two
+  lines instead of being cut off.
+
 - **A change Codex or Claude made reads as made.** The review card says
   "Codex changed this file · 7 changes · saved" instead of "Keeping all 7".
   The ticks stay: untick what you want undone. The button is "Looks good"

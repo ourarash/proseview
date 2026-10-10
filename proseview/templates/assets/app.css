@@ -5689,10 +5689,13 @@
         }
 
         .discuss-turn-state,
+        /* Two lines: what the agent says it is doing is usually a sentence. */
         .discuss-turn-doing {
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow-wrap: anywhere;
         }
 
         .discuss-turn-state {
@@ -5809,7 +5812,7 @@
             border: 1px solid var(--border);
             border-top: 0;
             border-radius: 0 0 8px 8px;
-            max-height: 132px;
+            max-height: 240px;
             overflow-y: auto;
         }
 
@@ -5823,7 +5826,8 @@
 
         .discuss-turn-trail li {
             display: flex;
-            gap: 7px;
+            flex-wrap: wrap;
+            gap: 0 7px;
             color: var(--text-muted);
             font-size: 11px;
             line-height: 1.65;
@@ -5852,6 +5856,45 @@
         .discuss-turn-trail li.failed::before {
             content: '\00D7';
             color: #d73a49;
+        }
+
+        /* What the agent said between commands, in its own voice. */
+        .discuss-turn-trail li.note {
+            color: var(--text-soft);
+            font-style: italic;
+            margin: 2px 0;
+        }
+
+        .discuss-turn-trail li.note::before {
+            content: '\201C';
+            color: var(--text-muted);
+            font-style: normal;
+        }
+
+        .discuss-turn-trail li.has-command {
+            cursor: pointer;
+        }
+
+        .discuss-turn-trail li.has-command:hover > span,
+        .discuss-turn-trail li.has-command:focus-visible > span {
+            color: var(--text-main);
+            text-decoration: underline dotted;
+        }
+
+        .discuss-turn-command {
+            flex-basis: 100%;
+            margin: 1px 0 4px 16px;
+            padding: 3px 6px;
+            border-radius: 4px;
+            background: var(--surface-muted);
+            color: var(--text-soft);
+            font: 10.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-turn-command[hidden] {
+            display: none;
         }
 
         .discuss-turn-trail li.settled::before {

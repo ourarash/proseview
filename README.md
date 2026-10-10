@@ -122,9 +122,9 @@ filter verbs, sensory language, passive voice.
 `Edit` turns the page you were reading into the page you type into — same
 typography, same highlights. `Mod-S` saves to the file and returns to reading, and the stats update; `E` picks up where you left off.
 
-Story-bible pages, plans, and other Markdown notes open in the file view with
+Story-bible pages, plans, and other Markdown files open in the file view with
 their own `Edit` button (or press `E`). Frontmatter is kept as it is. Tables
-show as tables and are saved as written; a note with HTML inside its lines
+show as tables and are saved as written; a file with HTML inside its lines
 opens as plain Markdown, so it is saved exactly as typed. Like
 scenes, each save keeps a backup and won't overwrite a change made elsewhere.
 A save rewrites only the paragraphs you changed, so Obsidian `[[wikilinks]]`,

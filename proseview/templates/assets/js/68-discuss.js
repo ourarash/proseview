@@ -1003,6 +1003,7 @@
                         setDiscussConnection(detail.state, detail.reason || '');
                     }
                     if (type === 'turn.started' || type === 'conversation.reset') _discussStreamText = '';
+                    if (type === 'conversation.reset') { _discussReview = []; _discussReviewKeep = {}; }
                     if (type === 'approval.requested') {
                         var request = JSON.parse(event.data);
                         _discussLastApproval = request.request_id || '';
@@ -3963,6 +3964,7 @@ function loadDiscussDiffMode(mode) {
             }, 1200);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
                 .then(function(data) {
+                    _discussReview = []; _discussReviewKeep = {};
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';
                     _discussSelectionRange = null;

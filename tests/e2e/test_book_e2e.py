@@ -59,7 +59,12 @@ def test_the_book_is_every_scene_in_order_under_its_chapters(page: Page, book_se
     headings = page.locator(".book-chapter-title")
     expect(headings).to_have_count(12)
     expect(headings.first).to_have_text("I. Down the Rabbit-Hole")
-    expect(page.locator("#bookWhere")).to_contain_text("I. Down the Rabbit-Hole · Down the Rabbit-Hole · 0%")
+    expect(page.locator("#bookWhere")).to_have_text("I. Down the Rabbit-Hole · Down the Rabbit-Hole")
+    expect(page.locator("#bookNavWhere")).to_have_text("I. Down the Rabbit-Hole · scene 1 of 3")
+    expect(page.locator("#bookNavPct")).to_have_text("0%")
+    # It says what it is, and the file browser steps aside for it.
+    expect(page.locator("#bookIntro")).to_contain_text("The whole book as one continuous text")
+    assert page.evaluate("document.documentElement.dataset.sidebar") == "closed"
     # The frontmatter stays out of the reading.
     expect(page.locator("#bookBody")).not_to_contain_text("status: drafted")
 
@@ -74,6 +79,39 @@ def test_the_book_is_every_scene_in_order_under_its_chapters(page: Page, book_se
     page.get_by_role("button", name="← Overview").click()
     expect(page.locator("#book-panel")).to_be_hidden()
     expect(page.locator("#sceneTable")).to_be_visible()
+
+
+def test_skip_by_scene_and_chapter_and_pick_a_chapter(page: Page, book_server: ProseviewServer):
+    page.goto(book_server.url("/"), wait_until="load")
+    page.evaluate("setSidebarOpen(true)")
+    page.locator("#bookOpenBtn").click()
+    expect(page.locator("#book-panel")).to_be_visible()
+    expect(page.locator("#bookIntro")).to_be_visible()
+    page.locator(".book-intro-close").click()
+    expect(page.locator("#bookIntro")).to_be_hidden()
+
+    page.get_by_role("button", name="Next scene").click()
+    assert page.evaluate("bookCurrentScene()") == "ch01/02-down-down-down.md"
+    page.keyboard.press("ArrowRight")
+    assert page.evaluate("bookCurrentScene()") == "ch01/03-drink-me.md"
+    page.get_by_role("button", name="Next chapter").click()
+    assert page.evaluate("bookCurrentScene()") == "ch02/01-curiouser-and-curiouser.md"
+    page.keyboard.press("ArrowRight")
+    # Back goes to the start of this chapter first, then the one before.
+    page.keyboard.press("Shift+ArrowLeft")
+    assert page.evaluate("bookCurrentScene()") == "ch02/01-curiouser-and-curiouser.md"
+    page.get_by_role("button", name="Previous chapter").click()
+    assert page.evaluate("bookCurrentScene()") == FIRST
+
+    page.locator("#bookNavWhere").click()
+    page.locator("#bookToc").get_by_role("button", name="VII. A Mad Tea-Party").click()
+    expect(page.locator("#bookToc")).to_be_hidden()
+    assert page.evaluate("bookCurrentScene()").startswith("ch07/01-")
+    expect(page.locator("#bookNavWhere")).to_have_text("VII. A Mad Tea-Party · scene 1 of 3")
+
+    # The file browser comes back on the way out, as the writer left it.
+    page.get_by_role("button", name="← Overview").click()
+    assert page.evaluate("document.documentElement.dataset.sidebar") == "open"
 
 
 def test_edit_from_the_book_and_come_back_to_the_same_scene(page: Page, book_server: ProseviewServer):

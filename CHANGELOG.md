@@ -7,21 +7,15 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
-- **Read the book.** A Read button on the dashboard shows the whole
-  manuscript in one scroll: every scene in book order under its chapter's
-  heading, with scene breaks between them, in the reading font and theme.
-  The header says which chapter and scene you are in and how far through
-  the book. Edit beside a scene (or E) opens it in the editor, and leaving
-  it brings you back to the book at that scene. "Read the book from here"
-  in a scene's menu opens the book at that scene, and the address keeps your
-  place across a reload.
-- **Frontmatter you can see and edit.** A scene's or file's frontmatter
-  shows above the prose as highlighted YAML, and in edit mode it is a box
-  saved exactly as typed (or added, for a file without one). YAML that does
-  not parse is not saved; the box says on which line. The colours stay
-  while you type, and a quiet "Frontmatter" label above it folds it away to
-  one line (remembered for every file). In the file view the frontmatter
-  used to render as one large heading.
+- **Read the book.** "Read the book" on the dashboard shows the whole
+  manuscript as one continuous text, the way an e-reader would: every scene
+  in book order under its chapter's heading, in the reading font and theme,
+  with the file browser out of the way. A note says what the mode is the
+  first few times. A quiet bar at the bottom shows how far through you are,
+  skips by scene or chapter (arrow keys too), and opens a chapter list.
+  Edit beside a scene (or E) opens it in the editor, and leaving it brings
+  you back to the book at that scene. "Read the book from here" in a scene's
+  menu opens the book there, and the address keeps your place.
 
 ### Changed
 

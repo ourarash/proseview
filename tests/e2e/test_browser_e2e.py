@@ -6582,7 +6582,8 @@ def test_the_turn_offers_what_it_changed_with_everything_kept(page: Page, server
 
     assert card.locator(".discuss-review-path").inner_text() == "manuscript/ch01/01-opening.md"
     assert card.locator(".discuss-review-block").count() == 2
-    assert "Keeping all 2" in card.locator(".discuss-review-count").inner_text()
+    assert "changed this file · 2 changes · saved" in card.locator(".discuss-review-count").inner_text()
+    assert card.get_by_role("button", name="Looks good").is_visible()
     for index in range(2):
         assert card.locator(".discuss-review-choice input").nth(index).is_checked()
 
@@ -6600,11 +6601,11 @@ def test_unticking_one_change_puts_that_line_back_and_leaves_the_other(
     card = _review_card(page)
 
     card.locator(".discuss-review-choice input").nth(1).uncheck()
-    assert "Keeping 1 of 2" in card.locator(".discuss-review-count").inner_text()
-    card.get_by_role("button", name="Keep 1").click()
+    assert "Undoing 1 of 2" in card.locator(".discuss-review-count").inner_text()
+    card.get_by_role("button", name="Undo 1 change").click()
 
     page.wait_for_function(
-        "() => document.querySelector('#discussAnnouncement').innerText.includes('Kept 1 of 2')"
+        "() => document.querySelector('#discussAnnouncement').innerText.includes('Undid 1 of 2')"
     )
     text = scene.read_text(encoding="utf-8")
     assert CHANGED_SENTENCE in text, "the edit that was kept should still stand"
@@ -6620,7 +6621,7 @@ def test_a_reviewed_file_stops_offering_the_changes_already_settled(
     card = _review_card(page)
 
     card.locator(".discuss-review-choice input").nth(1).uncheck()
-    card.get_by_role("button", name="Keep 1").click()
+    card.get_by_role("button", name="Undo 1 change").click()
     page.wait_for_function("() => !document.querySelector('.discuss-review')")
 
 
@@ -6631,12 +6632,26 @@ def test_unticking_everything_puts_the_whole_edit_back(page: Page, server: Prose
 
     for index in range(card.locator(".discuss-review-choice input").count()):
         card.locator(".discuss-review-choice input").nth(index).uncheck()
-    card.get_by_role("button", name="Undo all of it").click()
+    assert card.locator(".discuss-review-actions .discuss-primary").inner_text() == "Undo all"
+    card.locator(".discuss-review-actions .discuss-primary").click()
 
     page.wait_for_function("() => !document.querySelector('.discuss-review')")
     text = scene.read_text(encoding="utf-8")
     assert OPENED_SENTENCE in text and OPENED_SECOND in text
     assert CHANGED_SENTENCE not in text and CHANGED_SECOND not in text
+
+
+def test_undo_all_puts_the_whole_edit_back_without_unticking(page: Page, server: ProseviewServer) -> None:
+    scene = server.root / "manuscript" / "ch01" / "01-opening.md"
+    open_scene(page, server)
+    card = _review_card(page)
+    assert "Already saved" in card.locator(".discuss-review-hint").inner_text()
+
+    card.get_by_role("button", name="Undo all").click()
+
+    page.wait_for_function("() => !document.querySelector('.discuss-review')")
+    text = scene.read_text(encoding="utf-8")
+    assert OPENED_SENTENCE in text and CHANGED_SENTENCE not in text
 
 
 def test_an_unticked_change_stays_readable_and_is_marked_as_going_back(
@@ -6649,7 +6664,7 @@ def test_an_unticked_change_stays_readable_and_is_marked_as_going_back(
     block = card.locator(".discuss-review-block").nth(1)
     card.locator(".discuss-review-choice input").nth(1).uncheck()
     assert "discuss-review-block-off" in (block.get_attribute("class") or "")
-    assert block.locator(".discuss-review-state").inner_text() == "Putting back"
+    assert block.locator(".discuss-review-state").inner_text() == "Will be undone"
     assert CHANGED_SECOND in block.inner_text()
 
 
@@ -6689,9 +6704,9 @@ def test_a_choice_survives_the_log_redrawing_underneath_it(page: Page, server: P
     assert boxes.nth(0).is_checked() is True
     assert boxes.nth(1).is_checked() is False, "the redraw re-ticked an edit that was turned down"
 
-    page.get_by_role("button", name="Keep 1").click()
+    page.get_by_role("button", name="Undo 1 change").click()
     page.wait_for_function(
-        "() => document.querySelector('#discussAnnouncement').innerText.includes('Kept 1 of 2')"
+        "() => document.querySelector('#discussAnnouncement').innerText.includes('Undid 1 of 2')"
     )
     text = scene.read_text(encoding="utf-8")
     assert CHANGED_SENTENCE in text and CHANGED_SECOND not in text
@@ -6705,7 +6720,7 @@ def test_a_file_that_moved_while_you_looked_is_refused(page: Page, server: Prose
 
     scene.write_text(scene.read_text(encoding="utf-8") + "\nA line typed while reading.\n", encoding="utf-8")
     card.locator(".discuss-review-choice input").nth(1).uncheck()
-    card.get_by_role("button", name="Keep 1").click()
+    card.get_by_role("button", name="Undo 1 change").click()
 
     page.wait_for_selector(".discuss-local-error")
     assert "changed since you looked" in page.locator(".discuss-local-error").inner_text()
@@ -6746,7 +6761,7 @@ def test_the_expanded_view_offers_the_same_ticks_as_the_card(
 
     # What was turned down in the expanded view is what the card applies.
     assert card.locator(".discuss-review-choice input").nth(1).is_checked() is False
-    assert "Keeping 1 of 2" in card.locator(".discuss-review-count").inner_text()
+    assert "Undoing 1 of 2" in card.locator(".discuss-review-count").inner_text()
 
 
 def test_unticking_on_the_card_shows_through_in_the_expanded_view(

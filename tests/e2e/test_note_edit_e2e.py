@@ -334,3 +334,27 @@ def test_frontmatter_folds_away_quietly_and_stays_coloured_while_editing(page: P
     under = page.locator("#sceneFrontmatter .fm-under")
     expect(under.locator(".fm-key")).to_have_text(["title", "status"])
     expect(under.locator(".fm-comment")).to_have_text("  # after the read-through")
+
+
+_TEXT_METRICS = """(host) => {
+    const props = ['font-family', 'font-size', 'line-height', 'letter-spacing', 'padding-top',
+        'padding-left', 'border-top-width', 'border-left-width', 'white-space', 'tab-size'];
+    const a = getComputedStyle(document.querySelector(host + ' .fm-under'));
+    const b = getComputedStyle(document.querySelector(host + ' .fm-editor'));
+    return props.filter(k => a.getPropertyValue(k) !== b.getPropertyValue(k));
+}"""
+
+
+def test_the_frontmatter_box_lines_up_with_its_colours(page: Page, notes_server: ProseviewServer):
+    """The caret sat off its letters: the page's own pre styles gave the
+    coloured copy a different font size and padding from the box over it."""
+    page.goto(notes_server.url("/#/scene/ch01%2F01-down-the-rabbit-hole.md"))
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+    assert page.evaluate(_TEXT_METRICS, "#sceneFrontmatter") == []
+    page.evaluate("cancelSceneEdit()")
+
+    page.goto(notes_server.url("/#/file/story-bible%2Fcharacters%2Falice.md"))
+    page.get_by_role("button", name="Edit", exact=True).click()
+    expect(page.locator("#fileFrontmatter .fm-editor")).to_be_visible()
+    assert page.evaluate(_TEXT_METRICS, "#fileFrontmatter") == []

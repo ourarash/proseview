@@ -390,6 +390,7 @@ def build_scene_data(
     meta = {
         clean_path(scene.path): {
             "title": scene.title,
+            "chapter": scene.chapter,
             "repeats": scene.repetition_examples,
             "avg_sent": scene.avg_sentence_words,
             "sent_stdev": scene.sent_len_stdev,

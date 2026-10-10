@@ -7026,3 +7026,34 @@ def test_a_demo_of_a_book_that_cannot_be_exported_says_why(page: Page, demo_site
     page.wait_for_selector("#exportTree .export-error")
     assert "This demo has no books to download" in page.locator("#exportTree").inner_text()
     assert "image that can't be found" in page.locator("#exportTree").inner_text()
+
+
+def _revealed(page: Page) -> dict:
+    return page.evaluate("""() => {
+        const active = document.querySelector('#sidebarTree .file-link.active');
+        if (!active) return {path: null, open: []};
+        const open = [];
+        for (let li = active.closest('li').parentElement.closest('li'); li; li = li.parentElement.closest('li')) {
+            open.push(li.classList.contains('expanded'));
+        }
+        const box = active.getBoundingClientRect();
+        return {path: active.dataset.path, open, visible: box.top >= 0 && box.bottom <= innerHeight};
+    }""")
+
+
+def test_the_file_browser_reveals_the_scene_being_read(page: Page, server: ProseviewServer):
+    """Like an editor's explorer: the open file's folders expand and it is
+    selected, whether it was opened from its address or by Next/Previous."""
+    page.goto(f"{server.base_url}#/scene/ch02%2F01-argument.md", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.wait_for_function("() => !!document.querySelector('#sidebarTree .file-link.active')")
+    revealed = _revealed(page)
+    assert revealed["path"] == "manuscript/ch02/01-argument.md"
+    assert all(revealed["open"]) and revealed["visible"]
+
+    # Back into the previous chapter, whose folder was closed.
+    page.evaluate("navigateScene(-1)")
+    page.wait_for_function("() => location.hash.includes('ch01')")
+    revealed = _revealed(page)
+    assert revealed["path"].startswith("manuscript/ch01/")
+    assert all(revealed["open"]) and revealed["visible"]

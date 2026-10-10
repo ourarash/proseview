@@ -243,7 +243,11 @@
         // Kept outside the DOM so a tree that has not been rendered yet (the
         // sidebar renders lazily on first open) still reveals the right file
         // once it is built.
-        var _sidebarRevealTarget = null;
+        // Declared without a value: the route is applied while the page's
+        // script is still running, before this line, and an initializer here
+        // would wipe the target it set -- a scene opened from its address was
+        // never revealed.
+        var _sidebarRevealTarget;
 
         function revealSidebarItem(target) {
             _sidebarRevealTarget = target || null;

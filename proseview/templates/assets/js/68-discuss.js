@@ -3181,7 +3181,10 @@ function loadDiscussDiffMode(mode) {
             selection.replaceChildren();
             if (_discussSelection) {
                 var words = _discussSelection.trim().split(/\s+/).filter(Boolean).length;
-                selection.appendChild(document.createTextNode('Selection · ' + words + ' words · “' + _discussSelection.slice(0, 72) + (_discussSelection.length > 72 ? '…' : '') + '”'));
+                var selectionText = elementWith('discuss-selection-chip-text',
+                    'Selection · ' + words + ' words · “' + _discussSelection.slice(0, 72) + (_discussSelection.length > 72 ? '…' : '') + '”');
+                selectionText.title = _discussSelection.slice(0, 600);
+                selection.appendChild(selectionText);
                 var removeSelection = document.createElement('button');
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');

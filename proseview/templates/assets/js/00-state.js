@@ -283,6 +283,17 @@ let currentTab = 'overview';
         // Until when a scroll of the reading column is Proseview keeping the
         // page still, not the writer: the toolbar does not hide or show for it.
         var _sceneScrollIsOursUntil = 0;
+        // Set when a frontmatter save changed story fields the dashboard shows
+        // (status, chapter, timeline); going back to the dashboard reloads it.
+        var _dashboardStale = false;
+
+        // Reload into the dashboard when its data is out of date; true if so.
+        function reloadIfDashboardStale() {
+            if (!_dashboardStale) return false;
+            _dashboardStale = false;
+            location.reload();
+            return true;
+        }
         // Counts SSE reload events we expect to be triggered by our own
         // /save-scene calls. Decremented (with a tail timeout) when the
         // event arrives, so reloadOrDefer can skip the page reload our

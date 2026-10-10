@@ -777,6 +777,7 @@
             if (p) {
                 routeToHash('/scene/' + encodeURIComponent(p), true);
                 restoreActiveScrollPosition();
+                if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
                 if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             }
             return true;

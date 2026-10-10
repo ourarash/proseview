@@ -390,3 +390,17 @@ def test_font_and_theme_show_while_hovered_and_go_back_if_not_chosen(page: Page,
     assert _reading_style(page, body)[1] == "light"
     page.keyboard.press("Escape")
     assert _reading_style(page, body)[1] == "graphite-dark"
+
+
+def test_a_frontmatter_change_shows_on_the_dashboard_on_the_way_back(page: Page, notes_server: ProseviewServer):
+    page.goto(notes_server.url("/#/scene/ch01%2F01-down-the-rabbit-hole.md"))
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+    box = page.get_by_label("Frontmatter (YAML)")
+    box.fill(box.input_value().replace("status: drafted", "status: revision"))
+    page.keyboard.press("ControlOrMeta+s")
+    page.wait_for_function("window._pmEditMode === false")
+    page.evaluate("closeSceneModal()")
+    page.wait_for_load_state("load")
+    row = page.locator("#sceneTable tr", has_text="01-down-the-rabbit-hole.md").first
+    expect(row).to_contain_text("revision")

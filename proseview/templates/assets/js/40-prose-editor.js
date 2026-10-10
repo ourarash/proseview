@@ -403,6 +403,7 @@
                 if (frontmatter !== null && meta[p]) {
                     meta[p].frontmatter_text = frontmatter.replace(/^\n+|\n+$/g, '') || null;
                     _pmFrontmatterDraft = null;
+                    _dashboardStale = true;
                 }
                 if (data.mtime) _pmOpenMtime = data.mtime;
                 // meta is the baseline every later write reads: the next edit

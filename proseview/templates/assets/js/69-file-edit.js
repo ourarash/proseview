@@ -396,6 +396,7 @@
                 }
                 var header = fileEdit.frontmatter;
                 if (frontmatter !== null) {
+                    _dashboardStale = true;
                     var inner = frontmatter.replace(/^\n+|\n+$/g, '');
                     header = inner ? '---\n' + inner + '\n---\n' : '';
                 }

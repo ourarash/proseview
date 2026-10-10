@@ -490,6 +490,10 @@
         function showTab(name) {
             saveActiveScrollPosition();
             name = VALID_TABS.includes(name) ? name : 'overview';
+            if (_dashboardStale) {
+                history.replaceState(history.state, '', '#/tab/' + name);
+                if (reloadIfDashboardStale()) return;
+            }
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab-nav button').forEach(function(b) {
                 b.classList.remove('active');

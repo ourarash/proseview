@@ -802,6 +802,7 @@
             exitFocusMode();
             delete document.documentElement.dataset.view;
             if (options.route !== false) routeToHash('/tab/' + currentTab, true);
+            if (reloadIfDashboardStale()) return true;
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             restoreActiveScrollPosition();
             return true;

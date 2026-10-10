@@ -71,6 +71,8 @@
                 button.setAttribute('aria-expanded', 'true');
                 var selected = items().filter(function(item) { return item.dataset.value === committed; })[0] || items()[0];
                 if (selected) selected.focus({preventScroll: true});
+                // In a menu the list opens in place; keep all of it in view.
+                if (wrap.closest('.scene-toolbar-popover')) list.scrollIntoView({block: 'nearest'});
                 onDocument = function(event) { if (!wrap.contains(event.target)) close(false); };
                 document.addEventListener('mousedown', onDocument, true);
             };

@@ -2676,6 +2676,22 @@
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
         }
 
+        /* Inside a scrolling menu a floating list is cut off at the menu's
+           edge, so there it opens in place and pushes the next row down. */
+        .scene-toolbar-popover .appearance-picker-list {
+            position: static;
+            margin-top: 4px;
+            box-shadow: none;
+        }
+
+        .scene-toolbar-field:has(.appearance-picker-list:not([hidden])) {
+            align-items: start;
+        }
+
+        .scene-toolbar-field:has(.appearance-picker-list:not([hidden])) > span {
+            padding-top: 5px;
+        }
+
         .appearance-picker-list [role="option"] {
             padding: 5px 10px;
             border-radius: 5px;

@@ -210,7 +210,12 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
         elif activity["kind"] == "webSearch":
             activity["query"] = _bounded(params.get("query"), 4000)
         else:
-            activity.update(tool=_bounded(tool, 1000), server=_bounded(params.get("server"), 1000))
+            activity.update(
+                tool=_bounded(tool, 1000),
+                server=_bounded(params.get("server"), 1000),
+                path=_bounded(params.get("path"), 2000),
+                pattern=_bounded(params.get("pattern"), 1000),
+            )
         return [{"type": "activity.updated", **common, "activity": activity}]
     if method == "warning":
         return [{"type": "warning", **common, "message": _bounded(params.get("message"))}]
@@ -877,7 +882,12 @@ class ClaudeAgentClient:
                             "tool": tool,
                             "command": tool_input.get("command"),
                             "cwd": tool_input.get("cwd") or self.cwd,
-                            "query": tool_input.get("query"),
+                            "query": tool_input.get("query") or tool_input.get("url"),
+                            # What a Read, Grep or Glob looked at, so the step
+                            # can name it as Codex's do.
+                            "path": tool_input.get("file_path") or tool_input.get("notebook_path")
+                            or tool_input.get("path"),
+                            "pattern": tool_input.get("pattern"),
                             "changes": [{"path": tool_input.get("file_path"), "kind": "modify"}]
                             if tool_input.get("file_path")
                             else [],

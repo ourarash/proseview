@@ -1762,9 +1762,16 @@
                 return activity.path ? 'Reading ' + discussShortPath(activity.path) : 'Reading a file';
             }
             if (tool === 'Grep') {
-                return activity.query ? 'Searching for “' + activity.query + '”' : 'Searching the manuscript';
+                var term = activity.pattern || activity.query;
+                if (!term) return 'Searching the project';
+                return 'Searching for “' + term + '”' + (activity.path ? ' in ' + discussShortPath(activity.path) : '');
             }
-            if (tool === 'Glob') return 'Looking through files';
+            if (tool === 'Glob') {
+                return activity.pattern ? 'Looking for ' + activity.pattern : 'Looking through files';
+            }
+            if (tool === 'LS') return activity.path ? 'Listing ' + discussShortPath(activity.path) : 'Looking through files';
+            if (tool === 'TodoWrite') return 'Updating its plan';
+            if (tool === 'Task' || tool === 'Agent') return 'Handing part of the work to a helper';
             if (tool) return 'Using ' + tool;
             if (kind === 'mcpToolCall') return 'Using a connected tool';
             return 'Working';

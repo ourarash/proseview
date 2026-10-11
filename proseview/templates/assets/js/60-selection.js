@@ -1016,8 +1016,7 @@
             // a full reload jolts the viewport (jump to top, then
             // scroll-restore back) and tears down the live editor. This
             // covers both self-saves and external file edits.
-            // refreshContent() is a no-op for the open modal while
-            // _pmEditMode is true so the editor stays mounted.
+            // refreshContent() leaves an editor with unsaved work alone.
             if (_pendingSelfReloads > 0) _pendingSelfReloads--;
             refreshContent(changedPaths || null);
         }
@@ -1044,7 +1043,10 @@
                 }
                 return;
             }
-            if (view !== 'scene' || curIdx < 0 || _pmEditMode) return;
+            // An open editor with nothing unsaved takes the change too (an
+            // agent's edit, say); one with unsaved work keeps it, and its
+            // save's conflict check covers the change on disk.
+            if (view !== 'scene' || curIdx < 0 || (_pmEditMode && _pmDirty)) return;
             var scenePath = paths[curIdx];
             if (!pathListContains(changedPaths, scenePath)) return;
             if (_refreshInFlight) {
@@ -1065,7 +1067,7 @@
                 // flight; re-rendering now would replace the editor under
                 // them and drop what they typed. Their save's conflict check
                 // covers a real change on disk.
-                if (_pmEditMode || paths[curIdx] !== scenePath) {
+                if ((_pmEditMode && _pmDirty) || paths[curIdx] !== scenePath) {
                     if (data.meta && data.meta[scenePath] && !_pmEditMode) meta[scenePath] = data.meta[scenePath];
                     return;
                 }
@@ -1089,6 +1091,12 @@
                 if (data.highlightsByPath && data.highlightsByPath[scenePath]) highlightsByPath[scenePath] = data.highlightsByPath[scenePath];
                 refreshSucceeded = true;
                 updateModal(true);
+                if (_pmEditMode) {
+                    // Still editing, now against the file as it stands.
+                    _pmOpenMtime = meta[scenePath] && meta[scenePath].mtime;
+                    setPmDirty(false);
+                    if (typeof _applyEditingProseClass === 'function') _applyEditingProseClass();
+                }
             }).catch(function() {}).finally(function() {
                 _refreshInFlight = false;
                 if (!refreshSucceeded) return;

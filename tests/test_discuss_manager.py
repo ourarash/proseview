@@ -1205,7 +1205,7 @@ def test_missing_thread_retries_the_same_question_once_on_a_new_thread(tmp_path:
     assert sum("Can we continue?" in prompt for prompt in clients[0].prompts) == 1
     notice = next(
         notice for notice in snapshot["notices"]
-        if "new conversation" in notice["message"].lower()
+        if "could not reopen this conversation" in notice["message"]
     )
     assert notice["id"].startswith("notice-")
     assert notice["client_request_id"] == "recover"
@@ -1788,6 +1788,35 @@ def test_dequeued_question_blocks_reset_and_history_switch_until_it_finishes(tmp
     manager.close()
 
 
+def test_a_lost_thread_hands_the_new_one_what_the_writer_can_see(tmp_path: Path, monkeypatch):
+    """The messages stay on screen, so the new thread is given them too."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    document = {"kind": "scene", "path": "one.md"}
+    conversation_id = manager.open(document)["conversation_id"]
+    conversation = manager._conversations[conversation_id]
+    manager.submit(conversation_id, client_request_id="first", question="Who is Rena?")
+    _wait_for(lambda: sum(m["role"] == "assistant" for m in manager.get_snapshot(conversation_id)["messages"]) == 1)
+    old_thread = conversation.thread_id
+    clients[0].threads.pop(old_thread)
+
+    manager.submit(conversation_id, client_request_id="second", question="And her sister?")
+    _wait_for(lambda: sum(m["role"] == "assistant" for m in manager.get_snapshot(conversation_id)["messages"]) == 2)
+
+    retried = clients[0].prompts[-1]
+    assert retried.startswith("EARLIER IN THIS CONVERSATION")
+    assert "Writer: Who is Rena?" in retried and "You: " in retried
+    assert retried.endswith("USER QUESTION\nAnd her sister?")
+    assert "And her sister?" not in retried.split("USER QUESTION")[0]
+    # The old conversation is still in History.
+    assert any(row["thread_id"] == old_thread for row in manager.list_conversations(conversation_id)["conversations"])
+    manager.close()
+
+
 def test_missing_thread_recovery_is_bounded_to_one_retry(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []
@@ -1803,7 +1832,8 @@ def test_missing_thread_recovery_is_bounded_to_one_retry(tmp_path: Path, monkeyp
     manager.submit(conversation_id, client_request_id="bounded", question="Do not loop")
     _wait_for(lambda: manager.get_snapshot(conversation_id)["connection"] == "Unavailable")
 
-    assert clients[0].turn_start_attempts == 2
+    # The thread, once more after resuming it, once on a new one: then it stops.
+    assert clients[0].turn_start_attempts == 3
     assert "thread not found" in manager.get_snapshot(conversation_id)["unavailable_reason"]
     manager.close()
 

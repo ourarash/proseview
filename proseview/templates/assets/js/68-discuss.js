@@ -556,6 +556,7 @@
                 var button = document.getElementById('discussSend');
                 button.textContent = 'Try again';
                 button.disabled = false;
+                syncDiscussSendEmpty();
                 document.getElementById('discussAnnouncement').textContent = 'Discuss could not open. ' + error.message;
             });
         }
@@ -3594,7 +3595,19 @@ function loadDiscussDiffMode(mode) {
         // The strip is rebuilt whenever the dock learns something, and a
         // rebuild recreates the presets menu closed. A menu the writer opened
         // stays open, with focus on the control they were on.
+        // Nothing to send, nothing to press: Send waits for text, unless what
+        // it would send is an action that needs none (or it is "Try again").
+        function syncDiscussSendEmpty() {
+            var button = document.getElementById('discussSend');
+            var input = document.getElementById('discussInput');
+            if (!button || !input) return;
+            var empty = !input.value.trim() && !_discussPendingAction && !_discussRepositoryAction && !_discussOpenFailed;
+            button.dataset.empty = empty ? 'true' : 'false';
+            button.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
+        }
+
         function renderDiscussTaskMode() {
+            syncDiscussSendEmpty();
             var node = document.getElementById('discussTaskMode');
             if (!node) return;
             var menu = node.querySelector('.discuss-presets-more');
@@ -4223,9 +4236,11 @@ function loadDiscussDiffMode(mode) {
             Object.defineProperty(input, 'value', {
                 configurable: true,
                 get: function() { return native.get.call(this); },
-                set: function(next) { native.set.call(this, next); paintDiscussMentions(); }
+                set: function(next) { native.set.call(this, next); paintDiscussMentions(); syncDiscussSendEmpty(); }
             });
             input.addEventListener('input', paintDiscussMentions);
+            input.addEventListener('input', syncDiscussSendEmpty);
+            syncDiscussSendEmpty();
             input.addEventListener('scroll', function() {
                 var mirror = document.getElementById('discussInputMirror');
                 if (mirror) mirror.scrollTop = input.scrollTop;

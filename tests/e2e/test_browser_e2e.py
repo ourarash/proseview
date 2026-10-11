@@ -904,6 +904,9 @@ def test_discuss_open_times_out_with_an_operable_retry(
     page.locator("#discussSend").click()
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussSend").inner_text() == "Send"
+    # Working again, and waiting only for something to send.
+    assert not page.evaluate("document.getElementById('discussSend').disabled")
+    page.fill("#discussInput", "Back again?")
     assert not page.locator("#discussSend").is_disabled()
 
 
@@ -7259,3 +7262,18 @@ def test_a_streaming_answer_is_formatted_as_it_arrives(page: Page, server: Prose
     assert shown["strong"] == "Pacing"
     assert shown["code"] == "ch02"
     assert "**" not in shown["text"]
+
+
+def test_send_waits_for_something_to_send(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    send = page.locator("#discussSend")
+    assert send.get_attribute("data-empty") == "true"
+    assert send.get_attribute("aria-disabled") == "true"
+    page.fill("#discussInput", "   ")
+    assert send.get_attribute("data-empty") == "true"
+    page.fill("#discussInput", "Who is Rena?")
+    assert send.get_attribute("data-empty") == "false"
+    page.fill("#discussInput", "")
+    assert send.get_attribute("data-empty") == "true"

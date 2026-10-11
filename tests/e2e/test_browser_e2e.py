@@ -7122,6 +7122,7 @@ def test_turn_steps_read_the_command_inside_the_shell_and_keep_the_agents_notes(
         `bash -lc "cat a.md b.md c.md"`,
         `bash -lc "git log --oneline -5"`,
         `bash -lc "printf hello"`,
+        `git -C /repo log --follow --oneline -- manuscript/ch01/01.md`,
     ].map(command => discussCommandPhrase({command}))""")
     assert phrases == [
         "Reading ch03/07-day-94-silence.md",
@@ -7130,6 +7131,7 @@ def test_turn_steps_read_the_command_inside_the_shell_and_keep_the_agents_notes(
         "Reading a.md, b.md and 1 more",
         "Checking the history",
         "Running printf",
+        "Checking the history",
     ]
 
     snapshot = {

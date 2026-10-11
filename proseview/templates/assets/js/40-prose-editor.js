@@ -1,5 +1,14 @@
+        // Keep the scene's editor state, history included, for its next mount.
+        function stashSceneEditorState() {
+            if (!_pmView || !_pmViewPath) return;
+            delete _pmUndoStates[_pmViewPath];
+            _pmUndoStates[_pmViewPath] = _pmView.state;
+            var keys = Object.keys(_pmUndoStates);
+            if (keys.length > 20) delete _pmUndoStates[keys[0]];
+        }
+
         function mountProseView(p) {
-            if (_pmView) { _pmView.destroy(); _pmView = null; }
+            if (_pmView) { stashSceneEditorState(); _pmView.destroy(); _pmView = null; }
             var PM = window._PM;
             if (!PM) return;
             var host = document.getElementById('sceneProseHost');
@@ -71,7 +80,24 @@
                 }))
             ].filter(Boolean);
 
-            var state = PM.EditorState.create({ doc: doc, plugins: plugins });
+            var state = null;
+            var kept = _pmUndoStates[p];
+            if (kept && kept.schema === PM.mySchema) {
+                try {
+                    // Same history, fresh plugins: undo reaches back past
+                    // saves and past leaving edit mode.
+                    state = kept.reconfigure({ plugins: plugins });
+                    if (!state.doc.eq(doc)) {
+                        // The file changed since -- Codex edited it, or edits
+                        // were thrown away. The change is one more step, so
+                        // undo can take it back too.
+                        state = state.apply(state.tr.replaceWith(0, state.doc.content.size, doc.content));
+                    }
+                } catch (e) {
+                    state = null;
+                }
+            }
+            if (!state || !state.doc.eq(doc)) state = PM.EditorState.create({ doc: doc, plugins: plugins });
             _pmView = new PM.EditorView(host, {
                 state: state,
                 editable: function() { return _pmEditMode; },
@@ -96,6 +122,7 @@
                 }
             });
 
+            _pmViewPath = p;
             initAffordance(_pmView);
             updatePMHighlightDecorations();
 

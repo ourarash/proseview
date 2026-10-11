@@ -7238,3 +7238,24 @@ def test_an_open_editor_with_unsaved_work_is_left_alone(page: Page, server: Pros
     page.wait_for_timeout(4000)
     text = page.locator("#sceneProseHost .ProseMirror").inner_text()
     assert "Mine." in text and "burnt toast" not in text
+
+
+def test_a_streaming_answer_is_formatted_as_it_arrives(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    shown = page.evaluate("""() => {
+        _discussStreamText = '## Notes\\n\\n- **Pacing** is tight\\n- `ch02` drifts';
+        const draft = discussStreamDraft();
+        _discussStreamText = '';
+        return {
+            h2: draft.querySelector('h2') && draft.querySelector('h2').textContent,
+            strong: draft.querySelector('li strong') && draft.querySelector('li strong').textContent,
+            code: draft.querySelector('li code') && draft.querySelector('li code').textContent,
+            text: draft.textContent,
+        };
+    }""")
+    assert shown["h2"] == "Notes"
+    assert shown["strong"] == "Pacing"
+    assert shown["code"] == "ch02"
+    assert "**" not in shown["text"]

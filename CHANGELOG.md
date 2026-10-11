@@ -20,6 +20,9 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **An answer is formatted while it streams.** Headings, lists, bold and
+  code show as they arrive, instead of raw Markdown until the answer ends.
+
 - **Claude can edit after a reading pass.** A Claude conversation whose first
   turn was a critique or another reading pass kept that pass's read-only
   tools, so later requests to change a file came back "no file-editing

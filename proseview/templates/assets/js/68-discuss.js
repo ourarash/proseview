@@ -1096,13 +1096,37 @@
             _discussStreamText += text;
             var draft = log.querySelector('.discuss-stream-draft');
             if (!draft) {
-                draft = elementWith('discuss-message assistant discuss-stream-draft');
-                draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
-                draft.appendChild(document.createTextNode(''));
+                draft = discussStreamDraft();
                 log.appendChild(draft);
             }
-            draft.lastChild.textContent = _discussStreamText;
-            discussAfterActivity(atBottom);
+            // Formatted as it arrives, as the finished answer will be. Redrawn
+            // at most once a frame: deltas come far faster than that.
+            if (!_discussStreamPaintQueued) {
+                _discussStreamPaintQueued = true;
+                requestAnimationFrame(function() {
+                    _discussStreamPaintQueued = false;
+                    var current = document.querySelector('#discussLog .discuss-stream-draft');
+                    if (current) paintDiscussStreamDraft(current);
+                    discussAfterActivity(atBottom);
+                });
+            }
+        }
+
+        var _discussStreamPaintQueued = false;
+
+        function discussStreamDraft() {
+            var draft = elementWith('discuss-message assistant discuss-stream-draft');
+            draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
+            draft.appendChild(elementWith('discuss-stream-body'));
+            paintDiscussStreamDraft(draft);
+            return draft;
+        }
+
+        function paintDiscussStreamDraft(draft) {
+            var body = draft.querySelector('.discuss-stream-body');
+            if (!body) return;
+            body.replaceChildren();
+            renderDiscussMarkdown(body, _discussStreamText);
         }
 
         function normalizeProsviewRepositoryPath(value) {
@@ -2250,10 +2274,7 @@
                 });
                 if (landed) _discussStreamText = '';
                 else {
-                    var draft = elementWith('discuss-message assistant discuss-stream-draft');
-                    draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
-                    draft.appendChild(document.createTextNode(_discussStreamText));
-                    log.appendChild(draft);
+                    log.appendChild(discussStreamDraft());
                 }
             }
             // Progress and activities now belong to the turn strip, in the

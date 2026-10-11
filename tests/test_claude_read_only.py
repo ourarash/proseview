@@ -94,6 +94,8 @@ def test_no_mutating_tool_runs_without_asking_the_writer(tool):
     client, seen = _client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
+        # On a turn that may write, an edit still stops at the writer.
+        client._sessions[thread_id].may_write = True
         pending = _gate(client, thread_id, tool)
         assert _wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen)), (
             f"{tool} ran without reaching the approval gate"
@@ -102,6 +104,19 @@ def test_no_mutating_tool_runs_without_asking_the_writer(tool):
         client.respond(request["id"], {"decision": "decline"})
         decision = pending.result(timeout=5)
         assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("tool", ["Write", "Edit", "NotebookEdit"])
+def test_a_reading_turn_refuses_every_editing_tool_outright(tool):
+    client, seen = _client()
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client._sessions[thread_id].may_write = False
+        decision = _gate(client, thread_id, tool).result(timeout=5)
+        assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert not [m for m in seen if "requestApproval" in m.get("method", "")]
     finally:
         client.close()
 
@@ -148,7 +163,9 @@ def test_session_options_cannot_inherit_ambient_permission_rules():
         assert options["mcp_servers"] == {}
         # These modes bypass permission checks entirely.
         assert options["permission_mode"] not in {"bypassPermissions", "acceptEdits", "dontAsk"}
-        assert set(options["tools"]) == set(READ_ONLY_TOOLS)
+        # Reading tools, plus the editing ones every turn gates for itself.
+        # Nothing else: no shell, no web, no subagents.
+        assert set(options["tools"]) == set(READ_ONLY_TOOLS) | {"Write", "Edit", "NotebookEdit"}
     finally:
         client.close()
 

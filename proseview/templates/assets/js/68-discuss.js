@@ -3418,13 +3418,8 @@ function loadDiscussDiffMode(mode) {
             if (!range) return;
             var highlight = new Highlight(range);
             highlight.priority = 1;  // over the quieter pinned selection
+            // Only lit, never scrolled to: a hover must not move the page.
             CSS.highlights.set(DISCUSS_SELECTION_HOVER_HL, highlight);
-            // Brought into view only when it is out of it.
-            var rect = range.getBoundingClientRect();
-            if (rect.bottom < 0 || rect.top > window.innerHeight) {
-                var el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
-                if (el) el.scrollIntoView({block: 'center', behavior: 'smooth'});
-            }
         }
 
         function selectionActionLabel(actionId) {

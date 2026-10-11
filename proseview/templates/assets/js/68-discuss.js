@@ -3343,6 +3343,9 @@ function loadDiscussDiffMode(mode) {
                     'Selection · ' + words + ' words · “' + _discussSelection.slice(0, 72) + (_discussSelection.length > 72 ? '…' : '') + '”');
                 selectionText.title = _discussSelection.slice(0, 600);
                 selection.appendChild(selectionText);
+                // Pointing at the chip lights up the passage it stands for.
+                selection.onmouseenter = function() { showDiscussSelectionInText(true); };
+                selection.onmouseleave = function() { showDiscussSelectionInText(false); };
                 var removeSelection = document.createElement('button');
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
@@ -3355,6 +3358,72 @@ function loadDiscussDiffMode(mode) {
                     document.getElementById('discussAnnouncement').textContent = 'Selection removed from context';
                 };
                 selection.appendChild(removeSelection);
+            }
+        }
+
+        var DISCUSS_SELECTION_HOVER_HL = 'proseview-selection-hover';
+
+        // The DOM range of the attached selection in the scene or file on
+        // screen: by its recorded offsets in a scene, else by its text.
+        function discussSelectionDomRange() {
+            if (!_discussSelection) return null;
+            var view = document.documentElement.dataset.view;
+            var doc = discussTurnDocument();
+            var onScreen = discussDocument();
+            if (!doc || !onScreen || doc.kind !== onScreen.kind || doc.path !== onScreen.path) return null;
+            if (view === 'scene' && typeof _pmView !== 'undefined' && _pmView && _discussSelectionRange
+                && typeof aiDocTextMap === 'function') {
+                try {
+                    var map = aiDocTextMap(_pmView.state.doc).posMap;
+                    var from = null, to = null;
+                    for (var i = _discussSelectionRange.start; i < _discussSelectionRange.end && from === null; i++) from = map[i];
+                    for (var j = _discussSelectionRange.end - 1; j >= _discussSelectionRange.start && to === null; j--) to = map[j];
+                    if (from !== null && to !== null) {
+                        var start = _pmView.domAtPos(from), end = _pmView.domAtPos(to + 1);
+                        var range = document.createRange();
+                        range.setStart(start.node, start.offset);
+                        range.setEnd(end.node, end.offset);
+                        return range;
+                    }
+                } catch (e) { /* fall through to the text */ }
+            }
+            var root = view === 'scene' ? document.getElementById('sceneProseHost')
+                : view === 'file' ? document.getElementById('filePreviewBody') : null;
+            if (!root) return null;
+            var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            var nodes = [], text = '', node;
+            while ((node = walker.nextNode())) { nodes.push({node: node, at: text.length}); text += node.nodeValue; }
+            var needle = _discussSelection.trim();
+            var found = text.indexOf(needle);
+            if (found < 0) return null;
+            var locate = function(offset) {
+                for (var k = nodes.length - 1; k >= 0; k--) {
+                    if (nodes[k].at <= offset) return {node: nodes[k].node, offset: offset - nodes[k].at};
+                }
+                return null;
+            };
+            var a = locate(found), b = locate(found + needle.length);
+            if (!a || !b) return null;
+            var fallback = document.createRange();
+            fallback.setStart(a.node, a.offset);
+            fallback.setEnd(b.node, b.offset);
+            return fallback;
+        }
+
+        function showDiscussSelectionInText(on) {
+            if (typeof CSS === 'undefined' || !CSS.highlights || typeof Highlight === 'undefined') return;
+            CSS.highlights.delete(DISCUSS_SELECTION_HOVER_HL);
+            if (!on) return;
+            var range = discussSelectionDomRange();
+            if (!range) return;
+            var highlight = new Highlight(range);
+            highlight.priority = 1;  // over the quieter pinned selection
+            CSS.highlights.set(DISCUSS_SELECTION_HOVER_HL, highlight);
+            // Brought into view only when it is out of it.
+            var rect = range.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+                var el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+                if (el) el.scrollIntoView({block: 'center', behavior: 'smooth'});
             }
         }
 

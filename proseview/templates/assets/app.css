@@ -3644,6 +3644,11 @@
         /* Pinned scene-selection highlight (CSS Custom Highlight API).
            Painted by app.js when focus leaves the prose so the selection
            stays visible while the writer works in the dock. */
+        ::highlight(proseview-selection-hover) {
+            background-color: rgba(255, 196, 0, 0.45);
+            color: inherit;
+        }
+
         ::highlight(proseview-pinned-selection) {
             background-color: rgba(88, 166, 255, 0.32);
             color: inherit;

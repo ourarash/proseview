@@ -119,6 +119,9 @@ def is_read_only_command(command: Any, root: str | None = None) -> bool:
     return True
 
 
+#: Offered, but each use asks the writer first.
+ASKING_TOOLS = ["WebSearch", "WebFetch", "Task"]
+
 #: SDK-internal plumbing, not writer-facing actions. ``StructuredOutput`` is how
 #: the CLI delivers a JSON result when an output schema is set, so gating it
 #: would stall every selection action behind an approval nobody can explain.
@@ -736,8 +739,9 @@ class ClaudeAgentClient:
             "permission_mode": "default",
             # Always offered; whether a turn may use them is decided per
             # turn at the gate below. Bash runs a reading command unasked,
-            # anything else only with the writer's say.
-            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS) + ["Bash"],
+            # anything else only with the writer's say; the web and helper
+            # agents always ask, as in the Claude Code extension.
+            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS) + ["Bash"] + list(ASKING_TOOLS),
             "include_partial_messages": True,
         }
         selection = self.turn_model(params)
@@ -1085,11 +1089,20 @@ class ClaudeAgentClient:
             "turnId": session.turn_id,
             "itemId": input_data.get("tool_use_id"),
             "reason": f"Claude wants to use {tool}, which is outside Prosview's read-only scope.",
+            "tool": tool,
             "cwd": str(input_data.get("cwd") or self.cwd),
             "availableDecisions": list(APPROVAL_DECISIONS),
         }
         if kind == "command":
-            params["command"] = _bounded(tool_input.get("command") or tool, 4000)
+            # Say what the tool would do, not just its name.
+            detail = (
+                tool_input.get("command")
+                or (f"Search the web for “{tool_input.get('query')}”" if tool == "WebSearch" and tool_input.get("query") else "")
+                or (f"Open {tool_input.get('url')}" if tool == "WebFetch" and tool_input.get("url") else "")
+                or (f"Start a helper agent: {tool_input.get('description')}" if tool == "Task" and tool_input.get("description") else "")
+                or tool
+            )
+            params["command"] = _bounded(detail, 4000)
         else:
             params["changes"] = [{"path": tool_input.get("file_path"), "kind": "modify"}]
             params["command"] = _bounded(f"{tool} {tool_input.get('file_path') or ''}".strip(), 4000)

@@ -1810,6 +1810,9 @@
         }
 
         function discussApprovalPhrase(approval) {
+            if (approval.tool === 'WebSearch') return 'Wants to search the web';
+            if (approval.tool === 'WebFetch') return 'Wants to open a web page';
+            if (approval.tool === 'Task' || approval.tool === 'Agent') return 'Wants to start a helper agent';
             if (approval.kind === 'command' || approval.kind === 'network') return 'Wants to run a shell command';
             if (approval.kind === 'stdin') return 'Wants to type into a running command';
             if (approval.kind === 'fileChange') return 'Wants to edit a file';
@@ -2860,7 +2863,13 @@
                 }
             } else {
                 card.appendChild(document.createTextNode(approval.reason || approval.kind || 'Codex requested an action.'));
-                if (approval.command) { var code = document.createElement('code'); fillShellHighlight(code, discussInnerCommand(approval.command)); card.appendChild(code); }
+                if (approval.command) {
+                    var code = document.createElement('code');
+                    // Only a shell line is coloured as one.
+                    if (!approval.tool || approval.tool === 'Bash') fillShellHighlight(code, discussInnerCommand(approval.command));
+                    else code.textContent = approval.command;
+                    card.appendChild(code);
+                }
             }
             if (approval.grant_root) { var root = document.createElement('code'); root.textContent = 'Write access: ' + approval.grant_root; card.appendChild(root); }
             if (approval.network) { var network = document.createElement('code'); network.textContent = 'Network: ' + JSON.stringify(approval.network); card.appendChild(network); }

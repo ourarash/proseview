@@ -609,7 +609,9 @@ def test_options_refuse_ambient_configuration():
         assert options["strict_mcp_config"] is True
         assert options["mcp_servers"] == {}
         # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash"]
+        assert options["tools"] == [
+            "Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash", "WebSearch", "WebFetch", "Task",
+        ]
     finally:
         client.close()
 
@@ -741,7 +743,9 @@ def test_the_writers_configured_model_is_read_without_loading_their_settings(tmp
         # The rest of that file never reaches the session.
         assert options["setting_sources"] is None
         # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash"]
+        assert options["tools"] == [
+            "Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash", "WebSearch", "WebFetch", "Task",
+        ]
         assert "hooks" in options and "permissions" not in options
     finally:
         client.close()
@@ -865,3 +869,16 @@ def test_a_missing_sdk_says_how_to_install_it(monkeypatch):
         client.inspect_capabilities()
     assert "pipx inject proseview claude-agent-sdk" in str(raised.value)
     assert 'pipx install "proseview[claude]"' in str(raised.value)
+
+
+def test_a_web_search_asks_and_says_what_it_would_search():
+    client, seen, _ = make_client()
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        _gate(client, thread_id, "WebSearch", {"query": "1990s Tehran taxi slang"})
+        assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
+        request = next(m for m in seen if "requestApproval" in m.get("method", ""))
+        assert request["params"]["tool"] == "WebSearch"
+        assert request["params"]["command"] == "Search the web for “1990s Tehran taxi slang”"
+    finally:
+        client.close()

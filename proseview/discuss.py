@@ -4317,6 +4317,7 @@ class DiscussManager:
             "item_id": params.get("itemId"),
             "reason": _bounded_text(params.get("reason"), 4000),
             "command": _bounded_text(command, 4000),
+            "tool": _bounded_text(params.get("tool"), 200),
             "input": _bounded_text(stdin_input, 4000),
             "cwd": _bounded_text(params.get("cwd"), 2000),
             "network": network,

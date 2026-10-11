@@ -7277,3 +7277,29 @@ def test_send_waits_for_something_to_send(page: Page, server: ProseviewServer):
     assert send.get_attribute("data-empty") == "false"
     page.fill("#discussInput", "")
     assert send.get_attribute("data-empty") == "true"
+
+
+def test_a_dollar_sign_picks_a_skill_that_stays_in_the_question(page: Page, server: ProseviewServer):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.locator("#discussInput").press_sequentially("$tight")
+    page.wait_for_selector("#discussContextPicker", state="visible")
+    assert "tighten-prose" in page.locator("#discussContextOptions").inner_text()
+    assert "Remove filler" in page.locator("#discussContextOptions").inner_text()
+    page.locator("#discussInput").press("Enter")
+    page.locator("#discussInput").press_sequentially("the opening")
+    assert page.input_value("#discussInput") == "$tighten-prose the opening"
+    assert page.locator("#discussInputMirror mark.discuss-mention").all_inner_texts() == ["$tighten-prose"]
+
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["skill"]["name"] == "tighten-prose"

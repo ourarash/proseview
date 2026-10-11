@@ -79,7 +79,9 @@ section here becomes the release notes on GitHub.
   top of the panel says which file it knows you are in. `@` mentions stay
   in the question as `@path`, as in the Codex and Claude extensions, and
   send the path rather than the file. They show as tinted chips in the
-  question box, and the file browser's ⋯ menu has "Mention in chat". The text of the open file goes along
+  question box, and the file browser's ⋯ menu has "Mention in chat". `$` does the same for
+  skills: pick one of the project's skills and `$novel-reviewer` stays in
+  the question as a chip, and the turn runs with it. The text of the open file goes along
   only when it has unsaved edits, which are not on disk to be read.
   Structured passes (critique, continuity, canon changes) are unchanged.
 

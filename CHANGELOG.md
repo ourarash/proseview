@@ -20,6 +20,14 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Claude's steps name what they touched**, as Codex's do: "Reading
+  ch01/01-opening.md", "Searching for “Hatter” in manuscript", "Looking for
+  *.md". They used to say only "Reading a file".
+- **An agent's edit shows in a scene open in the editor**, as long as nothing
+  there is unsaved. The editor used to ignore outside changes until it was
+  closed. With unsaved work it still waits, and the save's conflict check
+  covers the change.
+
 - **Undo reaches back past a save.** Saving or leaving edit mode used to
   wipe the scene's undo history. Each scene now keeps it for as long as the
   page is open, across saves and moving between scenes, so Cmd+Z in edit

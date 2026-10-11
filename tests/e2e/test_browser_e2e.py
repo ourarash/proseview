@@ -7210,3 +7210,31 @@ def test_undo_takes_back_an_edit_made_outside_the_editor(page: Page, server: Pro
     page.keyboard.press("ControlOrMeta+z")
     page.wait_for_function("() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('cold coffee')")
     assert "burnt toast" not in _prose_text(page)
+
+
+def test_an_open_editor_with_nothing_unsaved_takes_an_outside_edit(page: Page, server: ProseviewServer):
+    """An agent edits the scene while it is open in the editor, untouched."""
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.replace("The loft smelled of cold coffee", "The loft smelled of burnt toast"), encoding="utf-8")
+    page.wait_for_function("() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('burnt toast')", timeout=15_000)
+    # Still editing, and a save goes against the file as it is now.
+    assert page.evaluate("window._pmEditMode") is True
+    append_to_paragraph(page, "burnt toast", " Then quiet.")
+    save_scene(page)
+    _wait_until(lambda: "burnt toast" in path.read_text(encoding="utf-8") and "Then quiet." in path.read_text(encoding="utf-8"),
+                message="the save after an outside edit did not land")
+
+
+def test_an_open_editor_with_unsaved_work_is_left_alone(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Mine.")
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.replace("The loft smelled of cold coffee", "The loft smelled of burnt toast"), encoding="utf-8")
+    page.wait_for_timeout(4000)
+    text = page.locator("#sceneProseHost .ProseMirror").inner_text()
+    assert "Mine." in text and "burnt toast" not in text

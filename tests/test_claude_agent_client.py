@@ -186,6 +186,20 @@ def test_translator_maps_write_to_file_change():
     assert events[0]["activity"]["changes"] == [{"path": "a.md", "kind": "modify"}]
 
 
+def test_a_read_or_search_keeps_what_it_looked_at():
+    """Claude's Read and Grep name a file and a pattern; the step shows them."""
+    read = sanitize_claude_message({
+        "method": "tool/started",
+        "params": {"tool": "Read", "itemId": "r1", "path": "manuscript/ch01/01.md"},
+    })[0]["activity"]
+    grep = sanitize_claude_message({
+        "method": "tool/started",
+        "params": {"tool": "Grep", "itemId": "g1", "pattern": "Hatter", "path": "manuscript"},
+    })[0]["activity"]
+    assert (read["tool"], read["path"]) == ("Read", "manuscript/ch01/01.md")
+    assert (grep["tool"], grep["pattern"], grep["path"]) == ("Grep", "Hatter", "manuscript")
+
+
 def test_a_completion_does_not_relabel_the_tool_it_finished():
     """A completion knows the outcome, not the tool.
 

@@ -501,7 +501,7 @@ def test_decline_denies_the_tool():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, thread_id, "Bash", {"command": "ls"})
+        pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "decline"})
@@ -514,14 +514,14 @@ def test_accept_for_session_is_not_asked_again():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, thread_id, "Bash", {"command": "ls"})
+        pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "acceptForSession"})
         assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "allow"
 
         seen.clear()
-        again = _gate(client, thread_id, "Bash", {"command": "ls"}).result(timeout=5)
+        again = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"}).result(timeout=5)
         assert again["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert not [m for m in seen if "requestApproval" in m.get("method", "")]
     finally:
@@ -533,14 +533,14 @@ def test_session_grant_does_not_leak_across_threads():
     try:
         first = client.request("thread/start", {})["thread"]["id"]
         second = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, first, "Bash", {"command": "ls"})
+        pending = _gate(client, first, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "acceptForSession"})
         pending.result(timeout=5)
 
         seen.clear()
-        _gate(client, second, "Bash", {"command": "ls"})
+        _gate(client, second, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
     finally:
         client.close()
@@ -609,7 +609,7 @@ def test_options_refuse_ambient_configuration():
         assert options["strict_mcp_config"] is True
         assert options["mcp_servers"] == {}
         # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"]
+        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash"]
     finally:
         client.close()
 
@@ -690,7 +690,7 @@ def test_close_releases_a_pending_approval():
     """Closing must not strand the gate coroutine holding a turn open."""
     client, seen, _ = make_client()
     thread_id = client.request("thread/start", {})["thread"]["id"]
-    pending = _gate(client, thread_id, "Bash", {"command": "ls"})
+    pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
     assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
     client.close()
     assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -741,7 +741,7 @@ def test_the_writers_configured_model_is_read_without_loading_their_settings(tmp
         # The rest of that file never reaches the session.
         assert options["setting_sources"] is None
         # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"]
+        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash"]
         assert "hooks" in options and "permissions" not in options
     finally:
         client.close()

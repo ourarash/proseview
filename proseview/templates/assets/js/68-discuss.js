@@ -1746,7 +1746,9 @@
                 return where ? 'Listing ' + discussShortPath(where) : 'Looking through the project';
             }
             if (name === 'git') {
-                var sub = words[1] || '';
+                var at = 1;
+                while (words[at] === '-C' || words[at] === '-c') at += 2;
+                var sub = words[at] || '';
                 if (sub === 'log' || sub === 'blame' || sub === 'show') return 'Checking the history';
                 if (sub === 'diff' || sub === 'status') return 'Checking what changed';
                 return 'Using git';

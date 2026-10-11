@@ -72,10 +72,10 @@ def _client() -> tuple[ClaudeAgentClient, list[dict]]:
     return client, seen
 
 
-def _gate(client: ClaudeAgentClient, thread_id: str, tool: str):
+def _gate(client: ClaudeAgentClient, thread_id: str, tool: str, tool_input: dict | None = None):
     session = client._sessions[thread_id]
     return asyncio.run_coroutine_threadsafe(
-        client._gate_tool(session, {"tool_name": tool, "tool_input": {"command": "x"}}),
+        client._gate_tool(session, {"tool_name": tool, "tool_input": tool_input or {"command": "x"}}),
         client._loop,
     )
 
@@ -163,9 +163,9 @@ def test_session_options_cannot_inherit_ambient_permission_rules():
         assert options["mcp_servers"] == {}
         # These modes bypass permission checks entirely.
         assert options["permission_mode"] not in {"bypassPermissions", "acceptEdits", "dontAsk"}
-        # Reading tools, plus the editing ones every turn gates for itself.
-        # Nothing else: no shell, no web, no subagents.
-        assert set(options["tools"]) == set(READ_ONLY_TOOLS) | {"Write", "Edit", "NotebookEdit"}
+        # Reading tools, the editing ones every turn gates for itself, and a
+        # shell whose every non-reading command asks. No web, no subagents.
+        assert set(options["tools"]) == set(READ_ONLY_TOOLS) | {"Write", "Edit", "NotebookEdit", "Bash"}
     finally:
         client.close()
 
@@ -178,5 +178,50 @@ def test_every_allowed_tool_is_explicit():
         options = client._build_options({}, client._sessions[thread_id])
         assert isinstance(options["tools"], list)
         assert options["tools"], "an empty tools list would not restrict anything"
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("command", [
+    "git log --oneline -- manuscript/ch01/01-opening.md",
+    "git show HEAD~3:manuscript/ch01/01-opening.md",
+    "git log -p manuscript | head -200",
+    "rg -n 'tea party' manuscript && wc -w manuscript/ch01/*.md",
+    "git -C . log --follow --oneline -- manuscript/ch01/01-opening.md",
+])
+def test_a_reading_command_runs_without_asking(command):
+    client, seen = _client()
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        decision = _gate(client, thread_id, "Bash", {"command": command}).result(timeout=5)
+        assert decision["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert not [m for m in seen if "requestApproval" in m.get("method", "")]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("command", [
+    "rm -rf manuscript",
+    "git commit -am x",
+    "git checkout -- manuscript",
+    "git log > history.txt",
+    "cat a.md; rm b.md",
+    "find . -name '*.md' -delete",
+    "echo $(rm x)",
+    "git diff --output=x",
+    "sed -i s/a/b/ f.md",
+    "X=1 cat a.md",
+    "python3 -c 'print(1)'",
+    "git -C / log",
+])
+def test_any_other_command_still_asks(command):
+    client, seen = _client()
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        pending = _gate(client, thread_id, "Bash", {"command": command})
+        assert _wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen)), command
+        request = next(m for m in seen if "requestApproval" in m.get("method", ""))
+        client.respond(request["id"], {"decision": "decline"})
+        assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "deny"
     finally:
         client.close()

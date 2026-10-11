@@ -56,6 +56,69 @@ READ_ONLY_TOOLS = ["Read", "Glob", "Grep"]
 #: PreToolUse gate below, so Claude asks before it writes.
 WRITE_TOOLS = ["Write", "Edit", "NotebookEdit"]
 
+#: Commands that only read, which a Claude turn may run without asking, as a
+#: Codex turn does inside its read-only sandbox. Claude has no sandbox, so the
+#: list is short and every part of a command line must pass; anything else
+#: still stops at the writer.
+READ_ONLY_COMMANDS = {
+    "cat", "head", "tail", "nl", "wc", "ls", "grep", "rg", "diff", "sort", "uniq",
+    "cut", "tr", "echo", "pwd", "stat", "file", "tree", "basename", "dirname", "realpath",
+    "find", "git",
+}
+READ_ONLY_GIT = {
+    "log", "show", "diff", "blame", "status", "ls-files", "ls-tree", "rev-parse",
+    "grep", "shortlog", "cat-file", "describe", "rev-list",
+}
+_UNSAFE_FIND = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+
+
+def is_read_only_command(command: Any, root: str | None = None) -> bool:
+    """True only for a command line made entirely of read-only commands.
+
+    No redirection, substitution, backgrounding or variable assignment; each
+    piece of a pipeline or ``&&`` chain is a known reader; git only with a
+    subcommand that reads, and nothing that writes its output to a file.
+    """
+    import shlex
+
+    text = str(command or "").strip()
+    if not text or len(text) > 4000:
+        return False
+    if any(mark in text for mark in (">", "<", "`", "$(", "${", "\n")) or re.search(r"(?<![&|])&(?![&])", text):
+        return False
+    for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", text):
+        if not segment:
+            continue
+        try:
+            words = shlex.split(segment)
+        except ValueError:
+            return False
+        if not words or "=" in words[0]:
+            return False
+        name = words[0].rsplit("/", 1)[-1]
+        if name not in READ_ONLY_COMMANDS:
+            return False
+        if name == "find" and any(word in _UNSAFE_FIND for word in words[1:]):
+            return False
+        if name == "git":
+            # `git -C <dir>` is fine when the directory is the project's own.
+            while len(words) >= 3 and words[1] == "-C":
+                if not root:
+                    return False
+                try:
+                    target = Path(words[2]).expanduser()
+                    target = (Path(root) / target if not target.is_absolute() else target).resolve()
+                    target.relative_to(Path(root).resolve())
+                except (OSError, ValueError):
+                    return False
+                words = [words[0]] + words[3:]
+            if len(words) < 2 or words[1] not in READ_ONLY_GIT:
+                return False
+            if any(word.startswith(("--output", "--ext-diff")) for word in words[2:]):
+                return False
+    return True
+
+
 #: SDK-internal plumbing, not writer-facing actions. ``StructuredOutput`` is how
 #: the CLI delivers a JSON result when an output schema is set, so gating it
 #: would stall every selection action behind an approval nobody can explain.
@@ -672,8 +735,9 @@ class ClaudeAgentClient:
             "mcp_servers": {},
             "permission_mode": "default",
             # Always offered; whether a turn may use them is decided per
-            # turn at the gate below.
-            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS),
+            # turn at the gate below. Bash runs a reading command unasked,
+            # anything else only with the writer's say.
+            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS) + ["Bash"],
             "include_partial_messages": True,
         }
         selection = self.turn_model(params)
@@ -998,6 +1062,8 @@ class ClaudeAgentClient:
         tool = str(input_data.get("tool_name") or "")
         tool_input = input_data.get("tool_input") or {}
         if tool in READ_ONLY_TOOLS or tool in INTERNAL_TOOLS:
+            return self._hook_decision("allow")
+        if tool == "Bash" and is_read_only_command(tool_input.get("command"), self.cwd):
             return self._hook_decision("allow")
         if tool in WRITE_TOOLS and not session.may_write:
             return self._hook_decision("deny", "This is a reading pass; it does not change files.")

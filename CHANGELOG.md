@@ -20,6 +20,13 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Claude can read the project's history.** Claude had no shell, so it
+  could not run `git log` and said so. It now has one, on the same terms as
+  Codex's read-only sandbox: commands that only read (`git log`, `git show`,
+  `git diff`, `cat`, `rg`, `ls`, `wc`…, alone or piped) run without asking;
+  anything else, including any redirection or substitution, stops for your
+  approval.
+
 - **An answer is formatted while it streams.** Headings, lists, bold and
   code show as they arrive, instead of raw Markdown until the answer ends.
 

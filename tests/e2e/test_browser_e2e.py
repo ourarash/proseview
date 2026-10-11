@@ -7154,3 +7154,20 @@ def test_shell_commands_are_coloured(page: Page, server: ProseviewServer):
         ["sh-cmd", "rg"], ["", " "], ["sh-flag", "-n"], ["", " "], ["sh-string", "'tea party'"], ["", " "],
         ["", "manuscript"], ["", " "], ["sh-op", "|"], ["", " "], ["sh-cmd", "head"], ["", " "], ["sh-flag", "-50"],
     ]
+
+
+def test_hovering_the_selection_chip_lights_up_the_passage(page: Page, server: ProseviewServer):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
+
+    page.hover("#discussSelectionChip .discuss-selection-chip-text")
+    lit = page.evaluate("""() => {
+        const h = CSS.highlights.get('proseview-selection-hover');
+        return h ? [...h][0].toString() : null;
+    }""")
+    assert lit == quote
+    page.mouse.move(5, 5)
+    assert page.evaluate("CSS.highlights.has('proseview-selection-hover')") is False

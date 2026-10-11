@@ -250,6 +250,10 @@ class _Session:
         # Captured at thread/start; the developer instructions live here rather
         # than on each turn, matching where the manager sends them.
         self.thread_params: dict[str, Any] = {}
+        #: Whether this turn may change files. Per turn, not per session: the
+        #: session's tool list is fixed when it connects, so a session whose
+        #: first turn was a reading pass would otherwise never edit again.
+        self.may_write = False
         #: True once a turn has run, so later turns resume the session rather
         #: than trying to name one that already exists.
         self.started = False
@@ -667,9 +671,9 @@ class ClaudeAgentClient:
             "strict_mcp_config": True,
             "mcp_servers": {},
             "permission_mode": "default",
-            "tools": list(READ_ONLY_TOOLS) + (
-                list(WRITE_TOOLS) if params.get("mayWrite") else []
-            ),
+            # Always offered; whether a turn may use them is decided per
+            # turn at the gate below.
+            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS),
             "include_partial_messages": True,
         }
         selection = self.turn_model(params)
@@ -751,6 +755,7 @@ class ClaudeAgentClient:
         await self._apply_model_change(session, params)
         client = await self._ensure_session_client(session, params)
         session.turn_id = turn_id
+        session.may_write = bool(params.get("mayWrite"))
         session.expects_structured = bool(params.get("outputSchema"))
         session.internal_tool_ids = set()
         session.started = True
@@ -994,6 +999,8 @@ class ClaudeAgentClient:
         tool_input = input_data.get("tool_input") or {}
         if tool in READ_ONLY_TOOLS or tool in INTERNAL_TOOLS:
             return self._hook_decision("allow")
+        if tool in WRITE_TOOLS and not session.may_write:
+            return self._hook_decision("deny", "This is a reading pass; it does not change files.")
 
         granted = self._session_grants.get(session.thread_id) or set()
         if tool in granted:

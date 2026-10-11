@@ -20,6 +20,13 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Claude can edit after a reading pass.** A Claude conversation whose first
+  turn was a critique or another reading pass kept that pass's read-only
+  tools, so later requests to change a file came back "no file-editing
+  tool". The editing tools are now always there and each turn decides: a
+  reading pass refuses edits, a question may make them, and every edit still
+  goes through the review.
+
 - **Claude's steps name what they touched**, as Codex's do: "Reading
   ch01/01-opening.md", "Searching for “Hatter” in manuscript", "Looking for
   *.md". They used to say only "Reading a file".

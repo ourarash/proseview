@@ -550,11 +550,34 @@ def test_write_tool_is_reported_as_a_file_change_approval():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
+        client._sessions[thread_id].may_write = True
         _gate(client, thread_id, "Write", {"file_path": "manuscript/one.md"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         assert request["method"] == "item/fileChange/requestApproval"
         assert request["params"]["changes"] == [{"path": "manuscript/one.md", "kind": "modify"}]
+    finally:
+        client.close()
+
+
+def test_a_reading_turn_refuses_edits_and_a_later_turn_may_make_them():
+    """The tool list is fixed when the session connects; the turn decides.
+
+    A session whose first turn was a critique used to keep the critique's
+    read-only tools, so every later "please change it" came back refused.
+    """
+    client, seen, _ = make_client()
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        session = client._sessions[thread_id]
+        session.may_write = False
+        refused = _gate(client, thread_id, "Edit", {"file_path": "manuscript/one.md"}).result(timeout=5)
+        assert "reading pass" in json.dumps(refused)
+        assert not any("requestApproval" in m.get("method", "") for m in seen)
+
+        session.may_write = True
+        _gate(client, thread_id, "Edit", {"file_path": "manuscript/one.md"})
+        assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
     finally:
         client.close()
 
@@ -585,7 +608,8 @@ def test_options_refuse_ambient_configuration():
         assert options["setting_sources"] is None
         assert options["strict_mcp_config"] is True
         assert options["mcp_servers"] == {}
-        assert options["tools"] == ["Read", "Glob", "Grep"]
+        # Edits are offered on every turn and gated per turn.
+        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"]
     finally:
         client.close()
 
@@ -716,7 +740,8 @@ def test_the_writers_configured_model_is_read_without_loading_their_settings(tmp
         assert options["effort"] == "high"
         # The rest of that file never reaches the session.
         assert options["setting_sources"] is None
-        assert options["tools"] == ["Read", "Glob", "Grep"]
+        # Edits are offered on every turn and gated per turn.
+        assert options["tools"] == ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"]
         assert "hooks" in options and "permissions" not in options
     finally:
         client.close()

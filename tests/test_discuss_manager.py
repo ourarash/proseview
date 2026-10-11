@@ -2695,3 +2695,18 @@ def test_a_saved_thread_the_agent_has_not_loaded_is_resumed_not_replaced(tmp_pat
     notices = " ".join(str(n.get("message")) for n in manager.get_snapshot(cid).get("notices", []))
     assert "was unavailable" not in notices
     manager.close()
+
+
+def test_a_codex_conversation_may_search_the_web(tmp_path: Path, monkeypatch):
+    """As in the VS Code extension: web search is on for every conversation."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        _repo(tmp_path),
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    manager.submit(cid, client_request_id="web", question="When was this published?")
+    _wait_for(lambda: bool(clients[0].prompts))
+    assert clients[0].thread_start_params[-1]["config"] == {"web_search": "live"}
+    manager.close()

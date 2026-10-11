@@ -270,6 +270,10 @@ let currentTab = 'overview';
         }
 
         var _pmView = null;
+        // The editor state each scene was last left in, undo history and all,
+        // so saving or leaving edit mode does not forget what Cmd+Z can undo.
+        var _pmUndoStates = {};
+        var _pmViewPath = null;
         var _pmEditMode = false;
         var _pmOpenMtime = null;
         var _pmDirty = false;

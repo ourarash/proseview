@@ -7171,3 +7171,42 @@ def test_hovering_the_selection_chip_lights_up_the_passage(page: Page, server: P
     assert lit == quote
     page.mouse.move(5, 5)
     assert page.evaluate("CSS.highlights.has('proseview-selection-hover')") is False
+
+
+def _prose_text(page: Page) -> str:
+    return page.locator("#sceneProseHost .ProseMirror").inner_text()
+
+
+def test_undo_reaches_back_past_a_save_and_leaving_edit_mode(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " The kettle ticked.")
+    save_scene(page)
+    _wait_until(lambda: "The kettle ticked." in path.read_text(encoding="utf-8"), message="the save did not land")
+    page.wait_for_function("() => window._pmEditMode === false")
+
+    # Away to the next scene and back: the history is kept per scene.
+    page.evaluate("navigateScene(1)")
+    page.evaluate("navigateScene(-1)")
+    enter_edit_mode(page)
+    page.keyboard.press("ControlOrMeta+z")
+    page.wait_for_function("() => !document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('The kettle ticked.')")
+    assert page.evaluate("window._pmDirty") is True
+    save_scene(page)
+    _wait_until(lambda: "The kettle ticked." not in path.read_text(encoding="utf-8"), message="the undone text was not saved")
+
+
+def test_undo_takes_back_an_edit_made_outside_the_editor(page: Page, server: ProseviewServer):
+    """Codex edits the file on disk; the scene refreshes; Cmd+Z can still go back."""
+    path = server.scene_path()
+    open_scene(page, server)
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.replace("The loft smelled of cold coffee", "The loft smelled of burnt toast"), encoding="utf-8")
+    page.wait_for_function("() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('burnt toast')", timeout=15_000)
+
+    enter_edit_mode(page)
+    page.locator("#sceneProseHost .ProseMirror").click()
+    page.keyboard.press("ControlOrMeta+z")
+    page.wait_for_function("() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('cold coffee')")
+    assert "burnt toast" not in _prose_text(page)

@@ -20,6 +20,13 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Undo reaches back past a save.** Saving or leaving edit mode used to
+  wipe the scene's undo history. Each scene now keeps it for as long as the
+  page is open, across saves and moving between scenes, so Cmd+Z in edit
+  mode walks back through earlier edits. A change made outside the editor,
+  such as an edit by Codex, joins the history as one more step, so it can be
+  undone the same way. Undoing is an unsaved change like any other.
+
 - **A lost agent conversation no longer pretends to remember.** When Codex
   or Claude cannot reopen a conversation, Proseview tries to resume it
   whatever the error, and if it is really gone, hands the new one the

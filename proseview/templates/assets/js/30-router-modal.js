@@ -802,7 +802,11 @@
             clearSceneSelectionMemory();
             hideInsertAffordance();
             closeAnnotationPopover();
-            if (_pmView) { _pmView.destroy(); _pmView = null; }
+            if (_pmView) {
+                if (typeof stashSceneEditorState === 'function') stashSceneEditorState();
+                _pmView.destroy();
+                _pmView = null;
+            }
             _pmEditMode = false;
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) editBar.hidden = true;

@@ -3545,6 +3545,32 @@ class DiscussManager:
                 )
         return thread_id
 
+    @staticmethod
+    def _carried_history(conversation: _Conversation, request_id: str) -> str:
+        """The visible conversation, as text a fresh agent thread can read."""
+        with conversation.lock:
+            rows = [
+                row for row in conversation.messages
+                if row.get("client_request_id") != request_id and str(row.get("text") or "").strip()
+            ][-20:]
+        if not rows:
+            return ""
+        lines: list[str] = []
+        budget = 24_000
+        for row in reversed(rows):
+            who = "Writer" if row.get("role") == "user" else "You"
+            line = f"{who}: {str(row.get('text') or '').strip()}"
+            if len(line) > budget:
+                break
+            lines.insert(0, line)
+            budget -= len(line)
+        return (
+            "EARLIER IN THIS CONVERSATION\n"
+            "Your earlier session could not be reopened. This is the conversation so far, as the writer saw it.\n\n"
+            + "\n\n".join(lines)
+            + "\n\n"
+        )
+
     def _forget_thread(self, conversation: _Conversation) -> None:
         with conversation.lock:
             thread_id = conversation.thread_id
@@ -3761,6 +3787,7 @@ class DiscussManager:
                 conversation.active_done = done
                 recovered_missing_thread = False
                 resumed_thread = False
+                carried_history = ""
                 while True:
                     thread_id = conversation.thread_id or self._start_thread(conversation, client, queued.document)
                     task = conversation.tasks.get(queued.task_id or "")
@@ -3776,7 +3803,7 @@ class DiscussManager:
                         queued.document["kind"], queued.document["path"], thread_id,
                         title=title, preview=preview, agent=conversation.agent,
                     )
-                    turn_input: list[dict[str, Any]] = [{"type": "text", "text": queued.bundle.prompt}]
+                    turn_input: list[dict[str, Any]] = [{"type": "text", "text": carried_history + queued.bundle.prompt}]
                     if queued.skill:
                         turn_input.append({"type": "skill", **queued.skill})
                     turn_params = {
@@ -3816,23 +3843,28 @@ class DiscussManager:
                     except Exception as exc:
                         if recovered_missing_thread or not _is_thread_unavailable(exc):
                             raise
-                        # A thread saved on disk but not loaded by this agent
-                        # process -- the usual state after Proseview or Codex
-                        # restarts -- is resumed, keeping the conversation and
-                        # everything the agent remembers of it. Only a thread
-                        # that cannot be resumed is replaced.
-                        if not resumed_thread and "not loaded" in str(exc).lower():
+                        # A thread the agent process has not loaded -- the
+                        # usual state after Proseview or Codex restarts -- is
+                        # resumed, keeping everything the agent remembers of
+                        # it. Tried whatever the error says, before giving up.
+                        if not resumed_thread:
                             resumed_thread = True
                             try:
                                 client.request("thread/resume", {"threadId": thread_id, "cwd": str(self.root)})
                                 continue
                             except Exception:
                                 pass
-                        self._forget_thread(conversation)
+                        # It is gone. The new conversation is handed what the
+                        # writer can see of the old one, so the messages on
+                        # screen are context the agent really has. The old one
+                        # stays in History.
+                        carried_history = self._carried_history(conversation, queued.request_id)
+                        self._clear_active_thread(conversation)
                         conversation.add_notice(
                             "warning",
-                            "The previous agent conversation was unavailable. "
-                            "Prosview started a new conversation and retried your question.",
+                            f"{'Codex' if conversation.agent == 'codex' else 'Claude'} could not reopen this conversation, so Prosview "
+                            "started a new one and passed it the messages above as text. It has what was said, "
+                            "not its own working notes from before.",
                             client_request_id=queued.request_id,
                         )
                         recovered_missing_thread = True

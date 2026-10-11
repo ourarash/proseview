@@ -20,6 +20,13 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **A lost agent conversation no longer pretends to remember.** When Codex
+  or Claude cannot reopen a conversation, Proseview tries to resume it
+  whatever the error, and if it is really gone, hands the new one the
+  messages you can see, so the context on screen is context the agent has.
+  The note says so, and the old conversation stays in History instead of
+  being deleted.
+
 - **Codex and Claude may read any file in the project**, as in the VS Code
   extensions. Proseview's standing instructions used to tell the agent to ask
   before looking beyond the open scene. New conversations get the new rule.

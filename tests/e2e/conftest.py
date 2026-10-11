@@ -670,7 +670,8 @@ for line in sys.stdin:
         turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': stored_answer}]})
         save_state()
         emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': turn_id, 'status': 'completed'}}})
-        if 'FORGET_THREAD_AFTER_TURN' in prompt:
+        # The question asked, not history carried along with it.
+        if 'FORGET_THREAD_AFTER_TURN' in prompt.rsplit('USER QUESTION', 1)[-1]:
             threads.pop(thread_id, None)
             save_state()
     elif method == 'turn/interrupt':

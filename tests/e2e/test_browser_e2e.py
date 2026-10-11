@@ -1642,7 +1642,7 @@ def test_missing_thread_notice_stays_chronological_is_dismissible_and_does_not_t
     entries = page.locator("#discussLog > .discuss-message, #discussLog > .discuss-notice")
     rendered = entries.all_inner_texts()
     question_index = next(i for i, text in enumerate(rendered) if "Continue after the missing thread" in text)
-    notice_index = next(i for i, text in enumerate(rendered) if "retried your question" in text)
+    notice_index = next(i for i, text in enumerate(rendered) if "could not reopen this conversation" in text)
     answer_index = max(i for i, text in enumerate(rendered) if "Fake answer" in text)
     assert question_index < notice_index < answer_index
 

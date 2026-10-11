@@ -80,6 +80,7 @@ class CodexFakeClient:
             self.resumes.append(params["threadId"])
             return {"thread": self.threads[params["threadId"]]}
         if method == "thread/start":
+            self.thread_start_params = getattr(self, "thread_start_params", []) + [dict(params)]
             self.next_thread += 1
             thread = {"id": f"thread-{self.next_thread}", "turns": []}
             self.threads[thread["id"]] = thread

@@ -2054,6 +2054,12 @@ class DiscussManager:
         "while you work and a clear final answer."
     )
 
+    #: Per-conversation agent settings, as the VS Code extension has them:
+    #: Codex may search the web (its own tool, run by OpenAI, with no local
+    #: network access and no per-search approval). Claude ignores this; its
+    #: web tools ask each time.
+    THREAD_CONFIG = {"web_search": "live"}
+
     def __init__(self, root: Path, *, client_factory: Any | None = None) -> None:
         self.root = root.resolve()
         self.context = ContextBuilder(self.root)
@@ -3525,6 +3531,7 @@ class DiscussManager:
             "approvalPolicy": CODEX_APPROVAL_POLICY,
             "approvalsReviewer": "user",
             "developerInstructions": self.DEVELOPER_INSTRUCTIONS,
+            "config": dict(self.THREAD_CONFIG),
         })
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         thread_id = str(thread.get("id") or "")
@@ -3850,7 +3857,14 @@ class DiscussManager:
                         if not resumed_thread:
                             resumed_thread = True
                             try:
-                                client.request("thread/resume", {"threadId": thread_id, "cwd": str(self.root)})
+                                client.request("thread/resume", {
+                                    "threadId": thread_id,
+                                    "cwd": str(self.root),
+                                    # A conversation from before keeps working
+                                    # under today's rules, not the ones it began with.
+                                    "developerInstructions": self.DEVELOPER_INSTRUCTIONS,
+                                    "config": dict(self.THREAD_CONFIG),
+                                })
                                 continue
                             except Exception:
                                 pass

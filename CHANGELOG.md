@@ -20,6 +20,11 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Codex can search the web**, as in the VS Code extension. Its search is
+  Codex's own tool, run on OpenAI's side, so it needs no local network
+  access and, as in the extension, does not ask per search. A conversation
+  from before also picks up today's standing instructions when it resumes.
+
 - **Claude can read the project's history.** Claude had no shell, so it
   could not run `git log` and said so. It now has one, on the same terms as
   Codex's read-only sandbox: commands that only read (`git log`, `git show`,

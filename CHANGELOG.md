@@ -25,7 +25,8 @@ section here becomes the release notes on GitHub.
   Codex's read-only sandbox: commands that only read (`git log`, `git show`,
   `git diff`, `cat`, `rg`, `ls`, `wc`…, alone or piped) run without asking;
   anything else, including any redirection or substitution, stops for your
-  approval.
+  approval. Web search, opening a web page and starting a helper agent are
+  available too, and always ask first, saying what they would search or open.
 
 - **An answer is formatted while it streams.** Headings, lists, bold and
   code show as they arrive, instead of raw Markdown until the answer ends.

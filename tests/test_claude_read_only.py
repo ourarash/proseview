@@ -163,9 +163,12 @@ def test_session_options_cannot_inherit_ambient_permission_rules():
         assert options["mcp_servers"] == {}
         # These modes bypass permission checks entirely.
         assert options["permission_mode"] not in {"bypassPermissions", "acceptEdits", "dontAsk"}
-        # Reading tools, the editing ones every turn gates for itself, and a
-        # shell whose every non-reading command asks. No web, no subagents.
-        assert set(options["tools"]) == set(READ_ONLY_TOOLS) | {"Write", "Edit", "NotebookEdit", "Bash"}
+        # Reading tools, the editing ones every turn gates for itself, a
+        # shell whose every non-reading command asks, and the web and helper
+        # agents, which always ask.
+        assert set(options["tools"]) == set(READ_ONLY_TOOLS) | {
+            "Write", "Edit", "NotebookEdit", "Bash", "WebSearch", "WebFetch", "Task",
+        }
     finally:
         client.close()
 

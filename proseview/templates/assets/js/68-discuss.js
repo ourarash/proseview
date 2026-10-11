@@ -149,6 +149,7 @@
                 _saveDiscussAgentLocal();
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
+            if (_discussAgent !== agent) { _discussSkillsLoaded = false; _discussSkillsLoading = null; _discussSkills = []; }
             _discussAgent = agent;
             try { localStorage.setItem(DISCUSS_AGENT_KEY, agent); } catch (e) {}
             _applyDiscussAgentLabels();
@@ -526,6 +527,7 @@
                 loadDiscussModelCatalog(_discussAgent);
                 loadDiscussAgentAvailability();
                 loadDiscussScenePasses();
+                loadDiscussSkillList();
                 _pollInactiveDiscussAgent();
                 if (options.showSkills) loadDiscussSkills();
                 else if (requestedAutoRun && requestedAction) {
@@ -1021,7 +1023,10 @@
                     scheduleDiscussSnapshot();
                 });
             });
-            source.addEventListener('skills.changed', function() { if (!document.getElementById('discussSkillsPicker').hidden) loadDiscussSkills(true); });
+            source.addEventListener('skills.changed', function() {
+                loadDiscussSkillList(true);
+                if (!document.getElementById('discussSkillsPicker').hidden) loadDiscussSkills(true);
+            });
             source.addEventListener('response.delta', function(event) {
                 var detail = JSON.parse(event.data);
                 appendDiscussStreamDelta(detail.text || '');
@@ -4032,9 +4037,13 @@ function loadDiscussDiffMode(mode) {
             var input = document.getElementById('discussInput');
             if (input.selectionStart !== input.selectionEnd) return null;
             var before = input.value.slice(0, input.selectionStart);
-            var match = before.match(/(^|\s)@([^\s@]*)$/);
+            // @ for a file or folder, $ for a skill, as in the extensions.
+            var match = before.match(/(^|\s)([@$])([^\s@$]*)$/);
             if (!match) return null;
-            return {start: before.length - match[2].length - 1, end: input.selectionStart, query: match[2]};
+            return {
+                start: before.length - match[3].length - 1, end: input.selectionStart,
+                query: match[3], trigger: match[2],
+            };
         }
 
         function discussContextCandidates() {
@@ -4089,22 +4098,48 @@ function loadDiscussDiffMode(mode) {
             if (!mention) { closeDiscussContextPicker(); return; }
             _discussMentionRange = mention;
             var query = mention.query.toLowerCase();
-            _discussContextChoices = discussContextCandidates().filter(function(candidate) {
-                if (_discussAttachments.some(function(item) { return item.kind === candidate.kind && item.path === candidate.path; })) return false;
-                return !query || candidate.path.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query);
-            }).slice(0, 12);
+            var skills = mention.trigger === '$';
+            var heading = document.getElementById('discussContextHeading');
+            if (heading) heading.textContent = skills ? discussAgentLabel() + ' skills' : 'Files and folders';
+            if (skills && !_discussSkillsLoaded) {
+                loadDiscussSkillList().then(function() { if (discussMentionAtCaret()) renderDiscussContextOptions(); });
+            }
+            _discussContextChoices = skills
+                ? _discussSkills.filter(function(skill) {
+                    return !query || (skill.name + ' ' + (skill.display_name || '') + ' ' + (skill.description || '')).toLowerCase().includes(query);
+                }).slice(0, 12).map(function(skill) {
+                    return {kind: 'skill', path: skill.path, name: skill.name, description: skill.description || ''};
+                })
+                : discussContextCandidates().filter(function(candidate) {
+                    if (_discussAttachments.some(function(item) { return item.kind === candidate.kind && item.path === candidate.path; })) return false;
+                    return !query || candidate.path.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query);
+                }).slice(0, 12);
             _discussContextActiveIndex = Math.min(_discussContextActiveIndex, Math.max(0, _discussContextChoices.length - 1));
             var options = document.getElementById('discussContextOptions'); options.replaceChildren();
             if (!_discussContextChoices.length) {
-                options.appendChild(elementWith('discuss-context-empty', query ? 'No matching files or folders' : 'Type to search files and folders'));
+                options.appendChild(elementWith('discuss-context-empty', skills
+                    ? (!_discussSkillsLoaded ? 'Loading skills…' : query ? 'No matching skills' : 'No skills in this project')
+                    : (query ? 'No matching files or folders' : 'Type to search files and folders')));
             }
             _discussContextChoices.forEach(function(choice, index) {
                 var option = document.createElement('button');
                 option.type = 'button'; option.className = 'discuss-context-option'; option.id = 'discussContextOption' + index;
                 option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(index === _discussContextActiveIndex));
                 option.dataset.path = choice.path; option.dataset.kind = choice.kind;
-                var icon = elementWith('discuss-context-option-icon', choice.kind === 'file' ? '▤' : '▸'); icon.setAttribute('aria-hidden', 'true');
-                option.appendChild(icon); option.appendChild(elementWith('discuss-context-option-path', choice.path));
+                var icon = elementWith('discuss-context-option-icon', choice.kind === 'skill' ? '$' : choice.kind === 'file' ? '▤' : '▸'); icon.setAttribute('aria-hidden', 'true');
+                option.appendChild(icon);
+                if (choice.kind === 'skill') {
+                    var label = elementWith('discuss-context-option-path', choice.name);
+                    if (choice.description) {
+                        var about = document.createElement('small');
+                        about.className = 'discuss-context-option-about';
+                        about.textContent = choice.description;
+                        label.appendChild(about);
+                    }
+                    option.appendChild(label);
+                } else {
+                    option.appendChild(elementWith('discuss-context-option-path', choice.path));
+                }
                 option.onmousedown = function(event) { event.preventDefault(); };
                 option.onclick = function() { selectDiscussContextOption(index); };
                 options.appendChild(option);
@@ -4134,13 +4169,13 @@ function loadDiscussDiffMode(mode) {
             if (!choice || !mention) return;
             // The mention stays in the question, as @path, the way the Codex
             // and Claude extensions write it; it is read back out on send.
-            var token = '@' + choice.path + ' ';
+            var token = (choice.kind === 'skill' ? '$' + choice.name : '@' + choice.path) + ' ';
             input.value = input.value.slice(0, mention.start) + token + input.value.slice(mention.end);
             paintDiscussMentions();
             input.setSelectionRange(mention.start + token.length, mention.start + token.length);
             closeDiscussContextPicker();
             saveDiscussDraft();
-            document.getElementById('discussAnnouncement').textContent = 'Mentioned ' + choice.path;
+            document.getElementById('discussAnnouncement').textContent = (choice.kind === 'skill' ? 'Using skill ' + choice.name : 'Mentioned ' + choice.path);
             input.focus();
         }
 
@@ -4164,6 +4199,54 @@ function loadDiscussDiffMode(mode) {
             return ranges;
         }
 
+        // `$skill` names a skill the agent offers for this project.
+        function discussSkillRanges(text) {
+            var names = _discussSkills.map(function(skill) { return skill.name; })
+                .sort(function(a, b) { return b.length - a.length; });
+            var ranges = [];
+            var pattern = /(^|\s)\$/g;
+            var match;
+            while ((match = pattern.exec(text))) {
+                var at = match.index + match[0].length;
+                var rest = text.slice(at);
+                var name = names.filter(function(candidate) {
+                    if (rest.indexOf(candidate) !== 0) return false;
+                    var next = rest.charAt(candidate.length);
+                    return !next || /[\s,.;:!?)]/.test(next);
+                })[0];
+                if (name) ranges.push({start: at - 1, end: at + name.length, kind: 'skill', name: name});
+            }
+            return ranges;
+        }
+
+        function discussSkillsIn(text) {
+            var seen = {};
+            return discussSkillRanges(text).map(function(range) {
+                return _discussSkills.filter(function(skill) { return skill.name === range.name; })[0];
+            }).filter(function(skill) {
+                if (!skill || seen[skill.name]) return false;
+                seen[skill.name] = true;
+                return true;
+            });
+        }
+
+        var _discussSkillsLoaded = false;
+        var _discussSkillsLoading = null;
+
+        // The agent's skills for this project, fetched once per agent.
+        function loadDiscussSkillList(force) {
+            if (_discussSkillsLoading && !force) return _discussSkillsLoading;
+            var agent = _discussAgent || 'codex';
+            _discussSkillsLoading = discussApi('/api/discuss/skills', {force_reload: !!force, agent: agent})
+                .then(function(data) {
+                    _discussSkills = data.skills || [];
+                    _discussSkillsLoaded = true;
+                    paintDiscussMentions();
+                })
+                .catch(function() { _discussSkills = []; _discussSkillsLoaded = true; });
+            return _discussSkillsLoading;
+        }
+
         function discussMentionsIn(text) {
             var found = [];
             discussMentionRanges(text).forEach(function(range) {
@@ -4183,7 +4266,10 @@ function loadDiscussDiffMode(mode) {
             var text = input.value;
             mirror.replaceChildren();
             var last = 0;
-            discussMentionRanges(text).forEach(function(range) {
+            discussMentionRanges(text).concat(discussSkillRanges(text)).sort(function(a, b) {
+                return a.start - b.start;
+            }).forEach(function(range) {
+                if (range.start < last) return;
                 mirror.appendChild(document.createTextNode(text.slice(last, range.start)));
                 var mark = document.createElement('mark');
                 mark.className = 'discuss-mention';
@@ -4376,7 +4462,11 @@ function loadDiscussDiffMode(mode) {
                     return question.indexOf('@' + item.path) < 0;
                 })),
                 include_current_document: _discussIncludeCurrentDocument,
-                skill: _discussSelectedSkill
+                // A $skill typed in the question is the skill the turn runs.
+                skill: _discussSelectedSkill || (function() {
+                    var named = discussSkillsIn(question)[0];
+                    return named ? {name: named.name, path: named.path} : null;
+                })()
             }).then(function() {
                 _discussAttachments = [];
                 rememberDiscussInstruction(question); input.value = '';

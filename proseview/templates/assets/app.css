@@ -6499,6 +6499,13 @@
             pointer-events: none;
         }
 
+        .discuss-context-option-about {
+            display: block;
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: normal;
+        }
+
         /* An @mention reads as a chip: the same text, on a tint. */
         .discuss-input-mirror .discuss-mention {
             color: transparent;

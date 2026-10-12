@@ -723,14 +723,19 @@
             if (typeof renderSceneFrontmatter === 'function') renderSceneFrontmatter(p);
             if (window._PM) {
                 mountProseView(p);
-                if (window._lastExternalChangeIndices && window._lastExternalChangeIndices.length > 0) {
-                    const pmParas = document.querySelectorAll('.ProseMirror > p');
-                    window._lastExternalChangeIndices.forEach(function(idx) {
-                        if (pmParas[idx]) {
-                            pmParas[idx].classList.add('external-change-highlight');
+                if (window._externalChangeBefore && _pmView && typeof changedSceneBlocks === 'function') {
+                    // Light the blocks that changed, found by comparing the
+                    // blocks themselves: a heading or a list is a block too.
+                    var changedBlocks = changedSceneBlocks(window._externalChangeBefore, _pmView.state.doc);
+                    var blockIndex = 0;
+                    _pmView.state.doc.forEach(function(node, offset) {
+                        if (changedBlocks.indexOf(blockIndex) >= 0) {
+                            var dom = _pmView.nodeDOM(offset);
+                            if (dom && dom.classList) dom.classList.add('external-change-highlight');
                         }
+                        blockIndex++;
                     });
-                    window._lastExternalChangeIndices = null;
+                    window._externalChangeBefore = null;
                 }
             }
             if (scrollEl) {

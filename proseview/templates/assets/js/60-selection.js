@@ -1033,6 +1033,30 @@
             });
         }
 
+        function sceneBlockTexts(doc) {
+            var texts = [];
+            doc.forEach(function(node) { texts.push(node.type.name + '\u0000' + node.textContent); });
+            return texts;
+        }
+
+        // The top-level blocks of *doc* that differ from *before*: whatever
+        // lies between the unchanged start and the unchanged end, less any
+        // block that reads exactly as one there before.
+        function changedSceneBlocks(before, doc) {
+            var after = sceneBlockTexts(doc);
+            var head = 0;
+            while (head < before.length && head < after.length && before[head] === after[head]) head++;
+            var tail = 0;
+            while (tail < before.length - head && tail < after.length - head
+                && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
+            var middle = before.slice(head, before.length - tail);
+            var changed = [];
+            for (var i = head; i < after.length - tail; i++) {
+                if (middle.indexOf(after[i]) < 0) changed.push(i);
+            }
+            return changed;
+        }
+
         function reloadOrDefer(changedPaths) {
             // Always do a partial refresh instead of location.reload() —
             // a full reload jolts the viewport (jump to top, then
@@ -1096,16 +1120,10 @@
                 if (data.contents && data.contents[scenePath] !== undefined) {
                     var oldContent = contents[scenePath] || '';
                     var newContent = data.contents[scenePath];
-                    if (oldContent !== newContent && oldContent !== '') {
-                        var oldParas = oldContent.split('\n\n');
-                        var newParas = newContent.split('\n\n');
-                        var changed = [];
-                        for (var i = 0; i < newParas.length; i++) {
-                            if (i >= oldParas.length || newParas[i] !== oldParas[i]) {
-                                changed.push(i);
-                            }
-                        }
-                        window._lastExternalChangeIndices = changed;
+                    if (oldContent !== newContent && oldContent !== '' && _pmView) {
+                        // The blocks as they read now, to compare with the
+                        // re-rendered ones and light up only what moved.
+                        window._externalChangeBefore = sceneBlockTexts(_pmView.state.doc);
                     }
                     contents[scenePath] = newContent;
                 }

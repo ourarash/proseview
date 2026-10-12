@@ -5479,7 +5479,9 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     open_scene(page, server)
     open_selection_menu(page, quote)
 
-    assert page.locator("#selectionCodexBtn").inner_text() == "Ask about selection"
+    codex_button = page.locator("#selectionCodexBtn")
+    assert codex_button.inner_text().startswith("Ask about selection")
+    assert codex_button.get_attribute("aria-keyshortcuts") == "A"
     page.click("#selectionCodexBtn")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
@@ -7305,3 +7307,22 @@ def test_a_dollar_sign_picks_a_skill_that_stays_in_the_question(page: Page, serv
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["skill"]["name"] == "tighten-prose"
+
+
+def test_a_asks_about_the_selection(page: Page, server: ProseviewServer):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    select_prose(page, quote)
+    page.keyboard.press("a")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
+    assert quote in page.locator("#discussSelectionChip").inner_text()
+
+
+def test_a_is_just_a_letter_in_the_editor(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " ")
+    page.keyboard.press("a")
+    assert page.locator("#discussPanel").is_hidden()
+    assert "cold coffee" in page.locator("#sceneProseHost .ProseMirror").inner_text()

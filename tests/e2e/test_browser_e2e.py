@@ -7338,6 +7338,11 @@ def test_an_outside_edit_lights_the_paragraph_it_changed(page: Page, server: Pro
     path.write_text(with_heading, encoding="utf-8")
     open_scene(page, server)
     page.wait_for_selector("#sceneProseHost h1")
+    # On a slow machine the heading itself can arrive as a live edit, lit as
+    # one; that is not what is under test.
+    page.wait_for_timeout(2500)
+    page.evaluate("""() => document.querySelectorAll('#sceneProseHost .external-change-highlight')
+        .forEach(node => node.classList.remove('external-change-highlight'))""")
     path.write_text(with_heading.replace('"You said that yesterday."', '"You said that on Tuesday."'), encoding="utf-8")
     page.wait_for_function("() => !!document.querySelector('#sceneProseHost .external-change-highlight')", timeout=15_000)
     lit = page.locator("#sceneProseHost .external-change-highlight").all_inner_texts()

@@ -3644,9 +3644,14 @@
         /* Pinned scene-selection highlight (CSS Custom Highlight API).
            Painted by app.js when focus leaves the prose so the selection
            stays visible while the writer works in the dock. */
+        /* The passage a chat chip stands for, while the pointer is on the chip.
+           In the theme's accent and underlined, so it cannot be mistaken for
+           an analysis highlight or the pinned selection. */
         ::highlight(proseview-selection-hover) {
-            background-color: rgba(255, 196, 0, 0.45);
+            background-color: color-mix(in srgb, var(--primary) 26%, transparent);
             color: inherit;
+            text-decoration: underline 2px var(--primary);
+            text-underline-offset: 3px;
         }
 
         ::highlight(proseview-pinned-selection) {

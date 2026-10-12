@@ -7326,3 +7326,19 @@ def test_a_is_just_a_letter_in_the_editor(page: Page, server: ProseviewServer):
     page.keyboard.press("a")
     assert page.locator("#discussPanel").is_hidden()
     assert "cold coffee" in page.locator("#sceneProseHost .ProseMirror").inner_text()
+
+
+def test_an_outside_edit_lights_the_paragraph_it_changed(page: Page, server: ProseviewServer):
+    path = server.scene_path()
+    original = path.read_text(encoding="utf-8")
+    assert '"You said that yesterday."' in original
+    # A scene that opens with a heading, as most do: the heading is a block
+    # of its own, and counting only paragraphs lit the one after the change.
+    with_heading = original.replace("The loft smelled", "# Opening\n\nThe loft smelled", 1)
+    path.write_text(with_heading, encoding="utf-8")
+    open_scene(page, server)
+    page.wait_for_selector("#sceneProseHost h1")
+    path.write_text(with_heading.replace('"You said that yesterday."', '"You said that on Tuesday."'), encoding="utf-8")
+    page.wait_for_function("() => !!document.querySelector('#sceneProseHost .external-change-highlight')", timeout=15_000)
+    lit = page.locator("#sceneProseHost .external-change-highlight").all_inner_texts()
+    assert lit == ['"You said that on Tuesday."']

@@ -3390,7 +3390,16 @@ function loadDiscussDiffMode(mode) {
                 selection.appendChild(selectionText);
                 // Pointing at the chip lights up the passage it stands for.
                 selection.onmouseenter = function() { showDiscussSelectionInText(true); };
-                selection.onmouseleave = function() { showDiscussSelectionInText(false); };
+                selection.onmouseleave = function() {
+                    if (!goToDiscussSelection.timer || Date.now() - (goToDiscussSelection.at || 0) > 2000) showDiscussSelectionInText(false);
+                };
+                // A click goes there: lit, and brought to the middle of the view.
+                selectionText.setAttribute('role', 'button');
+                selectionText.tabIndex = 0;
+                selectionText.onclick = function() { goToDiscussSelection(); };
+                selectionText.onkeydown = function(event) {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); goToDiscussSelection(); }
+                };
                 var removeSelection = document.createElement('button');
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
@@ -3453,6 +3462,21 @@ function loadDiscussDiffMode(mode) {
             fallback.setStart(a.node, a.offset);
             fallback.setEnd(b.node, b.offset);
             return fallback;
+        }
+
+        function goToDiscussSelection() {
+            goToDiscussSelection.at = Date.now();
+            showDiscussSelectionInText(true);
+            var range = discussSelectionDomRange();
+            if (!range) return;
+            var el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+            if (el) el.scrollIntoView({block: 'center', behavior: 'smooth'});
+            // Stays lit a moment after the pointer leaves, long enough to find.
+            clearTimeout(goToDiscussSelection.timer);
+            goToDiscussSelection.timer = setTimeout(function() {
+                var chip = document.getElementById('discussSelectionChip');
+                if (!chip || !chip.matches(':hover')) showDiscussSelectionInText(false);
+            }, 2000);
         }
 
         function showDiscussSelectionInText(on) {

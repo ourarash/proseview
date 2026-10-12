@@ -7347,3 +7347,20 @@ def test_an_outside_edit_lights_the_paragraph_it_changed(page: Page, server: Pro
     page.wait_for_function("() => !!document.querySelector('#sceneProseHost .external-change-highlight')", timeout=15_000)
     lit = page.locator("#sceneProseHost .external-change-highlight").all_inner_texts()
     assert lit == ['"You said that on Tuesday."']
+
+
+def test_clicking_the_selection_chip_goes_to_the_passage(page: Page, server: ProseviewServer):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
+    page.evaluate("document.querySelector('#sceneModal .modal-content').scrollTop = 99999")
+    page.wait_for_timeout(200)
+    page.click("#discussSelectionChip .discuss-selection-chip-text")
+    page.wait_for_function("""() => {
+        const h = CSS.highlights.get('proseview-selection-hover');
+        if (!h) return false;
+        const rect = [...h][0].getBoundingClientRect();
+        return rect.top > 0 && rect.bottom < innerHeight;
+    }""", timeout=5000)

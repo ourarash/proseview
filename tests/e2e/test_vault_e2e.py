@@ -152,11 +152,18 @@ def test_without_a_manuscript_folder_the_folder_opens_as_markdown(page: Page, vi
     # The book features wait; nothing pretends there is a book.
     expect(page.locator(".tab-nav")).to_be_hidden()
     expect(page.locator("#exportOpenBtn")).to_be_hidden()
+    expect(page.locator("#bookOpenBtn")).to_be_hidden()
+    # A link to the book view lands on the folder instead of an empty book.
+    page.goto(viewer_server.url("/#/book"))
+    expect(setup).to_be_visible()
+    assert page.evaluate("document.documentElement.dataset.view || ''") != "book"
 
     # Files still open and edit.
     tree = page.get_by_role("tree", name="Repository files")
     tree.locator('.file-link[data-path="ideas.md"]').click()
     expect(page.locator("#filePreviewBody")).to_contain_text("An idea.")
+    # The setup note belongs to the dashboard, not over the file.
+    expect(setup).to_be_hidden()
     expect(page.get_by_role("button", name="Edit", exact=True)).to_be_visible()
 
     # One choice sets the book up.
@@ -166,6 +173,7 @@ def test_without_a_manuscript_folder_the_folder_opens_as_markdown(page: Page, vi
     chooser.get_by_label("Book/").check()
     chooser.get_by_role("button", name="Use this folder").click()
     expect(page.locator(".tab-nav")).to_be_visible()
+    expect(page.locator("#bookOpenBtn")).to_be_visible()
     expect(setup).to_have_count(0)
     assert "manuscript_path: Book/" in (viewer_server.root / ".proseview.yaml").read_text(encoding="utf-8")
     assert page.evaluate("paths") == ["ch01/01.md"]

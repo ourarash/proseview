@@ -348,7 +348,7 @@ def main(argv: list[str]) -> int:
 
 
 # ── Stills ──────────────────────────────────────────────────────────────────
-# The two PNGs in the README. Same demo book, same theme as the clips, so the
+# The PNGs in the README. Same demo book, same theme as the clips, so the
 # gallery reads as one product rather than three eras of it.
 
 def shot_dashboard(page, base, docs):
@@ -373,9 +373,18 @@ def shot_analytics(page, base, docs):
     page.wait_for_timeout(2600)
 
 
+def shot_book(page, base, docs):
+    # The intro note shows the first few times; a still should show the book.
+    page.add_init_script("localStorage.setItem('proseview-book-intro-seen','3')")
+    page.goto(f"{base}#/book", wait_until="load")
+    page.wait_for_function("() => document.documentElement.dataset.view === 'book'")
+    page.wait_for_timeout(1500)
+
+
 SHOTS = {
     "dashboard": shot_dashboard,
     "analytics": shot_analytics,
+    "read-the-book": shot_book,
 }
 
 

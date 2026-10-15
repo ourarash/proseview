@@ -12,8 +12,10 @@ Three places where AI shows up, all opt-in:
    appears includes `Add TODO`, `Add Note`, and (if an agent is installed
    locally) `Ask about selection` and `Skills`. Skills are
    reusable prompts you keep in `.proseview/skills/<name>/SKILL.md`; they show up
-   automatically in the menu. Skills are discovered by Codex today — the
-   Claude tab's picker is still empty.
+   automatically in the menu. In the question box, `$` picks one of the
+   skills Codex offers for the project; on the Claude tab that picker is
+   still empty, though Claude uses the skills in your Claude settings on its
+   own.
 2. **Discuss, on either agent.** The side dock has a **Codex** tab and a
    **Claude** tab. Each has a separate project conversation, with its own queue,
    history, and approvals — ask one, switch agents or open another file, and
@@ -21,16 +23,20 @@ Three places where AI shows up, all opt-in:
    are always there, and one that cannot start explains why rather than
    disappearing.
 
-   Ordinary questions start without any file contents attached. Choose
-   **Attach current** to include the file on screen, or press `@` to attach
-   other files and folders. An attached current-file chip stays on that file
-   when you navigate, until you remove it; navigation alone never changes what
-   is sent. Selecting prose explicitly attaches that selection to its source
-   scene, and selection tasks and their follow-ups stay anchored there.
+   Every question tells the agent where you are, the way the editor
+   extensions do: which file is open, and your selection if it is in the
+   panel. A quiet line at the top of the panel names that file. The agent
+   reads the file from the project when it needs to; the text itself goes
+   along only when it has unsaved edits, which are not on disk to be read.
+   Press `@` to mention other files and folders: they stay in the question as
+   `@path` chips and send the path, not the file. Selection tasks and their
+   follow-ups stay anchored to the passage you selected.
    Reading needs no answer. A command that would write, reach the network,
    or type into a command already running waits on an approval you can see.
-   File edits are kept for review after the turn, and a reading pass
-   declines them.
+   An edit is saved as it is made. After the turn a compact card shows the
+   file and "N changes · saved", with **Expand view** for the diff side by
+   side, **Undo all**, and **Looks good**; the card goes away when you send
+   the next question. A reading pass makes no edits.
 
    A status strip between the conversation and the composer says what the
    agent is doing: starting, working (with the current step and a running

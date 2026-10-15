@@ -8,19 +8,21 @@ analysis, edit a scene, and export the book as an EPUB or a PDF. Nothing to
 install, and your edits never leave the tab.
 
 Proseview turns a folder of Markdown scenes into a place to write the book:
-read and edit scenes and story-bible notes on a typeset page, check pacing,
-prose and character presence, ask Codex or Claude about the manuscript, and
-export it as an e-book or a print-ready PDF. Your files stay plain Markdown,
-and a save changes only what you edited.
+read and edit scenes and the rest of your Markdown files on a typeset page,
+read the whole book from start to finish, check pacing, prose and character
+presence, ask Codex or Claude about the manuscript, and export it as an
+e-book or a print-ready PDF. Your files stay plain Markdown, and a save
+changes only what you edited.
 
 Core analysis stays on your machine: no account, subscription, database, or
 telemetry. AI features are opt-in and run through agent CLIs you installed and
-logged into yourself — Codex or Claude in the side dock. When you use one,
-Proseview sends the active document by default, plus any selection or
-attachments, to that agent under its own login and data handling.
+logged into yourself — Codex or Claude in the side dock. When you ask one,
+Proseview sends your question, which file is open, and any selection or
+`@`mentioned paths to that agent, which reads what it needs from your project
+under its own login and data handling.
 
-Proseview reads plain `.md` files in whatever layout they already have, so it
-sits alongside Obsidian, Vim, or any other Markdown editor.
+Your files stay where they are, as plain `.md`, so Proseview sits alongside
+Obsidian, Vim, or any other Markdown editor.
 
 ```bash
 pipx install "proseview[claude]"
@@ -35,7 +37,7 @@ Leave off `[claude]` if you will not use the Claude tab. [Quick start →](#-qui
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-![The Proseview dashboard with the file sidebar open on chapter one's scenes: total words against the goal, scene count, reading time, and a Goals panel with writing streak and per-chapter average](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
+![The Proseview dashboard with the file sidebar open on chapter one's scenes: total words against the goal, scene count, reading time, the Read the book and Export buttons, and a Goals panel with writing streak and per-chapter average](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
 ## ✨ What it does
 
@@ -45,9 +47,13 @@ Leave off `[claude]` if you will not use the Claude tab. [Quick start →](#-qui
   `Edit` toggled on. `Mod-S` saves and returns to reading; a conflict guard checks the file mtime
   so a change made in your own editor is never silently overwritten. A save
   rewrites only the paragraphs you changed.
-- 📝 **Editable notes.** Story bible, plans, and any other Markdown file in
-  the book get the same `Edit` and `Save`, with backups and the same
-  conflict guard. Notes with HTML inside their lines are edited as plain Markdown.
+- 📚 **Read the book.** The whole manuscript as one continuous text, the way
+  an e-reader shows it, with a progress bar, chapter list, scene and chapter
+  skips, and `Edit` beside each scene. It reopens where you stopped.
+- 📝 **Every Markdown file editable.** Story bible, plans, and any other
+  Markdown file in the book get the same `Edit` and `Save`, with backups and
+  the same conflict guard. Files with HTML inside their lines are edited as
+  plain Markdown.
 - 📁 **File browser.** Create empty Markdown files and folders, rename them
   inline, or move them to Proseview Trash from the row menu or right-click.
 - 🔎 **Repository search.** `Mod-K` from anywhere — paths, metadata, TODOs,
@@ -94,13 +100,17 @@ your machine, under your login: Codex and Claude, one tab each in the side
 dock, each with its own project conversation. Both run at once; switching tabs
 or opening another file never interrupts either one.
 
-Agent sessions are read-only. Reading needs no answer; a shell command that
-could change something stops at an approval you have to grant, and the
-agent's file edits come back for review after the turn, a change at a time.
-Raw model reasoning is never forwarded to the browser.
+They work as they do in the VS Code extensions. Each question says which file
+is open, plus your selection and any files you `@`mention, and the agent reads
+the rest of the project itself. Claude loads your own Claude settings
+(permission rules, `CLAUDE.md`, skills, MCP servers) and asks in the panel
+wherever the Claude Code extension would ask; Codex asks before a command that
+would change something. Raw model reasoning is never forwarded to the browser.
 
-Continuity and canon questions come back with citations, and suggested edits
-arrive as proposals you accept or reject before anything is written.
+An edit the agent makes is saved, and a small card after the turn shows the
+file and how many changes it made, with Expand view to see the diff, Undo all,
+and Looks good. Reading passes such as Quick critique make no edits, and
+continuity and canon questions come back with citations.
 
 Everything else works without an agent installed. For the Claude tab, install
 Proseview with its `claude` extra (`pipx install "proseview[claude]"`, or
@@ -135,11 +145,23 @@ callouts and embeds elsewhere in the file stay exactly as written.
 
 ![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
+### Read the book
+
+**Read the book** on the dashboard shows the whole manuscript as one
+continuous text, every scene in order under its chapter's heading. A quiet bar
+at the bottom shows how far through you are, skips by scene or chapter (the
+arrow keys do too) and opens a chapter list; `Aa` sets the text size, line
+width, font and theme. `Edit` beside a scene (or `E`) opens it in the editor,
+and leaving brings you back to the same place in the book.
+
+![Read the book: the opening of the demo manuscript as one continuous text, with the progress and chapter bar along the bottom](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/read-the-book.png)
+
 ### Agent tabs
 
 Codex and Claude each get a tab and a separate project conversation. Opening
-another file does not replace either conversation or silently send that file
-to the agent. Attach the current file when you want it included.
+another file does not replace either conversation; the next question simply
+tells the agent which file you are in now, and the agent reads it from the
+project. Type `@` to point at other files.
 
 ![The Codex and Claude tabs answering the same question about a scene in separate conversations, with each answer staying in its own tab](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-agents.gif)
 
@@ -255,8 +277,9 @@ discuss:
 
 Proseview is alpha. Everything described above works today. Still unfinished:
 
-- 🚧 Skills on the Claude tab. Codex discovers them today; Claude's picker
-  is still empty.
+- 🚧 The `$` skill picker on the Claude tab. Claude uses your Claude skills
+  on its own, but the picker lists only Codex's today.
+- 🚧 Read the book does not yet update live when a scene changes on disk.
 
 See [plans/roadmap.md](plans/roadmap.md) for the full punch list.
 

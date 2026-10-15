@@ -3,7 +3,7 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
-## Unreleased
+## 0.4.2 — 2026-10-15
 
 ### Added
 
@@ -25,13 +25,13 @@ section here becomes the release notes on GitHub.
   access and, as in the extension, does not ask per search. A conversation
   from before also picks up today's standing instructions when it resumes.
 
-- **Claude can read the project's history.** Claude had no shell, so it
-  could not run `git log` and said so. It now has one, on the same terms as
-  Codex's read-only sandbox: commands that only read (`git log`, `git show`,
-  `git diff`, `cat`, `rg`, `ls`, `wc`…, alone or piped) run without asking;
-  anything else, including any redirection or substitution, stops for your
-  approval. Web search, opening a web page and starting a helper agent are
-  available too, and always ask first, saying what they would search or open.
+- **Claude runs as it does in the Claude Code VS Code extension.** It loads
+  your user, project and local Claude settings (permission rules,
+  `CLAUDE.md`, skills, MCP servers), uses Claude Code's own system prompt
+  with Proseview's instructions added, has all its own tools (a shell, web
+  search, web pages, helper agents), and asks in the panel exactly where the
+  extension would ask. Proseview keeps two rules of its own: a reading pass
+  makes no edits, and every edit goes into the review after the turn.
 
 - **An answer is formatted while it streams.** Headings, lists, bold and
   code show as they arrive, instead of raw Markdown until the answer ends.
@@ -76,6 +76,19 @@ section here becomes the release notes on GitHub.
   the exact command, coloured like a shell line (as approval requests are too). What the agent says between commands appears among the
   steps in its own voice, and the line under "Codex is working" wraps to two
   lines instead of being cut off.
+
+- **The change card is compact.** After a turn that edited a file, the
+  panel shows the file and "N changes · saved" with Expand view, Undo all
+  and Looks good. The diff opens in Expand view, side by side; the other
+  diff views open side by side too. The card goes away when you send the
+  next question.
+
+- **Press A to ask about the selected text.** The chip for a selection in
+  the panel lights its passage while the pointer is on it, underlined in
+  the accent colour, and a click goes to it.
+
+- **An outside edit lights the block it changed** in an open scene, found by
+  comparing blocks rather than counting paragraphs.
 
 - **A change Codex or Claude made reads as made.** The review card says
   "Codex changed this file · 7 changes · saved" instead of "Keeping all 7".

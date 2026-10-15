@@ -112,11 +112,13 @@ Three places where AI shows up, all opt-in:
    pipx inject proseview claude-agent-sdk
    ```
 
-   Its session runs with a fixed read-only tool allowlist and without loading
-   your personal Claude settings, so nothing outside Proseview's own scope can
-   widen what the agent may do. Every shell command stops at an approval you
-   have to grant, and the tools that edit files are offered only when you
-   asked for a change.
+   Claude runs here as it does in the Claude Code VS Code extension: it loads
+   your user, project, and local Claude settings (permission rules,
+   `CLAUDE.md`, skills, MCP servers), uses Claude Code's own system prompt
+   with Proseview's instructions appended, and asks you in the panel exactly
+   where the extension would ask. Proseview adds only two rules: an edit is
+   made only when you asked for a change, and every edit goes into the review
+   at the end of the turn, where you can undo it.
 
    When selected prose is attached, the composer shows up to three **Presets**
    from `discuss.selection_presets` and your browser-local favorites. Favorites

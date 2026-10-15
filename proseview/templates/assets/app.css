@@ -2251,7 +2251,8 @@
 
         [data-view="file"] .tab-panel,
         [data-view="book"] .tab-panel,
-        [data-view="scene"] .tab-panel {
+        [data-view="scene"] .tab-panel,
+        [data-view] .manuscript-setup {
             display: none;
         }
 
@@ -4439,6 +4440,8 @@
         html[data-manuscript="missing"] .tab-nav,
         html[data-manuscript="missing"] .tab-panel,
         html[data-manuscript="missing"] #exportOpenBtn,
+        html[data-manuscript="missing"] #bookOpenBtn,
+        html[data-manuscript="missing"] #modalReadBookBtn,
         html[data-manuscript="missing"] .top-banner .banner-stat,
         html[data-manuscript="missing"] .top-banner .goals-banner {
             display: none !important;

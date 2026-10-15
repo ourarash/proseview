@@ -618,7 +618,7 @@
                     openSceneModal(route.arg);
                 } else if (route.kind === 'file' && route.arg) {
                     previewRepoFile(route.arg, { route: false });
-                } else if (route.kind === 'book') {
+                } else if (route.kind === 'book' && paths.length) {
                     openBookView(route.arg || null, { route: false, focus: false });
                 } else {
                     delete document.documentElement.dataset.view;

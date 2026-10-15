@@ -292,6 +292,8 @@
         // Open the book at scene *p* (the start when none is given).
         function openBookView(p, options) {
             options = options || {};
+            // Without scenes there is no book to read.
+            if (!paths.length) return false;
             if (typeof guardDirtySceneNavigation === 'function' && guardDirtySceneNavigation()) {
                 showUnsavedDialog({onContinue: function() { openBookView(p, options); }});
                 return false;

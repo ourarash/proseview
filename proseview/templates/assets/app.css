@@ -5465,22 +5465,12 @@
            default and means "this stays"; unticking greys the change rather
            than hiding it, so the writer can still read what they are
            putting back. */
-        /* No overflow clipping: it would make the card its own containing box
-           and the sticky header would scroll away with it. The corners are
-           rounded on the pieces that reach the edges instead. */
         .discuss-review {
             border: 1px solid var(--border);
             border-radius: 10px;
             margin-top: 12px;
             background: var(--surface-card);
-        }
-
-        .discuss-review-top {
-            position: sticky;
-            top: 0;
-            z-index: 2;
-            background: var(--surface-muted);
-            border-radius: 9px 9px 0 0;
+            overflow: hidden;
         }
 
         .discuss-review-head {
@@ -5488,7 +5478,6 @@
             align-items: center;
             gap: 10px;
             padding: 9px 11px;
-            border-bottom: 1px solid var(--border);
             background: var(--surface-muted);
         }
 
@@ -5504,15 +5493,6 @@
             color: var(--text-muted);
             font-size: 12px;
             font-variant-numeric: tabular-nums;
-        }
-
-        .discuss-review-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 6px 10px;
-            border-bottom: 1px solid var(--border);
         }
 
         .discuss-review-block + .discuss-review-block {
@@ -5595,7 +5575,6 @@
             padding: 8px 10px;
             border-top: 1px solid var(--border);
             background: var(--surface-card);
-            border-radius: 0 0 9px 9px;
         }
 
         .discuss-review-hint {

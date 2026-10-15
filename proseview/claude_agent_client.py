@@ -18,12 +18,12 @@ reason for a piece of machinery below:
   is threads and queues. One event loop runs on a private thread and every
   public method bridges to it, while inbound notifications are handed to a
   dispatcher thread so manager callbacks can safely re-enter this class.
-* **Approvals are hooks, not callbacks.** ``can_use_tool`` is not a reliable
-  gate: an ``allowed_tools``/``tools`` entry that permits a whole tool
-  auto-approves it before the callback runs, and allow rules in the user's
-  settings files shadow it invisibly. A ``PreToolUse`` hook is consulted
-  either way, so the writer's approval decision hangs there. See
-  ``plans/claude-agent-sdk-spike.md``.
+* **Claude's own permissions, plus two rules.** Claude loads the writer's
+  settings as the Claude Code extension does and asks, through
+  ``can_use_tool``, exactly where the extension would. A ``PreToolUse`` hook,
+  which runs before those permissions, adds Prosview's two rules: an edit goes
+  through Prosview so it can be reviewed after the turn, and a reading pass
+  makes no edit at all.
 """
 
 from __future__ import annotations
@@ -48,79 +48,10 @@ APPROVAL_METHODS = {
 }
 APPROVAL_DECISIONS = ["accept", "acceptForSession", "decline", "cancel"]
 
-# Tools Prosview allows without asking. Everything else reaches the writer.
-READ_ONLY_TOOLS = ["Read", "Glob", "Grep"]
-
-#: Tools that change the manuscript. They are offered only on a turn the writer
-#: asked to change something, and every one of them still stops at the
-#: PreToolUse gate below, so Claude asks before it writes.
+#: Tools that change the manuscript. A writing turn routes every one of them
+#: through Prosview (which keeps the text for the review); a reading pass
+#: refuses them.
 WRITE_TOOLS = ["Write", "Edit", "NotebookEdit"]
-
-#: Commands that only read, which a Claude turn may run without asking, as a
-#: Codex turn does inside its read-only sandbox. Claude has no sandbox, so the
-#: list is short and every part of a command line must pass; anything else
-#: still stops at the writer.
-READ_ONLY_COMMANDS = {
-    "cat", "head", "tail", "nl", "wc", "ls", "grep", "rg", "diff", "sort", "uniq",
-    "cut", "tr", "echo", "pwd", "stat", "file", "tree", "basename", "dirname", "realpath",
-    "find", "git",
-}
-READ_ONLY_GIT = {
-    "log", "show", "diff", "blame", "status", "ls-files", "ls-tree", "rev-parse",
-    "grep", "shortlog", "cat-file", "describe", "rev-list",
-}
-_UNSAFE_FIND = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
-
-
-def is_read_only_command(command: Any, root: str | None = None) -> bool:
-    """True only for a command line made entirely of read-only commands.
-
-    No redirection, substitution, backgrounding or variable assignment; each
-    piece of a pipeline or ``&&`` chain is a known reader; git only with a
-    subcommand that reads, and nothing that writes its output to a file.
-    """
-    import shlex
-
-    text = str(command or "").strip()
-    if not text or len(text) > 4000:
-        return False
-    if any(mark in text for mark in (">", "<", "`", "$(", "${", "\n")) or re.search(r"(?<![&|])&(?![&])", text):
-        return False
-    for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", text):
-        if not segment:
-            continue
-        try:
-            words = shlex.split(segment)
-        except ValueError:
-            return False
-        if not words or "=" in words[0]:
-            return False
-        name = words[0].rsplit("/", 1)[-1]
-        if name not in READ_ONLY_COMMANDS:
-            return False
-        if name == "find" and any(word in _UNSAFE_FIND for word in words[1:]):
-            return False
-        if name == "git":
-            # `git -C <dir>` is fine when the directory is the project's own.
-            while len(words) >= 3 and words[1] == "-C":
-                if not root:
-                    return False
-                try:
-                    target = Path(words[2]).expanduser()
-                    target = (Path(root) / target if not target.is_absolute() else target).resolve()
-                    target.relative_to(Path(root).resolve())
-                except (OSError, ValueError):
-                    return False
-                words = [words[0]] + words[3:]
-            if len(words) < 2 or words[1] not in READ_ONLY_GIT:
-                return False
-            if any(word.startswith(("--output", "--ext-diff")) for word in words[2:]):
-                return False
-    return True
-
-
-#: Offered, but each use asks the writer first.
-ASKING_TOOLS = ["WebSearch", "WebFetch", "Task"]
 
 #: SDK-internal plumbing, not writer-facing actions. ``StructuredOutput`` is how
 #: the CLI delivers a JSON result when an output schema is set, so gating it
@@ -638,13 +569,10 @@ class ClaudeAgentClient:
         return {"data": rows, "default": defaults}
 
     def user_model_defaults(self) -> dict[str, str]:
-        """Read the writer's configured model and effort, and nothing else.
+        """Read the writer's configured model and effort.
 
-        Prosview starts Claude sessions with ``setting_sources`` unset, so this
-        file is deliberately not loaded: it can carry hooks and permission
-        allow-rules that would shadow the approval gate. Two scalar keys carry
-        none of that, and ignoring them would mean a writer who configured Opus
-        silently gets whatever the SDK defaults to instead.
+        The session loads this file itself; Prosview reads these two keys so
+        the model picker can say what "Default" means and pass it on.
         """
         path = Path(
             os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")
@@ -728,21 +656,21 @@ class ClaudeAgentClient:
         async def pre_tool_use(input_data: dict[str, Any], tool_use_id: Any, context: Any):
             return await self._gate_tool(session, input_data)
 
+        async def can_use_tool(tool: str, tool_input: dict[str, Any], context: Any):
+            return await self._permission_prompt(session, tool, tool_input)
+
         options: dict[str, Any] = {
             "cwd": self.cwd,
-            # Load-bearing: without this the writer's own CLAUDE.md, hooks, and
-            # settings enter a session Prosview believes it has bounded — and
-            # settings allow-rules can shadow the approval gate entirely.
-            "setting_sources": None,
-            "strict_mcp_config": True,
-            "mcp_servers": {},
-            "permission_mode": "default",
-            # Always offered; whether a turn may use them is decided per
-            # turn at the gate below. Bash runs a reading command unasked,
-            # anything else only with the writer's say; the web and helper
-            # agents always ask, as in the Claude Code extension.
-            "tools": list(READ_ONLY_TOOLS) + list(WRITE_TOOLS) + ["Bash"] + list(ASKING_TOOLS),
+            # Claude here is Claude as the Claude Code extension runs it: the
+            # writer's settings (user, project, local) with their permission
+            # rules, CLAUDE.md, skills and MCP servers, all its own tools, and
+            # its own system prompt. Where it would ask, it asks in the panel
+            # (can_use_tool below). Prosview adds two things only, at the
+            # PreToolUse gate: edits go to the review, and a reading pass makes
+            # none.
+            "setting_sources": ["user", "project", "local"],
             "include_partial_messages": True,
+            "can_use_tool": can_use_tool,
         }
         selection = self.turn_model(params)
         if selection["model"]:
@@ -752,8 +680,10 @@ class ClaudeAgentClient:
         instructions = params.get("developerInstructions") or session.thread_params.get(
             "developerInstructions"
         )
+        system_prompt: dict[str, Any] = {"type": "preset", "preset": "claude_code"}
         if instructions:
-            options["system_prompt"] = str(instructions)
+            system_prompt["append"] = str(instructions)
+        options["system_prompt"] = system_prompt
         schema = params.get("outputSchema")
         if schema:
             options["output_format"] = {"type": "json_schema", "schema": schema}
@@ -764,7 +694,15 @@ class ClaudeAgentClient:
         if self._options_factory is not None:
             return self._options_factory(hooks={"PreToolUse": [pre_tool_use]}, **options)
 
-        from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
+        from claude_agent_sdk import ClaudeAgentOptions, HookMatcher, PermissionResultAllow, PermissionResultDeny
+
+        async def can_use_tool_sdk(tool: str, tool_input: dict[str, Any], context: Any):
+            verdict = await can_use_tool(tool, tool_input, context)
+            if verdict.get("behavior") == "allow":
+                return PermissionResultAllow()
+            return PermissionResultDeny(message=verdict.get("message") or "The writer declined this action.")
+
+        options["can_use_tool"] = can_use_tool_sdk
 
         options["hooks"] = {"PreToolUse": [HookMatcher(matcher=None, hooks=[pre_tool_use])]}
         return ClaudeAgentOptions(**options)
@@ -1062,35 +1000,50 @@ class ClaudeAgentClient:
     # --- approvals ---------------------------------------------------------
 
     async def _gate_tool(self, session: _Session, input_data: dict[str, Any]) -> dict[str, Any]:
-        """Ask the writer before a tool runs, and block this turn until they answer."""
+        """Prosview's two rules, before Claude's own permissions are consulted.
+
+        An edit goes through Prosview, which keeps the file's text for the
+        review after the turn (and a reading pass makes no edit at all).
+        Everything else gets no decision here: Claude's permission rules
+        decide, and ask through ``can_use_tool`` when they would ask.
+        """
         tool = str(input_data.get("tool_name") or "")
         tool_input = input_data.get("tool_input") or {}
-        if tool in READ_ONLY_TOOLS or tool in INTERNAL_TOOLS:
-            return self._hook_decision("allow")
-        if tool == "Bash" and is_read_only_command(tool_input.get("command"), self.cwd):
-            return self._hook_decision("allow")
-        if tool in WRITE_TOOLS and not session.may_write:
-            return self._hook_decision("deny", "This is a reading pass; it does not change files.")
+        if tool in WRITE_TOOLS:
+            if not session.may_write:
+                return self._hook_decision("deny", "This is a reading pass; it does not change files.")
+            verdict = await self._ask_writer(session, tool, tool_input, input_data.get("tool_use_id"), input_data.get("cwd"))
+            return self._hook_decision(verdict["behavior"], verdict.get("message", ""))
+        return {}
 
+    async def _permission_prompt(self, session: _Session, tool: str, tool_input: dict[str, Any]) -> dict[str, Any]:
+        """Claude would ask here; the writer answers in the panel."""
+        if tool in INTERNAL_TOOLS:
+            return {"behavior": "allow"}
+        return await self._ask_writer(session, tool, tool_input, None, None)
+
+    async def _ask_writer(
+        self, session: _Session, tool: str, tool_input: dict[str, Any], tool_use_id: Any, cwd: Any
+    ) -> dict[str, Any]:
         granted = self._session_grants.get(session.thread_id) or set()
         if tool in granted:
-            return self._hook_decision("allow")
+            return {"behavior": "allow"}
 
         kind = "fileChange" if _activity_kind(tool) == "fileChange" else "command"
         request_id = uuid.uuid4().hex
         loop = self._loop
         if loop is None:
-            return self._hook_decision("deny", "Prosview is not connected.")
+            return {"behavior": "deny", "message": "Prosview is not connected."}
         future: asyncio.Future[dict[str, Any]] = loop.create_future()
         self._approvals[request_id] = future
 
         params: dict[str, Any] = {
             "threadId": session.thread_id,
             "turnId": session.turn_id,
-            "itemId": input_data.get("tool_use_id"),
-            "reason": f"Claude wants to use {tool}, which is outside Prosview's read-only scope.",
+            "itemId": tool_use_id,
+            "reason": f"Claude wants to use {tool}.",
             "tool": tool,
-            "cwd": str(input_data.get("cwd") or self.cwd),
+            "cwd": str(cwd or self.cwd),
             "availableDecisions": list(APPROVAL_DECISIONS),
         }
         if kind == "command":
@@ -1099,7 +1052,7 @@ class ClaudeAgentClient:
                 tool_input.get("command")
                 or (f"Search the web for “{tool_input.get('query')}”" if tool == "WebSearch" and tool_input.get("query") else "")
                 or (f"Open {tool_input.get('url')}" if tool == "WebFetch" and tool_input.get("url") else "")
-                or (f"Start a helper agent: {tool_input.get('description')}" if tool == "Task" and tool_input.get("description") else "")
+                or (f"Start a helper agent: {tool_input.get('description')}" if tool in {"Task", "Agent"} and tool_input.get("description") else "")
                 or tool
             )
             params["command"] = _bounded(detail, 4000)
@@ -1111,17 +1064,17 @@ class ClaudeAgentClient:
         try:
             result = await asyncio.wait_for(future, timeout=APPROVAL_TIMEOUT)
         except (TimeoutError, asyncio.CancelledError):
-            return self._hook_decision("deny", "Prosview did not receive an approval in time.")
+            return {"behavior": "deny", "message": "Prosview did not receive an approval in time."}
         finally:
             self._approvals.pop(request_id, None)
 
         decision = str(result.get("decision") or "decline")
         if decision == "acceptForSession":
             self._session_grants.setdefault(session.thread_id, set()).add(tool)
-            return self._hook_decision("allow")
+            return {"behavior": "allow"}
         if decision == "accept":
-            return self._hook_decision("allow")
-        return self._hook_decision("deny", "The writer declined this action.")
+            return {"behavior": "allow"}
+        return {"behavior": "deny", "message": "The writer declined this action."}
 
     @staticmethod
     def _hook_decision(decision: str, reason: str = "") -> dict[str, Any]:

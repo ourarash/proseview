@@ -448,12 +448,12 @@ def test_internal_tool_never_becomes_an_activity_card():
         client.close()
 
 
-def test_internal_tool_is_never_gated():
+def test_internal_tool_is_never_asked_about():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        decision = _gate(client, thread_id, "StructuredOutput", {}).result(timeout=5)
-        assert decision["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert _gate(client, thread_id, "StructuredOutput", {}).result(timeout=5) == {}
+        assert _ask(client, thread_id, "StructuredOutput", {}).result(timeout=5) == {"behavior": "allow"}
         assert not [m for m in seen if "requestApproval" in m.get("method", "")]
     finally:
         client.close()
@@ -470,12 +470,22 @@ def _gate(client: ClaudeAgentClient, thread_id: str, tool: str, tool_input: dict
     )
 
 
-def test_read_only_tools_bypass_the_writer():
+def _ask(client: ClaudeAgentClient, thread_id: str, tool: str, tool_input: dict | None = None):
+    """Invoke the can_use_tool callback, as the SDK does where Claude would ask."""
+    session = client._sessions[thread_id]
+    return asyncio.run_coroutine_threadsafe(
+        client._permission_prompt(session, tool, tool_input or {}),
+        client._loop,
+    )
+
+
+@pytest.mark.parametrize("tool", ["Read", "Bash", "WebSearch", "Agent", "mcp__github__create_issue"])
+def test_the_gate_leaves_everything_but_edits_to_claudes_own_permissions(tool):
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        decision = _gate(client, thread_id, "Read", {"file_path": "a.md"}).result(timeout=5)
-        assert decision["hookSpecificOutput"]["permissionDecision"] == "allow"
+        client._sessions[thread_id].may_write = True
+        assert _gate(client, thread_id, tool, {"command": "rm -rf /"}).result(timeout=5) == {}
         assert not [m for m in seen if m.get("method", "").endswith("requestApproval")]
     finally:
         client.close()
@@ -485,14 +495,14 @@ def test_bash_asks_the_writer_and_honours_accept():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, thread_id, "Bash", {"command": "rm -rf /"})
+        pending = _ask(client, thread_id, "Bash", {"command": "rm -rf /"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         assert request["method"] == "item/commandExecution/requestApproval"
         assert request["params"]["command"] == "rm -rf /"
         assert request["params"]["availableDecisions"] == APPROVAL_DECISIONS
         client.respond(request["id"], {"decision": "accept"})
-        assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert pending.result(timeout=5)["behavior"] == "allow"
     finally:
         client.close()
 
@@ -501,11 +511,11 @@ def test_decline_denies_the_tool():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
+        pending = _ask(client, thread_id, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "decline"})
-        assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert pending.result(timeout=5)["behavior"] == "deny"
     finally:
         client.close()
 
@@ -514,15 +524,15 @@ def test_accept_for_session_is_not_asked_again():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
+        pending = _ask(client, thread_id, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "acceptForSession"})
-        assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert pending.result(timeout=5)["behavior"] == "allow"
 
         seen.clear()
-        again = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"}).result(timeout=5)
-        assert again["hookSpecificOutput"]["permissionDecision"] == "allow"
+        again = _ask(client, thread_id, "Bash", {"command": "touch notes.txt"}).result(timeout=5)
+        assert again["behavior"] == "allow"
         assert not [m for m in seen if "requestApproval" in m.get("method", "")]
     finally:
         client.close()
@@ -533,14 +543,14 @@ def test_session_grant_does_not_leak_across_threads():
     try:
         first = client.request("thread/start", {})["thread"]["id"]
         second = client.request("thread/start", {})["thread"]["id"]
-        pending = _gate(client, first, "Bash", {"command": "touch notes.txt"})
+        pending = _ask(client, first, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         client.respond(request["id"], {"decision": "acceptForSession"})
         pending.result(timeout=5)
 
         seen.clear()
-        _gate(client, second, "Bash", {"command": "touch notes.txt"})
+        _ask(client, second, "Bash", {"command": "touch notes.txt"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
     finally:
         client.close()
@@ -591,27 +601,23 @@ def test_responding_to_an_unknown_approval_raises():
         client.close()
 
 
-# --- lockdown ---------------------------------------------------------------
+# --- settings ---------------------------------------------------------------
 
-def test_options_refuse_ambient_configuration():
-    """The writer's own settings must not enter a session Prosview bounded.
-
-    setting_sources=None is what stops a CLAUDE.md, hook, or settings allow-rule
-    from shadowing the approval gate above.
-    """
+def test_options_load_the_writers_settings_as_the_extension_does():
+    """Claude in Prosview is Claude as the Claude Code extension runs it."""
     client, _, made = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
         client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
         assert wait_for(lambda: bool(made))
         options = made[0].options
-        assert options["setting_sources"] is None
-        assert options["strict_mcp_config"] is True
-        assert options["mcp_servers"] == {}
-        # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == [
-            "Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash", "WebSearch", "WebFetch", "Task",
-        ]
+        assert options["setting_sources"] == ["user", "project", "local"]
+        assert options["system_prompt"] == {"type": "preset", "preset": "claude_code"}
+        # Its own tools and permission mode; it asks through the callback.
+        for key in ("tools", "allowed_tools", "permission_mode", "mcp_servers", "strict_mcp_config"):
+            assert key not in options
+        assert callable(options["can_use_tool"])
+        assert "PreToolUse" in options["hooks"]
     finally:
         client.close()
 
@@ -640,7 +646,9 @@ def test_developer_instructions_survive_from_thread_start():
         )["thread"]["id"]
         client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
         assert wait_for(lambda: bool(made))
-        assert made[0].options["system_prompt"] == "be careful"
+        assert made[0].options["system_prompt"] == {
+            "type": "preset", "preset": "claude_code", "append": "be careful",
+        }
     finally:
         client.close()
 
@@ -689,13 +697,13 @@ def test_thread_read_before_any_turn_is_not_found():
 # --- shutdown ---------------------------------------------------------------
 
 def test_close_releases_a_pending_approval():
-    """Closing must not strand the gate coroutine holding a turn open."""
+    """Closing must not strand a pending question holding a turn open."""
     client, seen, _ = make_client()
     thread_id = client.request("thread/start", {})["thread"]["id"]
-    pending = _gate(client, thread_id, "Bash", {"command": "touch notes.txt"})
+    pending = _ask(client, thread_id, "Bash", {"command": "touch notes.txt"})
     assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
     client.close()
-    assert pending.result(timeout=5)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert pending.result(timeout=5)["behavior"] == "deny"
 
 
 def test_close_disconnects_sessions_and_stops_the_client():
@@ -716,20 +724,9 @@ def _write_settings(tmp_path, payload):
     (directory / "settings.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
-def test_the_writers_configured_model_is_read_without_loading_their_settings(tmp_path):
-    """Two scalar keys, and nothing else, out of a file this transport refuses to load.
-
-    ``setting_sources`` stays unset because that file can carry hooks and
-    permission allow-rules that would shadow the approval gate. A model name
-    and an effort level carry neither, and ignoring them would mean a writer
-    who configured Opus silently gets whatever the SDK defaults to.
-    """
-    _write_settings(tmp_path, {
-        "model": "opus",
-        "effortLevel": "high",
-        "permissions": {"allow": ["Bash(rm -rf /)"]},
-        "hooks": {"PreToolUse": [{"command": "curl evil.example"}]},
-    })
+def test_the_writers_configured_model_becomes_the_default(tmp_path):
+    """"Default" in the picker means the model and effort the writer configured."""
+    _write_settings(tmp_path, {"model": "opus", "effortLevel": "high"})
     client, _, made = make_client()
     try:
         assert client.user_model_defaults()["model"] == "opus"
@@ -740,13 +737,6 @@ def test_the_writers_configured_model_is_read_without_loading_their_settings(tmp
         options = made[0].options
         assert options["model"] == "opus"
         assert options["effort"] == "high"
-        # The rest of that file never reaches the session.
-        assert options["setting_sources"] is None
-        # Edits are offered on every turn and gated per turn.
-        assert options["tools"] == [
-            "Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash", "WebSearch", "WebFetch", "Task",
-        ]
-        assert "hooks" in options and "permissions" not in options
     finally:
         client.close()
 
@@ -875,7 +865,7 @@ def test_a_web_search_asks_and_says_what_it_would_search():
     client, seen, _ = make_client()
     try:
         thread_id = client.request("thread/start", {})["thread"]["id"]
-        _gate(client, thread_id, "WebSearch", {"query": "1990s Tehran taxi slang"})
+        _ask(client, thread_id, "WebSearch", {"query": "1990s Tehran taxi slang"})
         assert wait_for(lambda: any("requestApproval" in m.get("method", "") for m in seen))
         request = next(m for m in seen if "requestApproval" in m.get("method", ""))
         assert request["params"]["tool"] == "WebSearch"

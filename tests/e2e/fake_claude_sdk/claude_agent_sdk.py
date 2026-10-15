@@ -23,6 +23,19 @@ class HookMatcher:
         self.__dict__.update(values)
 
 
+class PermissionResultAllow:
+    def __init__(self, **values):
+        self.behavior = "allow"
+        self.__dict__.update(values)
+
+
+class PermissionResultDeny:
+    def __init__(self, message: str = "", **values):
+        self.behavior = "deny"
+        self.message = message
+        self.__dict__.update(values)
+
+
 class TextBlock:
     def __init__(self, text: str):
         self.text = text

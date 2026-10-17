@@ -5626,16 +5626,23 @@
             margin-top: 9px;
         }
 
+        /* In the column's flow, pulled up over the foot of the log by its own
+           height, so it sits just above whatever is below the log however
+           tall the composer grows. */
         .discuss-new-activity {
-            position: absolute;
-            right: 18px;
-            bottom: 150px;
+            position: relative;
             z-index: 2;
+            flex-shrink: 0;
+            align-self: flex-end;
+            box-sizing: border-box;
+            height: 30px;
+            margin: -38px 18px 8px 0;
+            line-height: 1;
             border: 1px solid var(--primary);
             border-radius: 999px;
             background: var(--surface-card);
             color: var(--primary);
-            padding: 6px 10px;
+            padding: 0 10px;
             cursor: pointer;
         }
 
@@ -5934,6 +5941,17 @@
         .discuss-task-mode[hidden],
         .discuss-skills-picker[hidden] {
             display: none;
+        }
+
+        /* Presets wait for the writer: shown while the question box is empty
+           and the writer is in the composer, and while the More menu is open. */
+        .discuss-task-mode[data-mode="presets"] {
+            display: none;
+        }
+
+        .discuss-composer-area:focus-within:has(#discussInput:placeholder-shown) .discuss-task-mode[data-mode="presets"]:not([hidden]),
+        .discuss-task-mode[data-mode="presets"]:not([hidden]):has(.discuss-presets-more[open]) {
+            display: flex;
         }
 
         .discuss-task-mode strong {

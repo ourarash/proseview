@@ -5579,10 +5579,28 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
         "JSON.parse(localStorage.getItem('proseview-codex-favorite-instructions'))[0]"
     ) == "Recent only prompt"
 
+    assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
     page.locator("#discussTaskMode .discuss-preset-inline").first.click()
     assert page.input_value("#discussInput") == "Recent only prompt"
+    assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
+
+    # Presets wait for the writer: there while the box is empty and in use,
+    # gone once there is text in it or the writer is elsewhere.
+    assert page.locator("#discussTaskMode").is_hidden()
+    page.fill("#discussInput", "")
+    assert page.locator("#discussTaskMode").is_visible()
+    page.locator("#discussLog").focus()
+    assert page.locator("#discussTaskMode").is_hidden()
+    page.locator("#discussInput").focus()
     assert page.locator("#discussTaskMode .discuss-preset-inline").count() == 3
-    assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
+    assert page.locator("#discussTaskMode").is_visible()
+
+    # "New activity" sits above the composer, however tall the presets make
+    # it, rather than on top of the selection chip.
+    page.evaluate("document.getElementById('discussNewActivity').hidden = false")
+    pill = page.locator("#discussNewActivity").bounding_box()
+    composer = page.locator("#discussComposerArea").bounding_box()
+    assert pill["y"] + pill["height"] <= composer["y"]
 
 
 def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: ProseviewServer):

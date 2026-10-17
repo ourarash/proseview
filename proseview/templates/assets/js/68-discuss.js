@@ -3634,6 +3634,7 @@ function loadDiscussDiffMode(mode) {
 
         function buildDiscussTaskMode(node) {
             node.replaceChildren();
+            delete node.dataset.mode;
             if (_discussRepositoryAction) {
                 node.hidden = false;
                 var repositoryTitle = document.createElement('strong');
@@ -3664,6 +3665,10 @@ function loadDiscussDiffMode(mode) {
                 ? 'Ask anything about this selection…'
                 : 'Ask anything about your story…';
             node.hidden = !(_discussSelection && (presets.length || recents.length));
+            // The stylesheet shows presets only while the box is empty and
+            // in use, so they are there when the writer goes to type and out
+            // of the way the rest of the time.
+            node.dataset.mode = 'presets';
             if (!node.hidden) {
                 var label = document.createElement('strong'); label.className = 'sr-only'; label.textContent = 'Presets'; node.appendChild(label);
                 var inline = elementWith('discuss-presets-inline');
@@ -4682,6 +4687,14 @@ function loadDiscussDiffMode(mode) {
                     renderDiscussError(error.message);
                 });
         }
+
+        // A press on a composer control leaves focus where it was. The presets
+        // show only while the writer is in the composer, and WebKit does not
+        // focus a pressed button: the box would blur on mousedown, the presets
+        // would vanish, and everything above them would shift under the click.
+        document.getElementById('discussComposerArea').addEventListener('mousedown', function(event) {
+            if (event.target.closest('button, summary')) event.preventDefault();
+        });
 
         document.getElementById('discussInput').addEventListener('keydown', function(event) {
             var pickerOpen = !document.getElementById('discussContextPicker').hidden;

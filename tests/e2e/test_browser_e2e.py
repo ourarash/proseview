@@ -5581,24 +5581,18 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
 
     assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
 
-    # Presets wait for the writer: there while the box is empty and in use,
-    # out of sight once there is text in it or the writer is elsewhere. The
-    # row keeps its space, so nothing above the box moves either way.
+    # Presets are named for what they do, and wait while the box holds a
+    # draft, since sending one would replace it.
+    assert page.locator("#discussTaskMode .discuss-presets-label").inner_text() == "Quick send:"
+    presets = page.locator("#discussTaskMode .discuss-preset-inline")
+    assert presets.first.get_attribute("title") == "Send: Recent only prompt"
     page.keyboard.press("Escape")
-    assert page.locator("#discussPresetsPopover").is_hidden()
     page.locator("#discussInput").focus()
-    assert page.locator("#discussTaskMode").is_visible()
-    chip_top = page.locator("#discussSelectionChip").bounding_box()["y"]
     page.keyboard.type("x")
-    assert page.locator("#discussTaskMode").is_hidden()
-    assert page.locator("#discussSelectionChip").bounding_box()["y"] == chip_top
+    assert presets.first.is_visible()
+    assert presets.first.is_disabled()
     page.fill("#discussInput", "")
-    assert page.locator("#discussTaskMode").is_visible()
-    page.locator("#discussLog").focus()
-    assert page.locator("#discussTaskMode").is_hidden()
-    assert page.locator("#discussSelectionChip").bounding_box()["y"] == chip_top
-    page.locator("#discussInput").focus()
-    assert page.locator("#discussTaskMode").is_visible()
+    assert presets.first.is_enabled()
 
     # A preset is a whole message: clicking it sends it.
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")

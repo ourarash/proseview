@@ -5944,14 +5944,16 @@
         }
 
         /* Presets wait for the writer: shown while the question box is empty
-           and the writer is in the composer, and while the More menu is open. */
+           and the writer is in the composer, and while the More menu is open.
+           The row keeps its space when they are out of sight, so nothing
+           above the box moves as the writer types or clicks away. */
         .discuss-task-mode[data-mode="presets"] {
-            display: none;
+            visibility: hidden;
         }
 
-        .discuss-composer-area:focus-within:has(#discussInput:placeholder-shown) .discuss-task-mode[data-mode="presets"]:not([hidden]),
-        .discuss-task-mode[data-mode="presets"]:not([hidden]):has(.discuss-presets-more[open]) {
-            display: flex;
+        .discuss-composer-area:focus-within:has(#discussInput:placeholder-shown) .discuss-task-mode[data-mode="presets"],
+        .discuss-task-mode[data-mode="presets"]:has(.discuss-presets-more[open]) {
+            visibility: visible;
         }
 
         .discuss-task-mode strong {

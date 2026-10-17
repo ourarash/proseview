@@ -3542,6 +3542,10 @@ function loadDiscussDiffMode(mode) {
             saveDiscussDraft();
             if (details) details.open = false;
             document.getElementById('discussInput').focus();
+            // A preset is a whole message: choosing it sends it. While a turn
+            // is running Send is unavailable and the text waits in the box.
+            syncDiscussSendEmpty();
+            sendDiscussQuestion();
         }
 
         function appendDiscussPresetMenuRow(node, value, favorite, details) {

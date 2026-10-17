@@ -5580,20 +5580,33 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
     ) == "Recent only prompt"
 
     assert page.locator("#discussTaskMode").bounding_box()["height"] < 45
-    page.locator("#discussTaskMode .discuss-preset-inline").first.click()
-    assert page.input_value("#discussInput") == "Recent only prompt"
-    assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
 
     # Presets wait for the writer: there while the box is empty and in use,
-    # gone once there is text in it or the writer is elsewhere.
+    # out of sight once there is text in it or the writer is elsewhere. The
+    # row keeps its space, so nothing above the box moves either way.
+    page.keyboard.press("Escape")
+    assert page.locator("#discussPresetsPopover").is_hidden()
+    page.locator("#discussInput").focus()
+    assert page.locator("#discussTaskMode").is_visible()
+    chip_top = page.locator("#discussSelectionChip").bounding_box()["y"]
+    page.keyboard.type("x")
     assert page.locator("#discussTaskMode").is_hidden()
+    assert page.locator("#discussSelectionChip").bounding_box()["y"] == chip_top
     page.fill("#discussInput", "")
     assert page.locator("#discussTaskMode").is_visible()
     page.locator("#discussLog").focus()
     assert page.locator("#discussTaskMode").is_hidden()
+    assert page.locator("#discussSelectionChip").bounding_box()["y"] == chip_top
     page.locator("#discussInput").focus()
-    assert page.locator("#discussTaskMode .discuss-preset-inline").count() == 3
     assert page.locator("#discussTaskMode").is_visible()
+
+    # A preset is a whole message: clicking it sends it.
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.locator("#discussTaskMode .discuss-preset-inline").first.click()
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-message.user')?.textContent.includes('Recent only prompt')"
+    )
+    assert page.input_value("#discussInput") == ""
 
     # "New activity" sits above the composer, however tall the presets make
     # it, rather than on top of the selection chip.

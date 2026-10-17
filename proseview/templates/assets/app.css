@@ -5943,17 +5943,9 @@
             display: none;
         }
 
-        /* Presets wait for the writer: shown while the question box is empty
-           and the writer is in the composer, and while the More menu is open.
-           The row keeps its space when they are out of sight, so nothing
-           above the box moves as the writer types or clicks away. */
-        .discuss-task-mode[data-mode="presets"] {
-            visibility: hidden;
-        }
-
-        .discuss-composer-area:focus-within:has(#discussInput:placeholder-shown) .discuss-task-mode[data-mode="presets"],
-        .discuss-task-mode[data-mode="presets"]:has(.discuss-presets-more[open]) {
-            visibility: visible;
+        .discuss-presets-label {
+            flex: 0 0 auto;
+            color: var(--text-muted);
         }
 
         .discuss-task-mode strong {
@@ -5982,6 +5974,13 @@
             color: var(--text-main);
             padding: 2px 9px;
             cursor: pointer;
+        }
+
+        /* A preset sends itself, so it waits while the box holds a draft. */
+        .discuss-preset-inline:disabled,
+        .discuss-preset-menu-choice:disabled {
+            opacity: 0.45;
+            cursor: default;
         }
 
         .discuss-presets-more {

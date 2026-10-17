@@ -3615,6 +3615,13 @@ function loadDiscussDiffMode(mode) {
             var empty = !input.value.trim() && !_discussPendingAction && !_discussRepositoryAction && !_discussOpenFailed;
             button.dataset.empty = empty ? 'true' : 'false';
             button.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
+            // A preset sends itself; with a draft in the box it would replace
+            // the draft, so it waits until the box is empty again.
+            var draft = !!input.value.trim();
+            document.querySelectorAll('#discussTaskMode .discuss-preset-inline, #discussTaskMode .discuss-preset-menu-choice').forEach(function(preset) {
+                preset.disabled = draft;
+                preset.title = draft ? 'Clear the question box to send this' : 'Send: ' + preset.textContent;
+            });
         }
 
         function renderDiscussTaskMode() {
@@ -3625,6 +3632,7 @@ function loadDiscussDiffMode(mode) {
             var menuOpen = !!(menu && menu.open);
             var focused = node.contains(document.activeElement) ? discussTaskModeControlKey(document.activeElement) : '';
             buildDiscussTaskMode(node);
+            syncDiscussSendEmpty();
             var rebuilt = menuOpen && node.querySelector('.discuss-presets-more');
             if (rebuilt) rebuilt.open = true;
             if (focused) {
@@ -3669,16 +3677,13 @@ function loadDiscussDiffMode(mode) {
                 ? 'Ask anything about this selection…'
                 : 'Ask anything about your story…';
             node.hidden = !(_discussSelection && (presets.length || recents.length));
-            // The stylesheet shows presets only while the box is empty and
-            // in use, so they are there when the writer goes to type and out
-            // of the way the rest of the time.
             node.dataset.mode = 'presets';
             if (!node.hidden) {
-                var label = document.createElement('strong'); label.className = 'sr-only'; label.textContent = 'Presets'; node.appendChild(label);
+                var label = elementWith('discuss-presets-label', 'Quick send:'); node.appendChild(label);
                 var inline = elementWith('discuss-presets-inline');
                 presets.slice(0, 3).forEach(function(value) {
                     var button = document.createElement('button');
-                    button.type = 'button'; button.className = 'discuss-preset-inline'; button.textContent = value; button.title = value;
+                    button.type = 'button'; button.className = 'discuss-preset-inline'; button.textContent = value;
                     button.onclick = function() { chooseDiscussInstruction(value); };
                     inline.appendChild(button);
                 });

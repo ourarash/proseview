@@ -39,8 +39,8 @@ BOOK_STYLES = ["classic", "modern", "romance"]
 def test_four_styles_ship_and_say_what_they_make():
     assert available_styles() == ["classic", "manuscript", "modern", "romance"]
     for name in BOOK_STYLES:
-        assert load_style(name).formats == ("epub", "pdf-print", "pdf-share")
-    assert load_style("manuscript").formats == ("pdf-share",)
+        assert load_style(name).formats == ("epub", "pdf-print", "pdf-share", "docx")
+    assert load_style("manuscript").formats == ("pdf-share", "docx")
 
 
 def test_modern_and_romance_build_on_classic():

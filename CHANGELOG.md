@@ -14,6 +14,23 @@ section here becomes the release notes on GitHub.
   export, with the book kept in that browser and downloadable as a zip of its
   folder. PDF, the agent panel and your own folders still need the installed
   app.
+- **Word export.** Export makes a Word document (`.docx`) beside the EPUB
+  and PDFs, for an editor who marks up the text with tracked changes, in
+  Word, Google Docs or Pages. In the Manuscript style it is standard
+  submission format: Times New Roman 12 pt, double-spaced, a title page with
+  your contact details and the word count, each chapter a third of the way
+  down a new page, and "Surname / TITLE / page" at the top with a real page
+  number. Classic, Modern and Romance make a reading copy with the title
+  page, front and back matter and the style's chapter openers. Everything
+  is set with named styles (Normal, Heading 1, Scene Break, ...), so an
+  editor can restyle the book and chapters show in Word's navigation pane.
+  The file is checked after export, the dialog previews it a chapter at a
+  time, `proseview export --format docx` makes it from the command line, and
+  it works in the browser version too. *All formats* now makes all four.
+
+### Fixed
+
+- The Export dialog's preview was blank in the browser version (`/write/`).
 
 ## 0.4.2 — 2026-10-15
 

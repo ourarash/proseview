@@ -5,7 +5,7 @@ whole demo book once in every style and format, with the preview pages the
 Export dialog shows, and to write them beside the page under ``export/``.
 The demo page answers the dialog's requests from these files
 (``01-static-snapshot.js``): a visitor goes through every step, sees real
-previews, and downloads a real EPUB or PDF of the whole book in the style and
+previews, and downloads a real EPUB, PDF or Word document of the whole book in the style and
 format they chose. The dialog says that the demo always shows the whole
 book, and that a copy of Proseview on their own computer builds exactly
 what they pick.
@@ -22,8 +22,10 @@ from pathlib import Path
 
 from .book_styles import available_styles, load_style
 from .config import Config
+from .docx import preview_pages as docx_preview_pages
+from .docx_check import readiness as docx_readiness
 from .epub_check import readiness as epub_readiness
-from .export import FORMAT_LABELS, export_book, prepare_book
+from .export import FORMAT_LABELS, FORMAT_SUFFIXES, export_book, prepare_book
 from .export_dashboard import PREVIEW_CHAPTERS, _page_list, _style_order, outline
 from .lexical import count_words, prose_only
 from .pdf import DEFAULT_TRIM, PdfOptions, render_pages
@@ -64,7 +66,7 @@ def write_demo_exports(root: Path, cfg: Config, out: Path, *, title: str, author
             style = load_style(style_name)
             for fmt in style.formats:
                 key = f"{style_name}-{fmt}"
-                suffix = "epub" if fmt == "epub" else "pdf"
+                suffix = FORMAT_SUFFIXES[fmt]
                 variant = {"pdf-print": "-print", "pdf-share": ""}.get(fmt, "")
                 name = f"{stem}{'-' + style_name if style_name != 'classic' else ''}{variant}.{suffix}"
                 result = export_book(
@@ -81,6 +83,12 @@ def write_demo_exports(root: Path, cfg: Config, out: Path, *, title: str, author
                                 preview_files[member] = archive.read(member)
                     pages = _page_list(preview_files)
                     preview = {"pages": pages, "kind": result.book.kind, "format": "epub"}
+                elif fmt == "docx":
+                    checks = docx_readiness(result.path, result.book, style=style_name, title_given=True)
+                    preview_files, pages = docx_preview_pages(
+                        result.path.read_bytes(), "manuscript" if style_name == "manuscript" else "book", style,
+                    )
+                    preview = {"pages": pages, "kind": result.book.kind, "format": "docx"}
                 else:
                     checks = pdf_readiness(
                         result.path, result.book, layout="print" if fmt == "pdf-print" else "share",

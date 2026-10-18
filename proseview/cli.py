@@ -161,10 +161,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     export_p = sub.add_parser(
-        "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB or PDF.",
+        "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB, PDF or Word document.",
         description=(
             "Compile the manuscript, or a selection of it, into an EPUB, a print-ready "
-            "PDF, or a PDF to share. Nothing else needs installing; --engine pandoc "
+            "PDF, a PDF to share, or a Word document. Nothing else needs installing; --engine pandoc "
             "keeps the old pandoc path for EPUBs for one more release."
         ),
     )
@@ -173,15 +173,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to the novel repo (default: current directory).",
     )
     export_p.add_argument(
-        "--format", choices=["epub", "pdf-print", "pdf-share", "all"], default="",
+        "--format", choices=["epub", "pdf-print", "pdf-share", "docx", "all"], default="",
         help=(
             "epub (an e-book), pdf-print (a paperback interior), pdf-share (a PDF to "
-            "send to readers or agents), or all three (default: export.format, else epub)."
+            "send to readers or agents), docx (a Word document for an editor), or all "
+            "four (default: export.format, else epub)."
         ),
     )
     export_p.add_argument(
         "--output", type=Path, default=None,
-        help="Destination file (default: <root>/exports/<book>-<date>.epub or .pdf).",
+        help="Destination file (default: <root>/exports/<book>-<date>.epub, .pdf or .docx).",
     )
     pick = export_p.add_argument_group(
         "choosing what to export",
@@ -233,7 +234,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pdf.add_argument(
         "--paper", choices=["letter", "a4"], default="",
-        help="Page size for pdf-share (default: export.paper, else Letter for US English, A4 otherwise).",
+        help="Page size for pdf-share and docx (default: export.paper, else Letter for US English, A4 otherwise).",
     )
     pdf.add_argument(
         "--recto-chapters", action=argparse.BooleanOptionalAction, default=None,
@@ -615,6 +616,7 @@ def export_manuscript(args: argparse.Namespace) -> int:
     """Compile the manuscript, or a selection of it, to a file."""
     from .config import Config, ConfigError, ExportSelection
     from .export import (
+        EXPORT_FORMATS,
         ExportError,
         candidate_appendix_folders,
         ensure_gitignored,
@@ -674,16 +676,17 @@ def export_manuscript(args: argparse.Namespace) -> int:
         suffix = args.output.suffix.lower() if args.output is not None else ""
         if args.format:
             fmt = args.format
-            if (suffix == ".epub" and fmt != "epub") or (suffix == ".pdf" and fmt == "epub"):
+            wanted = {"epub": ".epub", "docx": ".docx"}.get(fmt, ".pdf")
+            if suffix in {".epub", ".pdf", ".docx"} and suffix != wanted and fmt != "all":
                 raise ExportError(f"--output {args.output.name} does not match --format {fmt}")
-        elif suffix == ".epub":
+        elif suffix in {".epub", ".docx"}:
             # The file name says what was wanted, whatever was made last time.
-            fmt = "epub"
+            fmt = suffix[1:]
         elif suffix == ".pdf":
             fmt = cfg.export.format if cfg.export.format in {"pdf-print", "pdf-share"} else "pdf-share"
         else:
             fmt = cfg.export.format or "epub"
-        formats = ["epub", "pdf-print", "pdf-share"] if fmt == "all" else [fmt]
+        formats = list(EXPORT_FORMATS) if fmt == "all" else [fmt]
         if len(formats) > 1 and args.output is not None:
             raise ExportError("--output names one file; leave it out with --format all")
         results = [

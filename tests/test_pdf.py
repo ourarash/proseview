@@ -214,9 +214,9 @@ def test_a_scene_image_is_printed_and_a_missing_one_names_its_scene(tmp_path: Pa
 # -- manuscript ---------------------------------------------------------------------
 
 
-def test_manuscript_is_a_shareable_pdf_only(tmp_path: Path, book: Path):
-    assert load_style("manuscript").formats == ("pdf-share",)
-    with pytest.raises(ExportError, match="The Manuscript style makes Shareable PDF, not E-book"):
+def test_manuscript_is_a_shareable_pdf_or_a_word_document_only(tmp_path: Path, book: Path):
+    assert load_style("manuscript").formats == ("pdf-share", "docx")
+    with pytest.raises(ExportError, match="The Manuscript style makes Shareable PDF, Word document \\(DOCX\\), not E-book"):
         export_book(book, Config.load(book), tmp_path / "x.epub", style="manuscript")
 
 
@@ -306,7 +306,7 @@ def test_pdf_settings_are_read_from_the_config(tmp_path: Path, book: Path):
 
 
 @pytest.mark.parametrize("raw, message", [
-    ("export:\n  format: docx\n", "export.format"),
+    ("export:\n  format: odt\n", "export.format"),
     ("export:\n  recto_chapters: maybe\n", "export.recto_chapters"),
 ])
 def test_bad_pdf_settings_are_refused(tmp_path: Path, raw: str, message: str):
@@ -315,17 +315,17 @@ def test_bad_pdf_settings_are_refused(tmp_path: Path, raw: str, message: str):
         Config.load(tmp_path)
 
 
-def test_cli_exports_all_three_formats(tmp_path: Path, book: Path, capsys):
+def test_cli_exports_all_four_formats(tmp_path: Path, book: Path, capsys):
     assert cli.main(["export", "--root", str(book), "--format", "all", "--chapters", "2"]) == 0
     names = sorted(path.name for path in (book / "exports").iterdir())
     assert [name.rsplit("-2", 1)[0] for name in names] == [
-        "alice-chapter-2", "alice-chapter-2", "alice-chapter-2-print",
+        "alice-chapter-2", "alice-chapter-2", "alice-chapter-2", "alice-chapter-2-print",
     ]
-    assert {Path(name).suffix for name in names} == {".epub", ".pdf"}
+    assert {Path(name).suffix for name in names} == {".epub", ".pdf", ".docx"}
     assert "pages)" in capsys.readouterr().out
 
 
-def test_cli_refuses_one_output_for_three_formats(tmp_path: Path, book: Path):
+def test_cli_refuses_one_output_for_every_format(tmp_path: Path, book: Path):
     with pytest.raises(SystemExit, match="--output names one file"):
         cli.main(["export", "--root", str(book), "--format", "all", "--output", str(tmp_path / "x.pdf")])
 

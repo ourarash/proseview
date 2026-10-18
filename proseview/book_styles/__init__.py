@@ -5,7 +5,8 @@ PDFs (see the comment at the top of ``classic/pdf.typ`` for what it must
 define), and ``style.yaml`` holds the few choices neither can make on its
 own: how chapters are numbered, what a scene break looks like, and whether
 scene titles show. A style may have only one of the two designs; it then
-offers only those formats. Adding a style is adding a folder here, or
+offers only those formats. Every style makes a Word document, from those
+choices and its PDF settings (see :mod:`proseview.docx`). Adding a style is adding a folder here, or
 pointing ``--style`` at a folder of your own.
 """
 
@@ -24,7 +25,7 @@ class StyleError(ValueError):
 
 
 #: Every export format, in the order the dialog offers them.
-FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share")
+FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share", "docx")
 
 
 @dataclass(frozen=True)
@@ -46,11 +47,17 @@ class BookStyle:
 
     @property
     def formats(self) -> tuple[str, ...]:
-        """The formats this style makes: EPUB with a stylesheet, PDFs with a template."""
+        """The formats this style makes: EPUB with a stylesheet, PDFs with a template, Word always."""
+        def can_make(fmt: str) -> bool:
+            if fmt == "epub":
+                return self.css is not None
+            if fmt == "docx":
+                return True
+            return self.pdf_template is not None
+
         return tuple(
             fmt for fmt in FORMATS
-            if ((fmt == "epub" and self.css is not None) or (fmt != "epub" and self.pdf_template is not None))
-            and (not self.declared_formats or fmt in self.declared_formats)
+            if can_make(fmt) and (not self.declared_formats or fmt in self.declared_formats)
         )
 
 

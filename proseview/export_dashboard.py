@@ -66,7 +66,8 @@ _FORMAT_BLURBS = {
     "epub": "For Apple Books, Kobo, Kindle and every e-reader.",
     "pdf-print": "A paperback interior to upload to KDP or IngramSpark.",
     "pdf-share": "A PDF to send to a reader, an agent or an editor.",
-    "all": "The e-book and both PDFs in one go.",
+    "docx": "For an editor’s tracked changes, in Word or Google Docs.",
+    "all": "The e-book, both PDFs and the Word document in one go.",
 }
 
 #: The version of what the Export dialog asks of the server (see outline()).
@@ -594,8 +595,9 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
 
     An EPUB preview is the book itself, its XHTML pages shown in a frame. A
     PDF preview is the first chapters laid out exactly as the PDF will be and
-    drawn as page images. With every format chosen, ``preview`` in the body
-    says which one to show.
+    drawn as page images. A Word preview is the finished document read back
+    as a page per chapter, in its own styles. With every format chosen,
+    ``preview`` in the body says which one to show.
     """
     documents = collect_scene_documents(root, cfg)
     selection = selection_from_request(body, documents)
@@ -615,6 +617,23 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
         preview = Preview(token=token, files=files, pages=_page_list(files))
         cache.add(preview)
         return {"ok": True, "token": token, "pages": preview.pages, "kind": result.book.kind, "format": "epub"}
+    if fmt == "docx":
+        from .docx import preview_pages
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = export_book(
+                root, cfg, Path(tmp) / "preview.docx", selection=selection, fmt="docx",
+                **_book_options(root, cfg, details),
+            )
+            data = result.path.read_bytes()
+        style = load_style(details.style)
+        files, pages = preview_pages(data, "manuscript" if details.style == "manuscript" else "book", style)
+        token = uuid.uuid4().hex
+        cache.add(Preview(token=token, files=files, pages=pages))
+        return {
+            "ok": True, "token": token, "pages": pages, "kind": result.book.kind, "format": "docx",
+            "note": "Word lays out the pages itself; this shows the text in the document’s styles.",
+        }
 
     from dataclasses import replace
 
@@ -836,6 +855,13 @@ class ExportJobs:
                 result.path, result.book, title_given=bool(details.title),
                 cover=cover.read_bytes() if cover else None,
             )
+        elif result.format == "docx":
+            from .docx_check import readiness as docx_readiness
+
+            checks = docx_readiness(
+                result.path, result.book, style=details.style,
+                title_given=bool(details.title), contact=details.contact,
+            )
         else:
             from .pdf_check import readiness as pdf_readiness
 
@@ -871,7 +897,7 @@ def _error_payload(root: Path, exc: ExportError) -> dict[str, Any]:
 def exported_file(root: Path, relative: str) -> Path:
     """Resolve a finished export for download, refusing anything else.
 
-    Only ``.epub`` and ``.pdf`` files directly inside ``exports/`` qualify, so
+    Only ``.epub``, ``.pdf`` and ``.docx`` files directly inside ``exports/`` qualify, so
     this route cannot be used to read the rest of the novel or the machine.
     """
     try:
@@ -879,7 +905,7 @@ def exported_file(root: Path, relative: str) -> Path:
     except ValueError as exc:
         raise ExportError(str(exc)) from exc
     exports = (root.resolve() / EXPORTS_DIR).resolve()
-    if path.parent != exports or path.suffix.lower() not in {".epub", ".pdf"} or not path.is_file():
+    if path.parent != exports or path.suffix.lower() not in {".epub", ".pdf", ".docx"} or not path.is_file():
         raise ExportError("No such exported book")
     return path
 

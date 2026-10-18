@@ -85,7 +85,10 @@
         function exportIsDemo() { return !!window.PROSEVIEW_STATIC; }
 
         function exportPreviewUrl(token, href) {
-            return exportIsDemo() ? 'export/previews/' + token + '/' + href : '/api/export/preview/' + token + '/' + href;
+            // Relative, so it stays under the page's own address: in the browser
+            // version the dashboard is at write/book, and only addresses under
+            // write/ reach the Proseview that answers the preview frame.
+            return (exportIsDemo() ? 'export/previews/' : 'api/export/preview/') + token + '/' + href;
         }
 
         function exportFileUrl(file) {
@@ -633,13 +636,25 @@
             'epub': '<path d="M5 4h9a5 5 0 0 1 5 5v11H8a3 3 0 0 1-3-3z"/><path d="M8 20a3 3 0 0 1 0-6h11"/>',
             'pdf-print': '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 14h7M9 17h5"/>',
             'pdf-share': '<path d="M7 3h8l4 4v14H7z"/><path d="M3 12h8m-3-3 3 3-3 3"/>',
+            'docx': '<path d="M6 3h9l4 4v14H6z"/><path d="m8.5 10 1.5 6 2-4.5 2 4.5 1.5-6"/>',
             'all': '<path d="M4 6h10v14H4z"/><path d="M8 3h10v14"/>',
         };
 
         function exportFormats() {
             var format = exportState.details.format;
-            return format === 'all' ? ['epub', 'pdf-print', 'pdf-share'] : [format];
+            if (format !== 'all') return [format];
+            return exportState.outline.formats
+                .map(function(entry) { return entry.name; })
+                .filter(function(name) { return name !== 'all'; });
         }
+
+        // PDFs are previewed as page images; an EPUB and a Word document as pages in a frame.
+        function exportIsPaper(data) {
+            return !!data && (data.format === 'pdf-print' || data.format === 'pdf-share');
+        }
+
+        // What one format is called in a sentence: "your e-book", "your PDF".
+        var EXPORT_FORMAT_NOUNS = {'epub': 'e-book', 'pdf-print': 'PDF', 'pdf-share': 'PDF', 'docx': 'Word document'};
 
         function exportStyleFits(style) {
             return exportFormats().every(function(format) { return style.formats.indexOf(format) >= 0; });
@@ -708,7 +723,10 @@
             var formats = exportFormats();
             exportEl('exportEpubOptions').hidden = formats.indexOf('epub') < 0;
             exportEl('exportPrintOptions').hidden = formats.indexOf('pdf-print') < 0;
-            exportEl('exportShareOptions').hidden = formats.indexOf('pdf-share') < 0;
+            // Page size is asked for a shareable PDF and a Word document; the watermark only for the PDF.
+            exportEl('exportShareOptions').hidden = formats.indexOf('pdf-share') < 0 && formats.indexOf('docx') < 0;
+            exportEl('exportWatermark').hidden = formats.indexOf('pdf-share') < 0;
+            document.querySelector('label[for="exportWatermark"]').hidden = formats.indexOf('pdf-share') < 0;
             var trim = exportEl('exportTrim');
             trim.innerHTML = '';
             exportState.outline.trims.forEach(function(option) {
@@ -762,10 +780,10 @@
                 card.appendChild(copy);
                 host.appendChild(card);
             });
-            if (formats.indexOf('pdf-share') < 0 || formats.length > 1) {
+            if (!styles.some(function(style) { return style.name === 'manuscript'; })) {
                 var more = document.createElement('p');
                 more.className = 'export-hint export-style-more';
-                more.textContent = 'Manuscript format, for agents and editors, is under Shareable PDF.';
+                more.textContent = 'Manuscript format, for agents and editors, is under Shareable PDF and Word document.';
                 host.appendChild(more);
             }
         }
@@ -911,10 +929,10 @@
             }).then(function(data) {
                 if (seq !== exportState.previewSeq) return;
                 exportState.preview = data;
-                var paper = data.format !== 'epub';
+                var paper = exportIsPaper(data);
                 exportEl('exportPreviewFrame').parentElement.hidden = paper;
                 exportEl('exportPaperView').hidden = !paper;
-                exportEl('exportPreviewFrame').title = paper ? '' : 'Preview of the e-book';
+                exportEl('exportPreviewFrame').title = paper ? '' : 'Preview of the ' + (EXPORT_FORMAT_NOUNS[data.format] || 'e-book');
                 if (paper) {
                     exportRenderPaperPicker(data);
                     var kept = keepHref ? data.pages.findIndex(function(page) { return page.href === keepHref; }) : -1;
@@ -1066,7 +1084,7 @@
 
         function exportTurnPage(direction) {
             var data = exportState.preview;
-            if (data && data.format !== 'epub') {
+            if (exportIsPaper(data)) {
                 var spread = exportSpreadOf(data, exportState.pageIndex);
                 exportShowSpread(direction > 0 ? spread[spread.length - 1] + 1 : spread[0] - 1);
                 return;
@@ -1119,7 +1137,8 @@
             var format = exportState.details ? exportState.details.format : 'epub';
             if (step === 1) next.textContent = 'Next: Format and style';
             else if (step === 2) next.textContent = 'Next: Book details';
-            else if (step === 3) next.textContent = format === 'all' ? 'Export all three' : (format === 'epub' ? 'Export EPUB' : 'Export PDF');
+            else if (step === 3) next.textContent = format === 'all' ? 'Export all four'
+                : ({'epub': 'Export EPUB', 'docx': 'Export Word document'}[format] || 'Export PDF');
             else if (step === 'done') next.textContent = 'Done';
             if (step === 'done') back.textContent = 'Export again';
             else back.textContent = 'Back';
@@ -1152,7 +1171,7 @@
         function exportStart() {
             var details = exportReadDetails();
             exportEl('exportRunTitle').textContent = details.format === 'all' ? 'Making your books'
-                : (details.format === 'epub' ? 'Making your e-book' : 'Laying out your PDF');
+                : ({'epub': 'Making your e-book', 'docx': 'Making your Word document'}[details.format] || 'Laying out your PDF');
             exportSetProgress(0, 'Starting');
             exportShowStep('run');
             exportPost('/api/export/start', {selection: exportSelectionPayload(), details: details}).then(function(job) {
@@ -1302,7 +1321,7 @@
             var copy = document.createElement('div');
             var title = document.createElement('h3');
             title.textContent = several ? 'Your books are ready'
-                : (files[0] && files[0].format !== 'epub' ? 'Your PDF is ready' : 'Your e-book is ready');
+                : 'Your ' + (EXPORT_FORMAT_NOUNS[files[0] && files[0].format] || 'e-book') + ' is ready';
             var meta = document.createElement('p');
             meta.className = 'export-hint';
             meta.textContent = exportPlural(result.chapters, 'chapter') + ', ' + exportPlural(result.scenes, 'scene') + ', '
@@ -1337,7 +1356,7 @@
             var title = document.createElement('h3');
             var format = exportState.details ? exportState.details.format : 'epub';
             title.textContent = format === 'all' ? 'The books could not be made'
-                : (format === 'epub' ? 'The e-book could not be made' : 'The PDF could not be made');
+                : 'The ' + (EXPORT_FORMAT_NOUNS[format] || 'e-book') + ' could not be made';
             var message = document.createElement('p');
             message.textContent = error.message || 'Something went wrong. Please try again.';
             card.appendChild(title);
@@ -1438,7 +1457,7 @@
             exportEl('exportPrevPage').addEventListener('click', function() { exportTurnPage(-1); });
             exportEl('exportNextPage').addEventListener('click', function() { exportTurnPage(1); });
             exportEl('exportPagePick').addEventListener('change', function(event) {
-                if (exportState.preview && exportState.preview.format !== 'epub') exportShowSpread(Number(event.target.value));
+                if (exportIsPaper(exportState.preview)) exportShowSpread(Number(event.target.value));
                 else exportShowPreviewPage(Number(event.target.value), 0);
             });
             exportEl('exportPreviewFormat').addEventListener('change', function() { exportLoadPreview(); });

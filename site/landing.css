@@ -281,6 +281,8 @@ kbd {
 
 .ways h2, .faq h2, .closing h2 { text-align: center; }
 .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 32px; }
+.cards.single { grid-template-columns: minmax(0, 1fr); max-width: 640px; margin-inline: auto; }
+.ways-note { margin: 20px 0 0; text-align: center; color: var(--muted); }
 .card {
   display: flex;
   flex-direction: column;
@@ -324,7 +326,7 @@ kbd {
 .faq details { border-bottom: 1px solid var(--line); padding: 18px 0; }
 .faq summary { cursor: pointer; font-family: var(--serif); font-size: 21px; font-weight: 600; }
 .faq details p { margin: 12px 0 0; color: var(--muted); }
-.faq code { font: 15px var(--mono); }
+.faq code, .feature li code { font: 15px var(--mono); }
 
 /* Closing and footer */
 

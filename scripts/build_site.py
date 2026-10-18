@@ -31,7 +31,7 @@ NOT_IN_BROWSER = {"typst"}
 #: README images the landing page shows.
 LANDING_IMAGES = (
     "dashboard.png", "write-a-scene.png", "demo-writing.gif", "demo-highlights.gif",
-    "demo-timeline.gif", "demo-agents.gif", "export-preview.png",
+    "demo-timeline.gif", "demo-agents.gif", "export-preview.png", "storylines.png",
 )
 
 

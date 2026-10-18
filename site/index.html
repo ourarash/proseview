@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proseview · A free writing studio for novels</title>
-<meta name="description" content="Write your novel in plain Markdown and read it like a book. Proseview is free and open source: a typeset page to write on, the whole book in one scroll, analysis for pacing and prose, and EPUB and print-ready PDF export.">
+<meta name="description" content="Write your novel in plain Markdown and read it like a book. Proseview is free and open source: a typeset page to write on, the whole book in one scroll, analysis for pacing and prose, and EPUB, print-ready PDF and Word export.">
 <meta property="og:title" content="Proseview · A free writing studio for novels">
 <meta property="og:description" content="Write your novel in plain Markdown and read it like a book. Free, open source, no account.">
 <meta property="og:url" content="https://ourarash.github.io/proseview/">
@@ -18,11 +18,12 @@
   <nav aria-label="Sections">
     <a href="#write">Write</a>
     <a href="#revise">Revise</a>
+    <a href="#plan">Plan</a>
     <a href="#publish">Publish</a>
     <a href="#compare">Compare</a>
     <a href="#faq">FAQ</a>
     <a href="https://github.com/ourarash/proseview">GitHub</a>
-    <a class="top-cta" href="write/">Start a new book</a>
+    <a class="top-cta" href="#get-started">Install</a>
   </nav>
 </header>
 
@@ -33,10 +34,10 @@
   <h1>Write your novel in plain&nbsp;Markdown.</h1>
   <p class="lede">Proseview turns a folder of Markdown scenes into a writing studio. Read it like a book, revise it with an editor's eye, and export an e-book or paperback.</p>
   <div class="actions">
-    <a class="button primary" href="write/">Start a new book</a>
+    <a class="button primary" href="write/">Try it in your browser</a>
     <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
-  <p class="fine">Nothing to install. The sample is <em>Alice in Wonderland</em>, and a book you start stays in your browser.</p>
+  <p class="fine">Nothing to install to try it. To write your book, <a href="#get-started">install Proseview</a>.</p>
   <ul class="badges" aria-label="Promises">
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Every draft backed up with git</li>
@@ -93,13 +94,24 @@
     <ul>
       <li>Nine prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
       <li>Chapter pacing, sentence rhythm and who appears where.</li>
-      <li>A timeline of storylines, and reading order against story order.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-highlights.gif" width="780" height="463" loading="lazy" alt="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"></figure>
 </section>
 
-<section class="feature" id="ai">
+<section class="feature" id="plan">
+  <div class="copy">
+    <p class="eyebrow">Plan</p>
+    <h2>See every storyline at once.</h2>
+    <ul>
+      <li>Each storyline gets its own lane across the book, from a <code>thread:</code> line in a scene's frontmatter.</li>
+      <li>Chapter lengths and words per scene, to spot a chapter that runs long.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/storylines.png" width="1956" height="1022" loading="lazy" alt="The Timeline tab for Alice's Adventures in Wonderland: each chapter's share of the book, a bar of words for every scene, and four storylines (rabbit, size, wonderland and court) as lanes showing which scenes belong to each"></figure>
+</section>
+
+<section class="feature flip" id="ai">
   <div class="copy">
     <p class="eyebrow">Ask, if you want to</p>
     <h2>Your own Codex or Claude, when you ask.</h2>
@@ -112,13 +124,13 @@
   <figure class="shot"><img src="images/demo-agents.gif" width="780" height="463" loading="lazy" alt="Asking an agent about the open scene in Proseview's side panel"></figure>
 </section>
 
-<section class="feature flip" id="publish">
+<section class="feature" id="publish">
   <div class="copy">
     <p class="eyebrow">Publish</p>
     <h2>From manuscript to the shelf.</h2>
     <ul>
       <li>An EPUB for every e-reader, and a paperback interior from 5 × 8 to 6 × 9 inches or A5.</li>
-      <li>Standard manuscript format for agents and editors.</li>
+      <li>A Word document for your editor's tracked changes, and standard manuscript format for agents.</li>
       <li>A plain-language check that the book is ready for the stores. Nothing else to install.</li>
     </ul>
   </div>
@@ -152,11 +164,11 @@
       </thead>
       <tbody>
         <tr><th scope="row">Price</th><td class="us">Free</td><td>$59.99 once (Mac)</td><td>Free</td><td>From $4 a month</td><td>From $10 a month</td></tr>
-        <tr><th scope="row">Your book is saved as</th><td class="us">Plain Markdown files</td><td>A Scrivener project</td><td>Google documents</td><td>Inside Novelcrafter</td><td>Inside Sudowrite</td></tr>
+        <tr><th scope="row">Where your book is kept</th><td class="us">Plain Markdown files on your computer</td><td>A Scrivener project on your computer</td><td>Online, in Google Drive</td><td>Online, in Novelcrafter</td><td>Online, in Sudowrite</td></tr>
         <tr><th scope="row">Account needed</th><td class="us">No</td><td>No</td><td>Google account</td><td>Yes</td><td>Yes</td></tr>
         <tr><th scope="row">Works offline</th><td class="us">Yes</td><td>Yes</td><td>With an extension</td><td>No</td><td>Writing only, in its phone app</td></tr>
         <tr><th scope="row">AI</th><td class="us">Your own Codex or Claude</td><td>None</td><td>Gemini, on eligible Google plans</td><td>Your own API key</td><td>Built in, paid with credits</td></tr>
-        <tr><th scope="row">Export</th><td class="us">EPUB, print-ready PDF</td><td>EPUB, PDF, Word and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
+        <tr><th scope="row">Export</th><td class="us">EPUB, PDF, Word</td><td>EPUB, PDF, Word and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
         <tr><th scope="row">Open source</th><td class="us">Yes (MIT)</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
       </tbody>
     </table>
@@ -165,24 +177,14 @@
 </section>
 
 <section class="ways" id="get-started">
-  <h2>Two ways to use Proseview</h2>
-  <div class="cards">
-    <article class="card">
-      <h3>In your browser</h3>
-      <p class="tag">Nothing to install</p>
-      <ul>
-        <li>Start a book in seconds: chapters, scenes, the dashboard and Read the book.</li>
-        <li>The book is kept in this browser. Download it as a folder any time.</li>
-        <li>EPUB export included.</li>
-      </ul>
-      <a class="button primary" href="write/">Start a new book</a>
-    </article>
+  <h2>Install Proseview</h2>
+  <div class="cards single">
     <article class="card">
       <h3>On your computer</h3>
       <p class="tag">macOS, Linux and Windows · Python 3.11+</p>
       <ul>
         <li>Works on your own folders, beside git, Obsidian or any editor.</li>
-        <li>Adds print-ready PDFs and the optional Codex and Claude panel.</li>
+        <li>Everything, including print-ready PDFs and the optional Codex and Claude panel.</li>
       </ul>
       <div class="install">
         <code id="installCmd">pipx install "proseview[claude]"</code>
@@ -195,6 +197,7 @@
       <a class="button" href="https://github.com/ourarash/proseview#-quick-start">Read the quick start</a>
     </article>
   </div>
+  <p class="ways-note">Just trying it? <a href="write/">Start a book in your browser</a>.</p>
 </section>
 
 <section class="faq" id="faq">
@@ -228,8 +231,8 @@
 <section class="closing">
   <h2>Start the next chapter.</h2>
   <div class="actions">
-    <a class="button primary" href="write/">Start a new book</a>
-    <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
+    <a class="button primary" href="#get-started">Install Proseview</a>
+    <a class="button" href="write/">Try it in your browser</a>
   </div>
 </section>
 

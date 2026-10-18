@@ -415,8 +415,48 @@ def shot_writing(page, base, docs):
     page.wait_for_timeout(1200)
 
 
+def shot_export_formats(page, base, docs):
+    # The Export dialog's second step with Print book chosen, so its trim
+    # size and right-hand chapters show under every format card.
+    page.goto(base, wait_until="load")
+    page.wait_for_selector("#tab-overview", state="visible")
+    page.get_by_role("button", name="Export").first.click()
+    page.wait_for_selector("#exportTree .export-chapter")
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("radio", name="Print book (PDF)").check()
+    page.wait_for_timeout(800)
+
+
+def shot_storylines(page, base, docs):
+    # The landing page's storylines row: the Timeline tab's charts alone,
+    # without the sidebar and header, so the lanes read at page width.
+    # Tall enough that the charts and the lanes fit without scrolling.
+    page.set_viewport_size({"width": VIEWPORT["width"], "height": 1100})
+    page.goto(base, wait_until="load")
+    page.evaluate("() => showTab('timeline')")
+    page.wait_for_selector("#tab-timeline", state="visible")
+    # Charts animate in; a still taken too early catches half-drawn bars.
+    page.wait_for_timeout(2600)
+    # From "Proportion of the book" down to the storylines' note, with a
+    # margin of the page's own background around it.
+    return page.evaluate(
+        """() => {
+            const host = document.getElementById('timelineContent');
+            const top = host.getBoundingClientRect().top;
+            // The first note sums up the charts, the second the storylines.
+            const note = host.querySelectorAll('.story-note')[1];
+            const box = host.getBoundingClientRect();
+            const bottom = note ? note.getBoundingClientRect().bottom : box.bottom;
+            const pad = 24;
+            return {x: box.left - pad, y: top - pad, width: box.width + 2 * pad, height: bottom - top + 2 * pad};
+        }"""
+    )
+
+
 SHOTS = {
     "write-a-scene": shot_writing,
+    "storylines": shot_storylines,
+    "export-formats": shot_export_formats,
     "dashboard": shot_dashboard,
     "analytics": shot_analytics,
     "read-the-book": shot_book,
@@ -433,8 +473,12 @@ def capture(name: str, flow, port: int = 7861) -> Path:
             ctx = browser.new_context(viewport=VIEWPORT, device_scale_factor=2)
             ctx.add_init_script(f"localStorage.setItem('proseview-theme','{THEME}')")
             page = ctx.new_page()
-            flow(page, base, scenes(base))
-            page.screenshot(path=str(out), full_page=False)
+            target = flow(page, base, scenes(base))
+            # A still may name the part of the window it shows; otherwise it is the window.
+            if target is not None:
+                page.screenshot(path=str(out), clip=target)
+            else:
+                page.screenshot(path=str(out), full_page=False)
             browser.close()
     finally:
         proc.terminate()

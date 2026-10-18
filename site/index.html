@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proseview · A free writing studio for novels</title>
+<meta name="description" content="Write your novel in plain Markdown and read it like a book. Proseview is free and open source: a typeset page to write on, the whole book in one scroll, analysis for pacing and prose, and EPUB and print-ready PDF export.">
+<meta property="og:title" content="Proseview · A free writing studio for novels">
+<meta property="og:description" content="Write your novel in plain Markdown and read it like a book. Free, open source, no account.">
+<meta property="og:url" content="https://ourarash.github.io/proseview/">
+<meta property="og:image" content="https://ourarash.github.io/proseview/images/write-a-scene.png">
+<link rel="stylesheet" href="landing.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="./">Proseview</a>
+  <nav aria-label="Sections">
+    <a href="#write">Write</a>
+    <a href="#revise">Revise</a>
+    <a href="#publish">Publish</a>
+    <a href="#compare">Compare</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/ourarash/proseview">GitHub</a>
+    <a class="top-cta" href="write/">Start a new book</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <p class="eyebrow">Free and open source</p>
+  <h1>Write your novel in plain&nbsp;Markdown.</h1>
+  <p class="lede">Proseview turns a folder of Markdown scenes into a writing studio. Read it like a book, revise it with an editor's eye, and export an e-book or paperback.</p>
+  <div class="actions">
+    <a class="button primary" href="write/">Start a new book</a>
+    <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
+  </div>
+  <p class="fine">Nothing to install. The sample is <em>Alice in Wonderland</em>, and a book you start stays in your browser.</p>
+  <ul class="badges" aria-label="Promises">
+    <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
+    <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Every draft backed up with git</li>
+    <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>No account, no tracking</li>
+    <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/></svg>Open source (MIT)</li>
+  </ul>
+  <figure class="shot hero-shot">
+    <img src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
+    <figcaption>Press E and the page you read becomes the page you write on. Each scene is a plain Markdown file, in a folder per chapter.</figcaption>
+  </figure>
+</section>
+
+<section class="numbers" aria-label="Free">
+  <div><strong>100%</strong><span>free, with no paid version</span></div>
+  <div><strong>0</strong><span>new file formats. Just your Markdown files.</span></div>
+  <div><strong>0</strong><span>servers storing your book. It stays on your laptop or in your browser.</span></div>
+</section>
+
+<section class="shape">
+  <h2>A book is a folder you already understand.</h2>
+  <p>Your manuscript folder holds one folder per chapter and one Markdown file per scene. Proseview reads that shape and builds everything else from it.</p>
+  <ol class="tiers">
+    <li><b>Book</b><span>The manuscript folder: word count, goal and pace.</span></li>
+    <li><b>Chapters</b><span>A folder each, in the order you name them.</span></li>
+    <li><b>Scenes</b><span>A Markdown file each, with optional notes on who, where and when.</span></li>
+  </ol>
+<pre class="tree" aria-label="Example folder"><code>my-novel/
+└── manuscript/
+    ├── ch01/
+    │   ├── 01-the-letter.md
+    │   └── 02-the-station.md
+    └── ch02/
+        └── 01-aftermath.md</code></pre>
+  <figure class="shot"><img src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: total words against the goal, scene count, reading time, and the Read the book and Export buttons"></figure>
+</section>
+
+<section class="feature" id="write">
+  <div class="copy">
+    <p class="eyebrow">Write</p>
+    <h2>The page you read is the page you write on.</h2>
+    <ul>
+      <li>Press <kbd>E</kbd> and the typeset page becomes the editor. <kbd>Cmd-S</kbd> saves and takes you back to reading.</li>
+      <li>Story bibles, plans and any other Markdown file are editable too.</li>
+      <li>Search the whole book with <kbd>Cmd-K</kbd>, and choose from six themes and seven fonts.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/demo-writing.gif" width="780" height="463" loading="lazy" alt="Typing a new closing line into a scene and saving it, with the word count updating"></figure>
+</section>
+
+<section class="feature flip" id="revise">
+  <div class="copy">
+    <p class="eyebrow">Revise</p>
+    <h2>An editor's eye, on your terms.</h2>
+    <ul>
+      <li>Nine prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
+      <li>Chapter pacing, sentence rhythm and who appears where.</li>
+      <li>A timeline of storylines, and reading order against story order.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/demo-highlights.gif" width="780" height="463" loading="lazy" alt="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"></figure>
+</section>
+
+<section class="feature" id="ai">
+  <div class="copy">
+    <p class="eyebrow">Ask, if you want to</p>
+    <h2>Your own Codex or Claude, when you ask.</h2>
+    <ul>
+      <li>No new model, no API keys and no limits from Proseview. It uses the Codex or Claude you already sign in to, the way their VS Code extensions do.</li>
+      <li>Optional, and it never runs on its own.</li>
+      <li>An edit is saved with a small card that shows what changed, and Undo all puts it back.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/demo-agents.gif" width="780" height="463" loading="lazy" alt="Asking an agent about the open scene in Proseview's side panel"></figure>
+</section>
+
+<section class="feature flip" id="publish">
+  <div class="copy">
+    <p class="eyebrow">Publish</p>
+    <h2>From manuscript to the shelf.</h2>
+    <ul>
+      <li>An EPUB for every e-reader, and a paperback interior from 5 × 8 to 6 × 9 inches or A5.</li>
+      <li>Standard manuscript format for agents and editors.</li>
+      <li>A plain-language check that the book is ready for the stores. Nothing else to install.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/export-preview.png" width="2560" height="1520" loading="lazy" alt="The Export dialog previewing the pages of a paperback interior"></figure>
+</section>
+
+<section class="band">
+  <h2>Fits the way you already write.</h2>
+  <div class="tools">
+    <div>
+      <h3>Obsidian</h3>
+      <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts and embeds stay exactly as you wrote them.</p>
+    </div>
+    <div>
+      <h3>Git, for backup</h3>
+      <p>Your book is plain text, so git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and your commits feed the writing streak and goal progress.</p>
+    </div>
+    <div>
+      <h3>VS Code</h3>
+      <p>Open any scene in VS Code, Cursor or Zed with one click and keep it open beside Proseview. A change saved in either one shows up in the other.</p>
+    </div>
+  </div>
+</section>
+
+<section class="compare" id="compare">
+  <h2>How Proseview compares</h2>
+  <div class="compare-scroll">
+    <table>
+      <thead>
+        <tr><th scope="col"><span class="visually-hidden">Feature</span></th><th scope="col" class="us">Proseview</th><th scope="col">Scrivener</th><th scope="col">Google Docs</th><th scope="col">Novelcrafter</th><th scope="col">Sudowrite</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Price</th><td class="us">Free</td><td>$59.99 once (Mac)</td><td>Free</td><td>From $4 a month</td><td>From $10 a month</td></tr>
+        <tr><th scope="row">Your book is saved as</th><td class="us">Plain Markdown files</td><td>A Scrivener project</td><td>Google documents</td><td>Inside Novelcrafter</td><td>Inside Sudowrite</td></tr>
+        <tr><th scope="row">Account needed</th><td class="us">No</td><td>No</td><td>Google account</td><td>Yes</td><td>Yes</td></tr>
+        <tr><th scope="row">Works offline</th><td class="us">Yes</td><td>Yes</td><td>With an extension</td><td>No</td><td>Writing only, in its phone app</td></tr>
+        <tr><th scope="row">AI</th><td class="us">Your own Codex or Claude</td><td>None</td><td>Gemini, on eligible Google plans</td><td>Your own API key</td><td>Built in, paid with credits</td></tr>
+        <tr><th scope="row">Export</th><td class="us">EPUB, print-ready PDF</td><td>EPUB, PDF, Word and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
+        <tr><th scope="row">Open source</th><td class="us">Yes (MIT)</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="compare-note">Checked against each product's own website in October 2026. Prices in US dollars. Proseview works offline once installed; the browser version needs a connection to open.</p>
+</section>
+
+<section class="ways" id="get-started">
+  <h2>Two ways to use Proseview</h2>
+  <div class="cards">
+    <article class="card">
+      <h3>In your browser</h3>
+      <p class="tag">Nothing to install</p>
+      <ul>
+        <li>Start a book in seconds: chapters, scenes, the dashboard and Read the book.</li>
+        <li>The book is kept in this browser. Download it as a folder any time.</li>
+        <li>EPUB export included.</li>
+      </ul>
+      <a class="button primary" href="write/">Start a new book</a>
+    </article>
+    <article class="card">
+      <h3>On your computer</h3>
+      <p class="tag">macOS, Linux and Windows · Python 3.11+</p>
+      <ul>
+        <li>Works on your own folders, beside git, Obsidian or any editor.</li>
+        <li>Adds print-ready PDFs and the optional Codex and Claude panel.</li>
+      </ul>
+      <div class="install">
+        <code id="installCmd">pipx install "proseview[claude]"</code>
+        <button type="button" data-copy="installCmd">Copy</button>
+      </div>
+      <div class="install">
+        <code id="runCmd">proseview --root ~/my-novel</code>
+        <button type="button" data-copy="runCmd">Copy</button>
+      </div>
+      <a class="button" href="https://github.com/ourarash/proseview#-quick-start">Read the quick start</a>
+    </article>
+  </div>
+</section>
+
+<section class="faq" id="faq">
+  <h2>Questions</h2>
+  <details>
+    <summary>Is it really free?</summary>
+    <p>Yes. Proseview is open source under the MIT licence, with no paid version, no subscription and no account. If you use the optional AI panel, Codex or Claude bill you under your own plan with them.</p>
+  </details>
+  <details>
+    <summary>Where is my book stored?</summary>
+    <p>On your computer, as plain Markdown files in your own folder. If you start a book in the browser, it is kept in that browser's storage on your device, and clearing the site's data deletes it, so use <em>Download it</em> to keep a copy. Proseview has no server that receives your book. To back it up, keep the folder in git and push it to a private repository, on GitHub or anywhere else.</p>
+  </details>
+  <details>
+    <summary>Do I need Obsidian?</summary>
+    <p>No. Any folder of Markdown files works, and Proseview can create the files for you. If you do use Obsidian, Proseview works on your vault without changing how it is written.</p>
+  </details>
+  <details>
+    <summary>Do I need git?</summary>
+    <p>No. Proseview works on any folder. Git is the easiest way to back the book up and keep every draft, and in a git folder Proseview also reads your commits for the writing streak, goal progress and recent changes.</p>
+  </details>
+  <details>
+    <summary>Do I need AI?</summary>
+    <p>No. Everything except the agent panel works without it, and the agent panel does nothing until you ask it something.</p>
+  </details>
+  <details>
+    <summary>Can I move a book from the browser to my computer?</summary>
+    <p>Yes. <em>Download it</em> gives you the book as a zip of its folder. Unzip it and run <code>proseview --root</code> on that folder.</p>
+  </details>
+</section>
+
+<section class="closing">
+  <h2>Start the next chapter.</h2>
+  <div class="actions">
+    <a class="button primary" href="write/">Start a new book</a>
+    <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p class="end">The End.</p>
+  <p><a href="https://github.com/ourarash/proseview">GitHub</a> · <a href="https://pypi.org/project/proseview/">PyPI</a> · <a href="https://github.com/ourarash/proseview/tree/main/docs">Docs</a> · MIT licence</p>
+</footer>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    var text = document.getElementById(button.dataset.copy).textContent;
+    navigator.clipboard.writeText(text).then(function () {
+      button.textContent = 'Copied';
+      setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+    });
+  });
+});
+</script>
+</body>
+</html>

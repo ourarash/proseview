@@ -254,3 +254,13 @@ def test_history_skips_encrypted_blobs_instead_of_failing(tmp_path: Path):
     row = stats_for_commit(repo, commits[-1].sha, Config())
     assert row.total_words == 0 and row.scene_count == 0
     assert load_history(repo, Config()) is not None
+
+
+def test_git_that_cannot_be_started_reads_as_not_installed(tmp_path: Path, monkeypatch):
+    # The in-browser app has no processes: starting one raises a plain OSError.
+    def refuse(*args, **kwargs):
+        raise OSError(95, "Operation not supported")
+
+    monkeypatch.setattr(history.subprocess, "run", refuse)
+    assert history._run_git_bytes(tmp_path, ["status"]) == (127, b"", b"git executable not found")
+    assert not is_git_repo(tmp_path)

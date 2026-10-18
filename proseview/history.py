@@ -81,7 +81,8 @@ def _run_git(root: Path, args: list[str]) -> tuple[int, str, str]:
 def _run_git_bytes(root: Path, args: list[str]) -> tuple[int, bytes, bytes]:
     try:
         result = subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
-    except FileNotFoundError:
+    except OSError:
+        # No git installed, or no processes at all (the in-browser app).
         return 127, b"", b"git executable not found"
     return result.returncode, result.stdout, result.stderr
 

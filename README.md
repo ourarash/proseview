@@ -2,10 +2,17 @@
 
 > A writing studio for novels in plain Markdown. ✍️
 
-**[Try the live demo →](https://ourarash.github.io/proseview/)** The dashboard for
+**[Website](https://ourarash.github.io/proseview/)** · **[Try a sample book](https://ourarash.github.io/proseview/demo/#/scene/ch01%2F01-down-the-rabbit-hole.md)** · **[Start a new book](https://ourarash.github.io/proseview/write/)**
+
+**[Try a sample book →](https://ourarash.github.io/proseview/demo/#/scene/ch01%2F01-down-the-rabbit-hole.md)** The dashboard for
 *Alice's Adventures in Wonderland*, in your browser: read, search, open the
 analysis, edit a scene, and export the book as an EPUB or a PDF. Nothing to
 install, and your edits never leave the tab.
+
+**[Start a new book →](https://ourarash.github.io/proseview/write/)** Proseview
+itself, running in your browser: add chapters and scenes, write, read the book
+and export an EPUB. The book is kept in that browser, and you can download it
+as a folder to carry on in the installed app.
 
 Proseview turns a folder of Markdown scenes into a place to write the book:
 read and edit scenes and the rest of your Markdown files on a typeset page,

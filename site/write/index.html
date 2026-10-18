@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start a new book · Proseview</title>
+<meta name="description" content="Start a novel in your browser with Proseview: chapters and scenes in plain Markdown, saved in this browser. Nothing to install.">
+<style>
+  :root { color-scheme: light dark; --paper: #f7f3ea; --ink: #2a2620; --muted: #7d7568; }
+  @media (prefers-color-scheme: dark) { :root { --paper: #1c1b19; --ink: #ece6da; --muted: #a39b8c; } }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font: 18px/1.5 "Iowan Old Style", Georgia, serif; }
+  .boot { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
+  .boot p { margin: 0; }
+  .boot small { display: block; margin-top: 8px; color: var(--muted); font-size: 14px; }
+  .boot a { color: inherit; }
+  #book { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; visibility: hidden; }
+  #book.open { visibility: visible; }
+</style>
+</head>
+<body>
+<div class="boot" id="boot" role="status"><div><p id="bootTitle">Preparing your book…</p><small id="bootNote">The first visit downloads the writing studio, about 7 MB.</small></div></div>
+<iframe id="book" title="Your book"></iframe>
+<script>
+// The page keeps Proseview running in a worker and shows the dashboard in a
+// frame. The service worker (sw.js) sends every request the dashboard makes
+// here, and the worker answers it. When the dashboard reloads, only the frame
+// does: the book stays open.
+(function () {
+  var frame = document.getElementById('book');
+
+  function fail(message) {
+    document.getElementById('boot').hidden = false;
+    frame.classList.remove('open');
+    document.getElementById('bootTitle').textContent = 'Proseview could not start in this browser.';
+    document.getElementById('bootNote').innerHTML = message
+      + ' You can still <a href="../demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">try the sample book</a> or <a href="../#get-started">install Proseview</a>.';
+  }
+  if (!('serviceWorker' in navigator) || !window.indexedDB) {
+    fail('It needs a browser that can keep files for this site (not a private window).');
+    return;
+  }
+
+  var worker = new Worker('worker.js', { type: 'module' });
+  var pending = new Map();
+  var next = 0;
+  // Live reload: the dashboard's EventSource listens here (see inFrame).
+  var listeners = window.__proseviewEvents = new Set();
+
+  worker.onmessage = function (event) {
+    var reply = event.data;
+    var done = pending.get(reply.id);
+    pending.delete(reply.id);
+    if (done) done(reply);
+    if (reply.events.length) {
+      setTimeout(function () {
+        reply.events.forEach(function (data) { listeners.forEach(function (fn) { fn(data); }); });
+      }, 0);
+    }
+  };
+  worker.onerror = function () { fail('Its writing studio did not load.'); };
+
+  function ask(method, path, body, headers) {
+    return new Promise(function (resolve) {
+      var id = ++next;
+      pending.set(id, resolve);
+      worker.postMessage({ id: id, method: method, path: path, body: body, headers: headers });
+    });
+  }
+
+  // Runs first in the dashboard: live reload comes from the worker here.
+  function inFrame() {
+    var hub = window.parent.__proseviewEvents;
+    function WorkerEvents(url) {
+      var source = this;
+      this.url = String(url);
+      this.readyState = 1;
+      this.onopen = this.onmessage = this.onerror = null;
+      this._handlers = [];
+      this._listen = function (data) {
+        if (source.readyState === 2) return;
+        var event = new MessageEvent('message', { data: data });
+        if (source.onmessage) source.onmessage(event);
+        source._handlers.forEach(function (fn) { fn(event); });
+      };
+      // Only the book's own stream has anything to say here.
+      var path = new URL(this.url, location.href).pathname;
+      if (path.slice(-7) === '/events' && path.indexOf('/api/discuss/') < 0) hub.add(this._listen);
+      setTimeout(function () { if (source.onopen) source.onopen(new Event('open')); }, 0);
+    }
+    WorkerEvents.CONNECTING = 0; WorkerEvents.OPEN = 1; WorkerEvents.CLOSED = 2;
+    WorkerEvents.prototype.addEventListener = function (type, fn) { if (type === 'message') this._handlers.push(fn); };
+    WorkerEvents.prototype.removeEventListener = function () {};
+    WorkerEvents.prototype.close = function () { this.readyState = 2; hub.delete(this._listen); };
+    window.EventSource = WorkerEvents;
+    window.addEventListener('pagehide', function () { hub.clear(); });
+    // Downloads (the book, an export) are fetched and saved from memory: a
+    // download link answered by a service worker is not reliably saved.
+    document.addEventListener('click', function (event) {
+      var link = event.target.closest && event.target.closest('a[download]');
+      if (!link || event.defaultPrevented) return;
+      var url = new URL(link.href, location.href);
+      if (url.protocol === 'blob:' || url.origin !== location.origin) return;
+      event.preventDefault();
+      fetch(url).then(function (response) {
+        if (!response.ok) throw new Error('download failed: ' + response.status);
+        return response.blob();
+      }).then(function (blob) {
+        var save = document.createElement('a');
+        save.href = URL.createObjectURL(blob);
+        save.download = link.getAttribute('download') || url.pathname.split('/').pop();
+        document.body.appendChild(save);
+        save.click();
+        save.remove();
+        setTimeout(function () { URL.revokeObjectURL(save.href); }, 10000);
+      }).catch(function (err) { console.error(err); });
+    });
+    // The page's address follows the dashboard's, so a refresh comes back to it.
+    ['pushState', 'replaceState'].forEach(function (name) {
+      var original = history[name];
+      history[name] = function () {
+        original.apply(history, arguments);
+        window.parent.history.replaceState(null, '', location.hash || '#');
+      };
+    });
+  }
+
+  var BROWSER_STYLE = '<style id="proseview-browser-css">'
+    // What needs the installed app: other editors, the agents, PDF, the computer's folders.
+    + '.editor-btn, #modalEditorBtn, #filePreviewEditorBtn, #utilityTabCodex, #utilityTabClaude,'
+    + ' #modalPreviewPdfBtn, .export-format-card:has(input[value^="pdf"]), .export-format-card:has(input[value="all"]),'
+    + ' .export-save-row, .export-style-more, .export-file-actions button { display: none !important; }'
+    + '</style>';
+  var NOTE = '<p class="static-snapshot-note" role="note">Your book is saved in this browser.'
+    + ' <a href="/browser/book.zip" download="my-novel.zip">Download it</a>'
+    + ' · <a href="../#get-started" target="_blank" rel="noopener">Get Proseview</a> for PDF, AI and your own folders</p>';
+
+  function dressed(html) {
+    return html
+      .replace(/<head([^>]*)>/i, function (tag) { return tag + '<script>(' + inFrame.toString() + ')();<\/script>'; })
+      .replace(/<\/head>/i, BROWSER_STYLE + '</head>')
+      .replace(/<body([^>]*)>/i, function (tag) { return tag + NOTE; });
+  }
+
+  navigator.serviceWorker.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || data.type !== 'proseview-request') return;
+    ask(data.method, data.path, data.body, data.headers).then(function (reply) {
+      var body = reply.body;
+      if (data.page && reply.status === 200) body = new TextEncoder().encode(dressed(new TextDecoder().decode(body)));
+      event.ports[0].postMessage({ status: reply.status, headers: reply.headers, body: body }, [body.buffer]);
+    });
+  });
+
+  frame.addEventListener('load', function () {
+    var inner = frame.contentWindow;
+    if (!inner.document.getElementById('repoSidebar')) {
+      fail('Something went wrong while opening the book.');
+      return;
+    }
+    document.getElementById('boot').hidden = true;
+    frame.classList.add('open');
+    document.title = inner.document.title || document.title;
+    inner.addEventListener('hashchange', function () { history.replaceState(null, '', inner.location.hash || '#'); });
+    history.replaceState(null, '', inner.location.hash || '#');
+  });
+
+  navigator.serviceWorker.register('sw.js').then(function () {
+    if (navigator.serviceWorker.controller) return;
+    return new Promise(function (resolve) {
+      navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+    });
+  }).then(function () {
+    frame.src = 'book' + location.hash;
+  }).catch(function (err) {
+    console.error(err);
+    fail('Something went wrong while opening the book.');
+  });
+})();
+</script>
+</body>
+</html>

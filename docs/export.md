@@ -304,7 +304,7 @@ of shelving a second book. Keep it once you have shared or published the book.
 
 ## In the online demo
 
-The [live demo](https://ourarash.github.io/proseview/) has no Proseview
+The [live demo](https://ourarash.github.io/proseview/demo/) has no Proseview
 running behind it, so it cannot build what you pick. Its Export dialog works
 all the same, with every step and real previews, and downloads a ready-made
 copy of the whole demo book in the format and style you chose. `proseview

@@ -381,7 +381,42 @@ def shot_book(page, base, docs):
     page.wait_for_timeout(1500)
 
 
+def shot_writing(page, base, docs):
+    # The landing page's opening image: a scene mid-sentence in the editor,
+    # with its chapter open in the sidebar beside it. The frontmatter is
+    # folded, as a writer who has chosen that sees it, so the prose leads.
+    page.add_init_script("localStorage.setItem('proseview-frontmatter-collapsed','true')")
+    open_scene(page, base, SCENE)
+    page.evaluate("() => document.documentElement.style.setProperty('--sidebar-w', '300px')")
+    page.click("#sceneEditBtn")
+    page.wait_for_function("() => window._pmEditMode === true")
+    page.evaluate(
+        """() => {
+            const host = document.querySelector('#sceneProseHost .ProseMirror');
+            const para = host.querySelectorAll('p')[2];
+            const range = document.createRange();
+            range.selectNodeContents(para);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            host.focus();
+        }"""
+    )
+    page.keyboard.type(" Down, down, down.")
+    # Back to the top of the scene, so its title shows above the prose.
+    page.evaluate(
+        """() => {
+            let el = document.querySelector('#sceneProseHost');
+            while (el && !(el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible')) el = el.parentElement;
+            (el || document.scrollingElement).scrollTop = 0;
+        }"""
+    )
+    page.wait_for_timeout(1200)
+
+
 SHOTS = {
+    "write-a-scene": shot_writing,
     "dashboard": shot_dashboard,
     "analytics": shot_analytics,
     "read-the-book": shot_book,

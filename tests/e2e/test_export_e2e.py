@@ -201,6 +201,38 @@ def test_manuscript_asks_for_contact_details(page: Page, demo_book_server: Prose
     expect(page.locator("#exportPagePick")).to_have_value("1")
 
 
+def test_export_a_word_manuscript(page: Page, demo_book_server: ProseviewServer):
+    from proseview.docx_check import structural_problems as docx_problems
+
+    root = demo_book_server.root
+    page.goto(demo_book_server.url("/"))
+    page.get_by_role("button", name="Export").first.click()
+    dialog = page.locator("#exportDialog")
+    dialog.get_by_role("button", name="First three chapters").click()
+    page.get_by_role("button", name="Next: Format and style").click()
+    page.get_by_role("radio", name="Word document (DOCX)").check()
+    # A Word document asks for the page size, not a watermark.
+    expect(page.locator("#exportPaper")).to_be_visible()
+    expect(page.locator("#exportWatermark")).to_be_hidden()
+    expect(page.locator("#exportEpubOptions")).to_be_hidden()
+    page.get_by_role("radio", name="Manuscript").check()
+    page.get_by_role("button", name="Next: Book details").click()
+    page.get_by_label("Author").fill("Lewis Carroll")
+    page.get_by_label("Contact details").fill("lewis@example.com")
+
+    # The preview is the document read back, a page per chapter, opening on the first.
+    frame = page.frame_locator("#exportPreviewFrame")
+    expect(frame.locator("p.Heading1")).to_contain_text("Chapter 1", timeout=20_000)
+    expect(page.locator("#exportPaperView")).to_be_hidden()
+
+    page.get_by_role("button", name="Export Word document").click()
+    done = page.locator("#exportDoneBox")
+    expect(done).to_contain_text("Your Word document is ready", timeout=30_000)
+    expect(done).to_contain_text("Ready to send to an agent or editor")
+    (written,) = (root / "exports").glob("*.docx")
+    assert written.name.startswith("alice-selection-manuscript-") and docx_problems(written) == []
+
+
 @pytest.mark.allow_js_errors("Failed to load resource", "net::ERR_FAILED", "403")
 def test_a_server_that_stopped_or_restarted_is_explained(page: Page, demo_book_server: ProseviewServer):
     """The browser only says "Failed to fetch"; the dialog says what to do."""

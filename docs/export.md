@@ -1,4 +1,4 @@
-# Exporting your book: EPUB and PDF
+# Exporting your book: EPUB, PDF and Word
 
 [← back to the README](../README.md)
 
@@ -9,9 +9,12 @@ Proseview turns your manuscript, or any part of it, into:
 - a **print book (PDF)**: a paperback interior to upload to KDP or
   IngramSpark, at the trim size you choose;
 - a **shareable PDF**: a copy to send to a beta reader, an agent or an
-  editor, as a finished-looking book or in standard manuscript format.
+  editor, as a finished-looking book or in standard manuscript format;
+- a **Word document (DOCX)**: for an editor who marks up the text with
+  tracked changes, in Word, Google Docs or Pages, again as a book or in
+  standard manuscript format.
 
-Nothing else needs installing: Proseview writes all three itself.
+Nothing else needs installing: Proseview writes all four itself.
 
 ## Exporting from the dashboard
 
@@ -30,8 +33,8 @@ Click **Export** in the top bar. The dialog has three steps:
    packet, one character's arc), turn on **Reorder** and drag them, or use the
    arrow buttons. **Save this selection…** keeps what you ticked under a name.
 2. **Format and style.** Choose *E-book (EPUB)*, *Print book (PDF)*,
-   *Shareable PDF*, or *All formats* to make the three at once. Each shows
-   the few options it needs:
+   *Shareable PDF*, *Word document (DOCX)*, or *All formats* to make the four
+   at once. Each shows the few options it needs:
    - e-book: EPUB 3 is what the stores expect; EPUB 2 is only for older
      e-readers;
    - print book: the **trim size** (5 × 8, 5.25 × 8, 5.5 × 8.5, 6 × 9 in, or
@@ -39,7 +42,8 @@ Click **Export** in the top bar. The dialog has three steps:
      start on a right-hand page, as most printed novels do;
    - shareable PDF: US Letter or A4, and an optional **watermark** such as
      "Advance copy for Sam", printed faintly across every page. The watermark
-     names one reader, so it is never remembered for the next export.
+     names one reader, so it is never remembered for the next export;
+   - Word document: US Letter or A4.
 
    Then choose the style (see [How it looks](#how-it-looks)) and whether
    scene titles show.
@@ -50,7 +54,9 @@ Click **Export** in the top bar. The dialog has three steps:
    [below](#front-and-back-matter)) opens a few more fields: the copyright
    page, an ISBN, a dedication and your other books. Beside the form is a preview, laid out
    exactly as the export will be: an e-reader page for an EPUB, facing pages
-   for a print book, single pages for a shareable PDF. Use the arrows to turn
+   for a print book, single pages for a shareable PDF, and for a Word
+   document its text in the document's own styles, a chapter at a time (Word
+   lays out the pages itself). Use the arrows to turn
    pages and the menu to jump. A PDF preview lays out the first three
    chapters, so it stays quick on a long novel; the export has them all.
 
@@ -64,6 +70,8 @@ your novel, named after the book and the day:
 | Print book | `alices-adventures-in-wonderland-print-2026-10-08.pdf` |
 | Shareable PDF | `alices-adventures-in-wonderland-2026-10-08.pdf` |
 | Manuscript | `alices-adventures-in-wonderland-manuscript-2026-10-08.pdf` |
+| Word document | `alices-adventures-in-wonderland-2026-10-08.docx` |
+| Word manuscript | `alices-adventures-in-wonderland-manuscript-2026-10-08.docx` |
 
 To export just one scene or chapter, right-click it in the file browser (or
 use its **…** button), or open the scene and use the **…** menu in its
@@ -95,9 +103,15 @@ paperback has the 24 to 828 pages KDP prints. A whole book that passes is
 manuscript without contact details asks for them, since an agent needs a way
 to reply.
 
+A Word document is reopened and checked the way Word reads it: every part it
+needs is there, every style it uses is defined, and every picture and link
+lands. A sound one is **Ready to open in Word, Google Docs or Pages**, or,
+in the Manuscript style, **Ready to send to an agent or editor**.
+
 The print PDF is the *interior* only. KDP and IngramSpark take the cover as a
 separate file sized for your page count and paper, so the cover you choose
-here goes on the e-book and the shareable PDF, not inside the print book.
+here goes on the e-book, the shareable PDF and the Word document, not inside
+the print book.
 
 The dashboard remembers the book's details in `.proseview.yaml`, so the next
 export starts where you left off (see [What Proseview remembers](#what-proseview-remembers)).
@@ -111,7 +125,9 @@ proseview export --format pdf-print --trim 6x9
 # → exports/your-novel-print-2026-10-08.pdf
 proseview export --format pdf-share --watermark "Advance copy for Sam"
 proseview export --format pdf-share --style manuscript --contact "you@example.com\n+1 555 0100"
-proseview export --format all          # the e-book and both PDFs
+proseview export --format docx --style manuscript --contact "you@example.com"
+# → exports/your-novel-manuscript-2026-10-08.docx
+proseview export --format all          # the e-book, both PDFs and the Word document
 ```
 
 Scenes are compiled in the same order the dashboard counts them, and titles
@@ -203,11 +219,34 @@ for each chapter, no drop cap, and a pause of three dots between scenes.
 and a floral mark between scenes. The script travels inside the e-book, so
 every e-reader shows it.
 
-**Manuscript** is standard submission format, for a Shareable PDF only:
-12 pt Liberation Serif (the same letter widths as Times New Roman), double-spaced, 1 inch margins, every paragraph indented, "Chapter 1"
-a third of the way down the page, a centred `#` between scenes, a title page
-with your name, contact details and the word count ("about 85,000 words"),
-and "Surname / TITLE / page" at the top of each page.
+**Manuscript** is standard submission format, for a Shareable PDF or a Word
+document: 12 pt Liberation Serif in the PDF (the same letter widths as Times
+New Roman) and Times New Roman in Word, double-spaced, 1 inch margins, every
+paragraph indented, "Chapter 1" a third of the way down the page, a centred
+`#` between scenes, a title page with your name, contact details and the word
+count ("about 85,000 words"), and "Surname / TITLE / page" at the top of each
+page. In Word the page number is a real page field, counted from the first
+page of the story, so it stays right as an editor adds and cuts.
+
+### Word documents
+
+A Word document is built from named styles rather than formatting applied by
+hand: *Normal* for the text, *First Paragraph* after a chapter opening or a
+scene break, *Heading 1* for each chapter (so chapters show in Word's
+navigation pane), *Title*, *Scene Break*, *Block Text* for quotations, and a
+few more. An editor can restyle the whole book from Word's Styles pane, and
+tracked changes stay on the words, not on stray formatting.
+
+Classic, Modern and Romance make a reading copy: a title page (with the cover,
+if you chose one), your front and back matter on pages of their own, chapter
+openers in the style's manner, the style's mark between scenes, and page
+numbers at the foot of each page. Word documents use fonts every computer
+has (Georgia, or Arial for Modern's headings) rather than the PDFs' bundled
+ones, so the document looks the same on an editor's machine.
+
+Pictures go in as PNG, JPEG or GIF. Word cannot show a WebP or SVG image
+everywhere, so a scene that uses one stops the export and is named; save a
+PNG or JPEG copy and link that.
 
 Scene titles are hidden, because novels mark a change of scene with the break
 rather than a heading. To show them as headings (and list them in the table
@@ -234,7 +273,9 @@ plus an optional `style.yaml` (chapter numbering as `words`, `numerals`,
 use the base layout with the choices it sets under `pdf:` (`body_font`,
 `heading_font`, `title_font`, `opener` as `classic`, `modern` or `romance`,
 `drop_cap`, `ornament`); `epub_fonts` lists bundled fonts the e-book should
-carry. That is all Modern and Romance are. Point `--style` at a folder of your own to use it, and add
+carry. That is all Modern and Romance are. Every style makes a Word document
+too, from the same choices: its chapter numbering, its scene break, and its
+`opener` and fonts under `pdf:`. Point `--style` at a folder of your own to use it, and add
 `--css` for small overrides on top of an e-book style. The comment at the top
 of the built-in `classic/pdf.typ` lists what a PDF template defines.
 
@@ -273,7 +314,7 @@ export:
   title: Alice's Adventures in Wonderland
   author: Lewis Carroll
   language: en-GB
-  format: epub          # pdf-print, pdf-share or all
+  format: epub          # pdf-print, pdf-share, docx or all
   epub_version: epub3   # or epub2
   trim: 5.5x8.5         # 5x8, 5.25x8, 6x9 or a5
   paper: letter         # or a4

@@ -58,7 +58,7 @@
             }
             function demoFormats(details) {
                 const format = details.format || 'epub';
-                return format === 'all' ? ['epub', 'pdf-print', 'pdf-share'] : [format];
+                return format === 'all' ? ['epub', 'pdf-print', 'pdf-share', 'docx'] : [format];
             }
             const notInDemo = 'The demo cannot save files. On your own computer, Proseview does this for you.';
             function demoExport(url, init) {

@@ -9796,7 +9796,7 @@
         /* Formats and PDF options (step 2) */
         .export-format-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 10px;
         }
 

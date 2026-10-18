@@ -6,19 +6,19 @@
 
 **[Try a sample book →](https://ourarash.github.io/proseview/demo/#/scene/ch01%2F01-down-the-rabbit-hole.md)** The dashboard for
 *Alice's Adventures in Wonderland*, in your browser: read, search, open the
-analysis, edit a scene, and export the book as an EPUB or a PDF. Nothing to
+analysis, edit a scene, and export the book as an EPUB, a PDF or a Word document. Nothing to
 install, and your edits never leave the tab.
 
 **[Start a new book →](https://ourarash.github.io/proseview/write/)** Proseview
 itself, running in your browser: add chapters and scenes, write, read the book
-and export an EPUB. The book is kept in that browser, and you can download it
+and export an EPUB or a Word document. The book is kept in that browser, and you can download it
 as a folder to carry on in the installed app.
 
 Proseview turns a folder of Markdown scenes into a place to write the book:
 read and edit scenes and the rest of your Markdown files on a typeset page,
 read the whole book from start to finish, check pacing, prose and character
 presence, ask Codex or Claude about the manuscript, and export it as an
-e-book or a print-ready PDF. Your files stay plain Markdown, and a save
+e-book, a print-ready PDF or a Word document for your editor. Your files stay plain Markdown, and a save
 changes only what you edited.
 
 Core analysis stays on your machine: no account, subscription, database, or
@@ -87,10 +87,11 @@ Leave off `[claude]` if you will not use the Claude tab. [Quick start →](#-qui
 
 ### 📦 Publish
 
-- 📚 **EPUB and PDF export.** The Export button turns the whole book, a
+- 📚 **EPUB, PDF and Word export.** The Export button turns the whole book, a
   chapter, a scene, or any mix of them into a styled e-book, a print-ready
-  paperback interior (5 × 8 to 6 × 9 in, or A5), or a PDF to share, in four
-  styles including standard manuscript format for agents. Pick scenes by
+  paperback interior (5 × 8 to 6 × 9 in, or A5), a PDF to share, or a Word
+  document for an editor's tracked changes, in four styles including standard
+  manuscript format for agents. Pick scenes by
   status, point of view or character, add a copyright page, dedication and
   "Also by" page, preview the pages, and get a plain-language check that the
   book is ready for the stores. Nothing else to install; `proseview export`
@@ -187,12 +188,13 @@ it happens is visible instead of inferred. Hover any scene for its card.
 
 ![The Timeline tab showing chapter proportion, words per scene, three storyline lanes, and reading order against story order, with a scene card on hover](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-timeline.gif)
 
-### Export: EPUB and PDF
+### Export: EPUB, PDF and Word
 
 Click **Export** to turn the whole book, a chapter, a scene, or any mix of
 them into an e-book for Apple Books, Kobo and Kindle, a paperback interior
-ready for KDP or IngramSpark, or a PDF to share, as a finished-looking book or
-in manuscript format for agents. Pick chapters and scenes by hand, by status,
+ready for KDP or IngramSpark, a PDF to share, or a Word document an editor can
+mark up with tracked changes, as a finished-looking book or in manuscript
+format for agents. Pick chapters and scenes by hand, by status,
 point of view or character; choose a style (Classic, Modern, Romance or
 Manuscript); and see the pages, laid out exactly as the file will be, before
 you export. A check afterwards says whether the book is ready for the stores
@@ -252,7 +254,7 @@ writes the dashboard as static files any web host can serve, GitHub Pages
 included. Readers can browse scenes, search, and read the analysis; nothing on
 it edits, and no server runs. Paths from your machine are replaced by the
 folder's name. `--demo` also lets visitors try edit mode (what they save stays
-in their browser tab) and Export, with ready-made EPUB and PDF files of the
+in their browser tab) and Export, with ready-made EPUB, PDF and Word files of the
 whole book in every style to download. `--title`, `--site-url` and `--preview-image` decide how a
 link to it unfurls when shared. The live demo is built that way.
 
@@ -278,7 +280,7 @@ discuss:
 - [Configuration reference](docs/configuration.md)
 - [Working with AI](docs/ai.md)
 - [The analytics](docs/analytics.md)
-- [Exporting: EPUB and PDF](docs/export.md)
+- [Exporting: EPUB, PDF and Word](docs/export.md)
 
 ## 🛣️ Status
 

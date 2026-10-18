@@ -218,9 +218,9 @@ def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
 
     index = json.loads((export / "files.json").read_text(encoding="utf-8"))
     assert set(index["files"]) == {
-        "classic-epub", "classic-pdf-print", "classic-pdf-share", "modern-epub", "modern-pdf-print",
-        "modern-pdf-share", "romance-epub", "romance-pdf-print", "romance-pdf-share", "manuscript-pdf-share",
-    }
+        f"{style}-{fmt}" for style in ("classic", "modern", "romance")
+        for fmt in ("epub", "pdf-print", "pdf-share", "docx")
+    } | {"manuscript-pdf-share", "manuscript-docx"}
     for entry in index["files"].values():
         assert (tmp_path / "site" / entry["path"]).stat().st_size == entry["size"] > 0
         assert entry["checks"]["headline"]
@@ -230,3 +230,6 @@ def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
     preview = json.loads((export / "previews" / "classic-pdf-print.json").read_text(encoding="utf-8"))
     assert preview["token"] == "classic-pdf-print" and (export / "previews" / "classic-pdf-print" / "page-001.png").is_file()
     assert str(root) not in (export / "outline.json").read_text(encoding="utf-8")
+    assert index["files"]["manuscript-docx"]["name"] == "the-shop-manuscript.docx"
+    word = json.loads((export / "previews" / "manuscript-docx.json").read_text(encoding="utf-8"))
+    assert word["format"] == "docx" and (export / "previews" / "manuscript-docx" / word["pages"][1]["href"]).is_file()

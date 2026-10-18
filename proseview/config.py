@@ -129,7 +129,7 @@ class StoryConfig:
 
 
 #: Accepted values for ``export.format``: what the dashboard made last.
-EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share", "all")
+EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share", "docx", "all")
 
 #: Accepted values for ``export.epub_version``.
 EXPORT_EPUB_VERSIONS: tuple[str, ...] = ("epub3", "epub2")

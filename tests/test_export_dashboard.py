@@ -91,9 +91,9 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
         "copyright_page": True, "isbn": "", "dedication": "", "also_by": "", "matter_files": True,
     }
     styles = {style["name"]: style for style in data["styles"]}
-    assert styles["classic"]["formats"] == ["epub", "pdf-print", "pdf-share"]
-    assert styles["manuscript"]["formats"] == ["pdf-share"]
-    assert [f["name"] for f in data["formats"]] == ["epub", "pdf-print", "pdf-share", "all"]
+    assert styles["classic"]["formats"] == ["epub", "pdf-print", "pdf-share", "docx"]
+    assert styles["manuscript"]["formats"] == ["pdf-share", "docx"]
+    assert [f["name"] for f in data["formats"]] == ["epub", "pdf-print", "pdf-share", "docx", "all"]
 
 
 def test_outline_word_counts_leave_out_todo_comments(book: Path):
@@ -462,7 +462,7 @@ def test_route_preview_of_all_formats_shows_the_one_asked_for(client):
     assert data["format"] == "pdf-share" and data["spreads"] is False and data["note"] == ""
 
 
-def test_route_exports_all_three_formats_and_checks_each(client, book: Path):
+def test_route_exports_every_format_and_checks_each(client, book: Path):
     _, job = client.json("POST", "/api/export/start", {
         "selection": {"order": "book", "items": [{"kind": "chapter", "id": "4"}]},
         "details": {"format": "all", "author": "Lewis Carroll", "watermark": "For Sam", "trim": "6x9"},
@@ -471,17 +471,33 @@ def test_route_exports_all_three_formats_and_checks_each(client, book: Path):
     assert done["state"] == "done", done
     files = {f["format"]: f for f in done["result"]["files"]}
 
-    assert list(files) == ["epub", "pdf-print", "pdf-share"]
+    assert list(files) == ["epub", "pdf-print", "pdf-share", "docx"]
     assert files["pdf-print"]["name"].startswith("alice-chapter-4-print-")
     assert files["pdf-print"]["pages"] > 0 and files["epub"]["pages"] == 0
     assert files["pdf-print"]["checks"]["headline"] == "A 6 × 9 in proof of this part, ready to print"
     assert files["pdf-share"]["checks"]["ready"]
     status, headers, data = client.request("GET", f"/api/export/file?path={files['pdf-share']['path']}")
     assert status == 200 and headers["Content-Type"] == "application/pdf" and data[:5] == b"%PDF-"
+    assert files["docx"]["name"].endswith(".docx") and files["docx"]["checks"]["ready"], files["docx"]["checks"]
+    status, headers, data = client.request("GET", f"/api/export/file?path={files['docx']['path']}")
+    assert status == 200 and headers["Content-Type"].endswith("wordprocessingml.document") and data[:2] == b"PK"
     config = Config.load(book).export
     assert (config.format, config.trim) == ("all", "6x9")
     # The watermark names one reader; it is never remembered.
     assert "For Sam" not in (book / ".proseview.yaml").read_text(encoding="utf-8")
+
+
+def test_route_previews_a_word_document_as_pages(client):
+    _, data = client.json("POST", "/api/export/preview", {
+        "selection": {"order": "book", "items": [{"kind": "chapter", "id": "1"}, {"kind": "chapter", "id": "2"}]},
+        "details": {"format": "docx", "style": "manuscript", "author": "Lewis Carroll"},
+    })
+    assert data["format"] == "docx" and data["note"]
+    chapters = [page for page in data["pages"] if page["href"].startswith("word/chapter-")]
+    assert [page["label"] for page in chapters] == ["Chapter 1 · I. Down the Rabbit-Hole", "Chapter 2 · II. The Pool of Tears"]
+    status, headers, page = client.request("GET", f"/api/export/preview/{data['token']}/{chapters[0]['href']}")
+    assert status == 200 and headers["Content-Type"].startswith("application/xhtml+xml")
+    assert b"Times New Roman" in page and b"Alice was beginning" in page
 
 
 def test_route_refuses_a_style_that_cannot_make_the_format(client):

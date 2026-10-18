@@ -3,7 +3,8 @@
 Scene discovery, frontmatter parsing, and body extraction all come from
 :mod:`proseview.scenes`, so an export contains exactly the scenes the dashboard
 counts, in the same order. :mod:`proseview.book` narrows that to a selection
-and shapes it into a book, and :mod:`proseview.epub` writes the EPUB.
+and shapes it into a book; :mod:`proseview.epub` writes the EPUB,
+:mod:`proseview.pdf` the PDFs and :mod:`proseview.docx` the Word document.
 
 pandoc is still supported for one release behind ``engine="pandoc"``. It is
 looked up at call time and never at import time, so nothing else needs it.
@@ -221,15 +222,18 @@ class ExportResult:
     path: Path
     book: Book
     format: str = "epub"
-    #: Pages in a PDF; 0 for an EPUB, whose pages depend on the reader.
+    #: Pages in a PDF; 0 for an EPUB or a Word document, whose pages depend on the reader.
     pages: int = 0
 
 
 #: What ``--format`` and the dashboard can make. ``all`` makes every one.
-EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share")
+EXPORT_FORMATS: tuple[str, ...] = ("epub", "pdf-print", "pdf-share", "docx")
 FORMAT_LABELS: dict[str, str] = {
     "epub": "E-book (EPUB)", "pdf-print": "Print book (PDF)", "pdf-share": "Shareable PDF",
+    "docx": "Word document (DOCX)",
 }
+#: The file extension each format writes.
+FORMAT_SUFFIXES: dict[str, str] = {"epub": "epub", "pdf-print": "pdf", "pdf-share": "pdf", "docx": "docx"}
 
 
 def _slug(text: str) -> str:
@@ -241,7 +245,7 @@ def default_output_path(
     root: Path, book: Book, *, selection_name: str = "", today: _dt.date | None = None,
     fmt: str = "epub", style: str = "",
 ) -> Path:
-    """``<root>/exports/<book>[-<part>][-<kind>]-<date>.<epub|pdf>``.
+    """``<root>/exports/<book>[-<part>][-<kind>]-<date>.<epub|pdf|docx>``.
 
     A part of the book gets its own name, so exporting chapter three does not
     overwrite the day's full-book export, and each format its own, so the
@@ -261,7 +265,7 @@ def default_output_path(
     variant = "print" if fmt == "pdf-print" else ("manuscript" if style == "manuscript" else "")
     date = (today or _dt.date.today()).isoformat()
     stem = "-".join(bit for bit in (_slug(book.title), part, variant, date) if bit)
-    return root / EXPORTS_DIR / f"{stem}.{'epub' if fmt == 'epub' else 'pdf'}"
+    return root / EXPORTS_DIR / f"{stem}.{FORMAT_SUFFIXES.get(fmt, 'epub')}"
 
 
 def export_book(
@@ -296,10 +300,12 @@ def export_book(
     also_by: str = "",
     matter_files: bool | None = None,
 ) -> ExportResult:
-    """Export *selection* (default: the whole book) as an EPUB or a PDF.
+    """Export *selection* (default: the whole book) as an EPUB, a PDF or a Word document.
 
-    *fmt* is ``epub``, ``pdf-print`` (a paperback interior at *trim*) or
-    ``pdf-share`` (a Letter or A4 reading copy, optionally watermarked).
+    *fmt* is ``epub``, ``pdf-print`` (a paperback interior at *trim*),
+    ``pdf-share`` (a Letter or A4 reading copy, optionally watermarked) or
+    ``docx`` (a Word document on Letter or A4 paper; in the Manuscript style,
+    standard submission format).
 
     *output* defaults to a dated file under ``exports/``. Book details left
     empty fall back to those saved under ``export:`` in ``.proseview.yaml``
@@ -320,7 +326,7 @@ def export_book(
     if fmt not in EXPORT_FORMATS:
         raise ExportError(f"Unknown format {fmt!r}; expected one of {', '.join(EXPORT_FORMATS)}")
     if engine == "pandoc" and fmt != "epub":
-        raise ExportError("The pandoc engine only makes EPUBs; leave out --engine for a PDF")
+        raise ExportError("The pandoc engine only makes EPUBs; leave out --engine for a PDF or a Word document")
     pandoc = ensure_pandoc() if engine == "pandoc" else ""
 
     if progress:
@@ -358,6 +364,22 @@ def export_book(
         scene_titles = cfg.export.scene_titles
     if scene_titles is None:
         scene_titles = book_style.show_scene_titles
+    if fmt == "docx":
+        from .docx import DocxOptions, write_docx
+        from .pdf import default_paper
+
+        write_docx(book, output, DocxOptions(
+            layout="manuscript" if book_style.path.name == "manuscript" else "book",
+            style=book_style,
+            show_scene_titles=scene_titles,
+            paper=paper or saved.paper or default_paper(book.language),
+            cover_image=cover_image,
+            contact=contact or saved.contact,
+            progress=_scaled(progress, 0.05, 0.9) if progress else None,
+        ))
+        if progress:
+            progress("Packing the document", 0.95)
+        return ExportResult(output, book, fmt)
     if fmt != "epub":
         from .pdf import PdfOptions, write_pdf
 

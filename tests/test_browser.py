@@ -83,3 +83,16 @@ def test_an_epub_export_is_done_when_the_request_that_starts_it_returns(book: Pa
     assert done["state"] == "done", done
     (file,) = done["result"]["files"]
     assert file["path"].endswith(".epub") and (book / file["path"]).is_file()
+
+
+def test_a_word_export_runs_in_the_browser_and_downloads(book: Path):
+    reply = _post("/api/export/start", {"details": {"title": "My Novel", "author": "A. Writer", "format": "docx"}})
+    assert reply["status"] == 202, reply["body"]
+    job = json.loads(reply["body"])
+
+    done = json.loads(browser.request("GET", f"/api/export/jobs/{job['id']}")["body"])
+    assert done["state"] == "done", done
+    (file,) = done["result"]["files"]
+    assert file["path"].endswith(".docx") and file["checks"]["ready"], file
+    download = browser.request("GET", f"/api/export/file?path={file['path']}")
+    assert download["status"] == 200 and bytes(download["body"])[:2] == b"PK"

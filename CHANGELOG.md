@@ -3,6 +3,18 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
+## Unreleased
+
+### Added
+
+- **A home page, and a book you can start in the browser.** The site now
+  opens on a page about Proseview, with the Alice demo moved to `/demo/`.
+  "Start a new book" (`/write/`) runs Proseview itself in the browser, with no
+  install and no server: chapters, scenes, the editor, Read the book and EPUB
+  export, with the book kept in that browser and downloadable as a zip of its
+  folder. PDF, the agent panel and your own folders still need the installed
+  app.
+
 ## 0.4.2 — 2026-10-15
 
 ### Added

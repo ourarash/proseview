@@ -1,8 +1,11 @@
-name: Demo
+name: Site
 
-# Publishes the demo manuscript (fixtures/demo-book) to GitHub Pages, so anyone
-# can try Proseview in a browser without installing it -- editing included, with
-# saves that stay in the visitor's tab, and Export, with ready-made EPUB and
+# Publishes Proseview's website to GitHub Pages: the landing page (site/), the
+# demo manuscript (fixtures/demo-book) at demo/, and Proseview itself running in
+# the browser at write/, where a visitor starts a book of their own.
+#
+# The demo lets anyone try Proseview without installing it -- editing included,
+# with saves that stay in the visitor's tab, and Export, with ready-made EPUB and
 # PDF files of the whole book. Built with `proseview snapshot --demo`.
 
 on:
@@ -11,6 +14,8 @@ on:
     paths:
       - "proseview/**"
       - "fixtures/demo-book/**"
+      - "site/**"
+      - "scripts/build_site.py"
       - "docs/images/demo-preview.png"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -27,7 +32,7 @@ concurrency:
 
 jobs:
   build:
-    name: build the demo snapshot
+    name: build the site
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,12 +44,18 @@ jobs:
         run: pip install .
       - name: Write the snapshot
         run: >-
-          proseview snapshot --root fixtures/demo-book --out _site --demo
+          proseview snapshot --root fixtures/demo-book --out _site/demo --demo
           --title "Alice's Adventures in Wonderland · Proseview demo"
           --book-author "Lewis Carroll"
           --description "Try Proseview in your browser: a local dashboard for Markdown novels. Read, search, open the analysis, and edit a scene of Alice in Wonderland."
-          --site-url https://ourarash.github.io/proseview/
+          --site-url https://ourarash.github.io/proseview/demo/
           --preview-image docs/images/demo-preview.png
+      # The landing page, and Proseview itself in the browser at write/,
+      # running on Pyodide served from this site.
+      - name: Write the landing page and the in-browser app
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/pyodide" pyodide@314.0.7
+          python scripts/build_site.py --out _site --pyodide "$RUNNER_TEMP/pyodide/node_modules/pyodide"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

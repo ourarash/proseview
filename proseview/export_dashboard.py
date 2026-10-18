@@ -725,11 +725,14 @@ class ExportJobs:
     first. Finished jobs are kept briefly so the page can read the outcome.
     """
 
-    def __init__(self, on_written=None) -> None:
+    def __init__(self, on_written=None, *, inline: bool = False) -> None:
         self._jobs: dict[str, ExportJob] = {}
         self._lock = threading.Lock()
         self._run_lock = threading.Lock()
         self._on_written = on_written
+        # The in-browser app has no threads, so there the export runs inside
+        # the request that starts it and the page finds it already done.
+        self._inline = inline
 
     def get(self, job_id: str) -> ExportJob | None:
         with self._lock:
@@ -750,6 +753,9 @@ class ExportJobs:
             self._jobs[job.id] = job
             while len(self._jobs) > 20:
                 self._jobs.pop(next(iter(self._jobs)))
+        if self._inline:
+            self._run(job, root, selection, details, save_as)
+            return job
         thread = threading.Thread(
             target=self._run, args=(job, root, selection, details, save_as), daemon=True,
             name=f"proseview-export-{job.id[:8]}",

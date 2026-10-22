@@ -311,16 +311,18 @@ def test_print_layout_shows_the_book_at_the_chapter_being_read(page: Page, book_
 def test_see_in_print_layout_from_a_scene_and_back_to_it(page: Page, book_server: ProseviewServer):
     scene = "ch05/01-advice-from-a-caterpillar.md"
     page.goto(book_server.url("/#/scene/" + scene.replace("/", "%2F")), wait_until="load")
-    page.wait_for_selector("#sceneProseHost")
-    # Scroll once the scene is tall enough to: on a slow runner the prose was
-    # still laying out, the scroll did nothing, and the origin read 0.
-    page.wait_for_function(
-        """() => { const box = document.querySelector('#sceneModal .modal-content');
-                   box.scrollTo({top: 300, behavior: 'instant'});
-                   return box.scrollTop >= 300; }"""
-    )
+    # Scroll once the scene has settled: on a slow runner the prose was still
+    # laying out, or a late restore put the scroll back to the top, and the
+    # origin read 0. Scroll again just before leaving, for the same reason.
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.wait_for_load_state("networkidle")
+    scroll_down = """() => { const box = document.querySelector('#sceneModal .modal-content');
+                             box.scrollTo({top: 300, behavior: 'instant'});
+                             return box.scrollTop >= 300; }"""
+    page.wait_for_function(scroll_down)
     page.locator("#sceneMoreBtn").click()
     expect(page.get_by_role("button", name="Preview as PDF…")).to_have_count(0)
+    page.wait_for_function(scroll_down)
     page.get_by_role("button", name="Print layout", exact=True).click()
     left_at = page.evaluate("_bookOrigin.top")
     assert left_at > 0

@@ -1501,7 +1501,7 @@ class _Handler(BaseHTTPRequestHandler):
             return False
         supplied = self.headers.get("X-Proseview-Session", "")
         if not self.session_token or not compare_digest(supplied, self.session_token):
-            self._send_json({"ok": False, "error": "invalid or missing page session"}, 403)
+            self._send_json({"ok": False, "error": "Proseview was restarted since this page was opened. Reload the page to continue."}, 403)
             return False
         return True
 

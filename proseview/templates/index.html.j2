@@ -827,6 +827,7 @@
         import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js';
         import { history, undo, redo } from './vendor/pm/prosemirror-history.js';
         import { keymap } from './vendor/pm/prosemirror-keymap.js';
+        import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
         import { baseKeymap, toggleMark, wrapIn, lift, chainCommands } from './vendor/pm/prosemirror-commands.js';
         import { wrapInList, liftListItem, splitListItem } from './vendor/pm/prosemirror-schema-list.js';
         import { inputRules, wrappingInputRule } from './vendor/pm/prosemirror-inputrules.js';
@@ -905,8 +906,9 @@
         }
 
         class AnnotationNodeView {
-            constructor(node, view, getPos) {
+            constructor(node, view, getPos, decorations) {
                 this.node = node;
+                this.lineJump = lineJumpFrom(decorations);
                 this.view = view;
                 this.getPos = getPos;
                 this.editing = false;
@@ -952,6 +954,7 @@
                     text.className = 'pm-annotation-text';
                     text.textContent = parsed.body;
                     this.dom.append(icon, text);
+                    this.appendLineJump();
                     this.dom.ondblclick = null;
                     this.dom.onclick = (event) => {
                         event.preventDefault();
@@ -959,6 +962,21 @@
                         this.startEdit(!window._pmEditMode);
                     };
                 }
+            }
+            // The gutter's "open in editor" arrow, as paragraphs get from a
+            // widget (see 10-prose-indicators.js).
+            appendLineJump() {
+                if (!this.lineJump) return;
+                const a = document.createElement('a');
+                a.className = 'pm-line-jump';
+                a.href = this.lineJump.href;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.title = this.lineJump.title;
+                a.textContent = '↗';
+                // Not the box's click, which would open the TODO for editing.
+                a.onclick = (event) => event.stopPropagation();
+                this.dom.append(a);
             }
             renderEdit() {
                 const parsed = this.parsed();
@@ -1006,6 +1024,14 @@
                 cancel.onclick = (event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    // A TODO just added from the gutter has nothing to go
+                    // back to, so cancelling it takes it out again.
+                    if (this.insertedFrom) {
+                        const wasDirty = this.insertedFrom.wasDirty;
+                        this.deleteNode();
+                        if (!wasDirty && typeof window.setPmDirty === 'function') window.setPmDirty(false);
+                        return;
+                    }
                     const shouldExitEdit = this.autoSave && !window._pmDirty && typeof window.cancelSceneEdit === 'function';
                     this.autoSave = false;
                     this.renderRead();
@@ -1048,7 +1074,7 @@
                     }
                 }, 0);
             }
-            startEdit(autoSave) {
+            startEdit(autoSave, insertedFrom) {
                 const scrollEl = document.querySelector('#sceneModal .modal-content');
                 const scrollTop = scrollEl ? scrollEl.scrollTop : null;
                 if (!window._pmEditMode && typeof window.toggleSceneEdit === 'function') {
@@ -1056,6 +1082,7 @@
                 }
                 if (scrollEl && scrollTop !== null) scrollEl.scrollTop = scrollTop;
                 this.autoSave = !!autoSave;
+                this.insertedFrom = insertedFrom || null;
                 this.editing = true;
                 this.renderEdit();
             }
@@ -1066,6 +1093,7 @@
                 const shouldAutoSave = this.autoSave;
                 this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null, { raw }));
                 this.editing = false;
+                this.insertedFrom = null;
                 this.autoSave = false;
                 this.renderRead();
                 if (shouldAutoSave && typeof window.saveSceneEdit === 'function') window.saveSceneEdit();
@@ -1077,9 +1105,10 @@
                 this.autoSave = false;
                 if (shouldAutoSave && typeof window.saveSceneEdit === 'function') window.saveSceneEdit();
             }
-            update(node) {
+            update(node, decorations) {
                 if (node.type !== this.node.type) return false;
                 this.node = node;
+                this.lineJump = lineJumpFrom(decorations);
                 if (!this.editing) this.renderRead();
                 return true;
             }
@@ -1090,8 +1119,13 @@
             }
         }
 
-        function createAnnotationNodeView(node, view, getPos) {
-            return new AnnotationNodeView(node, view, getPos);
+        function lineJumpFrom(decorations) {
+            const deco = (decorations || []).find(d => d.spec && d.spec.lineJump);
+            return deco ? deco.spec.lineJump : null;
+        }
+
+        function createAnnotationNodeView(node, view, getPos, decorations) {
+            return new AnnotationNodeView(node, view, getPos, decorations);
         }
 
         // A block the note editor shows but does not edit (a table), written
@@ -1133,7 +1167,7 @@
             mySchema, mdSchema,
             MarkdownParser, MarkdownSerializer,
             defaultMarkdownParser, defaultMarkdownSerializer,
-            history, undo, redo, keymap, baseKeymap, toggleMark, wrapIn, lift, chainCommands,
+            history, undo, redo, keymap, baseKeymap, gapCursor, toggleMark, wrapIn, lift, chainCommands,
             wrapInList, liftListItem, splitListItem, inputRules, wrappingInputRule,
             hlPluginKey, buildHlPlugin, createAnnotationNodeView
         };

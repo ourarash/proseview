@@ -842,6 +842,18 @@
                 }
             }
             if (e.key === 'Escape') {
+                // Opening a TODO or note selects its text, which shows this
+                // menu. One Escape puts the menu away and cancels the edit
+                // together, wherever the menu left the focus.
+                const editingAnnotation = document.querySelector('#sceneProseHost .pm-annotation-editing');
+                if (editingAnnotation) {
+                    hideSelectionPill();
+                    const cancel = editingAnnotation.querySelector('.pm-annotation-cancel');
+                    if (cancel) cancel.click();
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
                 // Escape in the Codex panel belongs to the panel, not to a
                 // selection still showing in the scene behind it.
                 const pill = document.getElementById('selectionPill');
@@ -1016,6 +1028,8 @@
             // Don't interfere if the diff modal is open
             const diffModal = document.getElementById('diffModalOverlay');
             if (diffModal && !diffModal.hidden) return;
+            // A TODO or note being edited cancels itself on Escape.
+            if (document.querySelector('#sceneProseHost .pm-annotation-editing')) return;
             if (tryEscapeEditMode()) {
                 e.preventDefault();
                 e.stopPropagation();

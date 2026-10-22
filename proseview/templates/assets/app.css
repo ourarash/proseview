@@ -7088,38 +7088,84 @@
            the scene typography so the modal font-size slider affects TODO
            text the same way it affects surrounding prose, and long TODOs
            wrap in place instead of hiding behind hover-only truncation. */
+        /* A TODO or note is a remark about the prose, not part of it, so it
+           reads as a small tag in the app's own type rather than as a block
+           of the book: a quote has a bar down its left and runs the full
+           width in the reading font. */
         .pm-annotation {
+            --annotation-accent: var(--warning);
             display: flex;
             align-items: baseline;
-            gap: 6px;
-            font: inherit;
-            color: var(--text-muted);
-            background: var(--surface-muted);
-            border-left: 3px solid var(--warning);
-            border-radius: 4px;
-            padding: 4px 10px 4px 8px;
+            gap: 8px;
+            width: fit-content;
+            max-width: 100%;
+            box-sizing: border-box;
+            font-family: Inter, system-ui, sans-serif;
+            line-height: 1.5;
+            color: var(--text-soft);
+            background: color-mix(in srgb, var(--annotation-accent) 6%, var(--surface-card));
+            border: 1px solid color-mix(in srgb, var(--annotation-accent) 22%, transparent);
+            border-radius: 12px;
+            padding: 4px 14px 4px 5px;
+            box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+            transition: border-color 0.15s ease, background-color 0.15s ease;
             margin: 6px 0;
             user-select: none;
             cursor: pointer;
-            line-height: inherit;
         }
 
         .pm-annotation-todo {
-            border-left-color: var(--primary);
+            --annotation-accent: var(--primary);
+        }
+
+        .pm-annotation:not(.pm-annotation-editing):hover {
+            border-color: color-mix(in srgb, var(--annotation-accent) 45%, transparent);
+        }
+
+        /* Smaller type on the contents, not the box, so the line number and
+           arrow in the gutter (sized in the box's em) stay lined up. */
+        .pm-annotation > .pm-annotation-text,
+        .pm-annotation-edit-body {
+            font-size: 0.8em;
         }
 
         .pm-annotation-editing {
+            width: auto;
+            border-radius: 10px;
+            padding: 6px 12px 8px 6px;
             cursor: default;
             align-items: flex-start;
             padding-bottom: 8px;
         }
 
+        /* A quiet word label in place of the emoji: TODO or Note. */
         .pm-annotation-icon {
             flex: 0 0 auto;
-            font-size: 0.9em;
+            font-size: 0;
             line-height: 1;
-            opacity: 0.85;
-            margin-top: 0.25em;
+            align-self: flex-start;
+            margin-top: 1px;
+        }
+
+        .pm-annotation-icon::before {
+            content: "Note";
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: color-mix(in srgb, var(--annotation-accent) 80%, var(--text-main));
+            background: color-mix(in srgb, var(--annotation-accent) 14%, transparent);
+            border-radius: 999px;
+            padding: 3px 7px;
+        }
+
+        .pm-annotation-todo .pm-annotation-icon::before {
+            content: "TODO";
+        }
+
+        .pm-annotation-editing .pm-annotation-icon {
+            margin-top: 2px;
         }
 
         .pm-annotation .pm-annotation-text {
@@ -7157,6 +7203,28 @@
 
         .ProseMirror-selectednode .pm-annotation {
             outline: 2px solid var(--primary);
+        }
+
+        /* The caret between two blocks with no text in them (prosemirror-gapcursor). */
+        .ProseMirror-gapcursor {
+            display: none;
+            pointer-events: none;
+            position: absolute;
+        }
+        .ProseMirror-gapcursor:after {
+            content: "";
+            display: block;
+            position: absolute;
+            top: -2px;
+            width: 20px;
+            border-top: 1px solid var(--text-main);
+            animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+        }
+        @keyframes ProseMirror-cursor-blink {
+            to { visibility: hidden; }
+        }
+        .ProseMirror-focused .ProseMirror-gapcursor {
+            display: block;
         }
 
         /* Compact floating edit-mode pill, anchored to the bottom-right

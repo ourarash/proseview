@@ -61,6 +61,10 @@
                 (typeof buildAiProposalPlugin === 'function' ? buildAiProposalPlugin(PM) : null),
                 buildListInputRules(PM),
                 PM.history(),
+                // Lets the caret sit between two blocks that hold no text,
+                // such as TODOs stacked one after another, so the writer can
+                // type there.
+                PM.gapCursor(),
                 PM.keymap(Object.assign({}, PM.baseKeymap, {
                     'Mod-z': PM.undo,
                     'Mod-y': PM.redo,

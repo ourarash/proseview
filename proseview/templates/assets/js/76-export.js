@@ -12,7 +12,8 @@
             order: [],              // [{kind: 'chapter'|'scene', id}] while reordering
             step: 1,
             details: null,
-            preview: null,          // {token, pages}
+            preview: null,          // {token, pages}, or {format, pdf: true} for a PDF
+            pdfPages: null,         // the PDF viewer (44-pdf-pages.js)
             pageIndex: 0,
             previewTimer: null,
             previewSeq: 0,
@@ -924,6 +925,11 @@
             }
             var wanted = formats.length > 1 ? (chooser.value || formats[0]) : formats[0];
             if (exportState.preview && exportState.preview.format !== wanted) keepHref = '';
+            if (/^pdf-/.test(wanted) && !exportIsDemo()) {
+                exportLoadPdfPages(wanted);
+                return;
+            }
+            if (exportState.pdfPages) exportState.pdfPages.close();
             exportPost('/api/export/preview', {
                 selection: exportSelectionPayload(), details: exportReadDetails(), preview: wanted,
             }).then(function(data) {
@@ -957,7 +963,35 @@
             });
         }
 
-        // ── PDF preview: page images, as spreads for a printed book ──────────
+        // ── PDF preview: the whole PDF, as Export writes it ──────────────────
+        // The demo has no server to lay it out, so it shows page images of
+        // the first chapters instead (below).
+
+        function exportLoadPdfPages(format) {
+            var view = exportEl('exportPaperView');
+            var before = exportState.preview;
+            exportState.preview = {format: format, pdf: true, pages: []};
+            exportEl('exportPreviewFrame').parentElement.hidden = true;
+            view.hidden = false;
+            if (!exportState.pdfPages) {
+                view.setAttribute('role', 'region');
+                exportState.pdfPages = createPdfPages(view, {
+                    prev: exportEl('exportPrevPage'),
+                    next: exportEl('exportNextPage'),
+                    pick: exportEl('exportPagePick'),
+                    status: exportEl('exportPreviewStatus'),
+                }, 'export');
+                exportEl('exportNextPage').after(exportState.pdfPages.tools);
+            }
+            var viewer = exportState.pdfPages;
+            // The same format again (a detail changed) stays on the same page.
+            var at = before && before.pdf && before.format === format && viewer.pdf ? {page: viewer.index} : null;
+            viewer.load(fetchBookPdf({
+                selection: exportSelectionPayload(), details: exportReadDetails(), preview: format,
+            }), at);
+        }
+
+        // ── PDF preview in the demo: page images, as spreads for a printed book ──
 
         function exportSpreadOf(data, index) {
             // A printed book opens with page 1 alone on the right; after that
@@ -1084,6 +1118,10 @@
 
         function exportTurnPage(direction) {
             var data = exportState.preview;
+            if (data && data.pdf) {
+                exportState.pdfPages.turn(direction);
+                return;
+            }
             if (exportIsPaper(data)) {
                 var spread = exportSpreadOf(data, exportState.pageIndex);
                 exportShowSpread(direction > 0 ? spread[spread.length - 1] + 1 : spread[0] - 1);
@@ -1393,6 +1431,7 @@
                 exportState.job = null;
                 clearTimeout(exportState.previewTimer);
                 exportEl('exportPreviewFrame').removeAttribute('src');
+                if (exportState.pdfPages) exportState.pdfPages.close();
                 var back = exportState.returnFocus;
                 if (back && back.isConnected) back.focus({preventScroll: true});
             });
@@ -1457,7 +1496,8 @@
             exportEl('exportPrevPage').addEventListener('click', function() { exportTurnPage(-1); });
             exportEl('exportNextPage').addEventListener('click', function() { exportTurnPage(1); });
             exportEl('exportPagePick').addEventListener('change', function(event) {
-                if (exportIsPaper(exportState.preview)) exportShowSpread(Number(event.target.value));
+                if (exportState.preview && exportState.preview.pdf) exportState.pdfPages.show(Number(event.target.value));
+                else if (exportIsPaper(exportState.preview)) exportShowSpread(Number(event.target.value));
                 else exportShowPreviewPage(Number(event.target.value), 0);
             });
             exportEl('exportPreviewFormat').addEventListener('change', function() { exportLoadPreview(); });

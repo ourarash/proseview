@@ -91,7 +91,8 @@ def build_write(out: Path, pyodide: Path) -> None:
     (out / "pyodide").mkdir()
     for name in PYODIDE_FILES:
         shutil.copyfile(pyodide / name, out / "pyodide" / name)
-    shutil.copytree(PACKAGE / "templates" / "vendor", out / "vendor")
+    # No PDFs in the browser, so no pdf.js either.
+    shutil.copytree(PACKAGE / "templates" / "vendor", out / "vendor", ignore=shutil.ignore_patterns("pdfjs"))
     build_app_zip(out / "app.zip")
 
 

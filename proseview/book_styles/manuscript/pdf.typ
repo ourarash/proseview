@@ -99,7 +99,9 @@
 #let chapter(number, title, outline-label, n: none) = {
   pagebreak(weak: true)
   start-body()
-  heading(level: 1, outline-label)
+  // Labelled, so the PDF names where each chapter starts (chapter-1, …) and
+  // a reader can open it there.
+  if n != none [#heading(level: 1, outline-label)#label("chapter-" + str(n))] else { heading(level: 1, outline-label) }
   v(2.2in)
   set par(first-line-indent: 0pt)
   align(center, {

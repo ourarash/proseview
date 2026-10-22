@@ -144,7 +144,7 @@ def test_x_exports_the_open_scene(page: Page, demo_book_server: ProseviewServer)
     # The same from the scene's menu, which names the key.
     page.locator("#sceneMoreBtn").click()
     expect(page.get_by_role("button", name="Export this scene…")).to_have_attribute("aria-keyshortcuts", "X")
-    expect(page.get_by_role("button", name="Preview as PDF…")).to_be_visible()
+    expect(page.get_by_role("button", name="Print layout", exact=True)).to_be_visible()
 
 
 def test_export_a_print_pdf_of_one_chapter(page: Page, demo_book_server: ProseviewServer):
@@ -164,9 +164,11 @@ def test_export_a_print_pdf_of_one_chapter(page: Page, demo_book_server: Prosevi
     page.get_by_role("button", name="Next: Book details").click()
 
     page.get_by_label("Author", exact=True).fill("Lewis Carroll")
-    preview = page.locator("#exportPaperView img")
+    # The whole PDF as it will be written, its words selectable.
+    preview = page.locator("#exportPaperView .pdf-page canvas")
     expect(preview.first).to_be_visible(timeout=20_000)
     expect(page.locator("#exportPreviewStatus")).to_contain_text("of")
+    expect(page.locator("#exportPaperView .textLayer").last).to_contain_text("Caucus")
     page.get_by_role("button", name="Next page").click()
     expect(page.locator("#exportPreviewStatus")).to_contain_text("Pages")
 
@@ -196,7 +198,7 @@ def test_manuscript_asks_for_contact_details(page: Page, demo_book_server: Prose
     page.get_by_role("button", name="Next: Book details").click()
     expect(page.get_by_label("Contact details")).to_be_visible()
     expect(page.locator("#exportCoverDrop")).to_be_hidden()
-    expect(page.locator("#exportPaperView img").first).to_be_visible(timeout=20_000)
+    expect(page.locator("#exportPaperView .pdf-page canvas").first).to_be_visible(timeout=20_000)
     # The preview opens on the first page of text, after the title page.
     expect(page.locator("#exportPagePick")).to_have_value("1")
 

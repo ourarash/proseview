@@ -34,8 +34,8 @@ from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailab
 from .discuss import ContextError, DiscussManager
 from .export import ExportError
 from .export_dashboard import (
-    ExportJobs, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
-    save_cover, selection_from_request,
+    ExportJobs, PdfPages, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
+    save_cover, save_reading_layout, selection_from_request,
 )
 from .hunks import changed_blocks, split_lines
 from .patches import Hunk, parse_hunks
@@ -1323,6 +1323,7 @@ class _Handler(BaseHTTPRequestHandler):
     session_token: str
     export_jobs: ExportJobs
     export_previews: PreviewCache
+    pdf_pages: PdfPages
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -1830,6 +1831,22 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._read_json_limited(512 * 1024)
             if path == "/api/export/preview":
                 self._send_json(build_preview(root, Config.load(root), body, self.export_previews))
+            elif path == "/api/export/pdf":
+                # The whole PDF, as Export writes it, for the page viewer. A
+                # layout chosen in the reader ("remember") becomes Export's.
+                if "remember" in body:
+                    save_reading_layout(root, Config.load(root), body.get("remember"))
+                    body = {key: value for key, value in body.items() if key != "remember"}
+                data, facts = self.pdf_pages.build(root, Config.load(root), body)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", str(len(data)))
+                for name, value in facts.items():
+                    self.send_header("X-Proseview-" + name.title(), value)
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data)
             elif path == "/api/export/start":
                 job = self.export_jobs.start(root, body)
                 self._send_json(job.snapshot(), 202)
@@ -2883,6 +2900,7 @@ def _make_handler(
     session_token: str,
     export_jobs: ExportJobs | None = None,
     export_previews: PreviewCache | None = None,
+    pdf_pages: PdfPages | None = None,
 ) -> type:
     class BoundHandler(_Handler):
         pass
@@ -2897,6 +2915,7 @@ def _make_handler(
     BoundHandler.session_token = session_token  # type: ignore[method-assign]
     BoundHandler.export_jobs = export_jobs or ExportJobs()  # type: ignore[method-assign]
     BoundHandler.export_previews = export_previews or PreviewCache()  # type: ignore[method-assign]
+    BoundHandler.pdf_pages = pdf_pages or PdfPages()  # type: ignore[method-assign]
     return BoundHandler
 
 

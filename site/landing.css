@@ -83,12 +83,19 @@ main > section {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--serif);
   font-size: 22px;
   font-weight: 600;
   text-decoration: none;
-  color: var(--accent);
+  color: var(--ink);
 }
+
+/* The app's mark: an open book with a bird leaving it. */
+.brand-mark { width: 32px; height: 32px; flex: none; }
+.brand-mark rect { fill: var(--accent); }
 
 .top nav { display: flex; align-items: center; gap: 22px; font-size: 15px; }
 .top nav a { text-decoration: none; color: var(--muted); }

@@ -59,8 +59,28 @@ def book_with_history() -> Path:
         "GIT_COMMITTER_NAME": "Proseview Demo", "GIT_COMMITTER_EMAIL": "demo@example.com",
     }
     subprocess.run(["git", "init", "-q"], cwd=root, check=True, env=env)
-    subprocess.run(["git", "add", "-A"], cwd=root, check=True, env=env)
-    subprocess.run(["git", "commit", "-qm", "Demo manuscript"], cwd=root, check=True, env=env)
+    # A few days of writing, not one commit made a moment ago: from that the
+    # Progress card read the whole book as written today, with every scene
+    # "changed today". Chapters 1-10 land three days back, 11 and 12 one day
+    # each after, and every file carries the day it was committed.
+    chapters = sorted(p.name for p in (root / "manuscript").iterdir() if p.is_dir())
+    batches = [
+        (3, [p for p in root.iterdir() if p.name not in {"manuscript", ".git"}]
+            + [root / "manuscript" / c for c in chapters[:-2]]
+            + [p for p in (root / "manuscript").iterdir() if p.is_file()]),
+        (2, [root / "manuscript" / chapters[-2]]),
+        (1, [root / "manuscript" / chapters[-1]]),
+    ]
+    for days_ago, paths in batches:
+        when = time.time() - days_ago * 86400
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(when))
+        for path in paths:
+            for item in [path, *path.rglob("*")] if path.is_dir() else [path]:
+                os.utime(item, (when, when))
+        subprocess.run(["git", "add", "--", *[str(p.relative_to(root)) for p in paths]],
+                       cwd=root, check=True, env=env)
+        subprocess.run(["git", "commit", "-qm", f"Draft"], cwd=root, check=True,
+                       env={**env, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
     return root
 
 
@@ -427,6 +447,21 @@ def shot_export_formats(page, base, docs):
     page.wait_for_timeout(800)
 
 
+def shot_export_preview(page, base, docs):
+    # The third step: the book's details beside a preview of the print
+    # book's facing pages, as Export will make them.
+    shot_export_formats(page, base, docs)
+    page.get_by_role("button", name="Next: Book details").click()
+    page.wait_for_selector("#exportPaperView .pdf-page canvas", state="visible", timeout=120000)
+    page.wait_for_timeout(1500)
+
+
+def shot_demo_preview(page, base, docs):
+    # The demo site's link preview: the size link previews use, 1200x630.
+    page.set_viewport_size({"width": 1200, "height": 630})
+    shot_analytics(page, base, docs)
+
+
 def shot_storylines(page, base, docs):
     # The landing page's storylines row: the Timeline tab's charts alone,
     # without the sidebar and header, so the lanes read at page width.
@@ -457,6 +492,8 @@ SHOTS = {
     "write-a-scene": shot_writing,
     "storylines": shot_storylines,
     "export-formats": shot_export_formats,
+    "export-preview": shot_export_preview,
+    "demo-preview": shot_demo_preview,
     "dashboard": shot_dashboard,
     "analytics": shot_analytics,
     "read-the-book": shot_book,

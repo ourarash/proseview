@@ -928,7 +928,9 @@
             var tag = (e.target.tagName || '').toUpperCase();
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
             if (document.documentElement.dataset.view !== 'scene') return;
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+            // Shift+F is full screen, as the toolbar menu says; plain F is
+            // the focus layout.
+            if (e.shiftKey && (e.key === 'f' || e.key === 'F')) {
                 e.preventDefault();
                 toggleFullscreen();
                 return;

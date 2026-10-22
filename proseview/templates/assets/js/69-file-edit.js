@@ -451,6 +451,42 @@
                 event.preventDefault();
                 toggleFileEdit();
             });
+            // F gives the note the whole page, as it does a scene: the sidebar
+            // and the panel go away, and a second F puts back what it hid.
+            // Shift+F is full screen.
+            var fileFocusHid = null;
+            function toggleFileFocus() {
+                var html = document.documentElement;
+                var panel = document.getElementById('discussPanel');
+                if (fileFocusHid) {
+                    if (fileFocusHid.sidebar) setSidebarOpen(true);
+                    if (fileFocusHid.panel && typeof toggleScenePanel === 'function') toggleScenePanel();
+                    fileFocusHid = null;
+                    return;
+                }
+                fileFocusHid = {
+                    sidebar: html.dataset.sidebar !== 'closed',
+                    panel: !!(panel && !panel.hidden),
+                };
+                if (fileFocusHid.sidebar) setSidebarOpen(false);
+                if (fileFocusHid.panel && typeof closeScenePanel === 'function') closeScenePanel();
+            }
+            // Leaving the note leaves focus too, with nothing to restore.
+            new MutationObserver(function() {
+                if (document.documentElement.dataset.view !== 'file') fileFocusHid = null;
+            }).observe(document.documentElement, {attributes: true, attributeFilter: ['data-view']});
+            document.addEventListener('keydown', function(event) {
+                if (event.key !== 'f' && event.key !== 'F') return;
+                if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) return;
+                if (document.documentElement.dataset.view !== 'file' || fileEditActive()) return;
+                var target = event.target;
+                var tag = (target && target.tagName || '').toUpperCase();
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (target && target.isContentEditable)) return;
+                if (document.querySelector('dialog[open]')) return;
+                event.preventDefault();
+                if (event.shiftKey) toggleFullscreen();
+                else toggleFileFocus();
+            });
             // The rich editor loads after the page; show Edit once it is there.
             window.addEventListener('proseview:editor-ready', function() {
                 if (document.documentElement.dataset.view !== 'file') return;

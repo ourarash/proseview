@@ -371,6 +371,7 @@
                         '<button class="selection-pill-action" id="selectionRewriteBtn" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-controls="selectionRewriteMenu" aria-expanded="false">Rewrite <span aria-hidden="true">›</span></button>' +
                         '<button class="selection-pill-action" id="selectionCritiqueBtn" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-controls="selectionCritiqueMenu" aria-expanded="false">Critique <span aria-hidden="true">›</span></button>' +
                         '<button class="selection-pill-action" id="selectionCodexBtn" type="button" role="menuitem" tabindex="-1" aria-keyshortcuts="A">Ask about selection<kbd class="selection-pill-kbd" aria-hidden="true">A</kbd></button>' +
+                        '<button class="selection-pill-action" id="selectionPolishBtn" type="button" role="menuitem" tabindex="-1" aria-keyshortcuts="P">Polish selection<kbd class="selection-pill-kbd" aria-hidden="true">P</kbd></button>' +
                         '<div class="selection-pill-separator" role="separator"></div>' +
                         '<button class="selection-pill-action" id="selectionSkillsBtn" type="button" role="menuitem" tabindex="-1">Skills…</button>' +
                         '<button class="selection-pill-action" id="selectionTodoBtn" type="button" role="menuitem" tabindex="-1" aria-controls="selectionTodoForm" aria-expanded="false">Add TODO</button>' +
@@ -646,26 +647,40 @@
                 handoffSelectionToDiscuss({});
             });
 
-            // A asks about the selection, as the menu's "Ask about selection"
-            // does. Reading only: in the editor, A is a letter being typed.
-            document.addEventListener('keydown', function(e) {
-                if (e.key !== 'a' && e.key !== 'A') return;
-                if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-                if (document.documentElement.dataset.view !== 'scene' || _pmEditMode) return;
+            document.getElementById('selectionPolishBtn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!managedSelectionIsCurrent()) return;
+                handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
+            });
+
+            // A and P act on the reading-mode selection, as the menu's items
+            // do. Reading only: in the editor, A and P are letters being typed.
+            function selectionShortcutApplies(e) {
+                if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return false;
+                if (document.documentElement.dataset.view !== 'scene' || _pmEditMode) return false;
                 const target = e.target;
                 const tag = (target && target.tagName || '').toUpperCase();
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-                if (target && target.isContentEditable && !target.closest('#sceneProseHost')) return;
-                if (target && target.closest && target.closest('#discussPanel')) return;
-                if (document.querySelector('dialog[open]')) return;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
+                if (target && target.isContentEditable && !target.closest('#sceneProseHost')) return false;
+                if (target && target.closest && target.closest('#discussPanel')) return false;
+                if (document.querySelector('dialog[open]')) return false;
                 const live = window.getSelection ? window.getSelection() : null;
-                if (live && !live.isCollapsed && live.rangeCount) {
-                    if (!rememberSceneSelection(live)) return;
-                } else if (!managedSelectionIsCurrent()) {
-                    return;
-                }
+                if (live && !live.isCollapsed && live.rangeCount) return rememberSceneSelection(live);
+                return managedSelectionIsCurrent();
+            }
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'a' && e.key !== 'A') return;
+                if (!selectionShortcutApplies(e)) return;
                 e.preventDefault();
                 handoffSelectionToDiscuss({});
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'p' && e.key !== 'P') return;
+                if (!selectionShortcutApplies(e)) return;
+                e.preventDefault();
+                handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
             });
 
             // Drag: only when clicking the pill background (not a button/textarea)

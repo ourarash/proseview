@@ -124,26 +124,26 @@ def test_export_this_scene_from_the_file_browser(page: Page, demo_book_server: P
     assert not (demo_book_server.root / "exports").exists()
 
 
-def test_p_previews_the_open_scene_as_a_pdf(page: Page, demo_book_server: ProseviewServer):
+def test_x_exports_the_open_scene(page: Page, demo_book_server: ProseviewServer):
     page.goto(demo_book_server.url("/#/scene/ch05%2F01-advice-from-a-caterpillar.md"))
     page.wait_for_selector("#sceneProseHost .ProseMirror")
     page.locator("#sceneProseHost").click()
-    page.keyboard.press("p")
+    page.keyboard.press("x")
 
-    # Straight to the preview of just this scene, as a shareable PDF.
-    expect(page.locator('[data-export-panel="3"]')).to_be_visible()
-    expect(page.locator("#exportPaperView img").first).to_be_visible(timeout=20_000)
-    expect(page.get_by_role("button", name="Export PDF")).to_be_visible()
-    page.get_by_role("button", name="Back").click()
-    expect(page.get_by_role("radio", name="Shareable PDF")).to_be_checked()
-    page.get_by_role("button", name="Back").click()
+    # Export, with just this scene picked.
+    expect(page.locator("#exportDialog")).to_be_visible()
     expect(page.locator("#exportTotals")).to_contain_text("1 chapter, 1 scene")
 
     page.keyboard.press("Escape")
     expect(page.locator("#exportDialog")).to_be_hidden()
     assert not (demo_book_server.root / "exports").exists()
-    # The same from the scene's menu.
+    # P is polish, for a selection; with nothing selected it does nothing.
+    page.locator("#sceneProseHost").click()
+    page.keyboard.press("p")
+    expect(page.locator("#exportDialog")).to_be_hidden()
+    # The same from the scene's menu, which names the key.
     page.locator("#sceneMoreBtn").click()
+    expect(page.get_by_role("button", name="Export this scene…")).to_have_attribute("aria-keyshortcuts", "X")
     expect(page.get_by_role("button", name="Preview as PDF…")).to_be_visible()
 
 

@@ -10,11 +10,12 @@
 <meta property="og:url" content="https://ourarash.github.io/proseview/">
 <meta property="og:image" content="https://ourarash.github.io/proseview/images/write-a-scene.png">
 <link rel="stylesheet" href="landing.css">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23cb4c48%22/%3E%3Cpath d=%22M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z%22 fill=%22%23fff%22/%3E%3Cpath d=%22M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z%22 fill=%22%23fff%22 fill-opacity=%22.86%22/%3E%3Cpath d=%22M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4%22 fill=%22none%22 stroke=%22%23fff%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
 </head>
 <body>
 
 <header class="top">
-  <a class="brand" href="./">Proseview</a>
+  <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Proseview</a>
   <nav aria-label="Sections">
     <a href="#write">Write</a>
     <a href="#revise">Revise</a>
@@ -71,7 +72,7 @@
     │   └── 02-the-station.md
     └── ch02/
         └── 01-aftermath.md</code></pre>
-  <figure class="shot"><img src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: total words against the goal, scene count, reading time, and the Read the book and Export buttons"></figure>
+  <figure class="shot"><img src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: a Progress card with the words against the goal, today's words, words a day, the writing streak and days to finish, above the scenes worked on last"></figure>
 </section>
 
 <section class="feature" id="write">
@@ -93,7 +94,8 @@
     <h2>An editor's eye, on your terms.</h2>
     <ul>
       <li>Nine prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
-      <li>Chapter pacing, sentence rhythm and who appears where.</li>
+      <li>Analysis that says what stands out in plain sentences, and shows who is in each chapter.</li>
+      <li>Today's words, your pace and streak, and what changed: the words written and cut in each scene.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-highlights.gif" width="780" height="463" loading="lazy" alt="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"></figure>
@@ -146,7 +148,7 @@
     </div>
     <div>
       <h3>Git, for backup</h3>
-      <p>Your book is plain text, so git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and your commits feed the writing streak and goal progress.</p>
+      <p>Your book is plain text, so git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and Proseview reads your commits and saved scenes for your goals and writing streak.</p>
     </div>
     <div>
       <h3>VS Code</h3>
@@ -194,7 +196,7 @@
         <code id="runCmd">proseview --root ~/my-novel</code>
         <button type="button" data-copy="runCmd">Copy</button>
       </div>
-      <a class="button" href="https://github.com/ourarash/proseview#-quick-start">Read the quick start</a>
+      <a class="button" href="https://github.com/ourarash/proseview#quick-start">Read the quick start</a>
     </article>
   </div>
   <p class="ways-note">Just trying it? <a href="write/">Start a book in your browser</a>.</p>
@@ -216,7 +218,7 @@
   </details>
   <details>
     <summary>Do I need git?</summary>
-    <p>No. Proseview works on any folder. Git is the easiest way to back the book up and keep every draft, and in a git folder Proseview also reads your commits for the writing streak, goal progress and recent changes.</p>
+    <p>No. Proseview works on any folder. Git is the easiest way to back the book up and keep every draft, and in a git folder Proseview also shows your goals: today's words, your pace, the writing streak and what changed.</p>
   </details>
   <details>
     <summary>Do I need AI?</summary>

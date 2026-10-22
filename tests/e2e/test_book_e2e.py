@@ -312,7 +312,13 @@ def test_see_in_print_layout_from_a_scene_and_back_to_it(page: Page, book_server
     scene = "ch05/01-advice-from-a-caterpillar.md"
     page.goto(book_server.url("/#/scene/" + scene.replace("/", "%2F")), wait_until="load")
     page.wait_for_selector("#sceneProseHost")
-    page.evaluate("document.querySelector('#sceneModal .modal-content').scrollTo({top: 300, behavior: 'instant'})")
+    # Scroll once the scene is tall enough to: on a slow runner the prose was
+    # still laying out, the scroll did nothing, and the origin read 0.
+    page.wait_for_function(
+        """() => { const box = document.querySelector('#sceneModal .modal-content');
+                   box.scrollTo({top: 300, behavior: 'instant'});
+                   return box.scrollTop >= 300; }"""
+    )
     page.locator("#sceneMoreBtn").click()
     expect(page.get_by_role("button", name="Preview as PDF…")).to_have_count(0)
     page.get_by_role("button", name="Print layout", exact=True).click()

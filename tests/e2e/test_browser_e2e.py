@@ -7383,6 +7383,25 @@ def test_an_open_editor_with_nothing_unsaved_takes_an_outside_edit(page: Page, s
                 message="the save after an outside edit did not land")
 
 
+def test_a_scene_edited_outside_while_another_is_open_is_current_when_reopened(page: Page, server: ProseviewServer):
+    """An agent edits a scene while the writer reads the next one, then they go back."""
+    path = server.scene_path()
+    open_scene(page, server)
+    page.evaluate("navigateScene(1)")
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.replace("The loft smelled of cold coffee", "The loft smelled of burnt toast"), encoding="utf-8")
+    # Let the change event reach the page, which is on the other scene.
+    page.wait_for_timeout(3000)
+
+    page.evaluate("navigateScene(-1)")
+    page.wait_for_function("() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('burnt toast')", timeout=15_000)
+    enter_edit_mode(page)
+    append_to_paragraph(page, "burnt toast", " Then quiet.")
+    save_scene(page)
+    _wait_until(lambda: "burnt toast" in path.read_text(encoding="utf-8") and "Then quiet." in path.read_text(encoding="utf-8"),
+                message="the save after going back to the scene did not land")
+
+
 def test_an_open_editor_with_unsaved_work_is_left_alone(page: Page, server: ProseviewServer):
     path = server.scene_path()
     open_scene(page, server)

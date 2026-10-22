@@ -1086,6 +1086,15 @@
             return changed;
         }
 
+        // Scenes changed on disk since the page last read them. Only the open
+        // scene is fetched again when a change arrives, so the others keep
+        // their old text and mtime here until they are next opened.
+        var _scenesChangedOnDisk = {};
+
+        function refreshSceneIfChangedOnDisk(p) {
+            if (_scenesChangedOnDisk[p]) refreshContent([p]);
+        }
+
         function reloadOrDefer(changedPaths) {
             // Always do a partial refresh instead of location.reload() —
             // a full reload jolts the viewport (jump to top, then
@@ -1093,6 +1102,9 @@
             // covers both self-saves and external file edits.
             // refreshContent() leaves an editor with unsaved work alone.
             if (_pendingSelfReloads > 0) _pendingSelfReloads--;
+            paths.forEach(function(p) {
+                if (pathListContains(changedPaths, p)) _scenesChangedOnDisk[p] = true;
+            });
             refreshContent(changedPaths || null);
         }
 
@@ -1158,6 +1170,7 @@
                 }
                 if (data.meta && data.meta[scenePath]) meta[scenePath] = data.meta[scenePath];
                 if (data.highlightsByPath && data.highlightsByPath[scenePath]) highlightsByPath[scenePath] = data.highlightsByPath[scenePath];
+                delete _scenesChangedOnDisk[scenePath];
                 refreshSucceeded = true;
                 updateModal(true);
                 if (_pmEditMode) {

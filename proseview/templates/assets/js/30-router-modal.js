@@ -140,6 +140,7 @@
             document.documentElement.dataset.view = 'scene';
             routeToHash('/scene/' + encodeURIComponent(p), true);
             restoreActiveScrollPosition();
+            refreshSceneIfChangedOnDisk(p);
             // Reveal the scene in the sidebar: highlight it and expand the
             // chapter folders above it.
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
@@ -791,6 +792,7 @@
             if (p) {
                 routeToHash('/scene/' + encodeURIComponent(p), true);
                 restoreActiveScrollPosition();
+                refreshSceneIfChangedOnDisk(p);
                 if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
                 if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             }

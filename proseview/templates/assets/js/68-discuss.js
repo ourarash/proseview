@@ -2194,7 +2194,7 @@
             var finished = (snapshot.last_turn || {}).turn_id || '';
             if (!snapshot.active_turn_id && finished && finished !== _discussReviewedTurn) {
                 _discussReviewedTurn = finished;
-                refreshDiscussReview();
+                refreshDiscussReview({dropEditedSelection: true});
             }
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
             var log = document.getElementById('discussLog');
@@ -3090,7 +3090,7 @@ function loadDiscussDiffMode(mode) {
             return _discussReviewKeep[path];
         }
 
-        function refreshDiscussReview() {
+        function refreshDiscussReview(options) {
             if (!_discussConversationId) return;
             var conversationId = _discussConversationId;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(conversationId) + '/changes',
@@ -3106,9 +3106,29 @@ function loadDiscussDiffMode(mode) {
                     Object.keys(_discussReviewKeep).forEach(function(path) {
                         if (!live[path]) delete _discussReviewKeep[path];
                     });
+                    if (options && options.dropEditedSelection) dropDiscussSelectionIfEdited(_discussReview);
                     renderDiscussSnapshot();
                 })
                 .catch(function() { /* Nothing to review is not an error worth showing. */ });
+        }
+
+        // A finished turn that changed the file the selection came from has
+        // made the chip stale: its words and position may no longer be there.
+        // It goes rather than being guessed at; a turn that left that file
+        // alone keeps it for the follow-up question.
+        function dropDiscussSelectionIfEdited(files) {
+            var doc = _discussSelection && discussTurnDocument();
+            if (!doc) return;
+            var edited = (files || []).some(function(file) {
+                var target = prosviewTargetForRepositoryPath(file.path);
+                return target && target.kind === doc.kind && target.path === doc.path;
+            });
+            if (!edited) return;
+            _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
+            _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+            if (!document.getElementById('discussInput').value && !_discussIncludeCurrentDocument) _discussDraftDocument = null;
+            showDiscussSelectionInText(false);
+            saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
         }
 
         // One row, used by the card and by the expanded view. Both write the
@@ -3500,6 +3520,36 @@ function loadDiscussDiffMode(mode) {
             catch(e) { return []; }
         }
 
+        // Favorites the writer marked as being about selected text, such as
+        // "Polish this". The rest are replies, such as "good, apply it", and
+        // stay on offer with or without a selection.
+        function selectionOnlyDiscussInstructions() {
+            try { return normalizedDiscussInstructions(JSON.parse(localStorage.getItem('proseview-codex-selection-only-instructions') || '[]'), 12); }
+            catch(e) { return []; }
+        }
+
+        // Presets from the book's settings are selection presets by name.
+        function discussInstructionNeedsSelection(value) {
+            return selectionOnlyDiscussInstructions().indexOf(value) >= 0
+                || (configuredDiscussInstructions().indexOf(value) >= 0 && favoriteDiscussInstructions().indexOf(value) < 0);
+        }
+
+        function toggleDiscussInstructionSelectionOnly(value) {
+            var rows = selectionOnlyDiscussInstructions(); var index = rows.indexOf(value);
+            if (index >= 0) rows.splice(index, 1); else rows.unshift(value);
+            try { localStorage.setItem('proseview-codex-selection-only-instructions', JSON.stringify(rows.slice(0, 12))); } catch(e) {}
+            renderDiscussTaskMode();
+            var details = document.querySelector('#discussTaskMode .discuss-presets-more');
+            if (!details) return;
+            details.open = true;
+            var label = 'Only with selected text: ' + value;
+            Array.prototype.some.call(details.querySelectorAll('.discuss-selection-only'), function(button) {
+                if (button.getAttribute('aria-label') !== label) return false;
+                button.focus();
+                return true;
+            });
+        }
+
         function configuredDiscussInstructions() {
             return normalizedDiscussInstructions(
                 typeof discussSelectionPresets === 'undefined' ? [] : discussSelectionPresets,
@@ -3566,7 +3616,18 @@ function loadDiscussDiffMode(mode) {
             var star = document.createElement('button'); star.type = 'button'; star.className = 'discuss-favorite'; star.textContent = favorite ? '★' : '☆';
             star.setAttribute('aria-label', (favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + value);
             star.onclick = function() { toggleDiscussInstructionFavorite(value, true); };
-            wrap.appendChild(button); wrap.appendChild(star); node.appendChild(wrap);
+            wrap.appendChild(button);
+            if (favorite) {
+                var only = selectionOnlyDiscussInstructions().indexOf(value) >= 0;
+                var scope = document.createElement('button'); scope.type = 'button'; scope.className = 'discuss-selection-only';
+                scope.textContent = 'Selection';
+                scope.title = only ? 'Shown only while text is selected' : 'Shown always. Click to show only while text is selected';
+                scope.setAttribute('aria-label', 'Only with selected text: ' + value);
+                scope.setAttribute('aria-pressed', only ? 'true' : 'false');
+                scope.onclick = function() { toggleDiscussInstructionSelectionOnly(value); };
+                wrap.appendChild(scope);
+            } else wrap.appendChild(document.createElement('span'));
+            wrap.appendChild(star); node.appendChild(wrap);
         }
 
         function appendDiscussPresetsMenu(node, presets, recents) {
@@ -3686,19 +3747,24 @@ function loadDiscussDiffMode(mode) {
             document.getElementById('discussInput').placeholder = _discussSelection
                 ? 'Ask anything about this selection…'
                 : 'Ask anything about your story…';
-            node.hidden = !(_discussSelection && (presets.length || recents.length));
+            // Replies are on offer whenever there is something to answer;
+            // selection presets only while there is selected text.
+            var offered = _discussSelection ? presets : presets.filter(function(value) {
+                return !discussInstructionNeedsSelection(value);
+            });
+            node.hidden = !(offered.length || (_discussSelection && recents.length));
             node.dataset.mode = 'presets';
             if (!node.hidden) {
                 var label = elementWith('discuss-presets-label', 'Quick send:'); node.appendChild(label);
                 var inline = elementWith('discuss-presets-inline');
-                presets.slice(0, 3).forEach(function(value) {
+                offered.slice(0, 3).forEach(function(value) {
                     var button = document.createElement('button');
                     button.type = 'button'; button.className = 'discuss-preset-inline'; button.textContent = value;
                     button.onclick = function() { chooseDiscussInstruction(value); };
                     inline.appendChild(button);
                 });
-                if (presets.length) node.appendChild(inline);
-                if (presets.length > 3 || recents.length || favoriteDiscussInstructions().length) {
+                if (offered.length) node.appendChild(inline);
+                if (offered.length > 3 || recents.length || favoriteDiscussInstructions().length) {
                     appendDiscussPresetsMenu(node, presets, recents);
                 }
             }

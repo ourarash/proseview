@@ -5708,6 +5708,56 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
     assert pill["y"] + pill["height"] <= composer["y"]
 
 
+def test_reply_presets_stay_on_offer_without_a_selection(page: Page, server: ProseviewServer):
+    """"good, apply it" answers the agent, so it needs no selected text.
+
+    A favorite marked as a selection preset, such as "Polish this", is
+    offered only while text is selected.
+    """
+    page.goto(f"{server.base_url}#/scene/{SCENE_REL}", wait_until="load")
+    page.evaluate(
+        """() => {
+            localStorage.setItem('proseview-codex-favorite-instructions',
+                JSON.stringify(['good, apply it', 'Polish this']));
+            localStorage.setItem('proseview-codex-selection-only-instructions',
+                JSON.stringify(['Polish this']));
+        }"""
+    )
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    presets = page.locator("#discussTaskMode .discuss-preset-inline")
+    assert page.locator("#discussSelectionChip").is_hidden()
+    assert presets.all_inner_texts() == ["good, apply it"]
+
+    open_selection_menu(page, "the slow algebra")
+    page.click("#selectionCodexBtn")
+    page.wait_for_function("() => document.querySelectorAll('#discussTaskMode .discuss-preset-inline').length === 2")
+    assert presets.all_inner_texts() == ["good, apply it", "Polish this"]
+
+    # The mark is set from the More menu, next to the favorite's star.
+    page.get_by_role("button", name="More presets and recent instructions").click()
+    reply = page.get_by_role("button", name="Only with selected text: good, apply it")
+    assert reply.get_attribute("aria-pressed") == "false"
+    assert page.get_by_role(
+        "button", name="Only with selected text: Polish this"
+    ).get_attribute("aria-pressed") == "true"
+    reply.click()
+    assert page.locator("#discussPresetsPopover").is_visible()
+    assert page.get_by_role(
+        "button", name="Only with selected text: good, apply it"
+    ).get_attribute("aria-pressed") == "true"
+    assert page.evaluate(
+        "JSON.parse(localStorage.getItem('proseview-codex-selection-only-instructions'))"
+    ) == ["good, apply it", "Polish this"]
+
+    page.keyboard.press("Escape")
+    page.locator("#discussSelectionChip button").click()
+    assert page.locator("#discussSelectionChip").is_hidden()
+    assert page.locator("#discussTaskMode").is_hidden()
+
+
 def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: ProseviewServer):
     """A redraw of the presets strip must not shut the menu the writer opened.
 
@@ -6845,6 +6895,32 @@ def test_the_next_question_keeps_the_edits_and_clears_their_review(
     assert page.locator(".discuss-review").count() == 0
     text = scene.read_text(encoding="utf-8")
     assert CHANGED_SENTENCE in text and CHANGED_SECOND in text
+
+
+def test_an_edit_to_the_selected_file_drops_the_stale_selection(page: Page, server: ProseviewServer) -> None:
+    """Ask or Polish rewrites the passage; the chip must not ride into the next question."""
+    open_scene(page, server)
+    assert select_prose(page, "ledger") == "ledger"
+    card = _review_card(page)
+    assert card.is_visible()
+    page.wait_for_selector("#discussSelectionChip", state="hidden")
+    wait_for_discuss_idle(page)
+    assert page.locator("#discussSelectionChip").is_hidden()
+
+
+def test_a_turn_that_edits_nothing_keeps_the_selection(page: Page, server: ProseviewServer) -> None:
+    """A plain answer leaves the passage as it was, so the follow-up still has it."""
+    open_scene(page, server)
+    assert select_prose(page, "ledger") == "ledger"
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "Explain this scene")
+    page.locator("#discussSend").click()
+    page.wait_for_function("() => document.querySelector('#discussPanel').innerText.includes('Answered in')")
+    wait_for_discuss_idle(page)
+    page.wait_for_timeout(400)
+    assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
 
 def test_undo_all_puts_the_whole_edit_back_without_unticking(page: Page, server: ProseviewServer) -> None:

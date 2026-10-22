@@ -6035,7 +6035,33 @@
 
         .discuss-preset-menu-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 32px;
+            grid-template-columns: minmax(0, 1fr) auto 32px;
+            align-items: center;
+        }
+
+        /* Off: a faint word. On: the accent, so a glance down the menu shows
+           which presets wait for selected text. */
+        .discuss-selection-only {
+            border: 1px solid transparent;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 10px;
+            padding: 1px 7px;
+            opacity: 0.6;
+            cursor: pointer;
+        }
+
+        .discuss-selection-only:hover,
+        .discuss-selection-only:focus-visible {
+            opacity: 1;
+            background: var(--surface-muted);
+        }
+
+        .discuss-selection-only[aria-pressed="true"] {
+            opacity: 1;
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .discuss-preset-menu-choice {

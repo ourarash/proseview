@@ -255,7 +255,7 @@ def test_a_server_that_stopped_or_restarted_is_explained(page: Page, demo_book_s
     page.unroute("**/api/export/start")
     page.route("**/api/export/start", lambda route: route.fulfill(
         status=403, content_type="application/json",
-        body='{"ok": false, "error": "invalid or missing page session"}',
+        body='{"ok": false, "error": "Proseview was restarted since this page was opened. Reload the page to continue."}',
     ))
     page.get_by_role("button", name="Back").click()
     page.get_by_role("button", name="Export EPUB").click()

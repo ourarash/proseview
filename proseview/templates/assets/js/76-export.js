@@ -60,7 +60,7 @@
                 throw exportError(EXPORT_MESSAGES.offline, 'offline');
             }).then(function(response) {
                 return response.json().catch(function() { return {}; }).then(function(data) {
-                    if (response.status === 403 && /page session/.test(data.error || '')) {
+                    if (response.status === 403 && /Proseview was restarted/.test(data.error || '')) {
                         throw exportError(EXPORT_MESSAGES.stale, 'stale', data);
                     }
                     if (!response.ok || data.ok === false) {

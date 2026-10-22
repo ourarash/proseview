@@ -1586,24 +1586,24 @@
         }
 
         .modal-body blockquote {
-            margin: 1.4em 0;
-            padding: 0.75em 1.25em;
-            border-left: 4px solid var(--primary);
-            background: var(--surface-muted);
-            border-radius: 0 8px 8px 0;
+            margin: 1.6em 0;
+            padding: 0.9em 1.4em;
+            border-left: 3px solid color-mix(in srgb, var(--primary) 70%, transparent);
+            background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+            border-radius: 0 6px 6px 0;
             color: var(--text-soft);
-            font-style: italic;
         }
 
-        .modal-body blockquote p {
-            margin: 0.25em 0;
+        /* The scene editor's own paragraph margin outranks these by its id,
+           so it is named here too; otherwise the last line keeps a full
+           paragraph gap inside the quote's padding. */
+        .modal-body blockquote p,
+        #sceneProseHost .ProseMirror blockquote p {
+            margin: 0 0 0.6em;
         }
 
-        .modal-body blockquote p:first-child {
-            margin-top: 0;
-        }
-
-        .modal-body blockquote p:last-child {
+        .modal-body blockquote p:last-child,
+        #sceneProseHost .ProseMirror blockquote p:last-child {
             margin-bottom: 0;
         }
 

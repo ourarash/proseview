@@ -73,17 +73,22 @@
             doc.forEach(function(node, offset) {
                 if (idx >= blockLines.length) return;
                 var line = blockLines[idx];
+                var href = absPath ? buildEditorUrl(absPath, line) : null;
+                var jumpTitle = 'Open line ' + line + ' in ' + editorLabel;
                 decos.push(PM.Decoration.node(offset, offset + node.nodeSize, {
                     'data-line': String(line)
-                }));
-                if (absPath) {
+                }, { lineJump: href ? { href: href, title: jumpTitle } : null }));
+                // A TODO or note has no inside for a widget to go in (offset
+                // + 1 is past it), so its node view draws the arrow itself
+                // from the spec above.
+                if (href && !node.isLeaf) {
                     decos.push(PM.Decoration.widget(offset + 1, function() {
                         var a = document.createElement('a');
                         a.className = 'pm-line-jump';
-                        a.href = buildEditorUrl(absPath, line);
+                        a.href = href;
                         a.target = '_blank';
                         a.rel = 'noopener';
-                        a.title = 'Open line ' + line + ' in ' + editorLabel;
+                        a.title = jumpTitle;
                         a.textContent = '↗';
                         return a;
                     }, { side: -1, ignoreSelection: true, key: 'lj:' + line }));

@@ -32,7 +32,7 @@ from urllib.parse import urljoin, urlparse
 
 VENDOR_DIR = Path(__file__).resolve().parents[1] / "proseview" / "templates" / "vendor" / "pm"
 
-#: The seven entry points, matching the imports in index.html.j2. The ``deps``
+#: The entry points, matching the imports in index.html.j2. The ``deps``
 #: pins keep every package resolving to the same shared copies.
 PM_MODEL = "prosemirror-model@1.25.4"
 PM_STATE = "prosemirror-state@1.4.4"
@@ -49,6 +49,16 @@ ENTRIES = {
     "prosemirror-commands": f"https://esm.sh/prosemirror-commands@1.7.1{_CORE}",
     "prosemirror-schema-list": f"https://esm.sh/prosemirror-schema-list@1.5.0{_CORE}",
     "prosemirror-inputrules": f"https://esm.sh/prosemirror-inputrules@1.4.0{_CORE}",
+    "prosemirror-gapcursor": f"https://esm.sh/prosemirror-gapcursor@1.4.1{_CORE}",
+}
+
+#: gapcursor asks for ``prosemirror-view@^1.0.0`` and ``prosemirror-keymap@^1.0.0``,
+#: which esm.sh resolves to the newest release -- a second copy of each. Point
+#: those ranges at the pinned entries instead. (Putting view in ``deps`` would
+#: not do: esm.sh then builds another prosemirror-state to match.)
+_RANGE_PINS = {
+    "prosemirror-view": "prosemirror-view@^1.0.0",
+    "prosemirror-keymap": "prosemirror-keymap@^1.0.0",
 }
 
 #: ``from "x"``, ``import "x"``, and ``export ... from "x"``. ESM specifiers are
@@ -73,6 +83,14 @@ def local_name(url: str, entry_names: dict[str, str]) -> str:
     return (slug[:-4] if slug.endswith(".mjs") else slug) + ".js"
 
 
+def resolve(base: str, spec: str) -> str:
+    url = urljoin(base, spec)
+    for name, wanted in _RANGE_PINS.items():
+        if urlparse(url).path == f"/{wanted}":
+            return ENTRIES[name]
+    return url
+
+
 def main() -> int:
     VENDOR_DIR.mkdir(parents=True, exist_ok=True)
     entry_names = {url: name for name, url in ENTRIES.items()}
@@ -90,7 +108,7 @@ def main() -> int:
         for _kw, _q, spec in SPECIFIER_RE.findall(source):
             if spec.startswith("data:"):
                 continue
-            queue.append(urljoin(url, spec))
+            queue.append(resolve(url, spec))
 
     names = {url: local_name(url, entry_names) for url in seen}
     if len(set(names.values())) != len(names):
@@ -102,7 +120,7 @@ def main() -> int:
             keyword, quote, spec = match.groups()
             if spec.startswith("data:"):
                 return match.group(0)
-            return f"{keyword}{quote}./{names[urljoin(url, spec)]}{quote}"
+            return f"{keyword}{quote}./{names[resolve(url, spec)]}{quote}"
 
         rewritten = SPECIFIER_RE.sub(rewrite, source)
         # Drop the sourceMappingURL comment: the .map files are not vendored, so

@@ -106,10 +106,11 @@
                 var PM = window._PM;
                 var annotNode = PM.mySchema.nodes.annotation.create({ raw: '<!-- TODO:  -->' });
                 var insertPos = _pmAffordancePos;
+                var wasDirty = _pmDirty;
                 var tr = _pmView.state.tr.insert(insertPos, annotNode);
                 _pmView.dispatch(tr);
                 hideInsertAffordance();
-                setTimeout(function() { openAnnotationPopover(insertPos, annotNode); }, 0);
+                setTimeout(function() { openAnnotationPopover(insertPos, annotNode, { insertedFrom: { wasDirty: wasDirty } }); }, 0);
             };
 
             view.dom.addEventListener('mousemove', function(e) {
@@ -147,7 +148,7 @@
             if (!_pmView) return;
             var dom = _pmView.nodeDOM(nodePos);
             if (dom && dom._annotationStartEdit) {
-                dom._annotationStartEdit(!!(options && options.autoSave));
+                dom._annotationStartEdit(!!(options && options.autoSave), options && options.insertedFrom);
             }
         }
 

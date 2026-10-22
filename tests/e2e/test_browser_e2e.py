@@ -4589,6 +4589,104 @@ def test_insert_affordance_adds_a_new_todo_to_a_paragraph(page: Page, server: Pr
     assert "<!-- TODO: Added from the gutter affordance -->" in path.read_text(encoding="utf-8")
 
 
+def _add_todo_from_gutter(page: Page, before: str) -> None:
+    page.hover(f"#sceneProseHost .ProseMirror p:has-text('{before}')")
+    affordance = page.locator("#pmInsertAffordance")
+    affordance.wait_for(state="visible")
+    affordance.click()
+    wait_for_annotation_editor(page)
+
+
+def _top_level_blocks(page: Page) -> list[str]:
+    return page.evaluate(
+        "() => _pmView.state.doc.content.content.map(n => n.attrs.raw || n.textContent)"
+    )
+
+
+def test_cancelling_a_todo_added_from_the_gutter_removes_it(page: Page, server: ProseviewServer):
+    open_annotated_scene(page, server)
+    enter_edit_mode(page)
+    before = _top_level_blocks(page)
+
+    _add_todo_from_gutter(page, "Patel arrived")
+    page.click(".pm-annotation-cancel")
+
+    page.wait_for_selector(".pm-annotation-editing", state="detached")
+    assert _top_level_blocks(page) == before, "the cancelled TODO stayed in the scene"
+    assert page.evaluate("window._pmDirty") is False, "cancelling left the scene marked unsaved"
+
+
+def test_the_caret_can_go_between_todos_stacked_together(page: Page, server: ProseviewServer):
+    """Two TODOs side by side hold no text between them, so without a gap
+    cursor the caret skipped past and typing landed in the next paragraph."""
+    open_annotated_scene(page, server)
+    enter_edit_mode(page)
+    for body in ("Beat one", "Beat two"):
+        _add_todo_from_gutter(page, "Patel arrived")
+        page.keyboard.type(body)
+        page.click(".pm-annotation-save")
+        page.wait_for_selector(".pm-annotation-editing", state="detached")
+
+    # Click in the space between the two new TODOs and type.
+    one = page.locator(".pm-annotation:has-text('Beat one')").bounding_box()
+    two = page.locator(".pm-annotation:has-text('Beat two')").bounding_box()
+    page.mouse.click(one["x"] + 40, (one["y"] + one["height"] + two["y"]) / 2)
+    page.keyboard.type("Between")
+    blocks = _top_level_blocks(page)
+    assert blocks.index("Between") == blocks.index("<!-- TODO: Beat one -->") + 1, blocks
+
+    # And the arrow keys reach the gaps too: up from there, past Beat one.
+    page.evaluate("""() => {
+        let at = null;
+        _pmView.state.doc.forEach((node, offset) => {
+            if (at === null && node.textContent === 'Between') at = offset + 1;
+        });
+        _pmView.dispatch(_pmView.state.tr.setSelection(_PM.TextSelection.create(_pmView.state.doc, at)));
+        _pmView.focus();
+    }""")
+    page.keyboard.press("ArrowUp")
+    page.keyboard.type("Above")
+    blocks = _top_level_blocks(page)
+    assert blocks.index("Above") == blocks.index("<!-- TODO: Beat one -->") - 1, blocks
+
+
+def test_a_todo_has_the_gutter_arrow_to_its_line(page: Page, server: ProseviewServer):
+    path = open_annotated_scene(page, server)
+    page.evaluate("() => { if (!_lineNumbersOn) toggleLineNumbers(); }")
+
+    todo = page.locator(".pm-annotation-todo")
+    todo.hover()
+    arrow = todo.locator(".pm-line-jump")
+    arrow.wait_for(state="visible")
+    line = path.read_text(encoding="utf-8").splitlines().index(f"<!-- TODO: {TODO_BODY} -->") + 1
+    assert todo.get_attribute("data-line") == str(line)
+    assert arrow.get_attribute("href").endswith(f":{line}")
+
+    # Following it must not open the TODO for editing. (The editor link
+    # itself is held back, so the test browser does not try to open it.)
+    page.evaluate("() => window.addEventListener('click', e => e.preventDefault(), true)")
+    arrow.click()
+    page.wait_for_timeout(200)
+    assert page.locator(".pm-annotation-editing").count() == 0
+
+
+def test_one_escape_cancels_a_todo_edit_even_with_the_selection_menu_up(page: Page, server: ProseviewServer):
+    """Opening a TODO selects its text, which brings up the "..." menu. Escape
+    used to close only the menu, so cancelling took a second press."""
+    path = open_annotated_scene(page, server)
+    before = path.read_text(encoding="utf-8")
+    enter_edit_mode(page)
+    click_annotation(page, TODO_BODY)
+    page.wait_for_selector("#selectionPill", state="visible")
+
+    page.keyboard.press("Escape")
+
+    page.wait_for_selector(".pm-annotation-editing", state="detached")
+    assert not page.locator("#selectionPill").is_visible()
+    assert page.evaluate("window._pmEditMode") is True, "Escape left edit mode instead of just the TODO"
+    assert path.read_text(encoding="utf-8") == before
+
+
 # ── selection menu ──────────────────────────────────────────────────────────
 
 

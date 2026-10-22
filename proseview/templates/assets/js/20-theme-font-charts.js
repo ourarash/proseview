@@ -72,16 +72,6 @@
                     const c = colors[i % colors.length];
                     ds.borderColor = ds.backgroundColor = ds.pointBackgroundColor = ds.pointBorderColor = c;
                 });
-            } else if (id === 'rhythmChart') {
-                if (datasets[0]) {
-                    const c = palette.secondary;
-                    datasets[0].borderColor = datasets[0].backgroundColor =
-                        datasets[0].pointBackgroundColor = datasets[0].pointBorderColor = c;
-                }
-                const ann = ((plugins.annotation || {}).annotations || {});
-                if (ann.staticZone) { ann.staticZone.backgroundColor = palette.zoneDanger; ann.staticZone.borderColor = 'transparent'; }
-                if (ann.rhythmicZone) { ann.rhythmicZone.backgroundColor = palette.zoneSuccess; ann.rhythmicZone.borderColor = 'transparent'; }
-                if (ann.dynamicZone) { ann.dynamicZone.backgroundColor = palette.zoneSecondary; ann.dynamicZone.borderColor = 'transparent'; }
             } else if (id === 'locationChart') {
                 if (datasets[0]) {
                     datasets[0].backgroundColor = [palette.primary, palette.success, palette.warning,

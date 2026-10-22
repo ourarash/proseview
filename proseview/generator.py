@@ -19,7 +19,7 @@ import math
 import re
 import statistics
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -103,52 +103,216 @@ def _render_template(name: str, **context: object) -> str:
     return _template_env().get_template(name).render(**context)
 
 
-def _render_goals_sections(goals: Goals | None, cfg: Config) -> tuple[str, str]:
-    """Return (banner_fragment, card_fragment). Both are empty strings when
-    ``goals`` is ``None`` (non-git repo or no history), which hides the Goals
-    panel entirely while keeping the surrounding layout intact.
-    """
-    if goals is None:
-        return "", ""
+def info_tip(text: str) -> str:
+    """A small "i" that shows *text* on hover or keyboard focus.
 
-    banner = (
-        '<div class="banner-stat" style="margin-left:30px;">'
-        '<span class="label">Added Today</span>'
-        f'<span class="value">+{goals.words_added_today:,}</span>'
+    For what a number measures: one quiet mark beside the label instead of a
+    paragraph under it.
+    """
+    escaped = html.escape(text, quote=True)
+    return f'<span class="info-tip" tabindex="0" role="img" aria-label="{escaped}" data-tip="{escaped}">i</span>'
+
+
+def _signed(n: int) -> str:
+    """``+250``, ``\u22121,118`` or ``0``."""
+    if n == 0:
+        return "0"
+    return f"{n:+,}".replace("-", "\u2212")
+
+
+def _short_date(iso: str) -> str:
+    try:
+        moment = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return moment.strftime("%b ") + str(moment.day)
+
+
+def _render_ledger(goals: Goals, cfg: Config, title: str) -> str:
+    """The dialog behind the "Today" number: written and cut, scene by scene,
+    and the last week day by day."""
+    ledger = goals.ledger
+    if ledger is None:
+        return ""
+    prefix = cfg.manuscript_subdir + "/"
+
+    def display(path: str) -> str:
+        return path[len(prefix):] if path.startswith(prefix) else path
+
+    if ledger.baseline_kind == "day":
+        basis = f"Measured against the manuscript at the end of {_short_date(ledger.baseline_date)}."
+    else:
+        basis = (
+            f"Measured against your last commit, on {_short_date(ledger.baseline_date)}. "
+            "Proseview now keeps its own record each day, so from tomorrow this shows "
+            "one day at a time even when nothing is committed."
+        )
+
+    rows = []
+    for row in ledger.rows:
+        if row.status == "removed":
+            name = (f'<span class="ledger-scene-name">{html.escape(Path(row.path).name)}</span>'
+                    '<span class="ledger-tag">removed</span>')
+        else:
+            tag = {
+                "new": '<span class="ledger-tag">new</span>',
+                "renamed": f'<span class="ledger-tag" title="{html.escape(display(row.old_path), quote=True)}">renamed</span>',
+            }.get(row.status, "")
+            name = (
+                f'<button type="button" class="ledger-scene" data-scene-path="{html.escape(display(row.path), quote=True)}" '
+                f'title="{html.escape(display(row.path), quote=True)}">{html.escape(row.title)}</button>{tag}'
+            )
+        saved = (
+            _recent_when(datetime.fromtimestamp(row.saved_at).astimezone().isoformat())
+            if row.saved_at is not None else ""
+        )
+        rows.append(
+            f"<tr><td>{name}</td><td class=\"ledger-when\">{html.escape(saved)}</td>"
+            f'<td class="ledger-num ledger-written">{"+" + format(row.written, ",") if row.written else "&ndash;"}</td>'
+            f'<td class="ledger-num ledger-cut">{_signed(-row.cut) if row.cut else "&ndash;"}</td>'
+            f'<td class="ledger-num">{_signed(row.net)}</td></tr>'
+        )
+    if not rows:
+        rows.append('<tr><td colspan="5" class="ledger-empty">No scene has changed.</td></tr>')
+
+    days = []
+    for day, _total, net, since in goals.recent_days:
+        gap = (date.fromisoformat(day) - date.fromisoformat(since)).days if since else 1
+        note = f"since {_short_date(since)}" if gap > 1 else ""
+        days.append(
+            f"<tr><td>{html.escape(_short_date(day))}</td><td class=\"ledger-num\">{_signed(net)}</td>"
+            f'<td class="ledger-when">{html.escape(note)}</td></tr>'
+        )
+    day_table = (
+        '<h3 class="ledger-subhead">The last 7 days, net</h3>'
+        f'<table class="ledger-table ledger-days"><tbody>{"".join(days)}</tbody></table>'
+        if days else ""
+    )
+
+    return f"""<dialog id="ledgerDialog" class="ledger-dialog" aria-labelledby="ledgerTitle">
+        <div class="ledger-head">
+            <h2 id="ledgerTitle">What changed {html.escape(title[0].lower() + title[1:])}</h2>
+            <button type="button" class="ledger-close" onclick="this.closest('dialog').close()" aria-label="Close">&times;</button>
+        </div>
+        <p class="ledger-basis">{html.escape(basis)}</p>
+        <div class="ledger-totals">
+            <div><span class="ledger-total ledger-written">+{ledger.written:,}</span><span>written</span></div>
+            <div><span class="ledger-total ledger-cut">{_signed(-ledger.cut)}</span><span>cut</span></div>
+            <div><span class="ledger-total">{_signed(ledger.written - ledger.cut)}</span><span>net</span></div>
+        </div>
+        <table class="ledger-table">
+            <thead><tr><th>Scene</th><th>Saved</th><th>Written</th><th>Cut</th><th>Net</th></tr></thead>
+            <tbody>{"".join(rows)}</tbody>
+        </table>
+        {day_table}
+        <p class="ledger-note">Text moved from one scene to another counts as cut where it left and written where it landed.</p>
+    </dialog>"""
+
+
+def _stat(label: str, tip: str, value: str, sub: str = "") -> str:
+    sub_html = f'<span class="progress-stat-sub">{sub}</span>' if sub else ""
+    return (
+        '<div class="progress-stat">'
+        f'<span class="progress-stat-label">{html.escape(label)}{info_tip(tip)}</span>'
+        f'<span class="progress-stat-value">{value}</span>{sub_html}'
         "</div>"
     )
 
-    chapter_target = goals.per_chapter_target or 1
-    chapter_pct = min(100, goals.per_chapter_current / chapter_target * 100) if chapter_target else 0
-    card = f"""<div class="card">
-        <div class="card-header"><span class="card-title">Goals</span></div>
-        <div class="goals-grid">
-            <div class="goal-metric">
-                <span class="goal-value">{goals.rolling_velocity:.0f}</span>
-                <span class="goal-label">Rolling 7-day velocity</span>
-                <span class="goal-sub">target: {cfg.daily_target:,} words/day</span>
-            </div>
-            <div class="goal-metric">
-                <span class="goal-value">{goals.streak_days}</span>
-                <span class="goal-label">Writing streak</span>
-                <span class="goal-sub">consecutive days</span>
-            </div>
-            <div class="goal-metric">
-                <span class="goal-value">{goals.scenes_touched_today}</span>
-                <span class="goal-label">Scenes touched today</span>
-                <span class="goal-sub">uncommitted + today's commits</span>
-            </div>
-            <div class="goal-metric">
-                <span class="goal-value">{goals.per_chapter_current:,}</span>
-                <span class="goal-label">Per-chapter average</span>
-                <span class="goal-sub">target: {goals.per_chapter_target:,}</span>
-                <div class="range-bar" style="margin-top:6px;">
-                    <div class="target-zone" style="width:{chapter_pct:.1f}%;"></div>
-                </div>
-            </div>
+
+def _render_progress_card(
+    goals: Goals | None,
+    cfg: Config,
+    *,
+    total_words: int,
+    scene_count: int,
+) -> str:
+    """The Overview's one summary: words against the goal, then today, pace
+    and finish in a single row. Every figure carries an "i" saying what it
+    measures. Without git history the row keeps only what needs none.
+    """
+    target = cfg.target_words
+    daily = cfg.daily_target
+    percent = (total_words / target * 100) if target else 0.0
+    words_left = max(0, target - total_words)
+    minutes = math.ceil(total_words / 250)
+    reading = f"{minutes // 60}h {minutes % 60}m" if minutes >= 60 else f"{minutes}m"
+    total_tip = (
+        "Words of prose in your scenes. Frontmatter, headings and TODO or NOTE comments "
+        "don't count."
+    )
+
+    stats: list[str] = []
+    today_label = "Today"
+    if goals is not None:
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        if goals.baseline_date and goals.baseline_date < yesterday:
+            since = _short_date(goals.baseline_date)
+            today_label = f"Since {since}"
+            today_tip = (
+                f"Net words since {since}: written minus cut. Proseview has no total "
+                "for the days in between, so from tomorrow this counts today alone."
+            )
+        else:
+            today_tip = "Net words today: written minus cut, against the end of yesterday."
+        today_value = _signed(goals.words_added_today)
+        if goals.ledger is not None:
+            today_tip += " Click the number to see what was written and cut, scene by scene."
+            today_value = (
+                '<button type="button" class="banner-ledger-btn" onclick="openLedger()" '
+                f'title="What was written and cut">{today_value}</button>'
+            )
+        stats.append(_stat(today_label, today_tip, today_value))
+        stats.append(_stat(
+            "Words a day",
+            "Words added per day over the last 7 days, net of cuts, so a week of revision "
+            "reads negative. \u201cWhat changed\u201d shows what was written and cut.",
+            _signed(round(goals.rolling_velocity)),
+            f"last 7 days &middot; goal {daily:,}",
+        ))
+        stats.append(_stat(
+            "Writing streak",
+            "Days in a row, up to today or yesterday, on which a scene was saved or committed.",
+            f"{goals.streak_days} {'day' if goals.streak_days == 1 else 'days'}",
+        ))
+        stats.append(_stat(
+            "Scenes changed today",
+            "Scenes whose file was saved today, plus scenes in today's commits.",
+            f"{goals.scenes_touched_today}",
+        ))
+        stats.append(_stat(
+            "Words per chapter",
+            f"Your words divided by your {goals.head_chapter_count} chapters. The goal spreads "
+            f"the book goal of {target:,} evenly over them.",
+            f"{goals.per_chapter_current:,}",
+            f"goal {goals.per_chapter_target:,}",
+        ))
+    if words_left == 0 and target:
+        stats.append(_stat("Book goal", f"The manuscript has reached your goal of {target:,} words.", "Reached"))
+    elif daily:
+        days = math.ceil(words_left / daily)
+        stats.append(_stat(
+            "To finish",
+            f"{words_left:,} words to go, at your daily goal of {daily:,} words. "
+            "This is a plan, not a forecast. Change the goals in Settings.",
+            f"{days:,} {'day' if days == 1 else 'days'}",
+            f"at {daily:,} a day",
+        ))
+
+    ledger_btn = (
+        '<button type="button" class="ledger-open-btn" onclick="openLedger()" title="Words written and cut, scene by scene">What changed</button>'
+        if goals is not None and goals.ledger is not None else ""
+    )
+    ledger = _render_ledger(goals, cfg, today_label) if goals is not None else ""
+    return f"""<section class="card progress-card" aria-labelledby="progressTitle">
+        <div class="progress-head">
+            <h2 id="progressTitle" class="card-title">Progress</h2>{ledger_btn}
         </div>
-    </div>"""
-    return banner, card
+        <p class="progress-words"><span class="progress-big">{total_words:,}</span>
+            <span class="progress-of">of <button type="button" class="goal-link" onclick="showTab('settings')" title="Change the goal in Settings">{target:,}</button> words{info_tip(total_tip)}</span></p>
+        <div class="progress-bar" role="progressbar" aria-label="Book goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{min(100, round(percent))}"><span style="width:{min(100, percent):.1f}%"></span></div>
+        <p class="progress-caption">{percent:.0f}% of your goal &middot; {scene_count:,} {'scene' if scene_count == 1 else 'scenes'} &middot; about {reading} to read</p>
+        {'<div class="progress-stats">' + "".join(stats) + "</div>" if stats else ""}
+    </section>{ledger}"""
 
 
 def character_name_from_file(path: Path) -> str:
@@ -170,6 +334,29 @@ def character_name_from_file(path: Path) -> str:
         if declared:
             return declared
     return path.stem.replace("-", " ").replace("_", " ").title()
+
+
+def scene_cast(scene: SceneStats, names: list[str]) -> set[str]:
+    """Which of *names* are in *scene*.
+
+    A scene's ``characters:`` list says who is in it; without one, a name in
+    the prose stands in. ``pov:`` always counts. Counting mentions instead hid
+    the narrator of a first-person book, whose name the prose hardly says.
+    """
+    fm = scene.frontmatter if isinstance(scene.frontmatter, dict) else {}
+
+    def listed(key: str) -> str:
+        value = fm.get(key)
+        if isinstance(value, (list, tuple)):
+            return "\n".join(str(item) for item in value if item is not None)
+        return "" if value is None else str(value)
+
+    characters = listed("characters")
+    haystack = (characters if characters.strip() else scene.text) + "\n" + listed("pov")
+    return {
+        name for name in names
+        if re.search(rf"\b{re.escape(name)}\b", haystack, re.IGNORECASE)
+    }
 
 
 def _js_json(data: object) -> str:
@@ -215,58 +402,69 @@ def _render_recent_changes_card(
     entries: list[dict[str, object]],
     git_available: bool,
     cfg: Config,
+    titles: dict[str, str] | None = None,
 ) -> str:
-    """Return the Recently Modified card wrapped in a full-width grid row."""
-    editor_label = _editor_label(cfg)
-
+    """"Pick up where you left off": the last few scenes, by title, and every
+    recently changed file folded away under them."""
+    del git_available
+    titles = titles or {}
     if not entries:
-        inner = "<p>No files changed in the last 7 days.</p>"
-    else:
-        rows: list[str] = []
-        for entry in entries[:20]:
-            path = str(entry["path"])
-            abs_path = str(entry["abs_path"])
-            editor_url = _editor_url(cfg, abs_path)
-            open_btn = (
-                f'<a class="editor-btn" href="{_html_esc(editor_url)}" target="_blank">'
-                f"&#x2197; {_html_esc(editor_label)}</a>"
-            )
-            if entry.get("is_scene") and entry.get("scene_path"):
-                data_attr = f'data-scene-path="{_html_esc(str(entry["scene_path"]))}"'
-                onclick = "openSceneModal(this.dataset.scenePath)"
-            else:
-                data_attr = f'data-repo-path="{_html_esc(path)}"'
-                onclick = "previewRepoFile(this.dataset.repoPath)"
-            path_link = (
-                f'<button type="button" class="recent-file-link" '
-                f'{data_attr} onclick="{onclick}" title="Open {_html_esc(path)}">'
-                f"{_html_esc(path)}</button>"
-            )
-            when = _recent_when(str(entry.get("modified_at") or ""))
-            badge = (
-                '<span class="recent-uncommitted" title="Changed since the last commit">not committed</span>'
-                if entry.get("uncommitted") else ""
-            )
-            rows.append(
-                f'<div style="display:flex; align-items:center; justify-content:space-between;'
-                f' padding:10px 0; border-bottom:1px solid var(--border);">'
-                f"{path_link}"
-                f'<span style="flex-shrink:0; margin-left:12px; display:flex; align-items:center; gap:10px;">'
-                f'{badge}<span class="recent-when">{_html_esc(when)}</span>{open_btn}</span>'
-                f"</div>"
-            )
-        inner = "".join(rows)
+        return ""
 
-    card = (
-        '<div class="card">'
-        '<div class="card-header">'
-        '<span class="card-title">Recently Modified</span>'
-        '<span style="font-size:11px; color:var(--text-muted); margin-left:8px;">last 7 days</span>'
-        "</div>"
-        f"{inner}"
-        "</div>"
+    def when_html(entry: dict[str, object]) -> str:
+        when = _recent_when(str(entry.get("modified_at") or ""))
+        tag = (
+            '<span class="recent-uncommitted" title="Changed since your last commit">not committed</span>'
+            if entry.get("uncommitted") else ""
+        )
+        return f'<span class="recent-meta">{tag}<span class="recent-when">{_html_esc(when)}</span></span>'
+
+    scene_rows: list[str] = []
+    for entry in entries:
+        scene_path = str(entry.get("scene_path") or "")
+        if not (entry.get("is_scene") and scene_path):
+            continue
+        title = titles.get(scene_path) or Path(scene_path).stem
+        folder = Path(scene_path).parent.name
+        number = re.fullmatch(r"(?:ch(?:apter)?[-_ ]?)?0*(\d+)", folder, re.IGNORECASE)
+        chapter = f"Chapter {number.group(1)}" if number else folder
+        scene_rows.append(
+            '<li class="recent-row">'
+            f'<button type="button" class="recent-scene-link" data-scene-path="{_html_esc(scene_path)}" '
+            f'onclick="openSceneModal(this.dataset.scenePath)" title="{_html_esc(scene_path)}">'
+            f'{_html_esc(title)}</button>'
+            f'<span class="recent-chapter">{_html_esc(chapter)}</span>{when_html(entry)}</li>'
+        )
+        if len(scene_rows) == 5:
+            break
+
+    file_rows: list[str] = []
+    for entry in entries[:20]:
+        path = str(entry["path"])
+        if entry.get("is_scene") and entry.get("scene_path"):
+            data_attr = f'data-scene-path="{_html_esc(str(entry["scene_path"]))}"'
+            onclick = "openSceneModal(this.dataset.scenePath)"
+        else:
+            data_attr = f'data-repo-path="{_html_esc(path)}"'
+            onclick = "previewRepoFile(this.dataset.repoPath)"
+        file_rows.append(
+            '<li class="recent-row">'
+            f'<button type="button" class="recent-file-link" {data_attr} onclick="{onclick}" '
+            f'title="Open {_html_esc(path)}">{_html_esc(path)}</button>{when_html(entry)}</li>'
+        )
+
+    scenes_html = (
+        f'<ul class="recent-list">{"".join(scene_rows)}</ul>' if scene_rows
+        else '<p class="section-note">No scene has changed this week.</p>'
     )
-    return f'<div class="dashboard-grid" style="grid-template-columns: 1fr;">{card}</div>'
+    return (
+        '<section class="card recent-card" aria-labelledby="recentTitle">'
+        '<div class="card-header"><h2 id="recentTitle" class="card-title">Pick up where you left off</h2></div>'
+        f"{scenes_html}"
+        '<details class="recent-all"><summary>Every file changed in the last 7 days '
+        f'({len(file_rows)})</summary><ul class="recent-list">{"".join(file_rows)}</ul></details>'
+        "</section>"
+    )
 
 
 def build_dashboard(
@@ -293,7 +491,14 @@ def build_dashboard(
     display_scenes = sort_scenes(filter_scenes(scenes, "all", cfg), "path", False)
     history = load_history(root, cfg) if history_rows is None else history_rows
     delta = working_copy_delta(root, cfg, history, scenes)
-    goals = compute_goals(history, cfg, delta) if history or delta.words_added_today else None
+    goals = (
+        compute_goals(
+            history, cfg, delta,
+            total_words=sum(s.words for s in scenes),
+            chapter_count=len({s.chapter for s in scenes}),
+        )
+        if history or delta.words_added_today else None
+    )
     tree_nodes = build_tree(root, cfg)
     sidebar_nodes = build_sidebar_tree(root, cfg)
     repository_nodes = build_repository_tree(root, cfg)
@@ -451,12 +656,12 @@ def _scene_table_body(
     *,
     analysis: bool,
 ) -> str:
-    """Render the Scene Deep Dive rows.
+    """Render the scene table rows.
 
-    With ``analysis=False`` the four analysis-derived columns (Variety, Top
-    Repeat, Dlg%, Sent) and their filter data attributes are omitted, so the
-    table can be built from a scan that never ran the lexical passes. The
-    Analysis tab asks for the full form.
+    The Overview's form (``analysis=False``) is a title and a word count, so
+    it can be built from a scan that never ran the lexical passes. The
+    Analysis tab asks for the full form, with word variety, keywords, the most
+    repeated word, dialogue and sentence length.
     """
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
@@ -468,7 +673,7 @@ def _scene_table_body(
         text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
-    span = 8 if analysis else 4
+    span = 7 if analysis else 2
     body = ""
     last_chapter = None
     for scene in display_scenes:
@@ -476,21 +681,26 @@ def _scene_table_body(
             chapter_total = sum(
                 current.words for current in display_scenes if current.chapter == scene.chapter
             )
+            chapter_label = f"Chapter {scene.chapter}" if scene.chapter.isdigit() else scene.chapter
             body += (
                 f'<tr class="ch-row chapter-row">'
-                f'<td colspan="2">{html.escape(scene.chapter)}</td><td>{chapter_total:,}</td>'
-                f'<td colspan="{span - 3}"></td></tr>'
+                f'<td>{html.escape(chapter_label)}</td><td class="num-col">{chapter_total:,}</td>'
+                + (f'<td colspan="{span - 2}"></td>' if span > 2 else "")
+                + "</tr>"
             )
             last_chapter = scene.chapter
 
         display_path = clean_path(scene.path)
-        display_path_html = html.escape(display_path)
         display_path_attr = html.escape(display_path, quote=True)
-        editor_url = _editor_url(cfg, str((root / scene.path).resolve()))
         todo_count = len(scene.todos)
         note_count = len(scene.notes)
         status_slug = re.sub(r'[^a-z0-9]+', '-', scene.status.lower()) if scene.status else 'unknown'
-        status_badge = f'<span class="badge status-badge status-{status_slug}">{html.escape(scene.status)}</span> '
+        # Almost every scene is a draft; a tag on each row said nothing. Only
+        # a status that differs from it is worth a tag.
+        status_badge = (
+            f'<span class="badge status-badge status-{status_slug}">{html.escape(scene.status)}</span> '
+            if status_slug not in ("draft", "drafted", "unknown") else ""
+        )
         todo_badge = (
             f'<span class="badge todo-badge" title="{todo_count} TODO(s)">{todo_count} todo</span> '
             if todo_count else ''
@@ -499,50 +709,105 @@ def _scene_table_body(
             f'<span class="badge note-badge" title="{note_count} note(s)">{note_count} note</span> '
             if note_count else ''
         )
-        
+
+        outlier = analysis and scene_is_outlier(scene, cfg)
         alert_badge = ""
-        if analysis and scene_is_outlier(scene, cfg):
+        if outlier:
             msg = html.escape(revision_signal(scene, cfg), quote=True)
-            alert_badge = f'<span class="badge badge-danger" title="{msg}" style="cursor:help;">Review</span> '
+            alert_badge = f'<span class="badge badge-review" title="{msg}" style="cursor:help;">Repeats words</span> '
 
         style_attrs = (
             f'data-dlg="{scene.dialogue_pct}" data-sent="{scene.avg_sentence_words}" '
-            f'data-rep="{scene.repetition_score}" '
+            f'data-rep="{scene.repetition_score}" data-review="{1 if outlier else 0}" '
+            f'data-words="{scene.words}" '
             if analysis else ""
         )
         body += (
             f'<tr class="scene-row" {style_attrs}'
             f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
             f'<td><button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
-            f'onclick="openSceneModal(this.dataset.scenePath)">{display_path_html}</button>'
-            f'{alert_badge}{status_badge}{todo_badge}{note_badge}'
-            f'<a class="editor-btn" href="{html.escape(editor_url, quote=True)}" title="Open in {html.escape(editor_label, quote=True)}" '
-            f'onclick="event.stopPropagation()">↗ {html.escape(editor_label)}</a></td>'
-            f'<td><span style="font-size:11px; opacity:0.7;">{html.escape(scene.chapter)}</span></td>'
-            f'<td style="font-weight:600;">{scene.words:,}</td>'
+            f'title="{display_path_attr}" '
+            f'onclick="openSceneModal(this.dataset.scenePath)">{html.escape(scene.title or display_path)}</button>'
+            f'<span class="scene-row-tags">{alert_badge}{status_badge}{todo_badge}{note_badge}</span></td>'
+            f'<td class="num-col">{scene.words:,}</td>'
         )
-        if analysis:
-            m_pos = goal_position(scene.mattr, cfg.mattr_band)
-            l_pos = goal_position(scene.mtld, cfg.mtld_band)
-            body += (
-                f'<td><span class="badge badge-{m_pos}">{scene.mattr:.3f}</span> '
-                f'<span class="badge badge-{l_pos}">{scene.mtld:.1f}</span></td>'
-            )
+        if not analysis:
+            body += "</tr>"
+            continue
+        # An empty scene has nothing to measure: a dash, not a row of zeros
+        # that reads like the worst prose in the book.
+        if scene.words <= 0:
+            dash = '<td class="num-col"><span class="muted-dash">—</span></td>'
+            body += dash + "<td></td><td></td>" + dash + dash + "</tr>"
+            continue
+        m_pos = goal_position(scene.mattr, cfg.mattr_band)
+        l_pos = goal_position(scene.mtld, cfg.mtld_band)
         body += (
-            f'<td><span style="font-size:10px; color:var(--text-muted); font-style:italic;">'
-            f'{html.escape(", ".join(scene.flavor_words))}</span></td>'
+            f'<td class="num-col"><span class="badge badge-{m_pos}">{scene.mattr:.3f}</span> '
+            f'<span class="badge badge-{l_pos}">{scene.mtld:.0f}</span></td>'
+            f'<td class="keywords-col">{html.escape(", ".join(scene.flavor_words))}</td>'
+            f'<td><span class="badge {"badge-low" if scene.repetition_score > 25 else ""}">'
+            f'{html.escape(scene.repetition_examples[0] if scene.repetition_examples else "")}</span></td>'
+            f'<td class="num-col"><span class="badge {"badge-low" if scene.dialogue_pct > 45 else ""}">'
+            f"{scene.dialogue_pct:.0f}%</span></td>"
+            f'<td class="num-col"><span class="badge {"badge-low" if scene.avg_sentence_words < 8 or scene.avg_sentence_words > 19 else ""}">'
+            f"{scene.avg_sentence_words:.1f}</span></td>"
+            "</tr>"
         )
-        if analysis:
-            body += (
-                f'<td><span class="badge {"badge-danger" if scene.repetition_score > 25 else ""}">'
-                f'{html.escape(scene.repetition_examples[0] if scene.repetition_examples else "")}</span></td>'
-                f'<td><span class="badge {"badge-danger" if scene.dialogue_pct > 45 else ("badge-low" if scene.dialogue_pct < 8 else "")}">'
-                f"{scene.dialogue_pct:.1f}%</span></td>"
-                f'<td><span class="badge {"badge-high" if scene.avg_sentence_words > 19 else ("badge-low" if scene.avg_sentence_words < 8 else "")}">'
-                f"{scene.avg_sentence_words:.1f}</span></td>"
-            )
-        body += "</tr>"
     return body
+
+
+def _analysis_findings(scenes: list[SceneStats], cfg: Config, clean_path) -> list[dict[str, object]]:
+    """What the Analysis tab says first, in plain sentences.
+
+    Each finding names its scenes and, where the table can show them, the
+    filter that does. Nothing here is a verdict: dialogue-heavy or clipped
+    scenes may be exactly what the book wants, so the wording only says what
+    the numbers are.
+    """
+    def plural(n: int, one: str, many: str) -> str:
+        return f"{n} {one if n == 1 else many}"
+
+    def names(group: list[SceneStats]) -> list[dict[str, str]]:
+        return [{"title": s.title, "path": clean_path(s.path)} for s in group[:6]]
+
+    measured = [s for s in scenes if s.words > 0]
+    findings: list[dict[str, object]] = []
+    repeating = [s for s in measured if scene_is_outlier(s, cfg)]
+    findings.append({
+        "text": (
+            f"{plural(len(repeating), 'scene repeats', 'scenes repeat')} words more than is usual for your genre."
+            if repeating else "No scene repeats words more than is usual for your genre."
+        ),
+        "tip": "Measured by word variety. Hover a scene's \u201cRepeats words\u201d tag to see which words.",
+        "filter": "review" if repeating else "",
+        "scenes": names(repeating),
+    })
+    talky = [s for s in measured if s.dialogue_pct > 45]
+    if talky:
+        findings.append({
+            "text": f"{plural(len(talky), 'scene is', 'scenes are')} mostly dialogue (over 45% in quotes).",
+            "tip": "Not a problem in itself; worth a look if you meant these scenes to slow down.",
+            "filter": "talky",
+            "scenes": names(talky),
+        })
+    clipped = [s for s in measured if s.avg_sentence_words < 8]
+    if clipped:
+        findings.append({
+            "text": f"{plural(len(clipped), 'scene has', 'scenes have')} very short sentences (under 8 words on average).",
+            "tip": "Short sentences speed a scene up; a run of them can read as clipped.",
+            "filter": "clipped",
+            "scenes": names(clipped),
+        })
+    empty = [s for s in scenes if s.words <= 0]
+    if empty:
+        findings.append({
+            "text": f"{plural(len(empty), 'scene has', 'scenes have')} no prose yet.",
+            "tip": "TODO and NOTE comments don't count as prose.",
+            "filter": "",
+            "scenes": names(empty),
+        })
+    return findings
 
 
 def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, object]:
@@ -579,6 +844,7 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
     l_start = get_pct(cfg.mtld_band[0], 50, 180)
 
     return {
+        "findings": _analysis_findings(scenes, cfg, clean_path),
         "tableBody": _scene_table_body(
             display_scenes, root, cfg, _editor_label(cfg), analysis=True
         ),
@@ -590,6 +856,7 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
                     "data": [
                         {"x": scene.mattr, "y": scene.mtld, "label": clean_path(scene.path)}
                         for scene in scenes
+                        if scene.words > 0
                     ]
                 }
             ],
@@ -598,11 +865,12 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
         "lexical": {
             "mattrText": f"{lexical.mattr * 100:.1f}%",
             "mattrZoneLeft": f"{m_start:.1f}",
-            "mattrZoneWidth": f"{get_pct(cfg.mattr_band[1], 0.65, 0.85) - m_start:.1f}",
+            # The bands are floors: everything from the low end up is healthy.
+            "mattrZoneWidth": f"{100 - m_start:.1f}",
             "mattrMarkerLeft": f"{get_pct(lexical.mattr, 0.65, 0.85):.1f}",
             "mtldText": f"{int(lexical.mtld)} words",
             "mtldZoneLeft": f"{l_start:.1f}",
-            "mtldZoneWidth": f"{get_pct(cfg.mtld_band[1], 50, 180) - l_start:.1f}",
+            "mtldZoneWidth": f"{100 - l_start:.1f}",
             "mtldMarkerLeft": f"{get_pct(lexical.mtld, 50, 180):.1f}",
             # The manuscript's own median, which the code has always computed
             # and always discarded. It is the more useful of the two references
@@ -648,19 +916,19 @@ def render_html_report(
         recent_entries, recent_git = recent_changes(root, cfg)
     elif recent_git is None:
         recent_git = True
-    recent_card = _render_recent_changes_card(recent_entries, bool(recent_git), cfg)
+    manuscript_prefix = cfg.manuscript_subdir + "/"
+    scene_titles = {
+        (s.path.as_posix()[len(manuscript_prefix):] if s.path.as_posix().startswith(manuscript_prefix)
+         else s.path.as_posix()): s.title
+        for s in scenes
+    }
+    recent_card = _render_recent_changes_card(recent_entries, bool(recent_git), cfg, scene_titles)
     if static_snapshot:
         # What the author touched this week, and what they have not
         # committed, is not something a reader of a published copy acts on.
         recent_card = ""
 
-    target_words = cfg.target_words
-    daily_target = cfg.daily_target
     total_words = sum(s.words for s in scenes)
-    percent_target = (total_words / target_words * 100) if target_words else 0.0
-    days_to_finish = math.ceil(max(0, target_words - total_words) / daily_target) if daily_target else 0
-
-    manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
         # as_posix, not str: these become keys in the embedded JSON and the
@@ -683,7 +951,9 @@ def render_html_report(
         for path in char_dir.glob("*.md"):
             char_bio_map[path.stem.lower()] = read_repo_text(path)
 
-    chapters = sorted({s.chapter for s in scenes})
+    # Reading order, not alphabetical: chapter names such as "IX. ..." sort
+    # before "V. ..." as text, which put the presence chart out of order.
+    chapters = list(dict.fromkeys(s.chapter for s in display_scenes))
     if cfg.characters:
         char_names = [c.strip() for c in cfg.characters if c.strip()]
     elif char_dir.exists():
@@ -691,20 +961,15 @@ def render_html_report(
     else:
         char_names = []
 
+    casts = {id(scene): scene_cast(scene, char_names) for scene in scenes}
     presence_data: list[dict[str, object]] = []
     for name in char_names:
-        chapter_mentions = [
-            len(
-                re.findall(
-                    rf"\b{re.escape(name)}\b",
-                    "\n".join(s.text for s in scenes if s.chapter == chapter),
-                    re.IGNORECASE,
-                )
-            )
+        chapter_scenes = [
+            sum(1 for s in scenes if s.chapter == chapter and name in casts[id(s)])
             for chapter in chapters
         ]
-        if sum(chapter_mentions) > 0:
-            presence_data.append({"label": name, "data": chapter_mentions, "fill": False, "tension": 0.3})
+        if sum(chapter_scenes) > 0:
+            presence_data.append({"label": name, "data": chapter_scenes, "fill": False, "tension": 0})
     presence_data = sorted(presence_data, key=lambda row: sum(row["data"]), reverse=True)[:12]
 
     location_counts: Counter[str] = Counter()
@@ -714,38 +979,25 @@ def render_html_report(
 
     co_occur: dict[tuple[str, str], int] = defaultdict(int)
     for scene in scenes:
-        present = [
-            name
-            for name in char_names
-            if re.search(rf"\b{re.escape(name)}\b", scene.text, re.IGNORECASE)
-        ]
+        present = [name for name in char_names if name in casts[id(scene)]]
         for i, first in enumerate(present):
             for second in present[i + 1:]:
                 co_occur[tuple(sorted((first, second)))] += 1
     top_pairs = sorted(co_occur.items(), key=lambda item: item[1], reverse=True)[:15]
 
     editor_label = _editor_label(cfg)
-    goals_banner_html, goals_card_html = _render_goals_sections(goals, cfg)
-    goals_card_wrapper = (
-        f'<div class="dashboard-grid" style="grid-template-columns: 1fr;">{goals_card_html}</div>'
-        if goals_card_html
-        else ""
-    )
+    if static_snapshot and goals is not None:
+        # Which scenes the author cut today is not for a published copy.
+        goals = dataclasses.replace(goals, ledger=None)
+    progress_card = _render_progress_card(goals, cfg, total_words=total_words, scene_count=len(scenes))
 
     table_body = _scene_table_body(display_scenes, root, cfg, editor_label, analysis=False)
 
     context = {
         "app_css": _load_app_css(),
         "app_js": _load_app_js(),
-        "total_words_text": f"{total_words:,}",
-        "target_words_text": f"{target_words:,}",
-        "percent_target_text": f"{percent_target:.1f}",
-        "percent_target_width": f"{min(100, percent_target):.1f}",
         "scene_count": len(scenes),
-        "days_to_finish": days_to_finish,
-        "daily_target_text": f"{daily_target:,}",
-        "goals_banner_html": goals_banner_html,
-        "goals_card_wrapper": goals_card_wrapper,
+        "progress_card": progress_card,
         "recent_changes_card": recent_card,
         "table_body": table_body,
         "editor_label": editor_label,

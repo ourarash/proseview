@@ -11,6 +11,7 @@ Public surface:
     load_history(root, cfg, *, since)  -> list[HistoryRow]
     working_copy_delta(root, cfg, hist) -> WorkingCopyDelta
     HistoryCache                          # persistent SHA->row map
+    read_day_log(root) / record_day(...)  # end-of-day totals seen on disk
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
@@ -30,12 +31,19 @@ if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
 
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
+from .ledger import Ledger, build_ledger, record_day_text
 from .lexical import calculate_lexical_stats, count_words, prose_only
 from .repo import CONTEXT_SKIP_DIRS, decode_repo_bytes
 from .scenes import resolve_manuscript_dir
 
 
 HISTORY_CACHE_PATH = Path(".proseview") / "history-cache.json"
+
+#: The manuscript's word total at the end of each day Proseview saw it, and
+#: whether a scene was saved that day. Commits alone miss every day of work
+#: that was not committed, which left the goals at zero while the writer wrote.
+DAY_LOG_PATH = Path(".proseview") / "day-log.json"
+DAY_LOG_KEEP_DAYS = 400
 
 #: How a commit's words and lexical figures are measured. Rows cached under
 #: another measure are counted again, so a history never mixes two rules --
@@ -68,8 +76,20 @@ class HistoryRow:
 
 @dataclass(frozen=True)
 class WorkingCopyDelta:
+    """What the files on disk say about today.
+
+    ``words_added_today`` is net (words written minus words cut), so it can be
+    negative on a day of cutting. ``baseline_date`` is the day it is measured
+    from: yesterday's end when the day log has it, else the last commit before
+    today. ``day_totals`` and ``worked_days`` carry the day log, so the goals
+    see work that was never committed.
+    """
     words_added_today: int
     scenes_touched_today: int
+    baseline_date: str = ""
+    day_totals: dict[str, int] = field(default_factory=dict)
+    worked_days: frozenset[str] = frozenset()
+    ledger: Ledger | None = None
 
 
 def _run_git(root: Path, args: list[str]) -> tuple[int, str, str]:
@@ -177,6 +197,33 @@ def _parse_git_log(out: str) -> list[CommitInfo]:
     return rows
 
 
+def commit_scene_paths(root: Path, cfg: Config, sha: str) -> list[str] | None:
+    """The scene files that existed at *sha*, or None when git cannot say."""
+    manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
+    at_root = manuscript_dir.resolve() == root.resolve()
+    manuscript_prefix = "" if at_root else cfg.manuscript_subdir + "/"
+    code, out, _ = _run_git(root, [
+        "ls-tree", "-r", "--name-only", sha, "--", manuscript_pathspec(root, cfg),
+    ])
+    if code != 0:
+        return None
+
+    strip_parts = 0 if at_root else len(Path(manuscript_prefix.rstrip("/")).parts)
+    # Mirrors iter_scene_paths: a scene sits in the manuscript or in a chapter
+    # folder; no README, no tool directories.
+    return [
+        p for p in out.splitlines()
+        if p.endswith(".md")
+        and len(Path(p).parts) - strip_parts <= 2
+        and Path(p).name.lower() != "readme.md"
+        and not Path(p).name.startswith(".")
+        and p.startswith(manuscript_prefix)
+        and not any(
+            part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in Path(p).parts[:-1]
+        )
+    ]
+
+
 def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
     """Snapshot the manuscript at ``sha``, run lexical and scene analysis over
     it, and return a :class:`HistoryRow`.
@@ -193,26 +240,9 @@ def stats_for_commit(root: Path, sha: str, cfg: Config) -> HistoryRow:
     manuscript_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
     at_root = manuscript_dir.resolve() == root.resolve()
     manuscript_prefix = "" if at_root else cfg.manuscript_subdir + "/"
-    code, out, _ = _run_git(root, [
-        "ls-tree", "-r", "--name-only", sha, "--", manuscript_pathspec(root, cfg),
-    ])
-    if code != 0:
+    paths = commit_scene_paths(root, cfg, sha)
+    if paths is None:
         return _empty_row(sha, _committed_at_for(root, sha))
-
-    strip_parts = 0 if at_root else len(Path(manuscript_prefix.rstrip("/")).parts)
-    # Mirrors iter_scene_paths: a scene sits in the manuscript or in a chapter
-    # folder; no README, no tool directories.
-    paths = [
-        p for p in out.splitlines()
-        if p.endswith(".md")
-        and len(Path(p).parts) - strip_parts <= 2
-        and Path(p).name.lower() != "readme.md"
-        and not Path(p).name.startswith(".")
-        and p.startswith(manuscript_prefix)
-        and not any(
-            part.startswith(".") or part in CONTEXT_SKIP_DIRS for part in Path(p).parts[:-1]
-        )
-    ]
     strip = 0 if at_root else len(Path(manuscript_prefix.rstrip("/")).parts)
 
     total_words = 0
@@ -396,12 +426,16 @@ def manuscript_pathspec(root: Path, cfg: Config) -> str:
 def working_copy_delta(root: Path, cfg: Config,
                        history: list[HistoryRow],
                        scenes: list[SceneStats] | None = None) -> WorkingCopyDelta:
-    """Compute "today" numbers from the working tree against the last commit
-    from before today.
+    """Compute "today" numbers from the files on disk.
 
-    words_added_today = max(0, current working-tree word total - baseline)
-    scenes_touched_today = files changed in commits since midnight PLUS files
-                           dirty in the working tree
+    words_added_today = current word total - the total at the end of the last
+                        earlier day: from the day log when it has that day,
+                        else from the last commit before today
+    scenes_touched_today = scenes saved today (file modified today) PLUS
+                           scenes in commits since midnight
+
+    Records today's total in the day log as a side effect, so tomorrow has an
+    exact baseline even when nothing is committed.
 
     Pass *scenes* when the caller has already indexed the manuscript. Only the
     word total is needed here, and re-indexing runs the full lexical analysis of
@@ -417,13 +451,21 @@ def working_copy_delta(root: Path, cfg: Config,
     current_total = sum(s.words for s in scenes)
 
     today = date.today().isoformat()
-    baseline = 0
-    for row in reversed(history):
-        if row.committed_at[:10] < today:
-            baseline = row.total_words
-            break
-
+    scene_paths = {s.path.as_posix() for s in scenes}
     touched: set[str] = set()
+    # A scene's modification date is also the one trace a day of uncommitted
+    # work leaves behind before the day log existed: each file says the last
+    # day it was saved.
+    saved_days: set[str] = set()
+    for rel in scene_paths:
+        try:
+            saved = date.fromtimestamp((root / rel).stat().st_mtime).isoformat()
+        except OSError:
+            continue
+        saved_days.add(saved)
+        if saved == today:
+            touched.add(rel)
+
     code, out, _ = _run_git(root, [
         "log", "--since=midnight", "--pretty=format:", "--name-only",
         "--", manuscript_pathspec(root, cfg),
@@ -431,23 +473,130 @@ def working_copy_delta(root: Path, cfg: Config,
     if code == 0:
         for line in out.splitlines():
             s = line.strip()
-            if s.endswith(".md") and s.startswith(cfg.manuscript_subdir + "/"):
+            if s in scene_paths:
                 touched.add(s)
 
-    code, out, _ = _run_git(root, ["status", "--porcelain", "--", manuscript_pathspec(root, cfg)])
-    if code == 0:
-        for line in out.splitlines():
-            # Format: "XY PATH" (X and Y are status codes, path starts at col 3)
-            if len(line) < 4:
-                continue
-            path = line[3:].strip()
-            # Rename format "X  old -> new": take the new path
-            if " -> " in path:
-                path = path.split(" -> ", 1)[1]
-            if path.endswith(".md") and path.startswith(cfg.manuscript_subdir + "/"):
-                touched.add(path)
+    log = record_day(root, today, current_total, worked=bool(touched))
+    current_prose = {s.path.as_posix(): prose_only(s.text) for s in scenes}
+    previous_day = record_day_text(root, today, current_prose)
+
+    baseline, baseline_date, baseline_sha = 0, "", ""
+    for row in reversed(history):
+        if row.committed_at[:10] < today:
+            baseline, baseline_date, baseline_sha = row.total_words, row.committed_at[:10], row.sha
+            break
+    earlier_logged = [d for d in log if d < today and d >= baseline_date]
+    if earlier_logged:
+        baseline_date = max(earlier_logged)
+        baseline = log[baseline_date]["total"]
+
+    ledger_kwargs = {
+        "titles": {s.path.as_posix(): s.title for s in scenes},
+        "saved_at": _mtimes(root, scene_paths),
+    }
+    if previous_day is not None and previous_day[0] >= baseline_date:
+        ledger = build_ledger(previous_day[1], current_prose, baseline_date=previous_day[0],
+                              baseline_kind="day", **ledger_kwargs)
+        # The text and the total come from the same moment: let the banner
+        # agree with the ledger under it.
+        baseline_date = previous_day[0]
+        baseline = sum(count_words(text) for text in previous_day[1].values())
+    elif baseline_sha:
+        committed = _commit_prose(root, cfg, baseline_sha, current_prose)
+        ledger = build_ledger(committed, current_prose,
+                              baseline_date=baseline_date, baseline_kind="commit", **ledger_kwargs)
+        baseline = sum(count_words(text) for text in committed.values())
+    else:
+        ledger = None
 
     return WorkingCopyDelta(
-        words_added_today=max(0, current_total - baseline),
+        words_added_today=current_total - baseline,
         scenes_touched_today=len(touched),
+        baseline_date=baseline_date,
+        day_totals={d: entry["total"] for d, entry in log.items()},
+        worked_days=frozenset(saved_days | {d for d, entry in log.items() if entry["worked"]}),
+        ledger=ledger,
     )
+
+
+def _mtimes(root: Path, paths: Iterable[str]) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for rel in paths:
+        try:
+            found[rel] = (root / rel).stat().st_mtime
+        except OSError:
+            continue
+    return found
+
+
+def _commit_prose(root: Path, cfg: Config, sha: str, current: dict[str, str]) -> dict[str, str]:
+    """``{path: prose}`` at *sha*, read from git only where it may differ.
+
+    Unchanged scenes are copied from *current*, so a ledger costs one
+    ``git show`` per changed file rather than one per scene.
+    """
+    from .scenes import _is_scene, extract_scene_text, split_frontmatter
+
+    paths = commit_scene_paths(root, cfg, sha) or []
+    code, out, _ = _run_git(root, [
+        "diff", "--no-renames", "--name-only", sha, "--", manuscript_pathspec(root, cfg),
+    ])
+    changed = set(out.splitlines()) if code == 0 else set(paths)
+    prose: dict[str, str] = {}
+    for path in paths:
+        if path not in changed and path in current:
+            prose[path] = current[path]
+            continue
+        content = git_blob_text(root, sha, path)
+        if content is None:
+            continue
+        fm, body = split_frontmatter(content)
+        if _is_scene(fm):
+            prose[path] = prose_only(extract_scene_text(body))
+    return prose
+
+
+def read_day_log(root: Path) -> dict[str, dict[str, object]]:
+    """``{date: {"total": int, "worked": bool}}``; empty when missing or corrupt."""
+    try:
+        raw = json.loads((root / DAY_LOG_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    log: dict[str, dict[str, object]] = {}
+    if not isinstance(raw, dict):
+        return log
+    for day, entry in raw.items():
+        if not isinstance(entry, dict) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(day)):
+            continue
+        try:
+            log[str(day)] = {"total": int(entry["total"]), "worked": bool(entry.get("worked"))}
+        except (KeyError, TypeError, ValueError):
+            continue
+    return log
+
+
+def record_day(root: Path, day: str, total: int, *, worked: bool) -> dict[str, dict[str, object]]:
+    """Set *day*'s total in the day log and return the whole log.
+
+    The last total seen on a day stands for its end. ``worked`` only ever turns
+    on: a scene saved in the morning still counts after a later commit makes
+    the tree clean. A log that cannot be written is not an error -- the goals
+    fall back to commits, as before.
+    """
+    log = read_day_log(root)
+    previous = log.get(day, {})
+    entry = {"total": total, "worked": bool(previous.get("worked")) or worked}
+    if previous == entry:
+        return log
+    log[day] = entry
+    keep = sorted(log)[-DAY_LOG_KEEP_DAYS:]
+    log = {d: log[d] for d in keep}
+    path = root / DAY_LOG_PATH
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(log, indent=1, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+    return log

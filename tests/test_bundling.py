@@ -80,7 +80,7 @@ def test_dashboard_inlines_concatenated_bundle():
     """
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     # From 00-state.js
-    assert "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];" in html
+    assert "const VALID_TABS = ['overview', 'analysis', 'timeline', 'tasks'];" in html
     # From 19-analysis.js
     assert "function buildAnalysisTab()" in html
     # From 30-router-modal.js

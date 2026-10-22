@@ -114,3 +114,29 @@ def test_compute_goals_echoes_working_copy_delta_fields():
     goals = compute_goals(history, cfg, WorkingCopyDelta(120, 2))
     assert goals.words_added_today == 120
     assert goals.scenes_touched_today == 2
+
+
+def test_writing_day_streak_counts_days_a_scene_was_saved():
+    """A day of revision with no commit still keeps the streak."""
+    d = lambda n: (date.today() - timedelta(days=n)).isoformat()
+    delta = WorkingCopyDelta(-300, 2, worked_days=frozenset({d(0), d(1), d(2)}))
+    assert writing_day_streak([_row(10, 5_000)], delta) == 3
+
+
+def test_rolling_velocity_reads_the_day_log_over_commits():
+    d = lambda n: (date.today() - timedelta(days=n)).isoformat()
+    delta = WorkingCopyDelta(0, 0, day_totals={d(7): 10_000, d(0): 10_700})
+    assert rolling_velocity([_row(7, 9_000)], delta) == 100.0
+
+
+def test_compute_goals_per_chapter_follows_the_files_on_disk():
+    cfg = Config(target_words=80_000)
+    goals = compute_goals([_row(1, 62_111, chapters=8)], cfg, WorkingCopyDelta(0, 0),
+                          total_words=60_993, chapter_count=7)
+    assert goals.per_chapter_current == 60_993 // 7
+    assert goals.per_chapter_target == 80_000 // 7
+
+
+def test_rolling_velocity_is_negative_for_a_week_of_cutting():
+    history = [_row(7, 10_700), _row(0, 10_000)]
+    assert rolling_velocity(history, WorkingCopyDelta(0, 0)) == -100.0

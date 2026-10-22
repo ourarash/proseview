@@ -1997,8 +1997,9 @@ def test_dashboard_renders_the_scene_table_and_charts(page: Page, server: Prosev
 
     assert page.locator("#sceneTable tbody tr").count() >= 6
     table = page.locator("#sceneTable").inner_text()
-    assert SCENE_REL in table
-    assert LARGE_SCENE_REL in table
+    # Rows show scene titles; the file path is the link's data and tooltip.
+    for rel in (SCENE_REL, LARGE_SCENE_REL):
+        assert page.locator(f'#sceneTable .scene-table-link[data-scene-path="{rel}"]').count() == 1
     # The prose alone, as the seeder tallies it: the four NOTE comments seeded
     # into the scene are annotations, not words (they made this 10,069).
     assert "10,037" in table, "word counts are not rendered in the scene table"
@@ -2058,9 +2059,9 @@ def test_lexical_chart_alternative_names_axes_and_target_ranges(
     figure = page.locator("figure:has(#lexicalScatterChart)")
     figure.get_by_text("View chart data", exact=True).click()
     alternative = figure.locator(".chart-data").inner_text()
-    assert "Local Variety (MATTR)" in alternative
-    assert "Whole-Scene Variety (MTLD)" in alternative
-    assert "Target range" in alternative
+    assert "Nearby words (MATTR)" in alternative
+    assert "Across a scene (MTLD)" in alternative
+    assert "Healthy area" in alternative
 
 
 def test_dashboard_lexical_health_cards_format_values_as_percentages_and_words(
@@ -2098,7 +2099,7 @@ def test_dashboard_has_landmarks_headings_and_no_horizontal_page_overflow(
         assert page.evaluate(
             "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
         ), f"dashboard overflowed at {viewport}"
-        assert_fully_inside_viewport(page, "#themeToggle")
+        assert_fully_inside_viewport(page, "#settingsOpenBtn")
 
 
 def test_dashboard_charts_remain_contained_after_resize_and_css_zoom(
@@ -2135,16 +2136,23 @@ def test_dashboard_tabs_announce_the_current_route(page: Page, server: Proseview
     assert overview.get_attribute("aria-current") is None
 
 
-def test_dashboard_settings_tab_renders_and_reads_config(page: Page, server: ProseviewServer):
+def test_dashboard_settings_dialog_renders_and_reads_config(page: Page, server: ProseviewServer):
+    """Settings opens as a dialog over the tab you are on, and closes back to it."""
     open_dashboard(page, server)
-    settings = page.locator('.tab-nav button[data-tab="settings"]')
-    settings.click()
-    assert settings.get_attribute("aria-current") == "page"
-    assert page.locator("#tab-settings").is_visible()
-    
-    settings_text = page.locator("#tab-settings").inner_text()
-    assert "Project Configuration" in settings_text
-    assert "Target Words:" in settings_text
+    page.click('.tab-nav button[data-tab="timeline"]')
+    page.locator('#settingsOpenBtn').click()
+    dialog = page.locator("#settingsDialog")
+    assert dialog.is_visible()
+    settings_text = dialog.inner_text()
+    assert "Settings" in settings_text
+    assert "Book goal" in settings_text
+    page.keyboard.press("Escape")
+    assert dialog.is_hidden()
+    assert page.locator("#tab-timeline").is_visible()
+
+    # The old link to the Settings tab opens the dialog.
+    page.goto(f"{server.base_url}#/tab/settings", wait_until="load")
+    page.locator("#settingsDialog").wait_for(state="visible")
 
 
 @pytest.mark.allow_http_errors("/api/discuss/conversations/open")
@@ -2237,6 +2245,7 @@ def test_repository_filenames_and_editor_config_cannot_escape_their_html_context
     server.restart()
 
     page.goto(server.base_url, wait_until="load")
+    page.locator(".recent-all > summary").click()
     recent = page.locator(".recent-file-link", has_text=filename)
     recent.wait_for(state="visible")
     assert recent.get_attribute("onfocus") is None
@@ -2260,7 +2269,7 @@ def test_overview_does_not_ship_the_lexical_analysis(page: Page, server: Prosevi
 
     # The header row is upper-cased by CSS, so compare case-insensitively.
     headers = [h.strip().lower() for h in page.locator("#sceneTable thead th").all_inner_texts()]
-    assert headers == ["scene", "chapter", "words", "keywords"]
+    assert headers == ["scene", "words"]
     for chart_id in ("presenceChart", "locationChart", "coOccurChart", "lexicalScatterChart"):
         assert page.locator(f"#{chart_id}").bounding_box() is None, \
             f"{chart_id} should not be laid out before the Analysis tab is opened"
@@ -2273,10 +2282,13 @@ def test_analysis_tab_loads_on_demand_and_renders_every_panel(page: Page, server
 
     page.wait_for_selector("#analysisContent:not([hidden])")
     page.wait_for_function("() => document.querySelectorAll('#analysisSceneTable tbody tr').length > 0")
+    # It opens with what stands out; the full table is folded under it.
+    assert page.locator("#analysisFindings .finding").count() >= 1
+    page.locator("#analysisTableDetails > summary").click()
 
     # The four analysis columns are back on this table.
     headers = [h.strip().lower() for h in page.locator("#analysisSceneTable thead th").all_inner_texts()]
-    assert headers == ["scene", "chapter", "words", "lexical health", "keywords", "top repeat", "dialogue %", "avg sent length"]
+    assert headers == ["scene", "words", "word variety", "keywords", "most repeated", "dialogue", "sentence length"]
 
     # Book-wide lexical health is filled in from the payload, not left blank.
     assert page.locator("#analysisMattrText").inner_text().strip()
@@ -2292,7 +2304,7 @@ def test_analysis_tab_loads_on_demand_and_renders_every_panel(page: Page, server
 
 def test_deep_link_opens_a_scene_and_back_returns_to_the_dashboard(page: Page, server: ProseviewServer):
     open_dashboard(page, server)
-    page.locator("#sceneTable .scene-table-link", has_text=SCENE_REL).click()
+    page.locator(f'#sceneTable .scene-table-link[data-scene-path="{SCENE_REL}"]').click()
     page.wait_for_selector("#sceneModal", state="visible")
     # The router percent-encodes the path segment, so compare decoded.
     assert page.evaluate("decodeURIComponent(location.hash)") == f"#/scene/{SCENE_REL}"
@@ -2325,23 +2337,24 @@ def test_routed_documents_expose_a_primary_literary_heading(
 
 def test_tab_routes_survive_navigation(page: Page, server: ProseviewServer):
     open_dashboard(page, server)
-    page.click(".tab-nav button[data-tab='todos']")
-    assert page.evaluate("location.hash") == "#/tab/todos"
+    page.click(".tab-nav button[data-tab='tasks']")
+    assert page.evaluate("location.hash") == "#/tab/tasks"
 
     page.reload(wait_until="load")
-    page.wait_for_selector("#tab-todos.active")
-    assert page.locator("#tab-todos").is_visible()
+    page.wait_for_selector("#tab-tasks.active")
+    assert page.locator("#tab-tasks").is_visible()
+
+    # The tabs TODOs and Notes became Tasks; their old links land there.
+    page.goto(f"{server.base_url}#/tab/notes", wait_until="load")
+    page.wait_for_selector("#tab-tasks.active")
 
 
 def test_todo_and_note_tabs_list_scene_annotations(page: Page, server: ProseviewServer):
     open_dashboard(page, server)
 
-    page.click(".tab-nav button[data-tab='todos']")
-    page.wait_for_selector("#tab-todos.active")
-    assert "Tighten this opening beat" in page.locator("#tab-todos").inner_text()
-
-    page.click(".tab-nav button[data-tab='notes']")
-    page.wait_for_selector("#tab-notes.active")
+    page.click(".tab-nav button[data-tab='tasks']")
+    page.wait_for_selector("#tab-tasks.active")
+    assert "Tighten this opening beat" in page.locator("#todosTabContent").inner_text()
     assert "Patel should not know about the safe yet" in page.locator("#notesTabContent").inner_text()
 
 
@@ -3709,6 +3722,8 @@ def test_dashboard_appearance_listboxes_are_keyboard_operable_and_persist(
 ):
     open_dashboard(page, server)
     assert page.get_by_role("button", name="Pick reading font").count() == 0
+    # The theme is chosen in Settings, out of the dashboard's way.
+    page.locator("#settingsOpenBtn").click()
     theme = page.locator("#themeToggle")
     theme.focus()
     page.keyboard.press("Enter")
@@ -3745,7 +3760,12 @@ def test_scene_analysis_and_character_controls_are_keyboard_operable(
 
     page.get_by_role("button", name="Close scene and return to dashboard").first.click()
     page.get_by_role("button", name="Analysis").click()
-    page.wait_for_selector("#analysisSceneTable tbody tr")
+    # The full table is folded under the findings; its summary opens it.
+    summary = page.locator("#analysisTableDetails > summary")
+    summary.wait_for(state="visible")
+    summary.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#analysisSceneTable tbody tr.scene-row")
     scene_link = page.locator("#analysisSceneTable .scene-table-link").first
     scene_link.focus()
     page.keyboard.press("Enter")
@@ -3889,7 +3909,8 @@ def test_dashboard_search_is_large_and_inline(page: Page, shared_server: Prosevi
     assert box.is_visible()
     assert palette.is_hidden()
     bounds = box.bounding_box()
-    assert bounds and bounds["width"] >= 300
+    # Compact in the header; the results open wide under it.
+    assert bounds and bounds["width"] >= 160
 
     box.fill("Rena")
     page.wait_for_selector("#searchResults .search-row")
@@ -5308,7 +5329,16 @@ def test_character_charts_render_multi_word_names(page: Page, server: ProseviewS
     became ``Harbour-master`` and matched nothing in the prose. Presence and
     co-occurrence then rendered as empty axes with no explanation. The fixture's
     other characters are all single words, so nothing here could catch it.
+
+    The charts count who is *in* a scene, from its ``characters:`` list, so
+    the Harbour Master -- only remembered in ch02 -- joins that list here.
     """
+    scene = server.root / "manuscript" / "ch02" / "01-argument.md"
+    scene.write_text(
+        scene.read_text(encoding="utf-8").replace("  - Patel\n", "  - Patel\n  - Harbour Master\n", 1),
+        encoding="utf-8",
+    )
+    server.restart()
     open_dashboard(page, server)
     page.click('.tab-nav button[data-tab="analysis"]')
     page.wait_for_selector("#analysisContent:not([hidden])")
@@ -5375,8 +5405,7 @@ def test_a_manuscript_with_no_frontmatter_is_still_usable(
     page.wait_for_selector("#sceneTable tbody tr")
 
     assert page.locator("#sceneTable tbody tr.scene-row").count() == 3
-    table = page.locator("#sceneTable").inner_text()
-    assert "one.md" in table
+    assert page.locator('#sceneTable .scene-table-link[data-scene-path="one.md"]').count() == 1
 
     page.goto(f"{bare_server.base_url}#/scene/one.md", wait_until="load")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
@@ -6423,14 +6452,15 @@ def test_the_dashboard_toolbar_never_overflows_its_container(
             const body = document.body;
             const limit = body.getBoundingClientRect().right
                 - parseFloat(getComputedStyle(body).paddingRight);
-            const toggle = document.getElementById('themeToggle');
+            // The last control in the header: Settings.
+            const toggle = document.getElementById('settingsOpenBtn');
             return {
                 over: Math.round(toggle.getBoundingClientRect().right - limit),
                 pageScroll: document.documentElement.scrollWidth
                     - document.documentElement.clientWidth,
             };
         }""")
-        assert overflow["over"] <= 1, f"theme toggle overflows at {width}px: {overflow}"
+        assert overflow["over"] <= 1, f"header overflows at {width}px: {overflow}"
         assert overflow["pageScroll"] <= 1, f"page scrolls sideways at {width}px: {overflow}"
 
 
@@ -6807,6 +6837,17 @@ def test_the_card_stays_compact_with_the_diff_in_expand_view(page: Page, server:
     )
 
 
+def test_the_card_wraps_instead_of_squeezing_in_a_narrow_panel(page: Page, server: ProseviewServer) -> None:
+    """At the panel's narrowest the path and hint keep a readable width."""
+    open_scene(page, server)
+    card = _review_card(page)
+    page.evaluate("document.documentElement.style.setProperty('--utility-dock-w', '340px')")
+
+    width = lambda selector: card.locator(selector).evaluate("el => el.getBoundingClientRect().width")
+    assert width(".discuss-review-path") > 150
+    assert width(".discuss-review-hint") > 150
+
+
 def test_unticking_one_change_puts_that_line_back_and_leaves_the_other(
     page: Page, server: ProseviewServer
 ) -> None:
@@ -7161,15 +7202,15 @@ def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, dem
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
-def test_a_first_visit_opens_in_graphite_dark_and_a_choice_is_kept(
+def test_a_first_visit_opens_in_graphite_light_and_a_choice_is_kept(
     browser: Browser, server: ProseviewServer, scheme: str
 ):
-    """Graphite Dark is the default on either OS setting; picking a theme sticks."""
+    """Graphite Light is the default on either OS setting; picking a theme sticks."""
     context = browser.new_context(color_scheme=scheme)
     try:
         page = context.new_page()
         page.goto(server.base_url, wait_until="load")
-        assert page.evaluate("document.documentElement.dataset.theme") == "graphite-dark"
+        assert page.evaluate("document.documentElement.dataset.theme") == "graphite-light"
         page.evaluate("localStorage.setItem('proseview-theme', 'light')")
         page.reload(wait_until="load")
         assert page.evaluate("document.documentElement.dataset.theme") == "light"
@@ -7191,9 +7232,9 @@ def test_a_phone_opens_with_the_file_list_closed_until_asked(browser: Browser, s
         # lay the whole page out wider and shrink it.
         assert page.evaluate("innerWidth") == 390
         # The tabs scroll in their own strip, and the chosen one stays in sight.
-        page.goto(server.base_url + "#/tab/notes")
+        page.goto(server.base_url + "#/tab/tasks")
         page.wait_for_function(
-            """() => { const tab = document.querySelector('.tab-nav [data-tab="notes"]').getBoundingClientRect();
+            """() => { const tab = document.querySelector('.tab-nav [data-tab="tasks"]').getBoundingClientRect();
                        const strip = document.querySelector('.tab-nav').getBoundingClientRect();
                        return tab.left >= strip.left - 1 && tab.right <= strip.right + 1; }"""
         )
@@ -7231,6 +7272,11 @@ def test_the_demo_offers_export_with_ready_made_books(page: Page, demo_book_site
     page.on("request", lambda request: (sent if request.method != "GET" else requested).append(urlparse(request.url).path))
 
     page.goto(demo_book_site, wait_until="load")
+    # Pages needs a server to lay the book out; the demo has none.
+    page.locator("#bookOpenBtn").click()
+    page.wait_for_selector("#book-panel", state="visible")
+    assert not page.locator("#bookViewSwitch").is_visible()
+    page.get_by_role("button", name="← Back").click()
     page.locator("#exportOpenBtn").click()
     page.wait_for_selector("#exportTree .export-chapter")
     assert page.locator("#exportDemoNote").is_visible()

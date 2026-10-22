@@ -99,6 +99,39 @@ COMMON_STOPWORDS = {
     "yeah", "you", "your", "asked", "asks", "tell", "tells", "told",
     "looked", "turn", "turned",
 }
+#: Words too common in any English prose to say what a scene is about. Only
+#: the Keywords column reads this; repetition and highlights keep their own,
+#: smaller list, because "became" repeated six times is worth seeing there.
+KEYWORD_STOPWORDS = frozenset({
+    "above", "across", "actually", "after", "afterwards", "against", "ahead",
+    "along", "already", "although", "among", "another", "anyone", "anything",
+    "anyway", "anywhere", "around", "away", "became", "become", "becomes",
+    "becoming", "behind", "below", "beside", "besides", "between", "beyond",
+    "both", "came", "cannot", "come", "comes", "coming", "couldn", "didn",
+    "done", "during", "each", "eight", "either", "eleven", "else",
+    "elsewhere", "enough", "ever", "everyone", "everything", "everywhere",
+    "except", "felt", "few", "fifteen", "fifty", "first", "five", "forty",
+    "four", "full", "further", "gave", "getting", "give", "gives", "going",
+    "gone", "goes", "got", "gotten", "half", "hardly", "having", "hence",
+    "herself", "himself", "however", "hundred", "inside", "instead",
+    "itself", "keep", "kept", "last", "later", "least", "less", "let",
+    "lets", "little", "long", "made", "makes", "making", "many", "might",
+    "mine", "minute", "minutes", "moment", "much", "must", "myself",
+    "near", "nearly", "neither", "never", "next", "nine", "nobody", "none",
+    "nothing", "often", "once", "ones", "onto", "others", "otherwise",
+    "ours", "ourselves", "outside", "own", "part", "perhaps", "place",
+    "possible", "probably", "quite", "rather", "same", "second", "seem",
+    "seemed", "seems", "seen", "seven", "several", "shall", "should",
+    "since", "six", "sixty", "something", "sometimes", "somewhere", "soon",
+    "such", "sure", "take", "taken", "takes", "taking", "ten", "thanks",
+    "themselves", "thing", "things", "think", "thirty", "though", "three",
+    "thousand", "time", "times", "together", "took", "toward", "towards",
+    "twelve", "twenty", "two", "under", "until", "upon", "used", "uses",
+    "using", "whatever", "whenever", "where", "whether", "while", "whole",
+    "whom", "whose", "why", "within", "without", "yet", "yours",
+    "yourself", "yourselves",
+})
+
 FILTER_VERBS = {
     "saw", "heard", "felt", "noticed", "noticing", "smelled", "tasted",
     "thought", "thinking", "knew", "knowing", "wondered", "realized",

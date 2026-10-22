@@ -31,10 +31,48 @@ section here becomes the release notes on GitHub.
   `P`, or choose *Polish selection* from the selection menu, to send it to
   the agent with your saved "Polish…" instruction (or "Polish this").
 
+- **Print layout in Read the book.** A *Text | Print layout* switch shows
+  the book as Export lays it out: the real PDF in your export style and trim,
+  opened at the chapter being read, with words you can select and copy, one or
+  two pages at a time, zoom, pages in your theme's colors, the style, kind of
+  PDF and trim or paper picked from `Aa` (and kept as Export's), and Focus (`F`) to
+  hide the bars (`Shift+F` for full screen). *Print layout* in a scene's More menu opens it at that
+  scene. The Export dialog's PDF preview is now the whole PDF in the same
+  viewer, instead of pictures of the first three chapters.
+
 ### Changed
 
+- **A new look for the dashboard.** One header holds the name, the tabs,
+  search, Read the book and Export. The Overview opens on a **Progress** card
+  (the book against its goal, then today, pace, streak and days to finish)
+  and **Pick up where you left off**, the last five scenes by title. The scene
+  list shows a title and a word count, with a tag only when a scene is not a
+  draft. Analysis opens with **What stands out** in plain sentences, with the
+  full table folded under it, and its labels say "word variety" rather than
+  MATTR and MTLD (the ⓘ still names them). Settings is a plain form, with the
+  colour theme moved there and the rest under Advanced. Labels are in
+  sentence case, figures in the text colour, and new visitors start in
+  Graphite Light; a theme you picked is kept. Settings opens as a dialog,
+  and a new logo (an open book with a bird leaving it) is drawn to stay
+  clear at small sizes, in the header, the browser tab and the website.
+- **A calmer, more truthful dashboard.** The Overview drops the repeated
+  word and scene cards and the red insights box; TODOs and Notes share one
+  **Tasks** tab, and Settings sits behind a gear. Each number has a small ⓘ
+  saying what it measures. Goals read the files on disk: "Today" is net
+  words (cuts included), the streak counts days a scene was saved, and
+  per-chapter figures match the scene table. Click the Today number for
+  **What changed**: words written and cut in each scene, and the last week day by
+  day, so a negative number says where the words went. Character Presence and
+  Co-occurrence count scenes from `characters:` and `pov:` instead of name
+  mentions, which hid a first-person narrator. The **Review** badge marks
+  only scenes under the lexical floor, not above it. Tables show scene
+  titles, and Keywords skip contractions and everyday words.
+
+- Read the book's `← Overview` is now `← Back` (or `Esc`): it returns to the
+  scene the book was opened from, where it was scrolled to, or the dashboard.
+- *Preview as PDF…* in a scene's More menu is now *Print layout*.
 - `X` in the scene view opens Export for that scene. `P` no longer previews
-  the scene as a PDF; *Preview as PDF…* is still in the More menu.
+  the scene as a PDF.
 
 ### Fixed
 

@@ -149,8 +149,8 @@ def test_bootstrap_theme_allowlist_matches_theme_order():
     )
 
 
-def test_every_copy_of_the_default_theme_names_graphite_dark():
-    """A first visit opens in Graphite Dark, whatever ran first.
+def test_every_copy_of_the_default_theme_names_graphite_light():
+    """A first visit opens in Graphite Light, whatever ran first.
 
     The default is written three times: the ``<html>`` attribute that holds
     before any script runs, the pre-paint bootstrap, and DEFAULT_THEME, which
@@ -167,7 +167,7 @@ def test_every_copy_of_the_default_theme_names_graphite_dark():
     bootstrap = re.search(r"const storedKey = 'proseview-theme';\s*let theme = '([^']+)';", template)
     constant = re.search(r"const DEFAULT_THEME = '([^']+)';", state)
     assert html_attr and bootstrap and constant, "could not find every copy of the default theme"
-    assert {html_attr.group(1), bootstrap.group(1), constant.group(1)} == {"graphite-dark"}
+    assert {html_attr.group(1), bootstrap.group(1), constant.group(1)} == {"graphite-light"}
 
 
 def test_every_theme_is_offered_in_the_toolbar_menu():
@@ -268,30 +268,10 @@ def test_both_graphite_variants_share_one_register():
     assert delta <= 12, f"accents are {delta:.0f}° apart; the variants disagree on the accent"
 
 
-def test_graphite_banner_is_a_card_not_a_slab_of_accent():
-    """Obsidian's chrome is the same surface as its content.
-
-    ``.top-banner`` fills itself with var(--primary). At Red Graphite's muted
-    brick red that reads orange once it covers the whole header, and no accent
-    hue fixes it -- the shape is the problem. Scoped to graphite so the other
-    themes keep their own identity.
-    """
-    css = (REPO_ROOT / "proseview" / "templates" / "assets" / "themes" / "graphite.css").read_text(
-        encoding="utf-8"
-    )
-    assert '[data-theme="graphite-dark"] .top-banner' in css
-    block = css.split('[data-theme="graphite-dark"] .top-banner')[1].split("}")[0]
-    assert "var(--surface-card)" in block, "banner should sit on the card surface"
-
+def test_the_header_is_a_card_in_every_theme():
+    """The header sits on the card surface, as the content does: a slab of
+    accent across the top made every theme loud before a word was read."""
     app = (REPO_ROOT / "proseview" / "templates" / "assets" / "app.css").read_text(encoding="utf-8")
-    assert "background: var(--primary)" in app.split(".top-banner {")[1].split("}")[0], \
-        "the base rule this override exists to correct has moved; re-check the override"
-
-
-def test_graphite_progress_fill_reads_against_a_card():
-    """The fill was white, which only worked on top of the accent block."""
-    for name in ("graphite-light", "graphite-dark"):
-        fill = _var(_theme_block(name), "--banner-progress-fill")
-        assert fill.startswith("#"), f"{name} progress fill is {fill}"
-        assert fill.lower() not in ("#ffffff", "#fff"), \
-            f"{name} still fills the progress bar with white"
+    block = app.split(".top-banner {")[1].split("}")[0]
+    assert "background: var(--surface-card)" in block
+    assert "var(--primary)" not in block

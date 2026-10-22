@@ -318,7 +318,9 @@ def test_bad_pdf_settings_are_refused(tmp_path: Path, raw: str, message: str):
 def test_cli_exports_all_four_formats(tmp_path: Path, book: Path, capsys):
     assert cli.main(["export", "--root", str(book), "--format", "all", "--chapters", "2"]) == 0
     names = sorted(path.name for path in (book / "exports").iterdir())
-    assert [name.rsplit("-2", 1)[0] for name in names] == [
+    # Each name ends in the export date. Split on the date itself: on the
+    # 20th to the 29th "-2" also matched inside the day.
+    assert [re.sub(r"-\d{4}-\d{2}-\d{2}$", "", Path(name).stem) for name in names] == [
         "alice-chapter-2", "alice-chapter-2", "alice-chapter-2", "alice-chapter-2-print",
     ]
     assert {Path(name).suffix for name in names} == {".epub", ".pdf", ".docx"}

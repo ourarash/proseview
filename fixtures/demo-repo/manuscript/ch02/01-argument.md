@@ -22,7 +22,7 @@ Patel's offer was written on good paper, which Rena had learned to distrust. He 
 
 "I gave you a week," Patel said. "That was three days ago."
 
-"Then I am asking for three more."
+"Then I am asking for three more!"
 
 Patel's hands did not move. His face did not move. He had the kind of stillness that had cost other people money.
 

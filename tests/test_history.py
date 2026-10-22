@@ -198,6 +198,64 @@ def test_working_copy_delta_counts_added_words_today(tiny_book: Path):
     assert delta.scenes_touched_today >= 1
 
 
+def test_working_copy_delta_measures_today_from_the_day_log(tiny_book: Path):
+    """Yesterday's logged total is today's baseline, even with no commit since.
+
+    Against commits alone, every uncommitted day was folded into "today" and a
+    net cut was floored to +0.
+    """
+    from datetime import date, timedelta
+
+    cfg = Config()
+    rows = load_history(tiny_book, cfg)
+    first = working_copy_delta(tiny_book, cfg, rows)
+    log_path = tiny_book / ".proseview" / "day-log.json"
+    log = json.loads(log_path.read_text(encoding="utf-8"))
+    today = date.today().isoformat()
+    current = log[today]["total"]
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    log[yesterday] = {"total": current + 40, "worked": True}
+    log_path.write_text(json.dumps(log), encoding="utf-8")
+    delta = working_copy_delta(tiny_book, cfg, rows)
+    assert delta.baseline_date == yesterday
+    assert delta.words_added_today == -40, "a day of cutting reads as a negative, not +0"
+    assert yesterday in delta.worked_days
+    assert delta.day_totals[today] == current
+    assert first.scenes_touched_today >= 1
+    # Every commit is from today: nothing earlier to measure a ledger against.
+    assert first.ledger is None
+
+
+def test_scenes_touched_today_ignores_edits_from_earlier_days(tiny_book: Path):
+    """An uncommitted change saved three days ago is not today's work."""
+    import time
+
+    cfg = Config()
+    rows = load_history(tiny_book, cfg)
+    before = working_copy_delta(tiny_book, cfg, rows).scenes_touched_today
+    scenes = sorted((tiny_book / "manuscript").rglob("*.md"))
+    other = next(p for p in scenes if p.name != "01-opening.md" and p.name != "README.md")
+    other.write_text(other.read_text(encoding="utf-8") + "\n\nOld edit.\n", encoding="utf-8")
+    old = time.time() - 3 * 86400
+    os.utime(other, (old, old))
+    assert working_copy_delta(tiny_book, cfg, rows).scenes_touched_today == before
+
+
+def test_day_log_tolerates_a_corrupt_file(tmp_path: Path):
+    from proseview.history import read_day_log, record_day
+
+    path = tmp_path / ".proseview" / "day-log.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{ not json", encoding="utf-8")
+    assert read_day_log(tmp_path) == {}
+    log = record_day(tmp_path, "2026-10-22", 1200, worked=False)
+    assert log == {"2026-10-22": {"total": 1200, "worked": False}}
+    # "worked" never turns back off within a day.
+    record_day(tmp_path, "2026-10-22", 1300, worked=True)
+    assert record_day(tmp_path, "2026-10-22", 1250, worked=False)["2026-10-22"] == {"total": 1250, "worked": True}
+
+
 def test_working_copy_delta_on_non_git_returns_zero(tmp_path: Path):
     delta = working_copy_delta(tmp_path, Config(), [])
     assert delta.words_added_today == 0
@@ -264,3 +322,26 @@ def test_git_that_cannot_be_started_reads_as_not_installed(tmp_path: Path, monke
     monkeypatch.setattr(history.subprocess, "run", refuse)
     assert history._run_git_bytes(tmp_path, ["status"]) == (127, b"", b"git executable not found")
     assert not is_git_repo(tmp_path)
+
+
+def test_ledger_measures_today_from_the_end_of_yesterday(tiny_book: Path):
+    from datetime import date, timedelta
+    from proseview.ledger import DAY_TEXT_PATH
+
+    cfg = Config()
+    rows = load_history(tiny_book, cfg)
+    working_copy_delta(tiny_book, cfg, rows)
+    # Pretend that snapshot was taken yesterday, then write today.
+    path = tiny_book / DAY_TEXT_PATH
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    snap["date"] = (date.today() - timedelta(days=1)).isoformat()
+    path.write_text(json.dumps(snap), encoding="utf-8")
+    scene = tiny_book / "manuscript" / "ch01" / "01-opening.md"
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n\nSeven brand new words arrive right here.\n",
+                     encoding="utf-8")
+
+    delta = working_copy_delta(tiny_book, cfg, rows)
+    ledger = delta.ledger
+    assert ledger.baseline_kind == "day"
+    assert (ledger.written, ledger.cut) == (7, 0)
+    assert delta.words_added_today == 7

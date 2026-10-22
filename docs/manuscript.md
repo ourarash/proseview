@@ -98,14 +98,16 @@ through and ignored. Every field is optional.
 #### Scene context
 
 - `where` (string) "Where" row in the scene card. Also feeds the
-  **Setting Stickiness** chart (Words per Location).
+  **Word Count per Location** chart.
 - `location` (string) synonym for `where` (older convention).
 - `when` (string) "When" row in the scene card. Free-form.
-- `pov` (string) "POV" row in the scene card. Free-form.
+- `pov` (string) "POV" row in the scene card. Free-form. A character named
+  here counts as in the scene for **Character Presence**.
 - `characters` (list of strings) "Characters" row in the scene card;
   each name is clickable to open the bio if
-  `<characters_path>/<name>.md` exists. Also feeds the **Character
-  Presence** and **Co-occurrence** charts.
+  `<characters_path>/<name>.md` exists. Also decides who is in the scene
+  for the **Character Presence** and **Co-occurrence** charts; without it,
+  a name in the prose counts.
 
 #### Arc
 

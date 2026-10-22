@@ -402,5 +402,5 @@ def test_a_frontmatter_change_shows_on_the_dashboard_on_the_way_back(page: Page,
     page.wait_for_function("window._pmEditMode === false")
     page.evaluate("closeSceneModal()")
     page.wait_for_load_state("load")
-    row = page.locator("#sceneTable tr", has_text="01-down-the-rabbit-hole.md").first
+    row = page.locator("#sceneTable tr:has(.scene-table-link[data-scene-path$='01-down-the-rabbit-hole.md'])").first
     expect(row).to_contain_text("revision")

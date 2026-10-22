@@ -1,6 +1,15 @@
 let currentTab = 'overview';
         let suppressHashWrite = false;
-        const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];
+        const VALID_TABS = ['overview', 'analysis', 'timeline', 'tasks'];
+
+        // TODOs and Notes were two tabs before they became Tasks; their old
+        // links still land there. Settings is a dialog over the current tab,
+        // and its old link opens it.
+        function canonicalTab(name) {
+            if (name === 'todos' || name === 'notes') return 'tasks';
+            if (name === 'settings') return 'settings';
+            return VALID_TABS.includes(name) ? name : 'overview';
+        }
 
         // Headers for every state-changing request. The session token is the
         // only thing separating this page from any other site the user has
@@ -88,10 +97,11 @@ let currentTab = 'overview';
 
         const THEME_STORAGE_KEY = 'proseview-theme';
         const THEME_ORDER = ['light', 'dark', 'docsify', 'hopscotch', 'graphite-light', 'graphite-dark'];
-        // What a first visit opens in. The <html> attribute and the pre-paint
-        // bootstrap in index.html.j2 repeat it; test_themes.py keeps all three
-        // in step.
-        const DEFAULT_THEME = 'graphite-dark';
+        // What a first visit opens in: light, which most people new to the
+        // app expect. A theme picked once in Settings is kept. The <html>
+        // attribute and the pre-paint bootstrap in index.html.j2 repeat it;
+        // test_themes.py keeps all three in step.
+        const DEFAULT_THEME = 'graphite-light';
         const THEME_LABELS = {
             light: 'Light',
             dark: 'Dark',

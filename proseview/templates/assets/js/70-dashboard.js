@@ -81,8 +81,8 @@
                 target.yMin !== undefined && target.yMax !== undefined) {
               var context = document.createElement('p');
               context.className = 'chart-data-context';
-              context.textContent = 'Target range: ' + xAxisName + ' ' + target.xMin + ' to ' + target.xMax +
-                '; ' + yAxisName + ' ' + target.yMin + ' to ' + target.yMax + '.';
+              context.textContent = 'Healthy area: ' + xAxisName + ' at least ' + target.xMin +
+                ', and ' + yAxisName + ' at least ' + target.yMin + '.';
               details.appendChild(context);
             }
             details.appendChild(table);
@@ -135,7 +135,7 @@
             var phone = window.innerWidth < 640;
             chartRefs.presenceChart = makeChart('presenceChart', phone ? 460 : 250, {
                 type: 'line', data: presenceChartData,
-                options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, title: { display: true, text: 'Mentions' } } }, plugins: { legend: { position: phone ? 'bottom' : 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
+                options: { scales: { x: { title: { display: true, text: 'Chapter' } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Scenes' } } }, plugins: { legend: { position: phone ? 'bottom' : 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }
             });
 
             chartRefs.locationChart = makeChart('locationChart', 250, {
@@ -145,13 +145,14 @@
 
             chartRefs.coOccurChart = makeChart('coOccurChart', 250, {
                 type: 'bar', data: coOccurChartData,
-                options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+                options: { indexAxis: 'y', scales: { x: { ticks: { precision: 0 } } }, plugins: { legend: { display: false } } }
             });
 
             const NO_CAST = 'No characters yet. Add a <code>characters:</code> list to '
                 + '<code>.proseview.yaml</code>, or put one Markdown file per character in '
                 + '<code>story-bible/characters/</code>. A character file\u2019s '
-                + '<code>name:</code> is matched against the prose, so multi-word names work.';
+                + '<code>name:</code> is matched against each scene\u2019s <code>characters:</code> '
+                + 'list, or its prose, so multi-word names work.';
             noteIfEmpty('presenceChart', presenceChartData, NO_CAST);
             noteIfEmpty('coOccurChart', coOccurChartData, NO_CAST);
             noteIfEmpty('locationChart', locationChartData,
@@ -160,8 +161,8 @@
 
             chartRefs.lexicalScatterChart = makeChart('lexicalScatterChart', 350, {
               type: 'scatter', data: { datasets: data.scatterChart.datasets },
-              options: { scales: { x: { min:0.65, max:0.85, title: { display: true, text: 'Local Variety (MATTR)' } }, y: { min:50, max:180, title: { display: true, text: 'Whole-Scene Variety (MTLD)' } } },
-              plugins: { legend: { display: false }, annotation: { annotations: { target: { type: 'box', xMin: data.scatterChart.bands.mattr[0], xMax: data.scatterChart.bands.mattr[1], yMin: data.scatterChart.bands.mtld[0], yMax: data.scatterChart.bands.mtld[1], borderWidth: 2 } } } } }
+              options: { scales: { x: { min:0.65, max:0.85, title: { display: true, text: 'Nearby words (MATTR)' } }, y: { min:50, max:180, title: { display: true, text: 'Across a scene (MTLD)' } } },
+              plugins: { legend: { display: false }, annotation: { annotations: { target: { type: 'box', xMin: data.scatterChart.bands.mattr[0], xMax: 0.85, yMin: data.scatterChart.bands.mtld[0], yMax: 180, borderWidth: 1 } } } } }
             });
           };
 
@@ -239,17 +240,23 @@
                 if (notes.length) grouped[path] = {notes: notes, abs_path: meta[path].abs_path};
             });
             const keys = Object.keys(grouped).sort();
+            // The tag filter only means something once there are notes to filter.
+            const anyNotes = Object.keys(meta).some(function(path) { return (meta[path].notes || []).length; });
+            const filter = document.getElementById('notesTagFilter');
+            if (filter) filter.hidden = !anyNotes;
             if (!keys.length) {
-                content.innerHTML = '<div class="notes-empty">No notes' + (tagFilter !== 'all' ? ' tagged "' + escHtml(tagFilter) + '"' : '') + '.</div>';
+                content.innerHTML = '<div class="notes-empty">' + (anyNotes
+                    ? 'No notes tagged "' + escHtml(tagFilter) + '".'
+                    : 'No notes yet. Add one in a scene with <code>&lt;!-- NOTE: \u2026 --&gt;</code>.') + '</div>';
                 return;
             }
             let html = '';
             keys.forEach(function(path) {
                 const {notes, abs_path} = grouped[path];
-                const name = path.split('/').pop() || path;
+                const name = (meta[path] && meta[path].title) || path.split('/').pop() || path;
                 html += '<div class="notes-scene-group">' +
                     '<div class="notes-scene-header">' +
-                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
+                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '" title="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
                     '</div>';
                 notes.forEach(function(n) {
                     html += '<div class="notes-row">' + noteEntryHtml(n, abs_path) + '</div>';
@@ -261,6 +268,24 @@
 
         function filterNotes() { buildNotesTab(); }
 
+        // "What changed", behind the "Today" number: written and cut, by scene.
+        function openLedger() {
+            const dialog = document.getElementById('ledgerDialog');
+            if (dialog && !dialog.open) dialog.showModal();
+        }
+
+        document.addEventListener('click', function(e) {
+            const scene = e.target.closest('#ledgerDialog .ledger-scene[data-scene-path]');
+            if (!scene) return;
+            document.getElementById('ledgerDialog').close();
+            openSceneModal(scene.dataset.scenePath);
+        });
+
+        function buildTasksTab() {
+            buildTodosTab();
+            buildNotesTab();
+        }
+
         function buildTodosTab() {
             const content = document.getElementById('todosTabContent');
             if (!content) return;
@@ -271,16 +296,16 @@
             });
             const keys = Object.keys(grouped).sort();
             if (!keys.length) {
-                content.innerHTML = '<div class="notes-empty">No TODOs found.</div>';
+                content.innerHTML = '<div class="notes-empty">No TODOs. Add one in a scene with <code>&lt;!-- TODO: \u2026 --&gt;</code>.</div>';
                 return;
             }
             let html = '';
             keys.forEach(function(path) {
                 const {todos, abs_path} = grouped[path];
-                const name = path.split('/').pop() || path;
+                const name = (meta[path] && meta[path].title) || path.split('/').pop() || path;
                 html += '<div class="notes-scene-group">' +
                     '<div class="notes-scene-header">' +
-                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
+                    '<button class="notes-scene-link" type="button" data-scene-path="' + attrEscape(path) + '" title="' + attrEscape(path) + '">' + escHtml(name) + '</button>' +
                     '</div>';
                 todos.forEach(function(t) {
                     html += '<div class="notes-row">' + todoEntryHtml(t, abs_path) + '</div>';
@@ -490,20 +515,24 @@
         });
 
         function showTab(name) {
+            name = canonicalTab(name);
+            if (name === 'settings') {
+                openSettings();
+                return;
+            }
             saveActiveScrollPosition();
-            name = VALID_TABS.includes(name) ? name : 'overview';
             if (_dashboardStale) {
                 history.replaceState(history.state, '', '#/tab/' + name);
                 if (reloadIfDashboardStale()) return;
             }
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.tab-nav button').forEach(function(b) {
+            document.querySelectorAll('.app-toolbar button[data-tab]').forEach(function(b) {
                 b.classList.remove('active');
                 b.removeAttribute('aria-current');
             });
             const panel = document.getElementById('tab-' + name);
             if (panel) panel.classList.add('active');
-            const btn = document.querySelector('.tab-nav button[data-tab="' + name + '"]');
+            const btn = document.querySelector('.app-toolbar button[data-tab="' + name + '"]');
             if (btn) {
                 btn.classList.add('active');
                 btn.setAttribute('aria-current', 'page');
@@ -514,8 +543,7 @@
             currentTab = name;
             if (name === 'analysis') buildAnalysisTab();
             if (name === 'timeline') buildTimelineTab();
-            if (name === 'notes') buildNotesTab();
-            if (name === 'todos') buildTodosTab();
+            if (name === 'tasks') buildTasksTab();
             routeToHash('/tab/' + name, true);
             restoreActiveScrollPosition();
         }
@@ -613,7 +641,7 @@
                 }
                 if (route.kind === 'tab') {
                     delete document.documentElement.dataset.view;
-                    showTab(VALID_TABS.includes(route.arg) ? route.arg : 'overview');
+                    showTab(canonicalTab(route.arg));
                 } else if (route.kind === 'scene' && route.arg && paths.indexOf(route.arg) >= 0) {
                     openSceneModal(route.arg);
                 } else if (route.kind === 'file' && route.arg) {

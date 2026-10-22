@@ -136,8 +136,8 @@ def test_a_snapshot_leaves_out_the_recent_changes_card(tmp_path: Path):
     root = _novel(tmp_path)
     write_snapshot(root, tmp_path / "site")
     html = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
-    assert "Recently Modified" not in html
-    assert "Recently Modified" in build_dashboard(root, Config.load(root))
+    assert "Pick up where you left off" not in html
+    assert "Pick up where you left off" in build_dashboard(root, Config.load(root))
 
 
 def test_a_snapshot_describes_itself_to_link_previews(tmp_path: Path):

@@ -1,7 +1,7 @@
         function activeRouteKey() {
             const route = parseHashRoute();
             if (!route) return '/tab/' + (currentTab || 'overview');
-            if (route.kind === 'tab') return '/tab/' + (VALID_TABS.includes(route.arg) ? route.arg : 'overview');
+            if (route.kind === 'tab') return '/tab/' + canonicalTab(route.arg);
             if (route.kind === 'scene' && route.arg) return '/scene/' + route.arg;
             if (route.kind === 'file' && route.arg) return '/file/' + route.arg;
             if (route.kind === 'book') return '/book';

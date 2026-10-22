@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="graphite-dark"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}{% if manuscript_missing %} data-manuscript="missing"{% endif %}>
+<html lang="en" data-theme="graphite-light"{% if static_snapshot %} data-static-snapshot="{{ static_snapshot }}"{% endif %}{% if manuscript_missing %} data-manuscript="missing"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,11 +12,11 @@
     {% endif %}{% if snapshot_meta.image %}<meta property="og:image" content="{{ snapshot_meta.image }}">
     <meta name="twitter:card" content="summary_large_image">
     {% endif %}{% endif %}
-    <link rel="icon" type="image/png" href="data:image/png;base64,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">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23cb4c48%22/%3E%3Cpath d=%22M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z%22 fill=%22%23fff%22/%3E%3Cpath d=%22M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z%22 fill=%22%23fff%22 fill-opacity=%22.86%22/%3E%3Cpath d=%22M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4%22 fill=%22none%22 stroke=%22%23fff%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
     <script id="proseview-bootstrap">
         (function() {
             const storedKey = 'proseview-theme';
-            let theme = 'graphite-dark';
+            let theme = 'graphite-light';
             try {
                 // Must stay in step with THEME_ORDER and DEFAULT_THEME in
                 // 00-state.js. This runs before any other script so the theme
@@ -29,7 +29,7 @@
                 const stored = localStorage.getItem(storedKey);
                 if (allowed.indexOf(stored) >= 0) theme = stored;
             } catch (err) {
-                theme = 'graphite-dark';
+                theme = 'graphite-light';
             }
             document.documentElement.dataset.theme = theme;
         })();
@@ -281,27 +281,16 @@
 
     <main id="mainContent">
     <header class="top-banner">
-        <div class="dashboard-identity" style="display: flex; align-items: center; gap: 8px;"><div style="width: 28px; height: 28px; background-color: currentColor; -webkit-mask-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAXLklEQVR4nO2dC7hcVXWA1zxu3hhCDJAHCTEvLJEaA+VRhILBQMBaAxIehUIpgmhRJOATsDVUhWCRp9RgLVQQEjRIVJRGE4IFaVoECTENEJJiQlJMAoGQm+Te8Vt8/+Jb7O/M3Dlz55yZufes75tv7j1zzt777LX22uu9RTLIIIMMMsgggwwyyCCD3gW5BvSXd/2W3HfaY/HQybhqAXuH7ozfz0enazNxyKWIdIWOFPrrCZBn3hInhlwKiPdI7ycik0XkSL5Hcn1PEdkhIu2SDgwQkTdEpD//7y0iG+g/FzHpdk3Hv5uPXXuHiBRFZHOZZ6uBV0TkCRF5XESWi8ir7rdCkoSQFAEUHOJ1cqaLyHki8kERGch1ncTnuK+TseRSZvmd/N/BOHM1sHtDjr5zrbCviOzl2lNCuF1EfiQimyLmtGkh5yZCJ/QcEVnDBG0Uke+KyF+JyFhHCBnIm8Q4XESmicjVIvK/zJki/CY4lKS8SGKDF6Kmsbr1Jf5LRE6EIMptE739EwV/JiI/ZA63i8jHHPK7w20SAXuJNhH5JoNeJSIzgvuKDN5rAhnIWwuhELFQDhaRRczpMjhFUxGBDWQYe5cOdI57EdsWMoTHAyMIg9MQXDdBFFKGqzZk5SvyVyBFn+B+bxoq7SGE8C7kA90SpjZ6jo2Nq4DyNGqc7lu2FWQrvr6gc6qwj4isFJHXHSdInQiMrSsR/EpEdgbIzyAZKDoiWIX9YP/A2JYKGMVdx57/l/yfIT89IpgAF3jUbRO5NJF/BMhXIlDIkJ8+EXwYHHw+za0gD7J/KyKr6bQ3S/mFtNlvQAQL0A5S2Qqs07OhvFOC660APYVQC7zLeHAxz11PBHLuswLJ35t+pZcRQZ7v60XkpOBaWmBzf6+IvCYiQ5Mch3V2OBR3eguuft26htSBCAo8fzxzcVuD5sJU8QmM49P8n8g4rNE7MUQMaHbnRMTYzxeRFzGn5ruxUuy5h5n4hcH1NMH6/A0yWSLjyLmJ3IKTQlqI/RsB3AbC7g6uxwF756m4tFUfX+9iC9JeEObGvhRX8qgkiMAam8QEfsx13gpg4/8PAj+6I8AW+b5BRLbi8CphCGuETGT9TWEcZwTjrAtYYx+hk4bboWOAX5HbROQagi12YluP+x7W3hrHCbc3UA6w8QzCHD83zjjisokpsBlleZJm8GKdJullJOULCeH6JWFeHVUSgYV8qSA5WkT+k2t3ici5IjLYRTelDaoF/AEcVY2buATwTlbRS3E6aTCU3HuuRovZJSLHIMguJjrJwsIqgSF2FH8/RftfR8P4MgSQJme0cLQcnsK9kiSANhpuBcRHIU4JYAwIX0lw6ruRoMch1FWKDbT5+hPuWenavQ417H20k/b2WGJb00DbPvUOtbcXXwYbNWgFFVAcMo5lYo521yaypW0nXjF8xoNxiHNoZ5S7tw9hcCsbYB63sf4E4lPOJkkQwGMi8v8tSABmr+hLcOp9XO/Dt8oFD4DU7zg2GhKCEcC53DsyuG6S+C0pO8g8AexIQiU1AljcohzAI2k2SBrP+D2SPs1v6mf/2+D9bFV7T+j7I6J2LuK3i1MkAk8A7UkSwK9blAN4LjAQLvCgIwxvFVTV8H6Q+KyInBm0U3Sm178OEGDInsfvFhRb6CkE0KpbgIEJeCeWWaUFd6+u8oe47zkIQVVGoQ2d6BsD27sZgnRrWUrAxsQU3LQZAdQAN4PcjwZxjKGPwBOC2g4+h8zwY6cF+BjIvAvbeolUL0lYKMwIoAsI2btqAULqlSJ21pv/vR35hQhCmM/9OsnPo/PvF2wl9qz3nF4bXK83ZAQQw4FjKVdXoRXc6HIZvNOrHCEoEf0jBKDP/QK3cNiXbQtXc9+Bwe8h5HnGPvneQAC2f3b1qUc2kfX1NJNUwp6vFsFPYErVffsg90yhjBYg7PN3O8PYQoxMdq/JA0WETo2elgjEVnIg5Xs6AdQ6Fk8UtaiB7WQqLwZ5/y0iP+fvV7Hq7V+hf7MfTOaZpWTs7HQR0ka8XjU8LECYn7+R+Cg+KyIfxzJp93SVudxyBGAq2SC8V+pMuSfic5mIfBIL3p86C1c4tmoELK8GbnPeu4Ppf5tbzbbPXwOyc12EY61j9RtH0JhJLxz2JY5CvZASILQfvoRSxOebEe/aIwjA2juIF1W/+lomch1/r4+YkF3Y7S0OT/PqPVS7Us6ivZPcb0PRCHTSH6H/TRSviIp8Mo1hT9S9B4M934jAuMVCtIKce1YJegn3qyNpBO2N4f8SFspTccRZvy1LALbftfE9GaQqO46Cobz4oSJysoj8A+x2hyOKxejoA6skBJus+3hejTpR0B8OVQmsreNo61/43zKkTZ7IEY5m/gObz3/nmhciPXwSYbOdUDYlhChOkBoBPFpnGWAkE/ChYK/rqt0BEMUV6OLGRb7CKgrH7cFW30BWuvrQD3GrtRzLLwc2+R9iHPczvsfInWjjvYxIzF8/l//N0tjXCbq2SAS5YZkj+COCflMlgOU1EoA9/x72zEUM1tifTp5ESMNGDCaBl1OPjmAft23iMsd6o3z81sYAiLqE7d+gUl9RYH2cSJKG+kt+QLtaLEMIRN2JefgWfrs8wl/grYbf4L5NyCxfdg6o0E+RKAFYBw+wYvxgK4G9TB++T3em1Wfwo1cigErtGpL8GMYjaJXIXagUupbnWznBv7rt5NCId69GyCw6RN+HrcEKZcyHM+x0K/nSMmMrBAGsVxJpVAkSJ4Ci29uU1UqNHcxghe7njCq1EEBXxRT+nIkvoVpZ21GCnMFJzrizhKDRsI6RbVNdSeP2bvc5e8NG/r4hsBdEPX8F92pxLQnUylwjCeCWKgkg51jsJD7jMbiUiKjJsyXUgwBCG4HAdSx7+UbXfjlpXvg+F2NRCWFzAZG2ocZRDnJu+/kgnGAQamynEzrtHgMbwyhnmbT7ukJkagRwU5UEELKx8KPSvzek1IsAwv4VLgl06q5WkYGu0q8iyO1gX3+IfdvGXyl0LO/e73CEvRJaTZRV08+xRvXsESN5pWYCiBvCPDBmPOA4dPpLGcyhWOKSrnfX4dj1PyOY3YowdTXXd7v78zxzO4hfDsteSEzAdELip/EZjYpWCNopV37WVL2NGITCuMqcKz55KlbJbWnUBoxLAFZJMw5sdiFY21xETtJgGoGy0G/BWueQzrUsmNwc3+vQBj6Ab8AI/g2EyuW8y1KeqRY5w1ADF7no490R4eYTuPfeKtXh1MBYzMIqtYCCy8R5ygkwp/CiByS8BZRztuje/rsyrDXP972M6SLGPCCIEawGrK33gvA7yvgCJPj/NBeu5ttJbAuotgNbsSNceVWJ8azV1437bD3Ac5vzEEhPYyzF4L48e/WtBIzc7OoAm77eNwgjs/28nLcyj+n5ZxiHbLvxYM99AFnjeccVEoW4YUqNQGA9wDJ/fg37v4p373T32L68m9V/ITmQGzFBj2RLaXfEbJ9SUNDZsoNW4SN4kvbKrcgOpzUsccklTUcArQ45zMUTsdN3BnNgE15Ag1Fd/qcYY17EdPxFhMKxlMjbh+8DnaqYc7LDCWwFLzhC8ZB3qvFoopRSg1bJ7q0H2Ap9GGH0TDyLUZzAOIYacGYSG3A6Mozp5yHoc9/HZhDF5sN+wuuzeGaRG2/i0JsIwPb4dgTT6fgMyk10h+MOL2AT+CoC4Tg4SD/aHUqYmJq3pQyrj+onx3WVKy4g0HRLGupfKxOATW4t+6Ottt8gmPXDyFNO4DKkmbDXiUC4mSroBhe66in+ua7A7AjnsJVoAEqq0CoygPcIeiOKmX7j6svPcNLHENd+Jeh0gp931/bBsncN0UBr+a0aArC9fxByyTLiBqO2j15NALY6OxxbVmOJR0ypSo+dEY7F809wfVQLNpYS3r2vYCv4fEzVzRA9j/f5u0YYfpqdAPyEnkkI9suYdNcjlV8A+zSkVGNMMmNW/xrHZZa8o2D/V7L6ywl64TvZ81cg/F1Abn81z/caAvB1iR4nfGoIatK1VPfoj5l3A56/dzo/QKV3MyLprGFchrx9sbw9TFBnNazf+tXnv4TgOJdQsmIjzgRqZiEwz0RNxQI5HSdJCOMw2Mwm7u4SFxQS2tx927WAtTcEbrSRFdxZgf0bMdrWYaeqfByivSxNqT+toFDvC1ArmMHMGn0BPo6+XPaMEsn3aO9Rl4nj7f72vTcFIaZ30a9/T7tnPDLEWnd8S1Syh49N8AExdojWJ1zf3d37E/cFNBrMMOP9CiaV20SvR06YgUv3aWz/Zq71yHiVSTqgisCWolu9s/AK9sWxs8GxfotKsnGagNpG5ZHH0fM3YkO42a38NLyjLc0BqlkhfpUOZl8tEcRh3EBAaBv+/bFB+37l+sWxLzp+CSTaMW4W3h41Po0A+icE1hJc49yIOaoHNF1eQL0JIA74NmaQjGGJF8PK3J8vww1HubAyVfn+vsK7j6B+/7fwGxgX+CGxAP65enPejAAqcINBGGrMgHQ3hDEk4rk+OIrOR8sw1v91t9/7OTkU87DlJpSwEt4FMYQE13Tp4XG1gKbfqyIcOq8Rx6eBoZ9BTrB4gHWORQ8A+bq/m7XwS2gUVhdR8Nidje4+inaWEFr+E4ihIwI5ZshqKohLAEnXuqk3eJvA/6EiziZI82iikvfjng24fldg5zdrocH7UN3UYmc5Epfj71cHTjk7Q9MhvRYCMFaytZni1GJyA9vnd2NBfKRKnX8wBpuLCQhR0++3ISgDEwTN5dzUSO8OATzrjodrNTB10Idvlcq8Z4G99BhsC8ORA65x4WEts8p7owxQCbpaoQWQfxG6+mNI8bo12Jy1NNKb1RCUK/NJs/8CiL0W5N+EvLDCuZ0bFdza430BZuWTCmzZwPbaUp3nYhe2+dl8z3WLpFwCSEtDownAkit2URmjLWCtHZRtlQpOHXOhdmdVFhjDR9jnrwL5bS7eoEdCownAJn9+hWoc60DOk6SVa67eE6SWtzvEexYeB2EF2phEUOdCpP5iT0d+IwnAkLaaSJoSyAyhjeodBer6H+MseDuI83+IYgwrHZfwDplqoES8gUr4fxOodD0aGkUApoopwr4W47k2VLKpCGczCNOeg+XuTkKsrKJ5uXgAgwIc43yqhR2Hp7Dp/fNpQ9z6AF35AqwGXj1gOBa6R5yKN895+irVCsphAt4KJ2mWbbFpfQH9u8kWc7DuNmeGfQ829bG8yEER41pFMke7S91+Hra/gVy+Wx0xXE4swBcQ6swvENrod6PvD6YIdCr5eM0E1RKA7aVjuska+xCLH9rZOxDwSpzE9VpgBxhOBK/58T1sQBZYQMjYlXzm4o8/HefPM25LMO2jCLEsplpor2P9xRQNRzm2g38DGWvJuHkOX7vuvdWOeS84xhQqhB3hzvv5H4JBvkB+348w5MzA2WPvvJtkzGG4dJsqH7/ZIG6dwCgZIC7xtMEtJvIZz2cMmbp7BwT8DmQMKwFfojrIJFcRXDNwxB38sAB3cL7FCSA1GaDeE7QPK3Aiq3kUGbkjCMPKRVTqCuENhLjfYrf/Nj78w1DpziGjdx4cYRMTNRiucLuLGeyR1r5KkKbEW4JtzwQ5h7hyaQYvEdz5FOz6Vf6uNP4pENJkAj7MoLSCUi7jsOtr0MbvWfX7k47dn+gdG1+vgzQIwCJrFT7FZw3S/HcQCJ9FHnilBpOuIdCEzHEQ2LFU3LBQrr+APdohEWvhHpoo2msJoFqw/fvxmDLAQ+7MnEbBJHz5m52doB119EHuqSXBtFllgFjnBsblANtjTlSB/f1650e3WHmLoglrCHYXfK2eXYx5JSFdVyET9GEsy5yLt6dALGKulgDM4/Y05U6qhcXo72cHR6ulyW6tMvgJxOXPRzuY6KJ5T8EecDTbQqsahAoIxGbrqBsY8m6toVZwo/0NRRD9pBvLMPz9/fh/DTKIFbVuNfBbrsk0dX0Pm7g5LjO2mk4ava9a/1aTeEnAwSZSvu21Kk71albw9ovV5DMkRgAfDQ49KHQj1CuNjx/jdHcMzRq0gBJCrR3C0IqrP+dwtJ0wNvu/bmATM55J+1QSnSQINv5+CIH3YA84zxmaWhH5nsCt7J26tuuOG7+i/PHrrcQuK401L60v9V9UY5nZWB0JVrXXWTmtZj8P6wsUW2z8lQj7YQTZxHBiHR0cHJ3eKttAT4Q8yB4bnEGUCE48Za3EpZtEqnMG8RflHVgArW5BPukOrey7OnYUMi7QuNU/JjizMHG5zGLxH8N758+7yyA9sEW3kICafdKSybzaUXLn4fqz7zJIB/mzwIGmvaeqlVlHXwwibTIiSA/5B2H4+VUdq43VVILlfohgepnj0DKoP/KHEAz7IuFx1Z4ulggRtKGDthNiZQPNZIJkkD+K1LgdrlZDwwxyJvwNd+cA+zN4M0LoPlgVMwHhW0D++5tFA8u7gdwNEXyXQxQM4hzEnIG8xV39nF3M3K5wVc6bxhTv1cDPMdAtBGD0De4rupdrpKcw10SffDA3Ho5C0CsRQ6mpbE2F/CjBcIrbEjZycqiGemdQHezJ2UOW7/iCq6Uo9eSmSezPPr7+ZFiXUrEgLP6M4NLfI8VqCFZvh/1A+pFkKB+PcL3OlZNvd7UM6haulpSAZuXRbaAHcibuTHfwsri6AK0ag1cvsNA0YbUv5gRTXx4/kbzFpCX0qEINw9giRuO7zoRDeVOnf4agW+WMHuwgiZZeILUe7tRboZiWZa8RCDGpNyOGt4NtmT2mBF0GGWSQQQZNDdk+XH/wnrndrUwA3rJXDjLB5e3Qa+0ZmVQvbzvo8kaSTqTZ56VYIRN4HAUWXnGsTIM99nBU/jJ1g+xIldSPPm2ylT8EU7dVPtlCFdOmrT5WyZc8GIvdGRRgEhJC7oQgtAjBiRzXugCHz/peSgQ53rkvETp+Du33loUz3EGNWoPHg2YHLYL6V5Og0FtzBfJuvn5JDYJ+LZg99RZY6tQxTti7hGv9XOzfCGoGlGB/gifLp1+ZMOl93oUKgqcFkNjflSYwX+b+MKDCQ1d9FCJSyApdpJhFHRVbDuz5QoU4gKgxRL1PVJ/hszXFDthDxzkC+EzQqd3zC/a4nS5aJYSuuEJXv0e9RFxO0xV3yksvS1KthmJLVUzqDqf/7kFw6N4IkKPJwb+LOj2XsDfOR57IuT20DZfx8RRv2MpRrd+nyJOXL+yZAyhBcxQyyHJO+5yJcLoscE/rZxolZCcw9h8TbaP1iIUI5z1dqZWBIO4e5KChZEdtg+j7ky73XopN7EaInk9NYxt3noUyiHMHj6Dq6QqERV1IAoc9lbBve9ch1Exe6trrTwzmbW6sJWSzfRFCi8RcPBBXTTVKnVYFB/ipu0cFxwvd8an6uYGybVqU4bNMkl4/y/V3CMUed5FvcDJnCWynLasRnA/G9jpu1A9T4+c6JnKLO6G7zbHdO+j7euoGzXFn+yqBCs95gvkde7pl34ziiFjb+h6F6H8QPHekm6e846hr+JzFFmvRUxr8ISyie4K2vkciSM7lXxhuDnd4ybHIlrpnL3NzJ0kQwM/5fauTgocSDraLFbYY//+7udZB0IMQJPIH2lBC8TCVVVaCM9iLDHREFhacnM31WQEBzOe6Ril5+AbXn3CT64VfnYMouJKoHQ9zeWYXR8uKa/Mwrm8Ogmb7uXfRGscGS2lLg0SiDHS38Lum7EuELLMZ7ii1yAFdEYB1NIhDFI1K/Quvcs9aIumx7igWZYMCiy/xwvZ8wQWULnQIKrrTua3u32Tu7+NyFV52BaR9GtU6iKfIxOv9ugot6EI5j17Te6yMjBa4NsHW3l8/esqIHi+rYG1atpR+FOH+ft2O9LoeSaOg72fCtJay1TFonxr4qUSu7N3eUbmbCXcKeo+NT7mJBYuaUKnVUJVz6fWysQV/BO7ECHmj5mw6AAAAAElFTkSuQmCC); -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; mask-image: url(data:image/png;base64,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); mask-size: contain; mask-repeat: no-repeat; mask-position: center;"></div><div><h1 style="margin-bottom: 2px;">Proseview</h1><span>Your manuscript at a glance</span></div></div>
-        <div class="banner-stat"><span class="label">Total Words</span><span class="value">{{ total_words_text }} / <button type="button" style="background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--text-muted);" onclick="showTab('settings')" title="Change goal in Settings">{{ target_words_text }}</button></span></div>
-        <div class="banner-stat banner-progress"><span class="label">Goal Progress: {{ percent_target_text }}%</span><div class="range-bar" style="margin-top:8px;"><div class="target-zone" style="background:var(--banner-progress-fill); width:{{ percent_target_width }}%;"></div></div></div>
-        <div class="banner-stat"><span class="label">Scenes</span><span class="value">{{ scene_count }}</span></div>
-        <div class="banner-stat banner-finish" title="At your daily target of {{ daily_target_text }} words"><span class="label">Est. Finish</span><span class="value">{{ days_to_finish }} days</span></div>
-        {{ goals_banner_html | safe }}
-    </header>
-
-    <div class="app-toolbar">
+        <div class="dashboard-identity"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Proseview</h1></div>
+        <div class="app-toolbar">
         <nav class="tab-nav" aria-label="Dashboard sections">
             <button class="active" data-tab="overview" aria-current="page" onclick="showTab('overview')">Overview</button>
             <button data-tab="analysis" onclick="showTab('analysis')">Analysis</button>
             <button data-tab="timeline" onclick="showTab('timeline')">Timeline</button>
-            <button data-tab="todos" onclick="showTab('todos')">TODOs</button>
-            <button data-tab="notes" onclick="showTab('notes')">Notes</button>
-            <button data-tab="settings" onclick="showTab('settings')">Settings</button>
+            <button data-tab="tasks" onclick="showTab('tasks')">Tasks</button>
         </nav>
         <div class="toolbar-actions">
-            <button id="bookOpenBtn" class="theme-toggle book-open-btn" type="button" onclick="openBookView()" title="Read the whole manuscript from start to finish, as one continuous text"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"></path></svg><span class="theme-toggle-label">Read the book</span></button>
-            <button id="exportOpenBtn" class="theme-toggle export-open-btn" type="button" onclick="openExportDialog()" aria-haspopup="dialog" title="Export the book as an e-book"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 19h14"></path></svg><span class="theme-toggle-label">Export</span></button>
-            <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show file browser"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg><span>Files</span></button>
+            <button id="sidebarOpenBtn" class="sidebar-open-btn" onclick="setSidebarOpen(true)" title="Show the files of your book" aria-label="Files"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg><span>Files</span></button>
             <div id="dashboardSearchMount" class="dashboard-search-mount">
                 <div id="searchMenu" class="search-menu">
                     <div class="search-palette-header">
@@ -309,29 +298,18 @@
                         <button type="button" class="search-palette-close" onclick="_closeSearch()" aria-label="Close search" title="Close search">&times;</button>
                     </div>
                     <label class="sr-only" for="searchBox">Search scenes, files, tasks, and prose</label>
-                    <input id="searchBox" class="search-box" type="text" placeholder="Search scenes, files, tasks, and prose…" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="searchResults" aria-expanded="false">
+                    <input id="searchBox" class="search-box" type="text" placeholder="Search…" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="searchResults" aria-expanded="false">
                     <div id="searchNavigationWarning" class="search-navigation-warning" role="alert" hidden></div>
                     <div id="searchResults" class="search-results" role="listbox" aria-label="Search results" hidden></div>
                     <div id="searchStatus" class="sr-only" aria-live="polite"></div>
                 </div>
             </div>
-            <div id="themeMenu" class="theme-menu">
-                <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
-                    <span class="theme-toggle-kicker">Theme</span>
-                    <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
-                    <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
-                </button>
-                <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
-                    <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
-                </ul>
-            </div>
+            <button id="bookOpenBtn" class="theme-toggle book-open-btn" type="button" onclick="openBookView()" aria-label="Read the book" title="Read the whole manuscript from start to finish, as one continuous text"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"></path></svg><span class="theme-toggle-label">Read the book</span></button>
+            <button id="exportOpenBtn" class="theme-toggle export-open-btn" type="button" onclick="openExportDialog()" aria-haspopup="dialog" aria-label="Export" title="Export the book as an e-book"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 19h14"></path></svg><span class="theme-toggle-label">Export</span></button>
+            <button type="button" id="settingsOpenBtn" class="theme-toggle settings-open-btn" onclick="openSettings()" aria-haspopup="dialog" aria-controls="settingsDialog" aria-label="Settings" title="Settings"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
         </div>
-    </div>
+        </div>
+    </header>
 
     {% if manuscript_missing %}
     <section id="manuscriptSetup" class="manuscript-setup" aria-labelledby="manuscriptSetupTitle">
@@ -357,66 +335,47 @@
     </dialog>
     {% endif %}
     <div id="tab-overview" class="tab-panel active">
-        <div class="dashboard-grid kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
-            <div class="card kpi-card">
-                <div class="kpi-label">Total Words</div>
-                <div class="kpi-value" id="kpiTotalWords">--</div>
-            </div>
-            <div class="card kpi-card">
-                <div class="kpi-label">Total Scenes</div>
-                <div class="kpi-value" id="kpiTotalScenes">--</div>
-            </div>
-            <div class="card kpi-card">
-                <div class="kpi-label">Reading Time</div>
-                <div class="kpi-value" id="kpiReadingTime">--</div>
-            </div>
-            <div class="card kpi-card">
-                <div class="kpi-label">Open TODOs</div>
-                <div class="kpi-value" id="kpiOpenTodos">--</div>
-            </div>
-        </div>
-        
-        <div id="actionableInsightsSection" class="dashboard-grid" style="grid-template-columns: 1fr; margin-bottom: 24px; display: none;">
-            <div class="card warning-card" style="border-color: var(--danger);">
-                <div class="card-header"><h2 class="card-title" style="color: var(--danger);">Actionable Insights</h2></div>
-                <ul id="actionableInsightsList" style="margin: 0; padding-left: 20px; line-height: 1.5;"></ul>
-            </div>
-        </div>
-
-        {{ goals_card_wrapper | safe }}
+        {{ progress_card | safe }}
         {{ recent_changes_card | safe }}
-
-
-
-        <div class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scenes</h2>
+        {% if scene_count == 0 and not manuscript_missing %}
+        <section class="card empty-book" aria-labelledby="emptyBookTitle">
+            <h2 id="emptyBookTitle" class="card-title">Your book has no scenes yet</h2>
+            <p>Each chapter is a folder inside <code>{{ manuscript_path_text }}/</code>, and each scene is a Markdown file in a chapter folder, such as <code>{{ manuscript_path_text }}/ch01/01-opening.md</code>. Open Files to add your first chapter and scene.</p>
+            <button type="button" class="primary-button" onclick="setSidebarOpen(true)">Open Files</button>
+        </section>
+        {% else %}
+        <section class="card scene-list-card" aria-labelledby="sceneListTitle">
+            <div class="card-header"><h2 id="sceneListTitle" class="card-title">Scenes</h2>
+            <label class="sr-only" for="issueFilter">Show</label>
             <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
-                <option value="all">All Scenes</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option><option disabled>──────</option><option value="status-draft">Status: Draft</option><option value="status-revision">Status: Revision</option><option value="status-done">Status: Done</option><option value="status-unknown">Status: Unknown</option>
-            </select>
-            <span class="section-note" style="margin-left:12px;">Prose metrics live in the <a href="#" onclick="showTab('analysis'); return false;">Analysis</a> tab.</span></div>
-            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(3)" aria-label="Sort by Keywords" title="The 3 most distinctive words in this scene compared to the rest of the manuscript.">Keywords</button></th></tr></thead><tbody>
+                <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>
+            </select></div>
+            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Words">Words</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
-            </tbody></table></div>
+            </tbody></table></section>
+        {% endif %}
     </div>
 
     <div id="tab-analysis" class="tab-panel">
         <p id="analysisStatus" class="section-note" role="status" aria-live="polite">Preparing the analysis…</p>
         <div id="analysisContent" hidden>
+            <section class="card analysis-findings" aria-labelledby="findingsTitle"><h2 id="findingsTitle" class="card-title">What stands out</h2><ul id="analysisFindings" class="findings-list"></ul></section>
             <div class="dashboard-grid">
-                <figure class="card chart-figure" aria-labelledby="presenceChartTitle"><div class="card-header"><h2 class="card-title" id="presenceChartTitle">Character Presence Timeline</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows the pacing of character appearances throughout the manuscript by counting literal name mentions in each chapter. Use this to identify if a main character vanishes for long stretches.</p></div><div class="chart-frame"><canvas id="presenceChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
-                <figure class="card chart-figure" aria-labelledby="locationChartTitle"><div class="card-header"><h2 class="card-title" id="locationChartTitle">Word Count per Location</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows which locations dominate the manuscript. Location data is read strictly from the <code>where:</code> or <code>location:</code> tags in each scene's frontmatter, or defaults to its parent folder name.</p></div><div class="chart-frame"><canvas id="locationChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+                <figure class="card chart-figure" aria-labelledby="presenceChartTitle"><div class="card-header"><h2 class="card-title" id="presenceChartTitle">Characters by chapter<span class="info-tip" tabindex="0" role="img" aria-label="A character is in a scene when the scene&#x27;s characters: or pov: frontmatter names them. A scene without a characters: list falls back to whether the name appears in its prose. Use it to spot a character who drops out for a stretch." data-tip="A character is in a scene when the scene&#x27;s characters: or pov: frontmatter names them. A scene without a characters: list falls back to whether the name appears in its prose. Use it to spot a character who drops out for a stretch.">i</span></h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">How many scenes in each chapter each character is in.</p></div><div class="chart-frame"><canvas id="presenceChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+                <figure class="card chart-figure" aria-labelledby="locationChartTitle"><div class="card-header"><h2 class="card-title" id="locationChartTitle">Words by place<span class="info-tip" tabindex="0" role="img" aria-label="From each scene&#x27;s where: or location: frontmatter, or its folder when it has neither. Places are matched as written, so two spellings count as two places. The eight largest are shown." data-tip="From each scene&#x27;s where: or location: frontmatter, or its folder when it has neither. Places are matched as written, so two spellings count as two places. The eight largest are shown.">i</span></h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">How many words of the book happen in each place.</p></div><div class="chart-frame"><canvas id="locationChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
             </div>
 
             <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-                <figure class="card chart-figure" aria-labelledby="coOccurChartTitle"><div class="card-header"><h2 class="card-title" id="coOccurChartTitle">Character Co-Occurrence</h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">Shows which characters share the most "screen time" by counting the number of scenes where both are mentioned together. Use this to identify your strongest character pairings and isolated subplots.</p></div><div class="chart-frame"><canvas id="coOccurChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
+                <figure class="card chart-figure" aria-labelledby="coOccurChartTitle"><div class="card-header"><h2 class="card-title" id="coOccurChartTitle">Characters who share scenes<span class="info-tip" tabindex="0" role="img" aria-label="Two characters share a scene when both are in it, by the same rule as Character Presence. Shows your strongest pairings, and who never meets." data-tip="Two characters share a scene when both are in it, by the same rule as Character Presence. Shows your strongest pairings, and who never meets.">i</span></h2><p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">How many scenes each pair of characters shares.</p></div><div class="chart-frame"><canvas id="coOccurChart" aria-hidden="true"></canvas></div><div class="chart-data"></div></figure>
             </div>
 
             <div class="stats-layout" style="margin-bottom: 24px;">
-                <section class="card"><div class="card-header"><h2 class="card-title">Book-Wide Lexical Health</h2></div>
-                    <p class="section-note" style="margin-bottom: 24px; margin-top:0;">These metrics check if your vocabulary is rich and varied, or if you are over-repeating words.</p>
+                <section class="card"><div class="card-header"><h2 class="card-title">Word variety<span class="info-tip" tabindex="0" role="img" aria-label="How many different words the prose uses. Low variety means the same words keep coming back. Your genre&#x27;s usual range is set in Settings." data-tip="How many different words the prose uses. Low variety means the same words keep coming back. Your genre&#x27;s usual range is set in Settings.">i</span></h2></div>
+                    <p class="section-note" style="margin-bottom: 24px; margin-top:0;">Whether the prose keeps finding new words, or keeps coming back to the same ones.</p>
 
                     <div class="health-section" style="margin-bottom: 24px;">
-                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Unique Words % (Local): <strong id="analysisMattrText" style="font-weight: 700;"></strong></div>
-                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">Checks if you are echoing the same words too closely together. This explicitly tells you that, on average, <strong id="analysisMattrExplanationText"></strong> of your words in a local window are unique.<br><span style="opacity: 0.85;"><em>Example of a low score: "He opened the <b>door</b> and walked through the <b>door</b>, closing the <b>door</b>."</em></span></p>
+                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Nearby words: <strong id="analysisMattrText" style="font-weight: 700;"></strong><span class="info-tip" tabindex="0" role="img" aria-label="MATTR, the moving-average type-token ratio: the share of different words in every 100-word window, averaged over the book. Low means words come back close together, as in &quot;He opened the door and walked through the door.&quot;" data-tip="MATTR, the moving-average type-token ratio: the share of different words in every 100-word window, averaged over the book. Low means words come back close together, as in &quot;He opened the door and walked through the door.&quot;">i</span></div>
+                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">In a typical 100-word stretch, <strong id="analysisMattrExplanationText"></strong> of the words are different words.</p>
                         <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 500;">
                             <span>Repetitive</span>
                             <div class="range-bar" style="flex: 1;"><div class="target-zone" id="analysisMattrZone"></div><div class="current-marker" id="analysisMattrMarker"></div></div>
@@ -425,8 +384,8 @@
                     </div>
 
                     <div class="health-section">
-                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Words Before Repetition (Scene): <strong id="analysisMtldText" style="font-weight: 700;"></strong></div>
-                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">Checks the overall size of your vocabulary across a scene. This explicitly tells you that, on average, you write <strong id="analysisMtldExplanationText"></strong> before you start heavily repeating yourself.<br><span style="opacity: 0.85;"><em>Example of a low score: A 1,000 word dialogue scene where characters only say "Yes", "No", and "Okay".</em></span></p>
+                        <div style="font-size: 16px; margin-bottom: 4px; font-weight: 500; color: var(--text-primary);">Across a scene: <strong id="analysisMtldText" style="font-weight: 700;"></strong><span class="info-tip" tabindex="0" role="img" aria-label="MTLD, the measure of textual lexical diversity: how long a stretch of text runs, on average, before its share of different words drops to 72%. Higher is richer. A scene of &quot;yes&quot;, &quot;no&quot; and &quot;okay&quot; scores low." data-tip="MTLD, the measure of textual lexical diversity: how long a stretch of text runs, on average, before its share of different words drops to 72%. Higher is richer. A scene of &quot;yes&quot;, &quot;no&quot; and &quot;okay&quot; scores low.">i</span></div>
+                        <p class="section-note" style="margin-top: 0; margin-bottom: 12px; line-height: 1.4;">On average the prose runs <strong id="analysisMtldExplanationText"></strong> before its vocabulary starts to repeat.</p>
                         <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 500;">
                             <span>Limited Vocab</span>
                             <div class="range-bar" style="flex: 1;"><div class="target-zone" id="analysisMtldZone"></div><div class="current-marker" id="analysisMtldMarker"></div></div>
@@ -436,22 +395,23 @@
                     </div>
                 </section>
 
-                <figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Lexical Health Map</h2></div>
+                <figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Word variety by scene<span class="info-tip info-tip-end" tabindex="0" role="img" aria-label="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of your genre&#x27;s range in .proseview.yaml; anything above or to the right of that is fine." data-tip="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of your genre&#x27;s range in .proseview.yaml; anything above or to the right of that is fine.">i</span></h2></div>
                     <div class="section-note" style="margin-top: 4px; margin-bottom: 12px; line-height: 1.4;">
-                        Plots every scene's vocabulary diversity. <strong>The green outlined box represents your Genre Target.</strong> Scenes falling below the green box are highly repetitive. Scenes inside or above the green box have excellent vocabulary range.
+                        Each dot is a scene. Dots in the shaded area have healthy variety; dots below or left of it repeat words more than is usual for your genre.
                     </div>
                     <div class="chart-frame-lg"><canvas id="lexicalScatterChart" aria-hidden="true"></canvas></div><div class="chart-data"></div>
                 </figure>
             </div>
 
 
-            <div class="dashboard-grid" style="grid-template-columns: 1fr;">
-                <section class="card" style="padding:0; overflow:hidden;"><div class="card-header" style="margin:20px 24px;"><h2 class="card-title">Scene Deep Dive</h2>
+            <details id="analysisTableDetails" class="card analysis-table-card">
+                <summary><h2 class="card-title">Every scene, measured</h2><span class="section-note">Word variety, keywords, dialogue and sentence length for each scene</span></summary>
+                    <div class="analysis-table-tools"><label for="analysisIssueFilter">Show</label>
                     <select id="analysisIssueFilter" class="issue-filter" onchange="applyAnalysisIssueFilter()">
-                        <option value="all">All Scenes</option><option value="repetition">Repetitive</option><option value="clipped">Clipped</option><option value="talky">Talky</option><option value="dense">Dense</option><option value="todos">Has TODOs</option><option value="notes">Has Notes</option>
+                        <option value="all">All scenes</option><option value="review">Repeats words</option><option value="talky">Mostly dialogue</option><option value="clipped">Short sentences</option><option value="todos">With TODOs</option><option value="notes">With notes</option>
                     </select></div>
-                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Chapter">Chapter</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Words">Words</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Lexical Health" title="Unique Words % (Local) and Words Before Repetition (Scene)">Lexical Health</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Keywords" title="The 3 most distinctive words in this scene compared to the rest of the manuscript.">Keywords</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Top Repeat">Top Repeat</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Dialogue percent">Dialogue %</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(7)" aria-label="Sort by Sentence length" title="Average sentence length in words">Avg Sent Length</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table></section>
-            </div>
+                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Word variety" title="Nearby words (MATTR), then across the scene (MTLD). Amber means under the usual range for your genre.">Word variety</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Keywords" title="The 3 words most particular to this scene, compared to the rest of the book.">Keywords</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Most repeated" title="The word this scene repeats most.">Most repeated</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Dialogue" title="Share of the scene inside quotation marks.">Dialogue</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Sentence length" title="Average sentence length in words">Sentence length</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table>
+            </details>
         </div>
     </div>
 
@@ -459,13 +419,15 @@
         <div id="timelineContent"></div>
     </div>
 
-    <div id="tab-todos" class="tab-panel">
-        <div id="todosTabContent"></div>
-    </div>
-
-    <div id="tab-notes" class="tab-panel">
+    <div id="tab-tasks" class="tab-panel">
+        <section class="tasks-section" aria-labelledby="todosHeading">
+            <h2 id="todosHeading" class="tasks-heading">TODOs</h2>
+            <div id="todosTabContent"></div>
+        </section>
+        <section class="tasks-section" aria-labelledby="notesHeading">
         <div class="notes-toolbar">
-            <select id="notesTagFilter" class="notes-filter" onchange="filterNotes()">
+            <h2 id="notesHeading" class="tasks-heading">Notes</h2>
+            <select id="notesTagFilter" class="notes-filter" onchange="filterNotes()" aria-label="Show notes tagged">
                 <option value="all">All Tags</option>
                 <option value="note">Note</option>
                 <option value="continuity">Continuity</option>
@@ -475,76 +437,84 @@
             </select>
         </div>
         <div id="notesTabContent"></div>
-    </div>
-
-    <div id="tab-settings" class="tab-panel">
-        <section class="card" style="max-width: 800px; margin: 0 auto; margin-top: 24px;">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <h2 class="card-title">Project Configuration</h2>
-                    <p class="section-note" style="margin-top: 4px; margin-bottom: 0; line-height: 1.4;">
-                        Proseview is configured entirely by a plain text file: <code>.proseview.yaml</code>. 
-                        <br>You can edit these settings here, or 
-                        {% if config_exists %}
-                        <a href="{{ yaml_editor_url }}" class="editor-btn" style="color: var(--accent); text-decoration: none;">open the file in your editor</a>.
-                        {% else %}
-                        open the file in your editor.
-                        {% endif %}
-                    </p>
-                </div>
-                <button type="button" id="settingsSaveBtn" class="primary-button" onclick="saveSettings()" disabled style="margin-top: 4px;">Save Changes</button>
-            </div>
-            
-            {% if not config_exists %}
-            <div id="settingsEmptyBanner" style="margin: 0 24px; padding: 12px 16px; background: var(--surface-hover); border-radius: 6px; border-left: 3px solid var(--accent); font-size: 13px; color: var(--text-primary);">
-                <strong>Proseview is currently using default settings.</strong> Change your Target Words or Daily Target below and save to create a <code>.proseview.yaml</code> file for your project.
-            </div>
-            {% endif %}
-            
-            <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; padding: 24px;">
-                
-                <div class="settings-group">
-                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">General Goals</h3>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Target Words:</label> <input type="number" id="setting_target_words" class="inline-edit-input" value="{{ cfg.target_words }}" oninput="markSettingsDirty()"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Daily Target:</label> <input type="number" id="setting_daily_target" class="inline-edit-input" value="{{ cfg.daily_target }}" oninput="markSettingsDirty()"></div>
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Analysis Targets</h3>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Genre Profile:</label> 
-                            <select id="setting_genre" class="inline-edit-input" onchange="markSettingsDirty()">
-                                <option value="contemporary" {% if cfg.genre == 'contemporary' %}selected{% endif %}>Commercial & contemporary</option>
-                                <option value="childrens" {% if cfg.genre == 'childrens' %}selected{% endif %}>Children's / middle grade</option>
-                                <option value="literary" {% if cfg.genre == 'literary' %}selected{% endif %}>Historical & literary</option>
-                                <option value="speculative" {% if cfg.genre == 'speculative' %}selected{% endif %}>Fantasy & science fiction</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Story Elements</h3>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Characters:</span> <strong style="font-size: 13px;">{{ cfg.characters|length if cfg.characters else 'Auto-discovered' }}</strong></div>
-                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted); font-size: 13px;">Locations:</span> <strong style="font-size: 13px;">{{ cfg.locations|length if cfg.locations else 'Auto-discovered' }}</strong></div>
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Backup Management</h3>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <p class="section-note" style="margin-top: 0; margin-bottom: 8px; line-height: 1.4;">Proseview stores snapshots of your scenes locally to support undo/redo and file history.</p>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label style="color: var(--text-muted); font-size: 13px;">Total Backups Size:</label> <span id="setting_backup_size" style="font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums;">--</span></div>
-                        <button type="button" class="editor-btn" onclick="clearAllBackups()" style="margin-top: 8px; align-self: flex-start; color: var(--red);">Clear All Backups...</button>
-                    </div>
-                </div>
-
-            </div>
         </section>
     </div>
+
+    <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
+        <section class="card settings-page" aria-labelledby="settingsTitle">
+            <div class="settings-head">
+                <h2 id="settingsTitle" class="card-title">Settings</h2>
+                <span class="settings-head-actions">
+                    <button type="button" id="settingsSaveBtn" class="primary-button" onclick="saveSettings()" disabled>Save changes</button>
+                    <button type="button" class="ledger-close" onclick="closeSettings()" aria-label="Close settings">&times;</button>
+                </span>
+            </div>
+            {% if not config_exists %}
+            <p id="settingsEmptyBanner" class="settings-note">Proseview is using its default settings. Saving creates a <code>.proseview.yaml</code> file in your book's folder.</p>
+            {% endif %}
+
+            <h3 class="settings-section">Your book</h3>
+            <div class="settings-row">
+                <label for="setting_target_words">Book goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words you want the finished book to have. Progress on the Overview is measured against it." data-tip="How many words you want the finished book to have. Progress on the Overview is measured against it.">i</span></label>
+                <span class="settings-field"><input type="number" id="setting_target_words" class="settings-input" min="0" step="1000" value="{{ cfg.target_words }}" oninput="markSettingsDirty()"> <span class="settings-unit">words</span></span>
+            </div>
+            <div class="settings-row">
+                <label for="setting_daily_target">Daily goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words a day you aim to write. It sets the days-to-finish figure." data-tip="How many words a day you aim to write. It sets the days-to-finish figure.">i</span></label>
+                <span class="settings-field"><input type="number" id="setting_daily_target" class="settings-input" min="0" step="50" value="{{ cfg.daily_target }}" oninput="markSettingsDirty()"> <span class="settings-unit">words a day</span></span>
+            </div>
+            <div class="settings-row">
+                <label for="setting_genre">Genre<span class="info-tip" tabindex="0" role="img" aria-label="Sets the range of word variety Analysis compares your scenes against. Different genres naturally use more or fewer different words." data-tip="Sets the range of word variety Analysis compares your scenes against. Different genres naturally use more or fewer different words.">i</span></label>
+                <span class="settings-field"><select id="setting_genre" class="settings-input" onchange="markSettingsDirty()">
+                    <option value="contemporary" {% if cfg.genre == 'contemporary' %}selected{% endif %}>Commercial &amp; contemporary</option>
+                    <option value="childrens" {% if cfg.genre == 'childrens' %}selected{% endif %}>Children's / middle grade</option>
+                    <option value="literary" {% if cfg.genre == 'literary' %}selected{% endif %}>Historical &amp; literary</option>
+                    <option value="speculative" {% if cfg.genre == 'speculative' %}selected{% endif %}>Fantasy &amp; science fiction</option>
+                </select></span>
+            </div>
+
+            <h3 class="settings-section">Appearance</h3>
+            <div class="settings-row">
+                <span class="settings-label">Color theme<span class="info-tip" tabindex="0" role="img" aria-label="How Proseview looks on this computer. Saved in this browser, not in your book." data-tip="How Proseview looks on this computer. Saved in this browser, not in your book.">i</span></span>
+                <span class="settings-field">
+                    <div id="themeMenu" class="theme-menu">
+                        <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
+                            <span class="theme-toggle-kicker">Theme</span>
+                            <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
+                            <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
+                        </button>
+                        <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
+                        </ul>
+                    </div>
+                </span>
+            </div>
+
+            <details class="settings-advanced">
+                <summary>Advanced</summary>
+                <div class="settings-row">
+                    <span class="settings-label">Settings file</span>
+                    <span class="settings-field">{% if config_exists %}<a href="{{ yaml_editor_url }}">Open <code>.proseview.yaml</code> in your editor</a>{% else %}<code>.proseview.yaml</code> (created when you save){% endif %}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Characters</span>
+                    <span class="settings-field">{{ cfg.characters|length ~ ' listed' if cfg.characters else 'Found from ' ~ cfg.characters_dir ~ '/' }}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Places</span>
+                    <span class="settings-field">{{ cfg.locations|length ~ ' listed' if cfg.locations else "From each scene's where:" }}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Backups<span class="info-tip" tabindex="0" role="img" aria-label="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history." data-tip="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history.">i</span></span>
+                    <span class="settings-field"><span id="setting_backup_size" class="settings-unit">…</span> <button type="button" class="settings-danger-btn" onclick="clearAllBackups()">Clear all backups…</button></span>
+                </div>
+            </details>
+        </section>
+    </dialog>
 
     <!-- Modals and Overlays -->
     <div id="file-preview-panel">
@@ -589,17 +559,29 @@
     </div>
     <div id="book-panel" aria-labelledby="bookTitle">
         <div class="book-header">
-            <button type="button" class="back-btn" onclick="closeBookView()">&#8592; Overview</button>
+            <button type="button" id="bookBackBtn" class="back-btn" onclick="leaveBookView()" aria-keyshortcuts="Escape" title="Back to where you opened the book (Esc)">&#8592; Back</button>
             <div class="book-heading">
                 <h1 id="bookTitle" tabindex="-1">Reading the whole book</h1>
                 <div id="bookWhere" class="repo-preview-sub"></div>
             </div>
+            <div id="bookViewSwitch" class="book-view-switch" role="radiogroup" aria-label="How to read">
+                <button type="button" id="bookViewText" role="radio" aria-checked="true" onclick="setBookLayout(false)" title="The book as one continuous text">Text</button>
+                <button type="button" id="bookViewPrint" role="radio" aria-checked="false" onclick="setBookLayout(true)" title="The book as Export prints it, page by page">Print layout</button>
+            </div>
             <div class="file-preview-controls">
+                <button type="button" id="bookFocusBtn" class="back-btn book-focus-btn" onclick="toggleBookFocus()" aria-pressed="false" aria-keyshortcuts="F" aria-label="Focus" title="Hide the bars to see the pages larger (F; Shift+F for full screen)" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg></button>
                 <div class="scene-toolbar-menu-wrap"><button id="bookAppearanceBtn" type="button" class="back-btn book-appearance-btn" onclick="toggleSceneToolbarMenu('bookAppearanceMenu', this)" aria-label="Reading appearance" aria-haspopup="dialog" aria-controls="bookAppearanceMenu" aria-expanded="false" title="Text size, line width, font and theme">Aa</button><section id="bookAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Reading appearance" hidden>
                     <div class="scene-toolbar-menu-heading">Reading appearance</div>
                     <label class="scene-toolbar-field scene-toolbar-size-field" for="bookFontSize"><span>Text size</span><input id="bookFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)"></label>
                     <label class="scene-toolbar-field scene-toolbar-size-field" for="bookMeasure"><span>Line width</span><input id="bookMeasure" type="range" min="480" max="1100" step="20" value="760" oninput="updateReadingMeasure(this.value)"><output id="bookMeasureOut" for="bookMeasure"></output></label>
                     <label class="scene-toolbar-field" for="bookFontSelect"><span>Font</span><select class="font-select-inline" id="bookFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></label>
+                    <div id="bookPrintFields" class="book-print-fields">
+                        <label class="scene-toolbar-field" for="bookPrintStyle"><span>Style</span><select class="font-select-inline" id="bookPrintStyle" onchange="setBookPrintLayout()"></select></label>
+                        <label class="scene-toolbar-field" for="bookPrintFormat"><span>PDF</span><select class="font-select-inline" id="bookPrintFormat" onchange="setBookPrintLayout()"><option value="pdf-print">Print book</option><option value="pdf-share">Shareable</option></select></label>
+                        <label class="scene-toolbar-field" for="bookPrintTrim" id="bookPrintTrimField"><span>Trim</span><select class="font-select-inline" id="bookPrintTrim" onchange="setBookPrintLayout()"></select></label>
+                        <label class="scene-toolbar-field" for="bookPrintPaper" id="bookPrintPaperField"><span>Paper</span><select class="font-select-inline" id="bookPrintPaper" onchange="setBookPrintLayout()"></select></label>
+                        <p id="bookPrintNote" class="book-print-note"></p>
+                    </div>
                     <label class="scene-toolbar-field" for="bookThemeSelect"><span>Theme</span><select class="font-select-inline" id="bookThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option></select></label>
                 </section></div>
                 <button type="button" id="bookEditBtn" class="file-edit-btn" onclick="openBookScene(bookCurrentScene(), true)" aria-keyshortcuts="E" title="Edit the scene you are reading (E)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg><span>Edit</span></button>
@@ -610,6 +592,7 @@
             <button type="button" class="book-intro-close" onclick="dismissBookIntro()" aria-label="Dismiss">&times;</button>
         </div>
         <div id="bookBody" class="modal-body book-body"></div>
+        <div id="bookPages" class="book-pages" role="region" aria-label="The book in print layout" hidden></div>
         <nav id="bookNav" class="book-nav" aria-label="Move through the book">
             <div class="book-nav-progress" aria-hidden="true"><span id="bookNavBar"></span></div>
             <div class="book-nav-row">
@@ -622,6 +605,13 @@
                 <button type="button" class="book-nav-btn" onclick="bookGoScene(1)" aria-label="Next scene" title="Next scene (&rarr;)">&rsaquo;</button>
                 <button type="button" class="book-nav-btn" onclick="bookGoChapter(1)" aria-label="Next chapter" title="Next chapter (Shift+&rarr;)">&raquo;</button>
                 <span id="bookNavPct" class="book-nav-pct" aria-label="Read so far"></span>
+                <div id="bookPagesNav" class="book-pages-nav" hidden>
+                    <button type="button" id="bookPagesPrev" class="book-nav-btn" aria-label="Previous page" title="Previous page (&larr;)">&lsaquo;</button>
+                    <label class="sr-only" for="bookPagesPick">Go to</label>
+                    <select id="bookPagesPick" class="book-pages-pick"></select>
+                    <button type="button" id="bookPagesNext" class="book-nav-btn" aria-label="Next page" title="Next page (&rarr;)">&rsaquo;</button>
+                    <span id="bookPagesStatus" class="book-pages-status" aria-live="polite"></span>
+                </div>
             </div>
         </nav>
     </div>
@@ -650,8 +640,8 @@
                 <div id="modalHeaderExtras" class="scene-toolbar-menu-wrap"><button id="sceneMoreBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('sceneMoreMenu', this)" aria-label="More scene actions" aria-haspopup="dialog" aria-controls="sceneMoreMenu" aria-expanded="false" title="More scene actions">&#8230;</button><div id="sceneMoreMenu" class="scene-toolbar-popover scene-more-menu" role="dialog" aria-label="More scene actions" hidden>
                     <button id="modalRefreshBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();refreshContent()"><span aria-hidden="true">&#8635;</span> Refresh from disk</button>
                     <a id="modalEditorBtn" class="scene-toolbar-menu-action" target="_blank" title="Open in {{ editor_label }}"><span aria-hidden="true">&#8599;</span> Open in {{ editor_label }}</a>
-                    <button id="modalReadBookBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openBookView(paths[curIdx])" title="Read on from this scene through the rest of the book"><span aria-hidden="true">&#9776;</span> Read the book from here</button>
-                    <button id="modalPreviewPdfBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('pdf')" title="Preview this scene as a shareable PDF"><span aria-hidden="true">&#9113;</span> Preview as PDF…</button>
+                    <button id="modalReadBookBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openBookView(paths[curIdx], {layout: 'text'})" title="Read on from this scene through the rest of the book"><span aria-hidden="true">&#9776;</span> Read the book from here</button>
+                    <button id="modalPrintLayoutBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openBookView(paths[curIdx], {layout: 'print'})" title="See the book as Export prints it, at this scene's chapter"><span aria-hidden="true">&#9113;</span> Print layout</button>
                     <button id="modalExportSceneBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('scene')" aria-keyshortcuts="X" title="Export this scene (X)"><span aria-hidden="true">&#8615;</span> Export this scene…</button>
                     <button id="modalExportChapterBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('chapter')"><span aria-hidden="true">&#8615;</span> Export this chapter…</button>
                     <button id="modalFocusBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();toggleFocusMode()" aria-pressed="false" aria-keyshortcuts="F"><span aria-hidden="true">&#9681;</span> Focus layout</button>

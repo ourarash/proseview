@@ -23,6 +23,7 @@ from .config import Config
 from .repo import CONTEXT_SKIP_DIRS, read_repo_text
 from .lexical import (
     FRONTMATTER_RE,
+    KEYWORD_STOPWORDS,
     analyze_style_shape,
     build_content_stopwords,
     calculate_lexical_stats,
@@ -277,6 +278,14 @@ def extract_scene_text(text: str) -> str:
     return "\n".join(lines[start:])
 
 
+def _unquote(value: str) -> str:
+    """``"Day 87: First Results"`` without its quotes. A title with a colon
+    has to be quoted in YAML, and the simple parser keeps the quotes."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def _is_scene(fm: dict[str, object]) -> bool:
     """False when frontmatter opts the file out with ``scene: false``."""
     raw = fm.get("scene")
@@ -381,7 +390,13 @@ def collect_scene_stats(
         # Measured without the TODOs and notes; *txt* keeps them, because
         # their line anchors and the page itself need the scene as written.
         prose = prose_only(txt)
-        toks = [t for t in lexical_tokens(prose) if t not in sw and len(t) > 3]
+        # Contractions ("wasn't", "they're") and everyday words are never
+        # what a scene is about, however rarely the rest of the book uses them.
+        toks = [
+            t for t in lexical_tokens(prose)
+            if t not in sw and len(t) > 3 and t not in KEYWORD_STOPWORDS
+            and "'" not in t and "\u2019" not in t
+        ]
         global_counts.update(toks)
         # Lines in the original file before the extracted prose starts
         prefix = txt.lstrip("\n")[:60]
@@ -412,7 +427,7 @@ def collect_scene_stats(
 
         scenes.append(SceneStats(
             p.relative_to(root), str(fm.get("chapter", scene_chapter(p, man_dir))).strip(),
-            str(fm.get("title", p.stem.replace("-", " ").title())).strip(),
+            _unquote(str(fm.get("title", p.stem.replace("-", " ").title())).strip()),
             str(fm.get("status", "unknown")).strip() or "unknown",
             txt, words, len(paragraph_blocks(prose)),
             sum(1 for l in prose.splitlines() if l.lstrip().startswith("#")),
@@ -455,35 +470,37 @@ def goal_position(v: float, g: tuple[float, float]) -> str:
 
 
 def scene_is_outlier(s: SceneStats, cfg: Config) -> bool:
-    return (goal_position(s.mattr, cfg.mattr_band) != "inside"
-            or goal_position(s.mtld, cfg.mtld_band) != "inside")
+    """True when a scene repeats its words more than the bands allow.
+
+    Only *below* the band is a problem: the band is a floor, and a scene richer
+    in words than it is fine. Flagging both sides put a Review badge on nearly
+    every scene of a book written above the genre range. An empty scene has
+    nothing to measure.
+    """
+    if s.words <= 0:
+        return False
+    return (goal_position(s.mattr, cfg.mattr_band) == "below"
+            or goal_position(s.mtld, cfg.mtld_band) == "below")
 
 
 def scene_severity(s: SceneStats, cfg: Config) -> float:
+    """How far under the bands a scene sits; above them is not a problem."""
     sev = 0.0
     if s.mattr < cfg.mattr_band[0]:
         sev += cfg.mattr_band[0] - s.mattr
-    elif s.mattr > cfg.mattr_band[1]:
-        sev += s.mattr - cfg.mattr_band[1]
     if s.mtld < cfg.mtld_band[0]:
         sev += (cfg.mtld_band[0] - s.mtld) / 100
-    elif s.mtld > cfg.mtld_band[1]:
-        sev += (s.mtld - cfg.mtld_band[1]) / 100
     return sev
 
 
 def revision_signal(s: SceneStats, cfg: Config) -> str:
     m_p, l_p = goal_position(s.mattr, cfg.mattr_band), goal_position(s.mtld, cfg.mtld_band)
     p = []
-    if m_p == "below":
-        p.append("Local variety (MATTR) is below target")
-    elif m_p == "above":
-        p.append("Local variety (MATTR) is above target")
+    if s.words and m_p == "below":
+        p.append(f"Words repeat close together (local variety {s.mattr:.3f}, under {cfg.mattr_band[0]:.2f})")
 
-    if l_p == "below":
-        p.append("Whole-scene variety (MTLD) is below target")
-    elif l_p == "above":
-        p.append("Whole-scene variety (MTLD) is above target")
+    if s.words and l_p == "below":
+        p.append(f"The scene keeps returning to the same words (variety {s.mtld:.0f}, under {cfg.mtld_band[0]:.0f})")
 
     if s.dialogue_pct > 45:
         p.append(f"High dialogue ({int(s.dialogue_pct)}%)")

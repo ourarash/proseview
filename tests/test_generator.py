@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+from dataclasses import replace as dataclasses_replace
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -34,15 +35,17 @@ def test_dashboard_contains_structural_markers():
 
     for marker in [
         "<!DOCTYPE html>",
-        '<html lang="en" data-theme="graphite-dark">',
+        '<html lang="en" data-theme="graphite-light">',
         'class="top-banner"',
         'id="themeToggle"',
-        "Book-Wide Lexical Health",
-        "Character Presence Timeline",
-        "Character Co-Occurrence",
-        "Scene Deep Dive",
-        "Lexical Health Map",
-        "Project Configuration",
+        'id="progressTitle"',
+        "What stands out",
+        "Word variety",
+        "Characters by chapter",
+        "Characters who share scenes",
+        "Every scene, measured",
+        "Word variety by scene",
+        'id="settingsTitle"',
         'id="sceneModal"',
         'id="utilityTabScene"',
         'id="utilityTabAnalysis"',
@@ -64,7 +67,7 @@ def test_dashboard_emits_theme_bootstrap_and_token_blocks():
         "const THEME_STORAGE_KEY = 'proseview-theme'",
         "localStorage.getItem(storedKey)",
         # A first visit opens in Graphite Dark whatever the OS prefers.
-        "let theme = 'graphite-dark';",
+        "let theme = 'graphite-light';",
         "document.documentElement.dataset.theme = theme;",
         "document.documentElement.dataset.theme = name;",
         ":root {",
@@ -89,14 +92,14 @@ def test_dashboard_inlines_template_assets_and_data_bootstrap():
         "let contents = JSON.parse(",
         "const repoTree = JSON.parse(",
         "const presenceChartData = JSON.parse(",
-        "const VALID_TABS = ['overview', 'analysis', 'timeline', 'todos', 'notes', 'settings'];",
+        "const VALID_TABS = ['overview', 'analysis', 'timeline', 'tasks'];",
         "const MODAL_FONT_SIZE_STORAGE_KEY = 'proseview-modal-font-size';",
         "const VIEW_SCROLL_STORAGE_PREFIX = 'proseview-scroll:';",
         "if ('scrollRestoration' in history) history.scrollRestoration = 'manual';",
         "routeHydrating = true;",
         "sessionStorage.setItem(VIEW_SCROLL_STORAGE_PREFIX + key",
         "function previewRepoFile(path, options)",
-        "name = VALID_TABS.includes(name) ? name : 'overview';",
+        "name = canonicalTab(name);",
         ".top-banner {",
     ]:
         assert marker in html, f"missing asset marker: {marker!r}"
@@ -168,12 +171,10 @@ def test_dashboard_reports_correct_word_and_scene_counts():
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     scenes = collect_scene_stats(FIXTURE)
     total_words = sum(s.words for s in scenes)
-    # Banner formats with thousands separator: "{total:,} / {target:,}". The
-    # target is a button that jumps to Settings, so the two halves are no
-    # longer contiguous text and are asserted separately.
-    assert f"{total_words:,} / " in html
-    assert ">80,000</button>" in html
-    assert f'<span class="value">{len(scenes)}</span>' in html
+    # The Progress card: the total, then the goal as a button to Settings.
+    assert f'<span class="progress-big">{total_words:,}</span>' in html
+    assert ">80,000</button> words" in html
+    assert f"{len(scenes)} scenes" in html
 
 
 def test_split_frontmatter_folds_multiline_scalar_values():
@@ -307,7 +308,9 @@ def test_characters_config_overrides_story_bible_scan():
 def test_editor_scheme_is_honored_in_editor_button():
     cfg = Config().with_overrides(editor=Config().editor.__class__(scheme="zed"))
     html = build_dashboard(FIXTURE, cfg)
-    assert "zed://file/" in html
+    # The scene list no longer carries an editor button per row; the scene's
+    # own menu opens it, from the configured scheme.
+    assert "const editorScheme = JSON.parse('\"zed\"');" in html
     assert "vscode://file/" not in html
     assert "Open in Zed" in html
 
@@ -340,7 +343,8 @@ def test_overview_build_skips_the_lexical_passes():
 def test_analysis_payload_carries_every_panel_the_tab_renders():
     payload = build_analysis_payload(FIXTURE, Config.load(FIXTURE))
 
-    assert set(payload) == {"tableBody", "scatterChart", "lexical"}
+    assert set(payload) == {"findings", "tableBody", "scatterChart", "lexical"}
+    assert payload["findings"], "Analysis opens with what stands out"
     assert payload["scatterChart"]["datasets"][0]["data"], "scatter chart needs points"
     for key in ("mattrText", "mtldText", "mattrMarkerLeft", "mtldMarkerLeft",
                 "mattrMedianText", "mtldMedianText", "mtldBand", "genreLabel"):
@@ -374,8 +378,8 @@ def test_goals_card_absent_on_non_git_fixture():
     """
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     assert "card-title\">Goals<" not in html
-    assert "Rolling 7-day velocity" not in html
-    assert "Added Today" not in html
+    assert "Words a day" not in html
+    assert 'class="banner-stat banner-today"' not in html
 
 
 def test_goals_card_renders_when_goals_are_supplied():
@@ -396,12 +400,66 @@ def test_goals_card_renders_when_goals_are_supplied():
         scenes_touched_today=3, head_total_words=58_000, head_chapter_count=4,
     )
     html = render_html_report(scenes, display, FIXTURE, None, cfg, goals=fake)
-    assert "Rolling 7-day velocity" in html
+    assert "Words a day" in html
     assert "Writing streak" in html
-    assert ">423<" in html
-    assert ">9<" in html
+    assert ">+423<" in html
+    assert ">9 days<" in html
     assert "+777" in html
-    assert "Added Today" in html
+    assert ">Today<" in html
+
+
+def test_a_day_of_cutting_shows_a_signed_negative():
+    from proseview.generator import _render_progress_card
+    from proseview.goals import Goals
+
+    fake = Goals(
+        rolling_velocity=0.0, streak_days=3, per_chapter_target=11_428,
+        per_chapter_current=8_713, words_added_today=-1_118,
+        scenes_touched_today=4, head_total_words=60_993, head_chapter_count=7,
+        baseline_date="2020-01-01",
+    )
+    card = _render_progress_card(fake, Config(), total_words=60_993, scene_count=49)
+    assert "ledgerDialog" not in card, "no ledger without a baseline to measure from"
+    assert "\u22121,118" in card
+    assert "Since Jan 1" in card
+    assert "7 chapters" in card
+
+
+def test_presence_counts_the_pov_character_from_frontmatter(tmp_path: Path):
+    """A first-person narrator is rarely named in the prose; frontmatter says
+    who is in the scene."""
+    chapter = tmp_path / "manuscript" / "ch01"
+    chapter.mkdir(parents=True)
+    for n in (1, 2):
+        (chapter / f"0{n}.md").write_text(
+            f"---\ntitle: S{n}\npov: Nima\ncharacters:\n  - Nima\n  - Shadi (on the phone)\n---\n\n"
+            "I walked home. Shadi called.\n",
+            encoding="utf-8",
+        )
+    chars = tmp_path / "story-bible" / "characters"
+    chars.mkdir(parents=True)
+    for name in ("Nima", "Shadi", "Amir"):
+        (chars / f"{name.lower()}.md").write_text(f"---\nname: {name}\n---\n", encoding="utf-8")
+
+    html = build_dashboard(tmp_path, Config.load(tmp_path))
+    presence = json.loads(_extract_js_literal(html, "presenceChartData"))
+    by_name = {d["label"]: d["data"] for d in presence["datasets"]}
+    assert by_name["Nima"] == [2]
+    assert by_name["Shadi"] == [2]
+    assert "Amir" not in by_name
+
+
+def test_review_badge_marks_only_scenes_under_the_floor():
+    from proseview.scenes import scene_is_outlier
+
+    cfg = Config.load(FIXTURE)
+    scenes = collect_scene_stats(FIXTURE, cfg.manuscript_subdir)
+    rich = dataclasses_replace(scenes[0], words=1000, mattr=0.95, mtld=300.0)
+    poor = dataclasses_replace(scenes[0], words=1000, mattr=0.5, mtld=20.0)
+    empty = dataclasses_replace(scenes[0], words=0, mattr=0.0, mtld=0.0)
+    assert not scene_is_outlier(rich, cfg)
+    assert scene_is_outlier(poor, cfg)
+    assert not scene_is_outlier(empty, cfg)
 
 
 def test_dashboard_renders_repo_browser_with_fixture_tree():
@@ -605,3 +663,27 @@ def test_co_occurrence_finds_pairs_for_multi_word_characters(tmp_path: Path):
     html = build_dashboard(tmp_path, Config.load(tmp_path))
 
     assert "White Rabbit+Mock Turtle" in html or "Mock Turtle+White Rabbit" in html
+
+
+def test_the_ledger_opens_from_the_today_number():
+    from proseview.generator import _render_progress_card
+    from proseview.goals import Goals
+    from proseview.ledger import build_ledger
+
+    ledger = build_ledger({"manuscript/ch05/07.md": "word " * 1776},
+                          {"manuscript/ch05/07b.md": "fresh " * 697},
+                          baseline_date="2020-01-01", baseline_kind="commit",
+                          titles={"manuscript/ch05/07b.md": "Day 88: The Next Best Thing"})
+    fake = Goals(
+        rolling_velocity=-160.0, streak_days=3, per_chapter_target=11_428,
+        per_chapter_current=8_713, words_added_today=-1_079,
+        scenes_touched_today=4, head_total_words=60_993, head_chapter_count=7,
+        baseline_date="2020-01-01", ledger=ledger,
+    )
+    card = _render_progress_card(fake, Config(), total_words=60_993, scene_count=49)
+    assert 'class="banner-ledger-btn" onclick="openLedger()"' in card
+    assert 'id="ledgerDialog"' in card
+    assert "+697" in card and "\u22121,776" in card
+    assert 'data-scene-path="ch05/07b.md"' in card
+    assert "Day 88: The Next Best Thing" in card
+    assert "\u2212160" in card, "words a day is signed, not floored to 0"

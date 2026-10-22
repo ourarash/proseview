@@ -44,7 +44,7 @@ async function saveSettings() {
         btn.innerText = "Error";
         btn.classList.add("danger");
         setTimeout(() => {
-            btn.innerText = "Save Changes";
+            btn.innerText = "Save changes";
             btn.classList.remove("danger");
             btn.disabled = false;
         }, 3000);
@@ -86,19 +86,35 @@ function clearAllBackups() {
         });
 }
 
-// Call updateBackupStats when settings tab is opened
+// Settings is a dialog over whatever tab is open: the goals, genre and
+// theme are changed now and then, never worked in.
+function openSettings() {
+    const dialog = document.getElementById('settingsDialog');
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    updateBackupStats();
+}
+
+function closeSettings() {
+    const dialog = document.getElementById('settingsDialog');
+    if (dialog && dialog.open) dialog.close();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Override showTab if it exists to hook into settings open
-    const originalShowTab = window.showTab;
-    if (typeof originalShowTab === "function") {
-        window.showTab = function(tabId) {
-            originalShowTab(tabId);
-            if (tabId === 'settings') {
-                updateBackupStats();
+    // Esc closes an open theme list first, not the whole dialog. The list's
+    // own Esc handler has closed it by the time "cancel" fires, so note
+    // whether it was open before any handler ran.
+    const dialog = document.getElementById('settingsDialog');
+    let themeListWasOpen = false;
+    if (dialog) {
+        dialog.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                themeListWasOpen = typeof themeMenuIsOpen === 'function' && themeMenuIsOpen();
             }
-        };
-    } else {
-        // Fallback polling or just initial load
-        updateBackupStats();
+        }, true);
+        dialog.addEventListener('cancel', function(event) {
+            if (themeListWasOpen) event.preventDefault();
+            themeListWasOpen = false;
+        });
     }
 });

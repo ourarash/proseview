@@ -2424,6 +2424,7 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
 ):
     open_scene(page, server)
     header = page.locator("#sceneModal .modal-header")
+    shown_box = scene_content_box(page)
 
     page.locator("#sceneAppearanceBtn").click()
     page.locator("input[name='sceneToolbarMode'][value='hidden']").check()
@@ -2438,10 +2439,10 @@ def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     page.wait_for_function(
         "() => document.querySelector('#sceneModal .modal-header').dataset.toolbarHidden === 'true'"
     )
-    # With the toolbar hidden the prose owns the top of the window -- 60px is
-    # the reading column's own gutter, and nothing else sits above it.
+    # Hiding keeps the toolbar's space, so the prose stays where it was
+    # rather than shifting under the reader on every hide and reveal.
     prose_box = scene_content_box(page)
-    assert prose_box and prose_box["y"] <= 80
+    assert shown_box and prose_box and abs(prose_box["y"] - shown_box["y"]) <= 2
 
     reveal_box = page.locator("#sceneToolbarReveal").bounding_box()
     assert reveal_box

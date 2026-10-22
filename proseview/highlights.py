@@ -244,7 +244,10 @@ def compute_scene_highlights(
     scene's own top-repeated words; pass ``SceneStats.repetition_examples``.
     """
     paragraphs = split_paragraphs(text)
-    plain_paragraphs = [strip_markdown_for_offsets(p) for p in paragraphs]
+    # A NOTE/TODO comment is a block the editor shows as a note, not prose,
+    # so no pass marks it (the "!" of "<!--" is not a comedy beat).
+    plain_paragraphs = ["" if p.startswith("<!--") else strip_markdown_for_offsets(p)
+                        for p in paragraphs]
     
     return {
         "paragraphs": paragraphs,

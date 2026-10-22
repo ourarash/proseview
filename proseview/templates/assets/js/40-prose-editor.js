@@ -147,6 +147,22 @@
             }
         }
 
+        // Whether `needle` sits at `at` in `text` as whole words, so a
+        // highlight for "route" never lands inside "routes".
+        function _hlTextAt(text, needle, at) {
+            if (text.substr(at, needle.length) !== needle) return false;
+            var word = /[\p{L}\p{N}_]/u;
+            return !(at > 0 && word.test(text[at - 1]) && word.test(needle[0]))
+                && !(word.test(text[at + needle.length] || '') && word.test(needle[needle.length - 1]));
+        }
+
+        function _hlFindText(text, needle, from) {
+            for (var at = text.indexOf(needle, from); at >= 0; at = text.indexOf(needle, at + 1)) {
+                if (_hlTextAt(text, needle, at)) return at;
+            }
+            return -1;
+        }
+
         function updatePMHighlightDecorations() {
             if (!_pmView || !window._PM) return;
             var p = paths[curIdx];
@@ -155,22 +171,48 @@
             var hlData = sceneHls.highlights || {};
             var doc = _pmView.state.doc;
 
-            var paraNodes = [];
+            // Each paragraph's text as the editor holds it, with the document
+            // position of every character. The server's offsets count its own
+            // markdown-stripped text in code points, which drifts from this
+            // after an emoji, an escape, an intraword underscore or a line
+            // break, so a highlight is placed by finding its text here.
+            // A block with no text (a NOTE, a scene break) is still one of the
+            // server's paragraphs, so it holds its index here.
+            var paraTexts = [];
             doc.descendants(function(node, pos) {
-                if (node.isTextblock) paraNodes.push(pos);
+                if (node.isBlock && node.isLeaf) { paraTexts.push(null); return false; }
+                if (!node.isTextblock) return true;
+                var text = '', posAt = [];
+                node.forEach(function(child, offset) {
+                    var start = pos + 1 + offset;
+                    var t = child.isText ? child.text : '￼';
+                    for (var i = 0; i < t.length; i++) posAt.push(start + i);
+                    text += t;
+                });
+                posAt.push(pos + 1 + node.content.size);
+                paraTexts.push({ lower: text.toLowerCase(), posAt: posAt });
+                return false;
             });
 
             var decorations = [];
             PASS_ORDER.forEach(function(name) {
                 if (!hls[name]) return;
                 var insts = hlData[name] || [];
+                var searchFrom = {};
                 insts.forEach(function(inst) {
                     var paraIdx = inst.paragraph_index;
                     var offsets = inst.char_offsets;
-                    if (!offsets || paraIdx >= paraNodes.length) return;
-                    var nodePos = paraNodes[paraIdx];
-                    var from = nodePos + 1 + offsets[0];
-                    var to = nodePos + 1 + offsets[1];
+                    var para = paraTexts[paraIdx];
+                    if (!offsets || !para || !inst.text) return;
+                    var needle = inst.text.toLowerCase();
+                    var from0 = searchFrom[paraIdx] || 0;
+                    var at = offsets[0] >= from0 && _hlTextAt(para.lower, needle, offsets[0]) ? offsets[0]
+                        : _hlFindText(para.lower, needle, from0);
+                    if (at < 0) at = _hlFindText(para.lower, needle, 0);
+                    if (at < 0) return;
+                    searchFrom[paraIdx] = at + needle.length;
+                    var from = para.posAt[at];
+                    var to = para.posAt[at + needle.length - 1] + 1;
                     if (from >= to || to > doc.content.size) return;
                     var cls = PASS_CLASSES[name] || '';
                     var title = PASS_LABELS[name] || name;
@@ -186,7 +228,17 @@
                         var sceneCount = parts[1] || '?';
                         if (desc.indexOf('{para}') !== -1) desc = desc.split('{para}').join(paraCount);
                         if (desc.indexOf('{scene}') !== -1) desc = desc.split('{scene}').join(sceneCount);
-                        attrs['data-count'] = paraCount + ' / ' + sceneCount;
+                        // The count is its own widget after the word: another
+                        // pass overlapping part of the word ("I" in "I'm")
+                        // splits the inline span, and a badge on the span
+                        // would then repeat after every piece.
+                        var count = paraCount + ' / ' + sceneCount;
+                        decorations.push(PM.Decoration.widget(to, function() {
+                            var badge = document.createElement('span');
+                            badge.className = cls;
+                            badge.setAttribute('data-count', count);
+                            return badge;
+                        }, { side: -1, ignoreSelection: true, key: 'hl-count-' + to + '-' + count }));
                     }
                     
                     attrs['data-hl-title'] = title;

@@ -57,8 +57,10 @@ Click **Export** in the top bar. The dialog has three steps:
    for a print book, single pages for a shareable PDF, and for a Word
    document its text in the document's own styles, a chapter at a time (Word
    lays out the pages itself). Use the arrows to turn
-   pages and the menu to jump. A PDF preview lays out the first three
-   chapters, so it stays quick on a long novel; the export has them all.
+   pages and the menu to jump. A PDF preview is the whole PDF, with
+   words you can select, one or two pages at a time and zoom (`−`, `+`,
+   Cmd/Ctrl `+` `−` `0`); in the online demo it shows the first three
+   chapters as pictures of the pages.
 
 Click **Export**. When the book is ready you can **Open** it, **Show in
 folder**, or **Download** a copy. Books land in an `exports/` folder inside

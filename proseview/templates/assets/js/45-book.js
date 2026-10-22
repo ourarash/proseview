@@ -8,6 +8,11 @@
         var _bookScrollQueued = false;
         var _bookChapterStarts = [];   // index into _bookSections of each chapter's first scene
         var _bookSidebarBefore = null; // the file browser's state before the book closed it
+        var _bookPages = null;         // the print layout viewer, once made
+        var _bookPagesScroll = null;   // where the text was when print layout opened
+        var _bookOrigin = null;        // {scene, top}: the scene the book was opened from
+        var BOOK_LAYOUT_KEY = 'proseview-book-layout';
+        var BOOK_PRINT_ANCHOR_KEY = 'proseview-book-print-anchor';
         var BOOK_INTRO_KEY = 'proseview-book-intro-seen';
         var BOOK_INTRO_TIMES = 3;
 
@@ -160,10 +165,19 @@
         }
 
         // Next or previous scene.
+        // In the print layout the same moves jump to where the scene or
+        // chapter starts on its page.
         function bookGoScene(delta) {
             var index = _bookSections.indexOf(_bookCurrentSection());
             var next = _bookSections[Math.max(0, Math.min(_bookSections.length - 1, index + delta))];
-            if (next) { _bookScrollTo(next.dataset.path); _bookTrack(); }
+            if (!next) return;
+            if (_bookPagesScroll !== null) { if (_bookPages) _bookPages.goTo(_bookSceneMark(next.dataset.path)); return; }
+            _bookScrollTo(next.dataset.path);
+            _bookTrack();
+        }
+
+        function _bookSceneMark(p) {
+            return 'scene-' + p.replace(/\.md$/i, '');
         }
 
         // Next chapter, or back to the start of this one and then the one
@@ -180,7 +194,13 @@
 
         function bookGoToChapter(index) {
             var first = _bookSections[_bookChapterStarts[index]];
-            if (first) { _bookScrollTo(first.dataset.path); _bookTrack(); }
+            if (!first) return;
+            if (_bookPagesScroll !== null) {
+                if (_bookPages && !_bookPages.goTo('chapter-' + (index + 1))) _bookPages.goTo(_bookSceneMark(first.dataset.path));
+                return;
+            }
+            _bookScrollTo(first.dataset.path);
+            _bookTrack();
         }
 
         // How far through the book the reader is, as the bottom bar shows it.
@@ -250,7 +270,7 @@
 
         function _bookTrack() {
             _bookScrollQueued = false;
-            if (document.documentElement.dataset.view !== 'book' || !_bookSections.length) return;
+            if (document.documentElement.dataset.view !== 'book' || !_bookSections.length || _bookPagesScroll !== null) return;
             _bookShowProgress();
             var line = _bookHeaderBottom() + 24;
             var current = _bookSections[0];
@@ -258,6 +278,11 @@
                 if (_bookAnchor(_bookSections[i]).getBoundingClientRect().top > line) break;
                 current = _bookSections[i];
             }
+            _bookShowWhere(current);
+        }
+
+        // Name the scene being read in the header and the bar.
+        function _bookShowWhere(current) {
             var p = current.dataset.path;
             if (p === _bookCurrent) return;
             _bookCurrent = p;
@@ -283,6 +308,30 @@
             routeToHash('/book/' + encodeURIComponent(p), false);
         }
 
+        // The header steps aside while reading on and comes back on the way
+        // up, as the scene view's toolbar does (and follows its setting:
+        // Pinned keeps it). It keeps its space, so the text never moves.
+        var _bookLastScroll = 0;
+        function _bookSetHeaderHidden(hidden) {
+            var panel = document.getElementById('book-panel');
+            if (panel) panel.classList.toggle('is-header-hidden', hidden);
+        }
+
+        window.addEventListener('scroll', function() {
+            if (document.documentElement.dataset.view !== 'book') return;
+            var current = window.scrollY;
+            var delta = current - _bookLastScroll;
+            _bookLastScroll = current;
+            var panel = document.getElementById('book-panel');
+            if (!panel || panel.classList.contains('is-focus')) return;
+            var mode = typeof _sceneToolbarMode === 'string' ? _sceneToolbarMode : 'auto';
+            if (mode === 'pinned' || (typeof sceneToolbarReducedMotion === 'function' && sceneToolbarReducedMotion())) return;
+            // A jump (a chapter, a page, opening the book) is not reading on.
+            if (Math.abs(delta) > window.innerHeight) return;
+            if (current < 24 || delta < -8) _bookSetHeaderHidden(false);
+            else if (current > 80 && delta > 8 && !document.querySelector('#book-panel .scene-toolbar-popover:not([hidden])')) _bookSetHeaderHidden(true);
+        }, {passive: true});
+
         window.addEventListener('scroll', function() {
             if (_bookScrollQueued || document.documentElement.dataset.view !== 'book') return;
             _bookScrollQueued = true;
@@ -301,6 +350,13 @@
             if (paths.indexOf(p) < 0) p = null;
             var hash = '/book' + (p ? '/' + encodeURIComponent(p) : '');
             var view = document.documentElement.dataset.view;
+            // Back returns to the scene the book was opened from, where it was
+            // scrolled to. Coming back from Edit keeps that.
+            if (!options.returning) {
+                var sceneBody = document.querySelector('#sceneModal .modal-content');
+                _bookOrigin = view === 'scene' && paths[curIdx]
+                    ? {scene: paths[curIdx], top: sceneBody ? sceneBody.scrollTop : 0} : null;
+            }
             if (view === 'scene' && typeof closeSceneModal === 'function') {
                 // Routed first, so a reload on the way out lands in the book.
                 _bookReturn = false;
@@ -319,6 +375,8 @@
             _bookCurrent = null;
             if (options.route !== false) routeToHash(hash, true);
             var land = function() {
+                // Opened in the print layout, the page is the pages' to scroll.
+                if (_bookPagesScroll !== null) return;
                 if (p) _bookScrollTo(p);
                 else window.scrollTo({top: 0, left: 0, behavior: 'instant'});
                 _bookTrack();
@@ -330,8 +388,201 @@
             if (p && typeof revealSidebarItem === 'function') revealSidebarItem({scenePath: p});
             var title = document.getElementById('bookTitle');
             if (title && options.focus !== false) title.focus({preventScroll: true});
-            if (!options.returning) _bookShowIntro();
+            var layout = options.layout;
+            if (!layout) {
+                try { layout = localStorage.getItem(BOOK_LAYOUT_KEY); } catch (e) {}
+            }
+            setBookLayout(layout === 'print');
+            if (!options.returning && layout !== 'print') _bookShowIntro();
             return true;
+        }
+
+        // Back: to the scene the book was opened from, or the dashboard.
+        function leaveBookView() {
+            var origin = _bookOrigin;
+            _bookOrigin = null;
+            if (!origin || paths.indexOf(origin.scene) < 0) {
+                closeBookView();
+                return;
+            }
+            if (openSceneModal(origin.scene) === false) return;
+            [0, 40, 120, 260].forEach(function(delay) {
+                setTimeout(function() {
+                    var body = document.querySelector('#sceneModal .modal-content');
+                    if (body && paths[curIdx] === origin.scene) body.scrollTo({top: origin.top, left: 0, behavior: 'instant'});
+                }, delay);
+            });
+        }
+
+        // Focus: the bars step aside so the pages fill the screen. They slide
+        // back over the pages while the pointer is near the top or bottom.
+        function toggleBookFocus(on) {
+            var panel = document.getElementById('book-panel');
+            if (!panel) return;
+            if (on === undefined) on = !panel.classList.contains('is-focus');
+            if (on && _bookPagesScroll === null) return;
+            panel.classList.toggle('is-focus', on);
+            panel.classList.remove('is-peek-top', 'is-peek-bottom');
+            document.getElementById('bookFocusBtn').setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+
+        // Style, PDF kind, trim and paper: Export's settings, chosen here too.
+        // The choices come from Export's outline; what is shown is what the
+        // PDF on screen was laid out as.
+        var _bookPrintOptions = null;
+
+        function _bookFillPrintFields(facts) {
+            var load = _bookPrintOptions ? Promise.resolve(_bookPrintOptions)
+                : fetch('/api/export/outline').then(function(r) { return r.json(); }).then(function(outline) {
+                    _bookPrintOptions = outline;
+                    var fill = function(id, items) {
+                        var select = document.getElementById(id);
+                        select.innerHTML = '';
+                        items.forEach(function(item) { select.add(new Option(item.label, item.name)); });
+                    };
+                    fill('bookPrintStyle', outline.styles.filter(function(style) {
+                        return style.formats.indexOf('pdf-print') >= 0 || style.formats.indexOf('pdf-share') >= 0;
+                    }));
+                    fill('bookPrintTrim', outline.trims);
+                    fill('bookPrintPaper', outline.papers);
+                    return outline;
+                });
+            return load.then(function() {
+                if (facts.style) document.getElementById('bookPrintStyle').value = facts.style;
+                document.getElementById('bookPrintFormat').value = facts.layout === 'print' ? 'pdf-print' : 'pdf-share';
+                if (facts.trim) document.getElementById('bookPrintTrim').value = facts.trim;
+                if (facts.paper) document.getElementById('bookPrintPaper').value = facts.paper;
+                _bookSyncPrintFields();
+            }).catch(function() {});
+        }
+
+        function _bookSyncPrintFields() {
+            var style = document.getElementById('bookPrintStyle').value;
+            var entry = (_bookPrintOptions && _bookPrintOptions.styles || []).filter(function(s) { return s.name === style; })[0];
+            var printable = !entry || entry.formats.indexOf('pdf-print') >= 0;
+            var format = document.getElementById('bookPrintFormat');
+            format.options[0].disabled = !printable;
+            if (!printable) format.value = 'pdf-share';
+            document.getElementById('bookPrintNote').textContent = printable ? '' : (entry ? entry.label : style) + ' makes a shareable PDF only.';
+            var print = format.value === 'pdf-print';
+            document.getElementById('bookPrintTrimField').hidden = !print;
+            document.getElementById('bookPrintPaperField').hidden = print;
+        }
+
+        // A new style or size: laid out again where the reader is, and
+        // remembered as Export's.
+        function setBookPrintLayout() {
+            if (!_bookPages || _bookPagesScroll === null) return;
+            _bookSyncPrintFields();
+            // Where the reader is, as a scene and how far into it.
+            var anchor = _bookPages.anchor('scene-');
+            var source = fetchBookPdf({remember: {
+                style: document.getElementById('bookPrintStyle').value,
+                format: document.getElementById('bookPrintFormat').value,
+                trim: document.getElementById('bookPrintTrim').value,
+                paper: document.getElementById('bookPrintPaper').value,
+            }});
+            source.then(_bookFillPrintFields, function() {});
+            _bookPages.load(source, anchor ? {dest: anchor.name, anchor: anchor} : null);
+        }
+
+        // The pages take the theme's colors, as the text does.
+        function _bookPageColors() {
+            var styles = getComputedStyle(document.documentElement);
+            var background = styles.getPropertyValue('--surface-card').trim();
+            var foreground = styles.getPropertyValue('--text-main').trim();
+            return background && foreground ? {background: background, foreground: foreground} : null;
+        }
+
+        // Print layout: the book as Export lays it out, opened at the chapter
+        // being read. Text again goes back to the same place in the text.
+        function setBookLayout(on, remember) {
+            var panel = document.getElementById('book-panel');
+            var stage = document.getElementById('bookPages');
+            if (!panel || !stage) return;
+            // The demo has no server to lay the pages out.
+            if (window.PROSEVIEW_STATIC) on = false;
+            if (remember !== false && document.documentElement.dataset.view === 'book') {
+                try { localStorage.setItem(BOOK_LAYOUT_KEY, on ? 'print' : 'text'); } catch (e) {}
+            }
+            document.getElementById('bookViewText').setAttribute('aria-checked', on ? 'false' : 'true');
+            document.getElementById('bookViewPrint').setAttribute('aria-checked', on ? 'true' : 'false');
+            document.getElementById('bookFocusBtn').hidden = !on;
+            if (on === (_bookPagesScroll !== null)) return;
+            document.getElementById('bookPagesNav').hidden = !on;
+            if (!on) {
+                toggleBookFocus(false);
+                if (_bookPages) _bookPages.close();
+                stage.hidden = true;
+                panel.classList.remove('is-pages');
+                var y = _bookPagesScroll;
+                _bookPagesScroll = null;
+                if (document.documentElement.dataset.view === 'book') window.scrollTo({top: y, left: 0, behavior: 'instant'});
+                return;
+            }
+            _bookPagesScroll = window.scrollY;
+            toggleBookToc(false);
+            document.getElementById('bookIntro').hidden = true;
+            panel.classList.add('is-pages');
+            stage.hidden = false;
+            if (!_bookPages) {
+                _bookPages = createPdfPages(stage, {
+                    prev: document.getElementById('bookPagesPrev'),
+                    next: document.getElementById('bookPagesNext'),
+                    pick: document.getElementById('bookPagesPick'),
+                    status: document.getElementById('bookPagesStatus'),
+                }, 'book', {
+                    // Flat in the page, like the text: a page as wide as the
+                    // text column, under the header.
+                    continuous: true,
+                    columnWidth: function() {
+                        return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--reading-measure')) || 760;
+                    },
+                    pageColors: _bookPageColors,
+                    topOffset: function() {
+                        return document.getElementById('book-panel').classList.contains('is-focus') ? 0 : _bookHeaderBottom();
+                    },
+                });
+                // The header and the bar name the scene on screen, as in the
+                // text, and Edit opens it.
+                _bookPages.onshow = function() {
+                    var position = _bookPages.position();
+                    var scene = _bookPages.markAt('scene-', position);
+                    var chapter = _bookPages.markAt('chapter-', position);
+                    // A chapter's opening page, before its first scene, is that chapter's.
+                    var opening = chapter && (!scene || chapter.page > scene.page || (chapter.page === scene.page && chapter.top > scene.top));
+                    var section = !opening && scene
+                        ? _bookSections.filter(function(s) { return _bookSceneMark(s.dataset.path) === scene.name; })[0] : null;
+                    if (!section && chapter) section = _bookSections[_bookChapterStarts[Number(chapter.name.slice(8)) - 1]];
+                    if (section) _bookShowWhere(section);
+                    // Kept for this tab, so a reload of the page (Proseview
+                    // updated, say) opens at this same spot.
+                    try { sessionStorage.setItem(BOOK_PRINT_ANCHOR_KEY, JSON.stringify(_bookPages.anchor('scene-'))); } catch (e) {}
+                };
+                document.getElementById('bookPagesNext').after(_bookPages.tools);
+                // A new theme (or one tried in the theme menu) redraws them.
+                var themeTimer = null;
+                new MutationObserver(function() {
+                    if (_bookPagesScroll === null) return;
+                    clearTimeout(themeTimer);
+                    themeTimer = setTimeout(function() { _bookPages.refresh(); }, 80);
+                }).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+            }
+            // Opened where the scene being read starts on its page.
+            var section = _bookCurrentSection();
+            var chapter = section ? (parseInt(section.dataset.chapterIndex, 10) || 0) + 1 : 1;
+            var mark = section ? _bookSceneMark(section.dataset.path) : '';
+            // Within that scene, the spot the reader last had in view, if
+            // this tab was reading it (a reload comes back to it).
+            var anchor = null;
+            try { anchor = JSON.parse(sessionStorage.getItem(BOOK_PRINT_ANCHOR_KEY) || 'null'); } catch (e) {}
+            if (!anchor || anchor.name !== mark) anchor = null;
+            var source = fetchBookPdf({});
+            source.then(_bookFillPrintFields, function() {});
+            _bookPages.load(source, {dest: mark || 'chapter-' + chapter, anchor: anchor}).then(function() {
+                if (_bookPagesScroll === null || anchor) return;
+                if (!_bookPages.goTo(mark)) _bookPages.goTo('chapter-' + chapter);
+            });
         }
 
         function closeBookView() {
@@ -380,13 +631,49 @@
                 var toc = document.getElementById('bookToc');
                 if (toc && !toc.hidden && !event.target.closest('.book-nav-where-wrap')) toggleBookToc(false);
             });
+            var pagesPrev = document.getElementById('bookPagesPrev');
+            var pagesNext = document.getElementById('bookPagesNext');
+            var pagesPick = document.getElementById('bookPagesPick');
+            if (pagesPrev) pagesPrev.addEventListener('click', function() { if (_bookPages) _bookPages.turn(-1); });
+            if (pagesNext) pagesNext.addEventListener('click', function() { if (_bookPages) _bookPages.turn(1); });
+            if (pagesPick) pagesPick.addEventListener('change', function() { if (_bookPages) _bookPages.show(Number(pagesPick.value)); });
             document.addEventListener('keydown', function(event) {
                 if (document.documentElement.dataset.view !== 'book') return;
+                // Pages fills the screen, so Cmd/Ctrl + − 0 zoom its pages.
+                if (_bookPagesScroll !== null && _bookPages && !event.defaultPrevented && _bookPages.handleKey(event)) return;
                 if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) return;
                 var tag = (event.target && event.target.tagName || '').toUpperCase();
                 if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (event.target && event.target.isContentEditable)) return;
                 if (document.querySelector('dialog[open]')) return;
                 var tocOpen = toc && !toc.hidden;
+                var panel = document.getElementById('book-panel');
+                // Shift+F: full screen, as in the scene view.
+                if ((event.key === 'f' || event.key === 'F') && event.shiftKey && typeof toggleFullscreen === 'function') {
+                    event.preventDefault();
+                    toggleFullscreen();
+                    return;
+                }
+                if ((event.key === 'f' || event.key === 'F') && !event.shiftKey && _bookPagesScroll !== null) {
+                    event.preventDefault();
+                    toggleBookFocus();
+                    return;
+                }
+                if (event.key === 'Escape' && !tocOpen) {
+                    if (document.querySelector('.scene-toolbar-popover:not([hidden])')) return;
+                    event.preventDefault();
+                    // Esc steps back one thing at a time: full screen, Focus, the book.
+                    if (document.fullscreenElement && typeof toggleFullscreen === 'function') toggleFullscreen();
+                    else if (panel.classList.contains('is-focus')) toggleBookFocus(false);
+                    else leaveBookView();
+                    return;
+                }
+                if (_bookPagesScroll !== null) {
+                    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        if (_bookPages) _bookPages.turn(event.key === 'ArrowRight' ? 1 : -1);
+                    }
+                    return;
+                }
                 if (event.key === 'Escape' && tocOpen) {
                     event.preventDefault();
                     toggleBookToc(false);
@@ -406,9 +693,22 @@
                     openBookScene(bookCurrentScene(), true);
                 }
             });
+            // In Focus, the bars come back while the pointer is near them.
+            document.addEventListener('mousemove', function(event) {
+                var panel = document.getElementById('book-panel');
+                if (panel && panel.classList.contains('is-header-hidden') && event.clientY < 56) _bookSetHeaderHidden(false);
+                if (!panel || !panel.classList.contains('is-focus')) return;
+                var nearTop = event.clientY < 56 || !!event.target.closest('.book-header');
+                var nearBottom = event.clientY > window.innerHeight - 64 || !!event.target.closest('.book-nav');
+                panel.classList.toggle('is-peek-top', nearTop);
+                panel.classList.toggle('is-peek-bottom', nearBottom);
+            });
+            var bookHeader = document.querySelector('#book-panel .book-header');
+            if (bookHeader) bookHeader.addEventListener('focusin', function() { _bookSetHeaderHidden(false); });
             // Leaving the book, however it happens, gives the file browser back.
             new MutationObserver(function() {
                 if (document.documentElement.dataset.view !== 'book') {
+                    setBookLayout(false, false);
                     _bookRestoreSidebar();
                     var intro = document.getElementById('bookIntro');
                     if (intro) intro.hidden = true;

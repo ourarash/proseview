@@ -206,7 +206,9 @@
     [#metadata(here().page()) <first-text-page>]
   }
   [#metadata("chapter") <chapter-start>]
-  heading(level: 1, outline-label)
+  // Labelled, so the PDF names where each chapter starts (chapter-1, …) and
+  // a reader can open it there.
+  if n != none [#heading(level: 1, outline-label)#label("chapter-" + str(n))] else { heading(level: 1, outline-label) }
   set par(first-line-indent: 0pt, justify: false)
   set text(hyphenate: false)
   v(if print { 16% } else { 10% })

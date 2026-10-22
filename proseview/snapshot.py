@@ -147,7 +147,8 @@ def write_snapshot(
         if leaked:
             raise SnapshotError(f"{name} would publish the repository path {root}")
         (out / name).write_text(text, encoding="utf-8")
-    shutil.copytree(TEMPLATE_DIR / "vendor", out / "vendor")
+    # pdf.js only draws pages the server lays out, and a snapshot has no server.
+    shutil.copytree(TEMPLATE_DIR / "vendor", out / "vendor", ignore=shutil.ignore_patterns("pdfjs"))
     if demo:
         # The demo has no server to build books, so the Export dialog serves
         # ready-made ones of the whole book (see export_demo.py).

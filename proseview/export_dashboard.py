@@ -139,14 +139,6 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
             entry["error"] = str(exc)
         selections.append(entry)
 
-    saved = cfg.export
-    cover = saved.cover_image
-    cover_ok = bool(cover)
-    if cover:
-        try:
-            cover_ok = saved_cover_path(root, cover).is_file()
-        except ExportError:
-            cover_ok = False
     return {
         "ok": True,
         # Raised whenever the dialog starts needing something new from the
@@ -168,31 +160,44 @@ def outline(root: Path, cfg: Config) -> dict[str, Any]:
         "facets": _facets(facts),
         "words_per_page": dict(WORDS_PER_PAGE),
         "papers": [{"name": name, "label": label} for name, label in PAPER_LABELS.items()],
-        "details": {
-            "title": saved.title,
-            "subtitle": saved.subtitle,
-            "author": saved.author,
-            "language": saved.language or "en-US",
-            "epub_version": saved.epub_version or "epub3",
-            "style": saved.style or DEFAULT_STYLE,
-            "scene_titles": bool(saved.scene_titles) if saved.scene_titles is not None else False,
-            "cover_image": cover if cover_ok else "",
-            "format": saved.format or "epub",
-            "trim": saved.trim if saved.trim in TRIM_SIZES else DEFAULT_TRIM,
-            "paper": saved.paper if saved.paper in PAPER_SIZES else default_paper(saved.language or "en-US"),
-            "recto_chapters": saved.recto_chapters if saved.recto_chapters is not None else True,
-            "contact": saved.contact,
-            "watermark": "",
-            "copyright_page": saved.copyright_page if saved.copyright_page is not None else True,
-            "isbn": saved.isbn,
-            "dedication": saved.dedication,
-            "also_by": saved.also_by,
-            "matter_files": saved.matter_files if saved.matter_files is not None else True,
-        },
+        "details": saved_details(root, cfg),
         "matter_files": [
             {"side": side, "path": page.source, "title": page.title}
             for side, pages in matter_files(root).items() for page in pages
         ],
+    }
+
+
+def saved_details(root: Path, cfg: Config) -> dict[str, Any]:
+    """The book details remembered from the last export, as the dialog starts from them."""
+    saved = cfg.export
+    cover = saved.cover_image
+    cover_ok = bool(cover)
+    if cover:
+        try:
+            cover_ok = saved_cover_path(root, cover).is_file()
+        except ExportError:
+            cover_ok = False
+    return {
+        "title": saved.title,
+        "subtitle": saved.subtitle,
+        "author": saved.author,
+        "language": saved.language or "en-US",
+        "epub_version": saved.epub_version or "epub3",
+        "style": saved.style or DEFAULT_STYLE,
+        "scene_titles": bool(saved.scene_titles) if saved.scene_titles is not None else False,
+        "cover_image": cover if cover_ok else "",
+        "format": saved.format or "epub",
+        "trim": saved.trim if saved.trim in TRIM_SIZES else DEFAULT_TRIM,
+        "paper": saved.paper if saved.paper in PAPER_SIZES else default_paper(saved.language or "en-US"),
+        "recto_chapters": saved.recto_chapters if saved.recto_chapters is not None else True,
+        "contact": saved.contact,
+        "watermark": "",
+        "copyright_page": saved.copyright_page if saved.copyright_page is not None else True,
+        "isbn": saved.isbn,
+        "dedication": saved.dedication,
+        "also_by": saved.also_by,
+        "matter_files": saved.matter_files if saved.matter_files is not None else True,
     }
 
 
@@ -671,6 +676,114 @@ def build_preview(root: Path, cfg: Config, body: dict[str, Any], cache: PreviewC
         "first_text_page": first_text_page,
         "note": f"The preview shows the first {PREVIEW_CHAPTERS} chapters; the export has them all." if shortened else "",
     }
+
+
+# --------------------------------------------------------------------------
+# The book as pages
+
+
+def _reading_details(root: Path, cfg: Config) -> ExportRequest:
+    """The details Export would start from, made into a PDF.
+
+    A style without a PDF design falls back to the default one, and the
+    printed book is shown unless the shareable PDF was chosen last (or is
+    all the style makes).
+    """
+    raw = saved_details(root, cfg)
+    formats = load_style(raw["style"]).formats if raw["style"] in available_styles() else ()
+    if not {"pdf-print", "pdf-share"} & set(formats):
+        raw["style"] = DEFAULT_STYLE
+        formats = load_style(DEFAULT_STYLE).formats
+    if raw["format"] not in {"pdf-print", "pdf-share"} or raw["format"] not in formats:
+        raw["format"] = "pdf-print" if "pdf-print" in formats else "pdf-share"
+    return request_details({"details": raw})
+
+
+def save_reading_layout(root: Path, cfg: Config, wanted: dict[str, Any]) -> None:
+    """Remember a style, PDF kind, trim and paper chosen in the reader's print layout.
+
+    They are Export's own settings, so the next export (and the Export dialog)
+    starts from them. A style that makes only the shareable PDF (Manuscript)
+    switches to it. Nothing else in ``.proseview.yaml`` is touched.
+    """
+    if not isinstance(wanted, dict):
+        raise ExportError("The layout must be an object")
+    raw = saved_details(root, cfg)
+    for key in ("style", "format", "trim", "paper"):
+        if key in wanted:
+            raw[key] = wanted[key]
+    if raw["style"] not in available_styles():
+        raise ExportError(f"Unknown book style {raw['style']!r}")
+    formats = load_style(raw["style"]).formats
+    if raw["format"] not in formats or raw["format"] not in {"pdf-print", "pdf-share"}:
+        raw["format"] = "pdf-print" if "pdf-print" in formats else "pdf-share"
+    details = request_details({"details": raw})
+    save_book_details(root, cfg, {key: getattr(details, key) for key in ("style", "format", "trim", "paper")})
+
+
+class PdfPages:
+    """The book laid out as the real PDF, for reading it page by page.
+
+    The last one is kept, keyed by its options and the modification times
+    of everything it is made from, so opening it again is instant. One is
+    built at a time; a second request for the same book waits for the first
+    and takes its result.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last: tuple[Any, bytes] | None = None
+
+    @staticmethod
+    def _stamp(root: Path, documents: list[SceneDocument], cover: Path | None) -> tuple:
+        sources = [root / doc.path for doc in documents] + ([cover] if cover else [])
+        for folder in ("front-matter", "back-matter"):
+            sources += sorted((root / folder).glob("*.md"))
+        sources += [root / ".proseview.yaml"]
+        stamps = []
+        for source in sources:
+            try:
+                stamps.append((source.as_posix(), source.stat().st_mtime_ns))
+            except OSError:
+                stamps.append((source.as_posix(), None))
+        return tuple(stamps)
+
+    def build(self, root: Path, cfg: Config, body: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
+        """The PDF for *body* (an Export dialog request, or ``{}`` for the whole book).
+
+        Also returns what it was laid out as: ``layout`` (print or share),
+        ``style``, ``trim`` and ``paper``.
+        """
+        import json
+
+        documents = collect_scene_documents(root, cfg)
+        selection = selection_from_request(body, documents)
+        details = request_details(body) if body.get("details") else _reading_details(root, cfg)
+        fmt = str(body.get("preview") or details.format)
+        if fmt not in {"pdf-print", "pdf-share"}:
+            fmt = "pdf-share" if details.format == "pdf-share" else "pdf-print"
+        if fmt not in load_style(details.style).formats:
+            raise ExportError(f"The {load_style(details.style).name} style has no PDF design. Choose another style.")
+        cover = _cover(root, details)
+        key = (
+            json.dumps([body.get("selection"), details.__dict__, fmt], sort_keys=True, default=str),
+            self._stamp(root, documents, cover),
+        )
+        facts = {
+            "layout": "print" if fmt == "pdf-print" else "share",
+            "style": details.style, "trim": details.trim, "paper": details.paper,
+        }
+        with self._lock:
+            if self._last is not None and self._last[0] == key:
+                return self._last[1], facts
+            with tempfile.TemporaryDirectory() as tmp:
+                result = export_book(
+                    root, _dialog_config(cfg), Path(tmp) / "book.pdf", selection=selection, fmt=fmt,
+                    **_book_options(root, cfg, details),
+                )
+                data = result.path.read_bytes()
+            self._last = (key, data)
+        return data, facts
 
 
 def _dialog_config(cfg: Config) -> Config:

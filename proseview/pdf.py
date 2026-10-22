@@ -124,6 +124,16 @@ def _length(inches: float) -> str:
     return f"{inches:g}in"
 
 
+#: Where each scene starts, as a PDF named destination ("scene-ch01/01-opening"),
+#: so a reader can jump to it. Typst names a destination for a labelled
+#: heading; this one is placed, hidden and kept out of the contents and the
+#: bookmarks, so it takes no room and shows nowhere.
+_SCENE_MARK = (
+    "#let scene-mark(name) = place(hide["
+    "#heading(level: 9, outlined: false, bookmarked: false, numbering: none)[]#label(name)])"
+)
+
+
 class _Source:
     """The Typst document for one book."""
 
@@ -199,7 +209,7 @@ class _Source:
 
     def body(self) -> str:
         book = self.book
-        parts = [self.style.pdf_template.rstrip(), "", "#show: book", ""]
+        parts = [self.style.pdf_template.rstrip(), "", _SCENE_MARK, "", "#show: book", ""]
         if book.has_contents:
             # In print, a copyright page takes the back of the title page.
             copyright_first = bool(book.front_matter) and book.front_matter[0].kind == "copyright"
@@ -245,6 +255,7 @@ class _Source:
         ]
         show_titles = self.options.show_scene_titles
         for i, scene in enumerate(chapter.scenes):
+            lines.append(f"#scene-mark({string('scene-' + scene.key)})")
             if show_titles:
                 lines.append(f"#scene-title({self._content(scene.title)})")
             elif i:

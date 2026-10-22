@@ -7,7 +7,8 @@ Covers:
   whole book; custom order follows the list; stale picks are refused)
 - the server routes, in-process on a copy of the demo book: outline,
   preview pages, an export job from start to finished file, download,
-  saving a selection, cover upload, and the session-token gate
+  saving a selection, cover upload, the session-token gate, and the whole
+  PDF the page viewer draws (kept until a scene or an option changes)
 - readiness checks in plain words: the demo book's missing author and cover,
   a cover too small for stores, an image without a description, a missing
   image naming its scene
@@ -452,6 +453,72 @@ def test_route_pdf_preview_draws_the_first_chapters_as_pages(client):
     assert status == 200 and headers["Content-Type"] == "image/png" and png_bytes[:4] == b"\x89PNG"
     # A 5 × 8 in page at the preview's resolution.
     assert image_size(png_bytes) == (550, 880)
+
+
+def test_route_pdf_is_the_whole_book_as_export_writes_it(client):
+    status, headers, data = client.request("POST", "/api/export/pdf", {})
+    assert status == 200 and headers["Content-Type"] == "application/pdf"
+    assert data.startswith(b"%PDF")
+    # Every chapter, not only the first few, each named so a reader can open there.
+    import re
+
+    assert sorted({int(n) for n in re.findall(rb"chapter-(\d+)", data)}) == list(range(1, 13))
+    # And every scene, by its key, so the reader can jump to one.
+    assert b"scene-ch01/01-down-the-rabbit-hole" in data and b"scene-ch12/" in data
+    # Export's own defaults: the printed book at the remembered trim.
+    assert headers["X-Proseview-Layout"] == "print"
+
+
+def test_route_pdf_of_one_chapter_as_a_shareable_pdf(client):
+    from proseview.pdf import page_count
+
+    status, headers, data = client.request("POST", "/api/export/pdf", {
+        "selection": {"order": "book", "items": [{"kind": "chapter", "id": "2"}]},
+        "details": {"title": "Alice", "format": "pdf-share"},
+    })
+    assert status == 200 and headers["X-Proseview-Layout"] == "share"
+    assert b"chapter-2" in data and b"chapter-1" not in data
+    _, _, whole = client.request("POST", "/api/export/pdf", {"details": {"title": "Alice", "format": "pdf-share"}})
+    assert page_count(data) < page_count(whole)
+
+
+def test_route_pdf_is_kept_until_a_scene_or_an_option_changes(client, monkeypatch):
+    import os
+
+    from proseview import export_dashboard
+
+    builds = []
+    real = export_dashboard.export_book
+    monkeypatch.setattr(export_dashboard, "export_book", lambda *a, **k: builds.append(1) or real(*a, **k))
+    first = client.request("POST", "/api/export/pdf", {})[2]
+    again = client.request("POST", "/api/export/pdf", {})[2]
+    assert again == first and len(builds) == 1
+
+    scene = next((client_root(client) / "manuscript").rglob("*.md"))
+    later = scene.stat().st_mtime + 5
+    os.utime(scene, (later, later))
+    client.request("POST", "/api/export/pdf", {})
+    assert len(builds) == 2
+
+    client.request("POST", "/api/export/pdf", {"details": {"format": "pdf-print", "trim": "6x9"}})
+    assert len(builds) == 3
+
+
+def test_route_pdf_remembers_a_layout_chosen_in_the_reader(client):
+    status, headers, data = client.request("POST", "/api/export/pdf", {"remember": {"style": "manuscript", "format": "pdf-print"}})
+    # Manuscript makes only the shareable PDF, so that is what it becomes.
+    assert status == 200 and data.startswith(b"%PDF")
+    assert (headers["X-Proseview-Style"], headers["X-Proseview-Layout"]) == ("manuscript", "share")
+    saved = Config.load(client_root(client)).export
+    assert (saved.style, saved.format) == ("manuscript", "pdf-share")
+    # Export starts from it.
+    _, outline = client.json("GET", "/api/export/outline")
+    assert (outline["details"]["style"], outline["details"]["format"]) == ("manuscript", "pdf-share")
+
+
+def test_route_pdf_explains_what_it_cannot_lay_out(client):
+    status, data = client.json("POST", "/api/export/pdf", {"details": {"style": "nonesuch"}})
+    assert status == 400 and not data["ok"] and "nonesuch" in data["error"]
 
 
 def test_route_preview_of_all_formats_shows_the_one_asked_for(client):

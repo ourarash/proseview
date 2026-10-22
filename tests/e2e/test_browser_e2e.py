@@ -4594,7 +4594,9 @@ def _add_todo_from_gutter(page: Page, before: str) -> None:
     page.hover(f"#sceneProseHost .ProseMirror p:has-text('{before}')")
     affordance = page.locator("#pmInsertAffordance")
     affordance.wait_for(state="visible")
-    affordance.click()
+    # Dispatched rather than clicked: moving the mouse onto the "+" can
+    # cross the gutter, which hides it, when the page is still settling.
+    affordance.dispatch_event("click")
     wait_for_annotation_editor(page)
 
 

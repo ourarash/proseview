@@ -2610,6 +2610,13 @@
             color: var(--text-main);
         }
 
+        /* The path keeps a readable width: below it the controls wrap
+           onto their own row instead of crushing it into a column. */
+        .file-preview-heading {
+            flex: 1 1 280px;
+            min-width: 0;
+        }
+
         .file-preview-controls {
             display: flex;
             align-items: center;

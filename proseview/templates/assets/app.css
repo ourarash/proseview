@@ -1236,8 +1236,9 @@
             transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
         }
 
+        /* Hiding keeps the toolbar's space: giving it back to the text would
+           shift the page under the reader on every hide and reveal. */
         .modal-header[data-toolbar-hidden="true"] {
-            margin-bottom: -49px;
             border-color: transparent;
             background: transparent;
             box-shadow: none;

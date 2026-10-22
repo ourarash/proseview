@@ -4783,7 +4783,7 @@ def test_selection_menu_has_keyboard_semantics_and_restores_focus(
     assert page.locator("#selectionRewriteBtn").get_attribute("aria-expanded") == "false"
     assert page.evaluate("document.activeElement === document.getElementById('selectionRewriteBtn')")
 
-    for _ in range(4):
+    for _ in range(5):
         page.keyboard.press("ArrowDown")
     assert page.evaluate("document.activeElement === document.getElementById('selectionTodoBtn')")
     page.keyboard.press("Enter")
@@ -7474,6 +7474,31 @@ def test_a_is_just_a_letter_in_the_editor(page: Page, server: ProseviewServer):
     page.keyboard.press("a")
     assert page.locator("#discussPanel").is_hidden()
     assert "cold coffee" in page.locator("#sceneProseHost .ProseMirror").inner_text()
+
+
+def test_p_polishes_the_selection(page: Page, server: ProseviewServer):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    open_selection_menu(page, quote)
+    polish = page.locator("#selectionPolishBtn")
+    assert polish.inner_text().startswith("Polish selection")
+    assert polish.get_attribute("aria-keyshortcuts") == "P"
+    page.keyboard.press("Escape")
+
+    select_prose(page, quote)
+    page.keyboard.press("p")
+    page.wait_for_selector("#discussPanel", state="visible")
+    wait_for_discuss_answer(page)
+    assert question_requests[-1]["question"] == "Polish this"
+    assert quote in question_requests[-1]["selection"]
+    assert page.locator("#exportDialog").is_hidden()
 
 
 def test_an_outside_edit_lights_the_paragraph_it_changed(page: Page, server: ProseviewServer):

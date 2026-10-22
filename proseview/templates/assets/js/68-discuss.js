@@ -536,6 +536,7 @@
                         0, null, requestedSelectionSnapshot, requestedSelectionSourceTaskId
                     );
                 }
+                else if (options.sendInstruction) chooseDiscussInstruction(options.sendInstruction);
                 else input.focus();
             }).catch(function(error) {
                 _discussOpenFailed = true;
@@ -590,7 +591,8 @@
                         _discussPendingAction, _discussSelection, _discussSelectionRange, _discussLiveDocument,
                         0, null, _discussSelectionSnapshot, _discussSelectionSourceTaskId
                     );
-                } else document.getElementById('discussInput').focus();
+                } else if (options.sendInstruction) chooseDiscussInstruction(options.sendInstruction);
+                else document.getElementById('discussInput').focus();
                 return;
             }
             openDiscuss(trigger, options);
@@ -3510,6 +3512,14 @@ function loadDiscussDiffMode(mode) {
                 favoriteDiscussInstructions().concat(configuredDiscussInstructions()),
                 24
             );
+        }
+
+        // What Polish selection sends: the writer's own saved "Polish..."
+        // instruction when there is one, so P matches the Quick send button.
+        function polishDiscussInstruction() {
+            var saved = presetDiscussInstructions().concat(recentDiscussInstructions())
+                .filter(function(value) { return /^polish\b/i.test(value); });
+            return saved[0] || 'Polish this';
         }
 
         function toggleDiscussInstructionFavorite(value, reopenMenu) {

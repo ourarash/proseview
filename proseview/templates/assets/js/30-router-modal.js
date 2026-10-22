@@ -940,9 +940,9 @@
             } else if ((e.key === 'b' || e.key === 'B') && !_pmEditMode) {
                 e.preventDefault();
                 setSidebarOpen(document.documentElement.dataset.sidebar === 'closed');
-            } else if ((e.key === 'p' || e.key === 'P') && !_pmEditMode && !document.querySelector('dialog[open]')) {
+            } else if ((e.key === 'x' || e.key === 'X') && !_pmEditMode && !document.querySelector('dialog[open]')) {
                 e.preventDefault();
-                openExportForCurrentScene('pdf');
+                openExportForCurrentScene('scene');
             }
         });
 

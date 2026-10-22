@@ -27,6 +27,14 @@ section here becomes the release notes on GitHub.
   The file is checked after export, the dialog previews it a chapter at a
   time, `proseview export --format docx` makes it from the command line, and
   it works in the browser version too. *All formats* now makes all four.
+- **Polish a selection with `P`.** Select text in reading mode and press
+  `P`, or choose *Polish selection* from the selection menu, to send it to
+  the agent with your saved "Polish…" instruction (or "Polish this").
+
+### Changed
+
+- `X` in the scene view opens Export for that scene. `P` no longer previews
+  the scene as a PDF; *Preview as PDF…* is still in the More menu.
 
 ### Fixed
 

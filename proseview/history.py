@@ -20,6 +20,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -423,6 +424,70 @@ def manuscript_pathspec(root: Path, cfg: Config) -> str:
     return cfg.manuscript_path
 
 
+@dataclass(frozen=True)
+class DayRecord:
+    """What :func:`record_today` saw and wrote."""
+    scenes: list
+    today: str
+    total: int
+    touched: set
+    saved_days: set
+    log: dict
+    prose: dict
+    previous_day: tuple | None
+
+
+_RECORD_LOCK = threading.Lock()
+
+
+def record_today(root: Path, cfg: Config, scenes: list[SceneStats] | None = None) -> DayRecord:
+    """Write today's total and a copy of today's prose to ``.proseview/``.
+
+    Called on every dashboard build and, by the server, whenever the file
+    watcher sees the manuscript change, so an edit made in any editor while
+    Proseview runs lands on the day it was made rather than the next day the
+    dashboard happened to be rebuilt.
+    """
+    with _RECORD_LOCK:
+        if scenes is None:
+            from .scenes import collect_scene_stats
+
+            scenes = collect_scene_stats(root, cfg.manuscript_subdir, lexical=False)
+        current_total = sum(s.words for s in scenes)
+
+        today = date.today().isoformat()
+        scene_paths = {s.path.as_posix() for s in scenes}
+        touched: set[str] = set()
+        # A scene's modification date is also the one trace a day of uncommitted
+        # work leaves behind before the day log existed: each file says the last
+        # day it was saved.
+        saved_days: set[str] = set()
+        for rel in scene_paths:
+            try:
+                saved = date.fromtimestamp((root / rel).stat().st_mtime).isoformat()
+            except OSError:
+                continue
+            saved_days.add(saved)
+            if saved == today:
+                touched.add(rel)
+
+        code, out, _ = _run_git(root, [
+            "log", "--since=midnight", "--pretty=format:", "--name-only",
+            "--", manuscript_pathspec(root, cfg),
+        ])
+        if code == 0:
+            for line in out.splitlines():
+                s = line.strip()
+                if s in scene_paths:
+                    touched.add(s)
+
+        log = record_day(root, today, current_total, worked=bool(touched))
+        current_prose = {s.path.as_posix(): prose_only(s.text) for s in scenes}
+        previous_day = record_day_text(root, today, current_prose)
+        return DayRecord(scenes, today, current_total, touched, saved_days, log,
+                         current_prose, previous_day)
+
+
 def working_copy_delta(root: Path, cfg: Config,
                        history: list[HistoryRow],
                        scenes: list[SceneStats] | None = None) -> WorkingCopyDelta:
@@ -444,41 +509,11 @@ def working_copy_delta(root: Path, cfg: Config,
     if not is_git_repo(root):
         return WorkingCopyDelta(0, 0)
 
-    if scenes is None:
-        from .scenes import collect_scene_stats
-
-        scenes = collect_scene_stats(root, cfg.manuscript_subdir)
-    current_total = sum(s.words for s in scenes)
-
-    today = date.today().isoformat()
+    record = record_today(root, cfg, scenes)
+    scenes, today = record.scenes, record.today
+    current_total, touched, saved_days = record.total, record.touched, record.saved_days
+    log, current_prose, previous_day = record.log, record.prose, record.previous_day
     scene_paths = {s.path.as_posix() for s in scenes}
-    touched: set[str] = set()
-    # A scene's modification date is also the one trace a day of uncommitted
-    # work leaves behind before the day log existed: each file says the last
-    # day it was saved.
-    saved_days: set[str] = set()
-    for rel in scene_paths:
-        try:
-            saved = date.fromtimestamp((root / rel).stat().st_mtime).isoformat()
-        except OSError:
-            continue
-        saved_days.add(saved)
-        if saved == today:
-            touched.add(rel)
-
-    code, out, _ = _run_git(root, [
-        "log", "--since=midnight", "--pretty=format:", "--name-only",
-        "--", manuscript_pathspec(root, cfg),
-    ])
-    if code == 0:
-        for line in out.splitlines():
-            s = line.strip()
-            if s in scene_paths:
-                touched.add(s)
-
-    log = record_day(root, today, current_total, worked=bool(touched))
-    current_prose = {s.path.as_posix(): prose_only(s.text) for s in scenes}
-    previous_day = record_day_text(root, today, current_prose)
 
     baseline, baseline_date, baseline_sha = 0, "", ""
     for row in reversed(history):

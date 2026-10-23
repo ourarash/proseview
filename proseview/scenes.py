@@ -76,6 +76,9 @@ class SceneStats:
     #: The frontmatter exactly as written, between its ``---`` lines, or None
     #: when the file has none. Shown and edited above the scene's prose.
     frontmatter_text: str | None = None
+    #: The ``chapter:`` value as written, when another folder says the same:
+    #: ``chapter`` then names the folder too. Empty otherwise.
+    chapter_shared: str = ""
 
 
 @dataclass(frozen=True)
@@ -443,7 +446,29 @@ def collect_scene_stats(
             loc, fm, scan_todos(fm, txt, txt_line_offset), scan_notes(fm, txt, txt_line_offset), txt_line_offset,
             fm_text,
         ))
+    separate_shared_chapters(scenes)
     return scenes
+
+
+def separate_shared_chapters(scenes: list[SceneStats]) -> None:
+    """Keep two chapter folders apart when their scenes say the same chapter.
+
+    A chapter is a folder, and ``chapter:`` is its name. Grouping by the name
+    alone silently merged, say, ``ch06/`` and ``ch06-legacy/`` when both said
+    ``chapter: 6``: one chapter of twice the words in the table, the charts
+    and the per-chapter goal. Such scenes get "Chapter 6 · ch06" and keep
+    the name as written in ``chapter_shared``, so the dashboard can say so.
+    """
+    folders: dict[str, set[str]] = defaultdict(set)
+    for scene in scenes:
+        folders[scene.chapter].add(scene.path.parent.as_posix())
+    for scene in scenes:
+        if len(folders[scene.chapter]) < 2:
+            continue
+        name = scene.chapter
+        label = f"Chapter {name}" if name.isdigit() else name
+        scene.chapter_shared = name
+        scene.chapter = f"{label} \u00b7 {scene.path.parent.name}"
 
 
 def scene_mtld_median(scenes: list[SceneStats]) -> float:

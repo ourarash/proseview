@@ -687,3 +687,21 @@ def test_the_ledger_opens_from_the_today_number():
     assert 'data-scene-path="ch05/07b.md"' in card
     assert "Day 88: The Next Best Thing" in card
     assert "\u2212160" in card, "words a day is signed, not floored to 0"
+
+
+def test_two_folders_with_the_same_chapter_number_stay_apart(tmp_path: Path):
+    """A chapter is a folder; `chapter:` is its name. Two folders that both
+    said 6 used to merge into one chapter of twice the words."""
+    from proseview.generator import build_analysis_payload
+
+    for folder, words in (("ch06", "one two three"), ("ch06-legacy", "four five")):
+        chapter = tmp_path / "manuscript" / folder
+        chapter.mkdir(parents=True)
+        (chapter / "01.md").write_text(f"---\ntitle: {folder}\nchapter: 6\n---\n\n{words}\n", encoding="utf-8")
+
+    scenes = collect_scene_stats(tmp_path, "manuscript")
+    assert sorted(s.chapter for s in scenes) == ["Chapter 6 · ch06", "Chapter 6 · ch06-legacy"]
+    html = build_dashboard(tmp_path, Config.load(tmp_path))
+    assert "Chapter 6 · ch06-legacy</td>" in html and "Chapter 6 · ch06</td>" in html
+    findings = build_analysis_payload(tmp_path, Config.load(tmp_path))["findings"]
+    assert findings[0]["text"] == "Two folders, ch06 and ch06-legacy, both say chapter 6."

@@ -773,6 +773,22 @@ def _analysis_findings(scenes: list[SceneStats], cfg: Config, clean_path) -> lis
 
     measured = [s for s in scenes if s.words > 0]
     findings: list[dict[str, object]] = []
+    shared: dict[str, list[str]] = {}
+    for s in scenes:
+        if s.chapter_shared:
+            folder = s.path.parent.name
+            if folder not in shared.setdefault(s.chapter_shared, []):
+                shared[s.chapter_shared].append(folder)
+    for name, folders in shared.items():
+        count = "Two" if len(folders) == 2 else str(len(folders))
+        listed = ", ".join(folders[:-1]) + " and " + folders[-1]
+        findings.append({
+            "text": f"{count} folders, {listed}, {'both' if len(folders) == 2 else 'all'} say chapter {name}.",
+            "tip": "Each folder is shown as its own chapter. Give one of them its own chapter: number "
+                   "in its scenes' frontmatter if they are different chapters.",
+            "filter": "",
+            "scenes": [],
+        })
     repeating = [s for s in measured if scene_is_outlier(s, cfg)]
     findings.append({
         "text": (
@@ -1030,7 +1046,10 @@ def render_html_report(
         "discuss_default_agent_json": _js_json(cfg.discuss.agent),
         "lexical_bands_json": _js_json({"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)}),
         "pass_order_json": _js_json(list(PASS_NAMES)),
-        "presence_chart_json": _js_json({"labels": chapters, "datasets": presence_data}),
+        "presence_chart_json": _js_json({
+            # The axis already says Chapter.
+            "labels": [c.removeprefix("Chapter ") for c in chapters], "datasets": presence_data,
+        }),
         "location_chart_json": _js_json(
             {"labels": [name for name, _ in top_locs], "datasets": [{"data": [words for _, words in top_locs]}]}
         ),

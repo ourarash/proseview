@@ -1148,6 +1148,30 @@ def test_editing_a_scene_on_disk_pushes_a_reload_event(server: ProseviewServer):
         assert frame == "reload"
 
 
+def test_an_edit_on_disk_is_recorded_for_today_without_a_page_load(server: ProseviewServer):
+    """The daily record behind Today and What changed follows the file
+    watcher, so an edit made in another editor counts on the day it was made
+    even when no page rebuilds the dashboard."""
+    import subprocess
+
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+           "PATH": __import__("os").environ["PATH"]}
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "draft"]):
+        subprocess.run(["git", *args], cwd=server.root, check=True, env=env, capture_output=True)
+
+    path = server.scene_path()
+    path.write_text(path.read_text(encoding="utf-8") + "\nA line typed in vim today.\n", encoding="utf-8")
+    record = server.root / ".proseview" / "day-text.json"
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if record.exists() and "A line typed in vim today." in record.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError("the edit never reached the daily record")
+
+
 # ── static assets and rejections ────────────────────────────────────────────
 
 

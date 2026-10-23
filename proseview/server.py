@@ -17,6 +17,7 @@ import queue
 import re
 import select
 import signal
+import sys
 import tempfile
 import threading
 import uuid
@@ -37,6 +38,7 @@ from .export_dashboard import (
     ExportJobs, PdfPages, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
     save_cover, save_reading_layout, selection_from_request,
 )
+from .history import is_git_repo as _is_git_repo, record_today
 from .hunks import changed_blocks, split_lines
 from .patches import Hunk, parse_hunks
 from .generator import (
@@ -3015,9 +3017,21 @@ def serve(
             except ValueError:
                 pass
 
+    def record_day_now() -> None:
+        # The daily record behind Today and What changed. Written off the
+        # watcher's thread: it reads every scene, and a slow book must not
+        # delay the reload the browser is waiting for.
+        try:
+            if _is_git_repo(root):
+                record_today(root, Config.load(root))
+        except Exception as exc:  # noqa: BLE001 -- a record is never worth a crash
+            print(f"proseview: could not update the daily record: {exc}", file=sys.stderr)
+
     def on_change(changed: tuple[str, ...]) -> None:
         invalidate("content", changed)
+        threading.Thread(target=record_day_now, daemon=True).start()
 
+    threading.Thread(target=record_day_now, daemon=True).start()
     cfg = Config.load(root)
     watcher = threading.Thread(
         target=_watch,

@@ -24,6 +24,10 @@ from .lexical import WORD_RE
 DAY_TEXT_PATH = Path(".proseview") / "day-text.json"
 DAY_TEXT_PREV_PATH = Path(".proseview") / "day-text-prev.json"
 
+#: Each closed day's written and cut, scene by scene: {day: {"since", "rows"}}.
+DAY_LEDGERS_PATH = Path(".proseview") / "day-ledgers.json"
+DAY_LEDGERS_KEEP = 400
+
 #: How alike an added and a removed scene must be to count as one renamed.
 RENAME_SIMILARITY = 0.5
 
@@ -171,3 +175,45 @@ def record_day_text(root: Path, today: str, current: dict[str, str]) -> tuple[st
     if latest is not None and latest[0] < today:
         return latest
     return previous
+
+
+def read_day_ledgers(root: Path) -> dict[str, dict]:
+    """``{day: {"since": day, "kind": "day"|"commit", "rows": [...]}}``."""
+    try:
+        raw = json.loads((root / DAY_LEDGERS_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def store_day_ledger(root: Path, day: str, ledger: Ledger) -> None:
+    """Keep a closed day's rows, so a week or a month adds up without keeping
+    a copy of the book for every day."""
+    ledgers = read_day_ledgers(root)
+    ledgers[day] = {
+        "since": ledger.baseline_date,
+        "kind": ledger.baseline_kind,
+        "rows": [
+            {"path": r.path, "status": r.status, "old_path": r.old_path,
+             "written": r.written, "cut": r.cut}
+            for r in ledger.rows
+        ],
+    }
+    keep = sorted(ledgers)[-DAY_LEDGERS_KEEP:]
+    _write_json(root / DAY_LEDGERS_PATH, {d: ledgers[d] for d in keep})
+
+
+def combine_rows(groups: list[list[dict]]) -> list[dict]:
+    """Add per-scene rows from several days into one row per scene."""
+    merged: dict[str, dict] = {}
+    for rows in groups:
+        for row in rows:
+            entry = merged.setdefault(row["path"], {**row, "written": 0, "cut": 0})
+            entry["written"] += int(row.get("written", 0))
+            entry["cut"] += int(row.get("cut", 0))
+            # A scene new on one day and edited later is still new over the span.
+            if row.get("status") == "new":
+                entry["status"] = "new"
+            elif row.get("status") == "removed":
+                entry["status"] = "removed"
+    return [row for row in merged.values() if row["written"] or row["cut"] or row["status"] == "new"]

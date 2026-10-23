@@ -2294,7 +2294,7 @@
             padding: 0;
             border: none;
             background: none;
-            color: var(--primary);
+            color: var(--text-main);
             font: inherit;
             text-align: left;
             cursor: pointer;
@@ -2325,6 +2325,69 @@
 
         .ledger-empty {
             color: var(--text-muted);
+        }
+
+        .ledger-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin: 14px 0 4px;
+        }
+
+        .ledger-source {
+            display: inline-flex;
+            padding: 2px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .ledger-source button {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 6px;
+            background: none;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .ledger-source button[aria-checked="true"] {
+            background: var(--surface-muted);
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .ledger-commit {
+            max-width: 100%;
+            flex: 1 1 220px;
+        }
+
+        .ledger-commit[hidden],
+        #ledgerPeriod[hidden] {
+            display: none;
+        }
+
+        .ledger-subtitle {
+            margin: 12px 0 0;
+            font-size: 15px;
+            font-weight: 650;
+        }
+
+        .ledger-note-callout {
+            margin: 10px 0 0;
+            padding: 8px 12px;
+            border-left: 3px solid var(--text-warning);
+            border-radius: 4px;
+            background: var(--surface-warn);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .ledger-empty-note {
+            margin: 18px 0 6px;
+            line-height: 1.5;
         }
 
         /* What a number measures, on hover or keyboard focus: one quiet mark
@@ -10757,6 +10820,7 @@
         html[data-static-snapshot] #utilityTabCodex,
         html[data-static-snapshot] #utilityTabClaude,
         html[data-static-snapshot] #settingsOpenBtn,
+        html[data-static-snapshot] .ledger-open-btn,
         html[data-static-snapshot] #selectionPill,
         html[data-static-snapshot] .note-entry-actions,
         html[data-static-snapshot] .scene-card-fm-add,
@@ -10775,7 +10839,8 @@
 
         /* The word goal still reads as a number; it just no longer opens the
            settings a snapshot cannot save. */
-        html[data-static-snapshot] .goal-link {
+        html[data-static-snapshot] .goal-link,
+        html[data-static-snapshot] .banner-ledger-btn {
             pointer-events: none;
             cursor: default !important;
             text-decoration: none !important;

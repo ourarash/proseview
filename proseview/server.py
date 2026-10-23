@@ -38,7 +38,7 @@ from .export_dashboard import (
     ExportJobs, PdfPages, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
     save_cover, save_reading_layout, selection_from_request,
 )
-from .history import is_git_repo as _is_git_repo, record_today
+from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import changed_blocks, split_lines
 from .patches import Hunk, parse_hunks
 from .generator import (
@@ -2131,6 +2131,21 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             with open(Path(__file__).parent / "templates" / "assets" / "app.css", "rb") as f:
                 self.wfile.write(f.read())
+            return
+        if urlparse(self.path).path == "/api/what-changed":
+            # Reads and refreshes the daily record, so it is gated like a write.
+            if not self._authorize_mutation():
+                return
+            query = parse_qs(urlparse(self.path).query)
+            pick = lambda key, default="": (query.get(key) or [default])[0]  # noqa: E731
+            try:
+                root = Path(self.repo_root).resolve()
+                self._send_json(what_changed(
+                    root, Config.load(root), source=pick("source", "record"),
+                    period=pick("period", "today"), sha=pick("sha"),
+                ))
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(exc)}, 500)
             return
         if self.path == "/analysis.json":
             try:

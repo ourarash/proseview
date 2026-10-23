@@ -32,7 +32,10 @@ if TYPE_CHECKING:  # imported lazily at runtime; .scenes imports from here
 
 from . import __version__ as PROSEVIEW_VERSION
 from .config import Config
-from .ledger import Ledger, build_ledger, record_day_text
+from .ledger import (
+    DAY_TEXT_PREV_PATH, Ledger, build_ledger, combine_rows, read_day_ledgers, read_day_text,
+    record_day_text, store_day_ledger,
+)
 from .lexical import calculate_lexical_stats, count_words, prose_only
 from .repo import CONTEXT_SKIP_DIRS, decode_repo_bytes
 from .scenes import resolve_manuscript_dir
@@ -483,6 +486,7 @@ def record_today(root: Path, cfg: Config, scenes: list[SceneStats] | None = None
 
         log = record_day(root, today, current_total, worked=bool(touched))
         current_prose = {s.path.as_posix(): prose_only(s.text) for s in scenes}
+        _close_last_day(root, cfg, today)
         previous_day = record_day_text(root, today, current_prose)
         return DayRecord(scenes, today, current_total, touched, saved_days, log,
                          current_prose, previous_day)
@@ -554,6 +558,30 @@ def working_copy_delta(root: Path, cfg: Config,
     )
 
 
+def _close_last_day(root: Path, cfg: Config, today: str) -> None:
+    """When a new day starts, keep the day that just ended as written and
+    cut per scene, measured from the end of the day before it -- or, when
+    Proseview has no such day, from the last commit before it."""
+    latest = read_day_text(root)
+    if latest is None or latest[0] >= today or latest[0] in read_day_ledgers(root):
+        return
+    day, text = latest
+    previous = read_day_text(root, DAY_TEXT_PREV_PATH)
+    if previous is not None and previous[0] < day:
+        ledger = build_ledger(previous[1], text, baseline_date=previous[0], baseline_kind="day")
+    else:
+        code, out, _ = _run_git(root, [
+            "log", "-1", f"--before={day}T00:00:00", "--format=%H%x09%ad", "--date=short",
+            "--", manuscript_pathspec(root, cfg),
+        ])
+        if code != 0 or not out.strip():
+            return
+        sha, committed = out.strip().split("\t", 1)
+        ledger = build_ledger(_commit_prose(root, cfg, sha, None), text,
+                              baseline_date=committed, baseline_kind="commit")
+    store_day_ledger(root, day, ledger)
+
+
 def _mtimes(root: Path, paths: Iterable[str]) -> dict[str, float]:
     found: dict[str, float] = {}
     for rel in paths:
@@ -564,11 +592,12 @@ def _mtimes(root: Path, paths: Iterable[str]) -> dict[str, float]:
     return found
 
 
-def _commit_prose(root: Path, cfg: Config, sha: str, current: dict[str, str]) -> dict[str, str]:
+def _commit_prose(root: Path, cfg: Config, sha: str, current: dict[str, str] | None) -> dict[str, str]:
     """``{path: prose}`` at *sha*, read from git only where it may differ.
 
-    Unchanged scenes are copied from *current*, so a ledger costs one
-    ``git show`` per changed file rather than one per scene.
+    Scenes unchanged since *sha* are copied from *current* (the files now), so
+    a ledger costs one ``git show`` per changed file rather than one per
+    scene. With ``current=None`` every scene is read from git.
     """
     from .scenes import _is_scene, extract_scene_text, split_frontmatter
 
@@ -576,10 +605,10 @@ def _commit_prose(root: Path, cfg: Config, sha: str, current: dict[str, str]) ->
     code, out, _ = _run_git(root, [
         "diff", "--no-renames", "--name-only", sha, "--", manuscript_pathspec(root, cfg),
     ])
-    changed = set(out.splitlines()) if code == 0 else set(paths)
+    changed = set(out.splitlines()) if code == 0 and current is not None else set(paths)
     prose: dict[str, str] = {}
     for path in paths:
-        if path not in changed and path in current:
+        if path not in changed and current is not None and path in current:
             prose[path] = current[path]
             continue
         content = git_blob_text(root, sha, path)
@@ -635,3 +664,153 @@ def record_day(root: Path, day: str, total: int, *, worked: bool) -> dict[str, d
     except OSError:
         pass
     return log
+
+
+#: The periods the record answers for, as the number of days they cover.
+WHAT_CHANGED_PERIODS = {"today": 1, "yesterday": 1, "week": 7, "month": 30}
+
+
+def _short_day(iso: str) -> str:
+    try:
+        moment = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return moment.strftime("%b ") + str(moment.day)
+
+
+def what_changed(root: Path, cfg: Config, *, source: str = "record",
+                 period: str = "today", sha: str = "") -> dict[str, object]:
+    """The "What changed" dialog's data: words written and cut per scene.
+
+    ``source="record"`` reads Proseview's own daily record for *period*
+    (today, yesterday, week, month); ``source="git"`` compares the files now
+    with commit *sha* (the last manuscript commit when empty). Every answer
+    says what it was measured against, and a gap in the record is named
+    rather than hidden.
+    """
+    if not is_git_repo(root):
+        return {"empty": "What changed needs the book to be a git repository."}
+    record = record_today(root, cfg)
+    prefix = cfg.manuscript_subdir + "/"
+    titles = {s.path.as_posix(): s.title for s in record.scenes}
+    saved = _mtimes(root, titles)
+
+    def shape(rows: list[dict]) -> list[dict]:
+        out = []
+        for row in rows:
+            path = row["path"]
+            out.append({
+                "path": path[len(prefix):] if path.startswith(prefix) else path,
+                "title": titles.get(path) or Path(path).name,
+                "status": row.get("status", "changed"),
+                "old_path": row.get("old_path", ""),
+                "written": int(row.get("written", 0)),
+                "cut": int(row.get("cut", 0)),
+                "saved": saved.get(path),
+                "live": path in titles,
+            })
+        out.sort(key=lambda r: (r["saved"] is None, -(r["saved"] or 0), r["path"]))
+        return out
+
+    def rows_of(ledger: Ledger) -> list[dict]:
+        return [{"path": r.path, "status": r.status, "old_path": r.old_path,
+                 "written": r.written, "cut": r.cut} for r in ledger.rows]
+
+    if source == "git":
+        code, out, _ = _run_git(root, [
+            "log", "-n", "40", "--format=%H%x09%ad%x09%s", "--date=short",
+            "--", manuscript_pathspec(root, cfg),
+        ])
+        commits = []
+        for line in out.splitlines() if code == 0 else []:
+            parts = line.split("\t", 2)
+            if len(parts) == 3:
+                commits.append({"sha": parts[0], "date": parts[1], "subject": parts[2]})
+        if not commits:
+            return {"source": "git", "commits": [], "empty": "There are no commits of the manuscript to compare with yet."}
+        chosen = next((c for c in commits if c["sha"] == sha), commits[0])
+        ledger = build_ledger(_commit_prose(root, cfg, chosen["sha"], record.prose), record.prose,
+                              baseline_date=chosen["date"], baseline_kind="commit")
+        return {
+            "source": "git", "commits": commits, "sha": chosen["sha"],
+            "title": f"Since the commit of {_short_day(chosen['date'])}",
+            "basis": (
+                f"Your files as they are now, including anything not committed, compared "
+                f"word by word with commit {chosen['sha'][:7]} from {_short_day(chosen['date'])}: "
+                f"“{chosen['subject']}”."
+            ),
+            "rows": shape(rows_of(ledger)),
+        }
+
+    today = record.today
+    period = period if period in WHAT_CHANGED_PERIODS else "today"
+    ledgers = read_day_ledgers(root)
+    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    how = ("Proseview keeps a copy of your scenes each day it runs, whatever editor you "
+           "write in, and compares them word by word.")
+    notes: list[str] = []
+
+    def gap_note(day: str, since: str, kind: str) -> str | None:
+        if kind == "commit":
+            return (f"{_short_day(day)} is measured from your commit of {_short_day(since)}: "
+                    "Proseview had no copy from before it.")
+        day_before = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+        if since < day_before:
+            return (f"Proseview didn't see the book between {_short_day(since)} and "
+                    f"{_short_day(day)}, so edits from those days are counted on {_short_day(day)}.")
+        return None
+
+    if period == "today":
+        previous = record.previous_day
+        if previous is None:
+            return {"source": "record", "period": period,
+                    "empty": "Proseview has no copy of your book from before today yet, so it can't "
+                             "tell today's writing apart. From tomorrow it can. Until then, compare with a "
+                             "commit under Git.",
+                    "basis": how}
+        ledger = build_ledger(previous[1], record.prose, baseline_date=previous[0], baseline_kind="day")
+        note = gap_note(today, previous[0], "day")
+        return {"source": "record", "period": period, "title": "Today",
+                "basis": how + f" Today is measured from the end of {_short_day(previous[0])}.",
+                "notes": [note] if note else [], "rows": shape(rows_of(ledger))}
+
+    if period == "yesterday":
+        entry = ledgers.get(yesterday)
+        if entry is None:
+            return {"source": "record", "period": period, "basis": how,
+                    "empty": f"Proseview has no record for {_short_day(yesterday)}: it either wasn't running "
+                             "that day or hadn't started keeping one."}
+        note = gap_note(yesterday, entry.get("since", ""), entry.get("kind", "day"))
+        return {"source": "record", "period": period, "title": f"Yesterday, {_short_day(yesterday)}",
+                "basis": how, "notes": [note] if note else [], "rows": shape(entry.get("rows", []))}
+
+    span = WHAT_CHANGED_PERIODS[period]
+    start = (date.fromisoformat(today) - timedelta(days=span - 1)).isoformat()
+    groups: list[list[dict]] = []
+    by_day: list[dict] = []
+    for day in sorted(d for d in ledgers if start <= d < today):
+        entry = ledgers[day]
+        rows = entry.get("rows", [])
+        groups.append(rows)
+        by_day.append({"day": day, "since": entry.get("since", ""),
+                       "written": sum(int(r.get("written", 0)) for r in rows),
+                       "cut": sum(int(r.get("cut", 0)) for r in rows)})
+        note = gap_note(day, entry.get("since", ""), entry.get("kind", "day"))
+        if note:
+            notes.append(note)
+    if record.previous_day is not None:
+        live = rows_of(build_ledger(record.previous_day[1], record.prose,
+                                    baseline_date=record.previous_day[0], baseline_kind="day"))
+        groups.append(live)
+        by_day.append({"day": today, "since": record.previous_day[0],
+                       "written": sum(r["written"] for r in live), "cut": sum(r["cut"] for r in live)})
+    if not by_day:
+        return {"source": "record", "period": period, "basis": how,
+                "empty": "Proseview has no daily record in this period yet. It starts keeping one the "
+                         "first day it runs; until then, compare with a commit under Git."}
+    first = min(d["day"] for d in by_day)
+    if first > start:
+        notes.append(f"Proseview's record starts on {_short_day(first)}; nothing before it is counted.")
+    label = "The last 7 days" if span == 7 else "The last 30 days"
+    return {"source": "record", "period": period, "title": label, "basis": how, "notes": notes,
+            "rows": shape(combine_rows(groups)), "by_day": list(reversed(by_day))}

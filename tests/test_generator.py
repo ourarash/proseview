@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import replace as dataclasses_replace
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -665,15 +666,16 @@ def test_co_occurrence_finds_pairs_for_multi_word_characters(tmp_path: Path):
     assert "White Rabbit+Mock Turtle" in html or "Mock Turtle+White Rabbit" in html
 
 
-def test_the_ledger_opens_from_the_today_number():
+def test_the_today_number_names_its_source_and_opens_what_changed():
+    """Before Proseview has a copy of yesterday, Today is measured from the
+    last commit, and the card says so instead of calling it today."""
     from proseview.generator import _render_progress_card
     from proseview.goals import Goals
     from proseview.ledger import build_ledger
 
     ledger = build_ledger({"manuscript/ch05/07.md": "word " * 1776},
                           {"manuscript/ch05/07b.md": "fresh " * 697},
-                          baseline_date="2020-01-01", baseline_kind="commit",
-                          titles={"manuscript/ch05/07b.md": "Day 88: The Next Best Thing"})
+                          baseline_date="2020-01-01", baseline_kind="commit")
     fake = Goals(
         rolling_velocity=-160.0, streak_days=3, per_chapter_target=11_428,
         per_chapter_current=8_713, words_added_today=-1_079,
@@ -681,12 +683,15 @@ def test_the_ledger_opens_from_the_today_number():
         baseline_date="2020-01-01", ledger=ledger,
     )
     card = _render_progress_card(fake, Config(), total_words=60_993, scene_count=49)
-    assert 'class="banner-ledger-btn" onclick="openLedger()"' in card
-    assert 'id="ledgerDialog"' in card
-    assert "+697" in card and "\u22121,776" in card
-    assert 'data-scene-path="ch05/07b.md"' in card
-    assert "Day 88: The Next Best Thing" in card
+    assert "Since Jan 1 (last commit)" in card
+    assert 'class="banner-ledger-btn" onclick="openLedger(\'git\')"' in card
+    assert "What changed</button>" in card
     assert "\u2212160" in card, "words a day is signed, not floored to 0"
+
+    by_day = dataclasses_replace(fake, ledger=dataclasses_replace(ledger, baseline_kind="day"),
+                                 baseline_date=(date.today() - timedelta(days=1)).isoformat())
+    card = _render_progress_card(by_day, Config(), total_words=60_993, scene_count=49)
+    assert ">Today<" in card and "openLedger(\'record\')" in card
 
 
 def test_two_folders_with_the_same_chapter_number_stay_apart(tmp_path: Path):

@@ -61,8 +61,9 @@ section here becomes the release notes on GitHub.
   saying what it measures. Goals read the files on disk: "Today" is net
   words (cuts included), the streak counts days a scene was saved, and
   per-chapter figures match the scene table. Click the Today number for
-  **What changed**: words written and cut in each scene, and the last week day by
-  day, so a negative number says where the words went. Character Presence and
+  **What changed**: words written and cut in each scene, from Proseview's own
+  daily record (today, yesterday, the last 7 or 30 days) or against a commit
+  you pick, each saying what it is measured against. Character Presence and
   Co-occurrence count scenes from `characters:` and `pov:` instead of name
   mentions, which hid a first-person narrator. The **Review** badge marks
   only scenes under the lexical floor, not above it. Tables show scene

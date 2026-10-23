@@ -128,87 +128,6 @@ def _short_date(iso: str) -> str:
     return moment.strftime("%b ") + str(moment.day)
 
 
-def _render_ledger(goals: Goals, cfg: Config, title: str) -> str:
-    """The dialog behind the "Today" number: written and cut, scene by scene,
-    and the last week day by day."""
-    ledger = goals.ledger
-    if ledger is None:
-        return ""
-    prefix = cfg.manuscript_subdir + "/"
-
-    def display(path: str) -> str:
-        return path[len(prefix):] if path.startswith(prefix) else path
-
-    if ledger.baseline_kind == "day":
-        basis = f"Measured against the manuscript at the end of {_short_date(ledger.baseline_date)}."
-    else:
-        basis = (
-            f"Measured against your last commit, on {_short_date(ledger.baseline_date)}. "
-            "Proseview now keeps its own record each day, so from tomorrow this shows "
-            "one day at a time even when nothing is committed."
-        )
-
-    rows = []
-    for row in ledger.rows:
-        if row.status == "removed":
-            name = (f'<span class="ledger-scene-name">{html.escape(Path(row.path).name)}</span>'
-                    '<span class="ledger-tag">removed</span>')
-        else:
-            tag = {
-                "new": '<span class="ledger-tag">new</span>',
-                "renamed": f'<span class="ledger-tag" title="{html.escape(display(row.old_path), quote=True)}">renamed</span>',
-            }.get(row.status, "")
-            name = (
-                f'<button type="button" class="ledger-scene" data-scene-path="{html.escape(display(row.path), quote=True)}" '
-                f'title="{html.escape(display(row.path), quote=True)}">{html.escape(row.title)}</button>{tag}'
-            )
-        saved = (
-            _recent_when(datetime.fromtimestamp(row.saved_at).astimezone().isoformat())
-            if row.saved_at is not None else ""
-        )
-        rows.append(
-            f"<tr><td>{name}</td><td class=\"ledger-when\">{html.escape(saved)}</td>"
-            f'<td class="ledger-num ledger-written">{"+" + format(row.written, ",") if row.written else "&ndash;"}</td>'
-            f'<td class="ledger-num ledger-cut">{_signed(-row.cut) if row.cut else "&ndash;"}</td>'
-            f'<td class="ledger-num">{_signed(row.net)}</td></tr>'
-        )
-    if not rows:
-        rows.append('<tr><td colspan="5" class="ledger-empty">No scene has changed.</td></tr>')
-
-    days = []
-    for day, _total, net, since in goals.recent_days:
-        gap = (date.fromisoformat(day) - date.fromisoformat(since)).days if since else 1
-        note = f"since {_short_date(since)}" if gap > 1 else ""
-        days.append(
-            f"<tr><td>{html.escape(_short_date(day))}</td><td class=\"ledger-num\">{_signed(net)}</td>"
-            f'<td class="ledger-when">{html.escape(note)}</td></tr>'
-        )
-    day_table = (
-        '<h3 class="ledger-subhead">The last 7 days, net</h3>'
-        f'<table class="ledger-table ledger-days"><tbody>{"".join(days)}</tbody></table>'
-        if days else ""
-    )
-
-    return f"""<dialog id="ledgerDialog" class="ledger-dialog" aria-labelledby="ledgerTitle">
-        <div class="ledger-head">
-            <h2 id="ledgerTitle">What changed {html.escape(title[0].lower() + title[1:])}</h2>
-            <button type="button" class="ledger-close" onclick="this.closest('dialog').close()" aria-label="Close">&times;</button>
-        </div>
-        <p class="ledger-basis">{html.escape(basis)}</p>
-        <div class="ledger-totals">
-            <div><span class="ledger-total ledger-written">+{ledger.written:,}</span><span>written</span></div>
-            <div><span class="ledger-total ledger-cut">{_signed(-ledger.cut)}</span><span>cut</span></div>
-            <div><span class="ledger-total">{_signed(ledger.written - ledger.cut)}</span><span>net</span></div>
-        </div>
-        <table class="ledger-table">
-            <thead><tr><th>Scene</th><th>Saved</th><th>Written</th><th>Cut</th><th>Net</th></tr></thead>
-            <tbody>{"".join(rows)}</tbody>
-        </table>
-        {day_table}
-        <p class="ledger-note">Text moved from one scene to another counts as cut where it left and written where it landed.</p>
-    </dialog>"""
-
-
 def _stat(label: str, tip: str, value: str, sub: str = "") -> str:
     sub_html = f'<span class="progress-stat-sub">{sub}</span>' if sub else ""
     return (
@@ -243,24 +162,34 @@ def _render_progress_card(
 
     stats: list[str] = []
     today_label = "Today"
+    opener = "record"
     if goals is not None:
         yesterday = (date.today() - timedelta(days=1)).isoformat()
-        if goals.baseline_date and goals.baseline_date < yesterday:
-            since = _short_date(goals.baseline_date)
+        kind = goals.ledger.baseline_kind if goals.ledger is not None else "commit"
+        since = _short_date(goals.baseline_date) if goals.baseline_date else ""
+        # Say what the number is measured against: Proseview's own record of
+        # yesterday, an older day it saw, or (before it has a record) a commit.
+        if kind == "commit" and since:
+            today_label = f"Since {since} (last commit)"
+            opener = "git"
+            today_tip = (
+                f"Net words since your last commit, on {since}: written minus cut. Proseview "
+                "has no copy of your book from before today yet; from tomorrow this counts today alone."
+            )
+        elif goals.baseline_date and goals.baseline_date < yesterday:
             today_label = f"Since {since}"
             today_tip = (
-                f"Net words since {since}: written minus cut. Proseview has no total "
-                "for the days in between, so from tomorrow this counts today alone."
+                f"Net words since {since}, the last day Proseview saw your book: written minus cut. "
+                "It wasn't running in between, so those days are counted together."
             )
         else:
-            today_tip = "Net words today: written minus cut, against the end of yesterday."
+            today_tip = "Net words today: written minus cut, against Proseview's copy from the end of yesterday."
         today_value = _signed(goals.words_added_today)
-        if goals.ledger is not None:
-            today_tip += " Click the number to see what was written and cut, scene by scene."
-            today_value = (
-                '<button type="button" class="banner-ledger-btn" onclick="openLedger()" '
-                f'title="What was written and cut">{today_value}</button>'
-            )
+        today_tip += " Click the number to see what was written and cut, scene by scene."
+        today_value = (
+            f'<button type="button" class="banner-ledger-btn" onclick="openLedger(\'{opener}\')" '
+            f'title="What was written and cut">{today_value}</button>'
+        )
         stats.append(_stat(today_label, today_tip, today_value))
         stats.append(_stat(
             "Words a day",
@@ -299,10 +228,10 @@ def _render_progress_card(
         ))
 
     ledger_btn = (
-        '<button type="button" class="ledger-open-btn" onclick="openLedger()" title="Words written and cut, scene by scene">What changed</button>'
-        if goals is not None and goals.ledger is not None else ""
+        f'<button type="button" class="ledger-open-btn" onclick="openLedger(\'{opener}\')" '
+        'title="Words written and cut, scene by scene">What changed</button>'
+        if goals is not None else ""
     )
-    ledger = _render_ledger(goals, cfg, today_label) if goals is not None else ""
     return f"""<section class="card progress-card" aria-labelledby="progressTitle">
         <div class="progress-head">
             <h2 id="progressTitle" class="card-title">Progress</h2>{ledger_btn}
@@ -312,7 +241,7 @@ def _render_progress_card(
         <div class="progress-bar" role="progressbar" aria-label="Book goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{min(100, round(percent))}"><span style="width:{min(100, percent):.1f}%"></span></div>
         <p class="progress-caption">{percent:.0f}% of your goal &middot; {scene_count:,} {'scene' if scene_count == 1 else 'scenes'} &middot; about {reading} to read</p>
         {'<div class="progress-stats">' + "".join(stats) + "</div>" if stats else ""}
-    </section>{ledger}"""
+    </section>"""
 
 
 def character_name_from_file(path: Path) -> str:

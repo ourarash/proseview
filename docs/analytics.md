@@ -27,7 +27,17 @@ rarely says.
 total it sees each day in `.proseview/day-log.json`, so "Today", words a
 day and the streak count work you have not committed. A day counts toward
 the streak when a scene was saved or committed, so a day of cutting keeps it.
-Click the Today number (or **What changed** on the Progress card) to see each scene's
-words written and cut since the end of yesterday, from a copy of the prose
-Proseview keeps in `.proseview/day-text*.json`, or since your last commit
-before it has one.
+
+**What changed** (the Today number, or the button on the Progress card)
+shows the words written and cut in each scene, two ways:
+
+- **Proseview's record:** Today, Yesterday, the last 7 or 30 days. Proseview
+  keeps a copy of your scenes in `.proseview/` and updates it whenever it
+  sees a file change, whatever editor you write in; when a day ends it keeps
+  that day's written and cut per scene. Days it wasn't running are counted
+  on the next day it saw, and the dialog says so.
+- **Git:** your files now, including anything not committed, against a
+  commit you choose.
+
+Until Proseview has a copy from before today, the Progress card's number is
+labelled "Since <date> (last commit)" and measured from your last commit.

@@ -345,3 +345,59 @@ def test_ledger_measures_today_from_the_end_of_yesterday(tiny_book: Path):
     assert ledger.baseline_kind == "day"
     assert (ledger.written, ledger.cut) == (7, 0)
     assert delta.words_added_today == 7
+
+
+def test_what_changed_says_when_there_is_no_record_yet(tiny_book: Path):
+    from proseview.history import what_changed
+
+    data = what_changed(tiny_book, Config(), source="record", period="today")
+    assert "no copy of your book from before today" in data["empty"]
+
+
+def test_what_changed_against_a_chosen_commit(tiny_book: Path):
+    from proseview.history import what_changed
+
+    scene = tiny_book / "manuscript" / "ch01" / "01-opening.md"
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n\nFive new words right here.\n", encoding="utf-8")
+    data = what_changed(tiny_book, Config(), source="git")
+    assert len(data["commits"]) == 2
+    assert data["sha"] == data["commits"][0]["sha"]
+    assert data["sha"][:7] in data["basis"] and "not committed" in data["basis"]
+    row = next(r for r in data["rows"] if r["path"].endswith("01-opening.md"))
+    assert (row["written"], row["cut"]) == (5, 0)
+
+    # Against the first commit, the opening paragraph added by the second
+    # commit counts too.
+    older = what_changed(tiny_book, Config(), source="git", sha=data["commits"][1]["sha"])
+    row = next(r for r in older["rows"] if r["path"].endswith("01-opening.md"))
+    assert row["written"] > 5
+
+
+def test_a_closed_day_is_kept_for_yesterday_and_the_week(tiny_book: Path):
+    """When a new day starts, the day that ended is stored as written and cut
+    per scene, measured from the end of the day before it."""
+    from datetime import date, timedelta
+    from proseview.history import what_changed
+    from proseview.ledger import DAY_TEXT_PATH, DAY_TEXT_PREV_PATH
+
+    cfg = Config()
+    rows = load_history(tiny_book, cfg)
+    working_copy_delta(tiny_book, cfg, rows)
+    path = tiny_book / DAY_TEXT_PATH
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    rel = next(p for p in snap["files"] if p.endswith("01-opening.md"))
+    days = lambda n: (date.today() - timedelta(days=n)).isoformat()  # noqa: E731
+    before = dict(snap["files"])
+    before[rel] = before[rel] + "\n\nThree cut words."
+    (tiny_book / DAY_TEXT_PREV_PATH).write_text(json.dumps({"date": days(2), "files": before}), encoding="utf-8")
+    snap["date"] = days(1)
+    path.write_text(json.dumps(snap), encoding="utf-8")
+
+    yesterday = what_changed(tiny_book, cfg, source="record", period="yesterday")
+    row = next(r for r in yesterday["rows"] if r["path"].endswith("01-opening.md"))
+    assert (row["written"], row["cut"]) == (0, 3)
+    assert not yesterday["notes"], "the day before was seen, so there is no gap to name"
+
+    week = what_changed(tiny_book, cfg, source="record", period="week")
+    assert [d["day"] for d in week["by_day"]] == [days(0), days(1)]
+    assert any("record starts on" in note for note in week["notes"])

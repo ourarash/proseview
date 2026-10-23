@@ -516,6 +516,29 @@
         </section>
     </dialog>
 
+    <dialog id="ledgerDialog" class="ledger-dialog" aria-labelledby="ledgerTitle">
+        <div class="ledger-head">
+            <h2 id="ledgerTitle">What changed</h2>
+            <button type="button" class="ledger-close" onclick="this.closest('dialog').close()" aria-label="Close">&times;</button>
+        </div>
+        <div class="ledger-controls">
+            <div class="ledger-source" role="radiogroup" aria-label="Measured from">
+                <button type="button" role="radio" data-ledger-source="record" aria-checked="true" title="Copies of your scenes Proseview keeps each day it runs">Proseview's record</button>
+                <button type="button" role="radio" data-ledger-source="git" aria-checked="false" title="Your files now against a commit you choose">Git</button>
+            </div>
+            <label class="sr-only" for="ledgerPeriod">Period</label>
+            <select id="ledgerPeriod" class="issue-filter">
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="week">Last 7 days</option>
+                <option value="month">Last 30 days</option>
+            </select>
+            <label class="sr-only" for="ledgerCommit">Compare with commit</label>
+            <select id="ledgerCommit" class="issue-filter ledger-commit" hidden></select>
+        </div>
+        <div id="ledgerBody" class="ledger-body" aria-live="polite"></div>
+    </dialog>
+
     <!-- Modals and Overlays -->
     <div id="file-preview-panel">
         <div class="file-preview-header">

@@ -268,18 +268,141 @@
 
         function filterNotes() { buildNotesTab(); }
 
-        // "What changed", behind the "Today" number: written and cut, by scene.
-        function openLedger() {
+        // "What changed": words written and cut, scene by scene, from
+        // Proseview's own daily record or against a chosen commit. Every view
+        // says what it is measured against; a gap in the record is named.
+        const _ledger = {source: 'record', period: 'today', sha: '', seq: 0};
+
+        function openLedger(source) {
             const dialog = document.getElementById('ledgerDialog');
-            if (dialog && !dialog.open) dialog.showModal();
+            if (!dialog) return;
+            if (source) _ledger.source = source;
+            if (!dialog.open) dialog.showModal();
+            loadLedger();
+        }
+
+        function _ledgerSigned(n) {
+            if (!n) return '0';
+            return (n > 0 ? '+' : '−') + Math.abs(n).toLocaleString('en-US');
+        }
+
+        function _ledgerWhen(seconds) {
+            if (!seconds) return '';
+            const then = new Date(seconds * 1000);
+            const now = new Date();
+            const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const days = Math.round((day(now) - day(then)) / 86400000);
+            const time = then.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
+            if (days === 0) return 'today ' + time;
+            if (days === 1) return 'yesterday ' + time;
+            return then.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+        }
+
+        function _ledgerDay(iso) {
+            const [y, m, d] = iso.split('-').map(Number);
+            return new Date(y, m - 1, d).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+        }
+
+        function loadLedger() {
+            document.querySelectorAll('[data-ledger-source]').forEach(function(btn) {
+                btn.setAttribute('aria-checked', String(btn.dataset.ledgerSource === _ledger.source));
+            });
+            const period = document.getElementById('ledgerPeriod');
+            const commit = document.getElementById('ledgerCommit');
+            period.hidden = _ledger.source !== 'record';
+            period.value = _ledger.period;
+            commit.hidden = _ledger.source !== 'git' || !commit.options.length;
+            const body = document.getElementById('ledgerBody');
+            body.innerHTML = '<p class="ledger-basis">Measuring…</p>';
+            const query = new URLSearchParams({source: _ledger.source, period: _ledger.period, sha: _ledger.sha});
+            const seq = ++_ledger.seq;
+            fetch('/api/what-changed?' + query, {headers: pvHeaders()})
+                .then(function(r) { return r.json(); })
+                .then(function(data) { if (seq === _ledger.seq) renderLedger(data); })
+                .catch(function(err) {
+                    if (seq === _ledger.seq) body.innerHTML = '<p class="ledger-basis">Could not measure: ' + escHtml(String(err)) + '</p>';
+                });
+        }
+
+        function renderLedger(data) {
+            const body = document.getElementById('ledgerBody');
+            const commit = document.getElementById('ledgerCommit');
+            if (data.source === 'git' && data.commits) {
+                commit.innerHTML = data.commits.map(function(c) {
+                    return '<option value="' + attrEscape(c.sha) + '"' + (c.sha === data.sha ? ' selected' : '') + '>'
+                        + escHtml(_ledgerDay(c.date) + ' · ' + c.subject) + '</option>';
+                }).join('');
+                commit.hidden = !data.commits.length;
+                _ledger.sha = data.sha || '';
+            }
+            if (data.error) {
+                body.innerHTML = '<p class="ledger-basis">Could not measure: ' + escHtml(data.error) + '</p>';
+                return;
+            }
+            let html = '';
+            if (data.title) html += '<p class="ledger-subtitle">' + escHtml(data.title) + '</p>';
+            if (data.basis) html += '<p class="ledger-basis">' + escHtml(data.basis) + '</p>';
+            (data.notes || []).forEach(function(note) {
+                html += '<p class="ledger-note-callout">' + escHtml(note) + '</p>';
+            });
+            if (data.empty) {
+                body.innerHTML = html + '<p class="ledger-empty-note">' + escHtml(data.empty) + '</p>';
+                return;
+            }
+            const rows = data.rows || [];
+            const written = rows.reduce(function(n, r) { return n + r.written; }, 0);
+            const cut = rows.reduce(function(n, r) { return n + r.cut; }, 0);
+            html += '<div class="ledger-totals">'
+                + '<div><span class="ledger-total ledger-written">+' + written.toLocaleString('en-US') + '</span><span>written</span></div>'
+                + '<div><span class="ledger-total">' + _ledgerSigned(-cut) + '</span><span>cut</span></div>'
+                + '<div><span class="ledger-total">' + _ledgerSigned(written - cut) + '</span><span>net</span></div></div>';
+            html += '<table class="ledger-table"><thead><tr><th>Scene</th><th>Saved</th><th>Written</th><th>Cut</th><th>Net</th></tr></thead><tbody>';
+            if (!rows.length) html += '<tr><td colspan="5" class="ledger-empty">No scene has changed.</td></tr>';
+            rows.forEach(function(r) {
+                const tag = r.status === 'new' ? '<span class="ledger-tag">new</span>'
+                    : r.status === 'removed' ? '<span class="ledger-tag">removed</span>'
+                    : r.status === 'renamed' ? '<span class="ledger-tag" title="' + attrEscape(r.old_path) + '">renamed</span>' : '';
+                const name = r.live
+                    ? '<button type="button" class="ledger-scene" data-scene-path="' + attrEscape(r.path) + '" title="' + attrEscape(r.path) + '">' + escHtml(r.title) + '</button>'
+                    : '<span class="ledger-scene-name">' + escHtml(r.title) + '</span>';
+                html += '<tr><td>' + name + tag + '</td><td class="ledger-when">' + escHtml(_ledgerWhen(r.saved)) + '</td>'
+                    + '<td class="ledger-num ledger-written">' + (r.written ? '+' + r.written.toLocaleString('en-US') : '–') + '</td>'
+                    + '<td class="ledger-num">' + (r.cut ? _ledgerSigned(-r.cut) : '–') + '</td>'
+                    + '<td class="ledger-num">' + _ledgerSigned(r.written - r.cut) + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            if (data.by_day && data.by_day.length) {
+                html += '<h3 class="ledger-subhead">Day by day</h3><table class="ledger-table ledger-days"><thead><tr><th>Day</th><th>Written</th><th>Cut</th><th>Net</th></tr></thead><tbody>';
+                data.by_day.forEach(function(d) {
+                    html += '<tr><td>' + escHtml(_ledgerDay(d.day)) + '</td>'
+                        + '<td class="ledger-num ledger-written">+' + d.written.toLocaleString('en-US') + '</td>'
+                        + '<td class="ledger-num">' + _ledgerSigned(-d.cut) + '</td>'
+                        + '<td class="ledger-num">' + _ledgerSigned(d.written - d.cut) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+            }
+            html += '<p class="ledger-note">Text moved from one scene to another counts as cut where it left and written where it landed.</p>';
+            body.innerHTML = html;
         }
 
         document.addEventListener('click', function(e) {
+            const source = e.target.closest('#ledgerDialog [data-ledger-source]');
+            if (source) {
+                _ledger.source = source.dataset.ledgerSource;
+                loadLedger();
+                return;
+            }
             const scene = e.target.closest('#ledgerDialog .ledger-scene[data-scene-path]');
             if (!scene) return;
             document.getElementById('ledgerDialog').close();
             openSceneModal(scene.dataset.scenePath);
         });
+
+        document.addEventListener('change', function(e) {
+            if (e.target.id === 'ledgerPeriod') { _ledger.period = e.target.value; loadLedger(); }
+            if (e.target.id === 'ledgerCommit') { _ledger.sha = e.target.value; loadLedger(); }
+        });
+
 
         function buildTasksTab() {
             buildTodosTab();

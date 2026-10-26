@@ -18,6 +18,8 @@
 //   appendix(label)                 an appendix heading
 //   appendix-document(title)        one document inside an appendix
 //   book-image(path, alt, width)    an image from a scene; width is a share of the page
+//   callout(kind, title, fill, body) a callout box (> [!letter] Title); fill is
+//                                   the type's print colour or none
 //
 // config holds: layout ("print" or "share"), title, subtitle, author, note,
 // lang, region, page-width, page-height, inside, outside, top, bottom, size,
@@ -377,3 +379,17 @@
 
 #let book-image(path, alt: "", width: 80%) = block(above: 1em, below: 1em, width: 100%,
   align(center, image(path, alt: alt, width: width)))
+
+// A letter, a text message, a sidebar: book text in a thin frame, set flush
+// left without indents, its title (if it has one) in small capitals.
+#let callout(kind, title: none, fill: none, body) = block(
+  above: 1em, below: 1em, width: 100%, breakable: true,
+  inset: (x: 0.9em, y: 0.7em), radius: 1.5pt, stroke: 0.5pt + luma(140), fill: fill,
+  {
+    set par(first-line-indent: 0pt, justify: false, spacing: 1.1em)
+    if title != none {
+      block(below: 0.5em, text(fill: luma(85), tracking: 0.05em, smallcaps(title)))
+    }
+    body
+  },
+)

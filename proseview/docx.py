@@ -32,7 +32,7 @@ import datetime as _dt
 import posixpath
 import re
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
@@ -41,6 +41,7 @@ from xml.sax.saxutils import escape as _xml_escape
 
 from .book import Book, BookChapter, ExportError, MatterPage, chapter_label, smart_punctuation
 from .book_styles import BookStyle
+from .callouts import print_fills
 from .obsidian import plain_obsidian
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, image_only, read_html, straighten_tag_quotes
 
@@ -120,6 +121,10 @@ class _Style:
     outline: int | None = None
     color: str = ""
     underline: bool = False
+    small_caps: bool = False
+    #: A thin box around the paragraph; Word draws one box round a run of them.
+    border: bool = False
+    shading: str = ""  # RRGGBB behind the paragraph
 
 
 def _styles(layout: str, style: BookStyle | None) -> list[_Style]:
@@ -145,6 +150,8 @@ def _styles(layout: str, style: BookStyle | None) -> list[_Style]:
             _Style("SceneBreak", "Scene Break", next="Normal", first_line=0, align="center", keep_next=True),
             _Style("DocumentTitle", "Document Title", next="Normal", first_line=0, bold=True, keep_next=True),
             _Style("BlockText", "Block Text", first_line=0, left=0.5),
+            _Style("Callout", "Callout", first_line=0, left=0.15, right=0.15, border=True),
+            _Style("CalloutTitle", "Callout Title", based="Callout", next="Callout", keep_next=True),
             _Style("ListItem", "List Item", first_line=0, left=0.5, hanging=0.25),
             _Style("SourceCode", "Source Code", first_line=0, font="Courier New", size=11, line=1.0),
             _Style("Figure", "Figure", first_line=0, align="center", line=1.0, keep_next=True),
@@ -194,6 +201,9 @@ def _styles(layout: str, style: BookStyle | None) -> list[_Style]:
         _Style("DocumentTitle", "Document Title", next="FirstParagraph", first_line=0, font=heading, bold=True,
                before=12, after=6, keep_next=True),
         _Style("BlockText", "Block Text", first_line=0, left=0.4, right=0.4, before=6, after=6),
+        _Style("Callout", "Callout", first_line=0, left=0.1, right=0.1, before=4, after=4, border=True),
+        _Style("CalloutTitle", "Callout Title", based="Callout", next="Callout", small_caps=True,
+               letter_spacing=0.5, color="555555", keep_next=True),
         _Style("ListItem", "List Item", first_line=0, left=0.5, hanging=0.25),
         _Style("SourceCode", "Source Code", first_line=0, font="Courier New", size=10, line=1.0, before=6, after=6),
         _Style("Figure", "Figure", first_line=0, align="center", line=1.0, before=12, after=12, keep_next=True),
@@ -203,6 +213,45 @@ def _styles(layout: str, style: BookStyle | None) -> list[_Style]:
         _Style("Header", "header", first_line=0, align="center", line=1.0, size=10),
         _Style("Footer", "footer", first_line=0, align="center", line=1.0, size=10),
     ]
+
+
+def _callout_styles(layout: str, fills: dict[str, str]) -> list[_Style]:
+    """A Callout and a Callout Title style for each type with a print colour, shaded with it."""
+    out = []
+    for kind, fill in fills.items():
+        shading = fill.lstrip("#").upper()
+        box = _Style(f"Callout-{kind}", f"Callout {kind}", based="Callout", shading=shading)
+        title = _Style(f"CalloutTitle-{kind}", f"Callout Title {kind}", based=box.id, next=box.id, keep_next=True,
+                       shading=shading)
+        if layout != "manuscript":
+            title = replace(title, small_caps=True, letter_spacing=0.5, color="555555")
+        out += [box, title]
+    return out
+
+
+def _callout_fills_in(styles: ET.Element) -> dict[str, str]:
+    """The shaded callout types in a document's styles.xml, ``{"letter": "#f7f1e6"}``."""
+    w = "{" + _NS["w"] + "}"
+    fills = {}
+    for node in styles.iter(w + "style"):
+        style_id = node.get(w + "styleId") or ""
+        shading = node.find(f"{w}pPr/{w}shd")
+        if style_id.startswith("Callout-") and shading is not None:
+            fills[style_id[len("Callout-"):]] = "#" + (shading.get(w + "fill") or "")
+    return fills
+
+
+def _preview_classes(style: str) -> str:
+    """A paragraph's classes in the preview: a callout style with the styles it is based on."""
+    if not style.startswith(("Callout", "CalloutTitle")):
+        return style
+    base, _, kind = style.partition("-")
+    classes = ["Callout"]
+    if kind:
+        classes.append(f"Callout-{kind}")
+    if base == "CalloutTitle":
+        classes.append(style)
+    return " ".join(dict.fromkeys(classes))
 
 
 def _inches(value: float) -> int:
@@ -219,6 +268,8 @@ def _run_props_xml(s: _Style) -> str:
         parts.append("<w:i/><w:iCs/>")
     if s.caps:
         parts.append("<w:caps/>")
+    if s.small_caps:
+        parts.append("<w:smallCaps/>")
     if s.color:
         parts.append(f'<w:color w:val="{s.color}"/>')
     if s.letter_spacing:
@@ -237,6 +288,11 @@ def _para_props_xml(s: _Style) -> str:
         parts.append("<w:keepNext/>")
     if s.page_break_before:
         parts.append("<w:pageBreakBefore/>")
+    if s.border:
+        edge = 'w:val="single" w:sz="4" w:space="4" w:color="888888"'
+        parts.append(f'<w:pBdr><w:top {edge}/><w:left {edge}/><w:bottom {edge}/><w:right {edge}/></w:pBdr>')
+    if s.shading:
+        parts.append(f'<w:shd w:val="clear" w:color="auto" w:fill="{s.shading}"/>')
     spacing = []
     if s.before is not None:
         spacing.append(f'w:before="{round(s.before * 20)}"')
@@ -303,6 +359,12 @@ def styles_css(styles: list[_Style]) -> str:
             decl.append("font-style:italic")
         if s.caps:
             decl.append("text-transform:uppercase")
+        if s.small_caps:
+            decl.append("font-variant:small-caps")
+        if s.border:
+            decl.append("border:0.5pt solid #888;padding:3pt 4pt")
+        if s.shading:
+            decl.append(f"background:#{s.shading}")
         if s.letter_spacing:
             decl.append(f"letter-spacing:{s.letter_spacing:g}pt")
         if s.underline:
@@ -400,6 +462,7 @@ class _Writer:
         #: Whether the next paragraph starts a new page.
         self.break_next = False
         self._md = _markdown()
+        self.callout_fills = print_fills(self.style.callouts if self.style else (), book.callouts)
         width, _ = PAGE_SIZES[options.paper]
         self.text_width_in = (width - 2 * _MARGIN) / _TWIPS_PER_INCH
 
@@ -601,14 +664,15 @@ class _Writer:
         """Write *text* as paragraphs: the first in *first*, the rest in *every*."""
         text = plain_obsidian(text, ctx.root.resolve() if ctx.root else None)
         tokens = self._md.parse(straighten_tag_quotes(_COMMENT_RE.sub("", text)))
-        self._blocks(tokens, 0, ctx, stop=None, state={"next": first, "every": every}, level=0, quote=False)
+        self._blocks(tokens, 0, ctx, stop=None, state={"next": first, "every": every}, level=0, quote="")
 
     def _take(self, state: dict) -> str:
         style = state["next"]
         state["next"] = state["every"]
         return style
 
-    def _blocks(self, tokens: list, i: int, ctx: _Context, *, stop: str | None, state: dict, level: int, quote: bool):
+    def _blocks(self, tokens: list, i: int, ctx: _Context, *, stop: str | None, state: dict, level: int, quote: str):
+        """Write blocks up to *stop*; inside a quotation or callout, *quote* is its paragraphs' style."""
         while i < len(tokens):
             token = tokens[i]
             kind = token.type
@@ -619,7 +683,7 @@ class _Writer:
                 if image_only(children):
                     self.para("Figure", self._inline(children, ctx))
                 else:
-                    style = "BlockText" if quote else self._take(state)
+                    style = quote or self._take(state)
                     self.para(style, self._inline(children, ctx))
                 i += 3
             elif kind == "heading_open":
@@ -628,7 +692,15 @@ class _Writer:
                 state["next"] = "Normal" if self.manuscript else "FirstParagraph"
                 i += 3
             elif kind == "blockquote_open":
-                i = self._blocks(tokens, i + 1, ctx, stop="blockquote_close", state=state, level=level, quote=True)
+                i = self._blocks(tokens, i + 1, ctx, stop="blockquote_close", state=state, level=level, quote="BlockText")
+                state["next"] = state["every"]
+            elif kind == "callout_open":
+                suffix = "-" + token.meta["type"] if token.meta["type"] in self.callout_fills else ""
+                i += 1
+                if tokens[i].type == "callout_title_open":
+                    self.para("CalloutTitle" + suffix, self._inline(tokens[i + 1].children or [], ctx))
+                    i += 3
+                i = self._blocks(tokens, i, ctx, stop="callout_close", state=state, level=level, quote="Callout" + suffix)
                 state["next"] = state["every"]
             elif kind in {"bullet_list_open", "ordered_list_open"}:
                 i = self._list(tokens, i, ctx, level)
@@ -955,7 +1027,7 @@ def build_docx(book: Book, options: DocxOptions) -> bytes:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f"<w:document {namespaces}><w:body>{body}{section}</w:body></w:document>"
     )
-    styles = _styles(options.layout, options.style)
+    styles = _styles(options.layout, options.style) + _callout_styles(options.layout, writer.callout_fills)
     stamp = (options.timestamp or _dt.datetime.now(_dt.timezone.utc)).replace(microsecond=0)
     iso = stamp.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     core = (
@@ -1178,13 +1250,17 @@ def preview_pages(data: bytes, layout: str, style: BookStyle | None) -> tuple[di
         rels = ET.fromstring(archive.read("word/_rels/document.xml.rels"))
         targets = {rel.get("Id"): rel.get("Target") for rel in rels}
         media = {name: archive.read(name) for name in archive.namelist() if name.startswith("word/media/")}
-    css = styles_css(_styles(layout, style))
+        word_styles = ET.fromstring(archive.read("word/styles.xml"))
+    css = styles_css(_styles(layout, style) + _callout_styles(layout, _callout_fills_in(word_styles)))
     page_css = (
         "body{margin:0;padding:24px;background:#fff;color:#111}"
         "p{margin:0}.Heading1{break-before:column}"
         "img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%;margin:6pt 0}"
         "td{border:1px solid #888;padding:2pt 4pt;vertical-align:top;font-size:0.9em}"
         ".running{font-size:9pt;color:#777;text-align:right;margin-bottom:12pt;text-indent:0}"
+        # Word draws one box round a run of callout paragraphs.
+        ".Callout+.Callout{border-top:none;margin-top:0;padding-top:0}"
+        ".Callout:has(+ .Callout){border-bottom:none;margin-bottom:0;padding-bottom:0}"
     )
     pages: list[tuple[str, list[str]]] = [("Title page", [])]
     files: dict[str, bytes] = {}
@@ -1225,7 +1301,7 @@ def preview_pages(data: bytes, layout: str, style: BookStyle | None) -> tuple[di
             html.append(f'<img src="{_text(posixpath.basename(target))}" alt="{_text(alt)}"/>' if target else "")
         centred = ' style="text-align:center;text-indent:0"' if record["centred"] else ""
         if html or style != "Normal":
-            pages[-1][1].append(f'<p class="{style}"{centred}>{"".join(html) or "&#160;"}</p>')
+            pages[-1][1].append(f'<p class="{_preview_classes(style)}"{centred}>{"".join(html) or "&#160;"}</p>')
         if record["section_end"] or record["page_break"]:
             if pages[-1][1]:
                 pages.append(("Page", []))

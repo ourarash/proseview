@@ -291,6 +291,33 @@ blockquote p {
   text-indent: 0;
 }
 
+/* A callout (> [!letter] Title): a letter, a text message, a sidebar. Book
+   text in a thin frame; a type's background, when one is set, is added
+   after this stylesheet. */
+.callout {
+  margin: 1em 0;
+  padding: 0.6em 0.9em;
+  border: 0.5pt solid #888;
+  border-radius: 2pt;
+}
+
+.callout p {
+  text-indent: 0;
+  text-align: left;
+  margin: 0 0 0.4em;
+}
+
+.callout p:last-child {
+  margin-bottom: 0;
+}
+
+.callout .callout-title {
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: #555;
+  margin-bottom: 0.3em;
+}
+
 ul,
 ol {
   margin: 0.8em 0 0.8em 1.5em;

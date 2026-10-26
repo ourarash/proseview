@@ -138,3 +138,78 @@ more scenes, reading order can be compared with story order.
 A scene with no frontmatter still renders, just with `Unknown` /
 `Not defined` placeholders in the scene card and the file's stem as
 its title.
+
+## Callouts: letters, text messages and sidebars
+
+A callout is a box of book text: a letter, a text message, a sign, a
+sidebar. It is written as a quotation whose first line names its type,
+GitHub's and Obsidian's syntax:
+
+```markdown
+> [!letter] A letter, undated
+> Mara, if you are reading this, the boat has gone without me.
+>
+> — T.
+
+> [!sms] Jonah, 11:42 pm
+> are you up\
+> i think i saw him
+
+> [!WARNING]
+> A box with no title.
+```
+
+- **The type** is any word of letters, digits and `-` (`letter`, `sms`,
+  `note`, `warning`). It is not printed; it picks the box's colour, if you
+  give it one.
+- **The title** is the rest of the first line. A callout with no title shows
+  no heading at all, so `> [!NOTE]` never prints the word "Note".
+- **Folding** (`[!note]-` or `[!note]+` in Obsidian) is kept in the file but
+  not acted on: callouts always show open, on screen and in print.
+- Only a first line of exactly `[!type]` makes a callout. Any other
+  quotation stays a quotation.
+
+Callouts are book text, so they print in every export as a framed box (see
+[Exporting](export.md)), and their words count. **TODOs and notes are
+different**: they are comments (`<!-- TODO: ... -->`, `<!-- NOTE: ... -->`),
+shown as small tinted labels while you write, and never printed. Keep private
+reminders in comments and anything a reader should see in callouts.
+
+In the scene editor the **Callout** button wraps the paragraph you are in (or
+the selected paragraphs) in a callout, or takes the text back out of one.
+While editing, the type sits on the box's top edge, where you can change it,
+and an empty title line waits for a title.
+
+### Colours
+
+Each type can have its own background, set under `callouts:` in
+`.proseview.yaml`. Give one colour for everywhere, or one for each screen
+theme, plus `default` for the themes you leave out and `print` for EPUB, PDF
+and Word:
+
+```yaml
+callouts:
+  letter:
+    background: "#f7f1e6"        # every theme, and print
+  sms:
+    background:
+      default: "#eef3fb"
+      dark: "#16233a"
+      graphite-dark: "#232c33"
+      # no print key: no colour in the book
+  warning:
+    background:
+      graphite-dark: "#3a2a22"
+```
+
+The themes are `light`, `dark`, `docsify`, `hopscotch`, `graphite-light` and
+`graphite-dark`. Colours are hex (`#rgb`, `#rrggbb`, or `#rrggbbaa` on
+screen); a print colour must be opaque, since Word cannot shade with a
+see-through colour. A type with no colour for a theme has no fill there, just
+the frame. Nothing is mixed or guessed for you, so pick a dark colour for a
+dark theme. Avoid the blue and amber tints of the TODO and Note labels, so a
+coloured callout never looks like one.
+
+A book style can set the same `callouts:` block in its `style.yaml`, so a
+style of your own can bring its colours; `.proseview.yaml` wins over it,
+setting by setting.

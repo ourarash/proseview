@@ -29,6 +29,7 @@ from .book import (
     smart_punctuation,
 )
 from .book_styles import BookStyle
+from .callouts import callout_plugin, print_fills
 from .obsidian import plain_obsidian
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, read_html, repository_src, straighten_tag_quotes, image_only
 
@@ -104,6 +105,7 @@ class _Markdown:
         self._md = MarkdownIt(
             "commonmark", {"html": True, "xhtmlOut": True, "typographer": True}
         ).enable(["table", "strikethrough", "replacements", "smartquotes"])
+        callout_plugin(self._md)
         self._images = images
 
     def render(
@@ -392,7 +394,11 @@ class _Writer:
             # the book; the style's stylesheet points at fonts/<file>.
             media_type = "font/ttf" if self.v3 else "application/x-font-truetype"
             self._add(_Item(f"font-{n}", f"fonts/{font.name}", media_type, font.read_bytes()), in_spine=False)
-        self._add(_Item("style", "styles/book.css", "text/css", self.style.css.encode("utf-8")), in_spine=False)
+        css = self.style.css + "".join(
+            f"\n.callout-{kind} {{ background-color: {fill}; }}\n"
+            for kind, fill in print_fills(self.style.callouts, self.book.callouts).items()
+        )
+        self._add(_Item("style", "styles/book.css", "text/css", css.encode("utf-8")), in_spine=False)
         self.stylesheets.append("styles/book.css")
         for n, sheet in enumerate(self.options.css, start=1):
             if not sheet.is_file():

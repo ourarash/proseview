@@ -17,6 +17,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from .callouts import CalloutColours, parse_colours
+
 
 DEFAULT_EDITOR_SCHEME = "vscode"
 BUILTIN_EDITOR_SCHEMES = {"vscode", "cursor", "zed", "positron", "custom"}
@@ -217,6 +219,8 @@ class Config:
     story: StoryConfig = field(default_factory=StoryConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
     max_backups: int = 50
+    #: Background colours per callout type (see :mod:`proseview.callouts`).
+    callouts: CalloutColours = ()
 
     @property
     def manuscript_subdir(self) -> str:
@@ -291,6 +295,7 @@ class Config:
             story=_coerce_story(raw.get("story")),
             export=_coerce_export(raw.get("export")),
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
+            callouts=_coerce_callouts(raw.get("callouts")),
         )
 
     def with_overrides(self, **kwargs: Any) -> "Config":
@@ -360,8 +365,15 @@ def _config_field_names() -> tuple[str, ...]:
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
-        "discuss", "export", "max_backups",
+        "discuss", "export", "max_backups", "callouts",
     )
+
+
+def _coerce_callouts(v: Any) -> CalloutColours:
+    try:
+        return parse_colours(v, ".proseview.yaml")
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def _coerce_genre(v: Any) -> str:

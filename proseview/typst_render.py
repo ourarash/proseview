@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .book import SHORT_OPENER, ExportError
+from .callouts import callout_plugin
 from .obsidian import plain_obsidian
 from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkStack, image_only, read_html, straighten_tag_quotes
 
@@ -47,9 +48,11 @@ def string(text: str) -> str:
 def _markdown():
     from markdown_it import MarkdownIt
 
-    return MarkdownIt(
+    md = MarkdownIt(
         "commonmark", {"html": True, "typographer": True}
     ).enable(["table", "strikethrough", "replacements", "smartquotes"])
+    callout_plugin(md)
+    return md
 
 
 @dataclass
@@ -64,6 +67,8 @@ class RenderContext:
     shift_headings: int = 2
     #: Images used, as root-relative paths, so the caller can report them.
     images: list[Path] = field(default_factory=list)
+    #: Each callout type's print background, ``{"letter": "#f7f1e6"}``.
+    callout_fills: dict[str, str] = field(default_factory=dict)
 
 
 class TypstRenderer:
@@ -120,6 +125,9 @@ class TypstRenderer:
             elif kind == "blockquote_open":
                 inner, i = self._blocks(tokens, i + 1, ctx, opener=False, stop="blockquote_close")
                 parts.append("#quote(block: true)[" + "\n\n".join(inner) + "]")
+            elif kind == "callout_open":
+                callout, i = self._callout(tokens, i, ctx)
+                parts.append(callout)
             elif kind in {"bullet_list_open", "ordered_list_open"}:
                 close = kind.replace("_open", "_close")
                 start = token.attrGet("start")
@@ -145,6 +153,19 @@ class TypstRenderer:
                 i += 1
             first_paragraph = first_paragraph and kind not in {"paragraph_open"}
         return parts, i
+
+    def _callout(self, tokens: list, i: int, ctx: RenderContext) -> tuple[str, int]:
+        """``#callout(type, title: [...], fill: ...)[body]``; the style's pdf.typ draws it."""
+        kind = tokens[i].meta["type"]
+        i += 1
+        title = "none"
+        if tokens[i].type == "callout_title_open":
+            title = "[" + self._inline(tokens[i + 1].children or [], ctx) + "]"
+            i += 3
+        inner, i = self._blocks(tokens, i, ctx, opener=False, stop="callout_close")
+        fill = ctx.callout_fills.get(kind)
+        fill = f"rgb({string(fill)})" if fill else "none"
+        return f"#callout({string(kind)}, title: {title}, fill: {fill})[" + "\n\n".join(inner) + "]", i
 
     def _list_items(self, tokens: list, i: int, ctx: RenderContext, close: str):
         items: list[str] = []

@@ -78,7 +78,7 @@
         var _fileEditTokenizer = null;
         function fileEditTokenizer(PM) {
             if (_fileEditTokenizer) return _fileEditTokenizer;
-            var md = new PM.defaultMarkdownParser.tokenizer.constructor('commonmark', {html: true}).enable('table');
+            var md = calloutPlugin(new PM.defaultMarkdownParser.tokenizer.constructor('commonmark', {html: true}).enable('table'));
             _fileEditTokenizer = {parse: function(src, env) {
                 var lines = src.split('\n');
                 var tokens = tokenizerKeepingInlineHtml(md).parse(src, env);
@@ -102,7 +102,7 @@
             return new PM.MarkdownParser(
                 PM.mySchema,
                 fileEditTokenizer(PM),
-                Object.assign({}, PM.defaultMarkdownParser.tokens, {
+                Object.assign({}, PM.defaultMarkdownParser.tokens, calloutParserTokens, {
                     html_block: {node: 'annotation', getAttrs: function(tok) { return {raw: tok.content.trim()}; }},
                     html_inline: {ignore: true},
                     table_raw: {node: 'raw_block', getAttrs: function(tok) { return {raw: tok.content}; }},
@@ -121,7 +121,7 @@
         }
 
         function fileEditSerializer(PM) {
-            var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
+            var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, calloutSerializerNodes, {
                 annotation: function(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
                 raw_block: function(state, node) { state.write(node.attrs.raw); state.closeBlock(node); },
             });
@@ -224,6 +224,7 @@
                 host.className = 'file-edit-host';
                 body.appendChild(host);
                 var plugins = [
+                    buildCalloutTitlePlugin(PM),
                     PM.history(),
                     PM.keymap(Object.assign({}, PM.baseKeymap, {
                         'Mod-z': PM.undo, 'Mod-y': PM.redo, 'Mod-Shift-z': PM.redo,
@@ -247,7 +248,7 @@
                         fileEdit.view.updateState(fileEdit.view.state.apply(tr));
                         if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
                     },
-                    nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView},
+                    nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView, callout: createCalloutNodeView},
                 });
                 if (fileEdit.lastCaret && fileEdit.lastCaret.path === node.path) {
                     var at = doc.resolve(Math.max(0, Math.min(fileEdit.lastCaret.pos, doc.content.size)));

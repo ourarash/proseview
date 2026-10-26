@@ -134,6 +134,44 @@
             return oldLines.slice(0, head).concat(middle, oldLines.slice(tail)).join('\n');
         }
 
+        // A quotation or callout keeps its paragraphs' lines the same way,
+        // each inside its "> " prefix, when it has as many parts as before
+        // and each part is a plain paragraph. A callout's first line
+        // ("[!letter] Title") is written as it now is.
+        var _QUOTED = {blockquote: true, callout: true};
+        var _NOT_PLAIN = /^\s*(?:[-+*>|#<]|\d{1,9}[.)]\s|`{3,}|~{3,})/m;
+
+        function _unquote(text) {
+            return text.replace(/\n\s*$/, '').split('\n').map(function(line) { return line.replace(/^> ?/, ''); }).join('\n');
+        }
+
+        function _keepQuotedWrap(text, type, before) {
+            if (!before || before.type !== type) return text;
+            var oldParts = _unquote(before.source).split('\n\n');
+            var newParts = _unquote(text).split('\n\n');
+            if (oldParts.length !== newParts.length) return text;
+            var parts = [];
+            for (var i = 0; i < newParts.length; i++) {
+                var head = '', part = newParts[i], oldPart = oldParts[i];
+                if (i === 0 && type === 'callout') {
+                    var cut = part.indexOf('\n'), oldCut = oldPart.indexOf('\n');
+                    if (cut < 0 || oldCut < 0) return text;
+                    head = part.slice(0, cut + 1);
+                    part = part.slice(cut + 1);
+                    oldPart = oldPart.slice(oldCut + 1);
+                }
+                if (_NOT_PLAIN.test(part) || _NOT_PLAIN.test(oldPart)) return text;
+                parts.push(head + _keepWrap(part, 'paragraph', {type: 'paragraph', source: oldPart}));
+            }
+            return parts.map(function(part) {
+                return part.split('\n').map(function(line) { return line ? '> ' + line : '>'; }).join('\n');
+            }).join('\n>\n');
+        }
+
+        function _keepLines(text, type, before) {
+            return _QUOTED[type] ? _keepQuotedWrap(text, type, before) : _keepWrap(text, type, before);
+        }
+
         // *doc* as Markdown, writing each block that is unchanged since
         // *saved* (from markdownSourceBlocks) exactly as it was in the file.
         function serializeKeepingSource(saved, doc, serializer) {
@@ -175,7 +213,7 @@
                     out += old[src].source;
                     continue;
                 }
-                var text = src !== -1 ? old[src].source.replace(/\n\s*$/, '') : _keepWrap(now[k], types[k], _counterpart(match, k, old));
+                var text = src !== -1 ? old[src].source.replace(/\n\s*$/, '') : _keepLines(now[k], types[k], _counterpart(match, k, old));
                 out += last ? text + saved.tail : text + '\n\n';
             }
             return out;

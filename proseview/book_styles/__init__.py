@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..callouts import CalloutColours, merge_colours, parse_colours
+
 STYLES_DIR = Path(__file__).resolve().parent
 DEFAULT_STYLE = "classic"
 CHAPTER_NUMBERING: tuple[str, ...] = ("words", "numerals", "number", "none")
@@ -44,6 +46,9 @@ class BookStyle:
     pdf_settings: tuple[tuple[str, object], ...] = ()
     #: Bundled fonts the EPUB carries, for a face e-readers will not have.
     epub_fonts: tuple[Path, ...] = ()
+    #: Callout backgrounds the style ships (``callouts:`` in style.yaml);
+    #: a project's ``.proseview.yaml`` wins over them.
+    callouts: CalloutColours = ()
 
     @property
     def formats(self) -> tuple[str, ...]:
@@ -165,6 +170,12 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
     epub_fonts = tuple(STYLES_DIR / "fonts" / str(f) for f in fonts)
     if parent and not epub_fonts:
         epub_fonts = base_style.epub_fonts
+    try:
+        callouts = parse_colours(settings.get("callouts"), str(settings_file))
+    except ValueError as exc:
+        raise StyleError(str(exc)) from exc
+    if parent:
+        callouts = merge_colours(base_style.callouts, callouts)
     if pdf_settings["opener"] not in PDF_OPENERS:
         raise StyleError(f"{settings_file}: pdf.opener must be one of {', '.join(PDF_OPENERS)}")
     return BookStyle(
@@ -179,4 +190,5 @@ def load_style(spec: str = "", *, base: Path | None = None) -> BookStyle:
         declared_formats=tuple(str(f) for f in declared),
         pdf_settings=tuple(pdf_settings.items()),
         epub_fonts=epub_fonts,
+        callouts=callouts,
     )

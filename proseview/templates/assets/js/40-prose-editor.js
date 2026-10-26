@@ -29,7 +29,7 @@
             var parser = new PM.MarkdownParser(
                 PM.mySchema,
                 tokenizer,
-                Object.assign({}, PM.defaultMarkdownParser.tokens, {
+                Object.assign({}, PM.defaultMarkdownParser.tokens, calloutParserTokens, {
                     html_block: {
                         node: 'annotation',
                         getAttrs: function(tok) { return { raw: tok.content.trim() }; }
@@ -58,6 +58,7 @@
             var plugins = [
                 PM.buildHlPlugin(),
                 lnPlugin,
+                buildCalloutTitlePlugin(PM),
                 (typeof buildAiProposalPlugin === 'function' ? buildAiProposalPlugin(PM) : null),
                 buildListInputRules(PM),
                 PM.history(),
@@ -139,7 +140,8 @@
                     }
                 },
                 nodeViews: {
-                    annotation: PM.createAnnotationNodeView
+                    annotation: PM.createAnnotationNodeView,
+                    callout: createCalloutNodeView
                 }
             });
 
@@ -452,7 +454,7 @@
         }
 
         function sceneEditorSerializer(PM) {
-            var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, {
+            var nodes = Object.assign({}, PM.defaultMarkdownSerializer.nodes, calloutSerializerNodes, {
                 annotation: function(state, node) {
                     state.write(node.attrs.raw);
                     state.closeBlock(node);

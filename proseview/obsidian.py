@@ -1,10 +1,10 @@
 """Obsidian's Markdown extensions, rewritten as plain Markdown for a book.
 
-A vault's scenes carry ``[[wikilinks]]``, ``![[embeds]]``, ``> [!note]``
-callouts and ``==highlights==``. None of them is CommonMark, so an export
-printed them as typed. A book shows what a reader of the vault sees instead:
-a link's text, the embedded picture, the callout as a quotation with its
-title, the highlighted words.
+A vault's scenes carry ``[[wikilinks]]``, ``![[embeds]]`` and
+``==highlights==``. None of them is CommonMark, so an export printed them as
+typed. A book shows what a reader of the vault sees instead: a link's text,
+the embedded picture, the highlighted words. ``> [!note]`` callouts are left
+as written; :mod:`proseview.callouts` turns them into boxes.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _EMBED_RE = re.compile(r"!\[\[([^\[\]\n]+?)\]\]")
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]\n]+?)\]\]")
 _HIGHLIGHT_RE = re.compile(r"(?<!=)==(?=\S)(.+?)(?<=\S)==(?!=)")
-_CALLOUT_RE = re.compile(r"^(\s*>\s*)\[!([A-Za-z][\w-]*)\][+-]?[ \t]*(.*)$")
 _CODE_SPAN_RE = re.compile(r"(`+)(.+?)\1")
 
 
@@ -82,7 +81,7 @@ def plain_obsidian(text: str, root: Path | None = None) -> str:
     *root* is the vault, where ``![[picture.png]]`` is looked for. Fenced code
     is left alone; text without any of the syntax comes back unchanged.
     """
-    if "[[" not in text and "==" not in text and "[!" not in text:
+    if "[[" not in text and "==" not in text:
         return text
     out: list[str] = []
     fenced = False
@@ -93,14 +92,6 @@ def plain_obsidian(text: str, root: Path | None = None) -> str:
             continue
         if fenced:
             out.append(line)
-            continue
-        callout = _CALLOUT_RE.match(line)
-        if callout:
-            prefix, kind, title = callout.groups()
-            title = title.strip() or kind.capitalize()
-            # The title is a paragraph of its own inside the quotation.
-            out.append(f"{prefix}**{_inline(title, root)}**")
-            out.append(prefix.rstrip())
             continue
         out.append(_inline(line, root))
     return "\n".join(out)

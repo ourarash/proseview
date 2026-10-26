@@ -283,3 +283,31 @@ def test_config_save_creates_new_file(tmp_path: Path):
     assert yaml_path.exists()
     result = yaml_path.read_text(encoding="utf-8")
     assert "target_words: 95000" in result
+
+
+def test_callout_colours_load_and_survive_a_save(tmp_path: Path):
+    text = (
+        "# my colours\n"
+        "callouts:\n"
+        "  letter:\n"
+        "    background: \"#f7f1e6\"\n"
+        "  sms:\n"
+        "    background:\n"
+        "      graphite-dark: \"#232c33\"  # cool\n"
+    )
+    (tmp_path / ".proseview.yaml").write_text(text)
+    cfg = Config.load(tmp_path)
+    assert dict(cfg.callouts) == {
+        "letter": (("default", "#f7f1e6"), ("print", "#f7f1e6")),
+        "sms": (("graphite-dark", "#232c33"),),
+    }
+    cfg.with_overrides(target_words=1000).save(tmp_path)
+    saved = (tmp_path / ".proseview.yaml").read_text()
+    assert "graphite-dark: \"#232c33\"  # cool" in saved
+    assert Config.load(tmp_path).callouts == cfg.callouts
+
+
+def test_a_bad_callout_colour_fails_loudly(tmp_path: Path):
+    (tmp_path / ".proseview.yaml").write_text("callouts:\n  sms:\n    background: blue\n")
+    with pytest.raises(ConfigError, match=r"callouts\.sms\.background: 'blue' is not a hex colour"):
+        Config.load(tmp_path)

@@ -61,6 +61,12 @@
                 (typeof buildAiProposalPlugin === 'function' ? buildAiProposalPlugin(PM) : null),
                 buildListInputRules(PM),
                 PM.history(),
+                PM.keymap({
+                    'ArrowRight': caretBesideAnnotation(PM, 'right'),
+                    'ArrowDown': caretBesideAnnotation(PM, 'down'),
+                    'ArrowLeft': caretBesideAnnotation(PM, 'left'),
+                    'ArrowUp': caretBesideAnnotation(PM, 'up')
+                }),
                 // Lets the caret sit between two blocks that hold no text,
                 // such as TODOs stacked one after another, so the writer can
                 // type there.
@@ -80,7 +86,18 @@
                     'Mod-Shift-7': function() { window.toggleList('ordered_list'); return true; },
                     // Edit is a mode you enter on purpose, so saving finishes
                     // it, as the Save button does. E brings the caret back.
-                    'Mod-s': function() { saveSceneEdit(); return true; }
+                    'Mod-s': function() {
+                        // Nothing changed: still leave edit mode, as a save
+                        // would, and say so without writing the file.
+                        if (!_pmDirty && !_pmSaveInFlight) {
+                            if (cancelSceneEdit() !== false && typeof sidebarShowToast === 'function') {
+                                sidebarShowToast(SCENE_UNCHANGED_TOAST);
+                            }
+                            return true;
+                        }
+                        saveSceneEdit();
+                        return true;
+                    }
                 }))
             ].filter(Boolean);
 
@@ -161,6 +178,34 @@
                 if (_hlTextAt(text, needle, at)) return at;
             }
             return -1;
+        }
+
+        // An arrow key at the edge of text (a paragraph, the end of a quote)
+        // next to a TODO or note stops beside it, ready to type there. The
+        // gap cursor alone would skip it: text could already take the caret
+        // on that side, so it offers no stop between the two.
+        function caretBesideAnnotation(PM, dir) {
+            return function(state, dispatch, view) {
+                var sel = state.selection;
+                if (!(sel instanceof PM.TextSelection) || !sel.empty) return false;
+                var $head = sel.$head;
+                var forward = dir === 'right' || dir === 'down';
+                if ($head.depth < 1 || !$head.parent.isTextblock) return false;
+                if ($head.parentOffset !== (forward ? $head.parent.content.size : 0)) {
+                    if (dir === 'left' || dir === 'right' || !view.endOfTextblock(dir)) return false;
+                }
+                // The caret must be at that edge of every block it is in.
+                for (var d = $head.depth - 1; d >= 1; d--) {
+                    var index = $head.index(d);
+                    if (forward ? index !== $head.node(d).childCount - 1 : index !== 0) return false;
+                }
+                var pos = forward ? $head.after(1) : $head.before(1);
+                var $pos = state.doc.resolve(pos);
+                var beside = forward ? $pos.nodeAfter : $pos.nodeBefore;
+                if (!beside || beside.type.name !== 'annotation') return false;
+                if (dispatch) dispatch(state.tr.setSelection(new PM.GapCursor($pos)).scrollIntoView());
+                return true;
+            };
         }
 
         function updatePMHighlightDecorations() {
@@ -311,6 +356,8 @@
             });
         }
 
+        var SCENE_UNCHANGED_TOAST = 'No changes. Back to reading.';
+
         function toggleSceneEdit() {
             // A snapshot has nowhere to save to, so reading is all it offers --
             // unless it is the demo, whose saves stay in the visitor's tab.
@@ -323,6 +370,10 @@
                 render();
                 if (!_pmView) return;
             }
+            // Back to editing, the "No changes" note from the last Cmd+S
+            // has nothing left to say.
+            var toast = document.getElementById('sidebarFileToast');
+            if (toast && !toast.hidden && toast.textContent === SCENE_UNCHANGED_TOAST) toast.hidden = true;
             var anchor = _sceneReadingAnchor();
             _pmEditMode = true;
             _pmView.setProps({ editable: function() { return true; } });

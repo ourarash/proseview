@@ -841,7 +841,7 @@
         import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js';
         import { history, undo, redo } from './vendor/pm/prosemirror-history.js';
         import { keymap } from './vendor/pm/prosemirror-keymap.js';
-        import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
+        import { gapCursor, GapCursor } from './vendor/pm/prosemirror-gapcursor.js';
         import { baseKeymap, toggleMark, wrapIn, lift, chainCommands } from './vendor/pm/prosemirror-commands.js';
         import { wrapInList, liftListItem, splitListItem } from './vendor/pm/prosemirror-schema-list.js';
         import { inputRules, wrappingInputRule } from './vendor/pm/prosemirror-inputrules.js';
@@ -1181,7 +1181,7 @@
             mySchema, mdSchema,
             MarkdownParser, MarkdownSerializer,
             defaultMarkdownParser, defaultMarkdownSerializer,
-            history, undo, redo, keymap, baseKeymap, gapCursor, toggleMark, wrapIn, lift, chainCommands,
+            history, undo, redo, keymap, baseKeymap, gapCursor, GapCursor, toggleMark, wrapIn, lift, chainCommands,
             wrapInList, liftListItem, splitListItem, inputRules, wrappingInputRule,
             hlPluginKey, buildHlPlugin, createAnnotationNodeView
         };

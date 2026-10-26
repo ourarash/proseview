@@ -4667,7 +4667,8 @@ def test_the_caret_can_go_between_todos_stacked_together(page: Page, server: Pro
     blocks = _top_level_blocks(page)
     assert blocks.index("Between") == blocks.index("<!-- TODO: Beat one -->") + 1, blocks
 
-    # And the arrow keys reach the gaps too: up from there, past Beat one.
+    # And the arrow keys reach the gaps too: up from there stops beside Beat
+    # one, and once more goes past it.
     page.evaluate("""() => {
         let at = null;
         _pmView.state.doc.forEach((node, offset) => {
@@ -4676,6 +4677,7 @@ def test_the_caret_can_go_between_todos_stacked_together(page: Page, server: Pro
         _pmView.dispatch(_pmView.state.tr.setSelection(_PM.TextSelection.create(_pmView.state.doc, at)));
         _pmView.focus();
     }""")
+    page.keyboard.press("ArrowUp")
     page.keyboard.press("ArrowUp")
     page.keyboard.type("Above")
     blocks = _top_level_blocks(page)
@@ -4700,6 +4702,66 @@ def test_a_todo_has_the_gutter_arrow_to_its_line(page: Page, server: ProseviewSe
     arrow.click()
     page.wait_for_timeout(200)
     assert page.locator(".pm-annotation-editing").count() == 0
+
+
+def _caret_at_end_of(page: Page, start: str) -> None:
+    page.evaluate("""(start) => {
+        let at = null;
+        _pmView.state.doc.descendants((node, pos) => {
+            if (at === null && node.isTextblock && node.textContent.startsWith(start)) at = pos + node.nodeSize - 1;
+        });
+        _pmView.dispatch(_pmView.state.tr.setSelection(_PM.TextSelection.create(_pmView.state.doc, at)));
+        _pmView.focus();
+    }""", start)
+
+
+def test_right_arrow_at_the_end_of_text_stops_before_the_note_after_it(page: Page, server: ProseviewServer):
+    """The caret used to skip past the note to the paragraph after it."""
+    open_annotated_scene(page, server)
+    enter_edit_mode(page)
+
+    _caret_at_end_of(page, "Patel arrived")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.type("Before the note")
+    blocks = _top_level_blocks(page)
+    assert blocks.index("Before the note") + 1 == blocks.index(f"<!-- NOTE[continuity]: {NOTE_BODY} -->"), blocks
+
+    # The same from the end of a quote.
+    page.evaluate("""() => {
+        let at = null;
+        _pmView.state.doc.forEach((node, offset) => {
+            if (at === null && node.textContent === 'Before the note') at = offset + 1;
+        });
+        const tr = _pmView.state.tr.setSelection(_PM.TextSelection.create(_pmView.state.doc, at));
+        _pmView.dispatch(tr);
+        _PM.wrapIn(_PM.mySchema.nodes.blockquote)(_pmView.state, _pmView.dispatch);
+    }""")
+    _caret_at_end_of(page, "Before the note")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.type("After the quote")
+    blocks = _top_level_blocks(page)
+    note = blocks.index(f"<!-- NOTE[continuity]: {NOTE_BODY} -->")
+    assert blocks[note - 2:note] == ["Before the note", "After the quote"], blocks
+
+
+def test_cmd_s_with_no_changes_still_returns_to_reading(page: Page, server: ProseviewServer):
+    before = server.scene_path().read_text(encoding="utf-8")
+    open_scene(page, server)
+    enter_edit_mode(page)
+    page.click("#sceneProseHost .ProseMirror p")
+
+    save_scene(page)
+
+    page.wait_for_function("() => window._pmEditMode === false")
+    toast = page.locator("#sidebarFileToast")
+    toast.wait_for(state="visible")
+    assert "No changes" in toast.inner_text()
+    assert server.scene_path().read_text(encoding="utf-8") == before
+
+    # Editing again puts the note away at once.
+    page.keyboard.press("e")
+    page.wait_for_function("() => window._pmEditMode === true")
+    assert toast.is_hidden()
 
 
 def test_one_escape_cancels_a_todo_edit_even_with_the_selection_menu_up(page: Page, server: ProseviewServer):

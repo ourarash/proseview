@@ -7598,6 +7598,14 @@
             --annotation-accent: var(--primary);
         }
 
+        /* TODOs and notes in a row keep a line's height between them, so
+           there is room to click in between and type. The gap cursor sits
+           between them while it is there, hence the second selector. */
+        .pm-annotation + .pm-annotation,
+        .pm-annotation + .ProseMirror-gapcursor + .pm-annotation {
+            margin-top: 1.5em;
+        }
+
         .pm-annotation:not(.pm-annotation-editing):hover {
             border-color: color-mix(in srgb, var(--annotation-accent) 45%, transparent);
         }

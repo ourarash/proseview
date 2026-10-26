@@ -816,7 +816,8 @@ class ContextBuilder:
         selection = str(selection or "")
         if mentions is not None and not isinstance(mentions, list):
             raise ContextError("attachments must be a list")
-        open_path = self._document_target(document).relative_to(self.root).as_posix()
+        open_target = self._document_target(document)
+        open_path = open_target.relative_to(self.root).as_posix()
         mentioned: list[str] = []
         for mention in mentions or []:
             if not isinstance(mention, dict):
@@ -839,6 +840,8 @@ class ContextBuilder:
             items.append(ContextItem(open_path, unsaved_content, len(unsaved_content.encode("utf-8"))))
 
         parts = ["PROSEVIEW CONTEXT\n", f"Open file: {open_path}"]
+        if unsaved_content is None and not open_target.exists():
+            parts.append(" (no longer there: it was moved or deleted)")
         if mentioned:
             parts.append("\nMentioned: " + ", ".join(mentioned))
         if selection:
@@ -3258,7 +3261,14 @@ class DiscussManager:
         turn_document_raw = document if document is not None else fallback_document
         if not isinstance(turn_document_raw, dict):
             raise ContextError("document context is required")
-        self.context.validate_document(turn_document_raw)
+        try:
+            self.context.validate_document(turn_document_raw)
+        except ContextError:
+            # A plain question only says which file is open. If an agent has
+            # just moved or deleted that file, it is no reason to refuse the
+            # next question; an action still needs the file's text.
+            if action_id or live_document is not None or self.context._document_target(turn_document_raw).exists():
+                raise
         turn_document = {
             "kind": str(turn_document_raw.get("kind") or ""),
             "path": Path(str(turn_document_raw.get("path") or "")).as_posix(),

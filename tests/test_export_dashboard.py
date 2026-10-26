@@ -406,6 +406,17 @@ def test_route_file_refuses_anything_but_an_export(client, book: Path):
     assert client.json("POST", "/api/export/open", {"path": ".proseview.yaml"})[0] == 400
 
 
+def test_route_reveals_a_sidebar_file_in_the_file_manager(client, book: Path):
+    scene = "manuscript/ch01/01-down-the-rabbit-hole.md"
+    assert client.json("POST", "/api/files/reveal", {"path": scene})[0] == 200
+    assert client.json("POST", "/api/files/reveal", {"path": "manuscript/ch01"})[0] == 200
+    assert client.opened == [(book.resolve() / scene, True), (book.resolve() / "manuscript/ch01", True)]
+
+    assert client.json("POST", "/api/files/reveal", {"path": "../outside.md"})[0] == 400
+    assert client.json("POST", "/api/files/reveal", {"path": "manuscript/gone.md"})[0] == 404
+    assert len(client.opened) == 2
+
+
 def test_route_saves_a_selection(client, book: Path):
     status, data = client.json("POST", "/api/export/selections", {
         "name": "Beta readers", "selection": {"order": "book", "items": [{"kind": "chapter", "id": "1"}]},

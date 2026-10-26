@@ -132,6 +132,24 @@
             });
         }
 
+        function sidebarHostPlatform() {
+            return typeof hostPlatform === 'string' ? hostPlatform : '';
+        }
+
+        // Finder, Explorer or the file manager, named for the server's computer.
+        function sidebarRevealLabel() {
+            var platform = sidebarHostPlatform();
+            if (platform === 'darwin') return 'Reveal in Finder';
+            if (platform.indexOf('win') === 0) return 'Reveal in File Explorer';
+            return 'Open containing folder';
+        }
+
+        function sidebarRevealNode(node) {
+            sidebarApi('/api/files/reveal', {path: node.path}).catch(function(error) {
+                sidebarShowToast(error.message, true);
+            });
+        }
+
         function sidebarOpenNodeMenu(node, anchor, point) {
             var menu = document.getElementById('sidebarContextMenu');
             if (!menu) return;
@@ -157,6 +175,17 @@
             if (typeof mentionInDiscuss === 'function' && !window.PROSEVIEW_STATIC) {
                 menu.appendChild(sidebarMenuButton('Mention in chat', 'mention', function() {
                     mentionInDiscuss(node.path);
+                }));
+                menu.appendChild(document.createElement('hr'));
+            }
+            // A snapshot has no server, and the browser version no computer
+            // of the writer's to open things on.
+            if (!window.PROSEVIEW_STATIC && sidebarHostPlatform() && sidebarHostPlatform() !== 'emscripten') {
+                menu.appendChild(sidebarMenuButton('Open in ' + editorLabel, 'open-in-editor', function() {
+                    window.location.href = buildEditorUrl(sidebarAbsolutePath(node.path));
+                }));
+                menu.appendChild(sidebarMenuButton(sidebarRevealLabel(), 'reveal', function() {
+                    sidebarRevealNode(node);
                 }));
                 menu.appendChild(document.createElement('hr'));
             }

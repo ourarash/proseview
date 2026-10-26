@@ -18,6 +18,7 @@ import json
 import math
 import re
 import statistics
+import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from functools import lru_cache
@@ -955,6 +956,8 @@ def render_html_report(
         "editor_scheme_json": _js_json(cfg.editor.scheme),
         "editor_url_template_json": _js_json(cfg.editor.url_template),
         "editor_label_json": _js_json(editor_label),
+        # Names "Reveal in Finder" for the computer the server runs on.
+        "host_platform_json": _js_json(sys.platform),
         "repo_tree_json": _js_json(tree_nodes),
         "sidebar_tree_json": _js_json(sidebar_nodes),
         # No manuscript/ folder: the whole folder is the manuscript, so new

@@ -451,25 +451,19 @@
                 event.preventDefault();
                 toggleFileEdit();
             });
-            // F gives the note the whole page, as it does a scene: the sidebar
-            // and the panel go away, and a second F puts back what it hid.
+            // F gives the note the whole page: the sidebar goes away, and a
+            // second F puts it back. The panel is left alone.
             // Shift+F is full screen.
             var fileFocusHid = null;
             function toggleFileFocus() {
                 var html = document.documentElement;
-                var panel = document.getElementById('discussPanel');
                 if (fileFocusHid) {
                     if (fileFocusHid.sidebar) setSidebarOpen(true);
-                    if (fileFocusHid.panel && typeof toggleScenePanel === 'function') toggleScenePanel();
                     fileFocusHid = null;
                     return;
                 }
-                fileFocusHid = {
-                    sidebar: html.dataset.sidebar !== 'closed',
-                    panel: !!(panel && !panel.hidden),
-                };
+                fileFocusHid = {sidebar: html.dataset.sidebar !== 'closed'};
                 if (fileFocusHid.sidebar) setSidebarOpen(false);
-                if (fileFocusHid.panel && typeof closeScenePanel === 'function') closeScenePanel();
             }
             // Leaving the note leaves focus too, with nothing to restore.
             new MutationObserver(function() {

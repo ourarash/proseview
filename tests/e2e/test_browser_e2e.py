@@ -2532,21 +2532,19 @@ def test_focus_layout_uses_the_toolbar_visibility_state(page: Page, server: Pros
     assert page.locator("#modalFocusBtn").get_attribute("aria-pressed") == "false"
 
 
-def test_focus_mode_closes_the_dock_and_gives_it_back(page: Page, server: ProseviewServer):
-    """Focus mode used to hide the two disclosures above the prose.
-
-    They live in the dock now, so focus mode closes the dock -- and reopens it
-    on the way out, on the tab it was showing. A reading mode that quietly
-    discards your panel is a mode you stop using.
-    """
+def test_focus_mode_leaves_an_open_dock_open(page: Page, server: ProseviewServer):
+    """F is the focus layout; the panel is the writer's to open and close."""
     open_scene(page, server)
     open_scene_analysis(page)
 
     page.keyboard.press("f")
-    page.wait_for_selector("#discussPanel", state="hidden")
+    page.wait_for_function(
+        "() => document.querySelector('#sceneModal .modal-content').classList.contains('modal-focus')"
+    )
+    assert page.locator("#sceneAnalysisPane").is_visible()
 
     page.keyboard.press("f")
-    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+    assert page.locator("#sceneAnalysisPane").is_visible()
 
 
 def test_focus_mode_leaves_a_closed_dock_closed(page: Page, server: ProseviewServer):

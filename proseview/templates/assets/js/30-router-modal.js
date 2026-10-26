@@ -834,12 +834,8 @@
             return true;
         }
 
-        // Focus mode used to hide the stat grid and the pass row where they sat
-        // above the prose. Both live in the dock now, so what it hides is the
-        // dock -- and it puts it back on the way out, because a reading mode
-        // that quietly discards your panel is a mode you stop using.
-        var _focusClosedTheDock = false;
-
+        // Focus mode hides the toolbar and leaves the panel alone: the writer
+        // opens and closes that themselves.
         function toggleFocusMode() {
             var mc = document.querySelector('#sceneModal .modal-content');
             if (!mc) return;
@@ -851,38 +847,19 @@
                 btn.classList.toggle('is-active', entering);
                 btn.setAttribute('aria-pressed', entering ? 'true' : 'false');
             }
-            if (entering) _closeDockForFocus();
-            else _restoreDockAfterFocus();
             closeSceneToolbarMenus();
             setSceneToolbarHidden(entering || _sceneToolbarMode === 'hidden');
-        }
-
-        function _closeDockForFocus() {
-            var panel = document.getElementById('discussPanel');
-            var open = panel && !panel.hidden;
-            _focusClosedTheDock = !!open;
-            if (open && typeof closeScenePanel === 'function') closeScenePanel();
-        }
-
-        function _restoreDockAfterFocus() {
-            if (!_focusClosedTheDock) return;
-            _focusClosedTheDock = false;
-            if (typeof toggleScenePanel === 'function') toggleScenePanel();
         }
 
         function exitFocusMode() {
             clearSceneToolbarHideTimer();
             var mc = document.querySelector('#sceneModal .modal-content');
-            var wasFocused = mc && mc.classList.contains('modal-focus');
             if (mc) mc.classList.remove('modal-focus');
             var btn = document.getElementById('modalFocusBtn');
             if (btn) {
                 btn.classList.remove('is-active');
                 btn.setAttribute('aria-pressed', 'false');
             }
-            // Closing the scene leaves focus mode too; the dock belongs to the
-            // scene, so there is nothing to restore in that direction.
-            if (wasFocused) _focusClosedTheDock = false;
             setSceneToolbarHidden(_sceneToolbarMode === 'hidden');
         }
 
@@ -930,7 +907,7 @@
             if (document.documentElement.dataset.view !== 'scene') return;
             // Shift+F is full screen, as the toolbar menu says; plain F is
             // the focus layout.
-            if (e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+            if (e.shiftKey && (e.key === 'f' || e.key === 'F') && !_pmEditMode) {
                 e.preventDefault();
                 toggleFullscreen();
                 return;

@@ -881,6 +881,29 @@ def test_manager_serializes_one_document_and_filters_raw_reasoning(tmp_path: Pat
     manager.close()
 
 
+def test_a_question_still_goes_after_an_agent_moves_the_open_file(tmp_path: Path, monkeypatch):
+    """The dock still names the old path; that must not refuse every question."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    (root / "manuscript" / "one.md").rename(root / "moved-one.md")
+
+    manager.submit(cid, client_request_id="after-move", question="Where did it go?")
+    _wait_for(lambda: bool(clients[0].prompts))
+    assert clients[0].prompts[0].startswith(
+        "PROSEVIEW CONTEXT\nOpen file: manuscript/one.md (no longer there: it was moved or deleted)"
+    )
+    # An action works on the file's text, so it still needs the file.
+    with pytest.raises(ContextError, match="not a file"):
+        manager.submit(cid, client_request_id="action", question="Tighten", action_id="tighten", selection="x")
+    manager.close()
+
+
 def test_an_ordinary_question_says_where_the_writer_is_and_sends_no_files(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     clients: list[_FakeClient] = []

@@ -198,7 +198,10 @@
             });
         }
 
-        function mountFileEditor(node) {
+        // options.quiet: a refresh from disk, which takes neither the focus
+        // nor the scroll.
+        function mountFileEditor(node, options) {
+            var quiet = !!(options && options.quiet);
             var parts = splitNoteHeader(node.body);
             var body = document.getElementById('filePreviewBody');
             var reason = fileEditPlainReason(parts.body);
@@ -248,9 +251,10 @@
                 });
                 if (fileEdit.lastCaret && fileEdit.lastCaret.path === node.path) {
                     var at = doc.resolve(Math.max(0, Math.min(fileEdit.lastCaret.pos, doc.content.size)));
-                    fileEdit.view.dispatch(fileEdit.view.state.tr.setSelection(PM.TextSelection.near(at)).scrollIntoView());
+                    var caret = fileEdit.view.state.tr.setSelection(PM.TextSelection.near(at));
+                    fileEdit.view.dispatch(quiet ? caret : caret.scrollIntoView());
                 }
-                fileEdit.view.focus();
+                if (!quiet) fileEdit.view.focus();
             } else {
                 var note = document.createElement('p');
                 note.className = 'file-edit-note';
@@ -278,7 +282,7 @@
                 body.appendChild(area);
                 fileEdit.textarea = area;
                 fileEditAutosize(area);
-                area.focus();
+                if (!quiet) area.focus();
             }
             document.getElementById('fileEditBar').hidden = false;
             document.getElementById('fileEditConflict').hidden = true;
@@ -345,6 +349,40 @@
                 button.querySelector('span').textContent = 'Edit';
                 button.removeAttribute('aria-pressed');
             }
+        }
+
+        // The note being edited changed on disk (an agent's edit, say). With
+        // nothing unsaved the editor takes the change in place, keeping the
+        // caret, the focus and the scroll; unsaved work is left alone, and
+        // the save's conflict check covers the change.
+        function refreshFileEditor(path) {
+            function current() {
+                return fileEditActive() && fileEdit.path === path && !fileEdit.dirty && !fileEdit.saving;
+            }
+            if (!current()) return;
+            fetch('/repo-file?path=' + encodeURIComponent(path), {cache: 'no-store'}).then(function(response) {
+                return response.json();
+            }).then(function(data) {
+                if (!data || !data.ok || !data.node) return;
+                if (typeof repoFileByPath !== 'undefined') repoFileByPath[path] = data.node;
+                if (!current() || !fileEditAllowed(data.node)) return;
+                var body = document.getElementById('filePreviewBody');
+                var scrolled = [];
+                for (var el = body; el; el = el.parentElement) scrolled.push([el, el.scrollTop]);
+                var pageY = window.scrollY;
+                var hadFocus = body.contains(document.activeElement);
+                var area = fileEdit.textarea;
+                var selection = area ? [area.selectionStart, area.selectionEnd] : null;
+                unmountFileEditor();
+                mountFileEditor(data.node, {quiet: true});
+                if (fileEdit.textarea && selection) fileEdit.textarea.setSelectionRange(selection[0], selection[1]);
+                if (hadFocus) {
+                    if (fileEdit.view) fileEdit.view.focus();
+                    else if (fileEdit.textarea) fileEdit.textarea.focus({preventScroll: true});
+                }
+                scrolled.forEach(function(entry) { entry[0].scrollTop = entry[1]; });
+                window.scrollTo(window.scrollX, pageY);
+            }).catch(function() {});
         }
 
         function cancelFileEdit(force) {

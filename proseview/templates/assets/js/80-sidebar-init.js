@@ -155,7 +155,7 @@
                     a.appendChild(sidebarIcon('scene', 'sidebar-scene-icon'));
                     a.appendChild(sidebarLabel(node.name));
                     // openSceneModal reveals the scene in the sidebar itself.
-                    a.onclick = () => openSceneModal(node.scene_path);
+                    a.onclick = () => sidebarOpenScene(node);
                 } else {
                     a.appendChild(sidebarIcon('file'));
                     a.appendChild(sidebarLabel(node.name));
@@ -191,6 +191,33 @@
                 if (open) li.classList.add('expanded');
             }
             return li;
+        }
+
+        // A scene added since the page loaded is not in its scene index yet,
+        // so it is read first. If it cannot be, it opens as a plain file.
+        function sidebarOpenScene(node) {
+            const p = node.scene_path;
+            if (paths.indexOf(p) >= 0) {
+                openSceneModal(p);
+                return;
+            }
+            fetch('/scene-data?path=' + encodeURIComponent(p), { cache: 'no-store' }).then(function(r) {
+                if (!r.ok) throw new Error('scene not found');
+                return r.json();
+            }).then(function(data) {
+                if (paths.indexOf(p) < 0) {
+                    if (!data.meta || !data.meta[p] || !data.contents || data.contents[p] === undefined) {
+                        throw new Error('scene not found');
+                    }
+                    contents[p] = data.contents[p];
+                    meta[p] = data.meta[p];
+                    if (data.highlightsByPath && data.highlightsByPath[p]) highlightsByPath[p] = data.highlightsByPath[p];
+                    paths.push(p);
+                }
+                openSceneModal(p);
+            }).catch(function() {
+                previewRepoFile(node.path);
+            });
         }
 
         function visibleSidebarTreeItems(tree) {

@@ -935,6 +935,11 @@
             var path = titleEl ? titleEl.textContent.trim() : '';
             if (!path) return;
             if (options.changedPaths && !pathListContains(options.changedPaths, path)) return;
+            // A change on disk never closes the editor or prompts about it.
+            if (options.silent && typeof fileEditActive === 'function' && fileEditActive()) {
+                refreshFileEditor(path);
+                return;
+            }
             var btn = document.getElementById('filePreviewRefreshBtn');
             var prevHTML = btn ? btn.innerHTML : '';
             if (btn && !options.silent) { btn.disabled = true; btn.innerHTML = '\u2026'; }

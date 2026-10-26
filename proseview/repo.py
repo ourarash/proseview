@@ -611,6 +611,40 @@ def build_sidebar_tree(root: Path, cfg: Config) -> list[dict[str, Any]]:
     return nodes
 
 
+def sidebar_files(nodes: list[dict[str, Any]]) -> dict[str, str | None]:
+    """Every file in a sidebar tree, mapped to its scene path (None if not a scene)."""
+    files: dict[str, str | None] = {}
+
+    def walk(nodes: list[dict[str, Any]]) -> None:
+        for node in nodes:
+            if node.get("is_file"):
+                files[str(node["path"])] = node.get("scene_path") if node.get("is_scene") else None
+            else:
+                walk(node.get("children") or [])
+
+    walk(nodes)
+    return files
+
+
+def sidebar_file_changes(
+    before: dict[str, str | None], after: dict[str, str | None]
+) -> dict[str, Any]:
+    """Which sidebar files appeared and which went between two listings.
+
+    A file that went while exactly one file of the same name appeared was
+    moved, so a page that had it open can follow it to the new place.
+    """
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    moved: dict[str, dict[str, str | None]] = {}
+    for old in removed:
+        name = old.rsplit("/", 1)[-1]
+        targets = [new for new in added if new.rsplit("/", 1)[-1] == name]
+        if len(targets) == 1:
+            moved[old] = {"path": targets[0], "scene_path": after[targets[0]]}
+    return {"added": added, "removed": removed, "moved": moved}
+
+
 def _git_uncommitted(root: Path) -> set[str] | None:
     """Repo-relative paths with changes not yet committed, or None without git."""
     from .history import is_git_repo  # avoid circular at module level

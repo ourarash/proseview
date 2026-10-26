@@ -30,6 +30,8 @@ from proseview.repo import (  # noqa: E402
     rename_repository_entry,
     resolve_visible_repository_path,
     scene_relative_path,
+    sidebar_file_changes,
+    sidebar_files,
     trash_repository_entry,
 )
 from proseview.scenes import iter_scene_paths  # noqa: E402
@@ -594,3 +596,26 @@ def test_recently_modified_reads_file_dates_and_marks_uncommitted_work(tmp_path:
     (plain / "manuscript" / "ch01" / "01.md").write_text("Prose.\n", encoding="utf-8")
     entries, _ = recent_changes(plain, Config())
     assert [(e["path"], e["uncommitted"]) for e in entries] == [("manuscript/ch01/01.md", False)]
+
+
+def test_sidebar_file_changes_follow_a_moved_scene(tmp_path: Path):
+    """A scene moved outside Proseview (by an agent's mv) is reported as moved,
+    with its new scene path, so the open page can follow it."""
+    (tmp_path / "manuscript" / "ch05").mkdir(parents=True)
+    (tmp_path / "manuscript" / "ch06").mkdir()
+    old = tmp_path / "manuscript" / "ch05" / "09-day-83.md"
+    old.write_text("scene", encoding="utf-8")
+    (tmp_path / "manuscript" / "ch05" / "01-other.md").write_text("scene", encoding="utf-8")
+    before = sidebar_files(build_sidebar_tree(tmp_path, Config()))
+    assert before["manuscript/ch05/09-day-83.md"] == "ch05/09-day-83.md"
+
+    old.rename(tmp_path / "manuscript" / "ch06" / "09-day-83.md")
+    (tmp_path / "manuscript" / "ch05" / "02-new.md").write_text("scene", encoding="utf-8")
+    change = sidebar_file_changes(before, sidebar_files(build_sidebar_tree(tmp_path, Config())))
+
+    assert change["removed"] == ["manuscript/ch05/09-day-83.md"]
+    assert change["added"] == ["manuscript/ch05/02-new.md", "manuscript/ch06/09-day-83.md"]
+    assert change["moved"] == {
+        "manuscript/ch05/09-day-83.md": {"path": "manuscript/ch06/09-day-83.md", "scene_path": "ch06/09-day-83.md"},
+    }
+    assert sidebar_file_changes(before, before) == {"added": [], "removed": [], "moved": {}}

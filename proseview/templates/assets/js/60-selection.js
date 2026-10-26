@@ -1095,13 +1095,119 @@
             if (_scenesChangedOnDisk[p]) refreshContent([p]);
         }
 
-        function reloadOrDefer(changedPaths) {
+        // A file in the sidebar was added, moved or deleted outside Proseview
+        // (an agent's `mv`, say). The file explorer refreshes in place from
+        // the server's new tree; the page never reloads, so the view, the
+        // editor and any unsaved edits stay as they are. A scene or file open
+        // when it moved follows it to its new place. Returns the moved
+        // scenes' new paths: their text did not change.
+        function refreshFileList(files) {
+            if (!Array.isArray(files.sidebar)) return [];
+            var listed = {};
+            var sceneOf = {};
+            sidebarWalk(sidebarTree, function(node) {
+                if (!node.is_file) return;
+                listed[node.path] = true;
+                if (node.is_scene && node.scene_path) sceneOf[node.path] = node.scene_path;
+            });
+            var removed = files.removed || [];
+            var moved = files.moved || {};
+            // A rename or delete made here has already reloaded the page.
+            var stale = removed.some(function(p) { return listed[p]; })
+                || (files.added || []).some(function(p) { return !listed[p]; });
+            if (!stale) return [];
+
+            var view = document.documentElement.dataset.view || '';
+            var openScene = view === 'scene' && curIdx >= 0 ? paths[curIdx] : '';
+            var titleEl = document.getElementById('filePreviewTitle');
+            var openFile = view === 'file' && titleEl ? titleEl.textContent.trim() : '';
+            var movedScenes = [];
+
+            sidebarTree.splice.apply(sidebarTree, [0, sidebarTree.length].concat(files.sidebar));
+            removed.forEach(function(full) {
+                var to = moved[full] || null;
+                [repoFileByPath, repositoryFileByPath].forEach(function(index) {
+                    var node = index[full];
+                    delete index[full];
+                    if (node && to) {
+                        var abs = node.abs_path && node.abs_path.endsWith('/' + full)
+                            ? node.abs_path.slice(0, node.abs_path.length - full.length) + to.path
+                            : node.abs_path;
+                        index[to.path] = Object.assign({}, node, {path: to.path, abs_path: abs});
+                    }
+                });
+                if (to && fileEdit && fileEdit.path === full) fileEdit.path = to.path;
+                if (to && openFile === full) {
+                    titleEl.textContent = to.path;
+                    history.replaceState(history.state, '', '#/file/' + encodeURIComponent(to.path));
+                }
+                if (to && _sidebarRevealTarget && _sidebarRevealTarget.path === full) {
+                    _sidebarRevealTarget = { path: to.path };
+                }
+                var scene = sceneOf[full];
+                var idx = scene ? paths.indexOf(scene) : -1;
+                if (idx < 0) return;
+                if (to && to.scene_path && paths.indexOf(to.scene_path) < 0) {
+                    paths[idx] = to.scene_path;
+                    [contents, meta, highlightsByPath, _scenesChangedOnDisk].forEach(function(map) {
+                        if (!Object.prototype.hasOwnProperty.call(map, scene)) return;
+                        map[to.scene_path] = map[scene];
+                        delete map[scene];
+                    });
+                    // Saves go to the file the scene's meta names.
+                    var m = meta[to.scene_path];
+                    if (m && m.abs_path && m.abs_path.endsWith('/' + full)) {
+                        m.abs_path = m.abs_path.slice(0, m.abs_path.length - full.length) + to.path;
+                    }
+                    movedScenes.push(to.scene_path);
+                    if (_sidebarRevealTarget && _sidebarRevealTarget.scenePath === scene) {
+                        _sidebarRevealTarget = { scenePath: to.scene_path };
+                    }
+                    if (scene === openScene) {
+                        var technical = document.querySelector('#modalTitle .scene-technical-path');
+                        if (technical) technical.textContent = to.scene_path;
+                        history.replaceState(history.state, '', '#/scene/' + encodeURIComponent(to.scene_path));
+                    }
+                } else if (scene !== openScene) {
+                    // An open scene that went keeps its text and its editor.
+                    paths.splice(idx, 1);
+                    if (curIdx > idx) curIdx--;
+                    else if (curIdx === idx) curIdx = -1;
+                }
+            });
+
+            // The tree renders lazily, on the sidebar's first open.
+            if (window.__sidebarRendered) {
+                var container = document.getElementById('sidebarTree');
+                var scrolled = [];
+                for (var el = container; el; el = el.parentElement) scrolled.push([el, el.scrollTop, el.scrollLeft]);
+                var pageX = window.scrollX, pageY = window.scrollY;
+                sidebarRememberExpanded({});
+                renderSidebarTree();
+                scrolled.forEach(function(entry) {
+                    entry[0].scrollTop = entry[1];
+                    entry[0].scrollLeft = entry[2];
+                });
+                window.scrollTo(pageX, pageY);
+            }
+            return movedScenes;
+        }
+
+        function reloadOrDefer(changedPaths, files) {
+            var movedScenes = files ? refreshFileList(files) : [];
+            if (changedPaths && movedScenes.length) {
+                changedPaths = changedPaths.filter(function(changed) {
+                    return !movedScenes.some(function(p) { return changed === p || changed.endsWith('/' + p); });
+                });
+            }
             // Always do a partial refresh instead of location.reload() —
             // a full reload jolts the viewport (jump to top, then
             // scroll-restore back) and tears down the live editor. This
             // covers both self-saves and external file edits.
             // refreshContent() leaves an editor with unsaved work alone.
             if (_pendingSelfReloads > 0) _pendingSelfReloads--;
+            // Nothing left to refresh: an empty list would mean "everything".
+            if (changedPaths && !changedPaths.length) return;
             paths.forEach(function(p) {
                 if (pathListContains(changedPaths, p)) _scenesChangedOnDisk[p] = true;
             });
@@ -1231,7 +1337,10 @@
                     handleAiProposalEvent(payload);
                 } else if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
                     e.data === 'reload' || e.data === 'reload:content') {
-                    reloadOrDefer(payload && Array.isArray(payload.paths) ? payload.paths : null);
+                    reloadOrDefer(
+                        payload && Array.isArray(payload.paths) ? payload.paths : null,
+                        payload && payload.files ? payload.files : null
+                    );
                 } else if (e.data === 'reload:css') {
                     hotSwapCss();
                 } else if (e.data === 'reload:html' || e.data === 'reload:js') {

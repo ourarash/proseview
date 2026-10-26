@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .callouts import CalloutColours
 from .config import ExportSelection
 
 #: What a selection is shaped into. ``book`` is the whole manuscript;
@@ -137,6 +138,8 @@ class Book:
     back_matter: tuple[MatterPage, ...] = ()
     #: The source repository, for resolving images relative to each scene.
     root: Path | None = field(default=None, compare=False)
+    #: Callout backgrounds from the project's ``.proseview.yaml``.
+    callouts: CalloutColours = ()
 
     @property
     def scenes(self) -> list[SceneDocument]:

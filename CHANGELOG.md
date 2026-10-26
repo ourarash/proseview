@@ -7,6 +7,19 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **Callouts.** A quotation that starts with `[!type]`, GitHub's and
+  Obsidian's syntax (`> [!letter] A letter, undated`), is now a framed box of
+  book text: a letter, a text message, a sidebar. It shows as a box in the
+  reader and the editor, prints as one in EPUB, PDF and Word, and counts as
+  prose. It looks nothing like a TODO or note, which stay comments that never
+  print, and a callout with no title prints no word for its type. Each type
+  can have its own background per screen theme and for print, under
+  `callouts:` in `.proseview.yaml` or a book style's `style.yaml`. The
+  editor's **Callout** button makes one, its type can be changed on the box,
+  and a save rewrites only the lines you changed, in callouts and quotations
+  alike. Exports used to print a callout as a quotation with its title in
+  bold.
+
 - **A home page, and a book you can start in the browser.** The site now
   opens on a page about Proseview, with the Alice demo moved to `/demo/`.
   "Start a new book" (`/write/`) runs Proseview itself in the browser, with no

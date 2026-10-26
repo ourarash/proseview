@@ -19,6 +19,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from .callouts import strip_markers
+
 
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['\u2019-][A-Za-z0-9]+)*")
 LEXICAL_WORD_RE = re.compile(r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*")
@@ -206,7 +208,8 @@ def prose_only(text: str) -> str:
     """
     text = _LEADING_COMMENT_RE.sub("", text)
     text = _PARAGRAPH_COMMENT_RE.sub("", text)
-    return _INLINE_COMMENT_RE.sub("", text)
+    # A callout's ``[!type]`` marker is markup; its title and body are prose.
+    return strip_markers(_INLINE_COMMENT_RE.sub("", text))
 
 
 def count_words(text: str) -> int:

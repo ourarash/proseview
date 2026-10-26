@@ -518,7 +518,7 @@
             return new PM.MarkdownParser(
                 PM.mySchema,
                 tokenizerKeepingInlineHtml(PM.defaultMarkdownParser.tokenizer),
-                Object.assign({}, PM.defaultMarkdownParser.tokens, {
+                Object.assign({}, PM.defaultMarkdownParser.tokens, calloutParserTokens, {
                     html_block: {
                         node: 'annotation',
                         getAttrs: function(tok) { return { raw: tok.content.trim() }; }

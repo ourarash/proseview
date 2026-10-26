@@ -1595,25 +1595,123 @@
         }
 
         .modal-body blockquote {
-            margin: 1.6em 0;
-            padding: 0.9em 1.4em;
-            border-left: 3px solid color-mix(in srgb, var(--primary) 70%, transparent);
-            background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
-            border-radius: 0 6px 6px 0;
+            /* Indented on both sides, with a thin accent rule on a soft
+               panel. */
+            margin: 1.6em 2em 1.6em 1.5em;
+            padding: 0.75em 1.25em;
+            border-left: 2px solid var(--primary);
+            background: var(--surface-muted);
+            border-radius: 0 8px 8px 0;
             color: var(--text-soft);
         }
 
-        /* The scene editor's own paragraph margin outranks these by its id,
-           so it is named here too; otherwise the last line keeps a full
-           paragraph gap inside the quote's padding. */
+        /* The text is a touch smaller than the scene's. It is set on the
+           paragraphs, so the quote's indent and gutter number keep the
+           scene's size and stay lined up. The scene editor's own paragraph
+           margin outranks these by its id, so it is named here too;
+           otherwise the last line keeps a full paragraph gap inside the
+           quote. */
         .modal-body blockquote p,
         #sceneProseHost .ProseMirror blockquote p {
             margin: 0 0 0.6em;
+            font-size: 0.94em;
         }
 
         .modal-body blockquote p:last-child,
         #sceneProseHost .ProseMirror blockquote p:last-child {
             margin-bottom: 0;
+        }
+
+        /* A callout (> [!letter] Title): book text in a box, such as a
+           letter or a text message. Full width, a thin neutral frame and the
+           reading type at full size, so it looks like neither a quotation
+           (hanging mark, inset) nor a TODO or note (tinted, labelled chip).
+           A type's background comes from .proseview.yaml as --callout-bg. */
+        .pv-callout {
+            position: relative;
+            margin: 1.4em 0;
+            padding: 0.9em 1.25em;
+            border: 1px solid var(--border-strong);
+            border-radius: 4px;
+            background: var(--callout-bg, transparent);
+            color: var(--text-main);
+        }
+
+        .modal-body .pv-callout p,
+        #sceneProseHost .ProseMirror .pv-callout p {
+            margin: 0 0 0.6em;
+        }
+
+        .modal-body .pv-callout p:last-child,
+        #sceneProseHost .ProseMirror .pv-callout p:last-child {
+            margin-bottom: 0;
+        }
+
+        .modal-body .pv-callout .pv-callout-title,
+        #sceneProseHost .ProseMirror .pv-callout .pv-callout-title {
+            margin-bottom: 0.3em;
+            font-variant: small-caps;
+            letter-spacing: 0.05em;
+            color: var(--text-soft);
+        }
+
+        /* No title: no room while reading, a faint prompt while editing. */
+        .pv-callout .pv-callout-title.is-empty {
+            display: none;
+        }
+
+        .ProseMirror[contenteditable="true"] .pv-callout .pv-callout-title.is-empty {
+            display: block;
+        }
+
+        .ProseMirror[contenteditable="true"] .pv-callout-title.is-empty::before {
+            content: "Title (optional)";
+            float: left;
+            height: 0;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        /* The type, editable on the frame's top edge while editing only. */
+        .pv-callout-type {
+            display: none;
+        }
+
+        .ProseMirror[contenteditable="true"] .pv-callout-type {
+            display: block;
+            position: absolute;
+            top: -0.8em;
+            right: 0.9em;
+            font: 11px/1.4 Inter, system-ui, sans-serif;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+        }
+
+        .pv-callout-type label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 6px;
+            background: var(--surface-card);
+        }
+
+        .pv-callout-type input {
+            width: 10ch;
+            padding: 0;
+            border: 0;
+            border-bottom: 1px dashed var(--border-strong);
+            background: transparent;
+            color: var(--text-main);
+            font: inherit;
+        }
+
+        .pv-callout-type input:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .pv-callout-type input:invalid {
+            border-bottom-color: var(--danger);
         }
 
         .modal-body code {
@@ -7926,6 +8024,25 @@
             user-select: none;
             pointer-events: none;
             white-space: nowrap;
+        }
+
+        /* A block quote is indented past its rule, so its number and
+           arrow step back by that indent and the rule to stay in the
+           gutter column with every other line's, and the number drops by
+           the panel's top padding to sit beside the first line. */
+        .modal-content.line-numbers .ProseMirror>blockquote[data-line]::before {
+            left: calc(-3em - 1.5em / 0.65 - 2px);
+            top: calc(0.35em + 0.75em / 0.65);
+        }
+
+        .modal-content.line-numbers .ProseMirror>blockquote[data-line] .pm-line-jump {
+            left: calc(-3em - 1.5em / 0.5 - 2px);
+        }
+
+        /* A callout's number drops by its frame's top padding to sit beside
+           its first line, and steps out past the frame's left padding. */
+        .modal-content.line-numbers .ProseMirror>.pv-callout[data-line]::before {
+            top: calc(0.35em + 0.9em / 0.65);
         }
 
         /* In edit mode the source-line offsets go stale on every keystroke;

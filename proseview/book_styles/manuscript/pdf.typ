@@ -151,3 +151,15 @@
 #let appendix-document(title) = block(above: leading, below: 0pt, par(first-line-indent: 0pt, strong(title)))
 
 #let book-image(path, alt: "", width: 70%) = block(width: 100%, align(center, image(path, alt: alt, width: width)))
+
+// A callout keeps its frame in a manuscript, so a reader sees where a letter
+// or a text message sits, but stays in the manuscript's own type and spacing.
+#let callout(kind, title: none, fill: none, body) = block(
+  above: leading, below: leading, width: 100%, breakable: true,
+  inset: 0.15in, stroke: 0.5pt, fill: fill,
+  {
+    set par(first-line-indent: 0pt)
+    if title != none { par(title) }
+    body
+  },
+)

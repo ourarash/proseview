@@ -63,6 +63,13 @@ discuss:
 story:
   thread_field: thread
   day_field: day
+
+# Background colours for callouts (> [!letter] Title boxes), per type: one
+# hex colour, or one per screen theme with `default` and `print`. See
+# "Callouts" in docs/manuscript.md.
+callouts:
+  letter:
+    background: "#f7f1e6"
 ```
 
 Every key has a sensible default. Missing optional folders are skipped, but the

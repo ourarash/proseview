@@ -27,6 +27,7 @@ from typing import Callable
 
 from .book import Book, BookChapter, ExportError, chapter_label, smart_punctuation
 from .book_styles import STYLES_DIR, BookStyle
+from .callouts import print_fills
 
 #: Fonts bundled with Proseview (see book_styles/fonts/README.md), on top of
 #: the ones Typst carries itself.
@@ -124,6 +125,14 @@ def _length(inches: float) -> str:
     return f"{inches:g}in"
 
 
+#: A plain framed box for a callout, for a style's pdf.typ written before
+#: callouts existed. A pdf.typ that defines ``callout`` replaces it.
+_CALLOUT_FALLBACK = (
+    "#let callout(kind, title: none, fill: none, body) = block(width: 100%, inset: 0.8em, "
+    "stroke: 0.5pt, fill: fill, breakable: true, "
+    "{ set par(first-line-indent: 0pt); if title != none { block(strong(title)) }; body })\n"
+)
+
 #: Where each scene starts, as a PDF named destination ("scene-ch01/01-opening"),
 #: so a reader can jump to it. Typst names a destination for a labelled
 #: heading; this one is placed, hidden and kept out of the contents and the
@@ -154,6 +163,7 @@ class _Source:
         self.style = options.style
         self.renderer = TypstRenderer()
         self.root = book.root.resolve() if book.root else None
+        self.callout_fills = print_fills(self.style.callouts, book.callouts)
 
     # -- configuration -----------------------------------------------------------
 
@@ -195,7 +205,7 @@ class _Source:
         theme = ",\n  ".join(
             f"{key.replace('_', '-')}: {_typst_value(value)}" for key, value in self.style.pdf_settings
         )
-        return f"#let config = (\n  {body},\n)\n#let theme = (\n  {theme},\n)\n"
+        return f"#let config = (\n  {body},\n)\n#let theme = (\n  {theme},\n)\n{_CALLOUT_FALLBACK}"
 
     def _inside(self, path: Path, what: str) -> Path:
         if self.root is None:
@@ -240,7 +250,7 @@ class _Source:
     def _ctx(self, scene) -> RenderContext:
         return RenderContext(
             root=self.root, source=scene.path, owner=f"Scene {scene.title!r} ({scene.path.as_posix()})",
-            scene=scene.key, shift_headings=2,
+            scene=scene.key, shift_headings=2, callout_fills=self.callout_fills,
         )
 
     def _chapter(self, chapter: BookChapter) -> str:
@@ -281,6 +291,7 @@ class _Source:
         ctx = RenderContext(
             root=self.root, source=Path(page.source) if page.source else None,
             owner=f"The page {page.title!r}" + (f" ({page.source})" if page.source else ""), shift_headings=1,
+            callout_fills=self.callout_fills,
         )
         body = self.renderer.render(page.markdown, ctx, noindent=True)
         return (
@@ -294,7 +305,10 @@ class _Source:
         for doc_title, content in section.documents:
             body = re.sub(r"^# [^\n]*\n*", "", content, count=1).strip()
             lines.append(f"#appendix-document({self._content(doc_title)})")
-            ctx = RenderContext(root=self.root, source=None, owner=f"Appendix document {doc_title!r}", shift_headings=2)
+            ctx = RenderContext(
+                root=self.root, source=None, owner=f"Appendix document {doc_title!r}", shift_headings=2,
+                callout_fills=self.callout_fills,
+            )
             lines.append(self.renderer.render(body, ctx))
         lines.append("]")
         lines.append("#chapter-end()")

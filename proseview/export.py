@@ -532,9 +532,11 @@ def prepare_book(
         appendices=appendices,
         root=root.resolve(),
     )
+    from dataclasses import replace
+
+    book = replace(book, callouts=cfg.callouts)
     if not book.has_contents:
         return book
-    from dataclasses import replace
 
     front, back = build_matter(
         root,

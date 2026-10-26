@@ -57,6 +57,8 @@ import pytest
     # Two comments never swallow the prose between them.
     ("<!--a--> keep this <!--b-->\n", " keep this\n"),
     ("no comments here\n", "no comments here\n"),
+    # A callout's marker is markup; its title and body are prose.
+    ("> [!letter]- A letter\n> Dear Mara.\n", "> A letter\n> Dear Mara.\n"),
 ])
 def test_prose_is_what_it_would_be_had_the_comment_never_been_written(written: str, prose: str):
     assert prose_only(written) == prose

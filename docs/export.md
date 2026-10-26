@@ -235,8 +235,8 @@ page of the story, so it stays right as an editor adds and cuts.
 A Word document is built from named styles rather than formatting applied by
 hand: *Normal* for the text, *First Paragraph* after a chapter opening or a
 scene break, *Heading 1* for each chapter (so chapters show in Word's
-navigation pane), *Title*, *Scene Break*, *Block Text* for quotations, and a
-few more. An editor can restyle the whole book from Word's Styles pane, and
+navigation pane), *Title*, *Scene Break*, *Block Text* for quotations,
+*Callout* for callouts, and a few more. An editor can restyle the whole book from Word's Styles pane, and
 tracked changes stay on the words, not on stray formatting.
 
 Classic, Modern and Romance make a reading copy: a title page (with the cover,
@@ -378,6 +378,14 @@ table-of-contents depth so they do not compete with your chapters.
 - **Links** to web pages stay clickable. Links to other files in your
   repository, such as a character sheet, keep their text but lose the link,
   since there is nothing in the book for them to open.
+- **Callouts** (`> [!letter] A letter, undated`) are boxes: a thin frame
+  round the text, set flush left, with the title (if there is one) in small
+  capitals and the type's `print` colour behind it, if you set one (see
+  "Callouts" in [the manuscript guide](manuscript.md)). The type itself is
+  never printed. In Word they use the *Callout* and *Callout Title* styles,
+  with a *Callout letter* style for each coloured type, so you can restyle
+  them there. A PDF style of your own can draw them its own way by defining
+  `callout(kind, title: none, fill: none, body)` in its `pdf.typ`.
 - **TODO and NOTE comments** never reach the book, and neither does any other
   HTML comment.
 - **HTML** in a scene is understood rather than printed. An `<img>` tag is a

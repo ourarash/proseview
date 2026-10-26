@@ -83,3 +83,33 @@ def test_file_preview_refresh_can_run_silently():
     assert "options = options || {};" in body
     assert "!options.silent" in body
     assert "pathListContains(options.changedPaths, path)" in body
+
+
+def test_file_list_change_refreshes_the_sidebar_in_place():
+    """A file added, moved or deleted outside Proseview updates the file
+    explorer without reloading the page or touching the open view."""
+    source = APP_JS.read_text(encoding="utf-8")
+    body = _strip_line_comments(_function_body(source, "refreshFileList"))
+
+    assert "location.reload" not in body
+    assert "_dashboardStale" not in body
+    assert "renderSidebarTree()" in body
+    assert "sidebarRememberExpanded({})" in body
+    assert "history.replaceState" in body
+    assert "refreshFileList(files)" in _function_body(source, "reloadOrDefer")
+
+
+def test_file_editor_takes_a_change_on_disk_without_closing():
+    """A note being edited stays in its editor when it changes on disk: with
+    nothing unsaved it takes the new text, and unsaved work is left alone
+    for the save's conflict check, with no prompt."""
+    source = APP_JS.read_text(encoding="utf-8")
+    preview = _strip_line_comments(_function_body(source, "refreshFilePreview"))
+    assert "refreshFileEditor(path)" in preview
+    assert preview.index("refreshFileEditor(path)") < preview.index("previewRepoFile(path")
+
+    body = _strip_line_comments(_function_body(source, "refreshFileEditor"))
+    assert "!fileEdit.dirty && !fileEdit.saving" in body
+    assert "mountFileEditor(data.node, {quiet: true})" in body
+    assert "location.reload" not in body
+    assert "showUnsavedDialog" not in body

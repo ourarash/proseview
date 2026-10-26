@@ -48,6 +48,7 @@ from .generator import (
 from .lexical import paragraph_blocks, calculate_lexical_stats, prose_only
 from .repo import (
     backup_dir_for,
+    build_sidebar_tree,
     record_file_backup,
     _file_node as _repo_file_node,
     atomic_write_text as _atomic_write_text,
@@ -57,6 +58,8 @@ from .repo import (
     rename_repository_entry,
     resolve_visible_repository_path,
     scene_relative_path,
+    sidebar_file_changes,
+    sidebar_files,
     trash_repository_entry,
 )
 from .scenes import (
@@ -3004,7 +3007,11 @@ def serve(
                 print(f"[{stamp}] built analysis payload in {perf_counter() - started:.2f}s")
             return _analysis_cache[0]
 
-    def invalidate(kind: str = "content", changed_paths: tuple[str, ...] = ()) -> None:
+    def invalidate(
+        kind: str = "content",
+        changed_paths: tuple[str, ...] = (),
+        files: dict[str, Any] | None = None,
+    ) -> None:
         """Invalidate the cached HTML and notify SSE clients.
 
         ``kind`` controls the SSE message:
@@ -3015,12 +3022,19 @@ def serve(
           stylesheet from ``/app.css``.
         - ``"html"`` (or ``"js"``) -> ``reload:html`` so the client surfaces a
           banner offering a full page reload (which the user can defer).
+
+        ``files`` says which sidebar files appeared, went or moved, when any
+        did, with the new ``sidebar`` tree, so the page refreshes its file
+        explorer in place.
         """
         with lock:
             _stale[0] = True
             _analysis_stale[0] = True
         if kind == "content" and changed_paths:
-            msg = json.dumps({"type": "reload", "paths": list(changed_paths)})
+            payload: dict[str, Any] = {"type": "reload", "paths": list(changed_paths)}
+            if files:
+                payload["files"] = files
+            msg = json.dumps(payload)
         else:
             msg = "reload" if kind == "content" else f"reload:{kind}"
         with _sse_lock:
@@ -3062,8 +3076,30 @@ def serve(
         except Exception as exc:  # noqa: BLE001 -- a record is never worth a crash
             print(f"proseview: could not update the daily record: {exc}", file=sys.stderr)
 
+    def build_sidebar() -> list[dict[str, Any]] | None:
+        try:
+            return build_sidebar_tree(root, Config.load(root))
+        except Exception as exc:  # noqa: BLE001 -- the watcher must keep running
+            print(f"proseview: could not list the book's files: {exc}", file=sys.stderr)
+            return None
+
+    # What the sidebar listed at the last change, to tell when a file was
+    # added, moved or deleted outside Proseview (by an agent, say).
+    first_sidebar = build_sidebar()
+    listed_files = [sidebar_files(first_sidebar) if first_sidebar is not None else None]
+
     def on_change(changed: tuple[str, ...]) -> None:
-        invalidate("content", changed)
+        files = None
+        sidebar = build_sidebar()
+        listed = sidebar_files(sidebar) if sidebar is not None else None
+        if listed is not None and listed_files[0] is not None:
+            change = sidebar_file_changes(listed_files[0], listed)
+            if change["added"] or change["removed"]:
+                # The page refreshes its file explorer in place from this.
+                files = {**change, "sidebar": sidebar}
+        if listed is not None:
+            listed_files[0] = listed
+        invalidate("content", changed, files)
         threading.Thread(target=record_day_now, daemon=True).start()
 
     threading.Thread(target=record_day_now, daemon=True).start()

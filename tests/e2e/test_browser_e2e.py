@@ -6375,9 +6375,8 @@ def test_timeline_hides_the_untagged_lane_when_everything_is_tagged(page: Page, 
 # ── dock scope, dock seam, toolbar overflow ─────────────────────────────────
 
 
-def test_leaving_a_scene_closes_the_dock(page: Page, shared_server: ProseviewServer):
-    """Every tab describes the document that just closed, so there is nothing
-    left worth showing."""
+def test_leaving_a_scene_keeps_the_dock_open(page: Page, shared_server: ProseviewServer):
+    """A panel you opened stays open on the dashboard until you close it."""
     open_scene(page, shared_server)
     open_scene_details(page)
     assert page.locator("#sceneDetailsPane").is_visible()
@@ -6385,21 +6384,56 @@ def test_leaving_a_scene_closes_the_dock(page: Page, shared_server: ProseviewSer
     page.click(".scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
 
-    page.wait_for_selector("#discussPanel", state="hidden")
+    assert page.locator("#discussPanel").is_visible()
+    assert page.locator("#sceneDetailsPane").is_visible()
     for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabCodex"):
-        assert page.locator(tab).is_hidden(), tab
+        assert page.locator(tab).is_visible(), tab
+
+    page.click("#discussClose")
+    page.wait_for_selector("#discussPanel", state="hidden")
+
+
+def test_dock_over_the_dashboard_names_the_last_scene(
+    page: Page, shared_server: ProseviewServer
+):
+    """Nothing is open over the dashboard, so the context line names the scene
+    the conversation is still about, and reverts once a scene is open again."""
+    open_scene(page, shared_server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    sees = page.locator("#discussContext .discuss-sees")
+    assert "knows you are in " + SCENE_REL in sees.inner_text()
+
+    page.click(".scene-back-btn")
+    page.wait_for_selector("#sceneModal", state="hidden")
+    page.wait_for_function(
+        "(rel) => document.querySelector('#discussContext .discuss-sees')"
+        "?.innerText === 'Last scene: ' + rel",
+        arg=SCENE_REL,
+    )
+
+    open_scene(page, shared_server, ANNOTATED_SCENE_REL)
+    page.wait_for_function(
+        "(rel) => document.querySelector('#discussContext .discuss-sees')"
+        "?.innerText.endsWith('knows you are in ' + rel)",
+        arg=ANNOTATED_SCENE_REL,
+    )
+    page.click("#discussClose")
+    page.wait_for_selector("#discussPanel", state="hidden")
 
 
 def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
     page: Page, shared_server: ProseviewServer
 ):
-    """Closing the dock is not a tab choice, so the stored tab is untouched and
-    the pane comes straight back on the next scene."""
+    """Leaving is not a tab choice, so the stored tab is untouched and the pane
+    comes straight back on the next scene."""
     open_scene(page, shared_server)
     open_scene_details(page)
     assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
 
     page.click(".scene-back-btn")
+    page.wait_for_selector("#sceneModal", state="hidden")
+    page.click("#discussClose")
     page.wait_for_selector("#discussPanel", state="hidden")
     assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
 

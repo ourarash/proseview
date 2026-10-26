@@ -263,7 +263,7 @@
         }
 
         function discussTurnDocument() {
-            return _discussDraftDocument || discussDocument();
+            return _discussDraftDocument || discussDocument() || _discussDockDocument;
         }
 
         function discussTaskDocument(target) {
@@ -368,16 +368,22 @@
             } catch(e) { return false; }
         }
 
+        // The document the dock was last on. The dock stays open over the
+        // dashboard, and the conversation in it carries on about this one.
+        var _discussDockDocument = null;
+
         function discussDocument() {
             var view = document.documentElement.dataset.view;
-            if (view === 'scene' && curIdx >= 0 && paths[curIdx]) return {kind: 'scene', path: paths[curIdx]};
+            var doc = null;
+            if (view === 'scene' && curIdx >= 0 && paths[curIdx]) doc = {kind: 'scene', path: paths[curIdx]};
             if (view === 'file') {
                 var title = document.getElementById('filePreviewTitle');
                 var path = title ? title.textContent.trim() : '';
                 var node = repoFileByPath[path];
-                if (path && node && node.is_text && !node.too_large) return {kind: 'file', path: path};
+                if (path && node && node.is_text && !node.too_large) doc = {kind: 'file', path: path};
             }
-            return null;
+            if (doc) _discussDockDocument = doc;
+            return doc;
         }
 
         function discussDocumentKey(doc) { return doc ? doc.kind + ':' + doc.path : ''; }
@@ -450,7 +456,7 @@
         function openDiscuss(trigger, options) {
             options = options || {};
             closeDiscussModelPicker();
-            var doc = discussDocument();
+            var doc = discussDocument() || _discussDockDocument;
             if (!doc) {
                 alert('Open a scene or supported text file before starting a discussion.');
                 return;
@@ -737,11 +743,10 @@
         function showDiscussTab(trigger) { showDiscussAgentTab(_discussAgent, trigger); }
 
         // ── Dock scope ──────────────────────────────────────────────────────
-        // Leaving a scene closes the dock. Every tab describes the document
-        // that just closed -- Scene, Analysis and History directly, and the
-        // agent tabs refuse to start without one, see the guard at the top of
-        // openDiscuss. With nothing left to show, the dock has no business
-        // staying open over the dashboard.
+        // Going back to the dashboard leaves the dock as it was: a panel you
+        // opened stays open until you close it. Its tabs keep showing the
+        // scene you left, and a conversation carries on about it, until you
+        // open another. Read the book is a reading mode and still closes it.
         function _sceneScopedViewIsOpen() {
             const view = document.documentElement.dataset.view;
             return view === 'scene' || view === 'file';
@@ -749,15 +754,10 @@
 
         function syncScenePanelScope() {
             const scoped = _sceneScopedViewIsOpen();
-            SCENE_PANEL_TABS.forEach(function(tab) {
-                UTILITY_TAB_IDS[tab].forEach(function(id) {
-                    const el = document.getElementById(id);
-                    if (el) el.hidden = !scoped;
-                });
-            });
-
+            var openPanel = document.getElementById('discussPanel');
+            if (openPanel && !openPanel.hidden) renderDiscussContext();
             if (!scoped) {
-                closeScenePanel();
+                if (document.documentElement.dataset.view === 'book') closeScenePanel();
             } else {
                 var shouldBeOpen = false;
                 try { shouldBeOpen = sessionStorage.getItem('proseview-panel-open') === 'true'; } catch(e) {}
@@ -3363,7 +3363,12 @@ function loadDiscussDiffMode(mode) {
             } else if (doc && !_discussRepositoryAction) {
                 // What an editor extension calls IDE context: the agent is told
                 // which file is open and reads it from the project itself.
-                var sees = elementWith('discuss-sees', discussAgentLabel() + ' knows you are in ' + doc.path);
+                // Over the dashboard nothing is open, so name the document the
+                // conversation is still about rather than claim it is open.
+                var away = !_discussDraftDocument && !discussDocument();
+                var sees = elementWith('discuss-sees', away
+                    ? (doc.kind === 'file' ? 'Last file: ' : 'Last scene: ') + doc.path
+                    : discussAgentLabel() + ' knows you are in ' + doc.path);
                 sees.title = 'Each question says which file is open; ' + discussAgentLabel()
                     + ' reads it from the project when the question needs it. Type @ to mention other files.';
                 context.appendChild(sees);

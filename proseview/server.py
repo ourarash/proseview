@@ -1418,6 +1418,23 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_json({"ok": False, "error": f"File operation failed: {exc}"}, 500)
 
+    def _handle_file_reveal(self) -> None:
+        """Show a sidebar file or folder in Finder / Explorer / the file manager."""
+        try:
+            body = self._read_json_limited(16 * 1024)
+            root = Path(self.repo_root).resolve()
+            target = resolve_visible_repository_path(root, str(body.get("path") or ""))
+            if not target.exists():
+                raise FileNotFoundError("That file is no longer there.")
+            open_in_system(target, reveal=True)
+            self._send_json({"ok": True})
+        except FileNotFoundError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 404)
+        except (ContextError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+        except ExportError:
+            self._send_json({"ok": False, "error": "Could not open the folder."}, 500)
+
     def _handle_note_save(self) -> None:
         """Save a Markdown note edited in the file view (story bible, plans, …)."""
         try:
@@ -2428,6 +2445,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/files/save":
             self._handle_note_save()
+            return
+        if path == "/api/files/reveal":
+            self._handle_file_reveal()
             return
         if path.startswith("/api/export/"):
             self._handle_export_post(path)

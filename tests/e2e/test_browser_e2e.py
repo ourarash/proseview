@@ -22,6 +22,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from functools import partial
@@ -2946,6 +2947,14 @@ def test_repo_tree_supports_keyboard_traversal_and_activation(page: Page, server
     assert expected_path and expected_path in page.evaluate("decodeURIComponent(location.hash)")
 
 
+# The file menu names the reveal item for the computer the server runs on.
+REVEAL_LABEL = (
+    "Reveal in Finder" if sys.platform == "darwin"
+    else "Reveal in File Explorer" if sys.platform.startswith("win")
+    else "Open containing folder"
+)
+
+
 def test_file_explorer_copies_absolute_and_repository_relative_paths(
     page: Page,
     server: ProseviewServer,
@@ -2963,7 +2972,7 @@ def test_file_explorer_copies_absolute_and_repository_relative_paths(
     row.click(button="right")
     menu = page.locator("#sidebarContextMenu")
     assert menu.get_by_role("menuitem").all_inner_texts() == [
-        "Mention in chat", "Copy path", "Copy relative path", "Rename", "Delete…"
+        "Mention in chat", "Open in VS Code", REVEAL_LABEL, "Copy path", "Copy relative path", "Rename", "Delete…"
     ]
     menu.get_by_role("menuitem", name="Copy relative path", exact=True).click()
     page.wait_for_function("value => window.__sidebarCopiedPath === value", arg=relative)
@@ -3035,7 +3044,8 @@ def test_file_explorer_folder_menu_renames_and_trashes_nonempty_folders(
     story_bible.click(button="right")
     root_menu = page.locator("#sidebarContextMenu")
     assert root_menu.get_by_role("menuitem").all_inner_texts() == [
-        "New file here", "New folder here", "Mention in chat", "Copy path", "Copy relative path"
+        "New file here", "New folder here", "Mention in chat", "Open in VS Code", REVEAL_LABEL,
+        "Copy path", "Copy relative path",
     ]
     root_menu.get_by_role("menuitem", name="New folder here").click()
 

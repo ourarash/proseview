@@ -781,6 +781,7 @@
         const editorScheme = {{ editor_scheme_json | safe }};
         const editorUrlTemplate = {{ editor_url_template_json | safe }};
         const editorLabel = {{ editor_label_json | safe }};
+        const hostPlatform = {{ host_platform_json | default('""') | safe }};
         const repoRoot = {{ repo_root_json | safe }};
         const repoTree = {{ repo_tree_json | safe }};
         const sidebarTree = {{ sidebar_tree_json | safe }};

@@ -1026,8 +1026,9 @@ def exported_file(root: Path, relative: str) -> Path:
 def open_in_system(path: Path, *, reveal: bool = False) -> None:
     """Open *path* in its usual app, or show it in Finder / Explorer / the file manager.
 
-    Only ever called with a path :func:`exported_file` returned, and with a
-    fixed argument list, so nothing from the page reaches a shell.
+    Only ever called with a path :func:`exported_file` or
+    ``resolve_visible_repository_path`` returned, and with a fixed argument
+    list, so nothing from the page reaches a shell.
     """
     import os
     import subprocess

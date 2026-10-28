@@ -30,7 +30,7 @@ from time import perf_counter
 from typing import Callable, Any
 
 from .config import Config
-from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError
+from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError, open_login_terminal
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
 from .export import ExportError
@@ -2464,6 +2464,14 @@ class _Handler(BaseHTTPRequestHandler):
                         "agents": self.discuss_manager.agents(),
                         "default": self.discuss_manager.context.cfg.discuss.agent,
                     })
+                    return
+                if path == "/api/discuss/claude/login":
+                    try:
+                        open_login_terminal()
+                    except ClaudeUnavailableError as exc:
+                        self._send_json({"ok": False, "error": str(exc)}, 400)
+                        return
+                    self._send_json({"ok": True})
                     return
                 if path == "/api/discuss/actions":
                     # What each button says lives in the writer's skill files,

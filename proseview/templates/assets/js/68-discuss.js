@@ -1603,6 +1603,26 @@
                     });
                 };
                 fix.appendChild(copy);
+                // On the writer's own Mac the server can open Terminal with
+                // the login already running.
+                if (notice.command === 'claude auth login' && typeof hostPlatform === 'string' && hostPlatform === 'darwin') {
+                    var login = document.createElement('button');
+                    login.type = 'button';
+                    login.className = 'discuss-primary';
+                    login.textContent = 'Log in';
+                    login.onclick = function() {
+                        login.disabled = true;
+                        discussApi('/api/discuss/claude/login', {}).then(function() {
+                            login.textContent = 'Opened Terminal';
+                            document.getElementById('discussAnnouncement').textContent =
+                                'Finish logging in in Terminal, then ask again.';
+                        }).catch(function(error) {
+                            login.disabled = false;
+                            renderDiscussError(error.message);
+                        });
+                    };
+                    fix.insertBefore(login, fix.firstChild);
+                }
                 message.appendChild(fix);
             }
             node.appendChild(message);

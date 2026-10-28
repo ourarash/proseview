@@ -62,8 +62,8 @@ INTERNAL_TOOLS = frozenset({"StructuredOutput"})
 #: An expired or missing Claude Code login. The CLI words it for its own
 #: terminal ("Failed to authenticate: OAuth session expired..."), which reads
 #: like a Proseview fault to a writer; what they need is the one fix.
-LOGIN_COMMAND = "claude /login"
-LOGIN_EXPIRED = "Your Claude login has expired. Run claude /login in Terminal, then ask again."
+LOGIN_COMMAND = "claude auth login"
+LOGIN_EXPIRED = "Your Claude login has expired. Log in, then ask again."
 _AUTH_FAILURE_MARKERS = (
     "failed to authenticate",
     "oauth session expired",
@@ -146,6 +146,28 @@ class ClaudeRequestError(ClaudeError):
 def _bounded(value: Any, limit: int = 16_384) -> str:
     text = str(value or "")
     return text if len(text) <= limit else text[:limit] + "\n… output truncated by Prosview …"
+
+
+def open_login_terminal() -> None:
+    """Open Terminal on the writer's Mac with ``claude auth login`` running.
+
+    Logging in needs a browser and, when the browser cannot hand the code
+    back, a terminal to paste it into, so this opens one rather than running
+    the login out of sight. The script is fixed: nothing from the page reaches
+    it.
+    """
+    import subprocess
+    import sys
+
+    if sys.platform != "darwin":
+        raise ClaudeUnavailableError(f"Run {LOGIN_COMMAND} in a terminal to log in.")
+    script = f'tell application "Terminal"\nactivate\ndo script "{LOGIN_COMMAND}"\nend tell'
+    try:
+        subprocess.Popen(  # noqa: S603
+            ["osascript", "-e", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except OSError as exc:
+        raise ClaudeUnavailableError(f"Could not open Terminal. Run {LOGIN_COMMAND} there to log in.") from exc
 
 
 def _is_auth_failure(text: Any) -> bool:

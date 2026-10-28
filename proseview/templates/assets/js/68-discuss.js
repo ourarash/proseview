@@ -1582,7 +1582,30 @@
         function renderDiscussNotice(notice) {
             var node = elementWith('discuss-notice ' + (notice.kind === 'error' ? 'error' : 'warning'));
             if (notice.id) node.dataset.noticeId = notice.id;
-            node.appendChild(elementWith('discuss-notice-message', notice.message || ''));
+            var message = elementWith('discuss-notice-message', notice.message || '');
+            if (notice.command) {
+                // The one command that fixes this, ready to paste into Terminal.
+                var fix = elementWith('discuss-notice-fix');
+                var command = document.createElement('code');
+                command.textContent = notice.command;
+                fix.appendChild(command);
+                var copy = document.createElement('button');
+                copy.type = 'button';
+                copy.className = 'discuss-secondary';
+                copy.textContent = 'Copy';
+                copy.setAttribute('aria-label', 'Copy ' + notice.command);
+                copy.onclick = function() {
+                    if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+                    navigator.clipboard.writeText(notice.command).then(function() {
+                        copy.textContent = 'Copied';
+                        document.getElementById('discussAnnouncement').textContent = 'Copied ' + notice.command;
+                        setTimeout(function() { copy.textContent = 'Copy'; }, 1200);
+                    });
+                };
+                fix.appendChild(copy);
+                message.appendChild(fix);
+            }
+            node.appendChild(message);
             if (notice.id) {
                 var dismiss = document.createElement('button');
                 dismiss.type = 'button';

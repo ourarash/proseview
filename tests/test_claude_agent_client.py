@@ -12,6 +12,8 @@ import pytest
 from proseview.claude_agent_client import (
     APPROVAL_DECISIONS,
     ClaudeAgentClient,
+    LOGIN_COMMAND,
+    LOGIN_EXPIRED,
     ClaudeRequestError,
     sanitize_claude_message,
 )
@@ -46,6 +48,7 @@ class AssistantMessage:
     content: list
     session_id: str = "sess-1"
     uuid: str = "msg-1"
+    error: str | None = None
 
 
 @dataclass
@@ -368,6 +371,52 @@ def test_a_failed_turn_says_why_it_failed(message, reason):
     status, detail = ClaudeAgentClient._turn_outcome(message)
     assert status == "failed"
     assert detail == reason
+
+
+EXPIRED_LOGIN = "Failed to authenticate: OAuth session expired and could not be refreshed"
+
+
+@pytest.mark.parametrize("error", ["authentication_failed", "unknown"])
+def test_an_expired_login_says_how_to_log_in_again(error):
+    """Claude Code's own wording for an expired login read like a Proseview fault.
+
+    The raw text arrives as an assistant message, so it also landed in the
+    conversation as though Claude had answered with it.
+    """
+    client, seen, _ = make_client([
+        AssistantMessage([TextBlock(EXPIRED_LOGIN)], error=error),
+        ResultMessage(is_error=True, result=EXPIRED_LOGIN),
+    ])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        assert not [m for m in seen if m["method"] == "assistant/message"]
+        completed = next(m for m in seen if m["method"] == "turn/completed")
+        assert completed["params"]["status"] == "failed"
+        assert completed["params"]["error"] == LOGIN_EXPIRED
+        errors = [m["params"] for m in seen if m["method"] == "error"]
+        assert [(e["message"], e["command"]) for e in errors] == [(LOGIN_EXPIRED, LOGIN_COMMAND)]
+        event = sanitize_claude_message({"method": "error", "params": errors[0]})[0]
+        assert event["command"] == LOGIN_COMMAND
+    finally:
+        client.close()
+
+
+def test_an_answer_that_mentions_authentication_is_still_an_answer():
+    client, seen, _ = make_client([
+        AssistantMessage([TextBlock("The guard failed to authenticate the courier.")]),
+        ResultMessage(),
+    ])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        answers = [m["params"]["text"] for m in seen if m["method"] == "assistant/message"]
+        assert answers == ["The guard failed to authenticate the courier."]
+        assert not [m for m in seen if m["method"] == "error"]
+    finally:
+        client.close()
 
 
 def test_interrupt_forwards_to_the_session():

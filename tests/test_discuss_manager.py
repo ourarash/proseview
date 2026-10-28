@@ -2733,3 +2733,20 @@ def test_a_codex_conversation_may_search_the_web(tmp_path: Path, monkeypatch):
     _wait_for(lambda: bool(clients[0].prompts))
     assert clients[0].thread_start_params[-1]["config"] == {"web_search": "live"}
     manager.close()
+
+
+def test_a_notice_keeps_the_command_that_fixes_it(tmp_path: Path):
+    from proseview.claude_agent_client import LOGIN_COMMAND, LOGIN_EXPIRED, sanitize_claude_message
+
+    clients = []
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+    thread_id = manager._start_thread(manager._conversations[cid], clients[0])
+    manager._translators["codex"] = sanitize_claude_message
+    manager._on_agent_message("codex", {
+        "method": "error",
+        "params": {"threadId": thread_id, "turnId": "turn-x", "message": LOGIN_EXPIRED, "command": LOGIN_COMMAND},
+    })
+    notice = manager.get_snapshot(cid)["notices"][-1]
+    assert (notice["kind"], notice["message"], notice["command"]) == ("error", LOGIN_EXPIRED, LOGIN_COMMAND)
+    manager.close()

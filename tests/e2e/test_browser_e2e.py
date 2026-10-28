@@ -328,6 +328,26 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     assert page.locator("#discussPanel").is_visible()
 
 
+def test_an_expired_claude_login_says_how_to_log_in_again(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    page.evaluate("showDiscussAgentTab('claude')")
+    page.wait_for_function(
+        "window._discussAgent === 'claude'"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')"
+    )
+    page.fill("#discussInput", "EXPIRED_CLAUDE_LOGIN")
+    page.click("#discussSend")
+    notice = page.locator("#discussLog .discuss-notice.error")
+    notice.wait_for()
+    assert "Your Claude login has expired" in notice.inner_text()
+    assert notice.locator("code").inner_text() == "claude /login"
+    assert "OAuth" not in page.locator("#discussLog").inner_text()
+
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    notice.get_by_role("button", name="Copy claude /login").click()
+    assert page.evaluate("navigator.clipboard.readText()") == "claude /login"
+
+
 @pytest.mark.parametrize("agent", ["codex", "claude"])
 def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
     page: Page, server: ProseviewServer, agent: str

@@ -4081,10 +4081,14 @@ class DiscussManager:
                 if conversation.active_done is not None:
                     conversation.active_done.set()
             elif event_type in {"warning", "error"}:
+                # A fix the writer can run (``claude /login``) travels with the
+                # notice so the browser can offer it to copy.
+                extra = {"command": event["command"]} if event.get("command") else {}
                 conversation._append_notice(
                     event_type,
                     event.get("message"),
                     client_request_id=conversation.active_request_id or "",
+                    **extra,
                 )
             conversation.publish(event_type, event)
 

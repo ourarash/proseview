@@ -170,6 +170,19 @@ def open_login_terminal() -> None:
         raise ClaudeUnavailableError(f"Could not open Terminal. Run {LOGIN_COMMAND} there to log in.") from exc
 
 
+def claude_logged_in() -> bool:
+    """Whether Claude Code has a working login, by its own account."""
+    import subprocess
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["claude", "auth", "status", "--json"], capture_output=True, text=True, timeout=15
+        )
+        return bool(json.loads(result.stdout).get("loggedIn"))
+    except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
+        return False
+
+
 def _is_auth_failure(text: Any) -> bool:
     lowered = str(text or "").lower()
     return any(marker in lowered for marker in _AUTH_FAILURE_MARKERS)
@@ -871,6 +884,9 @@ class ClaudeAgentClient:
             if status == "failed" and (auth_failed or _is_auth_failure(error_text)):
                 error_text = LOGIN_EXPIRED
                 self._emit("error", {**common, "message": LOGIN_EXPIRED, "command": LOGIN_COMMAND})
+                # The CLI behind this session gave up on its login. The next
+                # turn starts a fresh one, which reads the login made since.
+                await self._disconnect(session)
             session.busy = False
             session.turn_id = ""
             session.last_used = time.monotonic()

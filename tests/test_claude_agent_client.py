@@ -16,6 +16,7 @@ from proseview.claude_agent_client import (
     LOGIN_EXPIRED,
     ClaudeRequestError,
     ClaudeUnavailableError,
+    claude_logged_in,
     open_login_terminal,
     sanitize_claude_message,
 )
@@ -385,7 +386,7 @@ def test_an_expired_login_says_how_to_log_in_again(error):
     The raw text arrives as an assistant message, so it also landed in the
     conversation as though Claude had answered with it.
     """
-    client, seen, _ = make_client([
+    client, seen, made = make_client([
         AssistantMessage([TextBlock(EXPIRED_LOGIN)], error=error),
         ResultMessage(is_error=True, result=EXPIRED_LOGIN),
     ])
@@ -401,6 +402,8 @@ def test_an_expired_login_says_how_to_log_in_again(error):
         assert [(e["message"], e["command"]) for e in errors] == [(LOGIN_EXPIRED, LOGIN_COMMAND)]
         event = sanitize_claude_message({"method": "error", "params": errors[0]})[0]
         assert event["command"] == LOGIN_COMMAND
+        # The CLI that failed is let go, so the next turn reads the new login.
+        assert not made[0].connected
     finally:
         client.close()
 
@@ -415,6 +418,25 @@ def test_logging_in_opens_terminal_with_the_login_running(monkeypatch):
     open_login_terminal()
     assert launched[0][:2] == ["osascript", "-e"]
     assert f'do script "{LOGIN_COMMAND}"' in launched[0][2]
+
+
+@pytest.mark.parametrize("stdout,expected", [
+    ('{"loggedIn": true, "authMethod": "claude.ai"}', True),
+    ('{"loggedIn": false, "authMethod": "none"}', False),
+    ("not json", False),
+])
+def test_the_login_is_read_from_claude_auth_status(monkeypatch, stdout, expected):
+    import subprocess
+
+    calls = []
+
+    def run(command, **_):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert claude_logged_in() is expected
+    assert calls == [["claude", "auth", "status", "--json"]]
 
 
 def test_logging_in_elsewhere_says_what_to_run(monkeypatch):

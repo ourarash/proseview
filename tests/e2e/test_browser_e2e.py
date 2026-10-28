@@ -351,13 +351,26 @@ def test_an_expired_claude_login_says_how_to_log_in_again(page: Page, server: Pr
     # request is answered here so the test never opens one.
     if page.evaluate("hostPlatform") == "darwin":
         logins = []
+        logged_in = []
         page.route("**/api/discuss/claude/login", lambda route: (
             logins.append(route.request.url),
             route.fulfill(json={"ok": True}),
         ))
+        page.route("**/api/discuss/claude/login-status", lambda route: route.fulfill(
+            json={"ok": True, "logged_in": bool(logged_in)}
+        ))
         notice.get_by_role("button", name="Log in").click()
-        notice.get_by_role("button", name="Opened Terminal").wait_for()
+        page.get_by_role("button", name="Waiting for login…").wait_for()
         assert len(logins) == 1
+
+        # The panel notices the login finishing in Terminal, and offers to
+        # send the question that failed.
+        logged_in.append(True)
+        page.get_by_text("You’re logged in to Claude again.").wait_for()
+        page.get_by_role("button", name="Ask again").click()
+        page.wait_for_function(
+            "() => document.querySelectorAll('#discussLog .discuss-message.user').length === 2"
+        )
     else:
         assert notice.get_by_role("button", name="Log in").count() == 0
 

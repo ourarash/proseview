@@ -1,6 +1,10 @@
         // ── Project conversations with document-aware turns ──────────────
         var _discussConversationId = null;
         var _discussSnapshot = null;
+        // Where a login started from the expired-login notice has got to:
+        // '' (not started), 'waiting' (Terminal is open) or 'done'. Kept out
+        // here because the notice is redrawn with every snapshot.
+        var _discussClaudeLogin = '';
         var _discussDocumentKey = '';
         var _discussDraftDocument = null;
         var _discussEventSource = null;
@@ -1579,6 +1583,62 @@
             document.getElementById('discussNewActivity').hidden = state.atBottom;
         }
 
+        // Ask Claude Code whether the login has gone through, until it has or
+        // the writer has plainly given up on it.
+        function watchClaudeLogin(deadline) {
+            discussApi('/api/discuss/claude/login-status', {}).then(function(data) {
+                if (data.logged_in) {
+                    _discussClaudeLogin = 'done';
+                    renderDiscussSnapshot();
+                    document.getElementById('discussAnnouncement').textContent = 'Logged in to Claude';
+                    return;
+                }
+                if (Date.now() < deadline) { setTimeout(function() { watchClaudeLogin(deadline); }, 2000); return; }
+                _discussClaudeLogin = '';
+                renderDiscussSnapshot();
+            }).catch(function() {
+                if (Date.now() < deadline) setTimeout(function() { watchClaudeLogin(deadline); }, 2000);
+            });
+        }
+
+        // The expired-login notice once the login has gone through: say so,
+        // and offer to send the question that failed.
+        function renderClaudeLoggedInNotice(notice, node) {
+            node.className = 'discuss-notice';
+            var message = elementWith('discuss-notice-message', 'You’re logged in to Claude again.');
+            var asked = ((_discussSnapshot && _discussSnapshot.messages) || []).filter(function(row) {
+                return row.role === 'user' && notice.client_request_id && row.client_request_id === notice.client_request_id;
+            })[0];
+            if (asked && asked.text) {
+                var fix = elementWith('discuss-notice-fix');
+                var again = document.createElement('button');
+                again.type = 'button';
+                again.className = 'discuss-primary';
+                again.textContent = 'Ask again';
+                again.onclick = function() {
+                    again.disabled = true;
+                    _discussClaudeLogin = '';
+                    document.getElementById('discussInput').value = String(asked.text);
+                    discussApi(
+                        '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                        + '/notices/' + encodeURIComponent(notice.id) + '/dismiss',
+                        {}
+                    ).catch(function() {}).then(function() {
+                        if (_discussSnapshot) {
+                            _discussSnapshot.notices = (_discussSnapshot.notices || []).filter(function(candidate) {
+                                return candidate.id !== notice.id;
+                            });
+                        }
+                        sendDiscussQuestion();
+                    });
+                };
+                fix.appendChild(again);
+                message.appendChild(fix);
+            }
+            node.appendChild(message);
+            return node;
+        }
+
         function renderDiscussNotice(notice) {
             var node = elementWith('discuss-notice ' + (notice.kind === 'error' ? 'error' : 'warning'));
             if (notice.id) node.dataset.noticeId = notice.id;
@@ -1604,18 +1664,22 @@
                 };
                 fix.appendChild(copy);
                 // On the writer's own Mac the server can open Terminal with
-                // the login already running.
+                // the login already running, and then watch for it to finish.
                 if (notice.command === 'claude auth login' && typeof hostPlatform === 'string' && hostPlatform === 'darwin') {
+                    if (_discussClaudeLogin === 'done') return renderClaudeLoggedInNotice(notice, node);
                     var login = document.createElement('button');
                     login.type = 'button';
                     login.className = 'discuss-primary';
-                    login.textContent = 'Log in';
+                    login.textContent = _discussClaudeLogin === 'waiting' ? 'Waiting for login…' : 'Log in';
+                    login.disabled = _discussClaudeLogin === 'waiting';
                     login.onclick = function() {
                         login.disabled = true;
                         discussApi('/api/discuss/claude/login', {}).then(function() {
-                            login.textContent = 'Opened Terminal';
+                            _discussClaudeLogin = 'waiting';
+                            login.textContent = 'Waiting for login…';
                             document.getElementById('discussAnnouncement').textContent =
-                                'Finish logging in in Terminal, then ask again.';
+                                'Terminal is open. Finish logging in there.';
+                            watchClaudeLogin(Date.now() + 10 * 60 * 1000);
                         }).catch(function(error) {
                             login.disabled = false;
                             renderDiscussError(error.message);

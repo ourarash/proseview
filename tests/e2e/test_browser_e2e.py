@@ -340,12 +340,26 @@ def test_an_expired_claude_login_says_how_to_log_in_again(page: Page, server: Pr
     notice = page.locator("#discussLog .discuss-notice.error")
     notice.wait_for()
     assert "Your Claude login has expired" in notice.inner_text()
-    assert notice.locator("code").inner_text() == "claude /login"
+    assert notice.locator("code").inner_text() == "claude auth login"
     assert "OAuth" not in page.locator("#discussLog").inner_text()
 
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
-    notice.get_by_role("button", name="Copy claude /login").click()
-    assert page.evaluate("navigator.clipboard.readText()") == "claude /login"
+    notice.get_by_role("button", name="Copy claude auth login").click()
+    assert page.evaluate("navigator.clipboard.readText()") == "claude auth login"
+
+    # Opening Terminal is the server's job, and only on the writer's Mac; the
+    # request is answered here so the test never opens one.
+    if page.evaluate("hostPlatform") == "darwin":
+        logins = []
+        page.route("**/api/discuss/claude/login", lambda route: (
+            logins.append(route.request.url),
+            route.fulfill(json={"ok": True}),
+        ))
+        notice.get_by_role("button", name="Log in").click()
+        notice.get_by_role("button", name="Opened Terminal").wait_for()
+        assert len(logins) == 1
+    else:
+        assert notice.get_by_role("button", name="Log in").count() == 0
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])

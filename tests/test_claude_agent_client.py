@@ -15,6 +15,8 @@ from proseview.claude_agent_client import (
     LOGIN_COMMAND,
     LOGIN_EXPIRED,
     ClaudeRequestError,
+    ClaudeUnavailableError,
+    open_login_terminal,
     sanitize_claude_message,
 )
 
@@ -401,6 +403,26 @@ def test_an_expired_login_says_how_to_log_in_again(error):
         assert event["command"] == LOGIN_COMMAND
     finally:
         client.close()
+
+
+def test_logging_in_opens_terminal_with_the_login_running(monkeypatch):
+    import subprocess
+    import sys
+
+    launched = []
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(subprocess, "Popen", lambda command, **_: launched.append(command))
+    open_login_terminal()
+    assert launched[0][:2] == ["osascript", "-e"]
+    assert f'do script "{LOGIN_COMMAND}"' in launched[0][2]
+
+
+def test_logging_in_elsewhere_says_what_to_run(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    with pytest.raises(ClaudeUnavailableError, match=LOGIN_COMMAND):
+        open_login_terminal()
 
 
 def test_an_answer_that_mentions_authentication_is_still_an_answer():

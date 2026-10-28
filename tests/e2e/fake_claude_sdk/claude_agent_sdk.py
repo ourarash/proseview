@@ -42,10 +42,11 @@ class TextBlock:
 
 
 class AssistantMessage:
-    def __init__(self, text: str, session_id: str):
+    def __init__(self, text: str, session_id: str, error: str | None = None):
         self.content = [TextBlock(text)]
         self.session_id = session_id
         self.uuid = uuid.uuid4().hex
+        self.error = error
 
 
 class ResultMessage:
@@ -60,6 +61,9 @@ class ResultMessage:
         self.result = ""
 
 
+EXPIRED_LOGIN = "Failed to authenticate: OAuth session expired and could not be refreshed"
+
+
 class ClaudeSDKClient:
     def __init__(self, *, options: ClaudeAgentOptions):
         self.options = options
@@ -72,6 +76,13 @@ class ClaudeSDKClient:
         _sessions.setdefault(self.session_id, [])
 
     async def query(self, prompt: str):
+        if "EXPIRED_CLAUDE_LOGIN" in prompt:
+            # What Claude Code sends once its login can no longer be refreshed.
+            result = ResultMessage(self.session_id)
+            result.is_error = True
+            result.result = EXPIRED_LOGIN
+            self._response = [AssistantMessage(EXPIRED_LOGIN, self.session_id, "authentication_failed"), result]
+            return
         rows = _sessions.setdefault(self.session_id, [])
         rows.append(SimpleNamespace(
             type="user", uuid=uuid.uuid4().hex,

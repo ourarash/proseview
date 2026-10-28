@@ -59,6 +59,19 @@ WRITE_TOOLS = ["Write", "Edit", "NotebookEdit"]
 #: These are never shown as activity and never reach the approval UI.
 INTERNAL_TOOLS = frozenset({"StructuredOutput"})
 
+#: An expired or missing Claude Code login. The CLI words it for its own
+#: terminal ("Failed to authenticate: OAuth session expired..."), which reads
+#: like a Proseview fault to a writer; what they need is the one fix.
+LOGIN_COMMAND = "claude /login"
+LOGIN_EXPIRED = "Your Claude login has expired. Run claude /login in Terminal, then ask again."
+_AUTH_FAILURE_MARKERS = (
+    "failed to authenticate",
+    "oauth session expired",
+    "oauth token has expired",
+    "invalid api key",
+    "please run /login",
+)
+
 MAX_SESSIONS = 8
 APPROVAL_TIMEOUT = 600.0
 DEFAULT_REQUEST_TIMEOUT = 15.0
@@ -133,6 +146,31 @@ class ClaudeRequestError(ClaudeError):
 def _bounded(value: Any, limit: int = 16_384) -> str:
     text = str(value or "")
     return text if len(text) <= limit else text[:limit] + "\n… output truncated by Prosview …"
+
+
+def _is_auth_failure(text: Any) -> bool:
+    lowered = str(text or "").lower()
+    return any(marker in lowered for marker in _AUTH_FAILURE_MARKERS)
+
+
+def _auth_failed_message(message: Any) -> bool:
+    """Whether an SDK message is Claude Code reporting that login failed.
+
+    The CLI delivers the failure as an assistant message flagged with
+    ``error``; its text is the raw error, not an answer, so it must not land in
+    the conversation as one.
+    """
+    if type(message).__name__ != "AssistantMessage":
+        return False
+    error = getattr(message, "error", None)
+    if not error:
+        return False
+    if error == "authentication_failed":
+        return True
+    return any(
+        _is_auth_failure(getattr(block, "text", ""))
+        for block in getattr(message, "content", []) or []
+    )
 
 
 def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
@@ -217,7 +255,10 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
     if method == "warning":
         return [{"type": "warning", **common, "message": _bounded(params.get("message"))}]
     if method == "error":
-        return [{"type": "error", **common, "message": _bounded(params.get("message"))}]
+        event = {"type": "error", **common, "message": _bounded(params.get("message"))}
+        if params.get("command"):
+            event["command"] = _bounded(params.get("command"), 1000)
+        return [event]
     return []
 
 
@@ -777,8 +818,12 @@ class ClaudeAgentClient:
         common = {"threadId": thread_id, "turnId": turn_id}
         status = "completed"
         error_text = ""
+        auth_failed = False
         try:
             async for message in client.receive_response():
+                if _auth_failed_message(message):
+                    auth_failed = True
+                    continue
                 for method, params in self._translate_sdk_message(
                     message,
                     common,
@@ -798,8 +843,12 @@ class ClaudeAgentClient:
         except Exception as exc:  # noqa: BLE001
             status = "failed"
             error_text = str(exc)
-            self._emit("error", {**common, "message": _bounded(str(exc), 4000)})
+            if not _is_auth_failure(error_text):
+                self._emit("error", {**common, "message": _bounded(str(exc), 4000)})
         finally:
+            if status == "failed" and (auth_failed or _is_auth_failure(error_text)):
+                error_text = LOGIN_EXPIRED
+                self._emit("error", {**common, "message": LOGIN_EXPIRED, "command": LOGIN_COMMAND})
             session.busy = False
             session.turn_id = ""
             session.last_used = time.monotonic()

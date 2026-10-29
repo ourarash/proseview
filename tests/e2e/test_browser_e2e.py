@@ -285,7 +285,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     # The agent is told which file is open, and reads it itself.
-    assert "knows you are in" in page.locator("#discussContext .discuss-sees").inner_text()
+    assert "knows you are in" in page.locator("#discussSees .discuss-sees").text_content()
     assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
 
     page.fill("#discussInput", "Explain this scene")
@@ -316,7 +316,7 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.locator("#sceneModal .nav-btn").nth(1).click()
     page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
     # The selection is still attached, so the question is still about its scene.
-    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
+    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
     assert page.evaluate("() => window._discussConversationId") == conversation_id
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
@@ -397,8 +397,8 @@ def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
 
     # Like an editor extension: the open file is part of every question, and
     # there is nothing to attach.
-    sees = page.locator("#discussContext .discuss-sees")
-    assert SCENE_REL in sees.inner_text()
+    sees = page.locator("#discussSees .discuss-sees")
+    assert SCENE_REL in sees.text_content()
     assert page.locator("#discussContext .discuss-chip-attach").count() == 0
 
     page.fill("#discussInput", "What makes an opening effective?")
@@ -417,7 +417,7 @@ def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
 
     # The next one is about where the writer is now.
-    page.wait_for_function("next => document.querySelector('#discussContext .discuss-sees').innerText.includes(next)", arg=next_path)
+    page.wait_for_function("next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)", arg=next_path)
     page.fill("#discussInput", "And this one?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
@@ -459,7 +459,7 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
     assert page.locator("#discussLog .discuss-message").count() == original_messages
     assert page.input_value("#discussInput") == "Compare the image I was reading"
     # The draft is still about the scene it was started in, and says so.
-    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
+    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
 
     page.click("#discussSend")
     page.wait_for_function(
@@ -471,7 +471,7 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
     assert question_requests[-1]["include_current_document"] is False
 
     # Once the draft is sent, the next turn follows the scene now on screen.
-    page.wait_for_function("next => document.querySelector('#discussContext .discuss-sees').innerText.includes(next)", arg=next_path)
+    page.wait_for_function("next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)", arg=next_path)
     page.fill("#discussInput", "What changes in this scene?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
@@ -511,7 +511,7 @@ def test_discuss_migrates_legacy_draft_and_clearing_it_follows_the_new_scene(
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
 
     page.fill("#discussInput", "")
-    assert next_path in page.locator("#discussContext .discuss-sees").inner_text()
+    assert next_path in page.locator("#discussSees .discuss-sees").text_content()
     page.fill("#discussInput", "Use the scene now on screen")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
@@ -610,7 +610,7 @@ def test_discuss_reopens_the_newest_saved_provider_draft(
         "agent => sessionStorage.getItem('proseview-draft:' + agent)", agent
     ) == "New unsent draft"
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
+    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -654,7 +654,7 @@ def test_discuss_restores_an_inactive_providers_legacy_draft_on_its_source_file(
 
     assert page.input_value("#discussInput") == "Released draft for the next scene"
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert next_path in page.locator("#discussContext .discuss-sees").inner_text()
+    assert next_path in page.locator("#discussSees .discuss-sees").text_content()
     assert page.evaluate("key => sessionStorage.getItem(key)", legacy_key) is None
 
 
@@ -1200,7 +1200,7 @@ def test_discuss_context_picker_attaches_only_the_files_the_writer_selects(
     assert context_button.get_attribute("aria-label") == "Add files and more"
     assert "+ Context" not in page.locator("#discussComposerArea").inner_text()
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert SCENE_REL in page.locator("#discussContext .discuss-sees").inner_text()
+    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
     page.locator("#discussInput").press("@")
     page.wait_for_selector("#discussContextPicker", state="visible")
     assert page.locator("#discussContextOptions").get_attribute("role") == "listbox"
@@ -1249,7 +1249,7 @@ def test_discuss_approval_and_file_navigation(page: Page, server: ProseviewServe
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert page.locator("#discussContext .discuss-chip-current").count() == 0
-    assert 'plans/book-plan.md' in page.locator("#discussContext .discuss-sees").inner_text()
+    assert 'plans/book-plan.md' in page.locator("#discussSees .discuss-sees").text_content()
 
     page.get_by_role("button", name="Add files and more").click()
     page.wait_for_selector("#discussContextPicker", state="visible")
@@ -5779,7 +5779,7 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     assert quote in page.locator("#discussSelectionChip").inner_text()
     # The passage is asked about in its scene, which the agent is told is open.
-    assert page.locator("#discussContext .discuss-sees").count() == 1
+    assert page.locator("#discussSees .discuss-sees").count() == 1
     assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about this selection…"
     assert page.locator("#discussSend").inner_text() == "Send"
 
@@ -5881,9 +5881,10 @@ def test_discuss_presets_merge_configured_and_starred_prompts_without_inline_rec
     page.keyboard.press("Escape")
     page.locator("#discussInput").focus()
     page.keyboard.type("x")
-    assert presets.first.is_visible()
+    assert presets.first.is_hidden()
     assert presets.first.is_disabled()
     page.fill("#discussInput", "")
+    assert presets.first.is_visible()
     assert presets.first.is_enabled()
 
     # A preset is a whole message: clicking it sends it.
@@ -6565,21 +6566,21 @@ def test_dock_over_the_dashboard_names_the_last_scene(
     open_scene(page, shared_server)
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
-    sees = page.locator("#discussContext .discuss-sees")
-    assert "knows you are in " + SCENE_REL in sees.inner_text()
+    sees = page.locator("#discussSees .discuss-sees")
+    assert "knows you are in " + SCENE_REL in sees.text_content()
 
-    page.click(".scene-back-btn")
+    page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
     page.wait_for_function(
-        "(rel) => document.querySelector('#discussContext .discuss-sees')"
-        "?.innerText === 'Last scene: ' + rel",
+        "(rel) => document.querySelector('#discussSees .discuss-sees')"
+        "?.textContent === 'Last scene: ' + rel",
         arg=SCENE_REL,
     )
 
     open_scene(page, shared_server, ANNOTATED_SCENE_REL)
     page.wait_for_function(
-        "(rel) => document.querySelector('#discussContext .discuss-sees')"
-        "?.innerText.endsWith('knows you are in ' + rel)",
+        "(rel) => document.querySelector('#discussSees .discuss-sees')"
+        "?.textContent.endsWith('knows you are in ' + rel)",
         arg=ANNOTATED_SCENE_REL,
     )
     page.click("#discussClose")

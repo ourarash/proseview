@@ -1453,7 +1453,14 @@
                 else if (token.type === 'strong') node = document.createElement('strong');
                 else if (token.type === 'em') node = document.createElement('em');
                 else if (token.type === 'codespan') { node = document.createElement('code'); node.textContent = decodeMarkdownText(token.text || ''); }
-                else if (token.type === 'code') { node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = decodeMarkdownText(token.text || ''); node.appendChild(code); }
+                else if (token.type === 'code') {
+                    node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = decodeMarkdownText(token.text || ''); node.appendChild(code);
+                    if (ctx.agentOutput) {
+                        var codeText = code.textContent;
+                        parent.appendChild(withCopyButton(node, function() { return codeText; }));
+                        return;
+                    }
+                }
                 else if (token.type === 'blockquote') node = document.createElement('blockquote');
                 else if (token.type === 'list') node = document.createElement(token.ordered ? 'ol' : 'ul');
                 else if (token.type === 'list_item') node = document.createElement('li');
@@ -1528,8 +1535,51 @@
                     if (token.tokens) appendMarkdownTokens(node, token.tokens, ctx);
                     else if (token.text) node.textContent = decodeMarkdownText(token.text);
                 }
+                if (token.type === 'blockquote' && ctx.agentOutput) {
+                    var quote = node;
+                    parent.appendChild(withCopyButton(quote, function() { return quote.innerText.trim(); }));
+                    return;
+                }
                 parent.appendChild(node);
             });
+        }
+
+        var CODE_COPY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+        var CODE_COPIED_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+        // Code blocks and quotes in agent replies (shell commands, drafted
+        // passages), and the writer's own messages, get a small copy button on
+        // hover. It floats on the block's
+        // top edge, outside the text, so it never covers a long line. getText
+        // runs at click time.
+        function withCopyButton(node, getText) {
+            var wrap = document.createElement('div');
+            wrap.appendChild(node);
+            addCopyButton(wrap, getText, node.tagName === 'PRE' ? 'Copy code' : 'Copy quote');
+            return wrap;
+        }
+
+        function addCopyButton(container, getText, label) {
+            container.classList.add('md-copy-block');
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'md-copy-btn';
+            button.title = 'Copy';
+            button.setAttribute('aria-label', label);
+            button.innerHTML = CODE_COPY_ICON;
+            button.onclick = function() {
+                sidebarWriteClipboard(getText()).then(function() {
+                    button.innerHTML = CODE_COPIED_ICON;
+                    button.title = 'Copied';
+                    button.classList.add('is-copied');
+                    setTimeout(function() {
+                        button.innerHTML = CODE_COPY_ICON;
+                        button.title = 'Copy';
+                        button.classList.remove('is-copied');
+                    }, 1500);
+                }, function() { button.title = 'Could not copy'; });
+            };
+            container.appendChild(button);
         }
 
         function renderSafeMarkdown(parent, text, ctx) {
@@ -2118,7 +2168,8 @@
                         if (_discussSnapshot) renderDiscussTurnStatus(_discussSnapshot);
                     }, DISCUSS_TURN_DONE_MS + 200);
                 }
-                if (kind === 'working' || kind === 'starting') _discussTurnTrailOpen = true;
+                // Steps stay folded until the writer asks for them, and fold
+                // again once the turn is over.
                 if (kind === 'idle' || kind === 'done') _discussTurnTrailOpen = false;
                 _discussTurnLastKind = kind;
             }
@@ -2140,6 +2191,8 @@
             var doing = model.doing || '';
             if (doing !== _discussTurnPhrase) { _discussTurnPhrase = doing; _discussTurnPhraseAt = Date.now(); }
             document.getElementById('discussTurnDoing').textContent = doing;
+            // The strip is one line, so a long phrase is cut; hovering reads it.
+            document.getElementById('discussTurnDoing').title = doing;
 
             var running = kind === 'working' || kind === 'starting';
             _discussTurnBase = running
@@ -2386,6 +2439,10 @@
                 var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : discussAgentLabel());
                 wrap.appendChild(label);
                 renderDiscussMarkdown(wrap, message.text);
+                if (message.role === 'user') {
+                    var sent = String(message.text || '');
+                    addCopyButton(wrap, function() { return sent; }, 'Copy message');
+                }
                 log.appendChild(wrap);
                 if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
             });
@@ -3451,6 +3508,7 @@ function loadDiscussDiffMode(mode) {
 
         function renderDiscussContext() {
             var context = document.getElementById('discussContext'); context.replaceChildren();
+            var seesSlot = document.getElementById('discussSees'); seesSlot.replaceChildren();
             var doc = discussTurnDocument();
             if (doc && _discussPendingAction && _discussIncludeCurrentDocument) {
                 // A selection action judges the passage in its scene, so the
@@ -3472,13 +3530,21 @@ function loadDiscussDiffMode(mode) {
                 // which file is open and reads it from the project itself.
                 // Over the dashboard nothing is open, so name the document the
                 // conversation is still about rather than claim it is open.
+                // It sits in the send row's spare space as just the path; the
+                // sentence it stands for is still read out and kept in the text.
                 var away = !_discussDraftDocument && !discussDocument();
-                var sees = elementWith('discuss-sees', away
-                    ? (doc.kind === 'file' ? 'Last file: ' : 'Last scene: ') + doc.path
-                    : discussAgentLabel() + ' knows you are in ' + doc.path);
-                sees.title = 'Each question says which file is open; ' + discussAgentLabel()
+                var sees = elementWith('discuss-sees');
+                if (away) {
+                    sees.textContent = (doc.kind === 'file' ? 'Last file: ' : 'Last scene: ') + doc.path;
+                } else {
+                    sees.appendChild(Object.assign(document.createElement('span'),
+                        {className: 'sr-only', textContent: discussAgentLabel() + ' knows you are in '}));
+                    sees.appendChild(document.createTextNode(doc.path));
+                }
+                sees.title = (away ? '' : discussAgentLabel() + ' knows you are in ' + doc.path + '. ')
+                    + 'Each question says which file is open; ' + discussAgentLabel()
                     + ' reads it from the project when the question needs it. Type @ to mention other files.';
-                context.appendChild(sees);
+                seesSlot.appendChild(sees);
             }
             var selection = document.getElementById('discussSelectionChip');
             selection.hidden = !_discussSelection;
@@ -3815,6 +3881,14 @@ function loadDiscussDiffMode(mode) {
             var menuOpen = !!(menu && menu.open);
             var focused = node.contains(document.activeElement) ? discussTaskModeControlKey(document.activeElement) : '';
             buildDiscussTaskMode(node);
+            // Quick send sits inside the empty question box; every other mode
+            // keeps its own row above it.
+            var inputWrap = document.querySelector('#discussComposerArea .discuss-input-wrap');
+            if (node.dataset.mode === 'presets') {
+                if (node.parentNode !== inputWrap) inputWrap.appendChild(node);
+            } else if (node.parentNode === inputWrap) {
+                inputWrap.parentNode.insertBefore(node, document.getElementById('discussInputLabel'));
+            }
             syncDiscussSendEmpty();
             var rebuilt = menuOpen && node.querySelector('.discuss-presets-more');
             if (rebuilt) rebuilt.open = true;

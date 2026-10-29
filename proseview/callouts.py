@@ -153,8 +153,10 @@ def parse_colours(raw: Any, where: str) -> CalloutColours:
             raise ValueError(f"{label}.background must be a hex colour or a mapping of themes to hex colours")
         for key, value in colours.items():
             at = f"{label}.background" + ("" if isinstance(background, str) else f".{key}")
+            if isinstance(value, str) and value.strip().lower() == "none":
+                continue
             if not isinstance(value, str) or not _HEX_RE.match(value.strip()):
-                raise ValueError(f"{at}: {value!r} is not a hex colour like \"#f7f1e6\"")
+                raise ValueError(f"{at}: {value!r} is not a hex colour like \"#f7f1e6\", or none")
             if key == "print" and not _OPAQUE_HEX_RE.match(value.strip()):
                 raise ValueError(f"{at}: {value!r} must be opaque (#rgb or #rrggbb) to print; Word has no see-through shading")
         out.append((kind, tuple((key, _long_hex(colours[key])) for key in COLOUR_KEYS if key in colours)))
@@ -163,6 +165,8 @@ def parse_colours(raw: Any, where: str) -> CalloutColours:
 
 def _long_hex(value: str) -> str:
     value = value.strip().lower()
+    if value == "none":
+        return value
     if len(value) == 4:
         value = "#" + "".join(c * 2 for c in value[1:])
     return value
@@ -182,7 +186,9 @@ def print_fills(*layers: CalloutColours) -> dict[str, str]:
     for layer in layers:
         for kind, keys in layer:
             value = dict(keys).get("print")
-            if value:
+            if value == "none":
+                fills.pop(kind, None)
+            elif value:
                 fills[kind] = value
     return fills
 
@@ -196,5 +202,34 @@ def screen_css(colours: CalloutColours) -> str:
             if key == "print":
                 continue
             selector = target if key == "default" else f':root[data-theme="{key}"] {target}'
-            rules.append(f"{selector} {{ --callout-bg: {value}; }}")
+            rules.append(f"{selector} {{ --callout-bg: {'transparent' if value == 'none' else value}; }}")
     return "\n".join(rules)
+
+
+def _theme_colours(**themes: dict[str, str]) -> CalloutColours:
+    """``{theme: {type: colour}}`` turned round into :data:`CalloutColours`."""
+    kinds = dict.fromkeys(kind for colours in themes.values() for kind in colours)
+    return tuple(
+        (kind, tuple((key.replace("_", "-"), themes[key][kind]) for key in themes if kind in themes[key]))
+        for kind in kinds
+    )
+
+
+#: Each theme's own quiet backgrounds for GitHub's callout types, on screen
+#: only. They stay clear of the theme's TODO (accent) and Note (amber) tints:
+#: Note's callout is a neutral grey, Warning leans orange rather than amber.
+#: A type set under ``callouts:`` in .proseview.yaml replaces these whole.
+THEME_COLOURS: CalloutColours = _theme_colours(
+    default={"note": "#f3f3f1", "tip": "#eef7f0", "important": "#f3f0fa", "warning": "#fbeee4", "caution": "#fbecec"},
+    dark={"note": "#1e2430", "tip": "#12261f", "important": "#221c36", "warning": "#2e2018", "caution": "#2f1a1e"},
+    docsify={"note": "#22272e", "tip": "#1d3326", "important": "#2a2436", "warning": "#33281d", "caution": "#362022"},
+    hopscotch={"note": "#2b2f38", "tip": "#253428", "important": "#3a2b45", "warning": "#40301f", "caution": "#43252a"},
+    graphite_light={"note": "#f2f2f0", "tip": "#edf5ee", "important": "#f1eef8", "warning": "#f8ede2", "caution": "#f9e6e4"},
+    graphite_dark={"note": "#222b30", "tip": "#1f2c25", "important": "#2a2535", "warning": "#3a2a22", "caution": "#3a2326"},
+)
+
+
+def screen_colours(project: CalloutColours) -> CalloutColours:
+    """What the dashboard shows: the theme colours, with each type the project sets replacing them."""
+    mine = {kind for kind, _ in project}
+    return tuple(entry for entry in THEME_COLOURS if entry[0] not in mine) + project

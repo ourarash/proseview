@@ -6,11 +6,13 @@ import pytest
 from markdown_it import MarkdownIt
 
 from proseview.callouts import (
+    THEME_COLOURS,
     callout_plugin,
     merge_colours,
     parse_colours,
     parse_marker,
     print_fills,
+    screen_colours,
     screen_css,
     strip_markers,
 )
@@ -137,3 +139,26 @@ def test_screen_css_sets_a_variable_per_theme_and_leaves_print_out():
         '.pv-callout[data-callout="sms"] { --callout-bg: #eef3fb; }\n'
         ':root[data-theme="graphite-dark"] .pv-callout[data-callout="sms"] { --callout-bg: #232c33; }'
     )
+
+
+def test_githubs_types_have_a_colour_in_every_theme_but_not_in_print():
+    colours = dict(THEME_COLOURS)
+    assert sorted(colours) == ["caution", "important", "note", "tip", "warning"]
+    for keys in colours.values():
+        assert [key for key, _ in keys] == ["default", "dark", "docsify", "hopscotch", "graphite-light", "graphite-dark"]
+    assert print_fills(THEME_COLOURS) == {}
+
+
+def test_a_type_in_the_config_replaces_the_theme_colours_whole():
+    project = parse_colours({"note": {"background": "#abcdef"}, "warning": {"background": "none"}}, "x")
+    css = screen_css(screen_colours(project))
+    assert '.pv-callout[data-callout="note"] { --callout-bg: #abcdef; }' in css
+    assert ':root[data-theme="dark"] .pv-callout[data-callout="note"]' not in css
+    assert '.pv-callout[data-callout="warning"] { --callout-bg: transparent; }' in css
+    assert ':root[data-theme="dark"] .pv-callout[data-callout="tip"] { --callout-bg: #12261f; }' in css
+
+
+def test_none_clears_a_print_colour_a_style_set():
+    style = parse_colours({"letter": {"background": "#ffeedd"}}, "s")
+    project = parse_colours({"letter": {"background": {"print": "none"}}}, "p")
+    assert print_fills(merge_colours(style, project)) == {}

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .callouts import GITHUB_TYPES, screen_css
+from .callouts import GITHUB_TYPES, screen_colours, screen_css
 from .config import GENRE_LABELS, Config
 from .editor import build_url as _editor_url, label as _editor_label
 from .goals import Goals, compute_goals
@@ -1000,7 +1000,7 @@ def render_html_report(
         "config_json": _js_json(dataclasses.asdict(cfg)),
         # Each callout type's background per theme, and the types the
         # editor offers: GitHub's and the ones the config colours.
-        "callout_css": screen_css(cfg.callouts),
+        "callout_css": screen_css(screen_colours(cfg.callouts)),
         "callout_types": list(dict.fromkeys([*GITHUB_TYPES, *(kind for kind, _ in cfg.callouts)])),
         "cfg": cfg,
         "config_exists": (root / ".proseview.yaml").exists(),

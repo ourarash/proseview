@@ -247,7 +247,8 @@ def test_cmd_s_closes_a_note_and_e_picks_up_where_it_stopped(page: Page, notes_s
     page.get_by_role("button", name="Edit", exact=True).click()
     editor = page.locator(".file-edit-host .ProseMirror")
     editor.locator("p").first.click()
-    page.keyboard.press("End")
+    # The note's one paragraph wraps, and End stops at the end of a line.
+    page.keyboard.press("ControlOrMeta+ArrowDown")
     page.keyboard.type(" She is seven.")
     page.keyboard.press("ControlOrMeta+s")
     expect(page.locator("#fileEditBar")).to_be_hidden()
@@ -373,6 +374,7 @@ def test_font_and_theme_show_while_hovered_and_go_back_if_not_chosen(page: Page,
     expect(page.locator(body).first).to_be_visible()
     start = _reading_style(page, body)
 
+    page.click("#fileAppearanceBtn")
     font = page.locator("#file-preview-panel .appearance-picker[data-kind=font], .appearance-picker[data-kind=font]").first
     font.get_by_role("button").click()
     # The Graphite themes used to override every font choice.

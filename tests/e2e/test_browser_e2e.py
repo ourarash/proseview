@@ -4213,7 +4213,9 @@ def test_global_search_has_visible_pointer_entry_and_lazy_deep_link(page: Page, 
 
     search_button = page.locator("#file-preview-panel").get_by_role("button", name="Search files")
     assert search_button.is_visible()
+    page.click("#fileAppearanceBtn")
     page.select_option("#filePreviewThemeSelect", "dark")
+    page.click("#fileAppearanceBtn")
     page.set_viewport_size({"width": 1024, "height": 768})
     page.evaluate("document.body.style.zoom = '2'")
     search_button.click()
@@ -6517,7 +6519,7 @@ def test_leaving_a_scene_keeps_the_dock_open(page: Page, shared_server: Prosevie
     open_scene_details(page)
     assert page.locator("#sceneDetailsPane").is_visible()
 
-    page.click(".scene-back-btn")
+    page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
 
     assert page.locator("#discussPanel").is_visible()
@@ -6567,7 +6569,7 @@ def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
     open_scene_details(page)
     assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
 
-    page.click(".scene-back-btn")
+    page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
     page.click("#discussClose")
     page.wait_for_selector("#discussPanel", state="hidden")
@@ -6908,7 +6910,7 @@ def test_discuss_panel_state_preserved_on_reload(page: Page, server: ProseviewSe
     open_scene(page, server, SCENE_REL)
     
     # Open the discuss panel
-    page.locator(".scene-toolbar-button.discuss-open-btn").click()
+    page.locator("#sceneModal .scene-toolbar-button.discuss-open-btn").click()
     page.locator("#utilityTabCodex").click()
     page.wait_for_selector("#discussPanel:not([hidden])")
     

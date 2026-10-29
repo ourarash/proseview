@@ -2735,6 +2735,15 @@ def test_a_codex_conversation_may_search_the_web(tmp_path: Path, monkeypatch):
     manager.close()
 
 
+def test_instructions_let_the_agent_delete_and_move_files_with_the_shell() -> None:
+    # Edits go through the file tool (for the review), but no file tool can
+    # delete or move a file, so the shell must stay open for those.
+    text = DiscussManager.DEVELOPER_INSTRUCTIONS
+    assert "file-editing tool" in text
+    assert "delete, move or rename" in text
+    assert "never with a shell command" not in text
+
+
 def test_a_notice_keeps_the_command_that_fixes_it(tmp_path: Path):
     from proseview.claude_agent_client import LOGIN_COMMAND, LOGIN_EXPIRED, sanitize_claude_message
 

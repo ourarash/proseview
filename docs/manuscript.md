@@ -182,8 +182,15 @@ and an empty title line waits for a title.
 
 ### Colours
 
-Each type can have its own background, set under `callouts:` in
-`.proseview.yaml`. Give one colour for everywhere, or one for each screen
+GitHub's five types come with a quiet background in every theme: `note` grey,
+`tip` green, `important` violet, `warning` orange and `caution` red, each
+chosen to stay clear of that theme's TODO and Note label tints. They colour
+the screen only; a book prints them in a plain frame unless you give them a
+`print` colour. Any other type has no fill until you give it one.
+
+Any type can have its own background, set under `callouts:` in
+`.proseview.yaml`. A type you set there replaces the built-in colours for that
+type completely, and `none` takes a colour away. Give one colour for everywhere, or one for each screen
 theme, plus `default` for the themes you leave out and `print` for EPUB, PDF
 and Word:
 
@@ -200,6 +207,8 @@ callouts:
   warning:
     background:
       graphite-dark: "#3a2a22"
+  note:
+    background: none               # no fill anywhere
 ```
 
 The themes are `light`, `dark`, `docsify`, `hopscotch`, `graphite-light` and

@@ -329,6 +329,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Image shown in link previews; needs --site-url.",
     )
 
+    privacy_p = sub.add_parser(
+        "privacy-password", help="Set the password that uncovers the privacy screen (Cmd+J J).",
+        description=(
+            "Set the password asked for when uncovering the privacy screen. Only a salted "
+            "hash is kept, in your user folder, never in the book."
+        ),
+    )
+    privacy_p.add_argument(
+        "--clear", action="store_true",
+        help="Remove the password, so Cmd+J J uncovers the screen straight away.",
+    )
+
     propose_p = sub.add_parser(
         "propose", help="Create an AI proposal in a running proseview server.",
         description="Create an AI proposal in a running proseview server.",
@@ -745,6 +757,26 @@ def write_static_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def privacy_password(args: argparse.Namespace) -> int:
+    import getpass
+
+    from .privacy import clear_password, set_password
+
+    if args.clear:
+        print("Privacy password removed." if clear_password() else "No privacy password was set.")
+        return 0
+    password = getpass.getpass("New privacy password: ")
+    if not password:
+        sys.stderr.write("The password cannot be empty.\n")
+        return 1
+    if getpass.getpass("Again: ") != password:
+        sys.stderr.write("The passwords do not match; nothing was changed.\n")
+        return 1
+    path = set_password(password)
+    print(f"Privacy password set (a hash is stored in {path}).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -758,6 +790,8 @@ def main(argv: list[str] | None = None) -> int:
         return export_manuscript(args)
     if args.cmd == "snapshot":
         return write_static_snapshot(args)
+    if args.cmd == "privacy-password":
+        return privacy_password(args)
     if args.cmd == "propose":
         return create_proposal(args)
     if args.cmd == "proposal":

@@ -2235,7 +2235,7 @@
             DISCUSS_AGENTS.forEach(function(agent) {
                 _markDiscussAgentTab(agent, _discussAgentState[agent] || '');
             });
-            if (!_discussBaseTitle) _discussBaseTitle = document.title;
+            if (!_discussBaseTitle) _discussBaseTitle = privacyRealTitle();
             var panel = document.getElementById('discussPanel');
             var away = !panel || panel.hidden || !document.hasFocus();
             var waiting = DISCUSS_AGENTS.filter(function(a) { return _discussAgentState[a] === 'attention'; });

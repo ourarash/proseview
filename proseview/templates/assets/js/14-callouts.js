@@ -163,6 +163,7 @@
             function commit() {
                 var value = input.value.trim();
                 var pos = getPos();
+                input.placeholder = '';
                 if (!CALLOUT_TYPE_RE.test(value) || typeof pos !== 'number') {
                     input.value = self.node.attrs.type;
                     input.setCustomValidity('');
@@ -175,14 +176,24 @@
             input.addEventListener('input', function() {
                 input.setCustomValidity(CALLOUT_TYPE_RE.test(input.value.trim()) ? '' : 'Letters, digits and -, starting with a letter');
             });
+            // The browser lists only the types that match what the field
+            // holds, so it is emptied on focus (the type shows as its
+            // placeholder) and every type is offered; leaving it empty keeps
+            // the type it had.
+            input.addEventListener('focus', function() {
+                input.placeholder = self.node.attrs.type;
+                input.value = '';
+            });
             input.addEventListener('change', commit);
+            input.addEventListener('blur', commit);
             input.addEventListener('keydown', function(event) {
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     commit();
                     view.focus();
                 } else if (event.key === 'Escape') {
-                    input.value = self.node.attrs.type;
+                    input.value = '';
+                    commit();
                     view.focus();
                 }
             });

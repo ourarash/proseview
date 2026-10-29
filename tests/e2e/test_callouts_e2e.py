@@ -78,17 +78,22 @@ def _scene(server: ProseviewServer) -> Path:
     return server.root / "manuscript" / "ch01" / "04-letter.md"
 
 
-@pytest.mark.parametrize(("theme", "colour"), [("graphite-light", "rgb(247, 241, 230)"), ("graphite-dark", "rgb(46, 42, 36)")])
-def test_a_callout_reads_as_a_box_in_its_themes_colour(page: Page, callout_server: ProseviewServer, theme: str, colour: str):
+@pytest.mark.parametrize(("theme", "colour", "note"), [
+    ("graphite-light", "rgb(247, 241, 230)", "rgb(242, 242, 240)"),
+    ("graphite-dark", "rgb(46, 42, 36)", "rgb(34, 43, 48)"),
+])
+def test_a_callout_reads_as_a_box_in_its_themes_colour(
+    page: Page, callout_server: ProseviewServer, theme: str, colour: str, note: str,
+):
     _open(page, callout_server, theme)
     prose = page.locator("#sceneProseHost .ProseMirror")
     letter = prose.locator('.pv-callout[data-callout="letter"]')
     expect(letter.locator(".pv-callout-title")).to_have_text("A letter, undated")
     expect(letter).to_contain_text("Mara, if you are reading this, the boat has gone without me.")
     assert letter.evaluate("el => getComputedStyle(el).backgroundColor") == colour
-    # No colour set for this type: a frame on the page's own background.
+    # GitHub's types bring the theme's own colour, with nothing in the config.
     untitled = prose.locator('.pv-callout[data-callout="note"]')
-    assert untitled.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
+    assert untitled.evaluate("el => getComputedStyle(el).backgroundColor") == note
     # No title: nothing printed for the type, and the title line takes no room.
     expect(untitled.locator(".pv-callout-title")).to_be_hidden()
     expect(untitled.locator(".pv-callout-type")).to_be_hidden()
@@ -110,6 +115,16 @@ def test_editing_a_callout_saves_only_the_changed_lines(page: Page, callout_serv
     page.keyboard.press("End")
     page.keyboard.type(" Burn this.")
     kind = letter.get_by_label("Callout type")
+    expect(kind).to_have_value("letter")
+    # Focused, the field empties so the browser offers every type, not
+    # just those matching "letter"; leaving it empty keeps the type.
+    kind.focus()
+    expect(kind).to_have_value("")
+    expect(kind).to_have_attribute("placeholder", "letter")
+    assert page.locator("#calloutTypeOptions option").evaluate_all("els => els.map(e => e.value)") == [
+        "note", "tip", "important", "warning", "caution", "letter",
+    ]
+    kind.blur()
     expect(kind).to_have_value("letter")
     kind.fill("note-to-self")
     kind.press("Enter")

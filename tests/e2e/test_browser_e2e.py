@@ -4750,6 +4750,32 @@ def test_the_caret_can_go_between_todos_stacked_together(page: Page, server: Pro
     assert blocks.index("Above") == blocks.index("<!-- TODO: Beat one -->") - 1, blocks
 
 
+def test_the_caret_can_go_between_two_quotes_in_a_row(page: Page, server: ProseviewServer):
+    """Each quote keeps its text inside it, so the gap cursor saw no need to
+    stop between them, and a click there landed in one of the quotes."""
+    scene = server.scene_path()
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n> Quote one.\n\n> Quote two.\n", encoding="utf-8")
+    server.restart()
+    open_scene(page, server)
+    enter_edit_mode(page)
+
+    quotes = page.locator("#sceneProseHost blockquote")
+    one = quotes.filter(has_text="Quote one").bounding_box()
+    two = quotes.filter(has_text="Quote two").bounding_box()
+    page.mouse.click(one["x"] + 40, (one["y"] + one["height"] + two["y"]) / 2)
+    page.keyboard.type("Clicked")
+    blocks = _top_level_blocks(page)
+    assert blocks.index("Clicked") == blocks.index("Quote one.") + 1, blocks
+
+    # Down from the end of the first quote stops in the gap too.
+    page.keyboard.press("ControlOrMeta+z")
+    _caret_at_end_of(page, "Quote one")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.type("Arrowed")
+    blocks = _top_level_blocks(page)
+    assert blocks.index("Arrowed") == blocks.index("Quote one.") + 1, blocks
+
+
 def test_a_todo_has_the_gutter_arrow_to_its_line(page: Page, server: ProseviewServer):
     path = open_annotated_scene(page, server)
     page.evaluate("() => { if (!_lineNumbersOn) toggleLineNumbers(); }")
@@ -7851,3 +7877,24 @@ def test_clicking_the_selection_chip_goes_to_the_passage(page: Page, server: Pro
         const rect = [...h][0].getBoundingClientRect();
         return rect.top > 0 && rect.bottom < innerHeight;
     }""", timeout=5000)
+
+
+def test_enter_at_the_end_of_a_scene_keeps_the_caret_in_view(page: Page, server: ProseviewServer):
+    """The reading column scrolls smoothly; an animated scroll there would be
+    cancelled by the editor's next write and leave the caret below the page."""
+    page.set_viewport_size({"width": 1200, "height": 700})
+    open_scene(page, server, LARGE_SCENE_REL)
+    enter_edit_mode(page)
+    page.evaluate(
+        "() => { _pmView.focus(); _pmView.dispatch(_pmView.state.tr"
+        ".setSelection(window._PM.TextSelection.atEnd(_pmView.state.doc)).scrollIntoView()); }"
+    )
+    for _ in range(6):
+        page.keyboard.press("Enter")
+    page.wait_for_timeout(400)
+
+    caret_bottom, bar_top = page.evaluate(
+        "() => [_pmView.coordsAtPos(_pmView.state.selection.head).bottom, "
+        "document.getElementById('sceneEditBar').getBoundingClientRect().top]"
+    )
+    assert caret_bottom <= bar_top

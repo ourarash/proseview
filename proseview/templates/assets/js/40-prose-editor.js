@@ -63,11 +63,12 @@
                 buildListInputRules(PM),
                 PM.history(),
                 PM.keymap({
-                    'ArrowRight': caretBesideAnnotation(PM, 'right'),
-                    'ArrowDown': caretBesideAnnotation(PM, 'down'),
-                    'ArrowLeft': caretBesideAnnotation(PM, 'left'),
-                    'ArrowUp': caretBesideAnnotation(PM, 'up')
+                    'ArrowRight': caretIntoGap(PM, 'right'),
+                    'ArrowDown': caretIntoGap(PM, 'down'),
+                    'ArrowLeft': caretIntoGap(PM, 'left'),
+                    'ArrowUp': caretIntoGap(PM, 'up')
                 }),
+                clickBetweenContainers(PM),
                 // Lets the caret sit between two blocks that hold no text,
                 // such as TODOs stacked one after another, so the writer can
                 // type there.
@@ -138,6 +139,7 @@
                     if (_pmEditMode && tr.docChanged && !_pmDirty) {
                         setPmDirty(true);
                     }
+                    if (window._editBarFollowSelection) window._editBarFollowSelection();
                 },
                 nodeViews: {
                     annotation: PM.createAnnotationNodeView,
@@ -182,11 +184,20 @@
             return -1;
         }
 
+        // Whether the caret can stop at a top-level gap between these two
+        // blocks: beside a TODO or note, or between two blocks that hold
+        // their text inside them, such as two quotes in a row. The gap
+        // cursor alone offers neither: text inside the blocks could already
+        // take the caret, so it sees no need to stop between them.
+        function isGapBetween(before, after) {
+            if (!before || !after) return false;
+            if (before.type.name === 'annotation' || after.type.name === 'annotation') return true;
+            return !before.isTextblock && !before.isAtom && !after.isTextblock && !after.isAtom;
+        }
+
         // An arrow key at the edge of text (a paragraph, the end of a quote)
-        // next to a TODO or note stops beside it, ready to type there. The
-        // gap cursor alone would skip it: text could already take the caret
-        // on that side, so it offers no stop between the two.
-        function caretBesideAnnotation(PM, dir) {
+        // next to such a gap stops in it, ready to type there.
+        function caretIntoGap(PM, dir) {
             return function(state, dispatch, view) {
                 var sel = state.selection;
                 if (!(sel instanceof PM.TextSelection) || !sel.empty) return false;
@@ -204,10 +215,39 @@
                 var pos = forward ? $head.after(1) : $head.before(1);
                 var $pos = state.doc.resolve(pos);
                 var beside = forward ? $pos.nodeAfter : $pos.nodeBefore;
-                if (!beside || beside.type.name !== 'annotation') return false;
+                var own = $head.node(1);
+                var isGap = beside && (beside.type.name === 'annotation' ||
+                    isGapBetween(forward ? own : beside, forward ? beside : own));
+                if (!isGap) return false;
                 if (dispatch) dispatch(state.tr.setSelection(new PM.GapCursor($pos)).scrollIntoView());
                 return true;
             };
+        }
+
+        // A click in the space between two such blocks puts the caret in
+        // the gap. The browser would otherwise drop it into the nearer
+        // block's text, leaving no way to type between two quotes.
+        function clickBetweenContainers(PM) {
+            return new PM.Plugin({
+                props: {
+                    handleClick: function(view, pos, event) {
+                        if (event.target !== view.dom) return false;
+                        var doc = view.state.doc, found = null, prev = null;
+                        doc.forEach(function(node, offset) {
+                            if (found !== null) return;
+                            var dom = view.nodeDOM(offset);
+                            if (!dom || !dom.getBoundingClientRect) { prev = null; return; }
+                            var rect = dom.getBoundingClientRect();
+                            if (prev && event.clientY >= prev.bottom && event.clientY <= rect.top &&
+                                isGapBetween(prev.node, node)) found = offset;
+                            prev = { node: node, bottom: rect.bottom };
+                        });
+                        if (found === null) return false;
+                        view.dispatch(view.state.tr.setSelection(new PM.GapCursor(doc.resolve(found))));
+                        return true;
+                    }
+                }
+            });
         }
 
         function updatePMHighlightDecorations() {
@@ -393,6 +433,7 @@
             _pmView.setProps({ editable: function() { return true; } });
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) editBar.hidden = false;
+            if (window._placeEditBar) window._placeEditBar();
             var btn = document.getElementById('sceneEditBtn');
             if (btn) btn.textContent = '✗ Cancel';
             var p = paths[curIdx];
@@ -844,58 +885,140 @@
             _pmView.focus();
         };
 
+        // The edit bar can be dragged by any part of it. A press that moves
+        // a few pixels becomes a drag; one that doesn't stays a click, so
+        // the buttons work as before. Where it was left is remembered and
+        // used the next time edit mode opens. While text is selected the
+        // bar sits just above the selection, and goes back once it clears.
         (function() {
             var editBar = document.getElementById('sceneEditBar');
-            var dragHandle = document.querySelector('.scene-edit-status');
-            if (!editBar || !dragHandle) return;
-            
+            if (!editBar) return;
+
+            var STORE_KEY = 'proseview-edit-bar-pos';
+            var DRAG_THRESHOLD = 4;
             var originalParent = editBar.parentNode;
             var originalNextSibling = editBar.nextSibling;
-            
-            var isDragging = false;
-            var startX = 0, startY = 0;
-            
-            dragHandle.style.cursor = 'grab';
-            
-            dragHandle.addEventListener('mousedown', function(e) {
-                isDragging = true;
-                dragHandle.style.cursor = 'grabbing';
-                
-                if (editBar.parentNode !== document.body) {
-                    var rect = editBar.getBoundingClientRect();
-                    document.body.appendChild(editBar);
-                    editBar.style.position = 'fixed';
-                    editBar.style.margin = '0';
-                    editBar.style.bottom = 'auto';
-                    editBar.style.right = 'auto';
-                    editBar.style.left = rect.left + 'px';
-                    editBar.style.top = rect.top + 'px';
-                    editBar.style.transform = 'none';
-                    editBar.style.zIndex = '3000';
-                    startX = e.clientX - rect.left;
-                    startY = e.clientY - rect.top;
-                } else {
-                    startX = e.clientX - parseFloat(editBar.style.left || 0);
-                    startY = e.clientY - parseFloat(editBar.style.top || 0);
+
+            var pressed = false, isDragging = false, justDragged = false;
+            var atSelection = false, selectingWithMouse = false, followFrame = 0;
+            var downX = 0, downY = 0, startX = 0, startY = 0;
+
+            function clampInView(left, top) {
+                var w = editBar.offsetWidth, h = editBar.offsetHeight;
+                return {
+                    left: Math.max(0, Math.min(left, window.innerWidth - w)),
+                    top: Math.max(0, Math.min(top, window.innerHeight - h))
+                };
+            }
+
+            function float(left, top) {
+                if (editBar.parentNode !== document.body) document.body.appendChild(editBar);
+                editBar.style.position = 'fixed';
+                editBar.style.margin = '0';
+                editBar.style.bottom = 'auto';
+                editBar.style.right = 'auto';
+                editBar.style.transform = 'none';
+                editBar.style.zIndex = '3000';
+                var p = clampInView(left, top);
+                editBar.style.left = p.left + 'px';
+                editBar.style.top = p.top + 'px';
+            }
+
+            editBar.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return;
+                pressed = true;
+                downX = e.clientX;
+                downY = e.clientY;
+                var rect = editBar.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+                // Keep the editor's caret and selection; buttons already do.
+                if (!e.target.closest('button')) e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!pressed) return;
+                if (!isDragging) {
+                    if (Math.abs(e.clientX - downX) < DRAG_THRESHOLD &&
+                        Math.abs(e.clientY - downY) < DRAG_THRESHOLD) return;
+                    isDragging = true;
+                    editBar.classList.add('is-dragging');
                 }
+                float(e.clientX - startX, e.clientY - startY);
                 e.preventDefault();
             });
-            
-            document.addEventListener('mousemove', function(e) {
-                if (!isDragging) return;
-                var left = e.clientX - startX;
-                var top = e.clientY - startY;
-                editBar.style.left = left + 'px';
-                editBar.style.top = top + 'px';
-            });
-            
+
             document.addEventListener('mouseup', function() {
-                if (isDragging) {
-                    isDragging = false;
-                    dragHandle.style.cursor = 'grab';
-                }
+                pressed = false;
+                if (!isDragging) return;
+                isDragging = false;
+                justDragged = true;
+                atSelection = false;
+                editBar.classList.remove('is-dragging');
+                try {
+                    localStorage.setItem(STORE_KEY, JSON.stringify({
+                        left: parseFloat(editBar.style.left), top: parseFloat(editBar.style.top)
+                    }));
+                } catch (err) {}
+                setTimeout(function() { justDragged = false; }, 0);
             });
-            
+
+            // The click that ends a drag should not press the button under it.
+            editBar.addEventListener('click', function(e) {
+                if (!justDragged) return;
+                justDragged = false;
+                e.stopPropagation();
+                e.preventDefault();
+            }, true);
+
+            // Called when edit mode opens: put the bar where it was left.
+            window._placeEditBar = function() {
+                atSelection = false;
+                var saved = null;
+                try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (err) {}
+                if (saved && isFinite(saved.left) && isFinite(saved.top)) float(saved.left, saved.top);
+                else if (window._resetEditBarPosition) window._resetEditBarPosition();
+            };
+
+            function followSelection() {
+                followFrame = 0;
+                if (!_pmView || !_pmEditMode || editBar.hidden || isDragging || selectingWithMouse) return;
+                var sel = _pmView.state.selection;
+                if (sel.empty) {
+                    if (atSelection) window._placeEditBar();
+                    return;
+                }
+                var start, end;
+                try {
+                    start = _pmView.coordsAtPos(sel.from);
+                    end = _pmView.coordsAtPos(sel.to);
+                } catch (err) { return; }
+                var w = editBar.offsetWidth, h = editBar.offsetHeight;
+                var oneLine = Math.abs(start.top - end.top) < 4;
+                var x = oneLine ? (start.left + end.left) / 2 : start.left;
+                var top = Math.min(start.top, end.top) - h - 22;
+                if (top < 8) top = Math.max(start.bottom, end.bottom) + 22;
+                float(x - w / 2, top);
+                atSelection = true;
+            }
+
+            window._editBarFollowSelection = function() {
+                if (!followFrame) followFrame = requestAnimationFrame(followSelection);
+            };
+
+            // Wait for a mouse selection to finish before moving the bar.
+            document.addEventListener('mousedown', function(e) {
+                if (e.button === 0 && e.target.closest && e.target.closest('#sceneProseHost')) selectingWithMouse = true;
+            }, true);
+            document.addEventListener('mouseup', function() {
+                if (!selectingWithMouse) return;
+                selectingWithMouse = false;
+                window._editBarFollowSelection();
+            }, true);
+            document.addEventListener('scroll', function() {
+                if (atSelection) window._editBarFollowSelection();
+            }, true);
+
             window._resetEditBarPosition = function() {
                 if (editBar.parentNode !== originalParent) {
                     originalParent.insertBefore(editBar, originalNextSibling);

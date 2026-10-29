@@ -816,7 +816,6 @@
                 'Last modified ' + node.modified_at + ' \u00b7 ' + sizeKb + ' KB';
             const editorBtn = document.getElementById('filePreviewEditorBtn');
             editorBtn.href = buildEditorUrl(node.abs_path);
-            editorBtn.textContent = '\u2197';
             editorBtn.title = 'Open in ' + editorLabel;
             const body = document.getElementById('filePreviewBody');
             const imageUrl = /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(node.name) && typeof repoAssetUrl === 'function'
@@ -886,7 +885,6 @@
             const absPathForEditor = (typeof repoRoot !== 'undefined' ? repoRoot + '/' : '') + path;
             const editorBtn = document.getElementById('filePreviewEditorBtn');
             editorBtn.href = typeof buildEditorUrl === 'function' ? buildEditorUrl(absPathForEditor) : '#';
-            editorBtn.textContent = '\u2197';
             editorBtn.title = 'Open in ' + (typeof editorLabel !== 'undefined' ? editorLabel : 'Editor');
             document.getElementById('filePreviewMeta').textContent = 'Loading preview…';
             document.getElementById('filePreviewBody').innerHTML = '<div class="repo-warn">Loading preview…</div>';

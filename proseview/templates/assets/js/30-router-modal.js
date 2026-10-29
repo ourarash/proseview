@@ -304,6 +304,11 @@
             const bookSlider = document.getElementById('bookFontSize');
             if (bookBody) bookBody.style.fontSize = size + 'px';
             if (bookSlider) bookSlider.value = String(size);
+            // And so does a file outside the manuscript.
+            const fileBody = document.getElementById('filePreviewBody');
+            const fileSlider = document.getElementById('fileFontSize');
+            if (fileBody) fileBody.style.fontSize = size + 'px';
+            if (fileSlider) fileSlider.value = String(size);
             try {
                 localStorage.setItem(MODAL_FONT_SIZE_STORAGE_KEY, String(size));
             } catch (err) {

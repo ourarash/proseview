@@ -361,6 +361,10 @@
             const slider = document.getElementById('modalFontSize');
             if (modalBody) modalBody.style.fontSize = size + 'px';
             if (slider) slider.value = String(size);
+            const fileBody = document.getElementById('filePreviewBody');
+            const fileSlider = document.getElementById('fileFontSize');
+            if (fileBody) fileBody.style.fontSize = size + 'px';
+            if (fileSlider) fileSlider.value = String(size);
             return size;
         }
 
@@ -393,8 +397,8 @@
         function applyReadingMeasure(px) {
             const measure = normalizeReadingMeasure(px);
             document.documentElement.style.setProperty('--reading-measure', measure + 'px');
-            // The scene's menu and the book's.
-            ['modalMeasure', 'bookMeasure'].forEach(function(id) {
+            // The scene's menu, the book's and the file view's.
+            ['modalMeasure', 'bookMeasure', 'fileMeasure'].forEach(function(id) {
                 const slider = document.getElementById(id);
                 if (slider && Number(slider.value) !== measure) slider.value = String(measure);
                 const out = document.getElementById(id + 'Out');

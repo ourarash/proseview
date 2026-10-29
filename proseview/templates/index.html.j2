@@ -618,34 +618,27 @@
 
     <!-- Modals and Overlays -->
     <div id="file-preview-panel">
-        <div class="file-preview-header">
-            <button class="back-btn" onclick="closeFilePreview()">&#8592; Overview</button>
-            <div class="file-preview-heading">
-                <h1 id="filePreviewTitle" class="repo-preview-path" tabindex="-1"></h1>
-                <div id="filePreviewMeta" class="repo-preview-sub"></div>
+        <header class="modal-header file-preview-toolbar" data-toolbar-hidden="false"><div class="modal-header-inner">
+            <div class="scene-toolbar-leading"><button type="button" class="scene-back-btn scene-toolbar-button" onclick="closeFilePreview()" aria-label="Close file and return to dashboard" title="Return to dashboard"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg><span class="scene-toolbar-button-label">Dashboard</span></button><button id="fileSidebarBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="setSidebarOpen(document.documentElement.dataset.sidebar==='closed')" aria-label="Toggle file browser" aria-keyshortcuts="B" title="Toggle file browser (B)"><svg class="sidebar-chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><path d="M9 4v16"></path></svg></button></div>
+            <div class="file-preview-heading"><h1 id="filePreviewTitle" tabindex="-1"></h1><div id="filePreviewMeta" class="file-preview-meta"></div></div>
+            <div class="modal-header-controls">
+                <button type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="focusSearch()" aria-label="Search files" aria-keyshortcuts="Meta+K Control+K" title="Search files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
+                <button type="button" class="scene-toolbar-button discuss-open-btn" onclick="toggleScenePanel(this)" aria-label="Show or hide the scene panel" title="Show or hide the scene panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg><span class="scene-toolbar-action-label">Panel</span></button>
+                <button type="button" id="filePreviewEditBtn" class="scene-toolbar-button" onclick="toggleFileEdit()" aria-keyshortcuts="E" title="Edit this note (E)" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg><span class="scene-toolbar-action-label">Edit</span></button>
+                <div class="scene-toolbar-menu-wrap"><button id="fileAppearanceBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('fileAppearanceMenu', this)" aria-label="Reading appearance" aria-haspopup="dialog" aria-controls="fileAppearanceMenu" aria-expanded="false" title="Text size, line width, font and theme">Aa</button><section id="fileAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Reading appearance" hidden>
+                    <div class="scene-toolbar-menu-heading">Reading appearance</div>
+                    <label class="scene-toolbar-field scene-toolbar-size-field" for="fileFontSize"><span>Text size</span><input id="fileFontSize" type="range" min="12" max="36" value="18" oninput="updateFontSize(this.value)"></label>
+                    <label class="scene-toolbar-field scene-toolbar-size-field" for="fileMeasure"><span>Line width</span><input id="fileMeasure" type="range" min="480" max="1100" step="20" value="760" oninput="updateReadingMeasure(this.value)"><output id="fileMeasureOut" for="fileMeasure"></output></label>
+                    <label class="scene-toolbar-field" for="filePreviewFontSelect"><span>Font</span><select class="font-select-inline" id="filePreviewFontSelect" onchange="selectFont(this.value)"><option value="reader">Reader</option><option value="literary">Literary</option><option value="inter">Inter</option><option value="georgia">Georgia</option><option value="baskerville">Baskerville</option><option value="sans">Sans</option><option value="mono">Mono</option></select></label>
+                    <label class="scene-toolbar-field" for="filePreviewThemeSelect"><span>Theme</span><select class="font-select-inline" id="filePreviewThemeSelect" onchange="selectTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="docsify">Docsify</option><option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option></select></label>
+                </section></div>
+                <div class="scene-toolbar-menu-wrap"><button id="fileMoreBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('fileMoreMenu', this)" aria-label="More file actions" aria-haspopup="dialog" aria-controls="fileMoreMenu" aria-expanded="false" title="More file actions">&#8230;</button><div id="fileMoreMenu" class="scene-toolbar-popover scene-more-menu" role="dialog" aria-label="More file actions" hidden>
+                    <button id="filePreviewRefreshBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();refreshFilePreview()"><span aria-hidden="true">&#8635;</span> Refresh from disk</button>
+                    <a id="filePreviewEditorBtn" class="scene-toolbar-menu-action" href="#" target="_blank" title="Open in {{ editor_label }}"><span aria-hidden="true">&#8599;</span> Open in {{ editor_label }}</a>
+                </div></div>
+                <button type="button" class="modal-close scene-toolbar-button" onclick="closeFilePreview()" aria-label="Close file and return to dashboard" title="Close file and return to dashboard">&times;</button>
             </div>
-            <div class="file-preview-controls">
-                <button type="button" class="editor-btn" onclick="focusSearch()" aria-label="Search files" aria-keyshortcuts="Meta+K Control+K">Search</button>
-                <select id="filePreviewFontSelect" class="font-select-inline" onchange="selectFont(this.value)" title="Reading font">
-                    <option value="reader">Reader</option>
-                    <option value="literary">Literary</option>
-                    <option value="inter">Inter</option>
-                    <option value="georgia">Georgia</option>
-                    <option value="baskerville">Baskerville</option>
-                    <option value="sans">Sans</option>
-                    <option value="mono">Mono</option>
-                </select>
-                <select id="filePreviewThemeSelect" class="font-select-inline" onchange="selectTheme(this.value)" title="Color theme">
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="docsify">Docsify</option>
-                    <option value="hopscotch">Hopscotch</option><option value="graphite-light">Graphite Light</option><option value="graphite-dark">Graphite Dark</option>
-                </select>
-                <button type="button" id="filePreviewEditBtn" class="file-edit-btn" onclick="toggleFileEdit()" aria-keyshortcuts="E" title="Edit this note (E)" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg><span>Edit</span></button>
-                <a id="filePreviewEditorBtn" class="editor-btn" href="#" target="_blank" style="flex-shrink:0;" title=""></a>
-                <button type="button" class="editor-btn" id="filePreviewRefreshBtn" onclick="refreshFilePreview()" title="Refresh file preview" style="flex-shrink:0; cursor:pointer;">&#x21BB;</button><button type="button" class="editor-btn discuss-open-btn" onclick="toggleScenePanel(this)" style="flex-shrink:0; cursor:pointer;" title="Show or hide the scene panel">&#9707; Panel</button>
-            </div>
-        </div>
+        </div></header>
         <div id="fileEditBar" class="file-edit-bar" role="region" aria-label="Editing this file" hidden>
             <span id="fileEditStatus" class="file-edit-status" aria-live="polite"></span>
             <span id="fileEditConflict" class="file-edit-conflict" hidden>

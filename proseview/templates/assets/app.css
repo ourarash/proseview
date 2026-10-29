@@ -2648,11 +2648,12 @@
             display: block;
         }
 
-        /* One gutter for the whole panel. The body used to carry an inline
-           `padding: 0` that beat .modal-body's 60px, so the header and the prose
-           sat flush against the sidebar with no breathing room at all. */
+        /* The same page as a scene: the toolbar runs edge to edge and the
+           text keeps the reading measure (see .repo-preview-body). */
         #file-preview-panel {
-            padding: 0 60px;
+            min-height: 100vh;
+            background: var(--surface-card);
+            border-left: 1px solid var(--border);
         }
 
         /* Hide dashboard chrome while reading a scene or browsing a file
@@ -3146,16 +3147,6 @@
             cursor: pointer;
         }
 
-        .file-preview-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px 0 20px 0;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
-
         .back-btn {
             background: none;
             border: 1px solid var(--border);
@@ -3172,11 +3163,43 @@
             color: var(--text-main);
         }
 
-        /* The path keeps a readable width: below it the controls wrap
-           onto their own row instead of crushing it into a column. */
+        /* The file view wears the scene's toolbar; its title sits where the
+           scene's does, with the file's path above its date and size. */
         .file-preview-heading {
-            flex: 1 1 280px;
-            min-width: 0;
+            flex: 1 1 auto;
+            min-width: 52px;
+            text-align: center;
+        }
+
+        #filePreviewTitle {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        #filePreviewTitle,
+        .file-preview-meta {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-preview-meta {
+            margin-top: 1px;
+            color: var(--text-muted);
+            font-size: 9px;
+            font-weight: 500;
+        }
+
+        @container (max-width: 700px) {
+            .file-preview-heading {
+                text-align: left;
+            }
+
+            #fileSidebarBtn {
+                display: none;
+            }
         }
 
         .file-preview-controls {
@@ -3652,37 +3675,21 @@
             min-width: 0;
         }
 
-        .repo-preview-path {
-            margin: 0;
-            font-size: 14px;
-            color: var(--text-main);
-            font-weight: 600;
-            word-break: break-all;
-        }
-
         .repo-preview-sub {
             font-size: 11px;
             color: var(--text-muted);
         }
 
+        /* Type and quotes come from .modal-body, as in a scene; this only
+           centres the text at the reading measure the Aa menu sets. */
         .repo-preview-body {
-            padding: 0 0 60px 0;
+            width: min(100% - 120px, var(--reading-measure, 760px));
+            margin-inline: auto;
+            padding: 40px 0 60px;
             overflow-y: auto;
             overflow-x: hidden;
             word-break: break-word;
             overflow-wrap: break-word;
-            font-family: var(--font-reading);
-            font-size: 15px;
-            line-height: 1.75;
-            color: var(--text-reading);
-            max-width: var(--reading-measure, 860px);
-        }
-
-        .repo-preview-body h1,
-        .repo-preview-body h2,
-        .repo-preview-body h3 {
-            font-family: Inter, system-ui, sans-serif;
-            color: var(--text-main);
         }
 
         /* Markdown tables and rules, for every surface that renders Markdown
@@ -3815,28 +3822,6 @@
             font-size: inherit;
         }
 
-        .repo-preview-body blockquote {
-            margin: 1.4em 0;
-            padding: 0.75em 1.25em;
-            border-left: 4px solid var(--primary);
-            background: var(--surface-muted);
-            border-radius: 0 8px 8px 0;
-            color: var(--text-soft);
-            font-style: italic;
-        }
-
-        .repo-preview-body blockquote p {
-            margin: 0.25em 0;
-        }
-
-        .repo-preview-body blockquote p:first-child {
-            margin-top: 0;
-        }
-
-        .repo-preview-body blockquote p:last-child {
-            margin-bottom: 0;
-        }
-
         .repo-warn {
             margin: 20px 30px;
             padding: 14px 18px;
@@ -3939,8 +3924,8 @@
                 padding: 28px;
             }
 
-            #file-preview-panel {
-                padding: 0 20px;
+            .repo-preview-body {
+                width: min(100% - 40px, var(--reading-measure, 760px));
             }
 
             .scene-stat-grid {

@@ -1,5 +1,7 @@
         // ── Selection pill ───────────────────────────────────────────────────
         let pillDragging = false;
+        let pillPressed = false, pillJustDragged = false;
+        let pillPressX = 0, pillPressY = 0;
         let pillDragStartX = 0, pillDragStartY = 0;
         let pillCurrentX = 0, pillCurrentY = 0;
         let currentSelectionText = '';
@@ -683,15 +685,29 @@
                 handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
             });
 
-            // Drag: only when clicking the pill background (not a button/textarea)
+            // Drag from the pill background or the ··· button. A press that
+            // moves a few pixels becomes a drag; one that doesn't stays a
+            // click, so ··· still opens the menu. Menu items never drag.
             pill.addEventListener('mousedown', function(e) {
-                if (e.target.closest('button') || e.target.tagName === 'TEXTAREA') return;
+                if (e.button !== 0 || e.target.tagName === 'TEXTAREA') return;
+                const button = e.target.closest('button');
+                if (button && button.id !== 'selectionPillBtn') return;
                 const rect = pill.getBoundingClientRect();
-                pillDragging = true;
+                pillPressed = true;
+                pillPressX = e.clientX;
+                pillPressY = e.clientY;
                 pillDragStartX = e.clientX - rect.left;
                 pillDragStartY = e.clientY - rect.top;
-                e.preventDefault();
+                if (!button) e.preventDefault();
             });
+
+            // The click that ends a drag should not open the menu.
+            pill.addEventListener('click', function(e) {
+                if (!pillJustDragged) return;
+                pillJustDragged = false;
+                e.stopPropagation();
+                e.preventDefault();
+            }, true);
 
             return pill;
         }
@@ -982,7 +998,12 @@
             });
 
             document.addEventListener('mousemove', function(e) {
+                if (pillPressed && !pillDragging &&
+                    (Math.abs(e.clientX - pillPressX) >= 4 || Math.abs(e.clientY - pillPressY) >= 4)) {
+                    pillDragging = true;
+                }
                 if (!pillDragging) return;
+                e.preventDefault();
                 const pill = document.getElementById('selectionPill');
                 const trigger = document.getElementById('selectionPillBtn');
                 if (!pill || !trigger) return;
@@ -1003,7 +1024,13 @@
                 positionSelectionPillSurface(metrics);
             });
 
-            document.addEventListener('mouseup', function() { pillDragging = false; });
+            document.addEventListener('mouseup', function() {
+                pillPressed = false;
+                if (!pillDragging) return;
+                pillDragging = false;
+                pillJustDragged = true;
+                setTimeout(function() { pillJustDragged = false; }, 0);
+            });
 
             document.addEventListener('keydown', handleSelectionPillKeydown, true);
             modalBody.addEventListener('scroll', scheduleSelectionPillPosition, {passive: true});

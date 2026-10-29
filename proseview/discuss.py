@@ -181,8 +181,8 @@ def _critique_evidence_is_selected(selection: str, evidence: str) -> bool:
 STYLE_OBSERVATION_MAX = 40
 STYLE_OBSERVATION_QUOTE_MAX = 300
 
-# Passes that flag a risk. ``sensory`` and ``comedy_beats`` mark presence of
-# something wanted, not something to answer for, so they are not evidence here.
+# Passes that flag a risk. ``sensory`` marks presence of something wanted,
+# not something to answer for, so it is not evidence here.
 _STYLE_PASS_LABELS: dict[str, str] = {
     "passive_voice": "passive construction",
     "filter_verbs": "filter verb",
@@ -190,6 +190,7 @@ _STYLE_PASS_LABELS: dict[str, str] = {
     "hyperbole": "hyperbole",
     "lyrical": "lyrical phrasing",
     "repeats": "repeated word",
+    "sentence_starts": "repeated sentence opening",
     "first_person": "first-person pronoun",
 }
 

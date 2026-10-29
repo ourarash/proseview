@@ -169,7 +169,6 @@ HYPERBOLE_WORDS = {
     "completely", "entirely", "absolute", "totally", "worst", "best",
     "everything", "nothing",
 }
-COMEDY_BEATS = {"...", "\u2014", "!", "?!"}
 
 
 @dataclass(frozen=True)

@@ -520,7 +520,8 @@ def build_scene_data(
 
     contents = {clean_path(s.path): s.text for s in scenes}
     highlights = {
-        clean_path(s.path): compute_scene_highlights(s.text, repeat_terms=s.repetition_examples)
+        clean_path(s.path): compute_scene_highlights(s.text, repeat_terms=s.repetition_examples,
+                                                  pov=s.frontmatter.get("pov", ""))
         for s in scenes
     }
     meta = {

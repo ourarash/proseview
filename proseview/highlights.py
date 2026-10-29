@@ -9,7 +9,7 @@ Nine passes ship in v1, mirroring the contract in
 ``visualization/plan/implementation-plan.md``:
 
     passive_voice, filter_verbs, crutch_words, hyperbole,
-    lyrical, sensory, comedy_beats, repeats, first_person
+    lyrical, sensory, sentence_starts, repeats, first_person
 
 A pass may legitimately return an empty list (e.g. ``crutch_words`` on a
 scene with no crutch hits, or any pass whose wordlist has been emptied).
@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from .lexical import (
-    COMEDY_BEATS,
     CRUTCH_WORDS,
     FILTER_VERBS,
     FIRST_PERSON_RE,
@@ -45,7 +44,7 @@ PASS_NAMES: tuple[str, ...] = (
     "hyperbole",
     "lyrical",
     "sensory",
-    "comedy_beats",
+    "sentence_starts",
     "repeats",
     "first_person",
 )
@@ -97,7 +96,8 @@ def strip_markdown_for_offsets(text: str) -> str:
     text = re.sub(r'^[-*+]\s+', '', text)
     text = re.sub(r'^\d+\.\s+', '', text)
     
-    # Inline formatting
+    # Inline formatting. An image shows no text, so its alt text is not prose.
+    text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '￼', text)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
     text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
@@ -106,11 +106,34 @@ def strip_markdown_for_offsets(text: str) -> str:
     return text
 
 
+# Opening and closing marks of speech. A curly single quote opens only after a
+# space or a dash, and closes only before a non-letter, so "don’t" stays prose.
+_DIALOGUE_RE = re.compile(
+    r'"[^"]*(?:"|$)|\u201c[^\u201d]*(?:\u201d|$)'
+    r"|(?:(?<=^)|(?<=[\s\u2014(]))\u2018.*?(?:\u2019(?![A-Za-z])|$)",
+    re.DOTALL,
+)
+
+
+def dialogue_spans(paragraph: str) -> list[tuple[int, int]]:
+    """Character spans of ``paragraph`` that are speech, quotes included.
+
+    Speech running on into the next paragraph has no closing mark, as is the
+    convention, so an unclosed quote runs to the end of its paragraph.
+    """
+    return [m.span() for m in _DIALOGUE_RE.finditer(paragraph)]
+
+
+def _in_spans(start: int, spans: list[tuple[int, int]]) -> bool:
+    return any(a <= start < b for a, b in spans)
+
+
 def _word_list_pass(
     paragraphs: list[str],
     words: Iterable[str],
     *,
     note: str | None = None,
+    narration_only: bool = False,
 ) -> list[HighlightInstance]:
     out: list[HighlightInstance] = []
     word_list = [w for w in words if w]
@@ -121,7 +144,10 @@ def _word_list_pass(
         re.IGNORECASE,
     )
     for idx, para in enumerate(paragraphs):
+        speech = dialogue_spans(para) if narration_only else []
         for match in pattern.finditer(para):
+            if speech and _in_spans(match.start(), speech):
+                continue
             out.append(HighlightInstance(idx, (match.start(), match.end()),
                                          match.group(0), note))
     return out
@@ -139,12 +165,14 @@ def filter_verbs_pass(paragraphs: list[str]) -> list[HighlightInstance]:
     return _word_list_pass(paragraphs, FILTER_VERBS)
 
 
+# Crutch words, absolutes and "I" are how people talk, so in dialogue they are
+# the character's voice, not the writer's habit. These passes read narration.
 def crutch_words_pass(paragraphs: list[str]) -> list[HighlightInstance]:
-    return _word_list_pass(paragraphs, CRUTCH_WORDS)
+    return _word_list_pass(paragraphs, CRUTCH_WORDS, narration_only=True)
 
 
 def hyperbole_pass(paragraphs: list[str]) -> list[HighlightInstance]:
-    return _word_list_pass(paragraphs, HYPERBOLE_WORDS)
+    return _word_list_pass(paragraphs, HYPERBOLE_WORDS, narration_only=True)
 
 
 def lyrical_pass(paragraphs: list[str]) -> list[HighlightInstance]:
@@ -159,16 +187,41 @@ def sensory_pass(paragraphs: list[str]) -> list[HighlightInstance]:
     return out
 
 
-def comedy_beats_pass(paragraphs: list[str]) -> list[HighlightInstance]:
-    out: list[HighlightInstance] = []
-    beats = [b for b in COMEDY_BEATS if b]
-    if not beats:
-        return out
-    pattern = re.compile("|".join(re.escape(b) for b in sorted(beats, key=len, reverse=True)))
+# A sentence ends at . ! ? or an ellipsis, with any closing quote or bracket.
+_SENTENCE_END_RE = re.compile(r"[.!?\u2026]+[\"'\u201d\u2019)\]]*\s+")
+# A sentence's first word, past any opening quote, bracket or dash.
+_FIRST_WORD_RE = re.compile(r"[\s\"'\u201c\u2018(\[\u2014*_-]*([A-Za-z]+(?:['\u2019][A-Za-z]+)?)")
+SENTENCE_START_RUN = 3
+SENTENCE_START_MIN_WORDS = 2
+
+
+def sentence_starts_pass(paragraphs: list[str]) -> list[HighlightInstance]:
+    """Mark runs of three or more sentences in a row that open on the same word.
+
+    "She… She… She…" is a pattern a reader hears long before they could name
+    it. A run carries on across a paragraph break, since the ear does too.
+    Each marked word's note is the run's length.
+    """
+    starts: list[tuple[int, int, int, str]] = []
     for idx, para in enumerate(paragraphs):
-        for match in pattern.finditer(para):
-            out.append(HighlightInstance(idx, (match.start(), match.end()),
-                                         match.group(0)))
+        pos = 0
+        for end in [m.end() for m in _SENTENCE_END_RE.finditer(para)] + [len(para)]:
+            m = _FIRST_WORD_RE.match(para, pos)
+            # A one-word cry ("Wow! wow! wow!") is not an opening.
+            if m and m.start(1) < end and len(para[pos:end].split()) >= SENTENCE_START_MIN_WORDS:
+                starts.append((idx, m.start(1), m.end(1), m.group(1)))
+            pos = end
+    out: list[HighlightInstance] = []
+    i = 0
+    while i < len(starts):
+        j = i
+        while j + 1 < len(starts) and starts[j + 1][3].lower() == starts[i][3].lower():
+            j += 1
+        run = j - i + 1
+        if run >= SENTENCE_START_RUN:
+            for idx, start, end, word in starts[i:j + 1]:
+                out.append(HighlightInstance(idx, (start, end), word, str(run)))
+        i = j + 1
     return out
 
 
@@ -223,12 +276,41 @@ def repeats_pass(paragraphs: list[str], repeat_terms: Iterable[str]) -> list[Hig
     return out
 
 
-def first_person_pass(paragraphs: list[str]) -> list[HighlightInstance]:
+# A scene whose narration says "I" this often is told in first person, where
+# marking every pronoun says nothing. Long enough not to judge a fragment.
+FIRST_PERSON_SCENE_PER_1K = 20.0
+FIRST_PERSON_SCENE_MIN_WORDS = 150
+
+
+def is_first_person_pov(pov: object) -> bool:
+    """Whether a scene's ``pov:`` frontmatter names first person ("first", "1st")."""
+    return bool(re.search(r"\b(?:first|1st)\b", str(pov or ""), re.IGNORECASE))
+
+
+def first_person_pass(paragraphs: list[str], *, pov: object = "") -> list[HighlightInstance]:
+    """First-person pronouns in the narration of a scene not told in first person.
+
+    "I" in speech is just a character talking. In third-person narration it
+    is a slip into the character's voice, which is what this pass is for.
+    A scene whose ``pov:`` says first person, or whose narration plainly is,
+    gets no marks: there every "I" is meant.
+    """
+    if is_first_person_pov(pov):
+        return []
     out: list[HighlightInstance] = []
+    narration_words = 0
     for idx, para in enumerate(paragraphs):
+        speech = dialogue_spans(para)
+        narration = "".join(ch for k, ch in enumerate(para) if not _in_spans(k, speech)) if speech else para
+        narration_words += len(narration.split())
         for match in FIRST_PERSON_RE.finditer(para):
+            if speech and _in_spans(match.start(), speech):
+                continue
             out.append(HighlightInstance(idx, (match.start(), match.end()),
                                          match.group(0)))
+    if (narration_words >= FIRST_PERSON_SCENE_MIN_WORDS
+            and len(out) * 1000 / narration_words >= FIRST_PERSON_SCENE_PER_1K):
+        return []
     return out
 
 
@@ -236,16 +318,19 @@ def compute_scene_highlights(
     text: str,
     *,
     repeat_terms: Iterable[str] = (),
+    pov: object = "",
 ) -> dict[str, object]:
     """Return the scene highlight payload embedded in the dashboard JSON.
 
     ``text`` is the scene body with frontmatter already stripped (matches
     ``SceneStats.text``). ``repeat_terms`` wires the repeats pass to the
     scene's own top-repeated words; pass ``SceneStats.repetition_examples``.
+    ``pov`` is the scene's ``pov:`` frontmatter, which turns the first-person
+    pass off for a scene told in first person.
     """
     paragraphs = split_paragraphs(text)
     # A NOTE/TODO comment is a block the editor shows as a note, not prose,
-    # so no pass marks it (the "!" of "<!--" is not a comedy beat).
+    # so no pass marks it.
     plain_paragraphs = ["" if p.startswith("<!--") else strip_markdown_for_offsets(p)
                         for p in paragraphs]
     
@@ -258,9 +343,9 @@ def compute_scene_highlights(
             "hyperbole": [h.to_dict() for h in hyperbole_pass(plain_paragraphs)],
             "lyrical": [h.to_dict() for h in lyrical_pass(plain_paragraphs)],
             "sensory": [h.to_dict() for h in sensory_pass(plain_paragraphs)],
-            "comedy_beats": [h.to_dict() for h in comedy_beats_pass(plain_paragraphs)],
+            "sentence_starts": [h.to_dict() for h in sentence_starts_pass(plain_paragraphs)],
             "repeats": [h.to_dict() for h in repeats_pass(plain_paragraphs, repeat_terms)],
-            "first_person": [h.to_dict() for h in first_person_pass(plain_paragraphs)],
+            "first_person": [h.to_dict() for h in first_person_pass(plain_paragraphs, pov=pov)],
         },
     }
 

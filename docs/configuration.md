@@ -74,3 +74,27 @@ callouts:
 
 Every key has a sensible default. Missing optional folders are skipped, but the
 configured manuscript directory is required.
+
+## Privacy screen password
+
+`Mod-J J` (hold Cmd, or Ctrl off a Mac, and tap J twice) covers the dashboard
+with a plain budget spreadsheet, and the same again uncovers it. To ask for a
+password before uncovering, set one under **Privacy screen** in Settings, or
+from a terminal:
+
+```bash
+proseview privacy-password
+```
+
+Changing or removing it in Settings asks for the current password. If you
+forget it, `proseview privacy-password --clear` removes it.
+
+It is not kept in the book or in `.proseview.yaml`: only a salted hash is
+stored, in your user folder (`~/Library/Application Support/Proseview` on
+macOS, `$XDG_STATE_HOME/proseview` or `~/.local/state/proseview` elsewhere).
+With a password set, `Mod-J J` on the spreadsheet shows a small password box;
+Enter with the right one uncovers the page, a wrong one leaves it covered, and
+a reload or a new tab stays covered until the password is given. It keeps the
+page from a glance over your shoulder; it does not encrypt anything, and
+anyone at the computer can still open the files. A read-only snapshot and the
+in-browser `/write/` book have the spreadsheet but no password.

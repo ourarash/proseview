@@ -7,6 +7,15 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **Privacy screen.** Hold Cmd (Ctrl off a Mac) and tap J twice to cover
+  the page at once with a plain budget spreadsheet in the page's theme; the
+  tab reads "Budget" with a grid icon. The same again uncovers it, with any
+  unsaved edit, the caret, the scroll and a running agent reply exactly as
+  they were. An optional password, set in Settings or with
+  `proseview privacy-password`, is kept only as a salted hash in your user
+  folder; with one set, uncovering asks
+  for it, and a reload or a new tab stays covered until it is given.
+
 - **Callouts.** A quotation that starts with `[!type]`, GitHub's and
   Obsidian's syntax (`> [!letter] A letter, undated`), is now a framed box of
   book text: a letter, a text message, a sidebar. It shows as a box in the
@@ -14,7 +23,9 @@ section here becomes the release notes on GitHub.
   prose. It looks nothing like a TODO or note, which stay comments that never
   print, and a callout with no title prints no word for its type. Each type
   can have its own background per screen theme and for print, under
-  `callouts:` in `.proseview.yaml` or a book style's `style.yaml`. The
+  `callouts:` in `.proseview.yaml` or a book style's `style.yaml`, and
+  GitHub's five types (note, tip, important, warning, caution) come with
+  quiet colours in every theme. The
   editor's **Callout** button makes one, its type can be changed on the box,
   and a save rewrites only the lines you changed, in callouts and quotations
   alike. Exports used to print a callout as a quotation with its title in
@@ -55,6 +66,13 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **Analysis highlights that mark what matters.** Crutch words, hyperbole and
+  first-person pronouns are no longer marked inside dialogue, where they are
+  how a character talks. First Person marks nothing in a scene told in first
+  person, by its `pov:` or by its narration. Comedy Beats, which marked every
+  exclamation mark and dash, is replaced by **Sentence Openings**: three or
+  more sentences in a row that begin with the same word. Each pass's hover
+  text now says what it marks, why it can matter and what to try.
 - **A new look for the dashboard.** One header holds the name, the tabs,
   search, Read the book and Export. The Overview opens on a **Progress** card
   (the book against its goal, then today, pace, streak and days to finish)
@@ -91,6 +109,8 @@ section here becomes the release notes on GitHub.
 ### Fixed
 
 - The Export dialog's preview was blank in the browser version (`/write/`).
+- A repeated word in or after a callout, or in an image's alt text, could
+  show its count twice ("3 / 103 / 10") or land on the wrong paragraph.
 
 ## 0.4.2 — 2026-10-15
 

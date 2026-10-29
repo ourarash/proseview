@@ -54,6 +54,10 @@ it as a folder to carry on in the installed app.
   `Mod-K` searches paths, metadata, TODOs, notes and prose from anywhere.
 - **Live reload and deep links.** Save in your own editor and the page
   follows. Every scene has a URL. Six themes and seven fonts.
+- **Privacy screen.** Hold `Mod` and tap `J` twice (`Mod-J J`) to cover the
+  page with a plain budget spreadsheet; do it again to uncover it, with your
+  edit, caret and scroll as you left them.
+  [Optional password →](docs/configuration.md#privacy-screen-password)
 
 ### Revise
 
@@ -67,8 +71,8 @@ it as a folder to carry on in the installed app.
   [What the numbers mean →](docs/analytics.md)
 - **Editorial highlights.** Nine prose passes marked on the page, each with
   its match count: repetition, passive voice, filter verbs, crutch words,
-  hyperbole, lyrical reach, sensory density, comedy beats and first-person
-  rate.
+  hyperbole, lyrical reach, sensory density, repeated sentence openings and
+  first-person slips.
 - **Timeline.** The shape of the book, storylines as lanes, and reading order
   against the order events happen.
 - **TODOs and notes.** Select a passage and add a `TODO` or a tagged `NOTE`;

@@ -402,7 +402,7 @@
             <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
                 <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>
             </select></div>
-            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Words">Words</button></th></tr></thead><tbody>
+            <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Running total" title="Words in the book up to and including this row.">Running total</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
             </tbody></table></section>
         {% endif %}

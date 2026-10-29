@@ -608,6 +608,9 @@ def _scene_table_body(
     span = 7 if analysis else 2
     body = ""
     last_chapter = None
+    # The Overview also shows how far into the book each row ends: the words
+    # of every scene up to and including it, in book order.
+    running = 0
     for scene in display_scenes:
         if scene.chapter != last_chapter:
             chapter_total = sum(
@@ -618,6 +621,7 @@ def _scene_table_body(
                 f'<tr class="ch-row chapter-row">'
                 f'<td>{html.escape(chapter_label)}</td><td class="num-col">{chapter_total:,}</td>'
                 + (f'<td colspan="{span - 2}"></td>' if span > 2 else "")
+                + ("" if analysis else f'<td class="num-col running-col">{running + chapter_total:,}</td>')
                 + "</tr>"
             )
             last_chapter = scene.chapter
@@ -664,7 +668,8 @@ def _scene_table_body(
             f'<td class="num-col">{scene.words:,}</td>'
         )
         if not analysis:
-            body += "</tr>"
+            running += scene.words
+            body += f'<td class="num-col running-col">{running:,}</td></tr>'
             continue
         # An empty scene has nothing to measure: a dash, not a row of zeros
         # that reads like the worst prose in the book.

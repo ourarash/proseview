@@ -3903,6 +3903,10 @@
             font-weight: 650;
         }
 
+        .running-col {
+            color: var(--text-muted);
+        }
+
         @media (max-width: 980px) {
             .dashboard-grid,
             .stats-layout {

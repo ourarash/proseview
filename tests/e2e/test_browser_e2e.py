@@ -2317,7 +2317,7 @@ def test_overview_does_not_ship_the_lexical_analysis(page: Page, server: Prosevi
 
     # The header row is upper-cased by CSS, so compare case-insensitively.
     headers = [h.strip().lower() for h in page.locator("#sceneTable thead th").all_inner_texts()]
-    assert headers == ["scene", "words"]
+    assert headers == ["scene", "words", "running total"]
     for chart_id in ("presenceChart", "locationChart", "coOccurChart", "lexicalScatterChart"):
         assert page.locator(f"#{chart_id}").bounding_box() is None, \
             f"{chart_id} should not be laid out before the Analysis tab is opened"
@@ -2416,6 +2416,23 @@ def test_scene_table_sorts_by_column(page: Page, server: ProseviewServer):
 
     assert sorted(before) == sorted(after), "sorting must not add or drop rows"
     assert before != after, "clicking the header did not reorder the table"
+
+
+def test_scene_table_third_click_returns_to_book_order(page: Page, server: ProseviewServer):
+    """Ascending, descending, then back to chapters with their scenes under them."""
+    open_dashboard(page, server)
+    first_column = "#sceneTable tbody tr td:first-child"
+    header = "#sceneTable thead th:nth-child(2)"
+    book_order = page.locator(first_column).all_inner_texts()
+
+    page.click(header)
+    assert page.locator(header).get_attribute("aria-sort") == "ascending"
+    page.click(header)
+    assert page.locator(header).get_attribute("aria-sort") == "descending"
+    assert page.locator(first_column).all_inner_texts() != book_order
+    page.click(header)
+    assert page.locator(header).get_attribute("aria-sort") == "none"
+    assert page.locator(first_column).all_inner_texts() == book_order
 
 
 def test_scene_table_sorting_is_keyboard_operable_and_announces_direction(

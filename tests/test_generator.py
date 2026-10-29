@@ -178,6 +178,28 @@ def test_dashboard_reports_correct_word_and_scene_counts():
     assert f"{len(scenes)} scenes" in html
 
 
+def test_overview_scene_table_shows_a_running_total(tmp_path: Path):
+    """Each Overview row also shows the book's words up to and including it."""
+    book = tmp_path / "book"
+    for rel, text in {
+        "ch01/01-a.md": "one two three",
+        "ch01/02-b.md": "four five",
+        "ch02/01-c.md": "six seven eight nine",
+    }.items():
+        path = book / "manuscript" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text + "\n", encoding="utf-8")
+
+    html = build_dashboard(book, Config.load(book))
+    table = html[html.index('id="sceneTable"'):]
+    table = table[:table.index("</table>")]
+    running = re.findall(r'<td class="num-col running-col">([\d,]+)</td>', table)
+    # Chapter 1, its two scenes, chapter 2, its scene.
+    assert running == ["5", "3", "5", "9", "9"]
+    # The Analysis table has columns of its own and no running total.
+    assert "running-col" not in build_analysis_payload(book, Config.load(book))["tableBody"]
+
+
 def test_split_frontmatter_folds_multiline_scalar_values():
     fm, _ = split_frontmatter(
         """---

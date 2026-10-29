@@ -328,21 +328,33 @@
 
         function sortTable(n) { sortTableEl(document.getElementById("sceneTable"), n); }
 
+        // Each header cycles ascending, descending, then back to book order:
+        // the chapters with their scenes under them, as the table was built.
         function sortTableEl(t, n) {
-            if (!t) return;
-            var r = t.rows, s = true, d = "asc", c = 0;
-            while (s) {
-                s = false;
-                for (var i = 1; i < (r.length - 1); i++) {
-                    var x = r[i].getElementsByTagName("TD")[n], y = r[i+1].getElementsByTagName("TD")[n], should = false;
-                    if (!x || !y) continue;
-                    var xv = x.innerText.replace(/,/g, '').replace(/%/g, ''), yv = y.innerText.replace(/,/g, '').replace(/%/g, '');
-                    if (!isNaN(parseFloat(xv)) && !isNaN(parseFloat(yv))) { xv = parseFloat(xv); yv = parseFloat(yv); } else { xv = xv.toLowerCase(); yv = yv.toLowerCase(); }
-                    if (d == "asc" ? xv > yv : xv < yv) { should = true; break; }
-                }
-                if (should) { r[i].parentNode.insertBefore(r[i+1], r[i]); s = true; c++; } else if (c == 0 && d == "asc") { d = "desc"; s = true; }
+            if (!t || !t.tBodies[0]) return;
+            var body = t.tBodies[0], rows = Array.from(body.rows);
+            if (rows.some(function(row) { return row.dataset.bookOrder === undefined; })) {
+                // A fresh table body: number its rows and forget the old sort.
+                rows.forEach(function(row, i) { row.dataset.bookOrder = i; });
+                delete t.dataset.sortCol;
             }
+            var d = 'asc';
+            if (t.dataset.sortCol === String(n)) d = t.dataset.sortDir === 'asc' ? 'desc' : 'none';
+            var value = function(row) {
+                var cell = row.getElementsByTagName('TD')[n], text = cell ? cell.innerText.replace(/,/g, '').replace(/%/g, '') : '';
+                var num = parseFloat(text);
+                return isNaN(num) ? text.toLowerCase() : num;
+            };
+            rows.sort(function(a, b) {
+                if (d === 'none') return a.dataset.bookOrder - b.dataset.bookOrder;
+                var x = value(a), y = value(b);
+                if (typeof x !== typeof y) { x = String(x); y = String(y); }
+                var c = x < y ? -1 : x > y ? 1 : a.dataset.bookOrder - b.dataset.bookOrder;
+                return d === 'asc' ? c : -c;
+            });
+            rows.forEach(function(row) { body.appendChild(row); });
+            if (d === 'none') { delete t.dataset.sortCol; delete t.dataset.sortDir; } else { t.dataset.sortCol = n; t.dataset.sortDir = d; }
             Array.from(t.tHead ? t.tHead.rows[0].cells : []).forEach(function(header, index) {
-                header.setAttribute('aria-sort', index === n ? (d === 'asc' ? 'ascending' : 'descending') : 'none');
+                header.setAttribute('aria-sort', index === n && d !== 'none' ? (d === 'asc' ? 'ascending' : 'descending') : 'none');
             });
         }

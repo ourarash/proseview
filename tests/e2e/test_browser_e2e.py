@@ -2872,7 +2872,7 @@ PASS_CLASSES = {
     "hyperbole": "hl-hyperbole",
     "lyrical": "hl-lyrical",
     "sensory": "hl-sensory",
-    "comedy_beats": "hl-comedy",
+    "sentence_starts": "hl-openings",
     "repeats": "hl-repeat",
     "first_person": "hl-first-person",
 }

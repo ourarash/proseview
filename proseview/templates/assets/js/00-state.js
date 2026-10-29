@@ -37,7 +37,7 @@ let currentTab = 'overview';
             hyperbole: 'Hyperbole',
             lyrical: 'Lyrical',
             sensory: 'Sensory',
-            comedy_beats: 'Comedy Beats',
+            sentence_starts: 'Sentence Openings',
             repeats: 'Repeats',
             first_person: 'First Person'
         };
@@ -48,20 +48,19 @@ let currentTab = 'overview';
             hyperbole: 'hl-hyperbole',
             lyrical: 'hl-lyrical',
             sensory: 'hl-sensory',
-            comedy_beats: 'hl-comedy',
+            sentence_starts: 'hl-openings',
             repeats: 'hl-repeat',
             first_person: 'hl-first-person'
         };
         // Every pass carries a line of examples rather than a definition:
         // "felt, saw, heard, noticed" says what Filter Verbs are faster than a
         // sentence can, and it survives on a touch screen where a tooltip does
-        // not. Two of these names mislead on their own -- Comedy Beats is
-        // punctuation, Lyrical is simile markers -- which is the case for
-        // showing the vocabulary rather than the label alone.
+        // not. A name alone can mislead -- Lyrical is simile markers -- which is
+        // the case for showing the vocabulary rather than the label alone.
         const PASS_EXAMPLES = {
             repeats: 'words this scene leans on',
             first_person: 'I, me, my, myself',
-            comedy_beats: '! ... ?! and dashes',
+            sentence_starts: 'She… She… She…',
             crutch_words: 'just, really, quite, actually',
             lyrical: 'like, as, seemed, became',
             filter_verbs: 'felt, saw, heard, noticed',
@@ -72,27 +71,27 @@ let currentTab = 'overview';
         // The second layer: what the pass counts, and why it might matter.
         // Shown on hover and on keyboard focus, never required to read the row.
         const PASS_NOTES = {
-            repeats: "The scene's own most-repeated content words. Repetition you chose reads as rhythm; repetition you did not is the commonest revision note.",
-            first_person: 'First-person pronouns. A high rate in close third can mean the narration has drifted into the character’s head.',
-            comedy_beats: 'Exclamation marks, ellipses, interrobangs and em dashes: the punctuation of timing. Clustered, they can make prose read as arch.',
-            crutch_words: 'Fifteen hedging words. Each one softens a sentence; together they make prose apologise for itself.',
-            lyrical: 'Simile and transformation markers. The vocabulary of figurative writing, useful when you want to know how much of it a scene is carrying.',
-            filter_verbs: 'Twenty perception verbs. They put the character between the reader and the thing: “she saw the door open” rather than “the door opened”.',
-            hyperbole: 'Fourteen absolutes. Overstatement spends the reader’s trust faster than it buys emphasis.',
-            sensory: 'Sixty-seven words across the five senses. The tooltip on each match in the prose names its category.',
-            passive_voice: 'A form of “to be” followed by a past participle. Passive is not a fault, but a scene made mostly of it loses its actors.'
+            repeats: "Marks the content words this scene uses most (\u201cthe\u201d, \u201cand\u201d and the like are left out), with every form of a word counted together: \u201cblock\u201d and \u201cblocks\u201d are one. Repeating a word on purpose builds rhythm; repeating it by accident is what readers notice. Swap some for a synonym or a pronoun, or cut them.",
+            first_person: 'Marks I, me, my, mine and myself in the narration of a third-person scene, where they can mean the narrator has slipped into the character’s voice. Dialogue is skipped, and so is a scene told in first person (its pov: says first, or its narration plainly is).',
+            sentence_starts: 'Marks three or more sentences in a row that begin with the same word (She… She… She…), counting across paragraph breaks. Readers hear the pattern even when they can’t name it. Vary the openings: start with an action, a detail, or a clause.',
+            crutch_words: 'Marks, outside dialogue, filler words that rarely add meaning: just, very, really, quite, rather, pretty, somewhat, slightly, somehow, suddenly, actually, basically, essentially, literally, indeed. Read the sentence without the word. If it means the same, delete it; if it goes flat, pick a stronger verb or adjective instead (“very cold” → “freezing”).',
+            lyrical: 'Marks words that signal a comparison or a change: like, as, seemed, became, transformed, shimmered, bloomed, dissolved, echoed. They show how much figurative language the scene carries. “As” and “like” also have plain uses, so not every mark is a simile.',
+            filter_verbs: 'Marks verbs of perceiving and thinking: saw, heard, felt, noticed, thought, knew, wondered, realized, seemed, looked, watched. They report that the character perceived something instead of showing the thing itself. Try cutting the verb: “she saw the door open” → “the door opened”.',
+            hyperbole: 'Marks, outside dialogue, absolute words: never, always, forever, perfect, impossible, utterly, completely, entirely, absolute, totally, worst, best, everything, nothing. Used often, they stop carrying weight and can read as exaggeration. Keep the ones you mean literally; soften or cut the rest.',
+            sensory: 'Marks words tied to one of the five senses: sight, sound, smell, touch and taste. Hover a mark to see which sense. Useful for spotting a scene that leans on sight alone.',
+            passive_voice: 'Marks a form of “to be” followed by a past participle, as in “the letter was written”. Passive hides who did the action. That is sometimes what you want, but a scene full of it feels static. Try naming who acted: “she wrote the letter”.'
         };
 
         const PASS_INLINE_TIPS = {
-            passive_voice: 'A form of "to be" followed by a past participle. Consider if making the subject perform the action fits the scene better (e.g., "the ball was thrown by him" vs "he threw the ball").',
-            filter_verbs: 'The verb "{word}" can put distance between the reader and the action. Consider if it is necessary (e.g., "she saw the door open" vs "the door opened").',
-            crutch_words: '"{word}" is a hedging word that softens the sentence. The prose might be stronger without it (e.g., "it was really cold" vs "it was freezing").',
-            hyperbole: 'Absolute words like "{word}" can sometimes weaken emphasis if overused in a scene (e.g., "he always forgot" vs "he frequently forgot").',
-            repeats: 'The word "{word}" is repeated {para} times in this paragraph and {scene} times in the entire scene. Consider if it provides intentional rhythm or if it should be varied.',
-            first_person: 'First-person pronouns (I, me, my). A high rate in a scene written in close third person can mean the narration has drifted into the character’s head.',
-            lyrical: 'Simile or transformation markers used for figurative writing (e.g., "like", "as", "seemed").',
-            sensory: 'Words related to the five senses (e.g., "whisper", "rough", "aroma").',
-            comedy_beats: 'Punctuation marks often used for timing (e.g., "!", "...", "?!"). Clustered together, they can affect the rhythm of the prose.'
+            passive_voice: 'Passive voice: "{word}" leaves out who did the action. If it matters who acted, name them as the subject ("the ball was thrown" → "he threw the ball").',
+            filter_verbs: 'Filter verb: "{word}" tells the reader the character perceived something, which adds distance. Try describing the thing itself ("she saw the door open" → "the door opened").',
+            crutch_words: 'Filler word: "{word}" rarely adds meaning. Read the sentence without it; if nothing is lost, delete it. If it goes flat, use a stronger word instead ("really cold" → "freezing").',
+            hyperbole: 'Absolute: "{word}" claims all or nothing. If it isn\u2019t literally true, a milder word may be more convincing ("he always forgot" → "he often forgot").',
+            repeats: '"{word}" appears {para} times in this paragraph and {scene} times in this scene, counting its other forms. If the repetition isn\u2019t deliberate, vary or cut some of them.',
+            first_person: 'First-person pronoun in third-person narration: "{word}". Check whether the narrator has slipped into the character\u2019s voice.',
+            lyrical: 'Figurative marker: "{word}" often introduces a simile or a transformation. Check that the comparison earns its place; "as" and "like" also have plain uses.',
+            sensory: 'Sensory word: "{word}". Shows which senses the scene draws on.',
+            sentence_starts: '{count} sentences in a row begin with "{word}". Try starting one or two of them differently.'
         };
 
         const THEME_STORAGE_KEY = 'proseview-theme';

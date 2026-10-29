@@ -18,7 +18,6 @@ if str(REPO_ROOT) not in sys.path:
 from proseview.highlights import (  # noqa: E402
     PASS_NAMES,
     HighlightInstance,
-    comedy_beats_pass,
     compute_scene_highlights,
     crutch_words_pass,
     filter_verbs_pass,
@@ -27,6 +26,7 @@ from proseview.highlights import (  # noqa: E402
     lyrical_pass,
     passive_voice_pass,
     repeats_pass,
+    sentence_starts_pass,
     sensory_pass,
     split_paragraphs,
 )
@@ -178,17 +178,29 @@ def test_sensory_pass_negative_on_abstract_prose():
     assert sensory_pass(paragraphs) == []
 
 
-def test_comedy_beats_pass_matches_literal_substrings():
-    paragraphs = ["He paused... then shouted! Wait, what?!"]
-    matches = {h.text for h in comedy_beats_pass(paragraphs)}
-    assert "..." in matches
-    assert "?!" in matches
-    assert "!" in matches
+def test_sentence_starts_pass_marks_a_run_of_three():
+    paragraphs = ["She ran. She fell!", "\u201cShe what?\u201d he asked. He left."]
+    hits = sentence_starts_pass(paragraphs)
+    assert [(h.paragraph_index, h.text, h.note) for h in hits] == [
+        (0, "She", "3"), (0, "She", "3"), (1, "She", "3")]
 
 
-def test_comedy_beats_pass_negative_on_clean_punctuation():
-    paragraphs = ["He paused, then continued."]
-    assert comedy_beats_pass(paragraphs) == []
+def test_sentence_starts_pass_ignores_a_pair():
+    assert sentence_starts_pass(["She ran. She fell. Then the door opened."]) == []
+
+
+def test_narration_passes_skip_dialogue():
+    paragraphs = ["\u201cI just always know,\u201d she said, just as always."]
+    assert [h.text for h in crutch_words_pass(paragraphs)] == ["just"]
+    assert [h.text for h in hyperbole_pass(paragraphs)] == ["always"]
+    assert first_person_pass(paragraphs) == []
+
+
+def test_first_person_pass_is_off_in_a_first_person_scene():
+    assert first_person_pass(["I opened the door."], pov="first person") == []
+    narration = ["I went home and I sat down. " * 40]
+    assert first_person_pass(narration) == []
+    assert [h.text for h in first_person_pass(["She paused. My god, she thought."])] == ["My"]
 
 
 def test_repeats_pass_accepts_bare_words_or_wordxN_terms():
@@ -263,7 +275,7 @@ def test_compute_scene_highlights_payload_locks_full_schema():
     assert {"always", "perfect", "impossible"} <= {t.lower() for t in by_pass["hyperbole"]}
     assert "shimmered" in {t.lower() for t in by_pass["lyrical"]}
     assert {"bitter", "coffee", "tongue"} <= {t.lower() for t in by_pass["sensory"]}
-    assert "..." in by_pass["comedy_beats"]
+    assert by_pass["sentence_starts"] == []
     assert {"door"} == {t.lower() for t in by_pass["repeats"]}
     assert {"i", "my"} <= {t.lower() for t in by_pass["first_person"]}
 

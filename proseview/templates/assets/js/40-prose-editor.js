@@ -218,48 +218,59 @@
             var hlData = sceneHls.highlights || {};
             var doc = _pmView.state.doc;
 
-            // Each paragraph's text as the editor holds it, with the document
-            // position of every character. The server's offsets count its own
-            // markdown-stripped text in code points, which drifts from this
-            // after an emoji, an escape, an intraword underscore or a line
-            // break, so a highlight is placed by finding its text here.
-            // A block with no text (a NOTE, a scene break) is still one of the
-            // server's paragraphs, so it holds its index here.
-            var paraTexts = [];
-            doc.descendants(function(node, pos) {
-                if (node.isBlock && node.isLeaf) { paraTexts.push(null); return false; }
-                if (!node.isTextblock) return true;
-                var text = '', posAt = [];
-                node.forEach(function(child, offset) {
-                    var start = pos + 1 + offset;
-                    var t = child.isText ? child.text : '￼';
-                    for (var i = 0; i < t.length; i++) posAt.push(start + i);
-                    text += t;
+            // The scene's text as the editor holds it, with the document
+            // position of every character, and where each top-level block's
+            // text starts and ends in it. The server's paragraphs are those
+            // blocks (a callout is one, title and body), but its offsets
+            // count its own markdown-stripped text in code points, which
+            // drifts after an emoji, an escape, an intraword underscore or a
+            // line break. So each highlight goes on the matching word in its
+            // block nearest to where the server put it.
+            var lower = '', posAt = [], blocks = [];
+            doc.forEach(function(top, topOffset) {
+                var block = { start: lower.length };
+                function addText(node, pos) {
+                    lower += '\n';
+                    posAt.push(pos);
+                    node.forEach(function(child, offset) {
+                        var start = pos + 1 + offset;
+                        var t = child.isText ? child.text : '\uFFFC';
+                        // Lowercase only where it keeps the length ("İ" does not).
+                        if (t.toLowerCase().length === t.length) t = t.toLowerCase();
+                        for (var i = 0; i < t.length; i++) posAt.push(start + i);
+                        lower += t;
+                    });
+                }
+                if (top.isTextblock) addText(top, topOffset);
+                else top.descendants(function(node, pos) {
+                    if (!node.isTextblock) return true;
+                    addText(node, topOffset + 1 + pos);
+                    return false;
                 });
-                posAt.push(pos + 1 + node.content.size);
-                paraTexts.push({ lower: text.toLowerCase(), posAt: posAt });
-                return false;
+                block.end = lower.length;
+                blocks.push(block);
             });
 
             var decorations = [];
             PASS_ORDER.forEach(function(name) {
                 if (!hls[name]) return;
-                var insts = hlData[name] || [];
-                var searchFrom = {};
-                insts.forEach(function(inst) {
-                    var paraIdx = inst.paragraph_index;
-                    var offsets = inst.char_offsets;
-                    var para = paraTexts[paraIdx];
-                    if (!offsets || !para || !inst.text) return;
+                // Starts already marked, so two of the server's matches never
+                // share one word and stack a second badge on it.
+                var taken = {};
+                (hlData[name] || []).forEach(function(inst) {
+                    var block = blocks[inst.paragraph_index];
+                    if (!block || !inst.char_offsets || !inst.text) return;
                     var needle = inst.text.toLowerCase();
-                    var from0 = searchFrom[paraIdx] || 0;
-                    var at = offsets[0] >= from0 && _hlTextAt(para.lower, needle, offsets[0]) ? offsets[0]
-                        : _hlFindText(para.lower, needle, from0);
-                    if (at < 0) at = _hlFindText(para.lower, needle, 0);
+                    // +1: the block's text starts with a separator.
+                    var want = block.start + 1 + inst.char_offsets[0], at = -1;
+                    for (var cand = _hlFindText(lower, needle, block.start); cand >= 0 && cand + needle.length <= block.end;
+                         cand = _hlFindText(lower, needle, cand + 1)) {
+                        if (!taken[cand] && (at < 0 || Math.abs(cand - want) < Math.abs(at - want))) at = cand;
+                    }
                     if (at < 0) return;
-                    searchFrom[paraIdx] = at + needle.length;
-                    var from = para.posAt[at];
-                    var to = para.posAt[at + needle.length - 1] + 1;
+                    taken[at] = true;
+                    var from = posAt[at];
+                    var to = posAt[at + needle.length - 1] + 1;
                     if (from >= to || to > doc.content.size) return;
                     var cls = PASS_CLASSES[name] || '';
                     var title = PASS_LABELS[name] || name;
@@ -267,6 +278,7 @@
                     
                     var desc = PASS_INLINE_TIPS ? (PASS_INLINE_TIPS[name] || '') : '';
                     if (desc.indexOf('{word}') !== -1) desc = desc.split('{word}').join(inst.text);
+                    if (desc.indexOf('{count}') !== -1) desc = desc.split('{count}').join(inst.note || '');
                     
                     var attrs = { class: cls };
                     if (name === 'repeats') {

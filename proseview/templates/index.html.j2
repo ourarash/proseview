@@ -63,6 +63,17 @@
                 // Ignore storage errors and keep the default open state.
             }
         })();
+        // The privacy screen's tab icon: a plain grid. A screen covered
+        // behind a password stays covered across a reload -- the server marks
+        // the page -- so the tab says Budget before anything else shows.
+        window.PROSEVIEW_PRIVACY_ICON = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect x=%223%22 y=%224%22 width=%2226%22 height=%2224%22 rx=%222%22 fill=%22%23fff%22 stroke=%22%23707070%22 stroke-width=%222%22/%3E%3Cpath d=%22M3 12h26M3 20h26M12 4v24M20 4v24%22 stroke=%22%23707070%22 stroke-width=%221.6%22/%3E%3C/svg%3E';
+        (function() {
+            if (document.documentElement.dataset.privacy !== 'locked') return;
+            const icon = document.querySelector('link[rel="icon"]');
+            window.PROSEVIEW_PRIVACY_SAVED = {title: document.title, icon: icon ? icon.getAttribute('href') : ''};
+            document.title = 'Budget';
+            if (icon) icon.setAttribute('href', window.PROSEVIEW_PRIVACY_ICON);
+        })();
     </script>
     <script src="vendor/chart.js"></script>
     <script src="vendor/chartjs-plugin-annotation.js"></script>
@@ -76,6 +87,43 @@
     </style>
 </head>
 <body>
+    {#- The privacy screen (Cmd+J J): a dull, unbranded household budget.
+        Plain numbers, nothing to read; 03-privacy.js shows it. #}
+    {%- set budget_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] %}
+    {%- set budget_rows = [
+        ('Rent', [1450, 1450, 1450, 1450, 1450, 1450]),
+        ('Electricity', [92.40, 88.15, 76.35, 64.20, 58.90, 71.60]),
+        ('Water', [38.00, 38.00, 41.25, 41.25, 44.10, 44.10]),
+        ('Gas', [61.80, 57.30, 43.90, 31.15, 22.40, 18.75]),
+        ('Internet', [55.00, 55.00, 55.00, 55.00, 55.00, 55.00]),
+        ('Phone', [32.50, 32.50, 32.50, 34.00, 34.00, 34.00]),
+        ('Groceries', [412.18, 389.40, 431.05, 402.77, 418.30, 396.92]),
+        ('Household', [48.20, 23.75, 61.10, 17.40, 35.85, 29.60]),
+        ('Transport', [96.00, 96.00, 102.40, 96.00, 118.25, 96.00]),
+        ('Insurance', [74.30, 74.30, 74.30, 74.30, 74.30, 74.30]),
+        ('Subscriptions', [21.97, 21.97, 21.97, 24.97, 24.97, 24.97]),
+        ('Medical', [0, 35.00, 0, 12.50, 0, 60.00]),
+        ('Clothing', [0, 64.99, 0, 0, 88.40, 0]),
+        ('Gifts', [0, 45.00, 0, 30.00, 0, 52.00]),
+        ('Savings', [300, 300, 300, 300, 300, 300]),
+    ] %}
+    <dialog id="privacyScreen" class="privacy-screen" aria-label="Budget" closedby="none" tabindex="-1">
+        <div class="privacy-bar"><span class="privacy-cell-ref">A1</span><span class="privacy-file">Budget</span><input type="password" id="privacyPassword" class="privacy-password" autocomplete="off" spellcheck="false" aria-label="Password" hidden></div>
+        <div class="privacy-sheet"><table class="privacy-grid">
+            <thead><tr><th></th>{% for col in 'ABCDEFGHIJ' %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                <tr><th>1</th><td>Item</td>{% for m in budget_months %}<td class="num">{{ m }}</td>{% endfor %}<td class="num">Total</td><td></td><td></td></tr>
+                {%- for item, values in budget_rows %}
+                <tr><th>{{ loop.index + 1 }}</th><td>{{ item }}</td>{% for v in values %}<td class="num">{{ '{:,.2f}'.format(v) }}</td>{% endfor %}<td class="num">{{ '{:,.2f}'.format(values | sum) }}</td><td></td><td></td></tr>
+                {%- endfor %}
+                <tr><th>{{ budget_rows | length + 2 }}</th>{% for _ in range(10) %}<td></td>{% endfor %}</tr>
+                <tr><th>{{ budget_rows | length + 3 }}</th><td>Total</td>{% for i in range(6) %}<td class="num">{{ '{:,.2f}'.format(budget_rows | map(attribute=1) | map(attribute=i) | sum) }}</td>{% endfor %}<td class="num">{{ '{:,.2f}'.format(budget_rows | map(attribute=1) | map('sum') | sum) }}</td><td></td><td></td></tr>
+                {%- for n in range(budget_rows | length + 4, 61) %}
+                <tr><th>{{ n }}</th>{% for _ in range(10) %}<td></td>{% endfor %}</tr>
+                {%- endfor %}
+            </tbody>
+        </table></div>
+    </dialog>
     {% if static_snapshot %}<p class="static-snapshot-note" role="note">{% if static_snapshot == "demo" %}Demo: edits stay in this tab and are never uploaded. {% else %}Read-only snapshot. {% endif %}Made with <a href="https://github.com/ourarash/proseview" target="_blank" rel="noopener">Proseview</a></p>{% endif %}
     <nav id="repoSidebar" class="repo-sidebar" aria-label="Repository files">
         <div class="sidebar-header">
@@ -497,6 +545,31 @@
                     </div>
                 </span>
             </div>
+
+            {% if not static_snapshot %}
+            {#- Shown by 03-privacy.js once the server says a password can be kept here. #}
+            <div class="settings-row" id="privacySettingsRow" hidden>
+                <span class="settings-label">Privacy screen<span class="info-tip" tabindex="0" role="img" aria-label="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. A password is asked before uncovering, and keeps a reload covered. Only a hash of it is kept, on this computer, never in your book." data-tip="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. A password is asked before uncovering, and keeps a reload covered. Only a hash of it is kept, on this computer, never in your book.">i</span></span>
+                <span class="settings-field">
+                    <span id="privacyPasswordStatus" class="settings-unit">Password: none</span>
+                    <button type="button" id="privacySetBtn" class="settings-plain-btn" onclick="privacySettingsForm('set')">Set password</button>
+                    <button type="button" id="privacyChangeBtn" class="settings-plain-btn" onclick="privacySettingsForm('change')" hidden>Change</button>
+                    <button type="button" id="privacyRemoveBtn" class="settings-danger-btn" onclick="privacySettingsForm('remove')" hidden>Remove</button>
+                </span>
+            </div>
+            <form id="privacyPasswordForm" class="settings-row privacy-password-form" hidden onsubmit="event.preventDefault(); privacySettingsSubmit();">
+                <span class="settings-field">
+                    <input type="password" id="privacyCurrent" class="settings-input" placeholder="Current password" aria-label="Current password" autocomplete="current-password">
+                    <input type="password" id="privacyNew" class="settings-input" placeholder="New password" aria-label="New password" autocomplete="new-password">
+                    <input type="password" id="privacyNewAgain" class="settings-input" placeholder="Again" aria-label="New password again" autocomplete="new-password">
+                </span>
+                <span class="settings-field">
+                    <span id="privacyPasswordMsg" class="settings-unit" role="status"></span>
+                    <button type="button" class="settings-plain-btn" onclick="privacySettingsForm(null)">Cancel</button>
+                    <button type="submit" id="privacyFormSubmit" class="settings-plain-btn">Set</button>
+                </span>
+            </form>
+            {% endif %}
 
             <details class="settings-advanced">
                 <summary>Advanced</summary>

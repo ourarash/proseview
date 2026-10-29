@@ -22,6 +22,7 @@ from .config import Config
 from .discuss import DiscussManager
 from .export_dashboard import ExportJobs
 from .generator import build_analysis_payload, build_dashboard
+from .privacy import PrivacyLock
 from .server import _make_handler
 
 ROOT = Path("/my-novel")
@@ -89,6 +90,7 @@ def _handler():
             lambda: None, lambda q: None, _publish,
             str(ROOT), DiscussManager(ROOT), SESSION,
             export_jobs=ExportJobs(on_written=_invalidate, inline=True),
+            privacy=PrivacyLock(available=False),
         )
 
         class InMemory(bound):

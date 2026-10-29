@@ -11519,6 +11519,24 @@
             cursor: pointer;
         }
 
+        .settings-plain-btn {
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: none;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .settings-plain-btn:hover {
+            background: var(--button-hover);
+        }
+
+        .privacy-password-form .settings-input {
+            width: 150px;
+            text-align: left;
+        }
+
         .settings-page .theme-menu-list {
             right: 0;
         }
@@ -11702,4 +11720,107 @@
                 display: block;
                 margin: 0 0 0.6em auto;
             }
+        }
+
+        /* ── Privacy screen (Cmd+J J) ─────────────────────────────────────
+           A plain grid in the page's own theme colours, so every theme has
+           one without its own rules: it should look like nothing in
+           particular. html[data-privacy="locked"] is set by the server on a
+           reload while a password-covered screen is up, so the page paints
+           the grid and nothing of the book before any script runs. */
+        .privacy-screen {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            flex-direction: column;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: 13px/1.2 Arial, Helvetica, sans-serif;
+            outline: none;
+            z-index: 2147483647;
+        }
+        .privacy-screen[open],
+        html[data-privacy="locked"] .privacy-screen {
+            display: flex;
+        }
+        .privacy-screen::backdrop {
+            background: var(--surface-card, transparent);
+        }
+        html[data-privacy="locked"] body > :not(#privacyScreen) {
+            visibility: hidden !important;
+        }
+        .privacy-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: none;
+            height: 30px;
+            padding: 0 8px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-muted);
+        }
+        .privacy-cell-ref {
+            width: 56px;
+            padding: 2px 6px;
+            border: 1px solid var(--border);
+            background: var(--surface-field);
+        }
+        .privacy-file {
+            color: var(--text-muted);
+        }
+        .privacy-password {
+            margin-left: auto;
+            width: 160px;
+            padding: 3px 6px;
+            border: 1px solid var(--border-strong);
+            border-radius: 2px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+        }
+        .privacy-password:focus {
+            outline: 1px solid var(--text-muted);
+        }
+        .privacy-sheet {
+            flex: 1;
+            overflow: auto;
+            overscroll-behavior: contain;
+            outline: none;
+        }
+        .privacy-grid {
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .privacy-grid th,
+        .privacy-grid td {
+            height: 21px;
+            padding: 0 6px;
+            border: 1px solid var(--border);
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .privacy-grid td {
+            width: 96px;
+        }
+        .privacy-grid th {
+            background: var(--surface-muted);
+            color: var(--text-muted);
+            font-weight: normal;
+            text-align: center;
+        }
+        .privacy-grid thead th {
+            position: sticky;
+            top: 0;
+        }
+        .privacy-grid tbody th {
+            width: 40px;
+        }
+        .privacy-grid .num {
+            text-align: right;
         }

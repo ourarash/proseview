@@ -41,6 +41,7 @@ from .export_dashboard import (
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import changed_blocks, split_lines
 from .patches import Hunk, parse_hunks
+from .privacy import PrivacyLock
 from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
     build_scene_data,
@@ -1329,6 +1330,7 @@ class _Handler(BaseHTTPRequestHandler):
     export_jobs: ExportJobs
     export_previews: PreviewCache
     pdf_pages: PdfPages
+    privacy: PrivacyLock
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -1355,6 +1357,40 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             raise ContextError("JSON body must be an object")
         return body
+
+    def _handle_privacy(self, path: str) -> None:
+        """Remember a covered screen, uncover it given the password, or set
+        the password from Settings.
+
+        The password is checked here so its hash never reaches the page.
+        Every open tab follows, through the event stream.
+        """
+        if path == "/api/privacy/lock":
+            state = self.privacy.lock()
+            if state["locked"]:
+                self.publish_event({"type": "privacy", "locked": True})
+            self._send_json({"ok": True, **state})
+            return
+        try:
+            body = self._read_json_limited(limit=4096)
+        except ContextError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+            return
+        if path == "/api/privacy/password":
+            if not self.privacy.available:
+                self._send_json({"ok": False, "error": "no password here"}, 404)
+            elif not self.privacy.change_password(str(body.get("current") or ""), str(body.get("password") or "")):
+                self._send_json({"ok": False, "error": "wrong password"}, 403)
+            else:
+                self._send_json({"ok": True, **self.privacy.state()})
+            return
+        was_locked = self.privacy.state()["locked"]
+        if not self.privacy.unlock(str(body.get("password") or "")):
+            self._send_json({"ok": False, "error": "wrong password"}, 403)
+            return
+        if was_locked:
+            self.publish_event({"type": "privacy", "locked": False})
+        self._send_json({"ok": True, **self.privacy.state()})
 
     def _handle_file_mutation(self, path: str) -> None:
         """Apply one contained sidebar mutation and return its new route data."""
@@ -2104,6 +2140,9 @@ class _Handler(BaseHTTPRequestHandler):
         if discuss_path.startswith("/api/export/"):
             self._handle_export_get(discuss_path)
             return
+        if discuss_path == "/api/privacy":
+            self._send_json({"ok": True, **self.privacy.state()})
+            return
         if discuss_path == "/events":
             if not self._authorize_event_stream_generation():
                 return
@@ -2407,7 +2446,11 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            html = self.get_html().encode("utf-8")
+            html = self.get_html()
+            if self.privacy.state()["locked"]:
+                # Covered before first paint, so a reload shows no prose.
+                html = html.replace("<html ", '<html data-privacy="locked" ', 1)
+            html = html.encode("utf-8")
         except Exception as exc:
             self.send_response(500)
             self.end_headers()
@@ -2451,6 +2494,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/files/reveal":
             self._handle_file_reveal()
+            return
+        if path in {"/api/privacy/lock", "/api/privacy/unlock", "/api/privacy/password"}:
+            self._handle_privacy(path)
             return
         if path.startswith("/api/export/"):
             self._handle_export_post(path)
@@ -2952,6 +2998,7 @@ def _make_handler(
     export_jobs: ExportJobs | None = None,
     export_previews: PreviewCache | None = None,
     pdf_pages: PdfPages | None = None,
+    privacy: PrivacyLock | None = None,
 ) -> type:
     class BoundHandler(_Handler):
         pass
@@ -2967,6 +3014,7 @@ def _make_handler(
     BoundHandler.export_jobs = export_jobs or ExportJobs()  # type: ignore[method-assign]
     BoundHandler.export_previews = export_previews or PreviewCache()  # type: ignore[method-assign]
     BoundHandler.pdf_pages = pdf_pages or PdfPages()  # type: ignore[method-assign]
+    BoundHandler.privacy = privacy or PrivacyLock()  # type: ignore[method-assign]
     return BoundHandler
 
 

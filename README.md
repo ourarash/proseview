@@ -218,7 +218,7 @@ browser) and download ready-made EPUB, PDF and Word files. `--title`,
 Proseview needs no config file. A `.proseview.yaml` at the root of the book can
 change where things live, set word goals, choose which agent tab opens first,
 or point the Timeline at your own frontmatter keys; `proseview init` writes a
-starter file. Goals, genre and colour theme can also be changed in Settings,
+starter file. Goals, word variety (genre) and colour theme can also be changed in Settings,
 behind the gear in the header.
 
 ```yaml

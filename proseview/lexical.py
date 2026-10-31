@@ -25,10 +25,8 @@ from .callouts import strip_markers
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['\u2019-][A-Za-z0-9]+)*")
 LEXICAL_WORD_RE = re.compile(r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*")
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", re.DOTALL)
-QUOTE_RE = re.compile(r'["\u201c](.+?)["\u201d]', re.DOTALL)
 ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
 FIRST_PERSON_RE = re.compile(r"\b(?:i|me|my|mine|myself)\b", re.IGNORECASE)
-SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 # Irregular past participles, which do not end in -ed and so have to be listed.
 _PARTICIPLES = (
     "born|bought|broken|brought|built|caught|chosen|done|drawn|driven|eaten|"
@@ -171,6 +169,96 @@ HYPERBOLE_WORDS = {
 }
 
 
+#: Glue words: the most common English function words, which hold a sentence
+#: together but carry little of its meaning. A sentence made mostly of them
+#: takes a long time to say little. Articles and determiners, pronouns,
+#: prepositions, auxiliaries and modals, conjunctions, the commonest
+#: contractions, and a few adverbs that work the same way ("not", "just").
+#: Kept apart from the stopword lists, which answer a different question.
+GLUE_WORDS = frozenset({
+    # articles and determiners
+    "a", "an", "the", "this", "that", "these", "those", "some", "any", "each",
+    "every", "either", "neither", "no", "all", "both", "few", "many", "much",
+    "more", "most", "less", "least", "other", "another", "such", "own",
+    "same", "several", "enough", "one",
+    # pronouns
+    "i", "me", "my", "mine", "myself", "you", "your", "yours", "yourself",
+    "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
+    "herself", "it", "its", "itself", "we", "us", "our", "ours", "ourselves",
+    "they", "them", "their", "theirs", "themselves", "who", "whom", "whose",
+    "which", "what", "whatever", "whoever", "someone", "something", "anyone",
+    "anything", "everyone", "everything", "nobody", "nothing", "somebody",
+    "anybody", "everybody",
+    # prepositions
+    "about", "above", "across", "after", "against", "along", "among",
+    "around", "as", "at", "before", "behind", "below", "beneath", "beside",
+    "between", "beyond", "by", "down", "during", "except", "for", "from",
+    "in", "inside", "into", "like", "near", "of", "off", "on", "onto", "out",
+    "outside", "over", "past", "since", "through", "throughout", "till",
+    "to", "toward", "towards", "under", "until", "up", "upon", "with",
+    "within", "without", "per",
+    # auxiliaries and modals
+    "am", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+    "had", "having", "do", "does", "did", "doing", "will", "would", "shall",
+    "should", "can", "could", "may", "might", "must", "ought",
+    # conjunctions and question words
+    "and", "but", "or", "nor", "so", "yet", "if", "because", "although",
+    "though", "while", "whereas", "unless", "whether", "than", "then",
+    "once", "when", "whenever", "where", "wherever", "why", "how",
+    # contractions
+    "it's", "i'm", "i'd", "i'll", "i've", "you're", "you'd", "you'll",
+    "he's", "he'd", "she's", "she'd", "we're", "they're", "that's",
+    "there's", "let's", "don't", "didn't", "doesn't", "isn't", "wasn't",
+    "weren't", "aren't", "can't", "couldn't", "won't", "wouldn't",
+    "shouldn't", "hadn't", "hasn't", "haven't",
+    # adverbs that work as glue
+    "not", "very", "just", "also", "too", "only", "even", "still", "there",
+    "here", "now", "again", "ever", "quite", "rather", "really", "perhaps",
+    "maybe", "well", "back", "away", "oh",
+})
+
+
+
+def glue_share_pct(text: str) -> int:
+    """The share of *text*'s words that are :data:`GLUE_WORDS`, as a whole percentage."""
+    words = [w.lower().replace("\u2019", "'") for w in LEXICAL_WORD_RE.findall(text)]
+    return round(sum(w in GLUE_WORDS for w in words) * 100 / len(words)) if words else 0
+
+#: Verbs that attribute speech in a dialogue tag ("she said", "cried Alice"),
+#: in the past and present tense both, since a book may use either, and in
+#: the plain form a first-person present tag takes ("I say").
+SPEECH_VERBS = frozenset({
+    "say", "ask", "reply", "cry", "whisper", "shout", "mutter", "hiss",
+    "snap", "exclaim", "answer", "call", "add", "remark", "murmur", "growl",
+    "yell", "scream", "sob", "demand", "insist", "explain", "continue",
+    "repeat", "agree", "admit", "protest", "whimper", "groan", "moan",
+    "mumble", "stammer", "stutter", "gasp", "roar", "bark", "bellow",
+    "sneer", "retort", "interrupt", "suggest", "warn", "tell", "plead", "beg",
+    "said", "says", "asked", "asks", "replied", "replies", "cried", "cries",
+    "whispered", "whispers", "shouted", "shouts", "muttered", "mutters",
+    "hissed", "hisses", "snapped", "snaps", "exclaimed", "exclaims",
+    "answered", "answers", "called", "calls", "added", "adds", "remarked",
+    "remarks", "murmured", "murmurs", "growled", "growls", "yelled", "yells",
+    "screamed", "screams", "sobbed", "sobs", "demanded", "demands",
+    "insisted", "insists", "explained", "explains", "continued", "continues",
+    "repeated", "repeats", "agreed", "agrees", "admitted", "admits",
+    "protested", "protests", "whimpered", "whimpers", "groaned", "groans",
+    "moaned", "moans", "mumbled", "mumbles", "stammered", "stammers",
+    "stuttered", "stutters", "gasped", "gasps", "roared", "roars", "barked",
+    "barks", "bellowed", "bellows", "sneered", "sneers", "retorted",
+    "retorts", "interrupted", "interrupts", "suggested", "suggests",
+    "warned", "warns", "told", "tells", "pleaded", "pleads", "begged", "begs",
+})
+#: The two tags readers stop seeing; every other speech verb is noticed.
+PLAIN_SPEECH_VERBS = frozenset({"say", "said", "says", "ask", "asked", "asks"})
+#: Things a face or body does, not ways of speaking: "Fine," she smiled.
+NON_SPEECH_TAG_VERBS = frozenset({
+    "smile", "laugh", "grin", "shrug", "nod", "sigh", "frown", "chuckle",
+    "smiled", "smiles", "laughed", "laughs", "grinned", "grins", "shrugged",
+    "shrugs", "nodded", "nods", "sighed", "sighs", "frowned", "frowns",
+    "chuckled", "chuckles",
+})
+
 @dataclass(frozen=True)
 class LexicalStats:
     tokens: int
@@ -259,12 +347,96 @@ def calculate_lexical_stats(text: str) -> LexicalStats:
                         moving_average_ttr(toks), mtld(toks))
 
 
+# A candidate sentence end: . ! ? or an ellipsis, with any closing quote or
+# bracket, then the space before the next sentence.
+_SENTENCE_END_RE = re.compile(r"([.!?\u2026]+)[\"'\u201d\u2019)\]]*(\s+)")
+#: Words a full stop follows without ending the sentence ("Mr. Smith").
+ABBREVIATIONS = frozenset({
+    "mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "vs", "etc", "e.g", "i.e",
+})
+_WORD_BEFORE_RE = re.compile(r"([A-Za-z]+(?:\.[A-Za-z]+)*)\Z")
+
+
+def _ends_sentence(text: str, match: re.Match[str]) -> bool:
+    # A lowercase word after the stop carries the sentence on: '"Wait!" she
+    # said.', 'and then... nothing'.
+    if text[match.end():match.end() + 1].islower():
+        return False
+    if match.group(1) == ".":
+        before = _WORD_BEFORE_RE.search(text[max(0, match.start() - 12):match.start()])
+        if before:
+            word = before.group(1)
+            # A capital on its own is an initial ("J. R. Tolkien"), except "I".
+            if word.lower() in ABBREVIATIONS or (len(word) == 1 and word.isupper() and word != "I"):
+                return False
+    return True
+
+
+def sentence_spans(text: str) -> list[tuple[int, int]]:
+    """``(start, end)`` offsets of each sentence in *text*, closing marks included.
+
+    The one splitter every sentence measure uses, so the average sentence
+    length and the highlight passes agree on where a sentence ends.
+    """
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in _SENTENCE_END_RE.finditer(text):
+        if _ends_sentence(text, match):
+            spans.append((start, match.start(2)))
+            start = match.end()
+    spans.append((start, len(text.rstrip())))
+    out = []
+    for a, b in spans:
+        a += len(text[a:b]) - len(text[a:b].lstrip())
+        if a < b:
+            out.append((a, b))
+    return out
+
+
 def split_sentences(text: str) -> list[str]:
     flat = re.sub(r"\s+", " ", text.strip())
-    if not flat:
-        return []
-    return [p.strip() for p in SENTENCE_SPLIT_RE.split(flat)
-            if p.strip() and count_words(p) > 0]
+    return [flat[a:b] for a, b in sentence_spans(flat) if count_words(flat[a:b]) > 0]
+
+
+# Opening and closing marks of speech. A curly single quote opens only after a
+# space or a dash, and closes only before a non-letter, so "don’t" stays prose;
+# a ‘ that starts an elision ("‘em", "‘til") opens nothing.
+_DIALOGUE_RE = re.compile(
+    r'"[^"]*(?:"|$)|\u201c[^\u201d]*(?:\u201d|$)'
+    r"|(?:(?<=^)|(?<=[\s\u2014(]))\u2018(?!(?:em|tis|twas|til|cause|n)\b)"
+    r".*?(?:\u2019(?![A-Za-z])|$)",
+    re.DOTALL,
+)
+
+
+def dialogue_spans(paragraph: str) -> list[tuple[int, int]]:
+    """Character spans of ``paragraph`` that are speech, quotes included.
+
+    Speech running on into the next paragraph has no closing mark, as is the
+    convention, so an unclosed quote runs to the end of its paragraph.
+    """
+    return [m.span() for m in _DIALOGUE_RE.finditer(paragraph)]
+
+
+def text_dialogue_spans(text: str) -> list[tuple[int, int]]:
+    """:func:`dialogue_spans` over a whole scene, as offsets into *text*.
+
+    Read paragraph by paragraph, so a quote left open at a paragraph's end
+    (speech running on) never pairs with the next paragraph's opening mark.
+    """
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for gap in re.finditer(r"\n\s*\n|\Z", text):
+        spans.extend((start + a, start + b) for a, b in dialogue_spans(text[start:gap.start()]))
+        start = gap.end()
+        if gap.start() == len(text):
+            break
+    return spans
+
+
+def dialogue_text(text: str) -> list[str]:
+    """The speech in *text*, one string per quote, read paragraph by paragraph."""
+    return [text[a:b] for a, b in text_dialogue_spans(text)]
 
 
 def build_content_stopwords(root: Path, characters_dir: str = "story-bible/characters") -> set[str]:
@@ -347,8 +519,8 @@ def analyze_style_shape(text: str, sw: set[str]) -> dict[str, object]:
     para_counts = [count_words(b) for b in paras]
     sents = split_sentences(text)
     sent_counts = [count_words(s) for s in sents]
-    dlg_matches = list(QUOTE_RE.finditer(text))
-    dlg_words = sum(count_words(m.group(1)) for m in dlg_matches)
+    dlg_quotes = dialogue_text(text)
+    dlg_words = sum(count_words(q) for q in dlg_quotes)
     score, ex = top_repeated_content_words(text, sw)
 
     first_person = len(FIRST_PERSON_RE.findall(text))
@@ -369,7 +541,7 @@ def analyze_style_shape(text: str, sw: set[str]) -> dict[str, object]:
     dialogue_share = (dlg_words / words) if words else 0.0
     energy = 10.0 + (dialogue_share * 5.0) - (avg_sent / 2.0)
 
-    dlg_text = " ".join(m.group(1) for m in dlg_matches)
+    dlg_text = " ".join(dlg_quotes)
     dlg_toks = [t for t in lexical_tokens(dlg_text) if t not in sw and len(t) > 3]
     top_dlg = tuple(w for w, _ in Counter(dlg_toks).most_common(5))
 

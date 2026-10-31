@@ -347,6 +347,7 @@ class ClaudeFakeClient:
                 raise ClaudeRequestError(f"thread not found: {params['threadId']}", code=-32004)
             return {"thread": thread, "turns": thread.get("turns") or []}
         if method == "thread/start":
+            self.thread_start_params = getattr(self, "thread_start_params", []) + [dict(params)]
             self.next_thread += 1
             thread = {"id": f"claude-thread-{self.next_thread}", "turns": []}
             self.threads[thread["id"]] = thread

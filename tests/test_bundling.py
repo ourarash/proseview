@@ -133,7 +133,9 @@ def test_tone_label_replaces_pensive_emoji():
     # Pass metadata documents what each pass measures.
     assert "PASS_EXAMPLES" in bundle
     assert "PASS_NOTES" in bundle
-    assert "PASS_INLINE_TIPS" in bundle
+    # One explanation per check; marks have no hover card.
+    assert "PASS_INLINE_TIPS" not in bundle
+    assert "hl-custom-tooltip" not in bundle
 
 
 # ── Item 6: dead CSS removed ─────────────────────────────────────────────────

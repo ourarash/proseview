@@ -150,6 +150,8 @@
             _pmViewPath = p;
             initAffordance(_pmView);
             updatePMHighlightDecorations();
+            ensureSceneHighlights(p);
+            if (typeof refreshSceneRhythm === 'function') refreshSceneRhythm();
 
             // Tag each top-level block with its source line and apply the
             // toggle's current state (so a freshly-mounted scene reflects
@@ -250,10 +252,41 @@
             });
         }
 
+        // A scene's highlight marks are fetched when it opens, not carried in
+        // the page: from the server, or (01-static-snapshot.js) from
+        // highlights/<scene>.json beside a snapshot. Kept until the scene
+        // changes, which drops them (see the refresh in 60-selection.js).
+        var _hlLoading = Object.create(null);
+        function ensureSceneHighlights(path) {
+            if (!path || highlightsByPath[path]) return Promise.resolve(highlightsByPath[path] || null);
+            if (_hlLoading[path]) return _hlLoading[path];
+            var url = '/api/scene/highlights?path=' + encodeURIComponent(path);
+            _hlLoading[path] = fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                delete _hlLoading[path];
+                if (!data || data.ok === false) return null;
+                highlightsByPath[path] = {paragraphs: data.paragraphs || [], highlights: data.highlights || {},
+                                          stats: data.stats || {}};
+                if (typeof paths !== 'undefined' && paths[curIdx] === path) {
+                    updatePMHighlightDecorations();
+                    if (typeof refreshScenePassList === 'function') refreshScenePassList(path);
+                }
+                return highlightsByPath[path];
+            }).catch(function() { delete _hlLoading[path]; return null; });
+            return _hlLoading[path];
+        }
+
+        // The word a Repeats mark is, in all its forms ("block/blocks").
+        function _hlRepeatGroup(inst) {
+            return inst.group || String(inst.text || '').toLowerCase();
+        }
+
         function updatePMHighlightDecorations() {
             if (!_pmView || !window._PM) return;
             var p = paths[curIdx];
             var PM = window._PM;
+            // Whichever way the scene was drawn, its marks are fetched if
+            // they have not been yet; this runs again once they arrive.
+            if (!highlightsByPath[p]) ensureSceneHighlights(p);
             var sceneHls = highlightsByPath[p] || { paragraphs: [], highlights: {} };
             var hlData = sceneHls.highlights || {};
             var doc = _pmView.state.doc;
@@ -292,15 +325,35 @@
             });
 
             var decorations = [];
+            var seenEcho = {};
+            var echoSizes = {};
+            // Each word's place in its echo, in reading order: 1 of 3, 2 of 3.
+            var echoPlace = [];
+            (hlData.echoes || []).forEach(function(inst, i) {
+                var g = (inst.note || '').split(' \u00b7 ')[0];
+                echoSizes[g] = (echoSizes[g] || 0) + 1;
+                echoPlace[i] = echoSizes[g];
+            });
+            // A repeated word's place among its uses in the scene, forms
+            // counted together, numbered the same way.
+            var repeatSizes = {};
+            var repeatPlace = [];
+            (hlData.repeats || []).forEach(function(inst, i) {
+                var g = _hlRepeatGroup(inst);
+                repeatSizes[g] = (repeatSizes[g] || 0) + 1;
+                repeatPlace[i] = repeatSizes[g];
+            });
             PASS_ORDER.forEach(function(name) {
                 if (!hls[name]) return;
                 // Starts already marked, so two of the server's matches never
                 // share one word and stack a second badge on it.
                 var taken = {};
-                (hlData[name] || []).forEach(function(inst) {
+                (hlData[name] || []).forEach(function(inst, instIndex) {
                     var block = blocks[inst.paragraph_index];
                     if (!block || !inst.char_offsets || !inst.text) return;
-                    var needle = inst.text.toLowerCase();
+                    // A paragraph wrapped over several lines in the file reads as
+                    // one line in the editor: its line breaks are spaces there.
+                    var needle = inst.text.toLowerCase().replace(/[ \t]*\n[ \t]*/g, ' ');
                     // +1: the block's text starts with a separator.
                     var want = block.start + 1 + inst.char_offsets[0], at = -1;
                     for (var cand = _hlFindText(lower, needle, block.start); cand >= 0 && cand + needle.length <= block.end;
@@ -313,40 +366,50 @@
                     var to = posAt[at + needle.length - 1] + 1;
                     if (from >= to || to > doc.content.size) return;
                     var cls = PASS_CLASSES[name] || '';
-                    var title = PASS_LABELS[name] || name;
-                    if (name === 'sensory' && inst.note) title += ' (' + inst.note + ')';
-                    
-                    var desc = PASS_INLINE_TIPS ? (PASS_INLINE_TIPS[name] || '') : '';
-                    if (desc.indexOf('{word}') !== -1) desc = desc.split('{word}').join(inst.text);
-                    if (desc.indexOf('{count}') !== -1) desc = desc.split('{count}').join(inst.note || '');
-                    
                     var attrs = { class: cls };
-                    if (name === 'repeats') {
-                        var parts = (inst.note || '').split('/');
-                        var paraCount = parts[0] || '?';
-                        var sceneCount = parts[1] || '?';
-                        if (desc.indexOf('{para}') !== -1) desc = desc.split('{para}').join(paraCount);
-                        if (desc.indexOf('{scene}') !== -1) desc = desc.split('{scene}').join(sceneCount);
-                        // The count is its own widget after the word: another
-                        // pass overlapping part of the word ("I" in "I'm")
-                        // splits the inline span, and a badge on the span
-                        // would then repeat after every piece.
-                        var count = paraCount + ' / ' + sceneCount;
+                    if (name === 'echoes') {
+                        // Which word of its echo this is and how many it has
+                        // (2/3), after the word as Repeats shows its count; the
+                        // first word of an echo is lighter,
+                        // and the group lets pointing at one light its partners.
+                        var group = (inst.note || '').split(' \u00b7 ')[0];
+                        var size = (echoPlace[instIndex] || '?') + '/' + (echoSizes[group] || 0);
+                        attrs['data-hl-group'] = 'echo-' + group;
+                        if (!seenEcho[group]) { seenEcho[group] = true; attrs.class = cls + ' is-first'; }
                         decorations.push(PM.Decoration.widget(to, function() {
                             var badge = document.createElement('span');
-                            badge.className = cls;
-                            badge.setAttribute('data-count', count);
+                            badge.className = 'hl-echo-count';
+                            badge.textContent = size;
+                            return badge;
+                        }, { side: -1, ignoreSelection: true, key: 'hl-echo-' + to + '-' + group + '-' + size }));
+                    }
+                    if (name === 'repeats') {
+                        // Every form of the word, so pointing at one lights the rest.
+                        if (inst.group) attrs['data-hl-repeat'] = inst.group;
+                        // Which use of the word this is and how many the scene
+                        // has (2/6), as an echo's words are numbered. It is its
+                        // own widget after the word: another pass overlapping
+                        // part of the word ("I" in "I'm") splits the inline
+                        // span, and a badge on the span would then repeat
+                        // after every piece.
+                        var count = (repeatPlace[instIndex] || '?') + '/' + (repeatSizes[_hlRepeatGroup(inst)] || 0);
+                        decorations.push(PM.Decoration.widget(to, function() {
+                            var badge = document.createElement('span');
+                            badge.className = 'hl-repeat-count';
+                            badge.textContent = count;
                             return badge;
                         }, { side: -1, ignoreSelection: true, key: 'hl-count-' + to + '-' + count }));
                     }
                     
-                    attrs['data-hl-title'] = title;
-                    attrs['data-hl-desc'] = desc;
+                    // Which mark this is, so a click can open its suggestion card.
+                    attrs['data-hl-key'] = name + ':' + instIndex;
                     
                     decorations.push(PM.Decoration.inline(from, to, attrs));
                 });
             });
 
+            // Text a suggestion replaced, which stays clickable to undo it.
+            if (typeof hlAppliedDecorations === 'function') hlAppliedDecorations(PM, p, lower, posAt, decorations);
             var decoSet = PM.DecorationSet.create(doc, decorations);
             var tr = _pmView.state.tr.setMeta(PM.hlPluginKey, decoSet);
             _pmView.dispatch(tr);
@@ -565,7 +628,10 @@
                     frontmatter: frontmatter,
                     // Set only by the conflict dialog's explicit "mine wins".
                     // The server still backs up the version it replaces.
-                    overwrite: !!overwrite
+                    overwrite: !!overwrite,
+                    // A save that applies or undoes a highlight suggestion is
+                    // named so in History.
+                    suggestion: window._pmNextSaveSuggestion || undefined
                 })
             }).then(function(r) {
                 if (r.status === 409) {
@@ -739,69 +805,6 @@
             if (!_pmEditMode || !_pmDirty) return;
             event.preventDefault();
             event.returnValue = '';
-        });
-
-        var _hlTooltip = null;
-        var _hlTooltipTimeout = null;
-
-        function getHlTooltip() {
-            if (!_hlTooltip) {
-                _hlTooltip = document.createElement('div');
-                _hlTooltip.className = 'hl-custom-tooltip';
-                _hlTooltip.style.opacity = '0';
-                document.body.appendChild(_hlTooltip);
-            }
-            return _hlTooltip;
-        }
-
-        document.addEventListener('mouseover', function(e) {
-            var target = e.target;
-            // Ignore prose view widgets and other things that aren't highlight spans
-            if (target && target.classList && target.classList.contains('ProseMirror-widget')) return;
-            
-            var isHl = false;
-            if (target && target.classList) {
-                for (var i = 0; i < target.classList.length; i++) {
-                    if (target.classList[i].startsWith('hl-')) {
-                        isHl = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!isHl) {
-                if (_hlTooltip && _hlTooltip.style.opacity !== '0') {
-                    clearTimeout(_hlTooltipTimeout);
-                    _hlTooltipTimeout = setTimeout(function() { _hlTooltip.style.opacity = '0'; }, 100);
-                }
-                return;
-            }
-
-            clearTimeout(_hlTooltipTimeout);
-            var title = target.getAttribute('data-hl-title');
-            var desc = target.getAttribute('data-hl-desc');
-            if (!title) return;
-
-            var tt = getHlTooltip();
-            tt.innerHTML = '<div class="hl-title">' + title + '</div>' + 
-                           (desc ? '<div class="hl-desc">' + desc + '</div>' : '') +
-                           '<div class="hl-disable">To disable this highlight, go to the Analysis tab.</div>';
-            
-            tt.style.display = 'block';
-            var rect = target.getBoundingClientRect();
-            
-            requestAnimationFrame(function() {
-                var ttRect = tt.getBoundingClientRect();
-                var top = rect.top - ttRect.height - 8;
-                if (top < 0) top = rect.bottom + 8;
-                var left = rect.left + (rect.width / 2) - (ttRect.width / 2);
-                if (left < 10) left = 10;
-                if (left + ttRect.width > window.innerWidth - 10) left = window.innerWidth - ttRect.width - 10;
-                
-                tt.style.top = top + window.scrollY + 'px';
-                tt.style.left = left + window.scrollX + 'px';
-                tt.style.opacity = '1';
-            });
         });
 
         window.toggleFormat = function(markName) {
@@ -1032,4 +1035,30 @@
                     editBar.style.zIndex = '';
                 }
             };
+        })();
+
+        // Pointing at an echo lights the other words in it, and pointing at a
+        // repeated word lights its other uses.
+        (function() {
+            // An echo's words share data-hl-group; a repeated word's forms share
+            // data-hl-repeat. A word marked by both lights both sets.
+            var lit = null;
+            function light(selector, on) {
+                document.querySelectorAll(selector).forEach(function(el) {
+                    el.classList.toggle('is-partner', on);
+                });
+            }
+            document.addEventListener('mouseover', function(e) {
+                var mark = e.target && e.target.closest
+                    && e.target.closest('#sceneProseHost [data-hl-group], #sceneProseHost [data-hl-repeat]');
+                var selector = mark ? ['data-hl-group', 'data-hl-repeat'].filter(function(attr) {
+                    return mark.hasAttribute(attr);
+                }).map(function(attr) {
+                    return '#sceneProseHost [' + attr + '="' + CSS.escape(mark.getAttribute(attr)) + '"]';
+                }).join(', ') : null;
+                if (selector === lit) return;
+                if (lit) light(lit, false);
+                lit = selector;
+                if (lit) light(lit, true);
+            });
         })();

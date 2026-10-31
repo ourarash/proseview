@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 
 from .config import Config
-from .generator import TEMPLATE_DIR, build_analysis_payload, build_dashboard
+from .generator import TEMPLATE_DIR, build_analysis_payload, build_dashboard, scene_highlights
 from .lexical import calculate_lexical_stats, prose_only
 from .repo import read_repo_text
 from .scenes import collect_scene_stats, extract_scene_text, split_frontmatter
@@ -141,11 +141,21 @@ def write_snapshot(
         "analysis.json": json.dumps(build_analysis_payload(root, cfg)),
         "scene-lexical.json": json.dumps(_scene_lexical(root, cfg, scenes)),
     }
+    # Each scene's highlight marks, fetched when that scene opens: with no
+    # server, they are files beside the page (highlights/<scene>.json).
+    for scene in scenes:
+        rel = scene.path.as_posix()
+        prefix = cfg.manuscript_subdir + "/"
+        rel = rel[len(prefix):] if rel.startswith(prefix) else rel
+        payload = scene_highlights(root, cfg, rel)
+        if payload is not None:
+            files[f"highlights/{rel}.json"] = json.dumps({"ok": True, **payload})
     for name, text in files.items():
         text = _scrubbed(text, root)
         leaked = next((form for form in _path_forms(str(root)) if form in text), None)
         if leaked:
             raise SnapshotError(f"{name} would publish the repository path {root}")
+        (out / name).parent.mkdir(parents=True, exist_ok=True)
         (out / name).write_text(text, encoding="utf-8")
     # pdf.js only draws pages the server lays out, and a snapshot has no server.
     shutil.copytree(TEMPLATE_DIR / "vendor", out / "vendor", ignore=shutil.ignore_patterns("pdfjs"))

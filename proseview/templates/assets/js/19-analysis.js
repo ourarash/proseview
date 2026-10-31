@@ -115,7 +115,7 @@
             if (!band) return;
             const genre = document.createElement('span');
             genre.className = 'health-ref';
-            genre.textContent = 'Usual for ' + (lex.genreLabel || 'your genre') + ': ' + band[0] + '–' + band[1] + ' words';
+            genre.textContent = 'Usual for ' + (lex.genreLabel || 'your range') + ': ' + band[0] + '–' + band[1] + ' words';
             genre.title = 'A typical range for published books in this genre. Below it is the concern; above it is fine. Change the genre in Settings.';
             el.appendChild(genre);
         }

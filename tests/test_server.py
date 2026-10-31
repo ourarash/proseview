@@ -377,3 +377,13 @@ def test_each_scene_carries_its_own_frontmatter_text(tmp_path):
         path.write_text(f"---\ntitle: {title}\n---\n\nProse.\n", encoding="utf-8")
     scenes = collect_scene_stats(tmp_path, "manuscript")
     assert [s.frontmatter_text for s in scenes] == ["title: One", "title: Two"]
+
+
+def test_a_scene_s_marks_are_served_on_their_own_and_match_the_full_build():
+    from proseview.generator import scene_highlights
+
+    cfg = Config.load(FIXTURE)
+    data = build_scene_data(collect_scene_stats(FIXTURE, cfg), FIXTURE, cfg)
+    for rel, payload in data["highlightsByPath"].items():
+        assert scene_highlights(FIXTURE, cfg, rel) == payload
+    assert scene_highlights(FIXTURE, cfg, "../README.md") is None

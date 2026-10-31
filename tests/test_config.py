@@ -311,3 +311,42 @@ def test_a_bad_callout_colour_fails_loudly(tmp_path: Path):
     (tmp_path / ".proseview.yaml").write_text("callouts:\n  sms:\n    background: blue\n")
     with pytest.raises(ConfigError, match=r"callouts\.sms\.background: 'blue' is not a hex colour"):
         Config.load(tmp_path)
+
+
+def test_a_band_from_settings_is_two_numbers_low_first_within_limits():
+    from proseview.config import validated_band
+
+    assert validated_band("mtld_band", [70, 90]) == (70.0, 90.0)
+    assert validated_band("mattr_band", [0.7, 0.8]) == (0.7, 0.8)
+    for bad in ([90, 70], [80, 80], [0.5, 1.5], [0, 10], "70-90", [70]):
+        key = "mattr_band" if bad == [0.5, 1.5] else "mtld_band"
+        with pytest.raises(ConfigError):
+            validated_band(key, bad)
+
+
+def test_lexical_bands_say_where_each_range_comes_from(tmp_path: Path):
+    from proseview.config import lexical_bands
+
+    (tmp_path / ".proseview.yaml").write_text("genre: literary\n")
+    bands = lexical_bands(Config.load(tmp_path), tmp_path)
+    assert {k: bands[k] for k in ("mattr", "mtld", "mattrSource", "mtldSource", "genre", "preset")} == {
+        "mattr": [0.74, 0.77], "mtld": [85.0, 110.0], "mattrSource": "default",
+        "mtldSource": "genre", "genre": "Historical & literary", "preset": "literary"}
+    assert bands["label"] == "Literary"
+    assert [p["label"] for p in bands["presets"]] == ["Children's", "Contemporary", "Literary", "Fantasy / sci-fi"]
+    (tmp_path / ".proseview.yaml").write_text("genre: literary\nmtld_band: [70, 90]\n")
+    bands = lexical_bands(Config.load(tmp_path), tmp_path)
+    assert bands["mtld"] == [70, 90] and bands["mtldSource"] == "book" and bands["preset"] == "custom"
+    assert bands["label"] == "your custom range"
+    # A genre's own ranges, set in the book, are that genre's preset.
+    (tmp_path / ".proseview.yaml").write_text("genre: literary\nmtld_band: [90, 120]\n")
+    assert lexical_bands(Config.load(tmp_path), tmp_path)["preset"] == "speculative"
+
+
+def test_save_can_unset_a_band_so_it_follows_its_default_again(tmp_path: Path):
+    (tmp_path / ".proseview.yaml").write_text("genre: literary\n# mine\nmtld_band: [70, 90]\n")
+    cfg = Config.load(tmp_path)
+    cfg.save(tmp_path, unset=["mtld_band"])
+    text = (tmp_path / ".proseview.yaml").read_text()
+    assert "mtld_band" not in text and "genre: literary" in text
+    assert Config.load(tmp_path).mtld_band == (85.0, 110.0)

@@ -2495,6 +2495,14 @@ def test_scene_toolbar_is_compact_and_exposes_grouped_actions(page: Page, server
     assert more.is_hidden()
     assert page.evaluate("document.activeElement.id") == "sceneMoreBtn"
 
+    page.locator("#sceneMoreBtn").click()
+    page.locator("#modalSettingsBtn").click()
+    assert more.is_hidden()
+    assert page.locator("#settingsDialog").is_visible()
+    page.keyboard.press("Escape")
+    assert page.locator("#settingsDialog").is_hidden()
+    assert page.locator("#sceneModal").is_visible()
+
 
 def test_scene_toolbar_visibility_mode_persists_and_has_keyboard_recovery(
     page: Page,
@@ -2892,7 +2900,13 @@ PASS_CLASSES = {
     "sentence_starts": "hl-openings",
     "repeats": "hl-repeat",
     "first_person": "hl-first-person",
+    "echoes": "hl-echo",
+    "sticky_sentences": "hl-sticky",
+    "dialogue_tags": "hl-dialogue-tag",
+    "dialogue": "hl-dialogue",
 }
+#: Passes folded under "More checks", which has to be opened to reach them.
+MORE_PASSES = {"lyrical", "hyperbole"}
 
 
 def _scene_with_hits(server: ProseviewServer, pass_name: str) -> str:
@@ -2915,7 +2929,7 @@ def _scene_with_hits(server: ProseviewServer, pass_name: str) -> str:
 
 @pytest.mark.parametrize("pass_name", list(PASS_CLASSES))
 def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: ProseviewServer, pass_name: str):
-    """All nine passes, each on a scene that actually triggers it."""
+    """Every pass, each on a scene that actually triggers it."""
     css = PASS_CLASSES[pass_name]
     scene = _scene_with_hits(shared_server, pass_name)
 
@@ -2925,6 +2939,9 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
     assert marks.count() == 0, f"{pass_name} marks rendered before the pass was enabled"
 
     toggle = page.locator(f"#pass-row-{pass_name}")
+    if pass_name in MORE_PASSES:
+        assert not toggle.is_visible(), "the off-by-default checks start folded away"
+        page.click("#scenePassMore > summary")
     toggle.wait_for(state="visible")
     toggle.click()
 
@@ -2960,11 +2977,11 @@ def test_clear_all_turns_every_active_pass_off(page: Page, shared_server: Prosev
     open_scene(page, shared_server)
     open_scene_analysis(page)
     page.click("#pass-row-repeats")
+    page.click("#scenePassMore > summary")
     page.click("#pass-row-sensory")
     _wait_until(lambda: page.locator("#sceneProseHost .hl-repeat").count() > 0)
 
-    # The button reads "All" when everything is off, "Clear" once any pass is on.
-    assert page.locator("#scenePassAllBtn").inner_text().strip() == "Clear"
+    assert page.locator("#scenePassAllBtn").evaluate("el => getComputedStyle(el).visibility") == "visible"
     page.click("#scenePassAllBtn")
 
     _wait_until(
@@ -5638,31 +5655,61 @@ def test_scene_stats_carry_their_units(page: Page, server: ProseviewServer):
     assert units.count("per 1,000 words") == 4, f"rate units missing: {units}"
 
 
-def test_stat_tiles_are_readouts_not_a_second_set_of_controls(
-    page: Page, server: ProseviewServer
-):
-    """One surface toggles a pass, and it is the pass row.
-
-    Making four of the eight tiles clickable put the same state behind two
-    controls, and left tiles that looked alike behaving differently. The tiles
-    echo which pass is on; they do not switch it.
-    """
+def test_each_measure_lives_in_its_checks_row(page: Page, server: ProseviewServer):
+    """One place per measure: a check's rate sits in its row, the rest in one line."""
     open_scene(page, server)
     open_scene_analysis(page)
-
-    tiles = page.locator("#sceneAnalysisPane .scene-stat-box")
-    assert tiles.count() == 10
-    assert page.evaluate(
-        "() => [...document.querySelectorAll('#sceneAnalysisPane .scene-stat-box')]"
-        ".every(el => el.tagName === 'DIV')"
-    ), "no tile should be a button"
-
-    # Turning a pass on from its own row tints the matching tile.
-    page.evaluate("() => toggleHighlight('sensory')")
-    page.wait_for_function(
-        "() => document.querySelector('#sceneAnalysisPane [data-pass=\"sensory\"]')"
-        ".classList.contains('scene-stat-on')"
-    )
+    page.locator("#scenePassList .scene-pass-row").first.wait_for()
+    assert page.locator("#sceneAnalysisPane .scene-stat-box").count() == 0, "no second set of tiles"
+    summary = page.locator("#sceneSummary")
+    assert re.match(r"[\d,]+ words \u00b7 Variety ", summary.inner_text())
+    assert "Typical" in (summary.locator(".scene-summary-part").nth(1).get_attribute("title") or "")
+    # One ⓘ says what Variety and MTLD are.
+    about = page.locator("#sceneSummaryInfo")
+    assert not about.is_visible()
+    summary.locator(".scene-pass-info").hover()
+    assert about.is_visible()
+    text = about.inner_text()
+    assert "Variety (MATTR)" in text and "100 words in a row" in text and "MTLD" in text and "72%" in text
+    summary.locator(".scene-pass-info").click()
+    page.mouse.move(0, 0)
+    assert about.is_visible(), "a click keeps it open"
+    summary.locator(".scene-pass-info").press("Escape")
+    assert not about.is_visible()
+    # No heading over the checks: the first group's line starts them.
+    assert page.locator("#sceneAnalysisPane .scene-panel-heading", has_text="Checks").count() == 0
+    # The summary line comes before the graph.
+    assert summary.bounding_box()["y"] < page.locator("#sceneRhythm").bounding_box()["y"]
+    for name in ("dialogue", "passive_voice", "crutch_words", "sensory"):
+        rate = page.locator(f"#pass-row-{name} .scene-pass-measure").inner_text()
+        assert "% of words" in rate or "per 1,000 words" in rate or rate == "none", name
+    # The rate is worked out from the row's own count, so the two agree; a
+    # check that found nothing says "none" rather than a rate of 0.
+    agree = page.evaluate("""() => {
+        const p = paths[curIdx], words = meta[p].words;
+        return ['passive_voice', 'crutch_words', 'sensory'].every(name => {
+            const row = document.getElementById('pass-row-' + name);
+            const n = Number(row.querySelector('.scene-pass-count').textContent);
+            const rate = row.querySelector('.scene-pass-rate').textContent;
+            return n ? rate === (n * 1000 / words).toFixed(1) + ' per 1,000 words' : rate === 'none';
+        });
+    }""")
+    assert agree
+    # A check with nothing found is not disabled and does not look it: its
+    # name is as bright as any other's; only the 0 (and "none") are muted.
+    looks = page.evaluate("""() => {
+        const rows = [...document.querySelectorAll('#scenePassList .scene-pass-row')];
+        const empty = rows.find(r => r.classList.contains('is-empty'));
+        const full = rows.find(r => !r.classList.contains('is-empty'));
+        if (!empty || !full) return null;
+        const st = el => getComputedStyle(el);
+        return {
+            opacity: st(empty).opacity,
+            sameName: st(empty.querySelector('.scene-pass-name')).color === st(full.querySelector('.scene-pass-name')).color,
+            mutedZero: st(empty.querySelector('.scene-pass-count')).color !== st(full.querySelector('.scene-pass-count')).color,
+        };
+    }""")
+    assert looks == {"opacity": "1", "sameName": True, "mutedZero": True}, looks
 
 
 def test_the_scene_tabs_do_not_wear_the_discuss_heading(
@@ -5693,61 +5740,150 @@ def test_every_pass_is_listed_with_its_count_and_an_example(
     """The pass list is the one place a pass can be switched on.
 
     Each row carries a line of examples, because "felt, saw, heard, noticed"
-    identifies Filter Verbs faster than a definition does, and a tooltip with
-    the longer note for anyone who wants it. A pass with no matches still
+    identifies Filter Verbs faster than a definition does, and an ⓘ beside it
+    with the longer note for anyone who wants it. A pass with no matches still
     appears, so "nothing here" costs no click.
     """
     open_scene(page, server)
     open_scene_analysis(page)
 
     rows = page.locator("#scenePassList .scene-pass-row")
-    assert rows.count() == 9, "every pass is listed, including the empty ones"
+    assert rows.count() == len(PASS_CLASSES), "every pass is listed, including the empty ones"
+    # The noisy word-list passes start folded away.
+    assert page.locator("#scenePassMore").get_attribute("open") is None
+    assert "off by default (2)" in page.locator("#scenePassMore > summary").inner_text()
+    page.click("#scenePassMore > summary")
 
     for row in rows.all():
         assert row.locator(".scene-pass-example").inner_text().strip(), (
             "a pass row without examples is a label the reader has to guess at"
         )
-        assert (row.get_attribute("title") or "").strip(), "the longer note is the hover layer"
+        info = row.locator("xpath=following-sibling::button[contains(@class, 'scene-pass-info')]")
+        assert info.count() == 1, "the longer note sits behind an ⓘ beside the row"
         assert row.locator(".scene-pass-count").inner_text().strip().isdigit()
 
-    # Ordered by how much there is to look at.
-    counts = [
-        int(n)
-        for n in page.evaluate(
-            "() => [...document.querySelectorAll('#scenePassList .scene-pass-count')]"
-            ".map(el => el.textContent)"
-        )
-    ]
-    assert counts == sorted(counts, reverse=True)
+    # Grouped by what each pass looks at; an empty group has no heading.
+    groups = page.evaluate(
+        """() => {
+            const out = [];
+            for (const el of document.querySelector('#scenePassList').children) {
+                if (el.classList.contains('scene-pass-group')) out.push({heading: el.firstChild.textContent, rows: []});
+                else if (el.classList.contains('scene-pass-item')) out[out.length - 1].rows.push(el.querySelector('.scene-pass-row'));
+                else if (el.id === 'scenePassMore') out.push({heading: 'More', rows: [...el.querySelectorAll('.scene-pass-row')]});
+            }
+            return out.map(g => ({heading: g.heading,
+                                  passes: g.rows.map(r => r.dataset.pass),
+                                  counts: g.rows.map(r => +r.querySelector('.scene-pass-count').textContent)}));
+        }"""
+    )
+    # Groups and rows in the order novelists reach for them, always the same.
+    assert [g["heading"] for g in groups] == ["Words", "Dialogue", "Style", "Rhythm", "More"]
+    assert groups[0]["passes"] == ["echoes", "crutch_words", "sensory", "filter_verbs", "repeats"]
+    assert groups[1]["passes"] == ["dialogue_tags", "dialogue"]
+    assert groups[2]["passes"] == ["passive_voice", "sticky_sentences", "first_person"]
+    assert groups[3]["passes"] == ["sentence_starts"]
+    assert set(groups[4]["passes"]) == MORE_PASSES
 
     filter_row = page.locator("#pass-row-filter_verbs")
     assert "felt" in filter_row.locator(".scene-pass-example").inner_text()
+    # The ⓘ shows the check's one explanation, the same words its marks' cards use.
+    note = page.evaluate("() => PASS_NOTES.filter_verbs")
+    info = page.locator("#pass-row-filter_verbs + .scene-pass-info")
+    pop = page.locator("#pass-info-filter_verbs")
+    assert not pop.is_visible()
+    info.hover()
+    assert pop.is_visible() and pop.inner_text() == note
+    info.click()
+    page.mouse.move(0, 0)
+    assert pop.is_visible(), "a click keeps it open"
+    info.press("Escape")
+    assert not pop.is_visible()
     assert filter_row.get_attribute("aria-pressed") == "false"
     filter_row.click()
     assert filter_row.get_attribute("aria-pressed") == "true"
     page.wait_for_selector("#sceneProseHost .hl-filter")
 
 
-def test_clicking_a_pass_row_is_the_only_way_its_state_changes(
-    page: Page, server: ProseviewServer
-):
-    """All / Clear drives the rows, and the rows drive the prose."""
+def test_dialogue_tags_row_breaks_its_count_down_while_on(page: Page, shared_server: ProseviewServer):
+    scene = _scene_with_hits(shared_server, "dialogue_tags")
+    open_scene(page, shared_server, scene)
+    open_scene_analysis(page)
+    breakdown = page.locator("#pass-breakdown-dialogue_tags")
+    assert not breakdown.is_visible(), "the breakdown is shown only while the pass is on"
+
+    page.click("#pass-row-dialogue_tags")
+    breakdown.wait_for(state="visible")
+    items = breakdown.locator(".scene-pass-breakdown-item").all_inner_texts()
+    assert [i.rsplit(" ", 1)[0] for i in items] == [
+        "Adverb on a tag", "Other than said or asked", "Not a speech verb", "6+ lines with no tag"]
+    total = int(page.locator("#pass-row-dialogue_tags .scene-pass-count").inner_text())
+    # A mark can be of two kinds ("cried softly"), so the kinds add up to at least the total.
+    assert sum(int(i.rsplit(" ", 1)[1]) for i in items) >= total > 0
+
+    page.click("#pass-row-dialogue_tags")
+    breakdown.wait_for(state="hidden")
+
+
+def test_first_person_says_why_a_first_person_scene_has_no_marks(page: Page, server: ProseviewServer):
     open_scene(page, server)
     open_scene_analysis(page)
+    told = page.evaluate("() => (highlightCounts[paths[curIdx]] || {})._told_first === 1")
+    rate = page.locator("#pass-row-first_person .scene-pass-measure").inner_text()
+    if told:
+        assert rate == "Told in first person, so nothing is marked"
+        assert page.locator("#pass-row-first_person .scene-pass-count").inner_text() == "0"
+    else:
+        assert "per 1,000 words" in rate
 
-    page.click("#scenePassAllBtn")
-    page.wait_for_function(
-        "() => [...document.querySelectorAll('#scenePassList .scene-pass-row')]"
-        ".every(el => el.getAttribute('aria-pressed') === 'true')"
-    )
-    assert page.locator("#scenePassAllBtn").inner_text().strip() == "Clear"
 
-    page.click("#scenePassAllBtn")
+def test_an_unusual_rate_says_what_is_typical(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_scene_analysis(page)
+    page.locator("#scenePassList .scene-pass-row").first.wait_for()
+    for measure in page.locator("#scenePassList .scene-pass-measure").all():
+        text = measure.inner_text()
+        if "is-warn" in (measure.get_attribute("class") or ""):
+            assert "\u00b7 vs typical " in text, text
+        else:
+            assert "vs typical" not in text, text
+
+
+def test_dialogue_tags_breakdown_gives_the_adverb_share(page: Page, server: ProseviewServer):
+    scene = server.root / "manuscript" / SCENE_REL
+    scene.write_text(scene.read_text(encoding="utf-8").rstrip()
+                     + '\n\n"No. I woke up," she said in a sad little voice.\n\n"Go," he said.\n', encoding="utf-8")
+    import urllib.request
+    _wait_until(lambda: "sad little voice" in urllib.request.urlopen(server.base_url + "/").read().decode("utf-8"))
+    open_scene(page, server)
+    open_scene_analysis(page)
+    page.click("#pass-row-dialogue_tags")
+    share = page.locator("#pass-breakdown-dialogue_tags .scene-pass-share")
+    share.wait_for()
+    assert re.match(r"Adverbs on \d+ of \d+ tags \(\d+%\)", share.inner_text())
+    assert "ProWritingAid suggests under about 12%" in share.inner_text()
+    _wait_until(lambda: page.locator("#sceneProseHost .hl-dialogue-tag", has_text="sad little voice").count() > 0,
+                message="the manner phrase was not marked")
+
+
+def test_clear_shows_only_while_a_check_is_on_and_turns_them_all_off(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_scene_analysis(page)
+    clear = page.locator("#scenePassAllBtn")
+    clear.wait_for(state="attached")
+    assert clear.evaluate("el => getComputedStyle(el).visibility") == "hidden"
+    first_group = page.locator("#scenePassList .scene-pass-group").first
+    assert clear.evaluate("(el, g) => g.contains(el)", first_group.element_handle()), "Clear sits on the first group's line"
+    rows_top = page.locator("#scenePassList .scene-pass-row").first.bounding_box()["y"]
+    page.click("#pass-row-echoes")
+    page.click("#pass-row-dialogue")
+    assert clear.evaluate("el => getComputedStyle(el).visibility") == "visible"
+    assert page.locator("#scenePassList .scene-pass-row").first.bounding_box()["y"] == rows_top, "nothing moves"
+    clear.click()
     page.wait_for_function(
         "() => [...document.querySelectorAll('#scenePassList .scene-pass-row')]"
         ".every(el => el.getAttribute('aria-pressed') === 'false')"
     )
-    assert page.locator("#scenePassAllBtn").inner_text().strip() == "All"
+    assert clear.evaluate("el => getComputedStyle(el).visibility") == "hidden"
 
 
 def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer):
@@ -6543,16 +6679,36 @@ def test_timeline_hides_the_untagged_lane_when_everything_is_tagged(page: Page, 
 def test_leaving_a_scene_keeps_the_dock_open(page: Page, shared_server: ProseviewServer):
     """A panel you opened stays open on the dashboard until you close it."""
     open_scene(page, shared_server)
-    open_scene_details(page)
-    assert page.locator("#sceneDetailsPane").is_visible()
+    open_scene_analysis(page)
+    panel_box = page.locator("#discussPanel").bounding_box()
+    tabs_box = page.locator(".utility-tabs").bounding_box()
 
     page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
 
+    # Nothing moves: same panel, same size, same tab, same strip.
     assert page.locator("#discussPanel").is_visible()
-    assert page.locator("#sceneDetailsPane").is_visible()
-    for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabCodex"):
-        assert page.locator(tab).is_visible(), tab
+    assert page.locator("#discussPanel").bounding_box() == panel_box
+    assert page.locator(".utility-tabs").bounding_box() == tabs_box
+    assert page.get_attribute("#utilityTabAnalysis", "aria-selected") == "true"
+    # The scene tabs grey out; the agent tabs still work.
+    for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabHistory"):
+        assert page.locator(tab).is_disabled(), tab
+        assert page.get_attribute(tab, "aria-disabled") == "true", tab
+    for tab in ("#utilityTabCodex", "#utilityTabClaude"):
+        assert page.locator(tab).is_enabled(), tab
+    # The old scene's numbers are not left behind.
+    assert page.locator("#sceneAnalysisPane").is_hidden()
+    assert page.locator("#scenePanelAway").inner_text() == "Open a scene to see its analysis."
+
+    # The next scene brings the tab back with that scene's analysis.
+    open_scene(page, shared_server, ANNOTATED_SCENE_REL)
+    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+    assert page.locator("#scenePanelAway").is_hidden()
+    assert page.locator("#utilityTabAnalysis").is_enabled()
+    assert page.get_attribute("#utilityTabAnalysis", "aria-selected") == "true"
+    assert page.locator("#sceneAnalysisPane #scenePassList").count() == 1
+    assert page.locator("#discussPanel").bounding_box() == panel_box
 
     page.click("#discussClose")
     page.wait_for_selector("#discussPanel", state="hidden")
@@ -7317,6 +7473,22 @@ def demo_site(shared_repo: Path, tmp_path: Path) -> Iterator[str]:
     yield from _host_snapshot(shared_repo, tmp_path / "www", demo=True)
 
 
+@pytest.mark.parametrize("site", ["snapshot_site", "demo_site"])
+def test_a_published_copy_loads_each_scenes_marks_from_beside_the_page(page: Page, site: str, request):
+    """No server: a scene's marks come from highlights/<scene>.json when it opens."""
+    url = request.getfixturevalue(site)
+    requested: list[str] = []
+    page.on("request", lambda req: requested.append(urlparse(req.url).path))
+    page.goto(url + f"#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    _wait_until(lambda: f"/demo/highlights/{SCENE_REL}.json" in requested,
+                message="the scene's marks were not fetched from beside the page")
+    open_scene_analysis(page)
+    page.click("#pass-row-dialogue")
+    _wait_until(lambda: page.locator("#sceneProseHost .hl-dialogue").count() > 0,
+                message="the fetched marks were not drawn")
+
+
 def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, snapshot_site: str):
     """The hosted demo: no server, a project path, and nothing that writes.
 
@@ -7899,3 +8071,71 @@ def test_enter_at_the_end_of_a_scene_keeps_the_caret_in_view(page: Page, server:
         "document.getElementById('sceneEditBar').getBoundingClientRect().top]"
     )
     assert caret_bottom <= bar_top
+
+
+def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
+    page: Page, server: ProseviewServer
+):
+    """Settings' one Word variety picker: a genre's preset (saved as the
+    genre, no ranges) or Custom ranges; the Analysis line follows each."""
+    yaml_path = server.root / ".proseview.yaml"
+    yaml_text = lambda: yaml_path.read_text(encoding="utf-8") if yaml_path.exists() else ""  # noqa: E731
+    open_scene(page, server)
+    open_scene_analysis(page)
+    about = lambda: page.locator("#sceneSummaryInfo").text_content()  # noqa: E731
+    assert "Typical: 60\u201385 (Contemporary)" in about()
+
+    page.evaluate("openSettings()")
+    page.wait_for_selector("#settingsDialog[open]")
+    assert page.locator("#setting_genre").count() == 0, "genre is Word variety's preset now"
+    picker = page.locator("#setting_variety")
+    assert picker.input_value() == "contemporary"
+    options = picker.locator("option").all_inner_texts()
+    assert "Literary \u00b7 Variety 0.74\u20130.77 \u00b7 MTLD 85\u2013110" in options
+    assert options[-1] == "Custom\u2026"
+    assert page.locator("#settingVarietyCustom").is_hidden(), "only Custom shows the numbers"
+    assert "mattr" not in page.locator("#settingsPanelGeneral").inner_text().lower()
+    # The same ⓘ as the scene's summary line, from the same text.
+    info = page.locator('label[for="setting_variety"] .scene-pass-info')
+    pop = page.locator("#settingVarietyInfo")
+    assert not pop.is_visible()
+    info.hover()
+    assert pop.is_visible()
+    shared = page.evaluate("() => wordVarietyAbout(null, false).textContent")
+    assert pop.text_content() == shared and "Variety (MATTR)" in shared and "72%" in shared
+    info.click()
+    page.mouse.move(0, 0)
+    assert pop.is_visible(), "a click keeps it open"
+    info.press("Escape")
+    assert not pop.is_visible()
+    assert page.locator("#settingsDialog[open]").count() == 1, "Esc put away the ⓘ, not Settings"
+
+    # A preset saves its genre and no ranges.
+    picker.select_option("literary")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: "genre: literary" in yaml_text(), message="the preset was not saved")
+    assert "_band" not in yaml_text()
+    assert "Typical: 85\u2013110 (Literary)" in about()
+    assert "Typical: 85\u2013110 (Literary)" in pop.text_content(), "the ⓘ follows the saved ranges"
+
+    # Custom: a range the wrong way round is not saved.
+    picker.select_option("custom")
+    assert page.locator("#settingVarietyCustom").is_visible()
+    assert page.locator("#setting_mtld_low").input_value() == "85"
+    page.fill("#setting_mtld_low", "90")
+    page.fill("#setting_mtld_high", "70")
+    page.click("#settingsSaveBtn")
+    page.wait_for_timeout(300)
+    assert "mtld_band" not in yaml_text()
+    page.fill("#setting_mtld_high", "95")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: "mtld_band" in yaml_text(), message="the custom range was not saved")
+    assert "Typical: 90\u201395 (your custom range)" in about()
+    assert picker.input_value() == "custom"
+
+    # Back to a preset drops the custom ranges.
+    picker.select_option("speculative")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: "genre: speculative" in yaml_text() and "_band" not in yaml_text(),
+                message="the preset did not replace the custom ranges")
+    assert "Typical: 90\u2013120 (Fantasy / sci-fi)" in about()

@@ -187,12 +187,14 @@
             s.replaceChildren();
             let mattrBox = null;
             let mtldBox = null;
-            const mBand = window.lexicalBands ? window.lexicalBands.mattr : [0.65, 0.85];
-            const lBand = window.lexicalBands ? window.lexicalBands.mtld : [50, 180];
+            // The page's lexicalBands, which the dashboard and Settings use too.
+            const mBand = lexicalBands.mattr;
+            const lBand = lexicalBands.mtld;
             const mTarget = 'Typical: ' + mBand[0] + ' - ' + mBand[1];
             const lTarget = 'Typical: ' + lBand[0] + ' - ' + lBand[1];
 
-            const md = window.medians || {};
+            // The book's medians are a top-level const, not a property of window.
+            const md = (typeof medians !== 'undefined' && medians) || {};
             const hintAvg = function(key, formatFn) {
                 if (md[key] === undefined) return '';
                 return `\n\nBook median: ${formatFn(md[key])}`;
@@ -204,30 +206,31 @@
 
             [
                 {value: m.words.toLocaleString(), label: 'Words', unit: 'in this scene',
+                 typical: md.words !== undefined ? Math.round(md.words).toLocaleString() : '',
                  warn: isOutlier(m.words, md.words),
                  hint: 'Total word count of the prose in this scene.' + hintAvg('words', v => Math.round(v).toLocaleString())},
-                {value: m.dlg_pct.toFixed(1) + '%', label: 'Dialogue',
+                {value: m.dlg_pct.toFixed(1) + '%', label: 'Dialogue', pass: 'dialogue',
+                 typical: md.dlg_pct !== undefined ? md.dlg_pct.toFixed(0) + '%' : '',
                  warn: isOutlier(m.dlg_pct, md.dlg_pct),
                  unit: 'of all words', hint: 'Ratio of words in quotes to all words.' + hintAvg('dlg_pct', v => v.toFixed(1) + '%')},
-                {value: m.sent_stdev ? m.sent_stdev.toFixed(1) : '0.0', label: 'Sent. Variation', unit: 'standard deviation', 
-                 warn: isOutlier(m.sent_stdev, md.sent_stdev),
-                 hint: 'Mathematical standard deviation of your sentence lengths.\n\n• High: good variation between short punchy sentences and long flowing ones.\n• Low: monotonous pacing where all sentences are a similar length.' + hintAvg('sent_stdev', v => v.toFixed(1))},
+                // Sentence length and its variation are in the strip above.
                 {value: m.sensory.toFixed(1), label: 'Sensory', unit: 'per 1,000 words', pass: 'sensory',
+                 typical: md.sensory !== undefined ? md.sensory.toFixed(1) : '',
                  warn: isOutlier(m.sensory, md.sensory),
                  hint: 'Sight, sound, smell, touch and taste words per thousand.\n\n• The Sensory pass marks them in the prose.' + hintAvg('sensory', v => v.toFixed(1))},
                 {value: m.first_person.toFixed(1), label: '1st Person', unit: 'per 1,000 words',
                  pass: 'first_person',
+                 typical: md.first_person !== undefined ? md.first_person.toFixed(1) : '',
                  warn: isOutlier(m.first_person, md.first_person),
                  hint: 'First-person pronouns per thousand words.\n\n• The First Person pass marks them.' + hintAvg('first_person', v => v.toFixed(1))},
                 {value: m.passive.toFixed(1), label: 'Passive', unit: 'per 1,000 words',
                  pass: 'passive_voice',
+                 typical: md.passive !== undefined ? md.passive.toFixed(1) : '',
                  warn: isOutlier(m.passive, md.passive),
                  hint: 'Passive constructions per thousand words.\n\n• The Passive Voice pass marks them.' + hintAvg('passive', v => v.toFixed(1))},
-                {value: m.avg_sent.toFixed(1), label: 'Avg. Sentence', unit: 'words',
-                 warn: isOutlier(m.avg_sent, md.avg_sent),
-                 hint: 'Average number of words per sentence.' + hintAvg('avg_sent', v => v.toFixed(1))},
                 {value: m.crutch.toFixed(1), label: 'Crutch', unit: 'per 1,000 words',
                  pass: 'crutch_words',
+                 typical: md.crutch !== undefined ? md.crutch.toFixed(1) : '',
                  warn: isOutlier(m.crutch, md.crutch),
                  hint: 'Hedging words per thousand words.\n\n• Examples: just, really, quite, actually, and similar.\n• The Crutch Words pass marks them.' + hintAvg('crutch', v => v.toFixed(1))},
                 {id: 'sceneMattrBox', value: m.mattr ? m.mattr.toFixed(3) : '-', label: 'Variety (MATTR)', unit: 'Local • ' + mTarget,
@@ -237,12 +240,20 @@
                  warn: m.mtld ? (m.mtld < lBand[0] || m.mtld > lBand[1]) : false,
                  hint: 'Measure of Textual Lexical Diversity.\n\n• Whole-scene lexical variety.\n• A measure of vocabulary richness taking the entire scene length into account.\n• Typical range: ' + lBand[0] + ' to ' + lBand[1] + '.'},
             ].forEach(function(stat) {
-                const box = document.createElement('div');
+                // A tile with a matching highlight check switches that check,
+                // as its row in the list does; the others only report.
+                const box = document.createElement(stat.pass ? 'button' : 'div');
                 box.className = 'scene-stat-box';
                 if (stat.warn) box.classList.add('scene-stat-warn');
                 if (stat.id) box.id = stat.id;
-                if (stat.pass) box.dataset.pass = stat.pass;
-                if (stat.hint) box.title = stat.hint;
+                if (stat.pass) {
+                    box.type = 'button';
+                    box.dataset.pass = stat.pass;
+                    box.classList.add('scene-stat-toggle');
+                    box.setAttribute('aria-pressed', hls[stat.pass] ? 'true' : 'false');
+                    box.onclick = function() { toggleHighlight(stat.pass); };
+                }
+                if (stat.hint) box.title = stat.hint + (stat.pass ? '\n\n• Click to highlight them in the text.' : '');
 
                 const val = document.createElement('span');
                 val.className = 'val';
@@ -256,6 +267,13 @@
                     unit.className = 'unit';
                     unit.textContent = stat.unit;
                     box.appendChild(unit);
+                }
+                // An unusual number says what usual is, quietly, beneath it.
+                if (stat.warn && stat.typical) {
+                    const typical = document.createElement('span');
+                    typical.className = 'scene-stat-typical';
+                    typical.textContent = 'vs typical ' + stat.typical;
+                    box.appendChild(typical);
                 }
                 s.appendChild(box);
                 
@@ -276,6 +294,7 @@
                             mtldBox.querySelector('.val').textContent = m.mtld.toFixed(1);
                             if (m.mattr < mBand[0] || m.mattr > mBand[1]) mattrBox.classList.add('scene-stat-warn');
                             if (m.mtld < lBand[0] || m.mtld > lBand[1]) mtldBox.classList.add('scene-stat-warn');
+                            if (typeof refreshSceneSummary === 'function') refreshSceneSummary();
                         }
                     })
                     .catch(function(err) { console.error('Failed to fetch scene lexical stats', err); });
@@ -510,6 +529,7 @@
             // Tiles are readouts, not controls: they only echo which pass is on.
             document.querySelectorAll('#modalStats [data-pass]').forEach(function(box) {
                 box.classList.toggle('scene-stat-on', !!hls[box.dataset.pass]);
+                box.setAttribute('aria-pressed', hls[box.dataset.pass] ? 'true' : 'false');
             });
             if (typeof syncScenePassRows === 'function') syncScenePassRows();
         }
@@ -530,8 +550,10 @@
             const btn = document.getElementById('scenePassAllBtn');
             if (!btn) return;
             const anyOn = PASS_ORDER.some(k => hls[k]);
-            btn.textContent = anyOn ? 'Clear' : 'All';
-            btn.setAttribute('aria-pressed', anyOn ? 'true' : 'false');
+            // Only clears; hidden (its space kept) while nothing is on.
+            btn.style.visibility = anyOn ? 'visible' : 'hidden';
+            btn.setAttribute('aria-hidden', anyOn ? 'false' : 'true');
+            btn.tabIndex = anyOn ? 0 : -1;
         }
 
         function toggleAllHighlights() {

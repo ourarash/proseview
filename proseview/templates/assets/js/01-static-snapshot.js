@@ -95,6 +95,11 @@
                 if (window.PROSEVIEW_STATIC_EDITS && url.pathname.indexOf('/api/export/') === 0) return demoExport(url, init);
                 if (url.pathname === '/analysis.json') return realFetch('analysis.json', init);
                 if (url.pathname === '/api/scene/lexical') return sceneLexical(url);
+                // A scene's highlight marks: one file per scene beside the page.
+                if (url.pathname === '/api/scene/highlights') {
+                    const scene = url.searchParams.get('path') || '';
+                    return realFetch('highlights/' + scene.split('/').map(encodeURIComponent).join('/') + '.json', init);
+                }
                 if (url.pathname === '/save-scene' && window.PROSEVIEW_STATIC_EDITS) return demoSave();
                 if (url.pathname === '/api/files/save' && window.PROSEVIEW_STATIC_EDITS) return demoSave();
                 return Promise.resolve(jsonResponse({ok: false, error: 'This is a read-only snapshot.'}, 503));

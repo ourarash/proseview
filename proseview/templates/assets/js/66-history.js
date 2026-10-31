@@ -42,7 +42,7 @@ function loadSceneHistory(scenePath) {
                     <div class="history-item" onclick="openDiffModal('${scenePath}', '${item.file_ts}')">
                         <div class="history-item-header">
                             <span class="history-item-time">${timeStr} <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">${dateStr}</span></span>
-                            <span class="history-item-source">${item.source}</span>
+                            <span class="history-item-source">${String(item.source).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';')}</span>
                         </div>
                         <div class="history-item-details">
                             <span>${item.diff_summary}</span>

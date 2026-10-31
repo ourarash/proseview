@@ -48,7 +48,8 @@ target_words: 80000
 # Daily word goal (drives the "days to finish" estimate).
 daily_target: 500
 
-# Genre. Sets the typical MTLD range your scenes are compared against:
+# Genre. Sets the typical MTLD range your scenes are compared against
+# (Settings → Word variety):
 #   childrens     40-60    contemporary  60-85
 #   literary      85-110   speculative   90-120
 # Dialogue-heavy prose repeats pronouns and scores lower; world-building

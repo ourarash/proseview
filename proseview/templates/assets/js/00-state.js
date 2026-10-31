@@ -39,7 +39,11 @@ let currentTab = 'overview';
             sensory: 'Sensory',
             sentence_starts: 'Sentence Openings',
             repeats: 'Repeats',
-            first_person: 'First Person'
+            first_person: 'First Person',
+            echoes: 'Echoes',
+            sticky_sentences: 'Sticky Sentences',
+            dialogue_tags: 'Dialogue Tags',
+            dialogue: 'Dialogue'
         };
         const PASS_CLASSES = {
             passive_voice: 'hl-passive',
@@ -50,7 +54,11 @@ let currentTab = 'overview';
             sensory: 'hl-sensory',
             sentence_starts: 'hl-openings',
             repeats: 'hl-repeat',
-            first_person: 'hl-first-person'
+            first_person: 'hl-first-person',
+            echoes: 'hl-echo',
+            sticky_sentences: 'hl-sticky',
+            dialogue_tags: 'hl-dialogue-tag',
+            dialogue: 'hl-dialogue'
         };
         // Every pass carries a line of examples rather than a definition:
         // "felt, saw, heard, noticed" says what Filter Verbs are faster than a
@@ -66,32 +74,41 @@ let currentTab = 'overview';
             filter_verbs: 'felt, saw, heard, noticed',
             hyperbole: 'always, never, everything',
             sensory: 'sight, sound, smell, touch, taste',
-            passive_voice: 'was written, is known'
+            passive_voice: 'was written, is known',
+            echoes: 'walked … walking, close together',
+            sticky_sentences: 'the, of, in, her, over 60%',
+            dialogue_tags: 'she cried, said sternly, she smiled',
+            dialogue: 'everything in quotes'
         };
-        // The second layer: what the pass counts, and why it might matter.
-        // Shown on hover and on keyboard focus, never required to read the row.
+        // The one explanation of each check: what it marks, and why it might
+        // matter. The check's ⓘ and a mark's click card both show it.
         const PASS_NOTES = {
-            repeats: "Marks the content words this scene uses most (\u201cthe\u201d, \u201cand\u201d and the like are left out), with every form of a word counted together: \u201cblock\u201d and \u201cblocks\u201d are one. Repeating a word on purpose builds rhythm; repeating it by accident is what readers notice. Swap some for a synonym or a pronoun, or cut them.",
+            repeats: "Marks the content words this scene uses most (\u201cthe\u201d, \u201cand\u201d and the like are left out), with every form of a word counted together: \u201cblock\u201d and \u201cblocks\u201d are one. Repeating a word on purpose builds rhythm; repeating it by accident is what readers notice. The small 2/6 on each says which use of the word it is and how many the scene has; click one for how many are in its paragraph, or point at it to light its other uses. Swap some for a synonym or a pronoun, or cut them.",
             first_person: 'Marks I, me, my, mine and myself in the narration of a third-person scene, where they can mean the narrator has slipped into the character’s voice. Dialogue is skipped, and so is a scene told in first person (its pov: says first, or its narration plainly is).',
             sentence_starts: 'Marks three or more sentences in a row that begin with the same word (She… She… She…), counting across paragraph breaks. Readers hear the pattern even when they can’t name it. Vary the openings: start with an action, a detail, or a clause.',
             crutch_words: 'Marks, outside dialogue, filler words that rarely add meaning: just, very, really, quite, rather, pretty, somewhat, slightly, somehow, suddenly, actually, basically, essentially, literally, indeed. Read the sentence without the word. If it means the same, delete it; if it goes flat, pick a stronger verb or adjective instead (“very cold” → “freezing”).',
             lyrical: 'Marks words that signal a comparison or a change: like, as, seemed, became, transformed, shimmered, bloomed, dissolved, echoed. They show how much figurative language the scene carries. “As” and “like” also have plain uses, so not every mark is a simile.',
             filter_verbs: 'Marks verbs of perceiving and thinking: saw, heard, felt, noticed, thought, knew, wondered, realized, seemed, looked, watched. They report that the character perceived something instead of showing the thing itself. Try cutting the verb: “she saw the door open” → “the door opened”.',
             hyperbole: 'Marks, outside dialogue, absolute words: never, always, forever, perfect, impossible, utterly, completely, entirely, absolute, totally, worst, best, everything, nothing. Used often, they stop carrying weight and can read as exaggeration. Keep the ones you mean literally; soften or cut the rest.',
-            sensory: 'Marks words tied to one of the five senses: sight, sound, smell, touch and taste. Hover a mark to see which sense. Useful for spotting a scene that leans on sight alone.',
-            passive_voice: 'Marks a form of “to be” followed by a past participle, as in “the letter was written”. Passive hides who did the action. That is sometimes what you want, but a scene full of it feels static. Try naming who acted: “she wrote the letter”.'
+            sensory: 'Marks words tied to one of the five senses: sight, sound, smell, touch and taste. Click a mark to see which sense. Useful for spotting a scene that leans on sight alone.',
+            passive_voice: 'Marks a form of “to be” followed by a past participle, as in “the letter was written”. Passive hides who did the action. That is sometimes what you want, but a scene full of it feels static. Try naming who acted: “she wrote the letter”.',
+            echoes: 'Marks words that come back within 50 words of each other, counting their forms (walk, walked), every one of them. The small 2/3 on each says which word of its echo it is and how many it has; the first is lighter, and pointing at one lights its partners. Names and everyday words like time or enough are skipped. The count is of echoes, not of words.',
+            sticky_sentences: 'Marks sentences of 10+ words where more than 60% are glue words like the, of, in, her. They carry little meaning, so the sentence takes longer to get somewhere.',
+            dialogue_tags: 'Marks the \u201cshe said\u201d next to dialogue when it uses a verb other than said or asked, has an adverb, uses a non-speech verb like smiled, or when 6+ lines go by with no tag. Fancy tags aren\u2019t wrong; this shows where you use them.',
+            dialogue: 'Tints everything inside quotation marks ("\u2026", \u201c\u2026\u201d and \u2018\u2026\u2019), which is what the Dialogue % counts. Apostrophes are not quotes, and speech left open at a paragraph\u2019s end runs to its end. Straight single quotes are not counted, since they can\u2019t be told from apostrophes.'
         };
 
-        const PASS_INLINE_TIPS = {
-            passive_voice: 'Passive voice: "{word}" leaves out who did the action. If it matters who acted, name them as the subject ("the ball was thrown" → "he threw the ball").',
-            filter_verbs: 'Filter verb: "{word}" tells the reader the character perceived something, which adds distance. Try describing the thing itself ("she saw the door open" → "the door opened").',
-            crutch_words: 'Filler word: "{word}" rarely adds meaning. Read the sentence without it; if nothing is lost, delete it. If it goes flat, use a stronger word instead ("really cold" → "freezing").',
-            hyperbole: 'Absolute: "{word}" claims all or nothing. If it isn\u2019t literally true, a milder word may be more convincing ("he always forgot" → "he often forgot").',
-            repeats: '"{word}" appears {para} times in this paragraph and {scene} times in this scene, counting its other forms. If the repetition isn\u2019t deliberate, vary or cut some of them.',
-            first_person: 'First-person pronoun in third-person narration: "{word}". Check whether the narrator has slipped into the character\u2019s voice.',
-            lyrical: 'Figurative marker: "{word}" often introduces a simile or a transformation. Check that the comparison earns its place; "as" and "like" also have plain uses.',
-            sensory: 'Sensory word: "{word}". Shows which senses the scene draws on.',
-            sentence_starts: '{count} sentences in a row begin with "{word}". Try starting one or two of them differently.'
+        // A pass whose marks come in kinds lists a count of each under its row
+        // while it is on. A mark is of a kind when its note contains the
+        // kind's `match`, which mirrors DIALOGUE_TAG_NOTES in highlights.py.
+        const PASS_BREAKDOWNS = {
+            dialogue_tags: [
+                // A phrase like "in a sad little voice" counts with the adverbs.
+                {label: 'Adverb on a tag', match: ['Adverb on a dialogue tag', 'Describes how it was said']},
+                {label: 'Other than said or asked', match: 'Other than said or asked'},
+                {label: 'Not a speech verb', match: 'Not a speech verb'},
+                {label: '6+ lines with no tag', match: 'lines in a row with no tag'}
+            ]
         };
 
         const THEME_STORAGE_KEY = 'proseview-theme';

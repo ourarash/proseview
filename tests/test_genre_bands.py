@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 from proseview.config import (  # noqa: E402
     DEFAULT_GENRE,
     GENRE_LABELS,
+    VARIETY_PRESET_LABELS,
     GENRE_MTLD_BANDS,
     Config,
     ConfigError,
@@ -180,7 +181,8 @@ def test_the_analysis_payload_carries_both_references():
 
     assert float(lexical["mtldMedian"]) > 0, "the median must not be discarded again"
     assert lexical["mtldBand"] == list(GENRE_MTLD_BANDS[DEFAULT_GENRE])
-    assert lexical["genreLabel"] == GENRE_LABELS[DEFAULT_GENRE]
+    # Named as Settings → Word variety names the preset.
+    assert lexical["genreLabel"] == VARIETY_PRESET_LABELS[DEFAULT_GENRE]
 
     # Alice sits inside the contemporary range, which is the whole point.
     low, high = lexical["mtldBand"]

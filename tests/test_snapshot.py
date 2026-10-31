@@ -134,6 +134,9 @@ def test_a_snapshot_leaves_out_the_recent_changes_card(tmp_path: Path):
     """What the author touched this week is not something a reader of a
     published copy acts on; the author's own dashboard lists it."""
     root = _novel(tmp_path)
+    # The card lists the week's edits, and the copied fixture keeps its old
+    # file dates: a scene touched now gives it something to list.
+    next((root / "manuscript").rglob("*.md")).touch()
     write_snapshot(root, tmp_path / "site")
     html = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
     assert "Pick up where you left off" not in html
@@ -233,3 +236,12 @@ def test_the_demo_ships_ready_made_books_for_its_export_dialog(tmp_path: Path):
     assert index["files"]["manuscript-docx"]["name"] == "the-shop-manuscript.docx"
     word = json.loads((export / "previews" / "manuscript-docx.json").read_text(encoding="utf-8"))
     assert word["format"] == "docx" and (export / "previews" / "manuscript-docx" / word["pages"][1]["href"]).is_file()
+
+
+def test_a_snapshot_carries_marks_beside_the_page_not_in_it(tmp_path: Path):
+    out = tmp_path / "site"
+    write_snapshot(_novel(tmp_path), out)
+    files = list((out / "highlights").rglob("*.json"))
+    assert files and all(json.loads(f.read_text(encoding="utf-8"))["ok"] for f in files)
+    html = (out / "index.html").read_text(encoding="utf-8")
+    assert "\"paragraph_index\":" not in html, "no mark positions are inlined"

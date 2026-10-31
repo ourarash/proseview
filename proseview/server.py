@@ -29,7 +29,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Any
 
-from .config import Config
+from .config import GENRE_MTLD_BANDS, Config, book_config_keys, lexical_bands, validated_band
 from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError, claude_logged_in, open_login_terminal
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
@@ -44,7 +44,7 @@ from .patches import Hunk, parse_hunks
 from .privacy import PrivacyLock
 from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
-    build_scene_data,
+    build_scene_data, scene_highlights,
 )
 from .lexical import paragraph_blocks, calculate_lexical_stats, prose_only
 from .repo import (
@@ -814,6 +814,24 @@ def _create_file_backup(resolved, old_raw: str, new_raw: str, source: str, repo_
                 to_delete.unlink()
             except OSError:
                 pass
+
+
+def _suggestion_save_source(raw: Any) -> str:
+    """How History names a save that applied or undid a highlight suggestion.
+
+    Built here from checked parts, never taken from the browser as text.
+    """
+    if not isinstance(raw, dict):
+        return "Manual Save"
+    check = str(raw.get("check") or "")
+    agent = str(raw.get("agent") or "")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z ]{0,39}", check):
+        return "Manual Save"
+    if raw.get("undone"):
+        return f"Suggestion undone: {check}"
+    if agent not in {"codex", "claude"}:
+        return "Manual Save"
+    return f"Suggestion: {check} ({'Codex' if agent == 'codex' else 'Claude'})"
 
 
 def resolve_scene_write_target(
@@ -1959,23 +1977,39 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _handle_settings_update(self, body: dict[str, Any]) -> None:
         try:
-            cfg = Config.load(Path(self.repo_root))
+            root = Path(self.repo_root)
+            cfg = Config.load(root)
             kwargs = {}
+            unset = []
             for k, v in body.items():
                 if k in ["target_words", "daily_target"]:
                     kwargs[k] = int(v)
                 elif k == "genre":
                     kwargs[k] = str(v)
                 elif k in ["mattr_band", "mtld_band"]:
-                    kwargs[k] = (float(v[0]), float(v[1]))
+                    # null puts the band back to its default.
+                    if v is None:
+                        unset.append(k)
+                    else:
+                        kwargs[k] = validated_band(k, v)
                 elif k == "manuscript_path":
-                    kwargs[k] = _validated_manuscript_path(Path(self.repo_root), v)
-            
+                    kwargs[k] = _validated_manuscript_path(root, v)
+
+            # Word variety's presets are genres: one picked saves the genre
+            # and no ranges. An MTLD band the book never set follows its
+            # genre, so a new genre brings its own band rather than pinning
+            # the old one.
+            genre = kwargs.get("genre", cfg.genre)
+            if "mtld_band" not in kwargs and ("mtld_band" in unset or "mtld_band" not in book_config_keys(root)):
+                kwargs["mtld_band"] = GENRE_MTLD_BANDS.get(genre, cfg.mtld_band)
+            if "mattr_band" in unset:
+                kwargs["mattr_band"] = Config().mattr_band
+
             new_cfg = cfg.with_overrides(**kwargs)
-            new_cfg.save(Path(self.repo_root))
+            new_cfg.save(root, unset=unset)
             
             self.invalidate()
-            self._send_json({"ok": True})
+            self._send_json({"ok": True, "lexical_bands": lexical_bands(new_cfg, root)})
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, 400)
 
@@ -2289,6 +2323,19 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path.startswith("/api/scene/highlights?"):
+            # One scene's highlight marks, fetched when the scene opens.
+            rel = (parse_qs(urlparse(self.path).query).get("path") or [""])[0]
+            try:
+                payload = scene_highlights(Path(self.repo_root), Config.load(Path(self.repo_root)), rel)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+                return
+            if payload is None:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+                return
+            self._send_json({"ok": True, **payload})
+            return
         if self.path.startswith("/api/scene/lexical?"):
             try:
                 query = parse_qs(urlparse(self.path).query)
@@ -2541,6 +2588,45 @@ class _Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "catalog": self.discuss_manager.list_models(body.get("agent") or "codex"),
                     })
+                    return
+                if path == "/api/discuss/highlight-suggest":
+                    # One request outside every conversation: no chat, no History.
+                    result = self.discuss_manager.suggest_for_highlight(
+                        str(body.get("agent") or "codex"),
+                        pass_name=str(body.get("pass") or ""),
+                        label=str(body.get("label") or ""),
+                        explanation=str(body.get("explanation") or ""),
+                        note=str(body.get("note") or ""),
+                        flagged=str(body.get("flagged") or ""),
+                        text=str(body.get("text") or ""),
+                        paragraph=str(body.get("paragraph") or ""),
+                        scene=str(body.get("scene") or ""),
+                        chat_model=str(body.get("chat_model") or ""),
+                        chat_effort=str(body.get("chat_effort") or ""),
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if path == "/api/discuss/suggestion-settings":
+                    if body.get("save"):
+                        settings = self.discuss_manager.save_suggestion_settings(body)
+                    else:
+                        settings = self.discuss_manager.suggestion_settings()
+                    self._send_json({"ok": True, "settings": settings})
+                    return
+                if path == "/api/discuss/suggestion-try":
+                    manager = self.discuss_manager
+                    result = manager.suggest_for_highlight(
+                        str(body.get("agent") or "codex"),
+                        pass_name="sticky_sentences", label="Sticky Sentences",
+                        explanation=(
+                            "Marks sentences of 10+ words where more than 60% are glue words like the, "
+                            "of, in, her."
+                        ),
+                        note="79% glue words", text=manager.SUGGESTION_SAMPLE, paragraph="",
+                        chat_model=str(body.get("chat_model") or ""),
+                        chat_effort=str(body.get("chat_effort") or ""),
+                    )
+                    self._send_json({"ok": True, **result})
                     return
                 if path == "/api/discuss/skills":
                     skills = self.discuss_manager.list_skills(
@@ -2948,13 +3034,14 @@ class _Handler(BaseHTTPRequestHandler):
                 # Overwriting is the writer's explicit choice after reading the
                 # diff, so the stale baseline they opened with is moot.
                 overwrite = bool(body.get("overwrite"))
+                source = "Overwrote Disk Version" if overwrite else _suggestion_save_source(body.get("suggestion"))
                 save_scene_content(
                     body["abs_path"],
                     body["content"],
                     float(body.get("open_mtime") or 0) if overwrite else float(body["open_mtime"]),
                     self.repo_root,
                     Config.load(Path(self.repo_root)).manuscript_subdir,
-                    source="Overwrote Disk Version" if overwrite else "Manual Save",
+                    source=source,
                     overwrite=overwrite,
                     frontmatter=body.get("frontmatter") if isinstance(body.get("frontmatter"), str) else None,
                 )

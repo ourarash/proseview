@@ -85,6 +85,18 @@
             --hl-first-person-bg: #fef9c3;
             --hl-first-person-text: #713f12;
             --hl-first-person-border: #ca8a04;
+            --hl-echo-bg: #e0e7ff;
+            --hl-echo-text: #3730a3;
+            --hl-echo-border: #6366f1;
+            --hl-echo-partner-bg: #f9a8d4;
+            --hl-echo-partner-text: #500724;
+            --hl-echo-partner-border: #db2777;
+            --hl-sticky-bg: #eef2f6;
+            --hl-sticky-border: #94a3b8;
+            --hl-dialogue-tag-bg: #ccfbf1;
+            --hl-dialogue-tag-text: #115e59;
+            --hl-dialogue-tag-border: #14b8a6;
+            --stat-warn: #b45309;
         }
 
         [data-theme="dark"] {
@@ -169,6 +181,18 @@
             --hl-first-person-bg: #403014;
             --hl-first-person-text: #fde68a;
             --hl-first-person-border: #fbbf24;
+            --hl-echo-bg: #1e2550;
+            --hl-echo-text: #c7d2fe;
+            --hl-echo-border: #818cf8;
+            --hl-echo-partner-bg: #9d174d;
+            --hl-echo-partner-text: #fce7f3;
+            --hl-echo-partner-border: #f472b6;
+            --hl-sticky-bg: #222b36;
+            --hl-sticky-border: #64748b;
+            --hl-dialogue-tag-bg: #0f3b38;
+            --hl-dialogue-tag-text: #99f6e4;
+            --hl-dialogue-tag-border: #2dd4bf;
+            --stat-warn: #fbbf24;
         }
 
         [data-theme="docsify"] {
@@ -253,6 +277,18 @@
             --hl-first-person-bg: #352810;
             --hl-first-person-text: #fde68a;
             --hl-first-person-border: #f0ad4e;
+            --hl-echo-bg: #1e2550;
+            --hl-echo-text: #c7d2fe;
+            --hl-echo-border: #818cf8;
+            --hl-echo-partner-bg: #9d174d;
+            --hl-echo-partner-text: #fce7f3;
+            --hl-echo-partner-border: #f472b6;
+            --hl-sticky-bg: #222b36;
+            --hl-sticky-border: #64748b;
+            --hl-dialogue-tag-bg: #0f3b38;
+            --hl-dialogue-tag-text: #99f6e4;
+            --hl-dialogue-tag-border: #2dd4bf;
+            --stat-warn: #fbbf24;
         }
 
         [data-theme="hopscotch"] {
@@ -338,6 +374,18 @@
             --hl-first-person-bg: #4a3b20;
             --hl-first-person-text: #ffe39a;
             --hl-first-person-border: #fdcc59;
+            --hl-echo-bg: #1e2550;
+            --hl-echo-text: #c7d2fe;
+            --hl-echo-border: #818cf8;
+            --hl-echo-partner-bg: #9d174d;
+            --hl-echo-partner-text: #fce7f3;
+            --hl-echo-partner-border: #f472b6;
+            --hl-sticky-bg: #222b36;
+            --hl-sticky-border: #64748b;
+            --hl-dialogue-tag-bg: #0f3b38;
+            --hl-dialogue-tag-text: #99f6e4;
+            --hl-dialogue-tag-border: #2dd4bf;
+            --stat-warn: #fbbf24;
         }
 
         :root[data-font="literary"] {
@@ -1866,14 +1914,15 @@
             font-weight: 700;
         }
 
-        .hl-repeat[data-count]::after {
-            content: attr(data-count);
+        .hl-repeat-count {
+            white-space: nowrap;
             font-size: 0.6em;
-            font-weight: 400;
             opacity: 0.7;
             margin-left: 1px;
             vertical-align: super;
             line-height: 0;
+            color: var(--hl-repeat-text);
+            user-select: none;
         }
 
         .hl-short {
@@ -1940,6 +1989,55 @@
             border-bottom: 2px solid var(--hl-first-person-border);
         }
 
+        /* Speech, as the Dialogue % counts it: a quiet tint. */
+        .hl-dialogue {
+            background-color: color-mix(in srgb, var(--hl-dialogue-tag-border) 14%, transparent);
+            border-radius: 2px;
+        }
+
+        .hl-echo {
+            background-color: var(--hl-echo-bg);
+            color: var(--hl-echo-text);
+            border-bottom: 2px dotted var(--hl-echo-border);
+        }
+
+        /* An echo's first word is lighter; its partners light up together, as
+           do a repeated word's forms. */
+        .hl-echo.is-first {
+            background-color: color-mix(in srgb, var(--hl-echo-bg) 45%, transparent);
+        }
+
+        .hl-echo.is-partner,
+        .hl-repeat.is-partner {
+            background-color: var(--hl-echo-partner-bg);
+            color: var(--hl-echo-partner-text);
+            border-bottom-color: var(--hl-echo-partner-border);
+        }
+
+        .hl-echo-count {
+            white-space: nowrap;
+            font-size: 0.6em;
+            opacity: 0.7;
+            margin-left: 1px;
+            vertical-align: super;
+            line-height: 0;
+            color: var(--hl-echo-text);
+            user-select: none;
+        }
+
+        /* A whole sentence: a tint and a dashed rule, but the text keeps its own
+           colour so a long mark stays easy to read. */
+        .hl-sticky {
+            background-color: var(--hl-sticky-bg);
+            border-bottom: 1px dashed var(--hl-sticky-border);
+        }
+
+        .hl-dialogue-tag {
+            background-color: var(--hl-dialogue-tag-bg);
+            color: var(--hl-dialogue-tag-text);
+            border-bottom: 2px solid var(--hl-dialogue-tag-border);
+        }
+
         .scene-stat-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -1958,15 +2056,40 @@
             font: inherit;
         }
 
+        /* Plain numbers; only one far from the book's median is coloured,
+           a soft amber, so the one or two that matter stand out quietly. */
         .scene-stat-box .val {
             font-weight: 800;
             font-size: 15px;
             display: block;
-            color: var(--primary);
+            color: var(--text-main);
         }
 
         .scene-stat-box.scene-stat-warn .val {
-            color: var(--danger);
+            color: var(--stat-warn);
+        }
+
+        .scene-stat-typical {
+            display: block;
+            font-size: 9px;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* A tile that switches its highlight check: a button that looks like
+           a tile, with a quiet hover. */
+        button.scene-stat-box {
+            color: inherit;
+            cursor: pointer;
+        }
+
+        button.scene-stat-box:hover {
+            background: var(--surface-muted);
+        }
+
+        button.scene-stat-box:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
         }
 
         .scene-stat-box .lbl {
@@ -4947,6 +5070,12 @@
 
         .utility-tab-unavailable {
             opacity: 0.55;
+        }
+
+        /* A scene tab over the dashboard: still in its place, nothing to open. */
+        .utility-tab:disabled {
+            opacity: 0.4;
+            cursor: default;
         }
 
         .discuss-empty-state {
@@ -8861,6 +8990,414 @@
         }
 
         /* ── The Analysis tab ────────────────────────────────────────────── */
+        .rhythm {
+            position: relative;
+        }
+
+        /* In order | Spread, on the heading's line, so switching moves nothing. */
+        .rhythm-switch {
+            position: absolute;
+            top: -24px;
+            right: 0;
+            display: flex;
+            gap: 2px;
+        }
+
+        .rhythm-switch-btn {
+            border: 1px solid transparent;
+            border-radius: 5px;
+            background: none;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 10px;
+            padding: 1px 6px;
+            cursor: pointer;
+        }
+
+        .rhythm-switch-btn[aria-selected="true"] {
+            border-color: var(--border);
+            color: var(--text-main);
+        }
+
+        .rhythm-switch-btn:focus-visible,
+        .rhythm-bucket:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+
+        .rhythm-bars {
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 46px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* The scene's average, faintly across the bars. */
+        .rhythm-avg {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 1px dashed color-mix(in srgb, var(--text-muted) 55%, transparent);
+            pointer-events: none;
+        }
+
+        .rhythm-bar {
+            flex: 1 1 0;
+            min-width: 1px;
+            max-width: 12px;
+            border-radius: 1px 1px 0 0;
+            background: color-mix(in srgb, var(--primary) 38%, transparent);
+            cursor: pointer;
+        }
+
+        .rhythm-bar.is-dialogue {
+            background: color-mix(in srgb, var(--primary) 18%, transparent);
+        }
+
+        .rhythm-bar.is-long {
+            background: var(--primary);
+        }
+
+        /* Where a paragraph begins: a small tick under the baseline, clear of
+           the bars. */
+        .rhythm-bar.is-paragraph {
+            position: relative;
+        }
+
+        .rhythm-bar.is-paragraph::before {
+            content: "";
+            position: absolute;
+            left: -2px;
+            bottom: -5px;
+            height: 4px;
+            border-left: 1px solid color-mix(in srgb, var(--text-muted) 70%, transparent);
+            pointer-events: none;
+        }
+
+        .rhythm-note {
+            cursor: help;
+        }
+
+        .rhythm-legend {
+            min-height: 2.8em;
+            margin: 8px 0 0;
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--text-muted);
+        }
+
+        .rhythm-large .rhythm-legend {
+            min-height: 1.6em;
+            font-size: 12px;
+        }
+
+        .rhythm-key {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .rhythm-key-bar {
+            width: 6px;
+            height: 9px;
+            border-radius: 1px 1px 0 0;
+            background: color-mix(in srgb, var(--primary) 38%, transparent);
+        }
+
+        .rhythm-key-bar.is-dialogue {
+            background: color-mix(in srgb, var(--primary) 18%, transparent);
+        }
+
+        .rhythm-key-avg {
+            width: 12px;
+            border-top: 1px dashed var(--text-muted);
+        }
+
+        .rhythm-key-tick {
+            width: 1px;
+            height: 6px;
+            margin: 0 2px;
+            background: color-mix(in srgb, var(--text-muted) 70%, transparent);
+        }
+
+        .rhythm-key-outline {
+            width: 8px;
+            height: 9px;
+            border: 1px dashed color-mix(in srgb, var(--text-muted) 60%, transparent);
+            border-bottom: none;
+        }
+
+        .rhythm-info {
+            font-size: 12px;
+            line-height: 1;
+            padding: 1px 5px;
+        }
+
+        .rhythm-info-pop {
+            display: none;
+            position: absolute;
+            top: 22px;
+            right: 0;
+            z-index: 20;
+            width: min(300px, 80vw);
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--surface-card);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--text-soft);
+            text-align: left;
+        }
+
+        .rhythm-info:hover + .rhythm-info-pop,
+        .rhythm-info:focus-visible + .rhythm-info-pop,
+        .rhythm-info[aria-expanded="true"] + .rhythm-info-pop {
+            display: block;
+        }
+
+        .rhythm-info-pop .rhythm-note {
+            display: block;
+            margin: 0;
+        }
+
+        .rhythm-info-hint {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-muted);
+        }
+
+        .rhythm-enlarge {
+            font-size: 12px;
+            line-height: 1;
+            padding: 1px 5px;
+        }
+
+        .rhythm-dialog {
+            width: min(80vw, 1100px);
+            max-height: 90vh;
+            padding: 18px 22px 20px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            box-shadow: 0 22px 70px rgba(15, 23, 42, .32);
+        }
+
+        /* Opens at the bottom of the screen, leaving the text above it in
+           view; it can be dragged anywhere from there. */
+        .rhythm-dialog {
+            resize: both;
+            overflow: auto;
+            min-width: 420px;
+            min-height: 300px;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            position: fixed;
+            top: auto;
+            bottom: 16px;
+            left: 0;
+            right: 0;
+            margin: 0 auto;
+            height: fit-content;
+            z-index: 9500;
+        }
+
+        .rhythm-dialog-head {
+            cursor: move;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 34px;
+        }
+
+        .rhythm-dialog-title {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .rhythm-large .rhythm-switch {
+            top: -28px;
+        }
+
+        .rhythm-large .rhythm-bar {
+            max-width: 22px;
+        }
+
+        .rhythm-large .rhythm-note {
+            margin-top: 12px;
+            font-size: 13px;
+        }
+
+        .rhythm-large .rhythm-bucket-label {
+            font-size: 11px;
+        }
+
+        .rhythm-large .rhythm-switch-btn {
+            font-size: 12px;
+        }
+
+        .rhythm-spread {
+            display: flex;
+            gap: 4px;
+            height: 46px;
+        }
+
+        .rhythm-bucket {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            border: none;
+            background: none;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .rhythm-bucket-area {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .rhythm-bucket-bar {
+            width: 62%;
+            border-radius: 1px 1px 0 0;
+            background: color-mix(in srgb, var(--primary) 38%, transparent);
+        }
+
+        .rhythm-bucket-bar.is-long,
+        .rhythm-bucket.is-on .rhythm-bucket-bar,
+        .rhythm-bucket:hover .rhythm-bucket-bar {
+            background: var(--primary);
+        }
+
+        /* The book's typical mix, as a faint outline behind the scene's own. */
+        .rhythm-bucket-typical {
+            position: absolute;
+            bottom: 0;
+            left: 12%;
+            right: 12%;
+            border: 1px dashed color-mix(in srgb, var(--text-muted) 60%, transparent);
+            border-bottom: none;
+            pointer-events: none;
+        }
+
+        .rhythm-bucket-label {
+            height: 11px;
+            margin-top: 1px;
+            font-size: 8.5px;
+            line-height: 11px;
+            color: var(--text-muted);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .rhythm-bucket.is-on .rhythm-bucket-label {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .rhythm-bucket-count {
+            position: absolute;
+            left: 0;
+            right: 0;
+            font-size: 9px;
+            line-height: 11px;
+            text-align: center;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+            pointer-events: none;
+        }
+
+        .rhythm-large .rhythm-bucket-count {
+            font-size: 11px;
+        }
+
+        /* What is picked in the large view: a subtle outline. */
+        .rhythm-bar.is-picked,
+        .rhythm-large .rhythm-bucket.is-on .rhythm-bucket-area {
+            outline: 1px solid var(--text-muted);
+            outline-offset: 1px;
+        }
+
+        .rhythm-detail {
+            min-height: 3em;
+            max-height: 24vh;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .rhythm-detail-hint,
+        .rhythm-detail-meta {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .rhythm-detail-text {
+            margin: 0 0 6px;
+            font-family: var(--font-reading, Georgia, serif);
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .rhythm-detail-list {
+            margin: 6px 0 0;
+            padding-left: 1.6em;
+        }
+
+        .rhythm-detail-item {
+            display: block;
+            width: 100%;
+            padding: 3px 4px;
+            border: none;
+            border-radius: 5px;
+            background: none;
+            color: var(--text-main);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .rhythm-detail-item:hover {
+            background: var(--surface-muted);
+        }
+
+        ::highlight(proseview-rhythm-bucket) {
+            background-color: color-mix(in srgb, var(--primary) 16%, transparent);
+        }
+
+        .rhythm-bar:hover {
+            background: color-mix(in srgb, var(--primary) 70%, var(--text-main));
+        }
+
+        .rhythm-note {
+            margin: 6px 0 0;
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+
+        ::highlight(proseview-rhythm-hover),
+        ::highlight(proseview-rhythm-flash) {
+            background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+        }
+
         .scene-panel-heading {
             display: flex;
             align-items: center;
@@ -8897,15 +9434,13 @@
 
         .scene-pass-all {
             margin-left: auto;
-            border: 1px solid var(--border);
-            border-radius: 5px;
+            border: none;
             background: transparent;
             color: var(--text-muted);
             font: inherit;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            padding: 2px 7px;
+            font-size: 10px;
+            font-weight: 500;
+            padding: 0 2px;
             cursor: pointer;
         }
 
@@ -8918,6 +9453,86 @@
             display: flex;
             flex-direction: column;
             gap: 1px;
+        }
+
+        .scene-pass-group {
+            display: flex;
+            align-items: center;
+            margin: 10px 6px 3px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .scene-pass-group:first-child {
+            margin-top: 0;
+        }
+
+        .scene-pass-breakdown {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 0;
+            margin: 0 6px 6px 39px;
+            font-size: 10px;
+            color: var(--text-soft);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .scene-pass-breakdown[hidden] {
+            display: none;
+        }
+
+        .scene-pass-share {
+            flex-basis: 100%;
+            margin-top: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .scene-pass-share.is-high {
+            color: var(--stat-warn);
+        }
+
+        .scene-pass-share-hint {
+            color: var(--text-muted);
+        }
+
+        .scene-pass-breakdown-item + .scene-pass-breakdown-item::before {
+            content: "\00b7";
+            margin: 0 5px;
+            opacity: 1;
+        }
+
+        .scene-pass-breakdown-item.is-empty .scene-pass-breakdown-n {
+            color: var(--text-muted);
+        }
+
+        .scene-pass-more {
+            margin-top: 10px;
+        }
+
+        .scene-pass-more > summary {
+            padding: 4px 6px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .scene-pass-more > summary:hover {
+            color: var(--text-main);
+        }
+
+        .scene-pass-more > summary:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+
+        .scene-pass-more-note {
+            margin: 0 6px 4px;
+            font-size: 9.5px;
+            line-height: 1.5;
+            color: var(--text-muted);
         }
 
         /* One control surface per pass. The row is the button -- switch, name,
@@ -8938,6 +9553,63 @@
             cursor: pointer;
         }
 
+        /* A row and its ⓘ, side by side. */
+        .scene-pass-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .scene-pass-item .scene-pass-row {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .scene-pass-info {
+            flex: 0 0 auto;
+            padding: 2px 4px;
+            border: none;
+            border-radius: 5px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1;
+            cursor: help;
+        }
+
+        .scene-pass-info:hover,
+        .scene-pass-info[aria-expanded="true"] {
+            color: var(--text-main);
+        }
+
+        .scene-pass-info:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+
+        .scene-pass-info-pop {
+            display: none;
+            position: absolute;
+            top: calc(100% - 2px);
+            right: 0;
+            z-index: 20;
+            width: min(300px, 80vw);
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--surface-card);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--text-soft);
+        }
+
+        .scene-pass-info:hover + .scene-pass-info-pop,
+        .scene-pass-info:focus-visible + .scene-pass-info-pop,
+        .scene-pass-info[aria-expanded="true"] + .scene-pass-info-pop {
+            display: block;
+        }
+
         .scene-pass-row:hover {
             background: var(--surface-muted);
         }
@@ -8946,9 +9618,10 @@
             background: var(--surface-selection);
         }
 
-        /* A pass with no matches still shows, so "nothing here" costs no click. */
-        .scene-pass-row.is-empty {
-            opacity: 0.45;
+        /* A pass with no matches still shows, so "nothing here" costs no click.
+           It is not disabled, so it does not look it: only its 0 is muted. */
+        .scene-pass-row.is-empty .scene-pass-count {
+            color: var(--text-muted);
         }
 
         .scene-pass-row:focus-visible {
@@ -9010,10 +9683,64 @@
             text-overflow: ellipsis;
         }
 
+        .scene-pass-measure {
+            font-size: 9.5px;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .scene-pass-measure .scene-pass-rate {
+            color: var(--text-soft);
+        }
+
+        .scene-pass-measure.is-none .scene-pass-rate {
+            color: var(--text-muted);
+        }
+
+        .scene-pass-measure.is-warn .scene-pass-rate {
+            color: var(--stat-warn);
+            font-weight: 600;
+        }
+
+        .scene-summary {
+            position: relative;
+            margin: 0 0 4px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-soft);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .scene-summary b {
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        .scene-summary .scene-pass-info-pop {
+            font-variant-numeric: normal;
+            text-align: left;
+        }
+
+        .scene-summary-about {
+            display: block;
+        }
+
+        .scene-summary-about + .scene-summary-about {
+            margin-top: 4px;
+        }
+
+        .scene-summary-part {
+            cursor: help;
+        }
+
+        .scene-summary-part.is-warn b {
+            color: var(--stat-warn);
+        }
+
         .scene-pass-count {
             flex: 0 0 auto;
             font-size: 10.5px;
-            color: var(--text-muted);
+            color: var(--text-soft);
             font-variant-numeric: tabular-nums;
         }
 
@@ -9025,34 +9752,233 @@
             }
         }
 
-        .hl-custom-tooltip {
-            position: absolute;
-            z-index: 10000;
-            background: var(--surface-tooltip);
+        /* A highlight's suggestion card, under the line of the mark clicked. */
+        .hl-card {
+            position: fixed;
+            z-index: 9000;
+            width: min(470px, calc(100vw - 24px));
+            max-height: min(70vh, 520px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+            padding: 8px 12px 10px;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--text-main);
+        }
+
+        .hl-card[hidden] {
+            display: none;
+        }
+
+        .hl-card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .hl-card-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .hl-card-title strong {
+            font-weight: 600;
+        }
+
+        .hl-card-why,
+        .hl-card-wait,
+        .hl-card-error,
+        .hl-card-applied {
+            margin: 6px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .hl-card-note {
+            color: var(--text-muted);
+        }
+
+        /* Text a suggestion put in: a quiet underline, clickable to undo. */
+        .hl-applied {
+            text-decoration: underline dotted color-mix(in srgb, var(--primary) 60%, transparent);
+            text-underline-offset: 3px;
+        }
+
+        #sceneModal .modal-content:not(.editing-prose) #sceneProseHost [data-hl-applied] {
+            cursor: pointer;
+        }
+
+        .hl-card-was {
+            margin: 6px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .hl-card-was .hl-card-option-text {
+            color: var(--text-main);
+        }
+
+        .hl-card-group + .hl-card-group {
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid var(--border);
+        }
+
+        .hl-card-group-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .hl-card-wait .hl-card-link {
+            margin-left: 4px;
+        }
+
+        .hl-card-by {
+            margin: 2px 0 0;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .hl-card-wait {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-soft);
+        }
+
+        /* The dock's working colour, turning. */
+        .hl-card-spinner {
+            flex: none;
+            width: 12px;
+            height: 12px;
+            border: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: hl-card-spin 0.8s linear infinite;
+        }
+
+        .hl-card-elapsed {
+            margin-left: auto;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-muted);
+        }
+
+        @keyframes hl-card-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Without motion: the dock's still dot. */
+        @media (prefers-reduced-motion: reduce) {
+            .hl-card-spinner {
+                width: 8px;
+                height: 8px;
+                border: 0;
+                background: var(--primary);
+                animation: none;
+            }
+        }
+
+        .hl-card-error {
+            color: var(--hl-hyperbole-text);
+        }
+
+        .hl-card-options {
+            list-style: none;
+            margin: 4px 0 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .hl-card-option {
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 9px;
+        }
+
+        .hl-card-option.is-applied {
+            border-color: var(--primary);
+        }
+
+        .hl-card-option-text {
+            margin: 0;
+            font-family: var(--font-reading, Georgia, serif);
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+
+        .hl-card-option-why {
+            margin: 3px 0 0;
+            font-size: 11.5px;
+            color: var(--text-muted);
+        }
+
+        .hl-card-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .hl-card-btn {
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 10px 14px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            max-width: 340px;
-            font-size: 15px;
+            background: transparent;
             color: var(--text-main);
-            pointer-events: none;
-            transition: opacity 0.15s ease;
+            font: inherit;
+            font-size: 12px;
+            padding: 3px 9px;
+            cursor: pointer;
         }
 
-        .hl-custom-tooltip .hl-title {
-            font-weight: 600;
-            margin-bottom: 4px;
+        .hl-card-btn:hover {
+            background: var(--surface-muted);
         }
 
-        .hl-custom-tooltip .hl-desc {
-            margin-bottom: 8px;
-            line-height: 1.5;
+        .hl-card-btn:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
         }
 
-        .hl-custom-tooltip .hl-disable {
-            font-size: 13px;
+        .hl-card-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .hl-card-primary:hover {
+            background: var(--primary);
+            filter: brightness(1.08);
+        }
+
+        .hl-card-use {
+            margin-top: 6px;
+        }
+
+        .hl-card-close,
+        .hl-card-link {
+            border: none;
+            padding: 0 4px;
             color: var(--text-muted);
+        }
+
+        .hl-card-link {
+            text-decoration: underline;
+            font-size: 12px;
+        }
+
+        /* A mark can be clicked for its card while reading. */
+        #sceneModal .modal-content:not(.editing-prose) #sceneProseHost [data-hl-key] {
+            cursor: pointer;
         }
 
         .scene-card-context-header {
@@ -11527,7 +12453,7 @@
 
         /* Settings: a plain form, in a dialog over whatever tab is open. */
         .settings-dialog {
-            width: min(680px, calc(100vw - 32px));
+            width: min(var(--settings-width, 920px), calc(100vw - 32px));
             max-height: none;
             padding: 0;
             border: none;
@@ -11540,8 +12466,29 @@
         }
 
         .settings-page {
+            position: relative;
             margin: 0;
             box-shadow: 0 22px 70px rgba(15, 23, 42, .32);
+        }
+
+        /* The right edge of Settings: drag (or use the arrow keys) to change
+           its width, which this browser remembers. */
+        .settings-resize {
+            position: absolute;
+            top: 12px;
+            right: -4px;
+            bottom: 12px;
+            width: 8px;
+            cursor: ew-resize;
+            border-radius: 4px;
+            touch-action: none;
+        }
+
+        .settings-resize:hover,
+        .settings-resize:focus-visible,
+        .settings-resize.is-dragging {
+            background: color-mix(in srgb, var(--primary) 35%, transparent);
+            outline: none;
         }
 
         .settings-head-actions {
@@ -11607,6 +12554,195 @@
         .settings-unit {
             color: var(--text-muted);
             font-size: 13px;
+        }
+
+        .settings-hint {
+            display: block;
+            max-width: 330px;
+            margin-top: 2px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .settings-variety {
+            position: relative;
+        }
+
+        .settings-variety .scene-pass-info-pop {
+            top: 28px;
+            left: 0;
+            right: auto;
+            width: min(360px, 80vw);
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        .settings-variety #setting_variety {
+            max-width: 400px;
+        }
+
+        /* Custom ranges sit under the picker, with the row's rule below them. */
+        .settings-variety:has(+ .settings-variety-custom:not([hidden])) {
+            border-bottom: none;
+        }
+
+        .settings-variety-custom {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            padding: 0 0 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-soft);
+        }
+
+        .settings-variety-custom .settings-input {
+            width: 72px;
+            margin: 0 4px;
+        }
+
+        .settings-tabs {
+            display: flex;
+            gap: 4px;
+            margin: 14px 0 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-tab {
+            padding: 6px 12px;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            background: none;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .settings-tab[aria-selected="true"] {
+            color: var(--text-main);
+            border-bottom-color: var(--primary);
+        }
+
+        .settings-tab:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+
+        /* Settings › Suggestions: tall enough to need its own scroll, inside
+           a dialog that does not scroll. */
+        .suggestion-settings-body {
+            max-height: min(60vh, 560px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding-right: 4px;
+        }
+
+        .suggestion-grid {
+            display: grid;
+            grid-template-columns: minmax(110px, auto) 1fr 1fr;
+            gap: 8px 14px;
+            align-items: start;
+            padding: 8px 0 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .suggestion-grid > .settings-label {
+            padding-top: 5px;
+        }
+
+        .suggestion-agent {
+            font-size: 13px;
+        }
+
+        .suggestion-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            font-size: 13px;
+        }
+
+        .suggestion-cell select.settings-input {
+            max-width: 100%;
+        }
+
+        .suggestion-check {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+        }
+
+        .suggestion-subhead {
+            margin: 14px 0 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .suggestion-prompts {
+            margin-top: 12px;
+        }
+
+        .suggestion-prompts summary {
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .suggestion-prompt {
+            margin-top: 10px;
+        }
+
+        .suggestion-prompt-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .suggestion-prompt-text {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 8px;
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 13px;
+            line-height: 1.45;
+            resize: vertical;
+        }
+
+        .suggestion-try-out:empty {
+            display: none;
+        }
+
+        .suggestion-try-out {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .suggestion-try-result {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 2px 8px;
+            margin: 2px 0 0;
+        }
+
+        .suggestion-try-result dt {
+            color: var(--text-muted);
+        }
+
+        .suggestion-try-result dd {
+            margin: 0;
+            overflow-wrap: anywhere;
         }
 
         .settings-advanced {

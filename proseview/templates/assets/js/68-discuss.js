@@ -512,7 +512,7 @@
             var input = document.getElementById('discussInput');
             _restoreDiscussAgentLocal();
             _discussPreservedDraft = restoreDiscussDraft(doc, _discussAgent);
-            input.value = requestedAutoRun ? '' : _discussPreservedDraft;
+            input.value = requestedAutoRun ? '' : (options.prefill || _discussPreservedDraft);
             if (requestedSelection || requestedAction) {
                 _discussDraftDocument = Object.assign({}, doc);
                 // A passage is judged in its scene: the whole file goes along
@@ -602,7 +602,14 @@
                         0, null, _discussSelectionSnapshot, _discussSelectionSourceTaskId
                     );
                 } else if (options.sendInstruction) chooseDiscussInstruction(options.sendInstruction);
-                else document.getElementById('discussInput').focus();
+                else {
+                    // A starter is put in the box for the writer to edit, never sent.
+                    if (options.prefill) {
+                        document.getElementById('discussInput').value = options.prefill;
+                        syncDiscussSendEmpty();
+                    }
+                    document.getElementById('discussInput').focus();
+                }
                 return;
             }
             openDiscuss(trigger, options);
@@ -707,25 +714,83 @@
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }}
         };
 
+        // What a scene tab says over the dashboard, where there is no scene.
+        const SCENE_PANEL_AWAY = {
+            scene: 'Open a scene to see its details.',
+            analysis: 'Open a scene to see its analysis.',
+            history: 'Open a scene to see its history.'
+        };
+
+        function _scenePanelAwayEl() {
+            let away = document.getElementById('scenePanelAway');
+            if (away) return away;
+            const first = document.getElementById(SCENE_PANEL_PANES.scene.id);
+            if (!first) return null;
+            away = document.createElement('div');
+            away.id = 'scenePanelAway';
+            away.className = 'scene-details-pane';
+            away.setAttribute('role', 'tabpanel');
+            away.hidden = true;
+            first.parentNode.insertBefore(away, first);
+            return away;
+        }
+
+        // Over the dashboard a scene tab keeps its place in the strip and, if
+        // it was the one open, stays selected -- it just has nothing to show.
+        function _showScenePanelAway(name) {
+            const away = _scenePanelAwayEl();
+            if (!away) return;
+            Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
+                const pane = document.getElementById(SCENE_PANEL_PANES[key].id);
+                if (pane) pane.hidden = true;
+            });
+            away.replaceChildren(_scenePanelEmpty(SCENE_PANEL_AWAY[name]));
+            away.dataset.tab = name;
+            away.setAttribute('aria-labelledby', UTILITY_TAB_IDS[name][0]);
+            away.hidden = false;
+        }
+
+        function _hideScenePanelAway() {
+            const away = document.getElementById('scenePanelAway');
+            const tab = away && !away.hidden ? away.dataset.tab : null;
+            if (away) away.hidden = true;
+            return tab;
+        }
+
+        function _syncSceneTabsEnabled(enabled) {
+            Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
+                UTILITY_TAB_IDS[key].forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.disabled = !enabled;
+                    if (enabled) el.removeAttribute('aria-disabled');
+                    else el.setAttribute('aria-disabled', 'true');
+                });
+            });
+        }
+
         function showScenePanelTab(name) {
             const spec = SCENE_PANEL_PANES[name];
             const panel = document.getElementById('discussPanel');
             if (!spec || !panel) return;
             const pane = document.getElementById(spec.id);
             if (!pane) return;
+            const away = !_sceneScopedViewIsOpen();
             panel.hidden = false;
             document.body.classList.add('discuss-open');
             try { sessionStorage.setItem('proseview-panel-open', 'true'); } catch(e) {}
             _discussBodyEls().forEach(function(el) { el.hidden = true; });
+            // "Codex / Live" names the Discuss connection; it has no business
+            // sitting above a pane of counts and frontmatter.
+            _setDockHeading(spec.heading, false);
+            _setUtilityTab(name);
+            if (away) { _showScenePanelAway(name); return; }
+            _hideScenePanelAway();
             Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
                 const other = document.getElementById(SCENE_PANEL_PANES[key].id);
                 if (other) other.hidden = key !== name;
             });
-            // "Codex / Live" names the Discuss connection; it has no business
-            // sitting above a pane of counts and frontmatter.
-            _setDockHeading(spec.heading, false);
             spec.render();
-            _setUtilityTab(name);
         }
 
         // Kept as a named seam: it is the entry point the scene modal and the
@@ -734,6 +799,7 @@
         function showSceneAnalysisTab() { showScenePanelTab('analysis'); }
 
         function _showDiscussBody() {
+            _hideScenePanelAway();
             Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
                 const pane = document.getElementById(SCENE_PANEL_PANES[key].id);
                 if (pane) pane.hidden = true;
@@ -748,9 +814,10 @@
 
         // ── Dock scope ──────────────────────────────────────────────────────
         // Going back to the dashboard leaves the dock as it was: a panel you
-        // opened stays open until you close it. Its tabs keep showing the
-        // scene you left, and a conversation carries on about it, until you
-        // open another. Read the book is a reading mode and still closes it.
+        // opened stays open, on the same tab, until you close it. The scene
+        // tabs grey out and say there is no scene; a conversation carries on
+        // about the scene you left. Read the book is a reading mode and still
+        // closes it.
         function _sceneScopedViewIsOpen() {
             const view = document.documentElement.dataset.view;
             return view === 'scene' || view === 'file';
@@ -760,9 +827,18 @@
             const scoped = _sceneScopedViewIsOpen();
             var openPanel = document.getElementById('discussPanel');
             if (openPanel && !openPanel.hidden) renderDiscussContext();
+            _syncSceneTabsEnabled(scoped);
             if (!scoped) {
                 if (document.documentElement.dataset.view === 'book') closeScenePanel();
+                else if (openPanel && !openPanel.hidden) {
+                    var shown = Object.keys(SCENE_PANEL_PANES).filter(function(key) {
+                        var pane = document.getElementById(SCENE_PANEL_PANES[key].id);
+                        return pane && !pane.hidden;
+                    })[0];
+                    if (shown) _showScenePanelAway(shown);
+                }
             } else {
+                var awayTab = _hideScenePanelAway();
                 var shouldBeOpen = false;
                 try { shouldBeOpen = sessionStorage.getItem('proseview-panel-open') === 'true'; } catch(e) {}
                 var panel = document.getElementById('discussPanel');
@@ -770,7 +846,7 @@
                     var tab = _readScenePanelTab();
                     if (DISCUSS_AGENTS.indexOf(tab) >= 0) showDiscussAgentTab(tab);
                     else showScenePanelTab(tab);
-                }
+                } else if (awayTab && panel && !panel.hidden) showScenePanelTab(awayTab);
             }
         }
 
@@ -844,19 +920,20 @@
                 pane.appendChild(_scenePanelEmpty('Open a scene to see its measures and highlight passes.'));
                 return;
             }
-            pane.appendChild(_scenePanelHeading('Measures'));
-            if (stats) { stats.hidden = false; pane.appendChild(stats); }
-            const passHeading = _scenePanelHeading('Highlight passes');
-            const allBtn = document.createElement('button');
-            allBtn.type = 'button';
-            allBtn.id = 'scenePassAllBtn';
-            allBtn.className = 'scene-pass-all';
-            allBtn.textContent = 'All';
-            allBtn.setAttribute('aria-pressed', 'false');
-            allBtn.title = 'Turn every pass on, or clear them all';
-            allBtn.onclick = toggleAllHighlights;
-            passHeading.appendChild(allBtn);
-            pane.appendChild(passHeading);
+            // Words and variety have no check to switch, so they are one
+            // quiet line at the top; every other measure sits in its check's row.
+            pane.appendChild(_sceneSummaryLine(path));
+            // The sentence-length strip needs the scene's editor, which may
+            // mount after this pane; refreshSceneRhythm fills it in then.
+            pane.appendChild(_scenePanelHeading('Sentence length'));
+            const rhythm = typeof sceneRhythmStrip === 'function' ? sceneRhythmStrip(path) : null;
+            if (rhythm) pane.appendChild(rhythm);
+            else {
+                const slot = document.createElement('div');
+                slot.className = 'rhythm';
+                slot.id = 'sceneRhythm';
+                pane.appendChild(slot);
+            }
             pane.appendChild(_scenePassList(path));
             syncAllBtn();
 
@@ -880,29 +957,205 @@
             return h;
         }
 
-        // One row per pass: a switch, the name, its examples, and how many
-        // matches this scene actually has. The count is the reason the list is
-        // ordered by it -- a pass with nothing to show should not sit above one
-        // with thirty hits, and a zero row says "nothing here" without being
-        // clicked.
+        // The passes, grouped by what they look at. A group with no passes
+        // shows no heading. A pass missing from every group lands in the last.
+        // In the order novelists reach for them, groups and rows alike; the
+        // order is fixed, so a check is always where it was last time.
+        const SCENE_PASS_GROUPS = [
+            {heading: 'Words', passes: ['echoes', 'crutch_words', 'sensory', 'filter_verbs', 'repeats']},
+            {heading: 'Dialogue', passes: ['dialogue_tags', 'dialogue']},
+            {heading: 'Style', passes: ['passive_voice', 'sticky_sentences', 'first_person']},
+            {heading: 'Rhythm', passes: ['sentence_starts']}
+        ];
+        // Word-list passes that flag every "like", "never" or colour word.
+        // Folded away by default; they are off unless the reader turned them on.
+        const SCENE_PASS_MORE = ['lyrical', 'hyperbole'];
+        let scenePassMoreOpen = null;
+
+        // One row per check: a switch, the name, its examples, its rate where
+        // it has one, and how many matches this scene has. A zero row says
+        // "nothing here" without being clicked.
         function _scenePassList(path) {
             const list = document.createElement('div');
             list.className = 'scene-pass-list';
             list.id = 'scenePassList';
-            const byPass = ((typeof highlightsByPath !== 'undefined' && highlightsByPath[path])
-                || {}).highlights || {};
-            PASS_ORDER.map(function(name) {
-                const hits = byPass[name];
-                return {name: name, count: Array.isArray(hits) ? hits.length : 0};
-            }).sort(function(a, b) {
-                return b.count - a.count || PASS_ORDER.indexOf(a.name) - PASS_ORDER.indexOf(b.name);
-            }).forEach(function(entry) {
-                list.appendChild(_scenePassRow(entry.name, entry.count));
+            const loaded = typeof highlightsByPath !== 'undefined' && highlightsByPath[path];
+            const byPass = (loaded || {}).highlights || {};
+            // Until the scene's marks arrive, the counts the page carries.
+            const counts = (typeof highlightCounts !== 'undefined' && highlightCounts[path]) || {};
+            const known = SCENE_PASS_MORE.slice();
+            SCENE_PASS_GROUPS.forEach(function(g) { known.push.apply(known, g.passes); });
+            const groups = SCENE_PASS_GROUPS.map(function(g) {
+                return {heading: g.heading, passes: g.passes.filter(function(p) { return PASS_ORDER.indexOf(p) !== -1; })};
             });
+            PASS_ORDER.forEach(function(p) {
+                if (known.indexOf(p) === -1) groups[groups.length - 1].passes.push(p);
+            });
+            function rows(names) {
+                return names.map(function(name) {
+                    const hits = byPass[name];
+                    // An echo is a group of marks; its row counts the groups.
+                    const n = !Array.isArray(hits) ? (loaded ? 0 : (counts[name] || 0))
+                        : name === 'echoes' ? new Set(hits.map(function(h) { return String(h.note || '').split(' \u00b7 ')[0]; })).size
+                        : hits.length;
+                    return {name: name, count: n};
+                }).reduce(function(out, entry) {
+                    out.push(_scenePassRow(entry.name, entry.count, path, counts));
+                    if (PASS_BREAKDOWNS[entry.name]) out.push(_scenePassBreakdown(entry.name, byPass[entry.name], (loaded || {}).stats));
+                    return out;
+                }, []);
+            }
+            let first = true;
+            groups.forEach(function(g) {
+                if (!g.passes.length) return;
+                const h = document.createElement('p');
+                h.className = 'scene-pass-group';
+                h.textContent = g.heading;
+                // Clear sits at the end of the first group's line, seen only
+                // while some check is on; its place is kept so nothing moves.
+                if (first) {
+                    const clear = document.createElement('button');
+                    clear.type = 'button';
+                    clear.id = 'scenePassAllBtn';
+                    clear.className = 'scene-pass-all';
+                    clear.textContent = 'Clear';
+                    clear.title = 'Turn every check off';
+                    clear.onclick = function() { if (PASS_ORDER.some(function(k) { return hls[k]; })) toggleAllHighlights(); };
+                    h.appendChild(clear);
+                    first = false;
+                }
+                list.appendChild(h);
+                list.append.apply(list, rows(g.passes));
+            });
+
+            const more = SCENE_PASS_MORE.filter(function(p) { return PASS_ORDER.indexOf(p) !== -1; });
+            if (more.length) {
+                const details = document.createElement('details');
+                details.className = 'scene-pass-more';
+                details.id = 'scenePassMore';
+                // Open when the reader opened it, or when one of its passes is on,
+                // so a switched-on pass is never hidden.
+                if (scenePassMoreOpen === null) scenePassMoreOpen = more.some(function(p) { return !!hls[p]; });
+                details.open = scenePassMoreOpen;
+                details.addEventListener('toggle', function() { scenePassMoreOpen = details.open; });
+                const summary = document.createElement('summary');
+                summary.textContent = 'More checks, off by default (' + more.length + ')';
+                const note = document.createElement('p');
+                note.className = 'scene-pass-more-note';
+                note.textContent = 'They flag every “like” and “never”, so most hits aren’t problems.';
+                details.append(summary, note);
+                details.append.apply(details, rows(more));
+                list.appendChild(details);
+            }
             return list;
         }
 
-        function _scenePassRow(name, count) {
+        // A check's rate in this scene, worked out from its own marks so the
+        // two always agree, against the book's typical scene counted the same
+        // way. Null for a check with no rate.
+        const SCENE_RATED_PASSES = ['passive_voice', 'first_person', 'crutch_words', 'sensory'];
+
+        function _scenePassMeasure(name, count, path, counts) {
+            const m = (typeof meta !== 'undefined' && meta[path]) || {};
+            const md = (typeof medians !== 'undefined' && medians) || {};
+            const stats = ((typeof highlightsByPath !== 'undefined' && highlightsByPath[path]) || {}).stats
+                || {told_in_first_person: !!(counts && counts._told_first)};
+            let value, text, typical, typicalText;
+            if (name === 'dialogue') {
+                value = m.dlg_pct || 0;
+                text = value.toFixed(1) + '% of words';
+                typical = md.dlg_pct;
+                typicalText = typical !== undefined ? typical.toFixed(0) + '%' : '';
+            } else if (SCENE_RATED_PASSES.indexOf(name) !== -1) {
+                if (name === 'first_person' && stats.told_in_first_person) {
+                    return {text: 'Told in first person, so nothing is marked', warn: false, typical: ''};
+                }
+                if (!m.words) return null;
+                value = count * 1000 / m.words;
+                text = value.toFixed(1) + ' per 1,000 words';
+                typical = (md.pass_rates || {})[name];
+                typicalText = typical !== undefined ? typical.toFixed(1) : '';
+            } else {
+                return null;
+            }
+            // Nothing found says so, muted, rather than as a rate of 0.
+            if (!value) return {text: 'none', warn: false, typical: '', none: true};
+            const warn = !!(typical) && (value > typical * 1.5 || value < typical * 0.5);
+            return {text: text, warn: warn, typical: warn && typicalText ? 'vs typical ' + typicalText : ''};
+        }
+
+        // Words and the two variety scores, with their typical ranges on hover.
+        function _sceneSummaryLine(path) {
+            const m = (typeof meta !== 'undefined' && meta[path]) || {};
+            const md = (typeof medians !== 'undefined' && medians) || {};
+            // The same typical ranges the dashboard judges by (a top-level
+            // const, not a property of window).
+            const bands = lexicalBands;  // named as Settings → Word variety names them
+            const line = document.createElement('p');
+            line.className = 'scene-summary';
+            line.id = 'sceneSummary';
+            const part = function(before, value, after, title, warn) {
+                const span = document.createElement('span');
+                span.className = 'scene-summary-part' + (warn ? ' is-warn' : '');
+                span.title = title;
+                const b = document.createElement('b');
+                b.textContent = value;
+                span.append(before, b, after);
+                return span;
+            };
+            const words = m.words || 0;
+            const wordsWarn = !!(words && md.words) && (words > md.words * 1.5 || words < md.words * 0.5);
+            line.appendChild(part('', words.toLocaleString(), ' words',
+                'Words of prose in this scene.' + (md.words ? ' Your typical scene: ' + Math.round(md.words).toLocaleString() + '.' : ''), wordsWarn));
+            line.append(' \u00b7 ');
+            line.appendChild(part('Variety ', m.mattr ? m.mattr.toFixed(2) : '\u2026', '',
+                'Word variety nearby (MATTR): how many different words a passage of 100 uses. Typical: ' + bands.mattr[0] + '\u2013' + bands.mattr[1] + '.',
+                !!m.mattr && (m.mattr < bands.mattr[0] || m.mattr > bands.mattr[1])));
+            line.append(' \u00b7 ');
+            line.appendChild(part('MTLD ', m.mtld ? m.mtld.toFixed(1) : '\u2026', '',
+                'Word variety across the whole scene (MTLD). Typical: ' + bands.mtld[0] + '\u2013' + bands.mtld[1] + '.',
+                !!m.mtld && (m.mtld < bands.mtld[0] || m.mtld > bands.mtld[1])));
+            // What the two variety scores are, behind one ⓘ at the line's end.
+            const about = wordVarietyAbout(m.mattr, true);
+            line.append(' ');
+            line.append.apply(line, _sceneInfo('sceneSummaryInfo', 'About these numbers', about));
+            return line;
+        }
+
+        // What Variety (MATTR) and MTLD are, how they are worked out, and the
+        // ranges in use: the one text behind the scene line's ⓘ and Settings'
+        // Word variety ⓘ. A scene's own Variety, when given, is the example;
+        // pointToSettings ends it with where to change the ranges.
+        function wordVarietyAbout(mattr, pointToSettings) {
+            const bands = lexicalBands;  // named as Settings → Word variety names them
+            const about = document.createElement('span');
+            const para = function(name, text) {
+                const p = document.createElement('span');
+                p.className = 'scene-summary-about';
+                const b = document.createElement('b');
+                b.textContent = name;
+                p.append(b, ' ' + text);
+                return p;
+            };
+            const per100 = mattr ? ' ' + mattr.toFixed(2) + ' means about ' + Math.round(mattr * 100) + ' different words in each 100.' : '';
+            about.append(
+                para('Variety (MATTR)', 'How many different words a run of 100 words in a row uses, averaged over every such run in the scene.'
+                    + per100 + ' Higher means fewer words come back close together. Typical: ' + bands.mattr[0] + '\u2013' + bands.mattr[1]
+                    + ' (' + bands.label + ').'),
+                para('MTLD', 'How many words, on average, the scene runs before its words start repeating: the count restarts each time the share of new words falls to 72%, read forwards and backwards. Unlike a plain ratio, a long scene isn\u2019t marked down for its length. Higher means more varied words across the whole scene. Typical: '
+                    + bands.mtld[0] + '\u2013' + bands.mtld[1] + ' (' + bands.label + ').'),
+                para('Amber', 'means outside the typical range.' + (pointToSettings ? ' Change it in Settings \u2192 Word variety.' : '')));
+            return about;
+        }
+
+        // The variety scores arrive after the pane is drawn; the line follows.
+        function refreshSceneSummary() {
+            const old = document.getElementById('sceneSummary');
+            const path = typeof paths !== 'undefined' ? paths[curIdx] : null;
+            if (old && path) old.replaceWith(_sceneSummaryLine(path));
+        }
+
+        function _scenePassRow(name, count, path, counts) {
             const on = !!hls[name];
             const row = document.createElement('button');
             row.type = 'button';
@@ -910,9 +1163,6 @@
             row.id = 'pass-row-' + name;
             row.dataset.pass = name;
             row.setAttribute('aria-pressed', on ? 'true' : 'false');
-            // The examples are always visible; the note is the hover and
-            // keyboard-focus layer, never something you must reach to read the row.
-            if (PASS_NOTES[name]) row.title = PASS_NOTES[name];
             row.onclick = function() { toggleHighlight(name); };
 
             const sw = document.createElement('span');
@@ -928,6 +1178,17 @@
             example.className = 'scene-pass-example';
             example.textContent = PASS_EXAMPLES[name] || '';
             label.append(title, example);
+            const measure = path ? _scenePassMeasure(name, count, path, counts) : null;
+            if (measure) {
+                const rate = document.createElement('span');
+                rate.className = 'scene-pass-measure' + (measure.warn ? ' is-warn' : '') + (measure.none ? ' is-none' : '');
+                const value = document.createElement('span');
+                value.className = 'scene-pass-rate';
+                value.textContent = measure.text;
+                rate.appendChild(value);
+                if (measure.typical) rate.append(' \u00b7 ' + measure.typical);
+                label.appendChild(rate);
+            }
 
             const n = document.createElement('span');
             n.className = 'scene-pass-count';
@@ -935,7 +1196,95 @@
             n.title = count === 1 ? '1 match in this scene' : count + ' matches in this scene';
 
             row.append(sw, label, n);
-            return row;
+            const item = document.createElement('div');
+            item.className = 'scene-pass-item';
+            item.appendChild(row);
+            if (PASS_NOTES[name]) item.append.apply(item, _sceneInfo('pass-info-' + name, 'About ' + (PASS_LABELS[name] || name), PASS_NOTES[name]));
+            return item;
+        }
+
+        // An explanation behind an ⓘ: a check's, beside its row (not in it:
+        // the row is a button), or the summary line's. Shown on hover, focus
+        // or a click, and Esc puts it away. A check's words also open a mark's card.
+        function _sceneInfo(id, label, content) {
+            const info = document.createElement('button');
+            info.type = 'button';
+            info.className = 'scene-pass-info';
+            info.textContent = '\u24d8';
+            info.setAttribute('aria-label', label);
+            info.setAttribute('aria-expanded', 'false');
+            const pop = document.createElement('span');
+            pop.className = 'scene-pass-info-pop';
+            pop.id = id;
+            pop.setAttribute('role', 'tooltip');
+            pop.append(content);
+            info.setAttribute('aria-describedby', pop.id);
+            info.onclick = function() {
+                const open = info.getAttribute('aria-expanded') !== 'true';
+                document.querySelectorAll('.scene-pass-info[aria-expanded="true"]').forEach(function(b) {
+                    b.setAttribute('aria-expanded', 'false');
+                });
+                info.setAttribute('aria-expanded', open ? 'true' : 'false');
+            };
+            info.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && info.getAttribute('aria-expanded') === 'true') {
+                    // Not the dialog it may sit in: Esc puts away only this.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    info.setAttribute('aria-expanded', 'false');
+                    info.blur();
+                }
+            });
+            return [info, pop];
+        }
+
+        // The count of each kind of mark, shown under the row while the pass
+        // is on. A kind with nothing to show is dimmed, not dropped.
+        function _scenePassBreakdown(name, hits, stats) {
+            const box = document.createElement('div');
+            box.className = 'scene-pass-breakdown';
+            box.id = 'pass-breakdown-' + name;
+            box.dataset.pass = name;
+            box.hidden = !hls[name];
+            const counts = {};
+            PASS_BREAKDOWNS[name].forEach(function(kind) {
+                const matches = [].concat(kind.match);
+                const n = (Array.isArray(hits) ? hits : []).filter(function(h) {
+                    return matches.some(function(m) { return String(h.note || '').indexOf(m) !== -1; });
+                }).length;
+                counts[kind.label] = n;
+                const item = document.createElement('span');
+                item.className = 'scene-pass-breakdown-item' + (n ? '' : ' is-empty');
+                const num = document.createElement('span');
+                num.className = 'scene-pass-breakdown-n';
+                num.textContent = String(n);
+                item.append(kind.label + ' ', num);
+                box.appendChild(item);
+            });
+            // How many of the scene's tags carry an adverb, against the line
+            // ProWritingAid suggests (under about 12%); amber only above it.
+            const total = name === 'dialogue_tags' && stats ? stats.dialogue_tags : 0;
+            if (total) {
+                const share = Math.round(counts['Adverb on a tag'] * 100 / total);
+                const line = document.createElement('span');
+                line.className = 'scene-pass-share' + (share > 12 ? ' is-high' : '');
+                line.textContent = 'Adverbs on ' + counts['Adverb on a tag'] + ' of ' + total + ' tags (' + share + '%)';
+                const hint = document.createElement('span');
+                hint.className = 'scene-pass-share-hint';
+                hint.textContent = ' \u00b7 ProWritingAid suggests under about 12%';
+                line.appendChild(hint);
+                box.appendChild(line);
+            }
+            return box;
+        }
+
+        // The scene's marks have arrived: the list is redrawn with them (the
+        // counts were already right, so nothing moves) for the breakdowns.
+        function refreshScenePassList(path) {
+            const list = document.getElementById('scenePassList');
+            if (!list || (typeof paths !== 'undefined' && paths[curIdx] !== path)) return;
+            list.replaceWith(_scenePassList(path));
+            if (typeof syncAllBtn === 'function') syncAllBtn();
         }
 
         // Called whenever a pass is toggled from anywhere, so the list agrees
@@ -945,6 +1294,9 @@
                 const on = !!hls[row.dataset.pass];
                 row.classList.toggle('is-on', on);
                 row.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            document.querySelectorAll('#scenePassList .scene-pass-breakdown').forEach(function(box) {
+                box.hidden = !hls[box.dataset.pass];
             });
         }
 

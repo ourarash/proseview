@@ -72,6 +72,12 @@ class ClaudeSDKClient:
         )
         self._response = []
 
+    def _requested_kind(self):
+        # A request with an output schema (a highlight suggestion) says what
+        # it wants there, not in its prompt.
+        schema = ((getattr(self.options, "output_format", None) or {}).get("schema") or {})
+        return (((schema.get("properties") or {}).get("kind") or {}).get("enum") or [None])[0]
+
     async def connect(self):
         _sessions.setdefault(self.session_id, [])
 
@@ -107,7 +113,7 @@ class ClaudeSDKClient:
                 }],
             }
             answer = json.dumps(structured)
-        elif "Required result type: alternatives" in prompt:
+        elif "Required result type: alternatives" in prompt or self._requested_kind() == "alternatives":
             structured = {
                 "kind": "alternatives",
                 "summary": "A more direct version that preserves the scene beat.",

@@ -965,3 +965,68 @@ def test_a_web_search_asks_and_says_what_it_would_search():
         assert request["params"]["command"] == "Search the web for “1990s Tehran taxi slang”"
     finally:
         client.close()
+
+
+def test_an_ephemeral_thread_reads_only_and_leaves_no_session_behind():
+    """A highlight suggestion is one answer, not a conversation to resume."""
+    client, seen, made = make_client(script=[ResultMessage(result='{"kind": "alternatives"}')])
+    try:
+        thread_id = client.request("thread/start", {
+            "ephemeral": True,
+            "tools": ["Read", "Grep", "Glob", "Write"],
+            "settingSources": ["user", "project", "local"],
+            "mcpServers": {"notes": {"command": "notes-mcp"}},
+        })["thread"]["id"]
+        client.request("turn/start", {
+            "threadId": thread_id,
+            "input": [{"type": "text", "text": "hi"}],
+            "outputSchema": {"type": "object"},
+        })
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        options = made[0].options
+        assert options["tools"] == ["Read", "Grep", "Glob"], "a write tool is never handed over"
+        assert options["allowed_tools"] == ["Read", "Grep", "Glob"]
+        assert options["setting_sources"] == ["user", "project", "local"]
+        assert options["mcp_servers"] == {"notes": {"command": "notes-mcp"}}
+        assert options["extra_args"] == {"no-session-persistence": None, "strict-mcp-config": None}
+        assert options["output_format"]["type"] == "json_schema"
+    finally:
+        client.close()
+
+
+def test_an_ephemeral_thread_with_no_tools_gets_none():
+    client, seen, made = make_client(script=[ResultMessage(result="{}")])
+    try:
+        thread_id = client.request("thread/start", {"ephemeral": True})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        assert made[0].options["tools"] == [] and made[0].options["mcp_servers"] == {}
+    finally:
+        client.close()
+
+
+def test_an_ephemeral_thread_allows_its_tools_and_denies_the_rest_without_asking():
+    import asyncio
+    from proseview.claude_agent_client import _Session
+
+    client, seen, made = make_client()
+    try:
+        session = _Session("t-1")
+        session.thread_params = {"ephemeral": True, "tools": ["Read"]}
+        allow = asyncio.run(client._permission_prompt(session, "Read", {}))
+        deny = asyncio.run(client._permission_prompt(session, "Bash", {}))
+        assert allow == {"behavior": "allow"} and deny["behavior"] == "deny"
+        assert not any(m["method"].endswith("requestApproval") for m in seen)
+    finally:
+        client.close()
+
+
+def test_an_ordinary_thread_keeps_its_tools_and_its_session():
+    client, seen, made = make_client(script=[ResultMessage(result="ok")])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        assert "tools" not in made[0].options and "extra_args" not in made[0].options
+    finally:
+        client.close()

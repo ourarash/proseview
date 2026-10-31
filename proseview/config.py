@@ -13,6 +13,7 @@ the stdlib-only parser keeps v1 single-file-ish.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,32 @@ class DiscussConfig:
 
 #: Agents Discuss can be pointed at.
 DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude")
+
+#: What a highlight suggestion is shown besides the marked passage.
+SUGGESTION_CONTEXTS: tuple[str, ...] = ("paragraph", "scene")
+SUGGESTION_PROMPT_MAX = 8000
+
+
+@dataclass(frozen=True)
+class SuggestionsConfig:
+    """What a highlight's Suggest button tells the agent, per book.
+
+    The model, effort, tools and MCP servers are the writer's, per computer,
+    and live with the app's own state; these travel with the book.
+    """
+
+    #: Whether the agent reads the project's own instructions (AGENTS.md,
+    #: CLAUDE.md) as the chat does.
+    instructions: bool = True
+    #: The passage's paragraph, or the whole scene, as context.
+    context: str = "paragraph"
+    #: The shared instruction; empty means Prosview's default.
+    prompt: str = ""
+    #: Per-check instructions that replace the defaults, as (check, text).
+    pass_prompts: tuple[tuple[str, str], ...] = ()
+
+    def pass_prompt(self, key: str) -> str | None:
+        return dict(self.pass_prompts).get(key)
 
 
 #: Accepted values for ``images``, loosest first.
@@ -215,6 +242,7 @@ class Config:
     editor: EditorConfig = field(default_factory=EditorConfig)
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
     discuss: DiscussConfig = field(default_factory=DiscussConfig)
+    suggestions: SuggestionsConfig = field(default_factory=SuggestionsConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
@@ -291,6 +319,7 @@ class Config:
             editor=_coerce_editor(raw.get("editor")),
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
             discuss=_coerce_discuss(raw.get("discuss")),
+            suggestions=_coerce_suggestions(raw.get("suggestions")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
             export=_coerce_export(raw.get("export")),
@@ -304,10 +333,12 @@ class Config:
         """
         return replace(self, **kwargs)
 
-    def save(self, repo_root: Path) -> None:
+    def save(self, repo_root: Path, *, unset: Iterable[str] = ()) -> None:
         """Write the configuration back to ``.proseview.yaml``.
         
-        Uses ruamel.yaml to preserve existing comments or formatting.
+        Uses ruamel.yaml to preserve existing comments or formatting. Keys in
+        ``unset`` are removed from the file, so they fall back to their
+        defaults again (an ``mtld_band`` to its genre's).
         """
         import ruamel.yaml
         path = repo_root / ".proseview.yaml"
@@ -327,6 +358,9 @@ class Config:
             data = {}
 
         defaults = Config()
+        unset = set(unset)
+        for key in unset:
+            data.pop(key, None)
 
         if self.manuscript_path != defaults.manuscript_path or "manuscript_path" in data:
             data["manuscript_path"] = self.manuscript_path
@@ -338,11 +372,11 @@ class Config:
             data["max_backups"] = self.max_backups
         if self.genre != defaults.genre or "genre" in data:
             data["genre"] = self.genre
-        if self.mattr_band != defaults.mattr_band or "mattr_band" in data:
+        if (self.mattr_band != defaults.mattr_band or "mattr_band" in data) and "mattr_band" not in unset:
             data["mattr_band"] = list(self.mattr_band)
         
         default_mtld = GENRE_MTLD_BANDS.get(self.genre, defaults.mtld_band)
-        if self.mtld_band != default_mtld or "mtld_band" in data:
+        if (self.mtld_band != default_mtld or "mtld_band" in data) and "mtld_band" not in unset:
             data["mtld_band"] = list(self.mtld_band)
         if self.discuss != defaults.discuss or "discuss" in data:
             discuss = data.get("discuss")
@@ -350,6 +384,21 @@ class Config:
                 discuss = {}
                 data["discuss"] = discuss
             discuss["selection_presets"] = list(self.discuss.selection_presets)
+        # Only what differs from the defaults is written, so a book that
+        # changes nothing keeps no suggestions block at all.
+        suggestions = {
+            key: value for key, value in (
+                ("instructions", self.suggestions.instructions),
+                ("context", self.suggestions.context),
+                ("prompt", self.suggestions.prompt),
+                ("pass_prompts", dict(self.suggestions.pass_prompts)),
+            )
+            if value != getattr(defaults.suggestions, key) and value != {}
+        }
+        if suggestions:
+            data["suggestions"] = suggestions
+        elif "suggestions" in data:
+            del data["suggestions"]
 
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f)
@@ -359,13 +408,72 @@ class ConfigError(ValueError):
     """Raised when ``.proseview.yaml`` contains an invalid value for a known key."""
 
 
+#: What a typical band can be set to: MATTR is a share of words, MTLD a
+#: length in words.
+BAND_LIMITS: dict[str, tuple[float, float]] = {"mattr_band": (0.0, 1.0), "mtld_band": (1.0, 1000.0)}
+
+
+def validated_band(key: str, v: Any) -> tuple[float, float]:
+    """A band from Settings: two numbers within :data:`BAND_LIMITS`, low first."""
+    low, high = _coerce_band(list(v) if isinstance(v, (list, tuple)) else v, key)
+    floor, ceiling = BAND_LIMITS[key]
+    if not (floor <= low < high <= ceiling):
+        raise ConfigError(f"{key!r} must be two numbers from {floor:g} to {ceiling:g}, the lower first")
+    return (low, high)
+
+
+def book_config_keys(repo_root: Path) -> set[str]:
+    """The top-level keys the book's own ``.proseview.yaml`` sets."""
+    path = repo_root / ".proseview.yaml"
+    if not path.exists():
+        return set()
+    return set(_parse_yaml(path.read_text(encoding="utf-8-sig")))
+
+
+#: The word-variety presets Settings offers, one per genre, by short name.
+VARIETY_PRESET_LABELS: dict[str, str] = {
+    "childrens": "Children's",
+    "contemporary": "Contemporary",
+    "literary": "Literary",
+    "speculative": "Fantasy / sci-fi",
+}
+
+
+def lexical_bands(cfg: Config, repo_root: Path) -> dict[str, Any]:
+    """The typical Variety (MATTR) and MTLD ranges in use, where each comes
+    from (the book's own setting, or the default, by genre for MTLD), and
+    which Settings → Word variety preset they are: the genre when the book
+    sets no ranges or sets a genre's own, else "custom"."""
+    keys = book_config_keys(repo_root)
+    mattr_default = Config().mattr_band
+    if not keys & {"mattr_band", "mtld_band"}:
+        preset = cfg.genre
+    else:
+        # Ranges a book set by hand that are a genre's own read as that genre.
+        preset = next((g for g, band in GENRE_MTLD_BANDS.items()
+                       if cfg.mattr_band == mattr_default and cfg.mtld_band == band), "custom")
+    return {
+        "mattr": list(cfg.mattr_band),
+        "mtld": list(cfg.mtld_band),
+        "mattrSource": "book" if "mattr_band" in keys else "default",
+        "mtldSource": "book" if "mtld_band" in keys else "genre",
+        "genre": GENRE_LABELS.get(cfg.genre, cfg.genre),
+        "preset": preset,
+        # What the ranges are called: the preset's name, or the book's own.
+        "label": VARIETY_PRESET_LABELS.get(preset, "your custom range"),
+        "mattrDefault": list(mattr_default),
+        "presets": [{"id": g, "label": label, "mtld": list(GENRE_MTLD_BANDS[g])}
+                    for g, label in VARIETY_PRESET_LABELS.items()],
+    }
+
+
 def _config_field_names() -> tuple[str, ...]:
     return (
         "manuscript_path", "characters_path", "skills_path",
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
-        "discuss", "export", "max_backups", "callouts",
+        "discuss", "suggestions", "export", "max_backups", "callouts",
     )
 
 
@@ -520,6 +628,37 @@ def _coerce_discuss(v: Any) -> DiscussConfig:
             "'discuss.agent' must be one of " + ", ".join(DISCUSS_AGENTS) + f", got {agent!r}"
         )
     return DiscussConfig(selection_presets=tuple(presets), agent=agent.strip().lower())
+
+
+def _coerce_suggestions(v: Any) -> SuggestionsConfig:
+    if v is None:
+        return SuggestionsConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'suggestions' must be a mapping, got {type(v).__name__}: {v!r}")
+    defaults = SuggestionsConfig()
+    # A ``characters`` key from an earlier version is ignored.
+    if "instructions" in v and not isinstance(v["instructions"], bool):
+        raise ConfigError("'suggestions.instructions' must be true or false")
+    context = v.get("context", defaults.context)
+    if context not in SUGGESTION_CONTEXTS:
+        raise ConfigError("'suggestions.context' must be one of " + ", ".join(SUGGESTION_CONTEXTS))
+    prompt = v.get("prompt", "") or ""
+    if not isinstance(prompt, str) or len(prompt) > SUGGESTION_PROMPT_MAX:
+        raise ConfigError(f"'suggestions.prompt' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
+    raw_passes = v.get("pass_prompts") or {}
+    if not isinstance(raw_passes, dict):
+        raise ConfigError("'suggestions.pass_prompts' must be a mapping of check to text")
+    passes: list[tuple[str, str]] = []
+    for key, text in raw_passes.items():
+        if not isinstance(key, str) or not isinstance(text, str) or len(text) > SUGGESTION_PROMPT_MAX:
+            raise ConfigError("'suggestions.pass_prompts' entries must be text")
+        passes.append((key, text))
+    return SuggestionsConfig(
+        instructions=v.get("instructions", defaults.instructions),
+        context=context,
+        prompt=prompt,
+        pass_prompts=tuple(sorted(passes)),
+    )
 
 
 def _coerce_images(v: Any) -> ImagesConfig:

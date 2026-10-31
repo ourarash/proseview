@@ -430,7 +430,7 @@
             </div>
 
             <div class="stats-layout" style="margin-bottom: 24px;">
-                <section class="card"><div class="card-header"><h2 class="card-title">Word variety<span class="info-tip" tabindex="0" role="img" aria-label="How many different words the prose uses. Low variety means the same words keep coming back. Your genre&#x27;s usual range is set in Settings." data-tip="How many different words the prose uses. Low variety means the same words keep coming back. Your genre&#x27;s usual range is set in Settings.">i</span></h2></div>
+                <section class="card"><div class="card-header"><h2 class="card-title">Word variety<span class="info-tip" tabindex="0" role="img" aria-label="How many different words the prose uses. Low variety means the same words keep coming back. Its usual range is set in Settings → Word variety." data-tip="How many different words the prose uses. Low variety means the same words keep coming back. Its usual range is set in Settings → Word variety.">i</span></h2></div>
                     <p class="section-note" style="margin-bottom: 24px; margin-top:0;">Whether the prose keeps finding new words, or keeps coming back to the same ones.</p>
 
                     <div class="health-section" style="margin-bottom: 24px;">
@@ -455,9 +455,9 @@
                     </div>
                 </section>
 
-                <figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Word variety by scene<span class="info-tip info-tip-end" tabindex="0" role="img" aria-label="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of your genre&#x27;s range in .proseview.yaml; anything above or to the right of that is fine." data-tip="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of your genre&#x27;s range in .proseview.yaml; anything above or to the right of that is fine.">i</span></h2></div>
+                <figure class="card chart-figure" aria-labelledby="lexicalScatterChartTitle"><div class="card-header"><h2 class="card-title" id="lexicalScatterChartTitle">Word variety by scene<span class="info-tip info-tip-end" tabindex="0" role="img" aria-label="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of the usual range in Settings → Word variety; anything above or to the right of that is fine." data-tip="Across: local variety (MATTR). Up: whole-scene variety (MTLD). The shaded area starts at the low end of the usual range in Settings → Word variety; anything above or to the right of that is fine.">i</span></h2></div>
                     <div class="section-note" style="margin-top: 4px; margin-bottom: 12px; line-height: 1.4;">
-                        Each dot is a scene. Dots in the shaded area have healthy variety; dots below or left of it repeat words more than is usual for your genre.
+                        Each dot is a scene. Dots in the shaded area have healthy variety; dots below or left of it repeat words more than is usual for the range in Settings → Word variety.
                     </div>
                     <div class="chart-frame-lg"><canvas id="lexicalScatterChart" aria-hidden="true"></canvas></div><div class="chart-data"></div>
                 </figure>
@@ -470,7 +470,7 @@
                     <select id="analysisIssueFilter" class="issue-filter" onchange="applyAnalysisIssueFilter()">
                         <option value="all">All scenes</option><option value="review">Repeats words</option><option value="talky">Mostly dialogue</option><option value="clipped">Short sentences</option><option value="todos">With TODOs</option><option value="notes">With notes</option>
                     </select></div>
-                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Word variety" title="Nearby words (MATTR), then across the scene (MTLD). Amber means under the usual range for your genre.">Word variety</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Keywords" title="The 3 words most particular to this scene, compared to the rest of the book.">Keywords</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Most repeated" title="The word this scene repeats most.">Most repeated</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Dialogue" title="Share of the scene inside quotation marks.">Dialogue</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Sentence length" title="Average sentence length in words">Sentence length</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table>
+                    <table id="analysisSceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(2)" aria-label="Sort by Word variety" title="Nearby words (MATTR), then across the scene (MTLD). Amber means under the usual range in Settings → Word variety.">Word variety</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(3)" aria-label="Sort by Keywords" title="The 3 words most particular to this scene, compared to the rest of the book.">Keywords</button></th><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(4)" aria-label="Sort by Most repeated" title="The word this scene repeats most.">Most repeated</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(5)" aria-label="Sort by Dialogue" title="Share of the scene inside quotation marks.">Dialogue</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortAnalysisTable(6)" aria-label="Sort by Sentence length" title="Average sentence length in words">Sentence length</button></th></tr></thead><tbody id="analysisTableBody"></tbody></table>
             </details>
         </div>
     </div>
@@ -499,107 +499,6 @@
         <div id="notesTabContent"></div>
         </section>
     </div>
-
-    <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
-        <section class="card settings-page" aria-labelledby="settingsTitle">
-            <div class="settings-head">
-                <h2 id="settingsTitle" class="card-title">Settings</h2>
-                <span class="settings-head-actions">
-                    <button type="button" id="settingsSaveBtn" class="primary-button" onclick="saveSettings()" disabled>Save changes</button>
-                    <button type="button" class="ledger-close" onclick="closeSettings()" aria-label="Close settings">&times;</button>
-                </span>
-            </div>
-            {% if not config_exists %}
-            <p id="settingsEmptyBanner" class="settings-note">Proseview is using its default settings. Saving creates a <code>.proseview.yaml</code> file in your book's folder.</p>
-            {% endif %}
-
-            <h3 class="settings-section">Your book</h3>
-            <div class="settings-row">
-                <label for="setting_target_words">Book goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words you want the finished book to have. Progress on the Overview is measured against it." data-tip="How many words you want the finished book to have. Progress on the Overview is measured against it.">i</span></label>
-                <span class="settings-field"><input type="number" id="setting_target_words" class="settings-input" min="0" step="1000" value="{{ cfg.target_words }}" oninput="markSettingsDirty()"> <span class="settings-unit">words</span></span>
-            </div>
-            <div class="settings-row">
-                <label for="setting_daily_target">Daily goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words a day you aim to write. It sets the days-to-finish figure." data-tip="How many words a day you aim to write. It sets the days-to-finish figure.">i</span></label>
-                <span class="settings-field"><input type="number" id="setting_daily_target" class="settings-input" min="0" step="50" value="{{ cfg.daily_target }}" oninput="markSettingsDirty()"> <span class="settings-unit">words a day</span></span>
-            </div>
-            <div class="settings-row">
-                <label for="setting_genre">Genre<span class="info-tip" tabindex="0" role="img" aria-label="Sets the range of word variety Analysis compares your scenes against. Different genres naturally use more or fewer different words." data-tip="Sets the range of word variety Analysis compares your scenes against. Different genres naturally use more or fewer different words.">i</span></label>
-                <span class="settings-field"><select id="setting_genre" class="settings-input" onchange="markSettingsDirty()">
-                    <option value="contemporary" {% if cfg.genre == 'contemporary' %}selected{% endif %}>Commercial &amp; contemporary</option>
-                    <option value="childrens" {% if cfg.genre == 'childrens' %}selected{% endif %}>Children's / middle grade</option>
-                    <option value="literary" {% if cfg.genre == 'literary' %}selected{% endif %}>Historical &amp; literary</option>
-                    <option value="speculative" {% if cfg.genre == 'speculative' %}selected{% endif %}>Fantasy &amp; science fiction</option>
-                </select></span>
-            </div>
-
-            <h3 class="settings-section">Appearance</h3>
-            <div class="settings-row">
-                <span class="settings-label">Color theme<span class="info-tip" tabindex="0" role="img" aria-label="How Proseview looks on this computer. Saved in this browser, not in your book." data-tip="How Proseview looks on this computer. Saved in this browser, not in your book.">i</span></span>
-                <span class="settings-field">
-                    <div id="themeMenu" class="theme-menu">
-                        <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
-                            <span class="theme-toggle-kicker">Theme</span>
-                            <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
-                            <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
-                        </button>
-                        <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
-                        </ul>
-                    </div>
-                </span>
-            </div>
-
-            {% if not static_snapshot %}
-            {#- Shown by 03-privacy.js once the server says a password can be kept here. #}
-            <div class="settings-row" id="privacySettingsRow" hidden>
-                <span class="settings-label">Privacy screen<span class="info-tip" tabindex="0" role="img" aria-label="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. A password is asked before uncovering, and keeps a reload covered. Only a hash of it is kept, on this computer, never in your book." data-tip="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. A password is asked before uncovering, and keeps a reload covered. Only a hash of it is kept, on this computer, never in your book.">i</span></span>
-                <span class="settings-field">
-                    <span id="privacyPasswordStatus" class="settings-unit">Password: none</span>
-                    <button type="button" id="privacySetBtn" class="settings-plain-btn" onclick="privacySettingsForm('set')">Set password</button>
-                    <button type="button" id="privacyChangeBtn" class="settings-plain-btn" onclick="privacySettingsForm('change')" hidden>Change</button>
-                    <button type="button" id="privacyRemoveBtn" class="settings-danger-btn" onclick="privacySettingsForm('remove')" hidden>Remove</button>
-                </span>
-            </div>
-            <form id="privacyPasswordForm" class="settings-row privacy-password-form" hidden onsubmit="event.preventDefault(); privacySettingsSubmit();">
-                <span class="settings-field">
-                    <input type="password" id="privacyCurrent" class="settings-input" placeholder="Current password" aria-label="Current password" autocomplete="current-password">
-                    <input type="password" id="privacyNew" class="settings-input" placeholder="New password" aria-label="New password" autocomplete="new-password">
-                    <input type="password" id="privacyNewAgain" class="settings-input" placeholder="Again" aria-label="New password again" autocomplete="new-password">
-                </span>
-                <span class="settings-field">
-                    <span id="privacyPasswordMsg" class="settings-unit" role="status"></span>
-                    <button type="button" class="settings-plain-btn" onclick="privacySettingsForm(null)">Cancel</button>
-                    <button type="submit" id="privacyFormSubmit" class="settings-plain-btn">Set</button>
-                </span>
-            </form>
-            {% endif %}
-
-            <details class="settings-advanced">
-                <summary>Advanced</summary>
-                <div class="settings-row">
-                    <span class="settings-label">Settings file</span>
-                    <span class="settings-field">{% if config_exists %}<a href="{{ yaml_editor_url }}">Open <code>.proseview.yaml</code> in your editor</a>{% else %}<code>.proseview.yaml</code> (created when you save){% endif %}</span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Characters</span>
-                    <span class="settings-field">{{ cfg.characters|length ~ ' listed' if cfg.characters else 'Found from ' ~ cfg.characters_dir ~ '/' }}</span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Places</span>
-                    <span class="settings-field">{{ cfg.locations|length ~ ' listed' if cfg.locations else "From each scene's where:" }}</span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Backups<span class="info-tip" tabindex="0" role="img" aria-label="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history." data-tip="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history.">i</span></span>
-                    <span class="settings-field"><span id="setting_backup_size" class="settings-unit">…</span> <button type="button" class="settings-danger-btn" onclick="clearAllBackups()">Clear all backups…</button></span>
-                </div>
-            </details>
-        </section>
-    </dialog>
 
     <dialog id="ledgerDialog" class="ledger-dialog" aria-labelledby="ledgerTitle">
         <div class="ledger-head">
@@ -718,6 +617,127 @@
     </div>
     </main>
 
+    <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
+        <section class="card settings-page" aria-labelledby="settingsTitle">
+            <div class="settings-resize" role="separator" aria-orientation="vertical" aria-label="Settings width" tabindex="0" title="Drag to change the width. Double-click for the default."></div>
+            <div class="settings-head">
+                <h2 id="settingsTitle" class="card-title">Settings</h2>
+                <span class="settings-head-actions">
+                    <button type="button" id="settingsSaveBtn" class="primary-button" onclick="saveSettings()" disabled>Save changes</button>
+                    <button type="button" class="ledger-close" onclick="closeSettings()" aria-label="Close settings">&times;</button>
+                </span>
+            </div>
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+                <button type="button" role="tab" id="settingsTabGeneral" class="settings-tab" aria-selected="true" aria-controls="settingsPanelGeneral" onclick="selectSettingsTab('general')">General</button>
+                <button type="button" role="tab" id="settingsTabSuggestions" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSuggestions" tabindex="-1" onclick="selectSettingsTab('suggestions')">Suggestions</button>
+            </div>
+            <div id="settingsPanelGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
+            {% if not config_exists %}
+            <p id="settingsEmptyBanner" class="settings-note">Proseview is using its default settings. Saving creates a <code>.proseview.yaml</code> file in your book's folder.</p>
+            {% endif %}
+
+            <h3 class="settings-section">Your book</h3>
+            <div class="settings-row">
+                <label for="setting_target_words">Book goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words you want the finished book to have. Progress on the Overview is measured against it." data-tip="How many words you want the finished book to have. Progress on the Overview is measured against it.">i</span></label>
+                <span class="settings-field"><input type="number" id="setting_target_words" class="settings-input" min="0" step="1000" value="{{ cfg.target_words }}" oninput="markSettingsDirty()"> <span class="settings-unit">words</span></span>
+            </div>
+            <div class="settings-row">
+                <label for="setting_daily_target">Daily goal<span class="info-tip" tabindex="0" role="img" aria-label="How many words a day you aim to write. It sets the days-to-finish figure." data-tip="How many words a day you aim to write. It sets the days-to-finish figure.">i</span></label>
+                <span class="settings-field"><input type="number" id="setting_daily_target" class="settings-input" min="0" step="50" value="{{ cfg.daily_target }}" oninput="markSettingsDirty()"> <span class="settings-unit">words a day</span></span>
+            </div>
+            <div class="settings-row settings-variety">
+                <label for="setting_variety">Word variety<span class="settings-hint">What counts as typical for Variety and MTLD in the Analysis tab. Values outside it turn amber.</span></label>
+                <span class="settings-field">
+                    {%- macro variety_option(id, label, mtld) -%}
+                    <option value="{{ id }}"{% if bands.preset == id %} selected{% endif %}>{{ label }} · Variety {{ '%g' % bands.mattrDefault[0] }}–{{ '%g' % bands.mattrDefault[1] }} · MTLD {{ '%g' % mtld[0] }}–{{ '%g' % mtld[1] }}</option>
+                    {%- endmacro %}
+                    <select id="setting_variety" class="settings-input" onchange="pickVariety()">
+                        {%- for p in bands.presets %}
+                        {{ variety_option(p.id, p.label, p.mtld) }}
+                        {%- endfor %}
+                        <option value="custom"{% if bands.preset == 'custom' %} selected{% endif %}>Custom…</option>
+                    </select>
+                </span>
+            </div>
+            <div id="settingVarietyCustom" class="settings-variety-custom"{% if bands.preset != 'custom' %} hidden{% endif %}>
+                <span class="settings-variety-line">Variety from <input type="number" id="setting_mattr_low" class="settings-input" aria-label="Variety from" min="0" max="1" step="0.01" value="{{ '%g' % bands.mattr[0] }}" oninput="editVariety()"> to <input type="number" id="setting_mattr_high" class="settings-input" aria-label="Variety to" min="0" max="1" step="0.01" value="{{ '%g' % bands.mattr[1] }}" oninput="editVariety()"></span>
+                <span class="settings-variety-line">MTLD from <input type="number" id="setting_mtld_low" class="settings-input" aria-label="MTLD from" min="1" max="1000" step="1" value="{{ '%g' % bands.mtld[0] }}" oninput="editVariety()"> to <input type="number" id="setting_mtld_high" class="settings-input" aria-label="MTLD to" min="1" max="1000" step="1" value="{{ '%g' % bands.mtld[1] }}" oninput="editVariety()"></span>
+            </div>
+
+            <h3 class="settings-section">Appearance</h3>
+            <div class="settings-row">
+                <span class="settings-label">Color theme<span class="info-tip" tabindex="0" role="img" aria-label="How Proseview looks on this computer. Saved in this browser, not in your book." data-tip="How Proseview looks on this computer. Saved in this browser, not in your book.">i</span></span>
+                <span class="settings-field">
+                    <div id="themeMenu" class="theme-menu">
+                        <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
+                            <span class="theme-toggle-kicker">Theme</span>
+                            <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
+                            <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
+                        </button>
+                        <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
+                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
+                        </ul>
+                    </div>
+                </span>
+            </div>
+
+            {% if not static_snapshot %}
+            {#- Shown by 03-privacy.js once the server says a password can be kept here. #}
+            <div class="settings-row" id="privacySettingsRow" hidden>
+                <span class="settings-label">Privacy screen<span class="info-tip" tabindex="0" role="img" aria-label="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. It stays covered through a reload until uncovered. A password is asked before uncovering. Only a hash of it is kept, on this computer, never in your book." data-tip="Cmd + J J (Ctrl + J J on Windows and Linux) covers the page with a plain spreadsheet; the same again uncovers it. It stays covered through a reload until uncovered. A password is asked before uncovering. Only a hash of it is kept, on this computer, never in your book.">i</span></span>
+                <span class="settings-field">
+                    <span id="privacyPasswordStatus" class="settings-unit">Password: none</span>
+                    <button type="button" id="privacySetBtn" class="settings-plain-btn" onclick="privacySettingsForm('set')">Set password</button>
+                    <button type="button" id="privacyChangeBtn" class="settings-plain-btn" onclick="privacySettingsForm('change')" hidden>Change</button>
+                    <button type="button" id="privacyRemoveBtn" class="settings-danger-btn" onclick="privacySettingsForm('remove')" hidden>Remove</button>
+                </span>
+            </div>
+            <form id="privacyPasswordForm" class="settings-row privacy-password-form" hidden onsubmit="event.preventDefault(); privacySettingsSubmit();">
+                <span class="settings-field">
+                    <input type="password" id="privacyCurrent" class="settings-input" placeholder="Current password" aria-label="Current password" autocomplete="current-password">
+                    <input type="password" id="privacyNew" class="settings-input" placeholder="New password" aria-label="New password" autocomplete="new-password">
+                    <input type="password" id="privacyNewAgain" class="settings-input" placeholder="Again" aria-label="New password again" autocomplete="new-password">
+                </span>
+                <span class="settings-field">
+                    <span id="privacyPasswordMsg" class="settings-unit" role="status"></span>
+                    <button type="button" class="settings-plain-btn" onclick="privacySettingsForm(null)">Cancel</button>
+                    <button type="submit" id="privacyFormSubmit" class="settings-plain-btn">Set</button>
+                </span>
+            </form>
+            {% endif %}
+
+            <details class="settings-advanced">
+                <summary>Advanced</summary>
+                <div class="settings-row">
+                    <span class="settings-label">Settings file</span>
+                    <span class="settings-field">{% if config_exists %}<a href="{{ yaml_editor_url }}">Open <code>.proseview.yaml</code> in your editor</a>{% else %}<code>.proseview.yaml</code> (created when you save){% endif %}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Characters</span>
+                    <span class="settings-field">{{ cfg.characters|length ~ ' listed' if cfg.characters else 'Found from ' ~ cfg.characters_dir ~ '/' }}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Places</span>
+                    <span class="settings-field">{{ cfg.locations|length ~ ' listed' if cfg.locations else "From each scene's where:" }}</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Backups<span class="info-tip" tabindex="0" role="img" aria-label="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history." data-tip="Copies of your scenes Proseview keeps on this computer so you can undo and see each file&#x27;s history.">i</span></span>
+                    <span class="settings-field"><span id="setting_backup_size" class="settings-unit">…</span> <button type="button" class="settings-danger-btn" onclick="clearAllBackups()">Clear all backups…</button></span>
+                </div>
+            </details>
+            </div>
+            <div id="settingsPanelSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" hidden>
+                <p class="settings-note">What Suggest on a highlight asks Codex or Claude, what they can see and use, and the model they use. Model, tools and MCP servers are kept on this computer; files and prompts are saved in your book's <code>.proseview.yaml</code>.</p>
+                <div id="suggestionSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
+            </div>
+        </section>
+    </dialog>
+
     <dialog id="searchPalette" class="search-palette" aria-labelledby="searchPaletteTitle"></dialog>
 
 
@@ -747,6 +767,7 @@
                     <button id="modalExportChapterBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openExportForCurrentScene('chapter')"><span aria-hidden="true">&#8615;</span> Export this chapter…</button>
                     <button id="modalFocusBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();toggleFocusMode()" aria-pressed="false" aria-keyshortcuts="F"><span aria-hidden="true">&#9681;</span> Focus layout</button>
                     <button id="modalFullscreenBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();toggleFullscreen()" aria-pressed="false" aria-keyshortcuts="Shift+F"><span aria-hidden="true">&#8597;</span> Full screen</button>
+                    <button id="modalSettingsBtn" type="button" class="scene-toolbar-menu-action" onclick="closeSceneToolbarMenus();openSettings()" aria-haspopup="dialog" aria-controls="settingsDialog"><span aria-hidden="true">&#9881;</span> Settings…</button>
                 </div></div>
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
@@ -857,7 +878,10 @@
         const bios = {{ bios_json | safe }};
         let meta = {{ meta_json | safe }};
         const paths = {{ paths_json | safe }};
+        // Filled per scene as each opens (ensureSceneHighlights); the page
+        // itself carries only how many marks each pass has.
         let highlightsByPath = {{ highlights_json | safe }};
+        const highlightCounts = {{ highlight_counts_json | safe }};
         const editorScheme = {{ editor_scheme_json | safe }};
         const editorUrlTemplate = {{ editor_url_template_json | safe }};
         const editorLabel = {{ editor_label_json | safe }};

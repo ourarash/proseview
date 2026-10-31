@@ -27,12 +27,27 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .callouts import GITHUB_TYPES, screen_colours, screen_css
-from .config import GENRE_LABELS, Config
+from .config import GENRE_LABELS, Config, lexical_bands
 from .editor import build_url as _editor_url, label as _editor_label
 from .goals import Goals, compute_goals
-from .highlights import PASS_NAMES, compute_scene_highlights
+from .highlights import (
+    PASS_NAMES,
+    SENTENCE_BUCKETS,
+    compute_scene_highlights,
+    echo_count,
+    sentence_buckets,
+    sentence_lengths,
+)
 from .history import HistoryRow, load_history, working_copy_delta
-from .lexical import FILTER_VERBS, calculate_lexical_stats, text_dialogue_spans
+from .lexical import (
+    FILTER_VERBS,
+    build_content_stopwords,
+    calculate_lexical_stats,
+    lexical_tokens,
+    prose_only,
+    text_dialogue_spans,
+    top_repeated_content_words,
+)
 from .related import find_related
 from .repo import (
     build_repository_tree, build_sidebar_tree, build_tree, lists_whole_folder, read_repo_text, recent_changes,
@@ -42,6 +57,9 @@ from .scenes import (
     BaselineStats,
     SceneStats,
     collect_scene_stats,
+    extract_scene_text,
+    resolve_manuscript_dir,
+    split_frontmatter,
     filter_scenes,
     goal_position,
     revision_signal,
@@ -452,6 +470,84 @@ def build_dashboard(
     )
 
 
+#: The checks whose rate the scene panel shows beside their count.
+RATED_PASSES: tuple[str, ...] = ("passive_voice", "first_person", "crutch_words", "sensory")
+
+
+def _pass_rate_medians(scenes: list[SceneStats], highlights: dict[str, dict[str, object]], clean_path) -> dict[str, float]:
+    rates: dict[str, list[float]] = {name: [] for name in RATED_PASSES}
+    for scene in scenes:
+        payload = highlights.get(clean_path(scene.path)) or {}
+        if not scene.words:
+            continue
+        for name in RATED_PASSES:
+            # A scene told in first person marks no "I" on purpose; it is not
+            # a scene with none, so it does not pull the typical rate down.
+            if name == "first_person" and (payload.get("stats") or {}).get("told_in_first_person"):
+                continue
+            rates[name].append(len((payload.get("highlights") or {}).get(name) or []) * 1000 / scene.words)
+    return {name: round(statistics.median(values), 2) for name, values in rates.items() if values}
+
+
+def _sentence_bucket_shares(scenes: list[SceneStats]) -> list[float]:
+    """The median scene's share of sentences in each length bucket."""
+    shares: list[list[float]] = []
+    for scene in scenes:
+        counts = sentence_buckets(sentence_lengths(scene.text))
+        whole = sum(counts)
+        if whole:
+            shares.append([n / whole for n in counts])
+    if not shares:
+        return []
+    return [round(statistics.median(row[i] for row in shares), 4) for i in range(len(SENTENCE_BUCKETS) + 1)]
+
+
+def _scene_stopwords(content_stopwords: set[str], frontmatter: object) -> set[str]:
+    """The book's content stopwords and the names in one scene's own cast."""
+    fm = frontmatter if isinstance(frontmatter, dict) else {}
+    cast = fm.get("characters") or []
+    if not isinstance(cast, (list, tuple)):
+        cast = [cast]
+    names = [str(c) for c in cast] + [str(fm.get("pov") or "")]
+    return content_stopwords | {t for name in names for t in lexical_tokens(name)}
+
+
+def scene_highlights(root: Path, cfg: Config, rel: str) -> dict[str, object] | None:
+    """One scene's highlight payload, as :func:`build_scene_data` builds it.
+
+    The page loads a scene's marks when the scene opens rather than carrying
+    every scene's in the page, so this works out a single scene on its own.
+    None when *rel* is not a scene inside the manuscript.
+    """
+    man_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir).resolve()
+    path = (man_dir / rel).resolve()
+    if not path.is_relative_to(man_dir) or path.suffix != ".md" or not path.is_file():
+        return None
+    frontmatter, body = split_frontmatter(read_repo_text(path))
+    text = extract_scene_text(body)
+    content_stopwords = build_content_stopwords(root, cfg.characters_dir)
+    _score, terms = top_repeated_content_words(prose_only(text), content_stopwords)
+    return compute_scene_highlights(
+        text, repeat_terms=terms, pov=(frontmatter or {}).get("pov", "") if isinstance(frontmatter, dict) else "",
+        stopwords=_scene_stopwords(content_stopwords, frontmatter),
+    )
+
+
+def highlight_counts(highlights_by_path: dict[str, dict[str, object]]) -> dict[str, dict[str, int]]:
+    """How many marks each pass has in each scene: all the page carries up front."""
+    out: dict[str, dict[str, int]] = {}
+    for path, payload in highlights_by_path.items():
+        counts = {name: len(hits) for name, hits in (payload.get("highlights") or {}).items() if hits}
+        # An echo is a group of marks; the list counts the groups.
+        if counts.get("echoes"):
+            counts["echoes"] = echo_count(payload["highlights"]["echoes"])
+        # So the First Person row can say why it has none before the marks load.
+        if (payload.get("stats") or {}).get("told_in_first_person"):
+            counts["_told_first"] = 1
+        out[path] = counts
+    return out
+
+
 def build_scene_data(
     scenes: list[SceneStats],
     root: Path,
@@ -468,7 +564,7 @@ def build_scene_data(
     - ``meta``: ``{display_path: scene_meta_dict}`` for the scene header,
       stats grid, todos, notes, and related docs.
     - ``highlightsByPath``: ``{display_path: {paragraphs, highlights}}`` for
-      the nine highlight passes.
+      the highlight passes.
 
     The data shape is identical to what the template embeds for first paint,
     so a client can hot-refresh the open scene by fetching ``/data.json``
@@ -520,9 +616,14 @@ def build_scene_data(
         return mentions
 
     contents = {clean_path(s.path): s.text for s in scenes}
+    # The repeats pass's own stopwords, so echoes skip character names too,
+    # and the scene's own cast from its frontmatter.
+    content_stopwords = build_content_stopwords(root, cfg.characters_dir)
+
     highlights = {
         clean_path(s.path): compute_scene_highlights(s.text, repeat_terms=s.repetition_examples,
-                                                  pov=s.frontmatter.get("pov", ""))
+                                                  pov=s.frontmatter.get("pov", ""),
+                                                  stopwords=_scene_stopwords(content_stopwords, s.frontmatter))
         for s in scenes
     }
     meta = {
@@ -577,6 +678,12 @@ def build_scene_data(
         "first_person": statistics.median([s.first_person_per_1k for s in scenes]) if scenes else 0.0,
         "passive": statistics.median([s.passive_per_1k for s in scenes]) if scenes else 0.0,
         "crutch": statistics.median([s.crutch_per_1k for s in scenes]) if scenes else 0.0,
+        # The book's mix of sentence lengths, as shares per bucket: the outline
+        # the scene panel's Spread view draws behind a scene's own.
+        "sent_buckets": _sentence_bucket_shares(scenes),
+        # A check's marks per 1,000 words in the median scene: the "typical"
+        # beside each rate in the scene panel's checks, counted as the marks are.
+        "pass_rates": _pass_rate_medians(scenes, highlights, clean_path),
     }
 
     return {"contents": contents, "meta": meta, "highlightsByPath": highlights, "medians": medians}
@@ -730,8 +837,8 @@ def _analysis_findings(scenes: list[SceneStats], cfg: Config, clean_path) -> lis
     repeating = [s for s in measured if scene_is_outlier(s, cfg)]
     findings.append({
         "text": (
-            f"{plural(len(repeating), 'scene repeats', 'scenes repeat')} words more than is usual for your genre."
-            if repeating else "No scene repeats words more than is usual for your genre."
+            f"{plural(len(repeating), 'scene repeats', 'scenes repeat')} words more than the usual range in Settings → Word variety."
+            if repeating else "No scene repeats words more than the usual range in Settings → Word variety."
         ),
         "tip": "Measured by word variety. Hover a scene's \u201cRepeats words\u201d tag to see which words.",
         "filter": "review" if repeating else "",
@@ -835,7 +942,8 @@ def build_analysis_payload(root: Path, cfg: Config | None = None) -> dict[str, o
             "mtldMedianText": f"{int(scene_mtld_median(scenes))} words",
             "mattrMedianText": f"{scene_mattr_median(scenes) * 100:.1f}%",
             "mtldBand": [cfg.mtld_band[0], cfg.mtld_band[1]],
-            "genreLabel": GENRE_LABELS.get(cfg.genre, cfg.genre),
+            # Settings → Word variety's name for these ranges.
+            "genreLabel": lexical_bands(cfg, root)["label"],
         },
     }
 
@@ -946,6 +1054,9 @@ def render_html_report(
     progress_card = _render_progress_card(goals, cfg, total_words=total_words, scene_count=len(scenes))
 
     table_body = _scene_table_body(display_scenes, root, cfg, editor_label, analysis=False)
+    # The typical ranges the page judges Variety and MTLD by, and where each
+    # comes from; Settings shows and edits the same values.
+    bands = lexical_bands(cfg, root)
 
     context = {
         "app_css": _load_app_css(),
@@ -960,7 +1071,10 @@ def render_html_report(
         "meta_json": _js_json(scene_meta_map),
         "medians_json": _js_json(medians_map),
         "paths_json": _js_json(ordered_paths),
-        "highlights_json": _js_json(highlights_map),
+        # Each scene's marks are fetched when it opens; only their counts,
+        # which the pass list shows at once, ride in the page.
+        "highlights_json": "{}",
+        "highlight_counts_json": _js_json(highlight_counts(highlights_map)),
         "editor_scheme_json": _js_json(cfg.editor.scheme),
         "editor_url_template_json": _js_json(cfg.editor.url_template),
         "editor_label_json": _js_json(editor_label),
@@ -984,7 +1098,7 @@ def render_html_report(
         # Which agent tab the dock opens on. Both tabs always exist; live
         # availability is fetched from /api/discuss/agents once the page runs.
         "discuss_default_agent_json": _js_json(cfg.discuss.agent),
-        "lexical_bands_json": _js_json({"mattr": list(cfg.mattr_band), "mtld": list(cfg.mtld_band)}),
+        "lexical_bands_json": _js_json(bands),
         "pass_order_json": _js_json(list(PASS_NAMES)),
         "presence_chart_json": _js_json({
             # The axis already says Chapter.
@@ -1010,6 +1124,7 @@ def render_html_report(
         "callout_css": screen_css(screen_colours(cfg.callouts)),
         "callout_types": list(dict.fromkeys([*GITHUB_TYPES, *(kind for kind, _ in cfg.callouts)])),
         "cfg": cfg,
+        "bands": bands,
         "config_exists": (root / ".proseview.yaml").exists(),
         "repo_root_json": _js_json(str(root.resolve())),
         "yaml_editor_url": _editor_url(cfg, str((root / ".proseview.yaml").resolve())),

@@ -25,7 +25,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .config import DEFAULT_SKILLS_PATH, DISCUSS_AGENTS, Config
+from .config import (
+    DEFAULT_SKILLS_PATH,
+    DISCUSS_AGENTS,
+    SUGGESTION_CONTEXTS,
+    SUGGESTION_PROMPT_MAX,
+    Config,
+    SuggestionsConfig,
+)
 from .hunks import changed_blocks, compose
 from .repo import (
     CONTEXT_FILE_MAX_BYTES,
@@ -39,8 +46,10 @@ from .repo import (
     scene_relative_path,
 )
 from .highlights import compute_scene_highlights, strip_markdown_for_offsets
-from .lexical import build_content_stopwords, top_repeated_content_words
+from .lexical import build_content_stopwords, glue_share_pct, prose_only, top_repeated_content_words
 from .scenes import extract_scene_text, resolve_manuscript_dir, split_frontmatter
+from . import suggestions as suggestions_module
+from .suggestions import SuggestionAppSettings
 
 
 QUESTION_MAX = 32 * 1024
@@ -2041,6 +2050,52 @@ def _stdin_approval_details(command: Any, running: Any) -> tuple[str, str]:
     return "", running_text or text
 
 
+#: How many rewrites a highlight suggestion offers, and how long it may take.
+HIGHLIGHT_SUGGESTION_COUNT = 3
+HIGHLIGHT_SUGGESTION_TIMEOUT = 180.0
+HIGHLIGHT_SUGGESTION_MAX = 16 * 1024
+
+
+class _OneOff:
+    """The answer to one request made outside any conversation, and how it went."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.text = ""
+        self.status = ""
+        self.error = ""
+        self.first_event = 0.0
+        self.first_token = 0.0
+        #: What the agent did on the way: files read, searches, MCP calls.
+        self.activities: dict[str, dict[str, Any]] = {}
+
+    def receive(self, event: dict[str, Any]) -> None:
+        kind = event.get("type")
+        now = time.monotonic()
+        self.first_event = self.first_event or now
+        if kind in {"progress.delta", "response.completed"}:
+            self.first_token = self.first_token or now
+        if kind == "response.completed" and event.get("phase") == "final_answer":
+            self.text = str(event.get("text") or "")
+        elif kind == "activity.updated":
+            activity = event.get("activity") or {}
+            target = activity.get("path") or activity.get("pattern") or ""
+            title = (activity.get("title") or activity.get("command") or activity.get("query")
+                     or " ".join(str(x) for x in (activity.get("tool"), target) if x))
+            # A completion knows the outcome, not the tool: the start's title stays.
+            if activity.get("id") and title:
+                self.activities[str(activity["id"])] = {
+                    "kind": _bounded_text(activity.get("kind"), 40),
+                    "title": _bounded_text(title, 300),
+                }
+        elif kind == "error":
+            self.error = str(event.get("message") or "")
+        elif kind == "turn.completed":
+            self.status = str(event.get("status") or "completed")
+            self.error = self.error or str(event.get("error") or "")
+            self.done.set()
+
+
 class DiscussManager:
     """Own project conversations, per-turn document context, and agent transports."""
 
@@ -2089,6 +2144,9 @@ class DiscussManager:
         # Keyed by agent and thread id together: a thread id is only unique
         # within the agent that issued it.
         self._threads: dict[str, _Conversation] = {}
+        #: One-off requests (highlight suggestions) by thread key. They live
+        #: outside every conversation: nothing here reaches a chat or History.
+        self._one_offs: dict[str, _OneOff] = {}
         self._task_context: dict[str, dict[str, dict[str, Any]]] = {}
         # Model catalogs, per agent, with the reading's monotonic timestamp.
         self._model_catalogs: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -3966,6 +4024,10 @@ class DiscussManager:
         events = translate(message)
         for event in events:
             thread_id = str(event.get("thread_id") or "")
+            one_off = self._one_offs.get(self._thread_key(agent, thread_id))
+            if one_off is not None:
+                one_off.receive(event)
+                continue
             conversation = self._threads.get(self._thread_key(agent, thread_id))
             if conversation is None:
                 continue
@@ -4093,6 +4155,254 @@ class DiscussManager:
                     **extra,
                 )
             conversation.publish(event_type, event)
+
+    def suggest_for_highlight(
+        self,
+        agent: str,
+        *,
+        pass_name: str,
+        label: str,
+        explanation: str,
+        note: str,
+        text: str,
+        paragraph: str,
+        flagged: str = "",
+        scene: str = "",
+        chat_model: str = "",
+        chat_effort: str = "",
+        app_settings: SuggestionAppSettings | None = None,
+        timeout: float = HIGHLIGHT_SUGGESTION_TIMEOUT,
+    ) -> dict[str, Any]:
+        """Ask *agent* once, outside every conversation, for rewrites of a marked passage.
+
+        The thread is ephemeral and never recorded: the chat, its History and
+        the agent's own resume list stay as they were. What it is told, which
+        files it sees, its model, tools and MCP servers come from the book's
+        and this computer's suggestion settings. It can read, never write.
+        The answer is checked exactly as a Rephrase action's is, and comes
+        back with an account of how it was made.
+        """
+        if agent not in {"codex", "claude"}:
+            raise ContextError("unknown agent")
+        text = str(text or "").strip()
+        paragraph = str(paragraph or "").strip() or text
+        if not text or len(text.encode("utf-8")) > HIGHLIGHT_SUGGESTION_MAX:
+            raise ContextError("the marked passage is empty or too long to suggest for")
+        book = Config.load(self.root).suggestions
+        settings = (app_settings or SuggestionAppSettings()).load()[agent]
+        context, context_label = paragraph, "ITS PARAGRAPH"
+        scene_path = self._scene_file(scene) if scene and book.context == "scene" else None
+        if scene_path is not None:
+            _frontmatter, body = split_frontmatter(read_repo_text(scene_path))
+            context = prose_only(extract_scene_text(body))
+            context_label = "THE WHOLE SCENE"
+        if len(context.encode("utf-8")) > suggestions_module.CONTEXT_MAX:
+            context, context_label = paragraph, "ITS PARAGRAPH"
+        prompt = suggestions_module.render_prompt(
+            book, pass_name=pass_name, check=_bounded_text(label or pass_name, 200),
+            explanation=_bounded_text(explanation, 2000), note=_bounded_text(note, 500),
+            flagged=_bounded_text(flagged, 500), passage=text, context=context,
+            context_label=context_label, count=HIGHLIGHT_SUGGESTION_COUNT,
+            tools=settings.tools,
+        )
+        model = settings.model or chat_model
+        effort = settings.effort or chat_effort
+        thread_params: dict[str, Any] = {
+            "cwd": str(self.root),
+            "approvalPolicy": "never",
+            "developerInstructions": (
+                "You are answering one question from Prosview, a writing app. You may read, never "
+                "change, anything. Reply only with the structured result asked for."
+            ),
+            "ephemeral": True,
+        }
+        instruction_files: list[str] = []
+        if agent == "codex":
+            servers = suggestions_module.codex_mcp_servers()
+            config: dict[str, Any] = {"web_search": "live" if settings.tools == "web" else "disabled"}
+            for server in servers:
+                if server["name"] not in settings.mcp_on:
+                    config[f"mcp_servers.{server['name']}.enabled"] = False
+            if book.instructions:
+                instruction_files = ["AGENTS.md"] if (self.root / "AGENTS.md").is_file() else []
+            else:
+                # Codex's own switch for AGENTS.md.
+                config["project_doc_max_bytes"] = 0
+            thread_params["config"] = config
+            mcp_on = [s["name"] for s in servers if s["name"] in settings.mcp_on and s["configured_on"]]
+        else:
+            servers = suggestions_module.claude_mcp_servers(self.root)
+            enabled = {s["name"]: s["config"] for s in servers if s["name"] in settings.mcp_on}
+            thread_params["tools"] = suggestions_module.CLAUDE_TOOLS[settings.tools]
+            # As the chat loads them: CLAUDE.md and what it imports come with
+            # the project's settings.
+            thread_params["settingSources"] = ["user", "project", "local"] if book.instructions else ["user"]
+            thread_params["mcpServers"] = enabled
+            if book.instructions:
+                instruction_files = suggestions_module.claude_instruction_files(self.root)
+            mcp_on = sorted(enabled)
+
+        started_at = time.monotonic()
+        client = self._client_for(agent)
+        started = client.request("thread/start", thread_params)
+        thread_ready = time.monotonic()
+        thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
+        thread_id = str(thread.get("id") or "")
+        if not thread_id:
+            raise RuntimeError("The agent did not return a thread id")
+        key = self._thread_key(agent, thread_id)
+        one_off = _OneOff()
+        self._one_offs[key] = one_off
+        try:
+            turn_params: dict[str, Any] = {
+                "threadId": thread_id,
+                "input": [{"type": "text", "text": prompt}],
+                "cwd": str(self.root),
+                "approvalPolicy": "never",
+                "sandboxPolicy": {"type": "readOnly", "networkAccess": settings.tools == "web"},
+                "mayWrite": False,
+                "outputSchema": action_output_schema("alternatives", HIGHLIGHT_SUGGESTION_COUNT),
+            }
+            if model:
+                turn_params["model"] = model
+            if effort:
+                turn_params["effort"] = effort
+            turn = client.request("turn/start", turn_params)
+            if not one_off.done.wait(timeout=timeout):
+                turn_id = str((turn.get("turn") or {}).get("id") or "")
+                try:
+                    client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+                except Exception:
+                    pass
+                raise ContextError("The agent took too long to suggest anything; try again")
+        finally:
+            self._one_offs.pop(key, None)
+        finished = time.monotonic()
+        if one_off.status != "completed" or not one_off.text:
+            raise ContextError(one_off.error or "The agent did not return any suggestions; try again")
+        result = validate_action_result(one_off.text, {
+            "kind": "alternatives",
+            "max_results": HIGHLIGHT_SUGGESTION_COUNT,
+            "target": {"selection": text},
+            "action_id": "rephrase",
+        })
+        if pass_name == "sticky_sentences":
+            result["original_glue_pct"] = glue_share_pct(text)
+            for row in result["alternatives"]:
+                row["glue_pct"] = glue_share_pct(row["text"])
+        if not model or not effort:
+            # What the agent resolved for itself, so the card can say.
+            try:
+                default = self.list_models(agent)["default"]
+                model = model or default["model"]
+                effort = effort or default["effort"]
+            except Exception:
+                pass
+
+        def since(at: float) -> float:
+            return round(at - started_at, 1) if at else 0.0
+
+        result["used"] = {
+            "agent": agent,
+            "model": model or f"{'Claude' if agent == 'claude' else 'Codex'}'s default",
+            "effort": effort,
+            "tools": settings.tools,
+            "context": context_label.lower(),
+            "instruction_files": instruction_files,
+            "mcp_servers": mcp_on,
+            "activities": list(one_off.activities.values()),
+            "timings": {
+                "thread_started": since(thread_ready),
+                "first_event": since(one_off.first_event),
+                "first_token": since(one_off.first_token),
+                "total": since(finished),
+            },
+        }
+        return result
+
+    #: The passage "Try it" asks about: a sticky sentence, so every setting
+    #: shows in the answer, glue share included.
+    SUGGESTION_SAMPLE = "It was one of those things that she had to do in the end, and so she did it."
+
+    def suggestion_settings(self, app_settings: SuggestionAppSettings | None = None) -> dict[str, Any]:
+        """Everything the Settings page shows for suggestions, with the defaults beside it."""
+        book = Config.load(self.root).suggestions
+        app = (app_settings or SuggestionAppSettings()).load()
+        return {
+            "book": {
+                "instructions": book.instructions,
+                "context": book.context,
+                "prompt": book.prompt or suggestions_module.DEFAULT_PROMPT,
+                "pass_prompts": {
+                    key: (book.pass_prompt(key) if book.pass_prompt(key) is not None else text)
+                    for key, text in suggestions_module.DEFAULT_PASS_PROMPTS.items()
+                },
+            },
+            "app": {agent: value.to_json() for agent, value in app.items()},
+            "defaults": {
+                "prompt": suggestions_module.DEFAULT_PROMPT,
+                "pass_prompts": dict(suggestions_module.DEFAULT_PASS_PROMPTS),
+            },
+            "placeholders": dict(suggestions_module.PROMPT_PLACEHOLDERS),
+            "tools": dict(suggestions_module.TOOL_LABELS),
+            "mcp": {
+                "codex": [
+                    {"name": s["name"], "configured_on": s["configured_on"]}
+                    for s in suggestions_module.codex_mcp_servers()
+                ],
+                "claude": [
+                    {"name": s["name"], "configured_on": s["configured_on"]}
+                    for s in suggestions_module.claude_mcp_servers(self.root)
+                ],
+            },
+        }
+
+    def save_suggestion_settings(
+        self, body: dict[str, Any], app_settings: SuggestionAppSettings | None = None
+    ) -> dict[str, Any]:
+        """Keep the book's part in ``.proseview.yaml`` and the computer's beside the conversations.
+
+        A prompt left as Prosview's default is not written, so the book only
+        records what the writer changed and later default improvements reach it.
+        """
+        store = app_settings or SuggestionAppSettings()
+        raw_book = body.get("book") if isinstance(body.get("book"), dict) else None
+        if raw_book is not None:
+            defaults = suggestions_module
+            prompt = str(raw_book.get("prompt") or "").strip()
+            passes = {
+                key: str(text).strip()
+                for key, text in (raw_book.get("pass_prompts") or {}).items()
+                if key in defaults.DEFAULT_PASS_PROMPTS and str(text).strip() != defaults.DEFAULT_PASS_PROMPTS[key]
+            }
+            cfg = Config.load(self.root)
+            context = raw_book.get("context")
+            if context not in SUGGESTION_CONTEXTS:
+                raise ContextError("unknown suggestion context")
+            if len(prompt) > SUGGESTION_PROMPT_MAX or any(len(t) > SUGGESTION_PROMPT_MAX for t in passes.values()):
+                raise ContextError("a suggestion prompt is too long")
+            cfg.with_overrides(suggestions=SuggestionsConfig(
+                instructions=bool(raw_book.get("instructions", True)),
+                context=context,
+                prompt="" if prompt == defaults.DEFAULT_PROMPT.strip() else prompt,
+                pass_prompts=tuple(sorted(passes.items())),
+            )).save(self.root)
+        raw_app = body.get("app") if isinstance(body.get("app"), dict) else None
+        if raw_app is not None:
+            current = store.load()
+            for agent in ("codex", "claude"):
+                if isinstance(raw_app.get(agent), dict):
+                    current[agent] = suggestions_module.AgentSuggestionSettings.from_json(raw_app[agent])
+            store.save(current)
+        return self.suggestion_settings(store)
+
+    def _scene_file(self, scene: str) -> Path | None:
+        """A manuscript scene by its path inside the manuscript folder, if it is one."""
+        base = (self.root / self.context.cfg.manuscript_subdir).resolve()
+        path = (base / scene).resolve()
+        if not path.is_relative_to(base) or path.suffix != ".md" or not path.is_file():
+            return None
+        return path
 
     def proposal_for_task(self, conversation_id: str, task_id: str) -> dict[str, Any]:
         conversation = self._get(conversation_id)

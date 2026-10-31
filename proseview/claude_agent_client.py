@@ -767,6 +767,19 @@ class ClaudeAgentClient:
             options["resume"] = session.thread_id
         else:
             options["session_id"] = session.thread_id
+        # A one-off request (a highlight suggestion): the tools it was given,
+        # all of them read-only, only the MCP servers switched on for it, and
+        # no transcript left behind for Claude Code's own history.
+        if session.thread_params.get("ephemeral"):
+            tools = [str(t) for t in session.thread_params.get("tools") or [] if t not in WRITE_TOOLS]
+            options["tools"] = tools
+            options["allowed_tools"] = list(tools)
+            options["max_turns"] = 12 if tools else 3
+            sources = session.thread_params.get("settingSources")
+            if isinstance(sources, list):
+                options["setting_sources"] = [str(x) for x in sources]
+            options["mcp_servers"] = dict(session.thread_params.get("mcpServers") or {})
+            options["extra_args"] = {"no-session-persistence": None, "strict-mcp-config": None}
         if self._options_factory is not None:
             return self._options_factory(hooks={"PreToolUse": [pre_tool_use]}, **options)
 
@@ -1107,6 +1120,12 @@ class ClaudeAgentClient:
         """Claude would ask here; the writer answers in the panel."""
         if tool in INTERNAL_TOOLS:
             return {"behavior": "allow"}
+        # A one-off request has no panel to ask in: the tools it was given
+        # are allowed, and nothing else.
+        if session.thread_params.get("ephemeral"):
+            if tool in (session.thread_params.get("tools") or []) or tool.startswith("mcp__"):
+                return {"behavior": "allow"}
+            return {"behavior": "deny", "message": "A suggestion may only read."}
         return await self._ask_writer(session, tool, tool_input, None, None)
 
     async def _ask_writer(

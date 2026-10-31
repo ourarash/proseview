@@ -6,8 +6,9 @@ uncover it the same way unless the writer has set a password with
 PBKDF2 hash, in the same per-user folder as the agent conversations, never in
 the book: a repository is shared and pushed, and this is nobody else's.
 
-While a password is set, a covered screen is remembered by the server, so a
-reload or a new tab opens on the spreadsheet until the password is given.
+A covered screen is remembered in a small file beside it, so a reload, a
+new tab or a restarted server still opens on the spreadsheet until it is
+uncovered (with the password, when there is one).
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ ITERATIONS = 200_000
 
 def password_path() -> Path:
     return _state_path().with_name("privacy.json")
+
+
+def covered_path() -> Path:
+    return _state_path().with_name("privacy-covered")
 
 
 def _read() -> dict[str, Any] | None:
@@ -94,29 +99,34 @@ def check_password(password: str) -> bool:
 class PrivacyLock:
     """Whether the screen is covered, as the server remembers it.
 
-    Only a screen with a password behind it is remembered: without one,
-    anybody can uncover it anyway, and a reload may as well show the book.
-    ``available=False`` is Proseview running inside a browser tab, where
-    there is no user folder to keep a password in.
+    The flag is a file, not memory, so restarting Proseview does not uncover
+    the page. ``available=False`` is Proseview running inside a browser tab,
+    where there is no user folder: the page keeps the flag itself there, and
+    there is no password.
     """
 
     def __init__(self, available: bool = True) -> None:
         self.available = available
-        self._locked = False
         self._lock = threading.Lock()
 
+    def _covered(self) -> bool:
+        return self.available and covered_path().is_file()
+
     def state(self) -> dict[str, bool]:
-        password = self.available and has_password()
         with self._lock:
-            if not password:
-                self._locked = False
-            return {"available": self.available, "password": password, "locked": self._locked}
+            return {
+                "available": self.available,
+                "password": self.available and has_password(),
+                "locked": self._covered(),
+            }
 
     def lock(self) -> dict[str, bool]:
-        password = self.available and has_password()
-        with self._lock:
-            self._locked = password
-            return {"available": self.available, "password": password, "locked": self._locked}
+        if self.available:
+            with self._lock:
+                path = covered_path()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+        return self.state()
 
     def change_password(self, current: str, new: str) -> bool:
         """Set, change or (with an empty *new*) remove the password.
@@ -136,5 +146,5 @@ class PrivacyLock:
         if not check_password(password):
             return False
         with self._lock:
-            self._locked = False
+            covered_path().unlink(missing_ok=True)
         return True

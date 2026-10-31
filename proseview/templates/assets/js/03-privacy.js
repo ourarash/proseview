@@ -2,10 +2,11 @@
         // Hold Cmd (Ctrl off a Mac) and tap J twice to cover the page with a
         // dull spreadsheet; the same again uncovers it. Nothing behind is
         // touched -- an edit, its caret and scroll, an agent's reply all carry
-        // on -- so uncovering finds the page exactly as it was. With a
-        // password set (`proseview privacy-password`), uncovering asks for it,
-        // the server checks it, and the server remembers the covered screen
-        // so a reload or another tab opens on the spreadsheet too.
+        // on -- so uncovering finds the page exactly as it was. The server
+        // remembers a covered screen, so a reload, another tab or a restart
+        // opens on the spreadsheet too. With a password set (Settings, or
+        // `proseview privacy-password`), uncovering asks for it and the
+        // server checks it.
         var PRIVACY_TAP_MS = 500;
         var PRIVACY_TITLE = 'Budget';
         var PRIVACY_MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
@@ -14,6 +15,17 @@
         var _privacyPassword = false;
         var _privacySaved = null;
         var _privacyTitleWatch = null;
+        // With no server to remember it (a static snapshot, or the book
+        // running in a browser tab), this browser keeps the covered flag.
+        var _privacyLocal = !!window.PROSEVIEW_STATIC;
+        var PRIVACY_LOCAL_KEY = 'proseview-privacy:' + location.pathname;
+
+        function privacyRememberLocally(covered) {
+            try {
+                if (covered) localStorage.setItem(PRIVACY_LOCAL_KEY, 'covered');
+                else localStorage.removeItem(PRIVACY_LOCAL_KEY);
+            } catch (err) { /* storage refused: the tab still covers */ }
+        }
 
         function privacyIsShortcut(e) {
             if (e.code !== 'KeyJ' || e.shiftKey || e.altKey) return false;
@@ -75,11 +87,17 @@
                 });
                 _privacyTitleWatch.observe(title, {childList: true, characterData: true, subtree: true});
             }
-            if (!fromServer) {
-                privacyPost('/api/privacy/lock').then(function(state) {
-                    if (state && state.ok) privacySettingsShow(state);
-                });
+            if (fromServer) return;
+            if (_privacyLocal) {
+                privacyRememberLocally(true);
+                return;
             }
+            privacyPost('/api/privacy/lock').then(function(state) {
+                if (!state || !state.ok) return;
+                privacySettingsShow(state);
+                // Covered before the page learned there is no server to keep it.
+                if (_privacyLocal && _privacyShown) privacyRememberLocally(true);
+            });
         }
 
         function privacyUncover() {
@@ -143,6 +161,8 @@
                 privacyCover(false);
             } else if (!_privacyPassword) {
                 privacyUncover();
+                if (_privacyLocal) privacyRememberLocally(false);
+                else privacyPost('/api/privacy/unlock', {password: ''});
             } else if (document.getElementById('privacyPassword').hidden) {
                 privacyOpenBox();
             } else {
@@ -150,10 +170,10 @@
             }
         }
 
-        // Another tab covered or uncovered the screen behind a password.
-        function privacyFollowServer(locked) {
+        // Another tab covered or uncovered the screen.
+        function privacyFollowServer(locked, password) {
             if (locked) {
-                _privacyPassword = true;
+                _privacyPassword = !!password;
                 privacyCover(true);
             } else {
                 privacyUncover();
@@ -168,6 +188,7 @@
 
         function privacySettingsShow(state) {
             _privacyPassword = !!state.password;
+            if (state.available === false) _privacyLocal = true;
             var row = document.getElementById('privacySettingsRow');
             if (!row) return;
             row.hidden = !state.available;
@@ -271,7 +292,7 @@
             if (!screen) return;
             screen.addEventListener('cancel', function(e) { e.preventDefault(); });
             if (document.documentElement.dataset.privacy === 'locked') {
-                _privacyPassword = true;
+                _privacyPassword = document.documentElement.dataset.privacyPassword === '1';
                 privacyCover(true);
             }
             if (window.PROSEVIEW_STATIC) return;

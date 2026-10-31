@@ -1368,7 +1368,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/privacy/lock":
             state = self.privacy.lock()
             if state["locked"]:
-                self.publish_event({"type": "privacy", "locked": True})
+                self.publish_event({"type": "privacy", "locked": True, "password": state["password"]})
             self._send_json({"ok": True, **state})
             return
         try:
@@ -2447,9 +2447,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             html = self.get_html()
-            if self.privacy.state()["locked"]:
+            privacy = self.privacy.state()
+            if privacy["locked"]:
                 # Covered before first paint, so a reload shows no prose.
-                html = html.replace("<html ", '<html data-privacy="locked" ', 1)
+                mark = ' data-privacy-password="1"' if privacy["password"] else ""
+                html = html.replace("<html ", f'<html data-privacy="locked"{mark} ', 1)
             html = html.encode("utf-8")
         except Exception as exc:
             self.send_response(500)

@@ -33,11 +33,18 @@ target_words: 80000
 # Daily word goal (drives the "days to finish" estimate).
 daily_target: 500
 
-# Healthy band for local lexical variety (MATTR).
+# Settings → General → Word variety sets these three: a preset saves the
+# genre alone, Custom… saves both ranges.
+#
+# Genre: picks the typical MTLD range. childrens 40–60, contemporary 60–85,
+# literary 85–110, speculative 90–120. Default: contemporary.
+genre: literary
+
+# Typical range for word variety nearby (Variety, MATTR). Default: 0.74–0.77.
 mattr_band: [0.74, 0.77]
 
-# Healthy band for whole-scene lexical variety (MTLD).
-mtld_band: [105, 130]
+# Typical range for word variety across a scene (MTLD). Wins over the genre's.
+mtld_band: [85, 110]
 
 # Editor URL handler. One of: vscode, cursor, zed, positron, custom.
 editor:
@@ -78,7 +85,9 @@ configured manuscript directory is required.
 ## Privacy screen password
 
 `Mod-J J` (hold Cmd, or Ctrl off a Mac, and tap J twice) covers the dashboard
-with a plain budget spreadsheet, and the same again uncovers it. To ask for a
+with a plain budget spreadsheet, and the same again uncovers it. A covered
+page stays covered through a reload, a new tab and a restart of Proseview,
+until you uncover it. To ask for a
 password before uncovering, set one under **Privacy screen** in Settings, or
 from a terminal:
 
@@ -93,8 +102,9 @@ It is not kept in the book or in `.proseview.yaml`: only a salted hash is
 stored, in your user folder (`~/Library/Application Support/Proseview` on
 macOS, `$XDG_STATE_HOME/proseview` or `~/.local/state/proseview` elsewhere).
 With a password set, `Mod-J J` on the spreadsheet shows a small password box;
-Enter with the right one uncovers the page, a wrong one leaves it covered, and
-a reload or a new tab stays covered until the password is given. It keeps the
+Enter with the right one uncovers the page and a wrong one leaves it covered.
+The covered state is a small `privacy-covered` file in the same folder. It keeps the
 page from a glance over your shoulder; it does not encrypt anything, and
 anyone at the computer can still open the files. A read-only snapshot and the
-in-browser `/write/` book have the spreadsheet but no password.
+in-browser `/write/` book have the spreadsheet, remembered by that browser,
+but no password.

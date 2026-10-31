@@ -11,10 +11,10 @@ section here becomes the release notes on GitHub.
   the page at once with a plain budget spreadsheet in the page's theme; the
   tab reads "Budget" with a grid icon. The same again uncovers it, with any
   unsaved edit, the caret, the scroll and a running agent reply exactly as
-  they were. An optional password, set in Settings or with
-  `proseview privacy-password`, is kept only as a salted hash in your user
-  folder; with one set, uncovering asks
-  for it, and a reload or a new tab stays covered until it is given.
+  they were. A covered page stays covered through a reload, a new tab
+  and a restart until you uncover it. An optional password, set in Settings
+  or with `proseview privacy-password`, is kept only as a salted hash in your
+  user folder; with one set, uncovering asks for it.
 
 - **Callouts.** A quotation that starts with `[!type]`, GitHub's and
   Obsidian's syntax (`> [!letter] A letter, undated`), is now a framed box of
@@ -64,15 +64,118 @@ section here becomes the release notes on GitHub.
   scene. The Export dialog's PDF preview is now the whole PDF in the same
   viewer, instead of pictures of the first three chapters.
 
+- **Echoes and Sticky Sentences.** Two new highlight passes in a scene's
+  Analysis tab. *Echoes* marks words that come back within 50 words of each
+  other, counting their forms (walk, walked, walking) and skipping names and
+  everyday words. Every word of an echo is marked, with a small 2/3 saying
+  which word of the echo it is and how many it has; the first is
+  lighter, and pointing at one lights its partners in their own colour (as
+  pointing at a Repeats word lights its other uses, in all its forms; Repeats
+  words are numbered the same way, 2/6 for the second of six uses, with the
+  paragraph's count on the word's card). The row's
+  count is of echoes, not words. *Sticky Sentences* marks
+  sentences of 10 or more words where more than 60% are glue words (the, of,
+  in, her), with the share on the mark; sentences wholly inside dialogue are
+  skipped.
+
+- **Dialogue Tags.** A highlight pass that marks the "she said" beside
+  dialogue when its verb is not said or asked ("she cried"), when it carries
+  an adverb ("said sternly") or a phrase doing an adverb's job ("said in a
+  sad little voice", "with a sigh", "under her breath"), or when it is not a
+  speech verb at all ("Fine," she smiled), and marks the start of six or more
+  dialogue paragraphs in a row with no tag (a line with an action beat
+  counts as attributed). While it is on, its row lists how many of each kind
+  the scene has, and what share of its tags carry an adverb, against the
+  12% ProWritingAid suggests.
+
+- **Dialogue.** A highlight pass that tints everything inside quotation
+  marks, which is exactly what the Dialogue % counts.
+
+- **One list of checks.** A scene's Analysis tab has a single list of
+  checks, grouped Words, Dialogue, Style and Rhythm, in a fixed order. Each check's
+  row shows its examples, how many marks the scene has and, where it has
+  one, its rate ("41.2% of words", "2.1 per 1,000 words"), worked out from
+  its own marks; an unusual rate is amber, with "vs typical" for your book
+  beside it. Words and word variety, which mark nothing, are one line at the
+  top, with their typical ranges on hover and an ⓘ that says in plain words
+  what Variety (MATTR) and MTLD measure and how, the ranges in use and where
+  they come from.
+  The old Measures tiles, which repeated these numbers, are gone. First
+  Person says when a scene is told in first person, so nothing is marked.
+  Lyrical and Hyperbole are folded under *More checks, off by default*.
+  *Clear* sits on the first group's line, shown while a check is on.
+
+- **Sentence length.** A scene's Analysis tab opens with a strip of its
+  sentences, one bar each in reading order, against the scene's average,
+  with paragraph starts and dialogue shown. *By length* switches to how many
+  sentences fall in each length band, against your typical scene. Hovering
+  shows the sentence or the count, and pointing at a bar lights its sentence
+  in the text without scrolling; clicking a bar brings its sentence into
+  view and lights it, and clicking a band tints its sentences. The averages
+  behind it are under the ⓘ beside it. ⤢ opens it in a larger window that
+  leaves the page usable and can be moved and resized; it remembers where
+  it was left, and a double-click on its title puts it back.
+
+- **Suggestions on a highlight.** Click a highlighted word while reading
+  and a small card opens under its line, saying what the check found.
+  *Suggest with Codex* and *Suggest with Claude* each ask once, and can run
+  at the same time, for three rewrites of the sentence the mark is in (the
+  whole paragraph for a run of untagged dialogue), each with a one-line
+  reason and, for a sticky sentence, its glue-word share. Each agent's answer
+  is kept, says how long it took, and can be asked again. The request stays
+  out of the chat and its History, and leaves no session in Claude Code's own
+  list. *Use* puts a rewrite in the scene and saves it, as one change you can
+  undo. *Discuss in chat* opens the agent tab with the passage selected and a
+  starter you can edit before sending. The page never scrolls for any of it.
+
+- **Taking a suggestion back.** Text a suggestion put in keeps a faint
+  dotted underline for the session; clicking it shows what it replaced, with
+  *Restore original* and the other rewrites to switch to. In reading mode,
+  Cmd/Ctrl+Z takes back the last suggestion used in the scene. History names
+  each such save ("Suggestion: Sticky Sentences (Codex)").
+
+- **Suggestion settings.** Settings › Suggestions (or the gear on the card)
+  sets, for Codex and Claude separately, the model and effort ("Same as
+  chat" unless you pick), the tools (none, read the book, or read the book
+  and the web; never edits), and which of their MCP servers start (none,
+  unless switched on). For the book: whether the agents read its own
+  instructions as the chat does (Claude its CLAUDE.md and what that points
+  to, Codex its AGENTS.md), whether they see the passage's paragraph or the
+  whole scene. The prompts are
+  editable too, one shared and one per check, each with Reset to default;
+  only what you change is written to `.proseview.yaml`. *Try it* runs a sample
+  suggestion and shows the model, the files read, the tools used, the MCP
+  servers and how long each step took. Hovering "Suggested by" on the card
+  names the model and effort.
+
+- **Word variety in Settings.** One *Word variety* setting replaces Genre,
+  which only ever set the typical MTLD range. It sets what counts as typical
+  for Variety and MTLD in the Analysis tab: a preset (Children's,
+  Contemporary, Literary, Fantasy / sci-fi), each showing its numbers, or
+  *Custom…* with your own. A preset is saved as `genre:` as before, Custom as
+  `mattr_band` and `mtld_band`; existing files keep working. The Analysis
+  tab names the ranges by the same name ("Typical: 85–110 (Literary)"), and
+  the setting has the same ⓘ as the scene's line, saying what Variety and
+  MTLD are.
+
 ### Changed
+
+- **Highlight marks load with their scene.** The dashboard no longer
+  carries every scene's marks; each scene's are fetched when it opens (from
+  files beside a published snapshot), which roughly halves the page.
 
 - **Analysis highlights that mark what matters.** Crutch words, hyperbole and
   first-person pronouns are no longer marked inside dialogue, where they are
   how a character talks. First Person marks nothing in a scene told in first
   person, by its `pov:` or by its narration. Comedy Beats, which marked every
   exclamation mark and dash, is replaced by **Sentence Openings**: three or
-  more sentences in a row that begin with the same word. Each pass's hover
-  text now says what it marks, why it can matter and what to try.
+  more sentences in a row that begin with the same word. Each check has one
+  explanation of what it marks, why it can matter and what to try: behind
+  an ⓘ beside its row, and on the card a mark opens when clicked.
+
+- **No hover card on highlight marks.** Pointing at a marked word no longer
+  pops up a description; clicking it opens its card, which says the same and
+  what it found.
 - **A new look for the dashboard.** One header holds the name, the tabs,
   search, Read the book and Export. The Overview opens on a **Progress** card
   (the book against its goal, then today, pace, streak and days to finish)
@@ -108,6 +211,26 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- A check that found nothing in a scene was grayed out, which looked
+  disabled though it still turns on. Its name now looks like every other
+  check's; only its 0 (and "none" where a rate would be) is muted. The same
+  goes for a dialogue-tag kind with nothing to count.
+
+- A scene's Analysis line judged Variety and MTLD against built-in ranges
+  (0.65–0.85 and 50–180) instead of the book's `mattr_band` and `mtld_band`.
+  Changing the genre in Settings also kept the old genre's MTLD range.
+
+- Sentences no longer end after "Mr.", "Dr.", "e.g." or an initial, nor
+  between a closing quote and its speech tag (`"Wait!" she said.`), and
+  dialogue in single curly quotes (‘Wait!’) now counts as dialogue, while
+  apostrophes (don’t, ’em) still do not. Average sentence length and
+  dialogue % may shift slightly for some scenes, because they are now
+  measured correctly; Sentence Openings agrees with them on where a sentence
+  ends.
+- A highlight on a paragraph wrapped over several lines in the file (a
+  sticky sentence, a passive, a line of dialogue) was never drawn.
+- The Measures tiles never compared with the book: their "Book median" and
+  amber marks did not appear.
 - The Export dialog's preview was blank in the browser version (`/write/`).
 - A repeated word in or after a callout, or in an image's alt text, could
   show its count twice ("3 / 103 / 10") or land on the wrong paragraph.

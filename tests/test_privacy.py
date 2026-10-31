@@ -57,19 +57,29 @@ def test_an_empty_password_is_refused():
         privacy.set_password("")
 
 
-def test_lock_is_only_remembered_with_a_password():
+def test_a_covered_screen_is_remembered_with_or_without_a_password(state_home: Path):
     lock = privacy.PrivacyLock()
-    assert lock.lock() == {"available": True, "password": False, "locked": False}
+    assert lock.lock() == {"available": True, "password": False, "locked": True}
+    assert (state_home / "proseview" / "privacy-covered").is_file()
+    # No password: anyone uncovers it, as the shortcut does.
+    assert lock.unlock("") is True
+    assert lock.state()["locked"] is False
+
     privacy.set_password("pw")
     assert lock.lock() == {"available": True, "password": True, "locked": True}
     assert lock.unlock("wrong") is False
     assert lock.state()["locked"] is True
     assert lock.unlock("pw") is True
     assert lock.state() == {"available": True, "password": True, "locked": False}
-    # Clearing the password while covered uncovers.
-    lock.lock()
-    privacy.clear_password()
-    assert lock.state()["locked"] is False
+
+
+def test_a_restarted_server_still_finds_the_screen_covered():
+    privacy.set_password("pw")
+    privacy.PrivacyLock().lock()
+    restarted = privacy.PrivacyLock()
+    assert restarted.state()["locked"] is True
+    assert restarted.unlock("pw") is True
+    assert privacy.PrivacyLock().state()["locked"] is False
 
 
 def test_changing_or_removing_needs_the_current_password():
@@ -88,6 +98,7 @@ def test_inside_a_browser_tab_there_is_no_password():
     privacy.set_password("pw")
     lock = privacy.PrivacyLock(available=False)
     assert lock.lock() == {"available": False, "password": False, "locked": False}
+    assert not privacy.covered_path().exists()
     assert lock.change_password("pw", "new") is False
     assert privacy.check_password("pw")
 
@@ -137,14 +148,17 @@ def server():
     httpd.shutdown()
 
 
-def test_route_without_a_password_covers_in_the_browser_only(server):
+def test_route_without_a_password_still_keeps_a_reload_covered(server):
     state = {"ok": True, "available": True, "password": False, "locked": False}
     assert server("/api/privacy") == (200, state)
-    assert server("/api/privacy/lock", {}) == (200, state)
-    assert server.events == []
-    status, html = server("/")
-    assert b"data-privacy" not in html
+    assert server("/api/privacy/lock", {}) == (200, {**state, "locked": True})
+    assert server.events == [{"type": "privacy", "locked": True, "password": False}]
+    _, html = server("/")
+    assert b'<html data-privacy="locked" lang="en">' in html
     assert server("/api/privacy/unlock", {"password": ""})[0] == 200
+    assert server.events[-1] == {"type": "privacy", "locked": False}
+    _, html = server("/")
+    assert b"data-privacy" not in html
 
 
 def test_route_needs_the_session_token(server):
@@ -157,10 +171,10 @@ def test_route_with_a_password_holds_the_lock_until_it_is_given(server):
     privacy.set_password("pw")
     status, state = server("/api/privacy/lock", {})
     assert status == 200 and state["locked"] is True
-    assert server.events == [{"type": "privacy", "locked": True}]
+    assert server.events == [{"type": "privacy", "locked": True, "password": True}]
     # A reload is covered before first paint, and the hash never reaches it.
     _, html = server("/")
-    assert b'<html data-privacy="locked" lang="en">' in html
+    assert b'<html data-privacy="locked" data-privacy-password="1" lang="en">' in html
     assert b"pbkdf2" not in html
 
     status, body = server("/api/privacy/unlock", {"password": "wrong"})

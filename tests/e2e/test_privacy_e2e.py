@@ -69,6 +69,24 @@ def _set_password(server: ProseviewServer, password: str | None) -> None:
     subprocess.run([sys.executable, "-c", code], env=server.env, check=True)
 
 
+def _reset(server: ProseviewServer) -> None:
+    """No password and nothing covered: the flag outlives the server."""
+    code = (
+        "from proseview.privacy import clear_password, covered_path;"
+        "clear_password(); covered_path().unlink(missing_ok=True)"
+    )
+    subprocess.run([sys.executable, "-c", code], env=server.env, check=True)
+
+
+@pytest.fixture(autouse=True)
+def _clean_privacy(server: ProseviewServer):
+    # The test home is shared, so a test that fails while covered must not
+    # leave every later page covered.
+    _reset(server)
+    yield
+    _reset(server)
+
+
 def test_cover_keeps_an_unsaved_edit_caret_and_scroll(page: Page, server: ProseviewServer):
     open_scene(page, server)
     enter_edit_mode(page)
@@ -119,6 +137,37 @@ def test_cover_keeps_an_unsaved_edit_caret_and_scroll(page: Page, server: Prosev
     # Typing carries on at the caret.
     page.keyboard.type("+MORE")
     assert "UNSAVED-WORDS+MORE" in host.inner_text()
+
+
+def test_a_reload_stays_covered_without_a_password(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    with page.expect_response("**/api/privacy/lock"):
+        _double_tap_held(page)
+    page.wait_for_function(COVERED)
+
+    page.reload(wait_until="load")
+    assert page.evaluate("document.documentElement.dataset.privacy") == "locked"
+    page.wait_for_function(COVERED)
+    assert page.title() == "Budget"
+    assert not page.locator("#sceneProseHost").is_visible()
+
+    # A new tab opens covered too.
+    other = page.context.new_page()
+    other.goto(server.base_url, wait_until="load")
+    other.wait_for_function(COVERED)
+    assert other.title() == "Budget"
+
+    # No password: the shortcut uncovers at once, and every tab follows.
+    with page.expect_response("**/api/privacy/unlock"):
+        _double_tap_held(page)
+    page.wait_for_function(UNCOVERED)
+    assert page.locator("#privacyPassword").is_hidden()
+    other.wait_for_function(UNCOVERED)
+    other.close()
+
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror", state="visible")
+    assert page.evaluate(UNCOVERED)
 
 
 def test_password_keeps_a_reload_covered_until_given(page: Page, server: ProseviewServer):

@@ -1363,7 +1363,7 @@
                 if (payload && payload.type === 'ai:proposal' && typeof handleAiProposalEvent === 'function') {
                     handleAiProposalEvent(payload);
                 } else if (payload && payload.type === 'privacy') {
-                    privacyFollowServer(!!payload.locked);
+                    privacyFollowServer(!!payload.locked, !!payload.password);
                 } else if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
                     e.data === 'reload' || e.data === 'reload:content') {
                     reloadOrDefer(

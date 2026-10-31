@@ -32,7 +32,7 @@ from .editor import build_url as _editor_url, label as _editor_label
 from .goals import Goals, compute_goals
 from .highlights import PASS_NAMES, compute_scene_highlights
 from .history import HistoryRow, load_history, working_copy_delta
-from .lexical import QUOTE_RE, FILTER_VERBS, calculate_lexical_stats
+from .lexical import FILTER_VERBS, calculate_lexical_stats, text_dialogue_spans
 from .related import find_related
 from .repo import (
     build_repository_tree, build_sidebar_tree, build_tree, lists_whole_folder, read_repo_text, recent_changes,
@@ -494,7 +494,8 @@ def build_scene_data(
         if not isinstance(chars, (list, tuple)):
             chars = [chars]
 
-        dlg_spans = [(m.start(), m.end()) for m in QUOTE_RE.finditer(scene.text)]
+        # Speech as every other measure reads it: curly single quotes included.
+        dlg_spans = text_dialogue_spans(scene.text)
         mentions: dict[str, dict[str, int]] = {}
 
         for c in chars:

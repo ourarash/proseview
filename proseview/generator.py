@@ -760,15 +760,18 @@ def _scene_table_body(
             msg = html.escape(revision_signal(scene, cfg), quote=True)
             alert_badge = f'<span class="badge badge-review" title="{msg}" style="cursor:help;">Repeats words</span> '
 
+        fm_dict = scene.frontmatter if isinstance(scene.frontmatter, dict) else {}
+        missing_beats = 0 if (fm_dict.get("goal") or fm_dict.get("conflict")) else 1
         style_attrs = (
             f'data-dlg="{scene.dialogue_pct}" data-sent="{scene.avg_sentence_words}" '
             f'data-rep="{scene.repetition_score}" data-review="{1 if outlier else 0}" '
-            f'data-words="{scene.words}" '
             if analysis else ""
         )
         body += (
             f'<tr class="scene-row" {style_attrs}'
+            f'data-words="{scene.words}" data-missing-beats="{missing_beats}" '
             f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
+
             f'<td><button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
             f'title="{display_path_attr}" '
             f'onclick="openSceneModal(this.dataset.scenePath)">{html.escape(scene.title or display_path)}</button>'

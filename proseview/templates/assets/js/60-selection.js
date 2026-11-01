@@ -216,6 +216,16 @@
             else surface.style.left = '0';
         }
 
+        function syncSelectionPillMode() {
+            const pill = document.getElementById('selectionPill');
+            if (!pill) return false;
+            const inEdit = !!window._pmEditMode;
+            pill.classList.toggle('is-edit-bar', inEdit);
+            const fmt = document.getElementById('sceneEditFormat');
+            if (fmt) fmt.hidden = !inEdit;
+            return inEdit;
+        }
+
         function positionSelectionPill() {
             selectionPillPositionFrame = null;
             const pill = document.getElementById('selectionPill');
@@ -224,31 +234,54 @@
             const anchor = currentSelectionAnchorRect();
             if (!anchor) return;
 
+            const inEdit = syncSelectionPillMode();
             const metrics = selectionViewportMetrics();
             const gap = 8;
-            const triggerRect = trigger.getBoundingClientRect();
-            const triggerWidth = triggerRect.width;
-            const triggerHeight = triggerRect.height;
+            const bar = document.getElementById('selectionPillBar') || trigger;
+            const barRect = bar.getBoundingClientRect();
+            const barWidth = barRect.width;
+            const barHeight = barRect.height;
 
-            let renderedLeft = anchor.right + gap;
-            if (renderedLeft + triggerWidth > metrics.right - gap) {
-                renderedLeft = anchor.left - triggerWidth - gap;
-            }
-            renderedLeft = clampSelectionCoordinate(
-                renderedLeft,
-                metrics.left + gap,
-                metrics.right - triggerWidth - gap
-            );
+            let renderedLeft;
+            let renderedTop;
+            if (inEdit) {
+                const oneLine = anchor.height < 36;
+                const centreX = oneLine ? (anchor.left + anchor.right) / 2 : anchor.left + barWidth / 2;
+                renderedLeft = clampSelectionCoordinate(
+                    centreX - barWidth / 2,
+                    metrics.left + gap,
+                    metrics.right - barWidth - gap
+                );
+                renderedTop = anchor.top - barHeight - 22;
+                if (renderedTop < metrics.top + gap) {
+                    renderedTop = anchor.bottom + 22;
+                }
+                renderedTop = clampSelectionCoordinate(
+                    renderedTop,
+                    metrics.top + gap,
+                    metrics.bottom - barHeight - gap
+                );
+            } else {
+                renderedLeft = anchor.right + gap;
+                if (renderedLeft + barWidth > metrics.right - gap) {
+                    renderedLeft = anchor.left - barWidth - gap;
+                }
+                renderedLeft = clampSelectionCoordinate(
+                    renderedLeft,
+                    metrics.left + gap,
+                    metrics.right - barWidth - gap
+                );
 
-            let renderedTop = anchor.bottom + gap;
-            if (renderedTop + triggerHeight > metrics.bottom - gap) {
-                renderedTop = anchor.top - triggerHeight - gap;
+                renderedTop = anchor.bottom + gap;
+                if (renderedTop + barHeight > metrics.bottom - gap) {
+                    renderedTop = anchor.top - barHeight - gap;
+                }
+                renderedTop = clampSelectionCoordinate(
+                    renderedTop,
+                    metrics.top + gap,
+                    metrics.bottom - barHeight - gap
+                );
             }
-            renderedTop = clampSelectionCoordinate(
-                renderedTop,
-                metrics.top + gap,
-                metrics.bottom - triggerHeight - gap
-            );
 
             pillCurrentX = renderedLeft;
             pillCurrentY = renderedTop;
@@ -367,7 +400,19 @@
             pill.id = 'selectionPill';
             pill.className = 'selection-pill';
             pill.innerHTML =
-                '<button class="selection-pill-btn" id="selectionPillBtn" type="button" aria-label="Work with selected text" aria-haspopup="menu" aria-expanded="false" aria-controls="selectionPillMenu">···</button>' +
+                '<div class="selection-pill-bar" id="selectionPillBar">' +
+                    '<span class="scene-edit-format" id="sceneEditFormat" hidden>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleFormat(\'strong\')" onmousedown="event.preventDefault();" aria-label="Bold" title="Bold (⌘B)"><b>B</b></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleFormat(\'em\')" onmousedown="event.preventDefault();" aria-label="Italic" title="Italic (⌘I)"><i>I</i></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleBlockquote()" onmousedown="event.preventDefault();" aria-label="Quote" title="Quote (⌘⇧9)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6H3"></path><path d="M21 12H8"></path><path d="M21 18H8"></path><path d="M3 12v6"></path></svg></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleCallout()" onmousedown="event.preventDefault();" aria-label="Callout" title="Callout: a box for a letter, a text message or a sidebar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"></rect><path d="M7 9h10"></path><path d="M7 13h7"></path></svg></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleFormat(\'code\')" onmousedown="event.preventDefault();" aria-label="Code" title="Code (⌘`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleList(\'bullet_list\')" onmousedown="event.preventDefault();" aria-label="Bullet List" title="Bullet List (⌘⇧8)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>' +
+                        '<button type="button" class="scene-edit-format-btn" onclick="toggleList(\'ordered_list\')" onmousedown="event.preventDefault();" aria-label="Numbered List" title="Numbered List (⌘⇧7)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><path d="M4 6h1v4"></path><path d="M4 10h2"></path><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg></button>' +
+                        '<span class="scene-edit-divider" aria-hidden="true"></span>' +
+                    '</span>' +
+                    '<button class="selection-pill-btn" id="selectionPillBtn" type="button" aria-label="Work with selected text" aria-haspopup="menu" aria-expanded="false" aria-controls="selectionPillMenu">···</button>' +
+                '</div>' +
                 '<div class="selection-pill-menu" id="selectionPillMenu" role="menu" aria-label="Work with selected text" hidden>' +
                     '<div id="selectionMenuRoot" role="none">' +
                         '<button class="selection-pill-action" id="selectionRewriteBtn" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-controls="selectionRewriteMenu" aria-expanded="false">Rewrite <span aria-hidden="true">›</span></button>' +
@@ -396,6 +441,7 @@
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="pacing_tension">Pacing and tension</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="clarity_flow">Clarity and flow</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="continuity">Continuity check</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="next_beats">Next beats</button>' +
                     '</div>' +
                 '</div>' +
                 '<div class="selection-pill-form selection-todo-form" id="selectionTodoForm" role="dialog" aria-label="Add TODO to selected text" hidden>' +
@@ -685,13 +731,13 @@
                 handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
             });
 
-            // Drag from the pill background or the ··· button. A press that
+            // Drag from the pill background, format buttons, or the ··· button. A press that
             // moves a few pixels becomes a drag; one that doesn't stays a
             // click, so ··· still opens the menu. Menu items never drag.
             pill.addEventListener('mousedown', function(e) {
                 if (e.button !== 0 || e.target.tagName === 'TEXTAREA') return;
                 const button = e.target.closest('button');
-                if (button && button.id !== 'selectionPillBtn') return;
+                if (button && button.id !== 'selectionPillBtn' && !button.classList.contains('scene-edit-format-btn')) return;
                 const rect = pill.getBoundingClientRect();
                 pillPressed = true;
                 pillPressX = e.clientX;
@@ -758,6 +804,15 @@
             pill.style.display = 'flex';
             positionSelectionPill();
         }
+
+        window.refreshSelectionPillAfterFormat = function() {
+            const sel = window.getSelection ? window.getSelection() : null;
+            if (sel && !sel.isCollapsed && rememberSceneSelection(sel)) {
+                scheduleSelectionPillPosition();
+            } else {
+                hideSelectionPill();
+            }
+        };
 
         function hideSelectionPill() {
             const pill = document.getElementById('selectionPill');
@@ -1006,9 +1061,10 @@
                 e.preventDefault();
                 const pill = document.getElementById('selectionPill');
                 const trigger = document.getElementById('selectionPillBtn');
+                const barEl = document.getElementById('selectionPillBar');
                 if (!pill || !trigger) return;
                 const metrics = selectionViewportMetrics();
-                const rect = trigger.getBoundingClientRect();
+                const rect = (barEl && _pmEditMode ? barEl : trigger).getBoundingClientRect();
                 pillCurrentX = clampSelectionCoordinate(
                     e.clientX - pillDragStartX,
                     metrics.left + 8,

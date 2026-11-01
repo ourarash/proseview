@@ -267,11 +267,70 @@ def _render(cfg: SuggestionsConfig, **overrides) -> str:
 
 def test_the_default_prompt_fills_its_placeholders_and_keeps_the_fixed_part():
     prompt = _render(SuggestionsConfig())
+    assert prompt.startswith("Proseview, a writing app,")
+    assert "Prosview" not in prompt
+    assert "so the check would no longer flag it" not in prompt
     assert "“Echoes” check" in prompt and "9 words after" in prompt
     assert "Change the repeated word (walking)" in prompt
+    assert "earlier use" not in prompt
     assert "<<<\nShe was walking again.\n>>>" in prompt
     assert "Give exactly 3 different rewrites" in prompt
+    assert "ranging from a light touch to a fuller recast" in prompt
     assert "ITS PARAGRAPH, FOR CONTEXT" in prompt
+
+
+def test_empty_note_and_ui_only_explanation_sentences_are_omitted_from_prompt():
+    explanation = (
+        "Marks words tied to one of the five senses: sight, sound, smell, touch and taste. "
+        "Click a mark to see which sense. Useful for spotting a scene that leans on sight alone."
+    )
+    prompt = _render(
+        SuggestionsConfig(),
+        pass_name="filter_verbs",
+        check="Filter Verbs",
+        explanation=explanation,
+        note="",
+        flagged="felt",
+        passage="She felt the cold wind.",
+    )
+    assert "This mark says:" not in prompt
+    assert "(no note)" not in prompt
+    assert "Click a mark to see which sense." not in prompt
+    assert "Marks words tied to one of the five senses" in prompt
+    assert "The words the mark is on: “felt”" in prompt
+
+
+def test_untagged_dialogue_run_omits_anchor_word_and_includes_surrounding_scene_paragraphs(tmp_path: Path):
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "---\ncharacters:\n  - Mira\n  - Theo\n---\n# One\n\n"
+        "Mira set the lantern on the table.\n\n"
+        "“Where did you find it?”\n\n"
+        "“In the cellar.”\n\n"
+        "“Was the door locked?”\n",
+        encoding="utf-8",
+    )
+    clients: list = []
+    manager = _manager(root, clients)
+    try:
+        _suggest(
+            manager,
+            "codex",
+            pass_name="dialogue_tags",
+            label="Dialogue Tags",
+            explanation="Marks dialogue tags and long stretches without one.",
+            note="6 lines in a row with no tag",
+            flagged="Where",
+            text="“Where did you find it?”",
+            paragraph="“Where did you find it?”",
+            scene="one.md",
+        )
+    finally:
+        manager.close()
+    prompt = clients[0].prompts[0]
+    assert "The words the mark is on:" not in prompt
+    assert "Mira set the lantern on the table." in prompt
+    assert "“In the cellar.”" in prompt
 
 
 def test_a_writers_prompts_replace_the_defaults_but_not_the_fixed_part():
@@ -355,3 +414,31 @@ def test_history_names_a_save_that_applied_or_undid_a_suggestion():
 
 def test_a_manner_phrase_gets_the_adverb_prompt():
     assert pass_prompt_keys("dialogue_tags", "Describes how it was said: “with a sigh”") == ["dialogue_tags.adverb"]
+
+
+def test_todo_unstick_prompt_asks_for_prose_that_fills_the_todo_and_bridges_paragraphs(tmp_path: Path):
+    root = _repo(tmp_path)
+    clients: list = []
+    manager = _manager(root, clients)
+    try:
+        res = _suggest(
+            manager,
+            "codex",
+            pass_name="todo_unstick",
+            label="Unstick TODO",
+            explanation="An inline TODO placeholder for a missing beat or transition.",
+            note="Bridge from the doorway to the ledger on the desk",
+            flagged="",
+            text="<!-- TODO: Bridge from the doorway to the ledger on the desk -->",
+            paragraph="Patel paused at the doorway.\n\n[TODO: Bridge from the doorway to the ledger on the desk]\n\nHe opened the ledger.",
+            scene="one.md",
+        )
+    finally:
+        manager.close()
+    prompt = clients[0].prompts[0]
+    assert "Unstick TODO" in prompt
+    assert "Bridge from the doorway to the ledger on the desk" in prompt
+    assert "never return a TODO comment" in prompt
+    assert len(res["alternatives"]) == 3
+
+

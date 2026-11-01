@@ -167,14 +167,150 @@
 
         window.onclick = e => {
         };
+        function _sceneRowMatchesFilter(r, f) {
+            const d = parseFloat(r.dataset.dlg), s = parseFloat(r.dataset.sent), rp = parseFloat(r.dataset.rep);
+            const todos = parseInt(r.dataset.todos || '0', 10);
+            const notes = parseInt(r.dataset.notes || '0', 10);
+            const words = parseInt(r.dataset.words || '0', 10);
+            const missingBeats = r.dataset.missingBeats === '1';
+            return f === 'all'
+                || (f === 'repetition' && rp > 25)
+                || (f === 'clipped' && s < 8.5)
+                || (f === 'talky' && d > 45)
+                || (f === 'dense' && d < 8)
+                || (f === 'todos' && todos > 0)
+                || (f === 'notes' && notes > 0)
+                || (f === 'stubs' && words < 200)
+                || (f === 'missing-beats' && missingBeats)
+                || (f.startsWith('status-') && r.dataset.status === f.slice(7));
+        }
+
         function applyIssueFilter() {
-            const f = document.getElementById('issueFilter').value;
+            const sel = document.getElementById('issueFilter');
+            const f = sel ? sel.value : 'all';
             document.querySelectorAll('.ch-row').forEach(r => r.style.display = f === 'all' ? '' : 'none');
             document.querySelectorAll('.scene-row').forEach(r => {
-                const d = parseFloat(r.dataset.dlg), s = parseFloat(r.dataset.sent), rp = parseFloat(r.dataset.rep);
-                const todos = parseInt(r.dataset.todos || '0', 10);
-                const notes = parseInt(r.dataset.notes || '0', 10);
-                let show = f === 'all' || (f === 'repetition' && rp > 25) || (f === 'clipped' && s < 8.5) || (f === 'talky' && d > 45) || (f === 'dense' && d < 8) || (f === 'todos' && todos > 0) || (f === 'notes' && notes > 0) || (f.startsWith('status-') && r.dataset.status === f.slice(7));
-                r.style.display = show ? '' : 'none';
+                r.style.display = _sceneRowMatchesFilter(r, f) ? '' : 'none';
+            });
+            document.querySelectorAll('.scene-overview-card').forEach(c => {
+                c.style.display = _sceneRowMatchesFilter(c, f) ? '' : 'none';
             });
         }
+
+        window.renderOverviewSceneCards = function() {
+            const grid = document.getElementById('sceneCardsGrid');
+            if (!grid) return;
+            grid.replaceChildren();
+            if (typeof paths === 'undefined' || typeof meta === 'undefined') return;
+            paths.forEach(function(p) {
+                const m = meta[p] || {};
+                const words = typeof m.words === 'number' ? m.words : 0;
+                const todos = (m.todos ? m.todos.length : 0) + (m.fm_todos ? m.fm_todos.length : 0);
+                const notes = m.notes ? m.notes.length : 0;
+                const missingBeats = (!m.goal || !m.conflict) ? '1' : '0';
+                const card = document.createElement('article');
+                card.className = 'scene-overview-card' + (words < 200 ? ' is-stub' : '');
+                card.dataset.scenePath = p;
+                card.dataset.dlg = String(m.dlg_pct || 0);
+                card.dataset.sent = String(m.avg_sent || 0);
+                card.dataset.rep = String(m.rep_pct || 0);
+                card.dataset.status = String(m.status || 'none');
+                card.dataset.todos = String(todos);
+                card.dataset.notes = String(notes);
+                card.dataset.words = String(words);
+                card.dataset.missingBeats = missingBeats;
+
+                const head = document.createElement('div');
+                head.className = 'scene-overview-card-head';
+                const link = document.createElement('a');
+                link.href = 'javascript:void(0)';
+                link.className = 'scene-overview-card-title scene-table-link';
+                link.dataset.scenePath = p;
+                link.textContent = m.title || p;
+                link.onclick = function() { openSceneModal(p); };
+                const wordsBadge = document.createElement('span');
+                wordsBadge.className = 'scene-overview-card-words' + (words < 200 ? ' is-stub' : '');
+                wordsBadge.textContent = words.toLocaleString() + 'w' + (words < 200 ? ' · stub (< 200w)' : '');
+                const wordsTip = words < 200
+                    ? 'Short draft / stub: this scene has fewer than 200 words of prose and still needs drafting.'
+                    : 'Prose words in this scene (excluding YAML frontmatter and HTML comments).';
+                wordsBadge.dataset.tip = wordsTip;
+                head.append(link, wordsBadge);
+                card.appendChild(head);
+
+                const sub = document.createElement('div');
+                sub.className = 'scene-overview-card-sub';
+                const metaParts = [m.chapter || ''];
+                if (m.pov) metaParts.push('POV: ' + m.pov);
+                if (m.where) metaParts.push(m.where);
+                if (m.when) metaParts.push(m.when);
+                sub.textContent = metaParts.filter(Boolean).join(' · ');
+                card.appendChild(sub);
+
+                const beatTips = {
+                    Goal: 'From goal: in this scene\u2019s YAML frontmatter \u2014 what the POV character wants at the start of the scene.',
+                    Conflict: 'From conflict: in this scene\u2019s YAML frontmatter \u2014 what obstacle or friction stands in their way.',
+                    Outcome: 'From outcome: in this scene\u2019s YAML frontmatter \u2014 how the scene turns out (for example, yes-but or no-and).'
+                };
+                const beats = document.createElement('dl');
+                beats.className = 'scene-overview-card-beats';
+                [['Goal', m.goal], ['Conflict', m.conflict], ['Outcome', m.outcome]].forEach(function(pair) {
+                    const row = document.createElement('div');
+                    row.className = 'scene-overview-card-beat' + (!pair[1] ? ' is-missing' : '');
+                    const dt = document.createElement('dt');
+                    dt.textContent = pair[0];
+                    dt.dataset.tip = beatTips[pair[0]] || '';
+                    const dd = document.createElement('dd');
+                    dd.textContent = pair[1] || 'Not set in frontmatter';
+                    row.append(dt, dd);
+                    beats.appendChild(row);
+                });
+                card.appendChild(beats);
+
+                const foot = document.createElement('div');
+                foot.className = 'scene-overview-card-foot';
+                if (m.status) {
+                    const st = document.createElement('span');
+                    st.className = 'scene-status status-' + m.status;
+                    st.textContent = m.status;
+                    foot.appendChild(st);
+                }
+                if (todos > 0) {
+                    const tb = document.createElement('span');
+                    tb.className = 'todo-badge';
+                    tb.textContent = '📝 ' + todos + ' TODO' + (todos > 1 ? 's' : '');
+                    foot.appendChild(tb);
+                }
+                if (notes > 0) {
+                    const nb = document.createElement('span');
+                    nb.className = 'note-badge';
+                    nb.textContent = '💬 ' + notes;
+                    foot.appendChild(nb);
+                }
+                if (foot.childNodes.length) card.appendChild(foot);
+                grid.appendChild(card);
+            });
+            applyIssueFilter();
+        };
+
+        window.setOverviewSceneView = function(mode) {
+            const table = document.getElementById('sceneTable');
+            const grid = document.getElementById('sceneCardsGrid');
+            const tableBtn = document.getElementById('sceneViewTableBtn');
+            const cardsBtn = document.getElementById('sceneViewCardsBtn');
+            const showCards = mode === 'cards';
+            if (showCards && grid && !grid.childNodes.length) {
+                window.renderOverviewSceneCards();
+            }
+            if (table) table.hidden = showCards;
+            if (grid) grid.hidden = !showCards;
+            if (tableBtn) {
+                tableBtn.classList.toggle('is-active', !showCards);
+                tableBtn.setAttribute('aria-pressed', showCards ? 'false' : 'true');
+            }
+            if (cardsBtn) {
+                cardsBtn.classList.toggle('is-active', showCards);
+                cardsBtn.setAttribute('aria-pressed', showCards ? 'true' : 'false');
+            }
+            applyIssueFilter();
+        };

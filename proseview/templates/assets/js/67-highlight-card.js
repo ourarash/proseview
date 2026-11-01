@@ -170,8 +170,63 @@
         }
 
         function _hlText(range) {
+            if (!_pmView || !range) return '';
+            var node = _pmView.state.doc.nodeAt(range.from);
+            if (node && node.type.name === 'annotation' && range.to === range.from + node.nodeSize) {
+                return String(node.attrs.raw || '');
+            }
             return _pmView.state.doc.textBetween(range.from, range.to, '\n');
         }
+
+        function _todoSurroundingParagraphs(nodePos, todoText) {
+            if (!_pmView) return todoText;
+            var before = [], after = [], seen = false;
+            _pmView.state.doc.forEach(function(node, offset) {
+                if (offset === nodePos) { seen = true; return; }
+                if (node.type.name === 'annotation') return;
+                var txt = node.textContent.trim();
+                if (!txt) return;
+                if (!seen) before.push(txt);
+                else if (after.length < 2) after.push(txt);
+            });
+            var parts = before.slice(-2);
+            parts.push('[TODO: ' + todoText + ']');
+            after.forEach(function(p) { parts.push(p); });
+            return parts.join('\n\n');
+        }
+
+        window.openTodoUnstickCard = function(anchorDom, todoText, nodePos) {
+            if (!_pmView || typeof nodePos !== 'number' || nodePos < 0) return;
+            var node = _pmView.state.doc.nodeAt(nodePos);
+            if (!node || node.type.name !== 'annotation') return;
+            var path = paths[curIdx];
+            var range = {from: nodePos, to: nodePos + node.nodeSize};
+            var cleanTodo = String(todoText || '').trim() || 'Write the missing beat here';
+            closeHighlightCard();
+            _hlLoadAvailability();
+            _hlCard = {
+                key: 'todo_unstick:' + nodePos,
+                name: 'todo_unstick',
+                label: 'Suggest for TODO',
+                explanation: 'Uses the paragraphs before and after this TODO to suggest 3 ways to write or bridge the missing beat. Click Use to replace the TODO with prose, or Discuss in chat.',
+                path: path,
+                note: cleanTodo,
+                markRange: range,
+                range: range,
+                anchorDom: anchorDom,
+                text: _hlText(range),
+                flagged: cleanTodo,
+                paragraph: _todoSurroundingParagraphs(nodePos, cleanTodo),
+                errors: {},
+                applied: null,
+                tickers: [],
+                error: ''
+            };
+            _hlCard.returnFocus = document.activeElement;
+            _renderHighlightCard();
+            var first = _hlCardEl().querySelector('button.hl-card-primary, .hl-card-use');
+            if (first) first.focus({preventScroll: true});
+        };
 
         function openHighlightCard(span) {
             var key = span.getAttribute('data-hl-key') || '';
@@ -185,8 +240,19 @@
             closeHighlightCard();
             _hlLoadAvailability();
             var note = String((hits[index] || {}).note || '');
-            // An echo's note starts with its id; the card shows its words.
-            if (name === 'echoes') note = note.split(' \u00b7 ').slice(1).join(' \u00b7 ');
+            // An echo's note starts with its id; the card shows which word of
+            // the echo this is, and its words.
+            if (name === 'echoes') {
+                var echoParts = note.split(' \u00b7 ');
+                var echoId = echoParts[0];
+                var echoWords = echoParts.slice(1).join(' \u00b7 ');
+                var sameEcho = hits.filter(function(h) { return String(h.note || '').split(' \u00b7 ')[0] === echoId; });
+                var echoPos = sameEcho.indexOf(hits[index]) + 1;
+                note = (echoPos && sameEcho.length > 1 ? echoPos + ' of ' + sameEcho.length + ' \u00b7 ' : '') + echoWords;
+            }
+            if (name === 'sentence_starts' && /^\d+$/.test(note)) {
+                note = note + ' in a row opening with \u201c' + ((hits[index] || {}).text || _hlText(range)) + '\u201d';
+            }
             // A repeat's note is its counts; the card says them in words, with
             // the paragraph's count the mark's number leaves out.
             if (name === 'repeats') {
@@ -306,7 +372,7 @@
             var head = _hlEl('div', 'hl-card-head');
             // One row: the check, what it found, and the close button.
             var title = _hlEl('span', 'hl-card-title');
-            title.appendChild(_hlEl('strong', '', PASS_LABELS[card.name] || card.name));
+            title.appendChild(_hlEl('strong', '', card.label || PASS_LABELS[card.name] || card.name));
             if (card.note) title.appendChild(_hlEl('span', 'hl-card-note', ' · ' + card.note));
             var gear = _hlButton('⚙', function() { closeHighlightCard(); openSuggestionSettings(); }, 'hl-card-close hl-card-gear');
             gear.setAttribute('aria-label', 'Suggestion settings');
@@ -318,7 +384,7 @@
 
             var agents = _hlAgentsShown();
             var groups = agents.map(function(agent) { return _hlGroup(card, agent); }).filter(Boolean);
-            if (!groups.length || card.error) el.appendChild(_hlEl('p', 'hl-card-why', PASS_NOTES[card.name] || ''));
+            if (!groups.length || card.error) el.appendChild(_hlEl('p', 'hl-card-why', card.explanation || PASS_NOTES[card.name] || ''));
             if (card.error) {
                 var err = _hlEl('p', 'hl-card-error', card.error);
                 err.setAttribute('role', 'alert');
@@ -355,10 +421,16 @@
             var el = document.getElementById('hlSuggestCard');
             if (!_hlCard || !el || el.hidden || !_pmView) return;
             var start, end;
-            try {
-                start = _pmView.coordsAtPos(_hlCard.markRange.from);
-                end = _pmView.coordsAtPos(_hlCard.markRange.to, -1);
-            } catch (e) { return; }
+            if (_hlCard.anchorDom && _hlCard.anchorDom.isConnected && !_hlCard.applied) {
+                var rect = _hlCard.anchorDom.getBoundingClientRect();
+                start = rect;
+                end = rect;
+            } else {
+                try {
+                    start = _pmView.coordsAtPos(_hlCard.markRange.from);
+                    end = _pmView.coordsAtPos(_hlCard.markRange.to, -1);
+                } catch (e) { return; }
+            }
             var width = el.offsetWidth, height = el.offsetHeight;
             var left = Math.max(12, Math.min(start.left, window.innerWidth - width - 12));
             var top = end.bottom + 6;
@@ -402,6 +474,12 @@
             function shown() {
                 return _hlCard && _hlAskKey(_hlCard, agent.id) === key ? _hlCard : null;
             }
+            var isUntaggedRun = card.name === 'dialogue_tags' && /lines in a row/.test(card.note);
+            var pIdx = typeof hit.paragraph_index === 'number' ? hit.paragraph_index : -1;
+            var paraContext = card.paragraph || paragraphs[pIdx] || card.text;
+            if (isUntaggedRun && pIdx >= 0 && paragraphs.length > 1) {
+                paraContext = paragraphs.slice(Math.max(0, pIdx - 2), pIdx + 7).join('\n\n');
+            }
             fetch('/api/discuss/highlight-suggest', {
                 method: 'POST',
                 headers: pvHeaders(),
@@ -409,12 +487,12 @@
                 body: JSON.stringify({
                     agent: agent.id,
                     pass: card.name,
-                    label: PASS_LABELS[card.name] || card.name,
-                    explanation: PASS_NOTES[card.name] || '',
+                    label: card.label || PASS_LABELS[card.name] || card.name,
+                    explanation: card.explanation || PASS_NOTES[card.name] || '',
                     note: card.note,
-                    flagged: card.flagged !== card.text ? card.flagged : '',
+                    flagged: card.name === 'todo_unstick' ? card.flagged : (!isUntaggedRun && card.flagged !== card.text ? card.flagged : ''),
                     text: card.text,
-                    paragraph: paragraphs[hit.paragraph_index] || card.text,
+                    paragraph: paraContext,
                     scene: card.path,
                     chat_model: chat.model,
                     chat_effort: chat.effort
@@ -469,7 +547,7 @@
             card.applied.recordId = _hlRecordApplied(card, agentId, originalSlice, card.applied.text);
             card.markRange = newRange;
             _renderHighlightCard();
-            _hlSave(card, hadDirty, wasReading, {check: PASS_LABELS[card.name] || card.name, agent: agentId});
+            _hlSave(card, hadDirty, wasReading, {check: card.label || PASS_LABELS[card.name] || card.name, agent: agentId});
             updatePMHighlightDecorations();
         }
 
@@ -507,7 +585,7 @@
             });
             var rec = {
                 id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-                path: card.path, name: card.name, label: PASS_LABELS[card.name] || card.name,
+                path: card.path, name: card.name, label: card.label || PASS_LABELS[card.name] || card.name,
                 agent: agentId, original: originalSlice.toJSON(), originalText: card.text,
                 text: text, options: options, at: Date.now()
             };
@@ -536,15 +614,17 @@
             card.range = restored;
             card.markRange = restored;
             _renderHighlightCard();
-            _hlSave(card, hadDirty, wasReading, {check: PASS_LABELS[card.name] || card.name, undone: true});
+            _hlSave(card, hadDirty, wasReading, {check: card.label || PASS_LABELS[card.name] || card.name, undone: true});
             updatePMHighlightDecorations();
         }
 
         function _hlDiscuss() {
             var card = _hlCard;
             if (!card || typeof openDiscussForSelection !== 'function') return;
-            var label = PASS_LABELS[card.name] || card.name;
-            var starter = 'Prosview marked this with ' + label + (card.note ? ' (' + card.note + ')' : '') + '. ';
+            var label = card.label || PASS_LABELS[card.name] || card.name;
+            var starter = card.name === 'todo_unstick'
+                ? 'Help me write or brainstorm this scene TODO (' + (card.note || card.flagged) + '). '
+                : 'Proseview marked this with ' + label + (card.note ? ' (' + card.note + ')' : '') + '. ';
             var suggested = [];
             HL_AGENTS.forEach(function(agent) {
                 var ask = _hlAsk(card, agent.id);
@@ -709,7 +789,7 @@
             }
             var span = e.target && e.target.closest && e.target.closest('#sceneProseHost [data-hl-key]');
             if (!span) {
-                if (_hlCard && !(e.target.closest && e.target.closest('#hlSuggestCard'))) closeHighlightCard();
+                if (_hlCard && !(e.target.closest && e.target.closest('#hlSuggestCard, .pm-annotation-unstick'))) closeHighlightCard();
                 return;
             }
             if (_pmEditMode || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

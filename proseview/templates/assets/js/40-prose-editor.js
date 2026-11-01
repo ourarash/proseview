@@ -86,6 +86,7 @@
                     },
                     'Mod-Shift-8': function() { window.toggleList('bullet_list'); return true; },
                     'Mod-Shift-7': function() { window.toggleList('ordered_list'); return true; },
+                    'Mod-Shift-t': function() { window.insertInlineTodoAtCaret(); return true; },
                     // Edit is a mode you enter on purpose, so saving finishes
                     // it, as the Save button does. E brings the caret back.
                     'Mod-s': function() {
@@ -136,8 +137,9 @@
                 dispatchTransaction: function(tr) {
                     var newState = _pmView.state.apply(tr);
                     _pmView.updateState(newState);
-                    if (_pmEditMode && tr.docChanged && !_pmDirty) {
-                        setPmDirty(true);
+                    if (_pmEditMode && tr.docChanged) {
+                        if (!_pmDirty) setPmDirty(true);
+                        _updateEditWordDelta();
                     }
                     if (window._editBarFollowSelection) window._editBarFollowSelection();
                 },
@@ -474,6 +476,99 @@
         }
 
         var SCENE_UNCHANGED_TOAST = 'No changes. Back to reading.';
+        var _pmEditStartWords = 0;
+        var _sceneSprintTimer = null;
+        var _sceneSprintEndAt = 0;
+
+        function _countDocWords(doc) {
+            if (!doc) return 0;
+            var total = 0;
+            doc.forEach(function(node) {
+                if (node.type.name === 'annotation') return;
+                var txt = node.textContent.trim();
+                if (!txt) return;
+                total += txt.split(/\s+/).filter(Boolean).length;
+            });
+            return total;
+        }
+
+        function _updateEditWordDelta() {
+            var el = document.getElementById('sceneEditWordDelta');
+            if (!el || !_pmView) return;
+            var now = _countDocWords(_pmView.state.doc);
+            var delta = now - _pmEditStartWords;
+            var sign = delta >= 0 ? '+' : '';
+            el.textContent = sign + delta + 'w';
+            el.classList.toggle('is-positive', delta > 0);
+            el.classList.toggle('is-negative', delta < 0);
+            var tip = 'Net words added or cut in this scene since you opened Edit mode (' + now + ' words total in scene).';
+            el.dataset.tip = tip;
+        }
+
+        function _renderSprintBtn() {
+            var btn = document.getElementById('sceneSprintBtn');
+            if (!btn) return;
+            if (!_sceneSprintEndAt) {
+                btn.textContent = '⏱ 15m';
+                btn.classList.remove('is-running', 'is-done');
+                return;
+            }
+            var remMs = Math.max(0, _sceneSprintEndAt - Date.now());
+            var totalSec = Math.ceil(remMs / 1000);
+            var m = Math.floor(totalSec / 60);
+            var s = totalSec % 60;
+            if (remMs <= 0) {
+                clearInterval(_sceneSprintTimer);
+                _sceneSprintTimer = null;
+                _sceneSprintEndAt = 0;
+                btn.textContent = '✓ 15m!';
+                btn.classList.remove('is-running');
+                btn.classList.add('is-done');
+                if (typeof sidebarShowToast === 'function') {
+                    var deltaEl = document.getElementById('sceneEditWordDelta');
+                    sidebarShowToast('Sprint complete! (' + (deltaEl ? deltaEl.textContent : '+0w') + ' this session)');
+                }
+                return;
+            }
+            btn.textContent = '⏱ ' + m + ':' + (s < 10 ? '0' + s : s);
+            btn.classList.add('is-running');
+            btn.classList.remove('is-done');
+        }
+
+        window.toggleSceneSprint = function(minutes) {
+            if (_sceneSprintTimer) {
+                clearInterval(_sceneSprintTimer);
+                _sceneSprintTimer = null;
+                _sceneSprintEndAt = 0;
+                _renderSprintBtn();
+                return;
+            }
+            var mins = Number(minutes) > 0 ? Number(minutes) : 15;
+            _sceneSprintEndAt = Date.now() + mins * 60 * 1000;
+            _renderSprintBtn();
+            _sceneSprintTimer = setInterval(_renderSprintBtn, 1000);
+            if (_pmView && _pmEditMode) _pmView.focus();
+        };
+
+        window.insertInlineTodoAtCaret = function() {
+            if (!_pmView || !window._PM) return;
+            if (!_pmEditMode) toggleSceneEdit();
+            if (!_pmView || !_pmEditMode) return;
+            var PM = window._PM;
+            var state = _pmView.state;
+            var $from = state.selection.$from;
+            var insertPos = $from.depth >= 1 ? $from.after(1) : $from.pos;
+            var annotNode = PM.mySchema.nodes.annotation.create({ raw: '<!-- TODO:  -->' });
+            var wasDirty = _pmDirty;
+            var tr = state.tr.insert(insertPos, annotNode);
+            _pmView.dispatch(tr);
+            hideInsertAffordance();
+            setTimeout(function() {
+                openAnnotationPopover(insertPos, annotNode, {
+                    insertedFrom: { wasDirty: wasDirty, focusEditorAfterSave: true }
+                });
+            }, 0);
+        };
 
         function toggleSceneEdit() {
             // A snapshot has nowhere to save to, so reading is all it offers --
@@ -503,6 +598,8 @@
             _pmOpenMtime = meta[p] && meta[p].mtime;
             _pmFrontmatterDraft = null;
             renderSceneFrontmatter(p);
+            _pmEditStartWords = _countDocWords(_pmView.state.doc);
+            _updateEditWordDelta();
             setPmDirty(false);
             _applyEditingProseClass();
             // Back to the caret of the last edit of this scene, unless the
@@ -779,6 +876,7 @@
             _applyEditingProseClass();
             hideInsertAffordance();
             closeAnnotationPopover();
+            if (typeof hideSelectionPill === 'function') hideSelectionPill();
             if (_pmView) _pmView.setProps({ editable: function() { return false; } });
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) {
@@ -814,6 +912,7 @@
             if (markType) {
                 PM.toggleMark(markType)(_pmView.state, _pmView.dispatch);
                 _pmView.focus();
+                if (window.refreshSelectionPillAfterFormat) window.refreshSelectionPillAfterFormat();
             }
         };
 
@@ -856,6 +955,7 @@
                 PM.wrapInList(nodeType, { tight: true })(state, dispatch);
             }
             _pmView.focus();
+            if (window.refreshSelectionPillAfterFormat) window.refreshSelectionPillAfterFormat();
         };
 
         window.toggleBlockquote = function() {
@@ -886,6 +986,7 @@
                 }
             }
             _pmView.focus();
+            if (window.refreshSelectionPillAfterFormat) window.refreshSelectionPillAfterFormat();
         };
 
         // The edit bar can be dragged by any part of it. A press that moves
@@ -977,6 +1078,7 @@
             // Called when edit mode opens: put the bar where it was left.
             window._placeEditBar = function() {
                 atSelection = false;
+                editBar.classList.remove('is-at-selection');
                 var saved = null;
                 try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (err) {}
                 if (saved && isFinite(saved.left) && isFinite(saved.top)) float(saved.left, saved.top);
@@ -996,6 +1098,7 @@
                     start = _pmView.coordsAtPos(sel.from);
                     end = _pmView.coordsAtPos(sel.to);
                 } catch (err) { return; }
+                editBar.classList.add('is-at-selection');
                 var w = editBar.offsetWidth, h = editBar.offsetHeight;
                 var oneLine = Math.abs(start.top - end.top) < 4;
                 var x = oneLine ? (start.left + end.left) / 2 : start.left;
@@ -1005,9 +1108,9 @@
                 atSelection = true;
             }
 
-            window._editBarFollowSelection = function() {
-                if (!followFrame) followFrame = requestAnimationFrame(followSelection);
-            };
+            // The session dock stays parked where it was left; formatting
+            // appears in the unified selection bar (#selectionPill) instead.
+            window._editBarFollowSelection = function() {};
 
             // Wait for a mouse selection to finish before moving the bar.
             document.addEventListener('mousedown', function(e) {
@@ -1023,6 +1126,7 @@
             }, true);
 
             window._resetEditBarPosition = function() {
+                editBar.classList.remove('is-at-selection');
                 if (editBar.parentNode !== originalParent) {
                     originalParent.insertBefore(editBar, originalNextSibling);
                     editBar.style.position = '';

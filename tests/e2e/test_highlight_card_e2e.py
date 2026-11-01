@@ -19,7 +19,7 @@ pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
 
 from playwright.sync_api import Page  # noqa: E402
 
-from .conftest import ProseviewServer  # noqa: E402
+from .conftest import ANNOTATED_SCENE_REL, SCENE_REL, ProseviewServer  # noqa: E402
 from .test_browser_e2e import _scene_with_hits, _wait_until, open_scene, open_scene_analysis  # noqa: E402
 
 pytestmark = pytest.mark.e2e_browser
@@ -123,6 +123,7 @@ def test_discuss_in_chat_hands_over_the_passage_unsent(page: Page, server: Prose
     page.wait_for_selector("#discussPanel:not([hidden])")
     _wait_until(lambda: "Filter Verbs" in page.locator("#discussInput").input_value(),
                 message="the starter was not put in the box")
+    assert page.locator("#discussInput").input_value().startswith("Proseview marked this with Filter Verbs")
     assert "Is it worth changing" in page.locator("#discussInput").input_value()
     assert page.locator("#hlSuggestCard").is_hidden()
     chip = page.locator("#discussSelectionChip")
@@ -457,6 +458,10 @@ def test_echoes_are_numbered_and_light_their_partners(page: Page, server: Prosev
     assert lit == page.evaluate("""() => { const p = document.createElement('span');
         p.style.background = 'var(--hl-echo-partner-bg)'; document.body.appendChild(p);
         const c = getComputedStyle(p).backgroundColor; p.remove(); return c; }""")
+    first.click()
+    page.wait_for_selector("#hlSuggestCard:not([hidden])")
+    echo_note = page.locator("#hlSuggestCard .hl-card-note").inner_text()
+    assert f"1 of {len(groups[group])} \u00b7 " in echo_note, echo_note
 
 
 def test_a_repeated_word_lights_its_other_uses(page: Page, server: ProseviewServer):
@@ -497,3 +502,123 @@ def test_a_repeated_word_lights_its_other_uses(page: Page, server: ProseviewServ
     page.wait_for_selector("#hlSuggestCard:not([hidden])")
     note = page.locator("#hlSuggestCard .hl-card-note").inner_text()
     assert re.search(rf"1 of {same.count()} in this scene \u00b7 \d+ in this paragraph", note), note
+
+
+def test_todo_unstick_card_suggests_and_replaces_todo_with_prose(page: Page, server: ProseviewServer):
+    open_scene(page, server, ANNOTATED_SCENE_REL)
+    todo = page.locator("#sceneProseHost .pm-annotation-todo").first
+    todo.wait_for()
+    assert todo.locator(".pm-annotation-unstick").count() == 0
+    todo.click()
+    unstick_btn = page.locator("#sceneProseHost .pm-annotation-editing .pm-annotation-unstick").first
+    unstick_btn.wait_for(state="visible")
+    assert unstick_btn.inner_text() == "Suggest"
+    assert "3 ways to write or bridge this TODO beat" in (unstick_btn.get_attribute("data-tip") or "")
+    assert unstick_btn.inner_text() == "Suggest"
+    assert "3 ways to write or bridge this TODO beat" in (unstick_btn.get_attribute("data-tip") or "")
+
+    requests = []
+    bridge_prose = "Elena caught the brass key before it rolled under the threshold and tried the lock."
+
+    def handle(route):
+        requests.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "ok": True,
+                "agent": "codex",
+                "original": requests[-1].get("text", ""),
+                "original_glue_pct": 0.0,
+                "alternatives": [
+                    {"text": bridge_prose, "rationale": "Bridges the beat with concrete action.", "glue_pct": 25.0},
+                    {"text": "She knelt beside the doorway, measuring the lock against her thumb.", "rationale": "Slower sensory beat.", "glue_pct": 22.0},
+                    {"text": '"Wait," she whispered, though the corridor was empty.', "rationale": "Opens with voice.", "glue_pct": 20.0},
+                ],
+            }),
+        )
+
+    page.route("**/api/discuss/highlight-suggest", handle)
+    unstick_btn.click()
+    card = page.locator("#hlSuggestCard")
+    card.wait_for(state="visible")
+    assert "Suggest for TODO" in card.locator(".hl-card-title").inner_text()
+
+    card.get_by_role("button", name="Suggest with Codex").click()
+    page.wait_for_selector("#hlSuggestCard .hl-card-option")
+    assert len(requests) == 1
+    assert requests[0]["pass"] == "todo_unstick"
+    assert "[TODO:" in requests[0]["paragraph"]
+
+    card.locator(".hl-card-use").first.click()
+    _wait_until(lambda: bridge_prose in page.locator("#sceneProseHost").inner_text())
+    _wait_until(lambda: page.locator("#hlSuggestCard .hl-card-applied").inner_text().startswith("Applied ·"))
+
+    # Undo restores the original <!-- TODO: ... --> block.
+    card.get_by_role("button", name="Undo").click()
+    _wait_until(lambda: bridge_prose not in page.locator("#sceneProseHost").inner_text())
+    assert page.locator("#sceneProseHost .pm-annotation-todo").count() >= 1
+
+
+def test_drafting_momentum_todo_insertion_word_delta_and_sprint_timer(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+
+    delta = page.locator("#sceneEditWordDelta")
+    assert delta.inner_text() == "+0w"
+
+    # Start and stop the 15-minute sprint timer.
+    sprint = page.locator("#sceneSprintBtn")
+    assert "15m" in sprint.inner_text()
+    sprint.click()
+    assert "is-running" in (sprint.get_attribute("class") or "")
+    sprint.click()
+    assert "15m" in sprint.inner_text()
+
+    # Insert an inline TODO from the edit bar button and save it to return to prose.
+    page.click("#sceneEditTodoBtn")
+    inp = page.locator("#sceneProseHost .pm-annotation-editing .pm-annotation-edit-text")
+    inp.wait_for(state="visible")
+    inp.fill("Bridge the hallway transition here")
+    inp.press("Enter")
+    _wait_until(lambda: "Bridge the hallway transition here" in page.locator("#sceneProseHost").inner_text())
+
+    # Typing prose updates the live session word delta.
+    page.locator("#sceneProseHost .ProseMirror p").first.click()
+    page.keyboard.type(" Extra drafting words here ")
+    _wait_until(lambda: delta.inner_text() not in ("+0w", ""))
+    assert delta.inner_text().startswith("+")
+    page.click("#sceneEditBar .scene-edit-cancel")
+    page.wait_for_function("window._pmEditMode === false")
+
+
+def test_where_you_left_off_preview_and_overview_scene_cards_and_filters(page: Page, server: ProseviewServer):
+    # Scene after the first shows "Where you left off" from the previous scene.
+    open_scene(page, server, ANNOTATED_SCENE_REL)
+    tail = page.locator("#scenePrevTail")
+    tail.wait_for(state="visible")
+    assert "Where you left off" in tail.locator(".scene-prev-tail-summary").inner_text()
+    tail.locator(".scene-prev-tail-summary").click()
+    assert len(tail.locator(".scene-prev-tail-para").all_inner_texts()) >= 1
+
+    # Return to dashboard and switch the Overview scene list to Cards view + filters.
+    page.evaluate("closeSceneModal()")
+    page.wait_for_selector("#sceneViewCardsBtn", state="visible")
+    page.click("#sceneViewCardsBtn")
+    grid = page.locator("#sceneCardsGrid")
+    grid.wait_for(state="visible")
+    assert grid.locator(".scene-overview-card").count() >= 2
+    assert "Goal" in grid.inner_text()
+    assert "Conflict" in grid.inner_text()
+
+    page.select_option("#issueFilter", "stubs")
+    visible_cards = page.evaluate(
+        "() => [...document.querySelectorAll('#sceneCardsGrid .scene-overview-card')].filter(c => c.style.display !== 'none').length"
+    )
+    assert visible_cards >= 1
+    page.select_option("#issueFilter", "all")
+    page.click("#sceneViewTableBtn")
+    assert page.locator("#sceneTable").is_visible()
+
+

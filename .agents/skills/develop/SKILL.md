@@ -1,9 +1,14 @@
 ---
 name: develop
-description: Implement production-quality changes in the Proseview repository as a senior software engineer, from repository discovery and requirements through test-first or root-cause-driven code, validation, and evidence-backed handoff. Use when Codex is asked to build, change, fix, refactor, harden, optimize, or extend Proseview; implement an approved plan or review finding; add backend, browser, CLI, server, analysis, packaging, documentation, or test behavior; or ensure a Proseview change follows strong engineering, data-safety, security, accessibility, maintainability, and testing practices.
+description: "Implement and verify production-quality Proseview changes through repository discovery, root-cause analysis, and focused validation. Opt-in only: use when the user explicitly invokes $develop or asks to use the Develop Proseview skill, or within an explicitly requested workflow that requires it. Ordinary build, fix, or enhancement requests do not activate this skill."
 ---
 
 # Develop Proseview
+
+Use this skill only when the user explicitly invokes `$develop` or asks to use
+this named skill, or as a required component of a combined workflow they
+explicitly opted into. Do not infer opt-in from an ordinary task request.
+Discussing or configuring the skill is not an invocation.
 
 Implement the requested change with senior-level rigor. Optimize for correct,
 focused, maintainable behavior inside Proseview's local-first product boundary.

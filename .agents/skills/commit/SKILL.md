@@ -1,9 +1,14 @@
 ---
 name: commit
-description: Create git commits in the Proseview repository, either from the currently staged index only (the default) or by grouping the whole worktree into one focused commit per logical change. Use when the user asks to commit staged files, write a commit message from a diff, or split all current work into sensible commits.
+description: "Create Proseview commits from staged changes or group the worktree into focused commits. Opt-in only: use when the user explicitly invokes $commit or asks to use the Commit skill. An ordinary request to commit changes does not activate this skill."
 ---
 
 # Commit
+
+Use this skill only when the user explicitly invokes `$commit` or asks to use
+this named skill, or as a required component of a combined workflow they
+explicitly opted into. Do not infer opt-in from an ordinary task request.
+Discussing or configuring the skill is not an invocation.
 
 Two modes, one entry point. **Pick the mode before touching anything**, because
 they differ in whether the index may be modified.

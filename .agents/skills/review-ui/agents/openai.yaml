@@ -2,3 +2,5 @@ interface:
   display_name: "Review Proseview UI"
   short_description: "Audit UI, UX, accessibility, and visual craft"
   default_prompt: "Use $review-ui to run a live UI/UX and visual-craft audit of Proseview."
+policy:
+  allow_implicit_invocation: false

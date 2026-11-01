@@ -1,9 +1,14 @@
 ---
 name: review-code
-description: Conduct a skeptical, read-only senior code and architecture review of Proseview changes or the current implementation, using current repository discovery, a specification-compliance gate, and detailed evidence lanes for domain fidelity, architecture, interfaces, security, reliability, UI/accessibility, performance, tests, packaging, and operations. Use when Codex is asked to review a Proseview diff, pull request, feature, fix, refactor, implementation produced by $develop, remediation, or repository architecture; identify must-fix issues; validate a correction; or issue an approval verdict with a rigorous self-check.
+description: "Conduct an evidence-based, read-only Proseview code and architecture review with specification and engineering-quality gates. Opt-in only: use when the user explicitly invokes $review-code or asks to use this named review skill, or within an explicitly requested workflow that requires it. An ordinary request to review code does not activate this skill."
 ---
 
 # Review Proseview Code
+
+Use this skill only when the user explicitly invokes `$review-code` or asks to
+use this named skill, or as a required component of a combined workflow they
+explicitly opted into. Do not infer opt-in from an ordinary task request.
+Discussing or configuring the skill is not an invocation.
 
 Act as an independent senior engineer and architect. Find consequential defects
 before merge while rejecting style preference, generic advice, and speculative

@@ -1,9 +1,14 @@
 ---
 name: review-ui
-description: Run skeptical, evidence-based live UI/UX and visual-craft audits of the Proseview writing dashboard through its existing browser E2E framework. Use when Codex is asked to review, critique, evaluate, or score Proseview's usability, accessibility, information architecture, interaction design, visual design, modernity, polish, density, user-facing correctness, workflow safety, or recent UI changes; to perform a full product audit, focused workflow audit, or visual-modernization audit; or to verify that Proseview meets a high desktop and WCAG 2.2 AA quality bar.
+description: "Audit Proseview UI, UX, accessibility, and visual craft through its isolated live browser framework. Opt-in only: use when the user explicitly invokes $review-ui or asks to use this named UI review skill, or within an explicitly requested workflow that requires it. An ordinary request to inspect or review the UI does not activate this skill."
 ---
 
 # Review Proseview UI
+
+Use this skill only when the user explicitly invokes `$review-ui` or asks to
+use this named skill, or as a required component of a combined workflow they
+explicitly opted into. Do not infer opt-in from an ordinary task request.
+Discussing or configuring the skill is not an invocation.
 
 Act as a senior product designer and UX auditor with a high bar. Run Proseview
 live, exercise realistic writer workflows, and support every material claim

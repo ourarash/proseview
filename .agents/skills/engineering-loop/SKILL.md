@@ -1,9 +1,23 @@
 ---
 name: engineering-loop
-description: "Orchestrate a bounded, repository-adaptive senior engineering loop for Proseview: discover current contracts, implement with $develop, independently run specification and engineering-quality review with $review-code, technically triage every finding, remediate root causes, rerun fresh validation, and repeat until the quality gate passes or a recorded stop rule fires. Use when Codex is asked to build or fix Proseview and keep iterating through code/architecture review, run an implement-review-fix loop, address review feedback automatically, or deliver only after independent approval."
+description: "Run a bounded Proseview implement-review-fix loop with independent specification and engineering review. Opt-in only: use when the user explicitly invokes $engineering-loop or explicitly requests this iterative independent-review workflow. Ordinary build, fix, or enhancement requests do not activate this skill."
 ---
 
 # Iterate Proseview Engineering
+
+## Explicit opt-in required
+
+Use this skill only when the user explicitly invokes `$engineering-loop` or
+requests an iterative implement-review-fix workflow with independent review.
+Do not select it automatically because a change is complex, crosses layers,
+or would benefit from another reviewer. Discussing, declining, or configuring
+this workflow is not an invocation.
+
+For ordinary implementation requests, implement with relevant tests and
+self-review without invoking a Proseview skill. `$develop` and `$review-code`
+are authorized components when the user explicitly opts into this loop. Do not
+launch a reviewer sub-agent or require independent approval unless the user
+explicitly opts into that review or this loop.
 
 Drive a disciplined discover → implement → specification review → engineering
 review → triage → remediate → verify loop. Converge on independent evidence,

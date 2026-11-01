@@ -658,6 +658,7 @@
             <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                 <button type="button" role="tab" id="settingsTabGeneral" class="settings-tab" aria-selected="true" aria-controls="settingsPanelGeneral" onclick="selectSettingsTab('general')">General</button>
                 <button type="button" role="tab" id="settingsTabSuggestions" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSuggestions" tabindex="-1" onclick="selectSettingsTab('suggestions')">Suggestions</button>
+                <button type="button" role="tab" id="settingsTabRoom" class="settings-tab" aria-selected="false" aria-controls="settingsPanelRoom" tabindex="-1" onclick="selectSettingsTab('room')">Writers’ Room</button>
             </div>
             <div id="settingsPanelGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
             {% if not config_exists %}
@@ -763,6 +764,10 @@
                 <p class="settings-note">What Suggest on a highlight asks Codex or Claude, what they can see and use, and the model they use. Model, tools and MCP servers are kept on this computer; files and prompts are saved in your book's <code>.proseview.yaml</code>.</p>
                 <div id="suggestionSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
             </div>
+            <div id="settingsPanelRoom" role="tabpanel" aria-labelledby="settingsTabRoom" hidden>
+                <p class="settings-note">Configure the two editors and the moderator in the Writers’ Room: display names, editorial roles, agents, models, and starter prompts. Models and turn counts are kept on this computer; display names, role instructions, and starter prompts are saved in your book's <code>.proseview.yaml</code>.</p>
+                <div id="roomSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
+            </div>
         </section>
     </dialog>
 
@@ -817,7 +822,7 @@
         <div class="discuss-shell">
             <header class="discuss-header">
                 <div class="utility-tabs" role="tablist" aria-label="Right utility dock">
-                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabCodex" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussAgentTab('codex', this)" title="Discuss this project with Codex">Codex</button><button type="button" id="utilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)" title="Discuss this project with Claude">Claude</button>
+                    <button type="button" id="utilityTabScene" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('scene')" title="Frontmatter, story fields, links and tasks for this scene">Scene</button><button type="button" id="utilityTabAnalysis" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('analysis')" title="Measures and highlight passes for this scene">Analysis</button><button type="button" id="utilityTabHistory" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('history')" title="Undo/redo and file version history">History</button><button type="button" id="utilityTabCodex" class="utility-tab active" role="tab" aria-selected="true" onclick="showDiscussAgentTab('codex', this)" title="Discuss this project with Codex">Codex</button><button type="button" id="utilityTabClaude" class="utility-tab" role="tab" aria-selected="false" onclick="showDiscussAgentTab('claude', this)" title="Discuss this project with Claude">Claude</button><button type="button" id="utilityTabRoom" class="utility-tab" role="tab" aria-selected="false" onclick="showScenePanelTab('room')" title="Two-critic Writers’ Room debate and revision plan for this scene">Room</button>
                 </div>
                 <div class="discuss-heading"><div class="discuss-heading-title"><h2 id="discussTitle">Codex</h2><span id="discussConnection" class="discuss-connection" aria-live="polite">Restoring conversation</span></div><div class="discuss-conversation-actions"><button id="discussHistoryClear" type="button" class="discuss-secondary" onclick="clearDiscussHistory()" title="Clear assistance results from this conversation" hidden>Clear results</button><button id="discussNewConversation" type="button" class="discuss-icon-button" onclick="openNewDiscussConversationDialog()" aria-label="New conversation" title="New conversation"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button id="discussHistory" type="button" class="discuss-icon-button" onclick="openDiscussHistoryDialog()" aria-label="Conversation history" title="Conversation history"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button></div></div>
                 <button type="button" class="discuss-close" id="discussClose" onclick="closeDiscuss()" aria-label="Close the agent panel">&times;</button>
@@ -832,6 +837,7 @@
                     <button type="button" class="editor-btn" onclick="clearSceneHistory()" style="width: 100%; color: var(--red);">Clear File History...</button>
                 </div>
             </div>
+            <div id="sceneRoomPane" class="scene-details-pane scene-room-pane" role="tabpanel" aria-labelledby="utilityTabRoom" hidden></div>
             <div id="discussContext" class="discuss-context" aria-label="Conversation context"></div>
             <div id="discussLog" class="discuss-log" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false" tabindex="-1"></div>
             <button id="discussNewActivity" type="button" class="discuss-new-activity" onclick="discussScrollToEnd()" hidden>New activity</button>

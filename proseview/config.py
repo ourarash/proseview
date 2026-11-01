@@ -97,6 +97,7 @@ DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude")
 #: What a highlight suggestion is shown besides the marked passage.
 SUGGESTION_CONTEXTS: tuple[str, ...] = ("paragraph", "scene")
 SUGGESTION_PROMPT_MAX = 8000
+ROOM_DISPLAY_NAME_MAX = 60
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,21 @@ class SuggestionsConfig:
 
     def pass_prompt(self, key: str) -> str | None:
         return dict(self.pass_prompts).get(key)
+
+
+@dataclass(frozen=True)
+class RoomConfig:
+    """The ``room:`` block: book-level names and prompts for the Writers' Room."""
+
+    critic1_prompt: str = ""
+    critic2_prompt: str = ""
+    preset_prompts: tuple[tuple[str, str], ...] = ()
+    critic1_name: str = "Story Editor"
+    critic2_name: str = "Voice Editor"
+    moderator_name: str = "Moderator"
+
+    def preset_prompt(self, key: str) -> str | None:
+        return dict(self.preset_prompts).get(key)
 
 
 #: Accepted values for ``images``, loosest first.
@@ -243,6 +259,7 @@ class Config:
     repo_tab: RepoTabConfig = field(default_factory=RepoTabConfig)
     discuss: DiscussConfig = field(default_factory=DiscussConfig)
     suggestions: SuggestionsConfig = field(default_factory=SuggestionsConfig)
+    room: RoomConfig = field(default_factory=RoomConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
@@ -320,6 +337,7 @@ class Config:
             repo_tab=_coerce_repo_tab(raw.get("repo_tab")),
             discuss=_coerce_discuss(raw.get("discuss")),
             suggestions=_coerce_suggestions(raw.get("suggestions")),
+            room=_coerce_room(raw.get("room")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
             export=_coerce_export(raw.get("export")),
@@ -400,6 +418,28 @@ class Config:
         elif "suggestions" in data:
             del data["suggestions"]
 
+        # Update owned fields in place so names/roles do not discard other
+        # tools' room metadata or YAML comments.
+        room = data.get("room")
+        if not isinstance(room, dict):
+            room = {}
+        for key, value in (
+            ("critic1_prompt", self.room.critic1_prompt),
+            ("critic2_prompt", self.room.critic2_prompt),
+            ("preset_prompts", dict(self.room.preset_prompts)),
+            ("critic1_name", self.room.critic1_name),
+            ("critic2_name", self.room.critic2_name),
+            ("moderator_name", self.room.moderator_name),
+        ):
+            if value != getattr(defaults.room, key) and value != {}:
+                room[key] = value
+            else:
+                room.pop(key, None)
+        if room:
+            data["room"] = room
+        elif "room" in data:
+            del data["room"]
+
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f)
 
@@ -473,7 +513,7 @@ def _config_field_names() -> tuple[str, ...]:
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
-        "discuss", "suggestions", "export", "max_backups", "callouts",
+        "discuss", "suggestions", "room", "export", "max_backups", "callouts",
     )
 
 
@@ -658,6 +698,40 @@ def _coerce_suggestions(v: Any) -> SuggestionsConfig:
         context=context,
         prompt=prompt,
         pass_prompts=tuple(sorted(passes)),
+    )
+
+
+def _coerce_room(v: Any) -> RoomConfig:
+    if v is None:
+        return RoomConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'room' must be a mapping, got {type(v).__name__}: {v!r}")
+    defaults = RoomConfig()
+    names: dict[str, str] = {}
+    for key in ("critic1_name", "critic2_name", "moderator_name"):
+        name = v.get(key, getattr(defaults, key))
+        if not isinstance(name, str) or len(name.strip()) > ROOM_DISPLAY_NAME_MAX:
+            raise ConfigError(f"'room.{key}' must be a display name of at most {ROOM_DISPLAY_NAME_MAX} characters")
+        names[key] = name.strip() or getattr(defaults, key)
+    critic1_prompt = v.get("critic1_prompt", "") or ""
+    critic2_prompt = v.get("critic2_prompt", "") or ""
+    if not isinstance(critic1_prompt, str) or len(critic1_prompt) > SUGGESTION_PROMPT_MAX:
+        raise ConfigError(f"'room.critic1_prompt' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
+    if not isinstance(critic2_prompt, str) or len(critic2_prompt) > SUGGESTION_PROMPT_MAX:
+        raise ConfigError(f"'room.critic2_prompt' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
+    raw_presets = v.get("preset_prompts") or {}
+    if not isinstance(raw_presets, dict):
+        raise ConfigError("'room.preset_prompts' must be a mapping of preset id to text")
+    presets: list[tuple[str, str]] = []
+    for key, text in raw_presets.items():
+        if not isinstance(key, str) or not isinstance(text, str) or len(text) > SUGGESTION_PROMPT_MAX:
+            raise ConfigError("'room.preset_prompts' entries must be text")
+        presets.append((key, text))
+    return RoomConfig(
+        critic1_prompt=critic1_prompt,
+        critic2_prompt=critic2_prompt,
+        preset_prompts=tuple(sorted(presets)),
+        **names,
     )
 
 

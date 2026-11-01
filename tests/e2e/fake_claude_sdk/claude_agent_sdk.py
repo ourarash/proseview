@@ -124,6 +124,17 @@ class ClaudeSDKClient:
                 ],
             }
             answer = json.dumps(structured)
+        elif "agreed" in (((getattr(self.options, "output_format", None) or {}).get("schema") or {}).get("properties") or {}):
+            structured = {
+                "agreed": [
+                    {"title": "Cut the opening weather line", "line": "17", "original": "The weather was grey.", "replacement": "She had used the same four digits since spring.", "why": "Open on the safe.", "proposed_by": "Critic 1", "accepted": True},
+                    {"title": "Keep the dialogue subtext clipped", "line": "", "original": "", "replacement": "", "why": "Let the pause carry the tension.", "proposed_by": "Critic 2", "accepted": False},
+                ],
+                "open": [{"issue": "When to reveal the safe code", "critic1": "In this scene, to raise the stakes.", "critic2": "In the next, to keep the subtext."}],
+            }
+            answer = json.dumps(structured)
+        elif "in a Writers' Room on the manuscript scene" in prompt:
+            answer = "**Agree:** Issue 1, and cut the weather outright.\n\n**Add:** a sharper pause before she speaks."
         rows.append(SimpleNamespace(
             type="assistant", uuid=uuid.uuid4().hex,
             message={"role": "assistant", "content": [{"type": "text", "text": answer}]},

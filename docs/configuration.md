@@ -82,6 +82,65 @@ callouts:
 Every key has a sensible default. Missing optional folders are skipped, but the
 configured manuscript directory is required.
 
+## Writers’ Room names and conversation
+
+**Settings → Writers’ Room** lets you name the two editorial seats and the
+moderator. The defaults are **Story Editor** (plot, stakes, pacing, and
+continuity), **Voice Editor** (voice, emotion, atmosphere, and rhythm), and
+**Moderator** (the revision plan). Display names only change labels; role
+instructions control each editor’s focus. Every editor header still identifies
+Claude or Codex, independently of the name.
+
+Names are saved with the book and can also be configured directly:
+
+```yaml
+room:
+  critic1_name: Story Editor
+  critic2_name: Voice Editor
+  moderator_name: Moderator
+```
+
+Names may contain up to 60 characters; blank names use the defaults. Agent,
+model, effort, and turn-count preferences remain on this computer.
+
+When you send a message to both editors, the first answers you directly and the
+second responds to your direction and the first editor’s contribution. Replies
+use natural language rather than mandatory Agree/Disagree/Add labels. Concise
+and Detailed set a preference for reply depth rather than a hard word limit.
+
+Type **@** in the Room composer to choose an editor or a project file/folder.
+The picker groups editors separately and shows each editor’s provider.
+The default tags are `@StoryEditor` and `@VoiceEditor`; `@Codex` or
+`@Claude` also work when that provider belongs to just one editor. Tags override
+the **To** selector for that message. Tag one editor for one reply, or tag both
+to have them reply in mention order. Untagged messages use the selected
+recipient as before, and all replies remain in the shared Room transcript.
+Use the arrow keys and Enter or Tab to choose a tag; press Enter again to send,
+or Escape to dismiss the picker. Custom names get corresponding tags, with a
+number added when necessary to distinguish duplicate names.
+
+File mentions supply reference material rather than changing who replies. For
+example, `@VoiceEditor compare this with @story-bible/characters/shadi.md`
+addresses the Voice Editor and includes that file in the discussion. Room
+editors use the same tools and project settings as their individual chats:
+they can read other project files, search, and use configured tools and MCP
+servers. File mentions identify references for the agent to inspect, as in
+single chat. References remain available when continuing or reopening the
+saved discussion, and mentioned paths must remain inside the project.
+
+Tool permission requests appear in the Room with the same decisions as in
+single chat. A critique or proposed revision does not itself authorize an edit;
+editors change files when you ask them to. After an editor changes files, the
+Room shows a review with the saved changes and an Undo action. Review the edits
+and choose **Continue discussion** before the next editor or moderator proceeds.
+The moderator only summarizes the transcript and does not use editing tools.
+
+The revision plan separates **Agreed changes** (explicit support from both
+editors for the same fix), **Other suggestions** (not yet endorsed by both), and
+**Still open** (unresolved questions or competing fixes). Other suggestions
+start unticked; you can select them to apply or add them as TODOs. Agreement on
+a problem does not imply agreement on its replacement wording.
+
 ## Privacy screen password
 
 `Mod-J J` (hold Cmd, or Ctrl off a Mac, and tap J twice) covers the dashboard

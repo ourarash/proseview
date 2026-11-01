@@ -645,6 +645,13 @@
                 if (currentSelectionRange) pinSelectionHighlight(currentSelectionRange);
                 selectionMemoryPreserved = true;
                 setSelectionMenuExpanded(false, {restoreFocus: true});
+                // With the Writers' Room open, Ask and Polish go to the room.
+                var opts = options || {};
+                if (!opts.actionId && !opts.showSkills && typeof roomTabIsOpen === 'function' && roomTabIsOpen()) {
+                    attachSelectionToRoom(selection, opts.sendInstruction || '');
+                    pendingSelectionActionContext = null;
+                    return;
+                }
                 openDiscussForSelection(document.getElementById('selectionPillBtn'), selection, Object.assign({
                     selectionRange: selectionRange,
                     selectionSnapshot: selectionSnapshot,

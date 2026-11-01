@@ -622,3 +622,355 @@ def test_where_you_left_off_preview_and_overview_scene_cards_and_filters(page: P
     assert page.locator("#sceneTable").is_visible()
 
 
+def test_writers_room_debate_settings_todo_and_apply_plan(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.wait_for(state="visible")
+
+    # Empty state shows the 3 starter cards and the header summary.
+    assert pane.locator(".room-starter-card").count() == 3
+    _wait_until(lambda: "Codex ↔ Claude · 4 turns · Concise" in pane.locator("#roomHeaderSummary").inner_text())
+
+    # Open Settings -> Writers' Room from the gear button and change default turns to 2.
+    page.click("#roomSettingsBtn")
+    page.wait_for_selector("#settingsDialog[open]")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
+    assert page.locator("#settingsTabRoom").get_attribute("aria-selected") == "true"
+
+    page.locator('#settingsPanelRoom select[aria-label="Most turns"]').select_option("2")
+    page.locator('#settingsPanelRoom select[aria-label="Turn length"]').select_option("detailed")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+    _wait_until(lambda: "Codex ↔ Claude · 2 turns · Detailed" in pane.locator("#roomHeaderSummary").inner_text())
+
+    # Start a debate via the Editorial critique starter card.
+    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
+    plan_card = pane.locator("#roomPlanCard")
+    plan_card.wait_for(state="visible", timeout=20000)
+
+    # Both critics (Turn 1 Codex, Turn 2 Claude) rendered their turns, then the moderator's plan:
+    # what they agreed, who proposed it, and what is still open.
+    assert pane.locator(".room-turn-card.is-critic-1").count() == 1
+    assert pane.locator(".room-turn-card.is-critic-2").count() == 1
+    assert pane.locator(".room-turn-card.is-critic-1 blockquote").count() == 2
+    assert plan_card.locator(".room-plan-item").count() == 2
+    assert "Story Editor · both agree" in plan_card.locator(".room-plan-by").first.inner_text()
+    first_change = plan_card.locator(".room-plan-change").first
+    assert first_change.locator("blockquote").count() == 2, "the original in italics, then the replacement"
+    assert first_change.locator("blockquote em").inner_text() == "The weather was grey."
+    assert "When to reveal the safe code" in plan_card.locator(".room-open").inner_text()
+
+    # Click + TODO on the first plan item and verify it writes <!-- TODO: ... --> to the scene.
+    first_todo_btn = plan_card.locator(".room-todo-btn").first
+    first_todo_btn.click()
+    _wait_until(lambda: first_todo_btn.inner_text() == "✓ TODO")
+    scene_file = server.root / "manuscript" / SCENE_REL
+    assert "<!-- TODO: Cut the opening weather line" in scene_file.read_text(encoding="utf-8")
+
+    # The individual suggestion starts unticked; only the agreed edit is selected.
+    plan_card.locator(".room-plan-check").nth(1).uncheck()
+    assert "Apply 1 ticked item with Claude" in page.locator("#roomApplyBtn").inner_text()
+
+    # Clicking Apply switches to the Claude tab and submits the revision instruction.
+    page.click("#roomApplyBtn")
+    _wait_until(lambda: page.locator("#utilityTabClaude").get_attribute("aria-selected") == "true")
+    _wait_until(lambda: "Writers’ Room revision plan" in page.locator("#discussLog").inner_text())
+
+
+    # Back in the Room, the applied item says so; a follow-up question gets a
+    # plan of its own in the thread, and the first one folds away.
+    page.evaluate("showScenePanelTab('room')")
+    pane.wait_for(state="visible")
+    assert "Applied with Claude" in plan_card.locator(".room-plan-item").first.inner_text()
+    page.fill("#roomInput", "What about the ending?")
+    page.click("#roomSendBtn")
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    earlier, latest = pane.locator(".room-plan-card").nth(0), pane.locator(".room-plan-card").nth(1)
+    assert "Earlier plan" in earlier.inner_text() and earlier.locator(".room-plan-item").count() == 0
+    assert latest.get_attribute("id") == "roomPlanCard"
+    assert pane.locator(".room-turn-card").count() >= 4, "the new plan comes after the new turns"
+
+
+def test_room_names_summary_groups_and_shared_chat_cards_survive_reload(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.wait_for(state="visible")
+    page.click("#roomSettingsBtn")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
+    name = page.get_by_role("textbox", name="Story Editor display name", exact=True)
+    assert name.input_value() == "Story Editor"
+    name.fill("Plot & Stakes <b>")
+    page.get_by_role("textbox", name="Moderator display name", exact=True).fill("Chair")
+    page.get_by_role("combobox", name="Most turns", exact=True).select_option("2")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
+    plan = pane.locator("#roomPlanCard")
+    plan.wait_for(state="visible", timeout=20000)
+    assert pane.locator(".is-critic-1 .chat-message-name").inner_text() == "Plot & Stakes <b> · Codex"
+    assert pane.locator(".is-critic-1 .chat-message-name b").count() == 0
+    assert pane.locator(".is-critic-2 .chat-message-name").inner_text() == "Voice Editor · Claude"
+    assert "Chair · Claude" in plan.locator(".room-plan-sub").inner_text()
+    agreed = plan.locator('[data-consensus="agreed"]')
+    suggested = plan.locator('[data-consensus="suggested"]')
+    assert agreed.get_by_role("heading", name="Agreed changes", exact=True).is_visible()
+    assert suggested.get_by_role("heading", name="Other suggestions", exact=True).is_visible()
+    assert agreed.locator(".room-plan-item").count() == suggested.locator(".room-plan-item").count() == 1
+    assert agreed.locator(".room-plan-check").is_checked()
+    assert not suggested.locator(".room-plan-check").is_checked()
+    assert "not yet endorsed" in suggested.inner_text()
+    assert "Still open" in plan.locator(".room-open").inner_text()
+    assert "Apply 1 ticked item" in page.locator("#roomApplyBtn").inner_text()
+    suggested.locator(".room-plan-check").focus()
+    page.keyboard.press("Space")
+    assert suggested.locator(".room-plan-check").is_checked()
+    assert "Apply 2 ticked items" in page.locator("#roomApplyBtn").inner_text()
+    page.keyboard.press("Space")
+    assert not suggested.locator(".room-plan-check").is_checked()
+
+    page.fill("#roomInput", "I kept only the second change. What else would you suggest?")
+    page.click("#roomSendBtn")
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    user = pane.locator(".room-turn-card.is-user").last
+    assert user.locator(".chat-message-name").inner_text() == "Me"
+    cards = pane.locator(".room-turn-card")
+    assert cards.nth(cards.count()-2).get_attribute("class").find("is-critic-1") >= 0
+    assert cards.last.get_attribute("class").find("is-critic-2") >= 0
+    layout = user.evaluate('''el => {
+        const parent = el.parentElement.getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+        const next = el.nextElementSibling.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return {right: Math.abs(parent.right-box.right)<2, inset: box.left-parent.left,
+            gap: next.top-box.bottom, padding:parseFloat(style.paddingLeft), overflow:el.scrollWidth>el.clientWidth};
+    }''')
+    assert layout["right"] and layout["inset"] > 10 and layout["gap"] >= 30 and layout["padding"] >= 14
+    assert not layout["overflow"]
+    assert user.get_by_role("button", name="Copy message", exact=True).count() == 1
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    user.get_by_role("button", name="Copy message", exact=True).click()
+    assert page.evaluate("navigator.clipboard.readText()") == "I kept only the second change. What else would you suggest?"
+
+    # The same card and Me header are used by both individual chat providers.
+    for agent in ("codex", "claude"):
+        page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+        page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+        page.fill("#discussInput", "A short chat to check the shared message layout.")
+        page.click("#discussSend")
+        _wait_until(lambda: page.locator("#discussLog > .discuss-message.assistant").count() > 0, timeout=20)
+        chat_user = page.locator("#discussLog > .chat-message-card.user").last
+        chat_agent = page.locator("#discussLog > .chat-message-card.assistant:not(.discuss-stream-draft)").last
+        assert chat_user.locator(".chat-message-name").inner_text() == "Me"
+        assert chat_agent.locator(".chat-message-name").inner_text() == agent.title()
+        assert chat_agent.get_by_role("button", name="Copy message", exact=True).count() == 1
+        assert chat_user.evaluate("el => getComputedStyle(el).borderRadius") == user.evaluate("el => getComputedStyle(el).borderRadius")
+        _wait_until(lambda: "Answered in" in page.locator("#discussPanel").inner_text())
+        replies = page.locator("#discussLog > .discuss-message.assistant").count()
+        page.fill("#discussInput", "continue")
+        page.click("#discussSend")
+        _wait_until(lambda: page.locator("#discussLog > .discuss-message.assistant").count() > replies, timeout=20)
+        short = page.locator("#discussLog > .chat-message-card.user").last
+        assert "continue" in short.inner_text()
+        short_box = short.bounding_box()
+        assert short_box["width"] < 200, "a one-word reply should not fill the chat column"
+        assert short_box["height"] < 90, "a short reply should have a compact header and padding"
+
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    assert "Plot & Stakes <b> · Codex" in pane.inner_text()
+    assert pane.locator('#roomPlanCard [data-consensus="suggested"] .room-plan-item').count() == 1
+    assert pane.locator(".is-user .chat-message-name").last.inner_text() == "Me"
+
+
+def test_room_empty_followup_summary_replaces_the_previous_plan(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    page.route("**/api/discuss/room-moderator", lambda route: route.fulfill(
+        json={"ok": True, "agent": "claude", "plan": [], "open": []}))
+    page.fill("#roomInput", "Leave all of these changes out. Nothing else for now.")
+    page.click("#roomSendBtn")
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=10)
+    latest = pane.locator("#roomPlanCard")
+    assert "No new changes to suggest" in latest.inner_text()
+    assert latest.locator(".room-plan-item").count() == 0
+    assert page.locator("#roomApplyBtn").is_disabled()
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    assert pane.locator(".room-plan-card").count() == 2
+    assert "No new changes to suggest" in pane.locator("#roomPlanCard").inner_text()
+
+
+def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, server: ProseviewServer):
+    requests = []
+    page.on("request", lambda req: requests.append(req.post_data_json) if req.url.endswith('/api/discuss/room-turn') else None)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@VoiceEditr")
+    pane.locator("#roomInput").press("ArrowLeft")
+    pane.locator("#roomInput").press_sequentially("o")
+    pane.locator("#roomInput").press("Tab")
+    assert pane.locator("#roomInput").input_value() == "@VoiceEditor ", "completing a tag mid-word must replace its remaining suffix"
+    pane.locator("#roomInput").fill("@")
+    picker = pane.get_by_role("listbox", name="Mention an editor or project file")
+    picker.wait_for(state="visible")
+    assert "Story Editor" in picker.inner_text() and "Codex" in picker.inner_text()
+    assert "Voice Editor" in picker.inner_text() and "Claude" in picker.inner_text()
+    pane.locator("#roomInput").press("ArrowDown")
+    pane.locator("#roomInput").press("Enter")
+    assert pane.locator("#roomInput").input_value() == "@VoiceEditor "
+    assert pane.locator(".room-turn-card").count() == 0, "selecting a tag must not send"
+    assert pane.locator("#roomTargetSelect").input_value() == "critic2"
+    assert not pane.locator("#roomTargetSelect").is_enabled()
+    pane.locator("#roomInput").press_sequentially("What do you think about the voice?")
+    pane.locator("#roomInput").press("Enter")
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    assert [req['seat'] for req in requests] == [2]
+    assert pane.locator(".room-turn-card.is-critic-1").count() == 0
+    assert "@VoiceEditor" in pane.locator(".room-turn-card.is-user").inner_text()
+
+    # Unique provider aliases work without opening the picker.
+    pane.locator("#roomInput").fill("@Codex give me another take.")
+    pane.locator("#roomSendBtn").click()
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    assert [req['seat'] for req in requests] == [2, 1]
+
+    # Mention order is speaking order, independent of the normal To selector.
+    pane.locator("#roomInput").fill("@VoiceEditor and @StoryEditor: discuss this together.")
+    pane.locator("#roomSendBtn").click()
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 3, timeout=20)
+    assert [req['seat'] for req in requests] == [2, 1, 2, 1]
+    pane.locator("#roomInput").fill("Email me at someone@claude.example; this is not a mention.")
+    assert pane.locator("#roomTargetSelect").is_enabled()
+    assert pane.locator("#roomTargetSelect").input_value() == "both"
+    pane.locator("#roomInput").fill("@")
+    pane.locator("#roomInput").press("Escape")
+    assert picker.is_hidden()
+    assert pane.locator("#roomInput").input_value() == "@"
+    page.click("#roomSettingsBtn")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
+    page.get_by_role("textbox", name="Story Editor display name", exact=True).fill("Editor")
+    page.get_by_role("textbox", name="Voice Editor display name", exact=True).fill("Editor")
+    page.get_by_role("combobox", name="Voice Editor agent", exact=True).select_option("codex")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+    pane.locator("#roomInput").fill("@Codex")
+    assert picker.get_by_role("option").filter(has_text="Editor · Codex").count() == 2
+    assert pane.locator("#roomTargetSelect").is_enabled(), "an ambiguous provider alias must not silently choose a seat"
+    picker.get_by_role("option").filter(has_text="@Editor2").click()
+    assert pane.locator("#roomInput").input_value() == "@Editor2 "
+    pane.locator("#roomInput").press_sequentially("Please give me your view.")
+    pane.locator("#roomSendBtn").click()
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 4, timeout=20)
+    assert [req['seat'] for req in requests] == [2, 1, 2, 1, 2]
+    # Computer preferences are shared by the existing E2E home fixture.
+    page.click("#roomSettingsBtn")
+    page.get_by_role("combobox", name="Voice Editor agent", exact=True).select_option("claude")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+
+
+def test_room_file_mentions_supply_reference_text_without_changing_editor_routing(page: Page, server: ProseviewServer):
+    requests = []
+    page.on("request", lambda req: requests.append(req.post_data_json) if req.url.endswith('/api/discuss/room-turn') else None)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex Compare this with @02-walk")
+    picker = pane.get_by_role("listbox", name="Mention an editor or project file")
+    picker.wait_for(state="visible")
+    assert "manuscript/ch01/02-walk.md" in picker.inner_text()
+    pane.locator("#roomInput").press("Enter")
+    assert pane.locator("#roomInput").input_value() == "@Codex Compare this with @manuscript/ch01/02-walk.md "
+    assert pane.locator("#roomTargetSelect").input_value() == "critic1"
+    pane.locator("#roomInput").press("Enter")
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    assert [req["seat"] for req in requests] == [1]
+    assert requests[0]["attachments"] == [{"kind": "file", "path": "manuscript/ch01/02-walk.md"}]
+    records = [json.loads(line) for line in (server.home / "fake-codex-received.jsonl").read_text().splitlines()]
+    assert any("Mentioned: manuscript/ch01/02-walk.md" in record["params"]["input"][0]["text"] for record in records)
+    collision = page.evaluate('''() => {
+        const original = _discussContextCandidateCache;
+        _discussContextCandidateCache = discussContextCandidates().concat([{kind:'file',path:'StoryEditor.md',name:'StoryEditor.md'}]);
+        try { return _roomMentionRecipients('@StoryEditor.md'); }
+        finally { _discussContextCandidateCache = original; }
+    }''')
+    assert collision == [], "a filename that begins with an editor handle must not address that editor"
+    # File-only messages retain the ordinary To setting and shared context.
+    pane.locator("#roomInput").fill("Compare again with @manuscript/ch01/02-walk.md")
+    assert pane.locator("#roomTargetSelect").is_enabled()
+    assert pane.locator("#roomTargetSelect").input_value() == "both"
+    pane.locator("#roomSendBtn").click()
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    assert [req["seat"] for req in requests] == [1, 1, 2]
+    page.evaluate("attachSelectionToRoom('Quoted @scripts/check_continuity.py', null)")
+    pane.locator("#roomInput").fill("Keep discussing the scene.")
+    pane.locator("#roomSendBtn").click()
+    _wait_until(lambda: pane.locator(".room-plan-card").count() == 3, timeout=20)
+    assert requests[-1]["attachments"] == [{"kind": "file", "path": "manuscript/ch01/02-walk.md"}], "quoted selections must not add file reads"
+
+
+@pytest.mark.parametrize("decision", ["Accept once", "Decline"])
+def test_room_tools_show_approvals_in_the_room_and_leave_single_chat_separate(page: Page, server: ProseviewServer, decision):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex REQUEST_APPROVAL inspect the project for this question.")
+    pane.locator("#roomSendBtn").click()
+    approvals = pane.locator("#roomLiveApprovals")
+    approvals.get_by_role("heading", name="Approval required").wait_for(timeout=20000)
+    assert "printf approved" in approvals.inner_text()
+    assert page.locator("#utilityTabRoom").get_attribute("aria-selected") == "true"
+    approvals.get_by_role("button", name=decision, exact=True).click()
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    assert pane.locator(".room-turn-card.is-critic-1").count() == 1
+    assert pane.locator(".room-turn-card.is-critic-2").count() == 0
+    assert ("Approval resolved: accept" if decision == "Accept once" else "Approval resolved: decline") in pane.inner_text()
+    page.click("#utilityTabCodex")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert "REQUEST_APPROVAL inspect" not in page.locator("#discussLog").inner_text()
+
+
+def test_room_can_stop_while_a_tool_is_waiting_for_approval(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex REQUEST_APPROVAL inspect this scene.")
+    pane.locator("#roomSendBtn").click()
+    pane.locator("#roomLiveApprovals").get_by_role("heading", name="Approval required").wait_for(timeout=20000)
+    pane.get_by_role("button", name="Stop", exact=True).click()
+    _wait_until(lambda: pane.locator("#roomLiveApprovals").count() == 0)
+    assert pane.locator("#roomSendBtn").is_visible()
+    assert pane.locator(".room-turn-card.is-critic-1").count() == 0
+
+
+def test_room_file_edits_can_be_undone_before_the_discussion_continues(page: Page, server: ProseviewServer):
+    original = (server.root / "manuscript" / SCENE_REL).read_text()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex SELECT_FILE_CHANGE make this edit.")
+    pane.locator("#roomSendBtn").click()
+    review = pane.locator(".room-tool-review")
+    review.get_by_role("button", name="Continue discussion").wait_for(timeout=20000)
+    assert pane.locator("#roomPlanCard").count() == 0, "the queue waits for the writer's review"
+    assert (server.root / "manuscript" / SCENE_REL).read_text() != original
+    review.locator("summary").click()
+    assert review.locator(".discuss-review-table").count() > 0
+    review.get_by_role("button", name="Undo changes to manuscript/" + SCENE_REL).click()
+    _wait_until(lambda: (server.root / "manuscript" / SCENE_REL).read_text() == original)
+    review.get_by_role("button", name="Continue discussion").click()
+    pane.locator("#roomPlanCard").wait_for(timeout=20000)

@@ -2654,6 +2654,51 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     self._send_json({"ok": True, **result})
                     return
+                if path == "/api/discuss/room-settings":
+                    if body.get("save"):
+                        settings = self.discuss_manager.save_room_settings(body)
+                    else:
+                        settings = self.discuss_manager.room_settings()
+                    self._send_json({"ok": True, "settings": settings})
+                    return
+                if path == "/api/discuss/room-turn":
+                    result = self.discuss_manager.run_room_turn(
+                        scene=str(body.get("scene") or ""),
+                        live_content=str(body.get("live_content") or ""),
+                        seat=int(body.get("seat") or 1),
+                        turn_index=int(body.get("turn_index") or 1),
+                        total_turns=int(body.get("total_turns") or 0),
+                        preset_id=str(body.get("preset_id") or ""),
+                        question=str(body.get("question") or ""),
+                        history=body.get("history") if isinstance(body.get("history"), list) else [],
+                        run_id=str(body.get("run_id") or ""),
+                        debate_id=str(body.get("debate_id") or ""),
+                        attachments=body.get("attachments"),
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if path == "/api/discuss/room-moderator":
+                    result = self.discuss_manager.run_room_moderator(
+                        scene=str(body.get("scene") or ""),
+                        preset_id=str(body.get("preset_id") or ""),
+                        question=str(body.get("question") or ""),
+                        history=body.get("history") if isinstance(body.get("history"), list) else [],
+                        run_id=str(body.get("run_id") or ""),
+                        earlier=body.get("earlier") if isinstance(body.get("earlier"), list) else [],
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if path == "/api/discuss/room-stop":
+                    stopped = self.discuss_manager.stop_room_turn(str(body.get("run_id") or ""))
+                    self._send_json({"ok": True, "stopped": stopped})
+                    return
+                if path == "/api/discuss/room-history":
+                    self._send_json({"ok": True, **self.discuss_manager.room_history(body)})
+                    return
+                if path == "/api/discuss/room-progress":
+                    progress = self.discuss_manager.room_progress(str(body.get("run_id") or ""))
+                    self._send_json({"ok": True, **progress})
+                    return
                 if path == "/api/discuss/skills":
                     skills = self.discuss_manager.list_skills(
                         force_reload=bool(body.get("force_reload")),

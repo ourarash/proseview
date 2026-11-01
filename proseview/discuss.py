@@ -30,7 +30,9 @@ from .config import (
     DISCUSS_AGENTS,
     SUGGESTION_CONTEXTS,
     SUGGESTION_PROMPT_MAX,
+    ROOM_DISPLAY_NAME_MAX,
     Config,
+    RoomConfig,
     SuggestionsConfig,
 )
 from .hunks import changed_blocks, compose
@@ -49,7 +51,7 @@ from .highlights import compute_scene_highlights, strip_markdown_for_offsets
 from .lexical import build_content_stopwords, glue_share_pct, prose_only, top_repeated_content_words
 from .scenes import extract_scene_text, resolve_manuscript_dir, split_frontmatter
 from . import suggestions as suggestions_module
-from .suggestions import SuggestionAppSettings
+from .suggestions import RoomAppSettings, RoomHistoryStore, SuggestionAppSettings
 
 
 QUESTION_MAX = 32 * 1024
@@ -561,6 +563,133 @@ def action_output_schema(kind: str, count: int) -> dict[str, Any]:
     }
 
 
+ROOM_MODERATOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "agreed": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "maxLength": 300},
+                    "line": {"type": "string", "maxLength": 40},
+                    "original": {"type": "string", "maxLength": 2000},
+                    "replacement": {"type": "string", "maxLength": 2000},
+                    "why": {"type": "string", "maxLength": 600},
+                    "proposed_by": {"type": "string", "enum": ["Critic 1", "Critic 2", "Writer"]},
+                    "accepted": {"type": "boolean"},
+                },
+                "required": ["title", "line", "original", "replacement", "why", "proposed_by", "accepted"],
+                "additionalProperties": False,
+            },
+        },
+        "open": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "issue": {"type": "string", "maxLength": 300},
+                    "critic1": {"type": "string", "maxLength": 800},
+                    "critic2": {"type": "string", "maxLength": 800},
+                },
+                "required": ["issue", "critic1", "critic2"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["agreed", "suggested", "open"],
+    "additionalProperties": False,
+}
+
+# The same change shape is used for explicit consensus and individual suggestions.
+ROOM_MODERATOR_SCHEMA["properties"]["suggested"] = {
+    **ROOM_MODERATOR_SCHEMA["properties"]["agreed"],
+    "description": "Individual suggestions without explicit agreement on the exact fix; accepted must be false.",
+}
+
+_ROOM_NOTHING_NEW_RE = re.compile(
+    r"(?:^|\n)\s*\**\s*" + re.escape(suggestions_module.ROOM_NOTHING_NEW) + r"\.?\s*\**\.?\s*$", re.IGNORECASE
+)
+
+
+_ROOM_TOOL_JUNK_RE = re.compile(r"<(?:invoke|function_calls|antml:invoke)\b[\s\S]*?</(?:invoke|function_calls|antml:invoke)>")
+_ROOM_FIRST_POINT_RE = re.compile(r"^(?:#{1,4}\s|\*\*(?:Agree|Disagree|Add)\b)", re.MULTILINE)
+
+
+def _parse_room_reply(raw_text: str) -> tuple[str, bool]:
+    """A critic's Markdown reply, and whether it said it has nothing new."""
+    text = str(raw_text or "").strip()
+    if _ROOM_TOOL_JUNK_RE.search(text):
+        # A critic with no tools sometimes writes out the calls it wanted to
+        # make, and its musing about them. Keep only the critique after them.
+        text = _ROOM_TOOL_JUNK_RE.split(text)[-1]
+        first = _ROOM_FIRST_POINT_RE.search(text) or re.search(r"\*\*(?:Agree|Disagree|Add)\b", text)
+        text = (text[first.start():] if first else text).strip()
+    match = _ROOM_NOTHING_NEW_RE.search(text)
+    if not match:
+        return text, False
+    rest = text[: match.start()].strip()
+    return rest or "Nothing new to add.", True
+
+
+def _parse_room_moderator_output(raw_text: str) -> dict[str, Any]:
+    cleaned = str(raw_text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        parsed = json.loads(cleaned)
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict):
+        raise ContextError("The moderator did not return a plan; try again.")
+    agreed: list[dict[str, Any]] = []
+    candidates = [(item, True) for item in (parsed.get("agreed") or [])[:6]]
+    candidates += [(item, False) for item in (parsed.get("suggested") or [])[:6]]
+    for item, can_be_agreed in candidates[:6]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        why = str(item.get("why") or item.get("detail") or "").strip()
+        original = str(item.get("original") or "").strip()
+        replacement = str(item.get("replacement") or "").strip()
+        if not (title or why or replacement):
+            continue
+        by = str(item.get("proposed_by") or "")
+        agreed.append({
+            "title": title or why[:80],
+            "line": re.sub(r"[^0-9–-]", "", str(item.get("line") or ""))[:20],
+            "original": original,
+            "replacement": replacement,
+            "detail": why,
+            "proposed_by": by if by in {"Critic 1", "Critic 2", "Writer"} else "",
+            "accepted": can_be_agreed and item.get("accepted") is True,
+        })
+    open_items: list[dict[str, str]] = []
+    for item in (parsed.get("open") or [])[:4]:
+        if isinstance(item, dict) and str(item.get("issue") or "").strip():
+            open_items.append({
+                "issue": str(item.get("issue") or "").strip(),
+                "critic1": str(item.get("critic1") or "").strip(),
+                "critic2": str(item.get("critic2") or "").strip(),
+            })
+    return {"plan": agreed, "open": open_items}
+
+
+def _numbered_scene_body(raw: str) -> str:
+    """A scene's body without its frontmatter, each line numbered as in the file."""
+    _fm, body = split_frontmatter(raw)
+    all_lines = raw.splitlines()
+    body_lines = body.splitlines()
+    offset = max(0, len(all_lines) - len(body_lines))
+    out: list[str] = []
+    for idx, line in enumerate(body_lines, offset + 1):
+        out.append(f"{idx:>4}| {line}" if line.strip() else "")
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
+
+
 def _scene_frontmatter_notes(fm: Any) -> str:
     """The story fields of a scene's frontmatter, one per line."""
     if not isinstance(fm, dict) or not fm:
@@ -577,6 +706,43 @@ def _scene_frontmatter_notes(fm: Any) -> str:
         if val_str:
             lines.append(f"- {key}: {val_str}")
     return "\n".join(lines)
+
+
+def _partial_json_string(raw: str, key: str) -> str:
+    """The value of *key* in a JSON object still streaming in, as far as it has come."""
+    match = re.search(r'"' + re.escape(key) + r'"\s*:\s*"', raw or "")
+    if not match:
+        return ""
+    out: list[str] = []
+    escapes = {"n": "\n", "t": "\t", '"': '"', "\\": "\\", "/": "/", "r": "", "b": "", "f": ""}
+    i = match.end()
+    while i < len(raw):
+        ch = raw[i]
+        if ch == '"':
+            break
+        if ch == "\\":
+            if i + 1 >= len(raw):
+                break
+            nxt = raw[i + 1]
+            if nxt == "u":
+                if i + 6 > len(raw):
+                    break
+                try:
+                    out.append(chr(int(raw[i + 2:i + 6], 16)))
+                except ValueError:
+                    pass
+                i += 6
+                continue
+            out.append(escapes.get(nxt, nxt))
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+class _RoomThreadGone(RuntimeError):
+    """The agent no longer has a Room critic's conversation; start it again."""
 
 
 class ContextError(ValueError):
@@ -2093,6 +2259,14 @@ class _OneOff:
         self.first_token = 0.0
         #: What the agent did on the way: files read, searches, MCP calls.
         self.activities: dict[str, dict[str, Any]] = {}
+        #: What it says while it works, and its answer as it streams, for a
+        #: caller that shows progress (the Writers' Room).
+        self.progress = ""
+        self.draft = ""
+        self.started_at = time.monotonic()
+        #: Stops the turn on the agent's side, once it has started.
+        self.interrupt: Any = None
+        self.conversation: _Conversation | None = None
 
     def receive(self, event: dict[str, Any]) -> None:
         kind = event.get("type")
@@ -2102,6 +2276,14 @@ class _OneOff:
             self.first_token = self.first_token or now
         if kind == "response.completed" and event.get("phase") == "final_answer":
             self.text = str(event.get("text") or "")
+        elif kind == "response.completed":
+            note = str(event.get("text") or "").strip()
+            if note:
+                self.progress = (self.progress.rstrip() + "\n\n" + note)[-4000:].lstrip()
+        elif kind == "progress.delta":
+            self.progress = (self.progress + str(event.get("text") or ""))[-4000:]
+        elif kind == "response.delta":
+            self.draft = (self.draft + str(event.get("text") or ""))[-16000:]
         elif kind == "activity.updated":
             activity = event.get("activity") or {}
             target = activity.get("path") or activity.get("pattern") or ""
@@ -2172,6 +2354,11 @@ class DiscussManager:
         #: One-off requests (highlight suggestions) by thread key. They live
         #: outside every conversation: nothing here reaches a chat or History.
         self._one_offs: dict[str, _OneOff] = {}
+        #: Writers' Room turns in flight, by the browser's run id.
+        self._room_runs: dict[str, _OneOff] = {}
+        #: Each critic's ongoing conversation in a debate, by "debate:seat", so a
+        #: later turn sends only what was said since, as a chat would.
+        self._room_threads: dict[str, dict[str, Any]] = {}
         self._task_context: dict[str, dict[str, dict[str, Any]]] = {}
         # Model catalogs, per agent, with the reading's monotonic timestamp.
         self._model_catalogs: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -4099,7 +4286,8 @@ class DiscussManager:
             one_off = self._one_offs.get(self._thread_key(agent, thread_id))
             if one_off is not None:
                 one_off.receive(event)
-                continue
+                if one_off.conversation is None:
+                    continue
             conversation = self._threads.get(self._thread_key(agent, thread_id))
             if conversation is None:
                 continue
@@ -4480,6 +4668,466 @@ class DiscussManager:
             store.save(current)
         return self.suggestion_settings(store)
 
+    def room_settings(self, app_settings: RoomAppSettings | None = None) -> dict[str, Any]:
+        """Everything Settings -> Writers' Room and the Room tab need."""
+        book = Config.load(self.root).room
+        app = (app_settings or RoomAppSettings()).load()
+        return {
+            "book": {
+                "critic1_name": book.critic1_name,
+                "critic2_name": book.critic2_name,
+                "moderator_name": book.moderator_name,
+                "critic1_prompt": book.critic1_prompt or suggestions_module.DEFAULT_ROOM_CRITIC1_PROMPT,
+                "critic2_prompt": book.critic2_prompt or suggestions_module.DEFAULT_ROOM_CRITIC2_PROMPT,
+                "preset_prompts": {
+                    key: (book.preset_prompt(key) if book.preset_prompt(key) is not None else text)
+                    for key, text in suggestions_module.DEFAULT_ROOM_PRESET_PROMPTS.items()
+                },
+            },
+            "app": app.to_json(),
+            "defaults": {
+                "critic1_name": RoomConfig().critic1_name,
+                "critic2_name": RoomConfig().critic2_name,
+                "moderator_name": RoomConfig().moderator_name,
+                "critic1_prompt": suggestions_module.DEFAULT_ROOM_CRITIC1_PROMPT,
+                "critic2_prompt": suggestions_module.DEFAULT_ROOM_CRITIC2_PROMPT,
+                "preset_prompts": dict(suggestions_module.DEFAULT_ROOM_PRESET_PROMPTS),
+            },
+            "presets": list(suggestions_module.ROOM_PRESET_CARDS),
+            "lengths": dict(suggestions_module.ROOM_LENGTHS),
+            "participants": suggestions_module.room_participants(book, app),
+        }
+
+    def save_room_settings(
+        self, body: dict[str, Any], app_settings: RoomAppSettings | None = None
+    ) -> dict[str, Any]:
+        """Persist book-level room prompts in ``.proseview.yaml`` and computer settings in ``room.json``."""
+        store = app_settings or RoomAppSettings()
+        raw_book = body.get("book") if isinstance(body.get("book"), dict) else None
+        if raw_book is not None:
+            defaults = suggestions_module
+            cfg = Config.load(self.root)
+            names: dict[str, str] = {}
+            for key in ("critic1_name", "critic2_name", "moderator_name"):
+                name = raw_book.get(key, getattr(cfg.room, key))
+                if not isinstance(name, str) or len(name.strip()) > ROOM_DISPLAY_NAME_MAX:
+                    raise ContextError(f"a Writers' Room display name must be text of at most {ROOM_DISPLAY_NAME_MAX} characters")
+                names[key] = name.strip() or getattr(RoomConfig(), key)
+            c1 = str(raw_book.get("critic1_prompt", cfg.room.critic1_prompt) or "").strip()
+            c2 = str(raw_book.get("critic2_prompt", cfg.room.critic2_prompt) or "").strip()
+            presets = {
+                key: str(text).strip()
+                for key, text in (raw_book.get("preset_prompts", dict(cfg.room.preset_prompts)) or {}).items()
+                if key in defaults.DEFAULT_ROOM_PRESET_PROMPTS
+                and str(text).strip() != defaults.DEFAULT_ROOM_PRESET_PROMPTS[key]
+            }
+            if (
+                len(c1) > SUGGESTION_PROMPT_MAX
+                or len(c2) > SUGGESTION_PROMPT_MAX
+                or any(len(t) > SUGGESTION_PROMPT_MAX for t in presets.values())
+            ):
+                raise ContextError("a Writers' Room prompt is too long")
+            cfg = Config.load(self.root)
+            cfg.with_overrides(
+                room=RoomConfig(
+                    critic1_prompt="" if c1 == defaults.DEFAULT_ROOM_CRITIC1_PROMPT.strip() else c1,
+                    critic2_prompt="" if c2 == defaults.DEFAULT_ROOM_CRITIC2_PROMPT.strip() else c2,
+                    preset_prompts=tuple(sorted(presets.items())),
+                    **names,
+                )
+            ).save(self.root)
+        raw_app = body.get("app") if isinstance(body.get("app"), dict) else None
+        if raw_app is not None:
+            store.save(suggestions_module.RoomComputerSettings.from_json(raw_app))
+        return self.room_settings(store)
+
+    def run_room_turn(
+        self,
+        *,
+        scene: str = "",
+        live_content: str = "",
+        seat: int = 1,
+        turn_index: int = 1,
+        total_turns: int = 0,
+        preset_id: str = "",
+        question: str = "",
+        history: list[dict[str, Any]] | None = None,
+        timeout: float = 240.0,
+        app_settings: RoomAppSettings | None = None,
+        run_id: str = "",
+        debate_id: str = "",
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Run one critic's turn of a Writers' Room debate.
+
+        Each critic keeps one regular agent conversation per debate: its first
+        turn carries the scene and the brief, and each later turn only what
+        the room said since. A conversation the agent no longer has (after a
+        restart, or a settings change) is started again from the transcript.
+        """
+        book = Config.load(self.root).room
+        app = (app_settings or RoomAppSettings()).load()
+        seat_num = 2 if int(seat or 1) == 2 else 1
+        turn_idx = max(1, min(20, int(turn_index or 1)))
+        total_cnt = max(turn_idx, min(20, int(total_turns or app.turns)))
+        seat_cfg = app.critic1 if seat_num == 1 else app.critic2
+
+        scene_name = str(scene or "").strip()
+        if str(live_content or "").strip():
+            raw = str(live_content)
+        elif scene_name and (scene_path := self._scene_file(scene_name)) is not None:
+            raw = read_repo_text(scene_path)
+        else:
+            raise ContextError("Open a manuscript scene before running the Writers' Room.")
+        fm, _body = split_frontmatter(raw)
+        scene_text = _numbered_scene_body(raw)
+        if len(scene_text.encode("utf-8")) > suggestions_module.CONTEXT_MAX:
+            scene_text = scene_text.encode("utf-8")[: suggestions_module.CONTEXT_MAX].decode("utf-8", "ignore")
+
+        clean = self._clean_room_history(history)
+        if attachments is not None and not isinstance(attachments, list):
+            raise ContextError("attachments must be a list")
+        reference_text = ""
+        if attachments:
+            # As in individual chat, validate and name explicit references;
+            # the ordinary agent tools read the files when they are needed.
+            reference_text = self.context.build_mentions(
+                {"kind": "scene", "path": scene_name},
+                "Use your tools to inspect the mentioned project files as needed for this discussion.",
+                mentions=attachments,
+            ).prompt
+        scene_hash = hashlib.sha256((scene_text + '\0' + reference_text).encode("utf-8")).hexdigest()
+        signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools"]
+        key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
+        known = self._room_threads.get(key) if key else None
+        if known and (known["signature"] != signature or known["seen"] > len(clean)):
+            known = None
+        instructions = (
+            self.DEVELOPER_INSTRUCTIONS + "\n\n"
+            "You are an editor in Proseview's Writers' Room, discussing the project with the writer and "
+            "another editor. Use your usual tools and project context, including reading other files when "
+            "needed. A critique or suggestion is discussion, not permission to apply it: change files only "
+            "when the writer explicitly asks you to. Coordinate with the other editor and check what is "
+            "already applied before editing. Reply in Markdown."
+        )
+        text = ""
+        thread_id = ""
+        if known:
+            followup = suggestions_module.render_room_followup(
+                turn_index=turn_idx,
+                total_turns=total_cnt,
+                new_entries=clean[known["seen"]:],
+                scene_path=scene_name or "scene.md",
+                scene_text="" if known["scene"] == scene_hash else scene_text,
+                reference_text="" if known["scene"] == scene_hash else reference_text,
+                length=app.length,
+                participants=suggestions_module.room_participants(book, app),
+                seat=seat_num,
+            )
+            try:
+                text, thread_id = self._run_room_call(
+                    seat_cfg, followup, instructions=instructions, schema=None, run_id=run_id,
+                    timeout=timeout, who="critic", thread_id=known["thread_id"],
+                    scene=scene_name,
+                )
+            except _RoomThreadGone:
+                known = None
+        if not known:
+            prompt = suggestions_module.render_room_prompt(
+                book,
+                app,
+                seat=seat_num,
+                turn_index=turn_idx,
+                total_turns=total_cnt,
+                preset_id=str(preset_id or "").strip(),
+                question=_bounded_text(str(question or ""), 2000),
+                history=clean,
+                scene_path=scene_name or "scene.md",
+                scene_text=scene_text,
+                scene_notes=_scene_frontmatter_notes(fm),
+                method=action_instruction(self.root, "quick_critique"),
+                reference_text=reference_text,
+            )
+            text, thread_id = self._run_room_call(
+                seat_cfg, prompt, instructions=instructions, schema=None, run_id=run_id,
+                timeout=timeout, who="critic",
+                scene=scene_name,
+            )
+        if key:
+            self._room_threads[key] = {
+                "thread_id": thread_id,
+                "signature": signature,
+                "seen": len(clean) + 1,
+                "scene": scene_hash,
+            }
+            while len(self._room_threads) > 40:
+                self._room_threads.pop(next(iter(self._room_threads)))
+        reply, done = _parse_room_reply(text)
+        tool_conversation = self._threads.get(self._thread_key(seat_cfg.agent, thread_id))
+        changes = self.turn_file_changes(tool_conversation.id) if tool_conversation else {"files": [], "unreviewable": []}
+        return {
+            "seat": seat_num,
+            "agent": seat_cfg.agent,
+            "model": seat_cfg.model or f"{'Claude' if seat_cfg.agent == 'claude' else 'Codex'} default",
+            "effort": seat_cfg.effort,
+            "turn_index": turn_idx,
+            "total_turns": total_cnt,
+            "reply": reply,
+            "done": done,
+            "tool_conversation_id": tool_conversation.id if tool_conversation else "",
+            "changed_files": [file["path"] for file in changes["files"]],
+            "unreviewable": changes["unreviewable"],
+        }
+
+    def run_room_moderator(
+        self,
+        *,
+        scene: str = "",
+        preset_id: str = "",
+        question: str = "",
+        history: list[dict[str, Any]] | None = None,
+        timeout: float = 180.0,
+        app_settings: RoomAppSettings | None = None,
+        run_id: str = "",
+        earlier: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Turn a finished debate into what both critics agreed on and what is still open.
+
+        *earlier* is what the writer already has from this debate's earlier
+        plans, so a new plan after a follow-up question holds only what is new.
+        """
+        app = (app_settings or RoomAppSettings()).load()
+        clean = self._clean_room_history(history)
+        if not any(entry.get("role") != "user" for entry in clean):
+            raise ContextError("There is no debate to summarise yet.")
+        prompt = suggestions_module.render_room_moderator_prompt(
+            scene_path=str(scene or "").strip() or "scene.md",
+            history=clean,
+            preset_id=str(preset_id or "").strip(),
+            question=_bounded_text(str(question or ""), 2000),
+            participants=suggestions_module.room_participants(Config.load(self.root).room, app),
+            earlier=[
+                {
+                    "title": _bounded_text(str(item.get("title") or ""), 300),
+                    "line": _bounded_text(str(item.get("line") or ""), 20),
+                    "applied": bool(item.get("applied")),
+                }
+                for item in (earlier if isinstance(earlier, list) else [])[:40]
+                if isinstance(item, dict)
+            ],
+        )
+        text, _thread = self._run_room_call(
+            app.moderator,
+            prompt,
+            instructions=(
+                "You are the neutral moderator of Proseview's Writers' Room. Read only the transcript "
+                "you are given. Reply only with the structured result asked for."
+            ),
+            schema=ROOM_MODERATOR_SCHEMA,
+            run_id=run_id,
+            timeout=timeout,
+            who="moderator",
+        )
+        result = _parse_room_moderator_output(text)
+        result["agent"] = app.moderator.agent
+        return result
+
+    @staticmethod
+    def _clean_room_history(history: Any) -> list[dict[str, Any]]:
+        clean: list[dict[str, Any]] = []
+        for entry in (history if isinstance(history, list) else [])[-24:]:
+            if isinstance(entry, dict):
+                clean.append({
+                    "role": "user" if entry.get("role") == "user" else "critic",
+                    "label": _bounded_text(str(entry.get("label") or ""), 120),
+                    "text": _bounded_text(str(entry.get("text") or ""), 8000),
+                })
+        return clean
+
+    def _run_room_call(
+        self,
+        seat_cfg: Any,
+        prompt: str,
+        *,
+        instructions: str,
+        schema: dict[str, Any] | None,
+        run_id: str,
+        timeout: float,
+        who: str,
+        thread_id: str = "",
+        scene: str = "",
+    ) -> tuple[str, str]:
+        """One request for the Room: its final text, and the thread it ran on.
+
+        With *thread_id*, the turn continues that conversation; otherwise it
+        starts a new one. Editors use the ordinary tool/approval configuration;
+        the transcript-only moderator retains its narrow configuration.
+        """
+        agent = seat_cfg.agent if seat_cfg.agent in {"codex", "claude"} else "codex"
+        regular = who == "critic"
+        thread_params: dict[str, Any] = {
+            "cwd": str(self.root),
+            "approvalPolicy": CODEX_APPROVAL_POLICY if regular else "never",
+            "developerInstructions": instructions,
+        }
+        if regular:
+            thread_params["approvalsReviewer"] = "user"
+            thread_params["config"] = dict(self.THREAD_CONFIG)
+        elif agent == "codex":
+            config: dict[str, Any] = {"web_search": "disabled"}
+            for server in suggestions_module.codex_mcp_servers():
+                config[f"mcp_servers.{server['name']}.enabled"] = False
+            thread_params["config"] = config
+        else:
+            thread_params["tools"] = suggestions_module.CLAUDE_TOOLS["none"]
+            thread_params["settingSources"] = ["user", "project", "local"]
+            thread_params["mcpServers"] = {}
+        if not regular:
+            thread_params["ephemeral"] = True
+
+        from .claude_agent_client import ClaudeRequestError
+        from .codex_app_server import CodexRequestError
+
+        client = self._client_for(agent)
+        resuming = bool(thread_id)
+        if not resuming:
+            started = client.request("thread/start", thread_params)
+            thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
+            thread_id = str(thread.get("id") or "")
+            if not thread_id:
+                raise RuntimeError("The agent did not return a thread id")
+        key = self._thread_key(agent, thread_id)
+        one_off = _OneOff()
+        if regular:
+            conversation = self._threads.get(key)
+            if conversation is None:
+                conversation = _Conversation(uuid.uuid4().hex, {"kind": "scene", "path": scene}, agent)
+                conversation.thread_id = thread_id
+                self._threads[key] = conversation
+                self._conversations[conversation.id] = conversation
+            conversation.begin_turn()
+            conversation.active_done = one_off.done
+            conversation.active_request_id = run_id or uuid.uuid4().hex
+            conversation.active_may_write = True
+            conversation.connection = "Live"
+            conversation.activities = {}
+            conversation.approvals = {}
+            conversation.messages = []
+            conversation.progress = []
+            conversation.plan = []
+            one_off.conversation = conversation
+            notes = conversation.drain_agent_notes()
+            if notes:
+                prompt += '\n\nWriter review of earlier edits:\n' + '\n'.join(notes)
+        self._one_offs[key] = one_off
+        run_key = _bounded_text(str(run_id or ""), 80)
+        if run_key:
+            self._room_runs[run_key] = one_off
+        try:
+            turn_params: dict[str, Any] = {
+                "threadId": thread_id,
+                "input": [{"type": "text", "text": prompt}],
+                "cwd": str(self.root),
+                "approvalPolicy": CODEX_APPROVAL_POLICY if regular else "never",
+                "sandboxPolicy": {"type": "readOnly", "networkAccess": False},
+                "mayWrite": regular,
+            }
+            if regular:
+                turn_params["approvalsReviewer"] = "user"
+            if schema:
+                turn_params["outputSchema"] = schema
+            if client.capabilities.get("reasoning_summary"):
+                turn_params["summary"] = "concise"
+            if seat_cfg.model:
+                turn_params["model"] = seat_cfg.model
+            if seat_cfg.effort:
+                turn_params["effort"] = seat_cfg.effort
+            try:
+                turn = client.request("turn/start", turn_params)
+            except (CodexRequestError, ClaudeRequestError) as exc:
+                if resuming:
+                    raise _RoomThreadGone(str(exc)) from exc
+                raise
+            turn_id = str((turn.get("turn") or {}).get("id") or "")
+            if one_off.conversation and not one_off.done.is_set():
+                one_off.conversation.active_turn_id = turn_id
+
+            def interrupt() -> None:
+                try:
+                    client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+                except Exception:
+                    pass
+
+            one_off.interrupt = interrupt
+            if not one_off.done.wait(timeout=timeout):
+                interrupt()
+                raise ContextError(f"The {who} took too long to respond; try again.")
+        finally:
+            if one_off.conversation:
+                conversation = one_off.conversation
+                with conversation.lock:
+                    for approval in conversation.approvals.values():
+                        if approval.get("status") == "pending":
+                            approval["status"] = "expired"
+                    conversation.active_turn_id = None
+                    conversation.active_request_id = None
+                    conversation.active_done = None
+            self._one_offs.pop(key, None)
+            if run_key:
+                self._room_runs.pop(run_key, None)
+
+        if one_off.status != "completed" or not one_off.text:
+            raise ContextError(one_off.error or f"The {who} did not respond; try again.")
+        return one_off.text, thread_id
+
+    def stop_room_turn(self, run_id: str) -> bool:
+        """Stop a Room turn in flight, so a stopped debate stops costing anything."""
+        one_off = self._room_runs.get(str(run_id or ""))
+        interrupt = getattr(one_off, "interrupt", None)
+        if interrupt is None:
+            return False
+        interrupt()
+        return True
+
+    def room_history(self, body: dict[str, Any], store: RoomHistoryStore | None = None) -> dict[str, Any]:
+        """List, open, save or delete the saved Writers' Room debates of a scene."""
+        store = store or RoomHistoryStore(self.root)
+        action = str(body.get("action") or "list")
+        if action == "save":
+            try:
+                session = store.save(body.get("session"))
+            except ValueError as exc:
+                raise ContextError(str(exc)) from exc
+            return {"saved": session["id"]}
+        if action == "get":
+            session = store.get(str(body.get("id") or ""))
+            if session is None:
+                raise ContextError("That Writers' Room debate is no longer saved")
+            return {"session": session}
+        if action == "delete":
+            store.delete(str(body.get("id") or ""))
+            return {"deleted": True}
+        return {"sessions": store.list(str(body.get("scene") or ""))}
+
+    def room_progress(self, run_id: str) -> dict[str, Any]:
+        """How a Writers' Room turn in flight is going, for the browser to poll."""
+        one_off = self._room_runs.get(str(run_id or ""))
+        if one_off is None:
+            return {"running": False}
+        conversation = one_off.conversation
+        return {
+            "running": True,
+            "elapsed": round(time.monotonic() - one_off.started_at, 1),
+            "progress": one_off.progress.strip()[-1200:],
+            "steps": [row["title"] for row in one_off.activities.values() if row.get("title")][-6:],
+            "draft": _partial_json_string(one_off.draft, "reply"),
+            "conversation_id": conversation.id if conversation else "",
+            "approvals": [
+                {key: value for key, value in item.items() if key != "protocol_request_id"}
+                for item in list(conversation.approvals.values()) if item.get("status") in {"pending", "resolving"}
+            ] if conversation else [],
+        }
+
     def _scene_file(self, scene: str) -> Path | None:
         """A manuscript scene by its path inside the manuscript folder, if it is one."""
         base = (self.root / self.context.cfg.manuscript_subdir).resolve()
@@ -4657,6 +5305,11 @@ class DiscussManager:
         working, so a Codex outage must not blank the Claude tab.
         """
         message = _bounded_text(str(error) or "The agent connection failed", 4000)
+        for key, pending in list(self._one_offs.items()):
+            if key.startswith(agent + '\0'):
+                pending.error = message
+                pending.status = "failed"
+                pending.done.set()
         for conversation in list(self._conversations.values()):
             if conversation.agent != agent:
                 continue
@@ -4766,7 +5419,7 @@ class DiscussManager:
                 )
                 return
             item = params.get("item") if isinstance(params.get("item"), dict) else {}
-            self._capture_before(conversation, item.get("changes") or [])
+            self._capture_before(conversation, item.get("changes") or params.get("changes") or [])
             decision = "accept" if "accept" in available else str(available[0])
             client.respond(message["id"], {"decision": decision})
             if item:
@@ -5119,6 +5772,10 @@ class DiscussManager:
 
     def close(self) -> None:
         self._closed = True
+        for pending in list(self._one_offs.values()):
+            pending.error = "Proseview closed while the agent was working"
+            pending.status = "failed"
+            pending.done.set()
         self._task_context.clear()
         for client in list(self._clients.values()):
             try:

@@ -644,7 +644,7 @@
         // the highlight passes and the version log, all derived from the file
         // on disk. Codex and Claude are the surfaces that call a model. Keeping
         // that boundary legible is the point of the split.
-        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'codex', 'claude'];
+        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'codex', 'claude', 'room'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -665,7 +665,8 @@
             analysis: ['utilityTabAnalysis'],
             history: ['utilityTabHistory'],
             codex: ['utilityTabCodex'],
-            claude: ['utilityTabClaude']
+            claude: ['utilityTabClaude'],
+            room: ['utilityTabRoom']
         };
 
         function _setUtilityTab(name) {
@@ -716,14 +717,16 @@
         const SCENE_PANEL_PANES = {
             scene: {id: 'sceneDetailsPane', heading: 'Scene', render: renderSceneDetailsPane},
             analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
-            history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }}
+            history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }},
+            room: {id: 'sceneRoomPane', heading: 'Writers\u2019 Room', render: renderSceneRoomPane}
         };
 
         // What a scene tab says over the dashboard, where there is no scene.
         const SCENE_PANEL_AWAY = {
             scene: 'Open a scene to see its details.',
             analysis: 'Open a scene to see its analysis.',
-            history: 'Open a scene to see its history.'
+            history: 'Open a scene to see its history.',
+            room: 'Open a scene to run the Writers\u2019 Room.'
         };
 
         function _scenePanelAwayEl() {
@@ -782,6 +785,9 @@
             if (!pane) return;
             const away = !_sceneScopedViewIsOpen();
             panel.hidden = false;
+            // The chat keeps updating its own status and composer while
+            // another tab is up; this keeps them out of that tab whatever they do.
+            panel.dataset.sceneTab = name;
             document.body.classList.add('discuss-open');
             try { sessionStorage.setItem('proseview-panel-open', 'true'); } catch(e) {}
             _discussBodyEls().forEach(function(el) { el.hidden = true; });
@@ -804,6 +810,8 @@
         function showSceneAnalysisTab() { showScenePanelTab('analysis'); }
 
         function _showDiscussBody() {
+            var panel = document.getElementById('discussPanel');
+            if (panel) delete panel.dataset.sceneTab;
             _hideScenePanelAway();
             Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
                 const pane = document.getElementById(SCENE_PANEL_PANES[key].id);
@@ -906,6 +914,1533 @@
             p.className = 'scene-panel-empty';
             p.textContent = text;
             return p;
+        }
+
+        // ── Writers' Room (Multi-agent scene critique & revision plan) ───────
+        const ROOM_DEFAULT_PRESETS = [
+            {
+                id: 'editorial_critique',
+                group: 'Critique this scene',
+                label: 'Editorial critique',
+                badge: 'Plot & pacing vs. Voice & subtext',
+                copy: 'One pushes on structure, stakes and continuity; the other defends character voice, atmosphere and subtext. Ends with a revision plan.'
+            },
+            {
+                id: 'tough_love',
+                group: 'Critique this scene',
+                label: 'Tough-love critique',
+                badge: 'No praise \u00b7 Red pen',
+                copy: 'Straight to what isn\u2019t working: slow openings, clich\u00e9s, convenient turns and flat dialogue, debated without sugarcoating.'
+            },
+            {
+                id: 'pitch_next_beat',
+                group: 'What happens next',
+                label: 'Pitch the next beat',
+                badge: 'Plot twist vs. Character truth',
+                copy: 'One pitches a high-stakes plot escalation; the other challenges it from character motivation so you get two distinct directions.'
+            }
+        ];
+
+        var _roomSettings = null;
+
+        // Seat identifiers stay canonical in the transcript and summary payloads.
+        // Display names are book preferences and never change an agent's instructions.
+        function _roomSeatName(seat) {
+            var key = seat === 2 ? 'critic2' : seat === 'moderator' ? 'moderator' : 'critic1';
+            var fallback = {critic1: 'Story Editor', critic2: 'Voice Editor', moderator: 'Moderator'};
+            return ((_roomSettings && _roomSettings.book) || {})[key + '_name'] || fallback[key];
+        }
+
+        function _roomSpeakerName(seat, agent) {
+            return _roomSeatName(seat) + ' \u00b7 ' + _roomAgentDisplay(agent);
+        }
+
+        function _roomProposerName(value) {
+            if (value === 'Critic 1') return _roomSeatName(1);
+            if (value === 'Critic 2') return _roomSeatName(2);
+            return value === 'Writer' ? 'Me' : value;
+        }
+        var _roomSessionsByScene = Object.create(null);
+        var _roomDraftInput = '';
+        var _roomTargetChoice = 'both';
+
+        function _roomMentionOptions() {
+            return (_roomSettings && _roomSettings.participants) || [];
+        }
+
+        function _roomHasReview(session) {
+            return !!session && session.turns.some(function(turn) { return turn.review_pending; });
+        }
+
+        function _roomFinishReview(session, turn) {
+            turn.review_pending = false;
+            _saveRoomSession(session);
+            if (!_roomHasReview(session)) {
+                session.busy = false;
+                session.statusText = '';
+                _processRoomQueue(session.scene, _roomRunToken);
+            } else renderSceneRoomPane();
+        }
+
+        function _roomToolReview(session, turn) {
+            var box = elementWith('room-tool-review');
+            box.appendChild(elementWith('room-open-title', 'Review ' + _roomSpeakerName(turn.seat, turn.agent) + '’s changes'));
+            var content = elementWith('room-tool-review-files', 'Loading changes…');
+            box.appendChild(content);
+            var continueBtn = document.createElement('button');
+            continueBtn.type = 'button';
+            continueBtn.className = 'room-header-btn';
+            continueBtn.textContent = 'Continue discussion';
+            continueBtn.disabled = true;
+            continueBtn.onclick = function() { _roomFinishReview(session, turn); };
+            box.appendChild(continueBtn);
+            var url = '/api/discuss/conversations/' + encodeURIComponent(turn.tool_conversation_id);
+            function load() {
+                discussApi(url + '/changes', {mode: 'inline'}).then(function(data) {
+                    if (!box.isConnected) return;
+                    content.replaceChildren();
+                    var files = data.files || [];
+                    files.forEach(function(file) {
+                        var detail = document.createElement('details');
+                        var heading = document.createElement('summary');
+                        heading.textContent = file.path + ' · changes are saved';
+                        detail.appendChild(heading);
+                        (file.blocks || []).forEach(function(block) {
+                            var diff = elementWith('discuss-review-table');
+                            diff.innerHTML = block.html;
+                            detail.appendChild(diff);
+                        });
+                        var undo = document.createElement('button');
+                        undo.type = 'button';
+                        undo.className = 'room-header-btn';
+                        undo.textContent = 'Undo changes to ' + file.path;
+                        undo.onclick = function() {
+                            undo.disabled = true;
+                            discussApi(url + '/changes/apply', {path: file.path, keep: [], fingerprint: file.fingerprint})
+                                .then(load).catch(function(error) { content.appendChild(elementWith('room-error-text', error.message)); undo.disabled = false; });
+                        };
+                        detail.appendChild(undo);
+                        content.appendChild(detail);
+                    });
+                    (data.unreviewable || []).forEach(function(path) {
+                        content.appendChild(elementWith('room-error-text', path + ': the agent changed this without a prior snapshot. Use file history to review it.'));
+                    });
+                    if (!files.length && !(data.unreviewable || []).length) content.textContent = 'No outstanding changes.';
+                    continueBtn.disabled = false;
+                }).catch(function(error) {
+                    if (!box.isConnected) return;
+                    content.textContent = 'The original review is unavailable: ' + error.message + ' Use file history to inspect changes.';
+                    continueBtn.disabled = false;
+                });
+            }
+            // Rendering builds this node before it is attached to the pane.
+            queueMicrotask(load);
+            return box;
+        }
+
+        function _roomMentionRecipients(text) {
+            var options = _roomMentionOptions();
+            var seats = [];
+            var files = discussMentionRanges(text);
+            // An email address, partial handle, or attached selection is not a recipient.
+            var pattern = /(?:^|[\s(])@([\p{L}\p{N}_-]+)(?=$|[\s.,!?:;)\]'’])/gu;
+            var match;
+            while ((match = pattern.exec(text))) {
+                var start = match.index + match[0].indexOf('@');
+                if (files.some(function(file) { return start >= file.start && start < file.end; })) continue;
+                var handle = match[1].toLowerCase();
+                var option = options.find(function(p) {
+                    return p.aliases.some(function(alias) { return alias.toLowerCase() === handle; });
+                });
+                if (option && seats.indexOf(option.seat) < 0) seats.push(option.seat);
+            }
+            return seats;
+        }
+
+        function _wireRoomMentions(input, menu, target, hint) {
+            var choices = [], active = 0, range = null;
+            input.setAttribute('aria-autocomplete', 'list');
+            input.setAttribute('aria-haspopup', 'listbox');
+            input.setAttribute('aria-controls', menu.id);
+            function close() {
+                menu.hidden = true;
+                choices = [];
+                input.setAttribute('aria-expanded', 'false');
+                input.removeAttribute('aria-activedescendant');
+            }
+            function updateRecipients() {
+                var seats = _roomMentionRecipients(input.value);
+                target.value = seats.length > 1 ? 'both' : seats.length ? 'critic' + seats[0] : _roomTargetChoice;
+                target.disabled = seats.length > 0;
+                hint.textContent = seats.length
+                    ? 'Replies: ' + seats.map(_roomSeatName).join(', ')
+                    : 'Type @ to mention an editor or file';
+            }
+            function choose(option) {
+                if (!range) return;
+                var token = option.kind === 'editor' ? option.handle : option.path + (option.kind === 'folder' ? '/' : '');
+                input.setRangeText('@' + token + ' ', range.start, range.end, 'end');
+                close();
+                input.dispatchEvent(new Event('input', {bubbles: true}));
+                input.focus();
+            }
+            function paint() {
+                menu.replaceChildren();
+                var group = '';
+                choices.forEach(function(option, index) {
+                    var category = option.kind === 'editor' ? 'Editors' : 'Files and folders';
+                    if (group !== category) {
+                        var heading = elementWith('room-mention-group', category);
+                        heading.setAttribute('role', 'presentation');
+                        menu.appendChild(heading);
+                        group = category;
+                    }
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.id = 'roomMentionOption-' + index;
+                    button.className = 'room-mention-option';
+                    button.setAttribute('role', 'option');
+                    button.setAttribute('aria-selected', index === active ? 'true' : 'false');
+                    button.append(
+                        elementWith('room-mention-name', option.kind === 'editor' ? option.name + ' \u00b7 ' + _roomAgentDisplay(option.agent) : option.path),
+                        elementWith('room-mention-handle', option.kind === 'editor' ? '@' + option.handle : option.kind === 'folder' ? 'Folder' : 'File')
+                    );
+                    button.onpointerdown = function(event) { event.preventDefault(); };
+                    button.onclick = function() { choose(option); };
+                    menu.appendChild(button);
+                });
+                menu.hidden = false;
+                input.setAttribute('aria-expanded', 'true');
+                input.setAttribute('aria-activedescendant', 'roomMentionOption-' + active);
+                menu.querySelector('[aria-selected="true"]').scrollIntoView({block: 'nearest'});
+            }
+            function render() {
+                updateRecipients();
+                var prefix = input.value.slice(0, input.selectionStart);
+                var match = /(?:^|[\s(])@([^\s@$]*)$/u.exec(prefix);
+                if (!match || input.selectionStart !== input.selectionEnd) { close(); return; }
+                var query = match[1].toLowerCase();
+                var editors = _roomMentionOptions().filter(function(option) {
+                    return [option.name, option.agent].concat(option.aliases).some(function(value) {
+                        return value.toLowerCase().indexOf(query) >= 0;
+                    });
+                }).map(function(option) { return Object.assign({kind: 'editor'}, option); });
+                var files = discussContextCandidates().filter(function(option) {
+                    return (option.name + ' ' + option.path).toLowerCase().indexOf(query) >= 0;
+                }).slice(0, 12 - editors.length);
+                choices = editors.concat(files);
+                if (!choices.length) { close(); return; }
+                var suffix = /^[\p{L}\p{N}_./-]*/u.exec(input.value.slice(input.selectionStart))[0];
+                range = {start: input.selectionStart - match[1].length - 1, end: input.selectionStart + suffix.length};
+                active = 0;
+                paint();
+            }
+            input.addEventListener('input', render);
+            input.addEventListener('click', render);
+            input.addEventListener('keyup', function(event) {
+                if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(event.key) >= 0) render();
+            });
+            input.addEventListener('blur', close);
+            input.onkeydown = function(event) {
+                if (event.isComposing) return;
+                if (!menu.hidden && choices.length) {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        active = (active + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
+                        paint();
+                        return;
+                    }
+                    if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                        event.preventDefault(); choose(choices[active]); return;
+                    }
+                    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+                }
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault(); sendRoomComposerMessage();
+                }
+            };
+            updateRecipients();
+            close();
+        }
+        var _roomApplyAgentChoice = '';
+        var _roomRunToken = 0;
+        // Saved debates, as the chats keep their threads: per scene, on this
+        // computer. A scene's latest debate comes back when the Room opens.
+        var _roomHistoryChecked = Object.create(null);
+        var _roomHistoryList = Object.create(null);
+        var _roomHistoryOpen = false;
+        var _roomScrollByScene = Object.create(null);
+        // A passage picked with Ask or Polish, sent with the next message.
+        var _roomPendingSelection = '';
+
+        function roomTabIsOpen() {
+            var panel = document.getElementById('discussPanel');
+            return !!(panel && !panel.hidden && panel.dataset.sceneTab === 'room' && _roomCurrentScenePath());
+        }
+
+        function attachSelectionToRoom(selection, instruction) {
+            var session = _roomSessionFor(_roomCurrentScenePath());
+            if (!session) return;
+            // A debate is running: hold the passage and the request for the writer to send.
+            if (instruction && session.busy && _roomPendingSelection) return;
+            _roomPendingSelection = String(selection || '').trim();
+            renderSceneRoomPane();
+            var input = document.getElementById('roomInput');
+            if (instruction && input) {
+                input.value = instruction;
+                _roomDraftInput = instruction;
+            }
+            if (instruction && !session.busy) { sendRoomComposerMessage(); return; }
+            renderSceneRoomPane();
+            input = document.getElementById('roomInput');
+            if (input) input.focus();
+        }
+
+        function _roomWithSelection(text) {
+            if (!_roomPendingSelection) return text;
+            var quoted = _roomPendingSelection.split('\n').map(function(line) { return '> ' + line; }).join('\n');
+            _roomPendingSelection = '';
+            return text + '\n\nSelected passage:\n' + quoted;
+        }
+
+        function _roomCurrentScenePath() {
+            return (typeof paths !== 'undefined' && typeof curIdx !== 'undefined' && paths[curIdx]) ? paths[curIdx] : null;
+        }
+
+        function _roomSessionFor(scenePath) {
+            if (!scenePath) return null;
+            if (!_roomSessionsByScene[scenePath]) {
+                _roomSessionsByScene[scenePath] = {
+                    scene: scenePath,
+                    presetId: '',
+                    topicLabel: '',
+                    topicBadge: '',
+                    question: '',
+                    turns: [],
+                    plan: [],
+                    authorsCall: '',
+                    open: [],
+                    plans: [],
+                    busy: false,
+                    statusText: '',
+                    error: '',
+                    queue: []
+                };
+            }
+            return _roomSessionsByScene[scenePath];
+        }
+
+        function _roomAgentDisplay(agentId) {
+            return agentId === 'claude' ? 'Claude' : 'Codex';
+        }
+
+        function _roomHeaderSummaryText() {
+            var app = (_roomSettings && _roomSettings.app) || {
+                critic1: {agent: 'codex', model: ''},
+                critic2: {agent: 'claude', model: ''},
+                turns: 4,
+                length: 'concise'
+            };
+            var c1 = _roomAgentDisplay((app.critic1 || {}).agent || 'codex');
+            var c2 = _roomAgentDisplay((app.critic2 || {}).agent || 'claude');
+            var turns = app.turns || 4;
+            var len = (app.length || 'concise') === 'detailed' ? 'Detailed' : 'Concise';
+            return c1 + ' \u2194 ' + c2 + ' \u00b7 ' + turns + (turns === 1 ? ' turn' : ' turns') + ' \u00b7 ' + len;
+        }
+
+        function syncRoomSettingsState(settings) {
+            if (settings) _roomSettings = settings;
+            var summaryEl = document.getElementById('roomHeaderSummary');
+            if (summaryEl) summaryEl.textContent = _roomHeaderSummaryText();
+            var pane = document.getElementById('sceneRoomPane');
+            if (pane && !pane.hidden) renderSceneRoomPane();
+        }
+
+        function _ensureRoomSettingsLoaded() {
+            if (_roomSettings) return Promise.resolve(_roomSettings);
+            if (typeof loadRoomSettings === 'function') {
+                return loadRoomSettings().then(function(s) {
+                    if (s) _roomSettings = s;
+                    return _roomSettings;
+                });
+            }
+            return fetch('/api/discuss/room-settings', {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify({})
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (data && data.ok && data.settings) _roomSettings = data.settings;
+                return _roomSettings;
+            }).catch(function() { return null; });
+        }
+
+        function resetRoomSession() {
+            var path = _roomCurrentScenePath();
+            if (!path) return;
+            _roomRunToken++;
+            delete _roomSessionsByScene[path];
+            _roomHistoryChecked[path] = true;
+            _roomHistoryOpen = false;
+            renderSceneRoomPane();
+        }
+
+        function _roomNewId() {
+            return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+
+        function _roomHistoryRequest(payload) {
+            return fetch('/api/discuss/room-history', {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify(payload)
+            }).then(function(r) { return r.json(); });
+        }
+
+        // A debate keeps every plan the moderator wrote, each placed in the
+        // thread after the turns it sums up; the newest one is live.
+        function _roomPlanItem(item, idx) {
+            return {
+                id: 'plan-' + Date.now() + '-' + idx,
+                title: item.title || '',
+                detail: item.detail || '',
+                line: item.line || '',
+                original: item.original || '',
+                replacement: item.replacement || '',
+                proposedBy: item.proposed_by || item.proposedBy || '',
+                accepted: item.accepted === true,
+                checked: (typeof item.checked === 'boolean' ? item.checked : item.accepted === true) && !item.applied,
+                applied: item.applied || '',
+                todoAdded: !!item.todoAdded
+            };
+        }
+
+        function _roomLatestPlan(session) {
+            return (session && session.plans && session.plans.length) ? session.plans[session.plans.length - 1] : null;
+        }
+
+        function _saveRoomSession(session) {
+            if (!session || !session.turns.length) return;
+            if (!session.id) session.id = _roomNewId();
+            // One save at a time per debate, the last one carrying the latest
+            // state, so an older save can never land after a newer one.
+            if (session._saving) { session._saveAgain = true; return; }
+            session._saving = true;
+            _roomHistoryRequest({
+                action: 'save',
+                session: {
+                    id: session.id,
+                    scene: session.scene,
+                    title: session.topicLabel || (session.question ? session.question.slice(0, 80) : ''),
+                    badge: session.topicBadge || '',
+                    preset_id: session.presetId || '',
+                    question: session.question || '',
+                    created_at: session.createdAt || 0,
+                    turns: session.turns,
+                    plans: (session.plans || []).map(function(plan) {
+                        return {
+                            after_turn: plan.afterTurn,
+                            agent: plan.agent || '',
+                            items: plan.items.map(function(item) {
+                                return {
+                                    title: item.title, detail: item.detail, proposed_by: item.proposedBy || '',
+                                    line: item.line || '', original: item.original || '', replacement: item.replacement || '',
+                                    accepted: !!item.accepted, checked: !!item.checked, applied: item.applied || '',
+                                    todoAdded: !!item.todoAdded
+                                };
+                            }),
+                            open: plan.open || [],
+                            authors_call: plan.authorsCall || ''
+                        };
+                    })
+                }
+            }).then(function() {
+                delete _roomHistoryList[session.scene];
+            }).catch(function() {}).then(function() {
+                session._saving = false;
+                if (session._saveAgain) {
+                    session._saveAgain = false;
+                    _saveRoomSession(session);
+                }
+            });
+        }
+
+        function _loadRoomHistoryList(scenePath) {
+            if (_roomHistoryList[scenePath]) return Promise.resolve(_roomHistoryList[scenePath]);
+            return _roomHistoryRequest({action: 'list', scene: scenePath}).then(function(data) {
+                var rows = (data && data.ok && Array.isArray(data.sessions)) ? data.sessions : [];
+                _roomHistoryList[scenePath] = rows;
+                return rows;
+            }).catch(function() { return []; });
+        }
+
+        function openRoomHistorySession(scenePath, sessionId) {
+            return _roomHistoryRequest({action: 'get', id: sessionId}).then(function(data) {
+                if (!data || !data.ok || !data.session) return;
+                var saved = data.session;
+                var current = _roomSessionsByScene[scenePath];
+                if (current && current.busy) return;
+                var session = _roomSessionFor(scenePath);
+                session.id = saved.id;
+                session.createdAt = saved.created_at || 0;
+                session.presetId = saved.preset_id || '';
+                session.topicLabel = saved.title || '';
+                session.topicBadge = saved.badge || '';
+                session.question = saved.question || '';
+                session.turns = saved.turns || [];
+                var savedPlans = Array.isArray(saved.plans) && saved.plans.length ? saved.plans
+                    : ((saved.plan || []).length || (saved.open || []).length || saved.authors_call)
+                        ? [{after_turn: session.turns.length, items: saved.plan || [], open: saved.open || [], authors_call: saved.authors_call || ''}]
+                        : [];
+                session.plans = savedPlans.map(function(plan, pIdx) {
+                    return {
+                        id: 'plan-' + pIdx,
+                        afterTurn: plan.after_turn || session.turns.length,
+                        agent: plan.agent || '',
+                        items: (plan.items || []).map(_roomPlanItem),
+                        open: plan.open || [],
+                        authorsCall: plan.authors_call || '',
+                        expanded: false
+                    };
+                });
+                session.busy = false;
+                session.statusText = '';
+                session.error = '';
+                session.queue = [];
+                session.live = null;
+                _roomHistoryOpen = false;
+                if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane();
+            }).catch(function() {});
+        }
+
+        function deleteRoomHistorySession(scenePath, sessionId) {
+            _roomHistoryRequest({action: 'delete', id: sessionId}).then(function() {
+                delete _roomHistoryList[scenePath];
+                var session = _roomSessionsByScene[scenePath];
+                if (session && session.id === sessionId && !session.busy) {
+                    delete _roomSessionsByScene[scenePath];
+                }
+                renderSceneRoomPane();
+            }).catch(function() {});
+        }
+
+        function _restoreLatestRoomSession(scenePath) {
+            if (_roomHistoryChecked[scenePath]) return;
+            _roomHistoryChecked[scenePath] = true;
+            _loadRoomHistoryList(scenePath).then(function(rows) {
+                var session = _roomSessionsByScene[scenePath];
+                if (!rows.length || (session && (session.turns.length || session.busy))) return;
+                openRoomHistorySession(scenePath, rows[0].id);
+            });
+        }
+
+        function _formatRoomWhen(seconds) {
+            if (!seconds) return '';
+            var d = new Date(seconds * 1000);
+            var today = new Date();
+            if (d.toDateString() === today.toDateString()) {
+                return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+            }
+            return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
+        }
+
+        function _renderRoomHistoryMenu(body, scenePath, session) {
+            var menu = elementWith('room-history-menu');
+            menu.appendChild(elementWith('room-history-head', 'Previous debates on this scene'));
+            var list = elementWith('room-history-list');
+            list.appendChild(elementWith('room-history-empty', 'Loading\u2026'));
+            menu.appendChild(list);
+            body.appendChild(menu);
+            _loadRoomHistoryList(scenePath).then(function(rows) {
+                list.replaceChildren();
+                if (!rows.length) {
+                    list.appendChild(elementWith('room-history-empty', 'No saved debates yet.'));
+                    return;
+                }
+                rows.forEach(function(row) {
+                    var item = elementWith('room-history-item' + (row.id === session.id ? ' is-current' : ''));
+                    var open = document.createElement('button');
+                    open.type = 'button';
+                    open.className = 'room-history-open';
+                    open.append(
+                        elementWith('room-history-title', row.title || 'Writers\u2019 Room'),
+                        elementWith('room-history-meta', row.turns + (row.turns === 1 ? ' turn' : ' turns')
+                            + (row.has_plan ? ' \u00b7 plan' : '') + ' \u00b7 ' + _formatRoomWhen(row.updated_at))
+                    );
+                    open.disabled = !!session.busy;
+                    open.onclick = function() { openRoomHistorySession(scenePath, row.id); };
+                    var del = document.createElement('button');
+                    del.type = 'button';
+                    del.className = 'room-history-delete';
+                    del.textContent = '\u00d7';
+                    del.setAttribute('aria-label', 'Delete this debate');
+                    del.setAttribute('data-tip', 'Delete this debate');
+                    del.onclick = function() { deleteRoomHistorySession(scenePath, row.id); };
+                    item.append(open, del);
+                    list.appendChild(item);
+                });
+            });
+        }
+
+        function stopRoomDebate() {
+            var path = _roomCurrentScenePath();
+            var session = _roomSessionFor(path);
+            _roomRunToken++;
+            if (session) {
+                if (session.runId) {
+                    fetch('/api/discuss/room-stop', {
+                        method: 'POST',
+                        headers: pvHeaders(),
+                        body: JSON.stringify({run_id: session.runId})
+                    }).catch(function() {});
+                    session.runId = '';
+                }
+                session.busy = false;
+                session.statusText = '';
+                session.queue = [];
+                session.live = null;
+                _saveRoomSession(session);
+            }
+            renderSceneRoomPane();
+        }
+
+        function startRoomDebate(options) {
+            options = options || {};
+            var path = _roomCurrentScenePath();
+            if (!path) return;
+            _roomRunToken++;
+            var token = _roomRunToken;
+            var session = _roomSessionFor(path);
+            session.id = _roomNewId();
+            session.createdAt = Date.now() / 1000;
+            _roomHistoryOpen = false;
+            session.presetId = options.presetId || '';
+            session.topicLabel = options.label || (options.question ? 'Custom question' : 'Writers\u2019 Room');
+            session.topicBadge = options.badge || (options.question ? _roomSeatName(1) + ' & ' + _roomSeatName(2) : '');
+            session.question = options.question || '';
+            session.turns = options.question ? [{role: 'user', label: 'Me (Writer)', text: options.question}] : [];
+            session.plans = [];
+            session.error = '';
+            session.busy = true;
+            session.statusText = 'Starting Writers\u2019 Room\u2026';
+            renderSceneRoomPane();
+
+            _ensureRoomSettingsLoaded().then(function() {
+                if (_roomRunToken !== token) return;
+                var app = (_roomSettings && _roomSettings.app) || {};
+                var totalTurns = Math.max(1, Math.min(6, parseInt(app.turns || 4, 10) || 4));
+                var queue = [];
+                for (var i = 1; i <= totalTurns; i++) {
+                    queue.push({seat: (i % 2 === 1) ? 1 : 2, turnIndex: i, totalTurns: totalTurns});
+                }
+                queue.push({moderator: true});
+                session.queue = queue;
+                _processRoomQueue(path, token);
+            });
+        }
+
+        function _processRoomQueue(scenePath, token) {
+            var session = _roomSessionFor(scenePath);
+            if (!session || _roomRunToken !== token) return;
+            if (!session.queue || !session.queue.length) {
+                session.busy = false;
+                session.statusText = '';
+                session.runId = '';
+                renderSceneRoomPane();
+                return;
+            }
+            var step = session.queue.shift();
+            var app = (_roomSettings && _roomSettings.app) || {};
+            var seatCfg = step.moderator
+                ? (app.moderator || {agent: 'claude'})
+                : ((step.seat === 2 ? app.critic2 : app.critic1) || {agent: step.seat === 2 ? 'claude' : 'codex'});
+            session.busy = true;
+            session.error = '';
+            if (step.moderator) {
+                session.statusText = _roomSpeakerName('moderator', seatCfg.agent) + ' is writing the plan\u2026';
+            } else {
+                session.statusText = _roomSpeakerName(step.seat, seatCfg.agent) + ' '
+                    + (step.turnIndex === 1 ? 'is reading the scene' : 'is replying')
+                    + ' \u00b7 Turn ' + step.turnIndex + ' of ' + step.totalTurns + '\u2026';
+            }
+            renderSceneRoomPane();
+
+            var runId = 'room-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+            session.runId = runId;
+            session.live = {statusText: session.statusText, elapsed: 0, progress: '', steps: [], draft: ''};
+            var stopPolling = _pollRoomProgress(session, runId, token);
+            var history = session.turns.map(function(t) {
+                return {role: t.role, label: t.label, text: t.text};
+            });
+            var attachments = [];
+            var references = [session.question || ''].concat(session.turns.filter(function(turn) {
+                return turn.role === 'user';
+            }).map(function(turn) { return turn.text; }));
+            references.forEach(function(text) {
+                // A selected manuscript passage is quoted context, not an
+                // instruction to open any @paths that happen to occur in it.
+                var authored = text.split('\n\nSelected passage:\n')[0];
+                discussMentionsIn(authored).forEach(function(file) {
+                    if (!attachments.some(function(item) { return item.path === file.path; })) attachments.push(file);
+                });
+            });
+
+            var request;
+            if (step.moderator) {
+                var earlier = [];
+                (session.plans || []).forEach(function(plan) {
+                    plan.items.forEach(function(item) {
+                        earlier.push({title: item.title, line: item.line || '', replacement: item.replacement || '',
+                                      applied: !!item.applied});
+                    });
+                });
+                request = {url: '/api/discuss/room-moderator', body: {
+                    scene: scenePath,
+                    preset_id: session.presetId,
+                    question: session.question,
+                    history: history,
+                    earlier: earlier,
+                    run_id: runId
+                }};
+            } else {
+                var liveContent = '';
+                if (typeof _proseEditorView !== 'undefined' && _proseEditorView && typeof getEditedMarkdown === 'function') {
+                    try { liveContent = getEditedMarkdown() || ''; } catch (e) {}
+                }
+                request = {url: '/api/discuss/room-turn', body: {
+                    scene: scenePath,
+                    attachments: attachments,
+                    live_content: liveContent,
+                    seat: step.seat,
+                    turn_index: step.turnIndex,
+                    total_turns: step.totalTurns,
+                    preset_id: session.presetId,
+                    question: session.question,
+                    history: history,
+                    run_id: runId,
+                    debate_id: session.id || ''
+                }};
+            }
+
+            fetch(request.url, {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify(request.body)
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                stopPolling();
+                session.live = null;
+                if (_roomRunToken !== token) return;
+                if (!data || !data.ok) {
+                    throw new Error((data && data.error) || (step.moderator ? 'The moderator failed' : 'Critic turn failed'));
+                }
+                if (step.moderator) {
+                    var items = (data.plan || []).map(_roomPlanItem);
+                    var open = Array.isArray(data.open) ? data.open : [];
+                    // Even an empty summary supersedes the earlier plan.
+                    session.plans.push({
+                        id: 'plan-' + Date.now(),
+                        afterTurn: session.turns.length,
+                        agent: data.agent || '',
+                        items: items,
+                        open: open,
+                        authorsCall: '',
+                        expanded: false
+                    });
+                } else {
+                    session.turns.push({
+                        role: 'critic',
+                        seat: data.seat,
+                        agent: data.agent,
+                        model: data.model || '',
+                        label: 'Critic ' + data.seat + ' \u00b7 ' + _roomAgentDisplay(data.agent),
+                        tag: 'Turn ' + step.turnIndex + ' \u00b7 '
+                            + (data.done ? 'Nothing new' : (step.turnIndex === 1 ? 'Opening' : 'Reply')),
+                        text: data.reply || '',
+                        tool_conversation_id: data.tool_conversation_id || '',
+                        review_pending: !!((data.changed_files || []).length || (data.unreviewable || []).length)
+                    });
+                    // A critic with nothing new ends the debate; the moderator still sums it up.
+                    if (data.done) {
+                        session.queue = session.queue.filter(function(next) { return next.moderator || next.respondingToWriter; });
+                    }
+                }
+                _saveRoomSession(session);
+                if (_roomHasReview(session)) {
+                    session.busy = false;
+                    session.live = null;
+                    session.runId = '';
+                    renderSceneRoomPane();
+                    return;
+                }
+                _processRoomQueue(scenePath, token);
+            }).catch(function(err) {
+                stopPolling();
+                session.live = null;
+                if (_roomRunToken !== token) return;
+                session.busy = false;
+                session.statusText = '';
+                session.runId = '';
+                session.queue = [];
+                session.error = err.message || 'Could not complete Writers\u2019 Room turn.';
+                renderSceneRoomPane();
+            });
+        }
+
+        // What the critic is doing while its turn runs, as the single chat
+        // shows it: elapsed time, its progress notes and steps, and its reply
+        // as it streams. Updated in place so the pane does not re-render.
+        function _pollRoomProgress(session, runId, token) {
+            var stopped = false;
+            var timer = null;
+            function tick() {
+                if (stopped || _roomRunToken !== token) return;
+                fetch('/api/discuss/room-progress', {
+                    method: 'POST',
+                    headers: pvHeaders(),
+                    body: JSON.stringify({run_id: runId})
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (stopped || _roomRunToken !== token || !session.live) return;
+                    if (data && data.ok && data.running) {
+                        session.live.elapsed = data.elapsed || 0;
+                        session.live.progress = data.progress || '';
+                        session.live.steps = Array.isArray(data.steps) ? data.steps : [];
+                        session.live.draft = data.draft || '';
+                        session.live.conversationId = data.conversation_id || '';
+                        session.live.approvals = data.approvals || [];
+                        _renderRoomLive();
+                    }
+                }).catch(function() {}).then(function() {
+                    if (!stopped) timer = setTimeout(tick, 800);
+                });
+            }
+            timer = setTimeout(tick, 400);
+            return function() {
+                stopped = true;
+                if (timer) clearTimeout(timer);
+            };
+        }
+
+        // Critics cite "line 54" as plain text; this links it to the scene, the
+        // way a Codex answer links its own citations, whichever agent wrote it.
+        function _roomLinkLines(text, scenePath) {
+            var abs = String(((typeof meta !== 'undefined' && meta[scenePath]) || {}).abs_path || '');
+            if (!abs) return String(text || '');
+            return String(text || '').split(/(\[[^\]]*\]\([^)]*\)|`[^`]*`)/).map(function(part, idx) {
+                if (idx % 2 === 1) return part;
+                return part.replace(/\b(lines?)\s+(\d+)(\s*[\u2013-]\s*\d+)?/gi, function(all, word, start) {
+                    return '[' + all + '](<' + abs + ':' + start + '>)';
+                });
+            }).join('');
+        }
+
+        function _formatRoomElapsed(seconds) {
+            var s = Math.max(0, Math.floor(seconds || 0));
+            return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        }
+
+        function _renderRoomLive() {
+            var session = _roomSessionFor(_roomCurrentScenePath());
+            var live = session && session.live;
+            var textEl = document.getElementById('roomLiveStatusText');
+            var box = document.getElementById('roomLiveProgress');
+            if (!live || !textEl || !box) return;
+            textEl.textContent = (session.statusText || 'Thinking\u2026')
+                + (live.elapsed ? ' \u00b7 ' + _formatRoomElapsed(live.elapsed) : '');
+            box.textContent = '';
+            if (live.steps.length) {
+                var steps = elementWith('room-live-steps');
+                live.steps.forEach(function(step) {
+                    // Codex wraps every command in a login shell; the command is the step.
+                    var shown = String(step).replace(/^\/bin\/(?:ba|z)?sh -lc\s+/, '').replace(/^(['"])([\s\S]*)\1$/, '$2');
+                    steps.appendChild(elementWith('room-live-step', shown));
+                });
+                box.appendChild(steps);
+            }
+            if (live.draft) {
+                var draft = elementWith('room-live-draft room-turn-body discuss-message assistant');
+                renderDiscussMarkdown(draft, _roomLinkLines(live.draft, session.scene));
+                box.appendChild(draft);
+            } else if (live.progress) {
+                var note = live.progress.length > 400 ? '\u2026' + live.progress.slice(-400) : live.progress;
+                var noteEl = elementWith('room-live-note room-turn-body');
+                renderDiscussMarkdown(noteEl, note);
+                box.appendChild(noteEl);
+            }
+            box.hidden = !box.childNodes.length;
+            var approvals = document.getElementById('roomLiveApprovals');
+            if (approvals) {
+                var key = JSON.stringify(live.approvals || []);
+                if (approvals.dataset.state !== key) {
+                    approvals.dataset.state = key;
+                    approvals.replaceChildren();
+                    (live.approvals || []).forEach(function(approval) {
+                        approvals.appendChild(renderDiscussApproval(approval, function(requestId, decision, button, permissions) {
+                            button.disabled = true;
+                            var payload = {decision: decision};
+                            if (permissions && (decision === 'accept' || decision === 'accept_for_session')) payload.permissions = permissions;
+                            discussApi('/api/discuss/conversations/' + encodeURIComponent(live.conversationId) + '/approvals/' + encodeURIComponent(requestId), payload)
+                                .then(function() { live.approvals = []; _renderRoomLive(); })
+                                .catch(function(error) { button.disabled = false; approvals.appendChild(elementWith('room-error-text', error.message)); });
+                        }));
+                    });
+                }
+            }
+        }
+
+        function runRoomPlusOneTurn() {
+            var path = _roomCurrentScenePath();
+            var session = _roomSessionFor(path);
+            if (!session || session.busy || _roomHasReview(session)) return;
+            var lastCritic = null;
+            for (var i = session.turns.length - 1; i >= 0; i--) {
+                if (session.turns[i].role === 'critic') { lastCritic = session.turns[i]; break; }
+            }
+            var nextSeat = (lastCritic && lastCritic.seat === 1) ? 2 : 1;
+            var criticCount = session.turns.filter(function(t) { return t.role === 'critic'; }).length;
+            _roomRunToken++;
+            var token = _roomRunToken;
+            session.queue = [
+                {seat: nextSeat, turnIndex: criticCount + 1, totalTurns: criticCount + 1},
+                {moderator: true}
+            ];
+            _processRoomQueue(path, token);
+        }
+
+        function sendRoomComposerMessage() {
+            var path = _roomCurrentScenePath();
+            var session = _roomSessionFor(path);
+            var input = document.getElementById('roomInput');
+            var text = input ? input.value.trim() : _roomDraftInput.trim();
+            if (!path || !session || session.busy || _roomHasReview(session) || !text) return;
+            var mentioned = _roomMentionRecipients(text);
+            var seats = mentioned.length ? mentioned : _roomTargetChoice === 'critic1' ? [1] : _roomTargetChoice === 'critic2' ? [2] : [1, 2];
+            _roomDraftInput = '';
+            if (input) input.value = '';
+            text = _roomWithSelection(text);
+
+            // If no turns have run yet and target is both, run a full fresh room debate on this custom question.
+            if (session.turns.length === 0 && !mentioned.length && _roomTargetChoice === 'both') {
+                startRoomDebate({question: text});
+                return;
+            }
+
+            if (!session.topicLabel) {
+                session.topicLabel = 'Custom question';
+                session.topicBadge = _roomSeatName(1) + ' & ' + _roomSeatName(2);
+            }
+            if (!session.id) {
+                session.id = _roomNewId();
+                session.createdAt = Date.now() / 1000;
+            }
+            if (!session.turns.length) session.question = text;
+            session.turns.push({
+                role: 'user',
+                label: 'Me (Writer)',
+                text: text
+            });
+            _saveRoomSession(session);
+            var criticCount = session.turns.filter(function(t) { return t.role === 'critic'; }).length;
+            _roomRunToken++;
+            var token = _roomRunToken;
+            session.queue = seats.map(function(seat, index) {
+                return {seat: seat, turnIndex: criticCount + index + 1,
+                    totalTurns: criticCount + seats.length, respondingToWriter: true};
+            });
+            session.queue.push({moderator: true});
+            _processRoomQueue(path, token);
+        }
+
+        function insertRoomPlanTodo(item) {
+            var path = _roomCurrentScenePath();
+            if (!path || !item || item.todoAdded) return;
+            var todoText = (item.title
+                + (item.replacement ? ' \u2014 replace with: \u201c' + item.replacement + '\u201d' : '')
+                + (item.detail ? ' \u2014 ' + item.detail : '')).replace(/-->/g, '').trim();
+            if (!todoText) return;
+
+            // If ProseMirror editor is open in Edit mode, insert annotation directly.
+            if (window._pmEditMode === true && typeof _proseEditorView !== 'undefined' && _proseEditorView && typeof PM !== 'undefined' && PM.mySchema && PM.mySchema.nodes.annotation) {
+                try {
+                    var state = _proseEditorView.state;
+                    var node = PM.mySchema.nodes.annotation.create({raw: '<!-- TODO: ' + todoText + ' -->'});
+                    var pos = state.selection.$to.after(1);
+                    _proseEditorView.dispatch(state.tr.insert(pos, node));
+                    item.todoAdded = true;
+                    _saveRoomSession(_roomSessionFor(path));
+                    renderSceneRoomPane();
+                    if (typeof sidebarShowToast === 'function') sidebarShowToast('Added TODO to scene');
+                    return;
+                } catch (e) {}
+            }
+
+            var m = (typeof meta !== 'undefined' && meta[path]) || null;
+            if (!m || !m.abs_path) return;
+            var rawScene = (typeof contents !== 'undefined' && contents[path]) ? String(contents[path]) : '';
+            var rawParas = rawScene.split(/\n\s*\n/).map(function(s) { return s.trim(); }).filter(function(s) {
+                return s && !s.startsWith('#') && !s.startsWith('<!--');
+            });
+            var anchorText = '';
+            if (item.original) {
+                var originalNeedle = item.original.split('\n')[0].trim().slice(0, 120);
+                if (originalNeedle && rawScene.indexOf(originalNeedle) >= 0) anchorText = originalNeedle;
+            }
+            var combined = (item.title + ' ' + item.detail);
+            var quoteMatch = combined.match(/["\u201c\u2018']([^"\u201d\u2019']{6,80})["\u201d\u2019']/);
+            if (!anchorText && quoteMatch && quoteMatch[1]) {
+                var needle = quoteMatch[1].trim();
+                if (rawScene.indexOf(needle) >= 0) anchorText = needle;
+            }
+            if (!anchorText && rawParas.length) {
+                anchorText = rawParas[0];
+            }
+            if (!anchorText) return;
+
+            fetch('/insert-todo', {
+                method: 'POST',
+                headers: pvHeaders(),
+                body: JSON.stringify({
+                    abs_path: m.abs_path,
+                    selection_text: anchorText,
+                    txt_line_offset: m.txt_line_offset || 0,
+                    todo_text: todoText,
+                    open_mtime: null
+                })
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (data && data.ok) {
+                    item.todoAdded = true;
+                    _saveRoomSession(_roomSessionFor(path));
+                    renderSceneRoomPane();
+                    if (typeof sidebarShowToast === 'function') sidebarShowToast('Added TODO to scene');
+                }
+            }).catch(function() {});
+        }
+
+        function applyRoomPlanWithAgent(agent, plan) {
+            var path = _roomCurrentScenePath();
+            var session = _roomSessionFor(path);
+            plan = plan || _roomLatestPlan(session);
+            if (!session || !plan || _roomHasReview(session)) return;
+            var ticked = plan.items.filter(function(item) { return item.checked && !item.applied; });
+            if (!ticked.length) return;
+            var targetAgent = (agent === 'codex' || agent === 'claude') ? agent : 'claude';
+            ticked.forEach(function(item) {
+                item.applied = _roomAgentDisplay(targetAgent);
+                item.checked = false;
+            });
+            _saveRoomSession(session);
+            var lines = ticked.map(function(item, idx) {
+                var where = item.line ? ' (line ' + item.line + ')' : '';
+                var change = '';
+                if (item.original && item.replacement) {
+                    change = '\n   Replace: \u201c' + item.original + '\u201d\n   With: \u201c' + item.replacement + '\u201d';
+                } else if (item.replacement) {
+                    change = '\n   Insert: \u201c' + item.replacement + '\u201d';
+                } else if (item.original) {
+                    change = '\n   Cut: \u201c' + item.original + '\u201d';
+                }
+                return (idx + 1) + '. ' + item.title + where + (item.detail ? ': ' + item.detail : '') + change;
+            });
+            var instruction = 'Please revise this scene to apply the following Writers\u2019 Room revision plan:\n' + lines.join('\n');
+
+            if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
+            if (_discussAgent !== targetAgent) {
+                _discussSkillsLoaded = false;
+                _discussSkillsLoading = null;
+                _discussSkills = [];
+            }
+            _discussAgent = targetAgent;
+            try { localStorage.setItem(DISCUSS_AGENT_KEY, targetAgent); } catch (e) {}
+            _applyDiscussAgentLabels();
+            openDiscuss(null, {sendInstruction: instruction});
+        }
+
+        function renderSceneRoomPane() {
+            const pane = document.getElementById('sceneRoomPane');
+            if (!pane) return;
+            const path = _roomCurrentScenePath();
+            if (!path) {
+                pane.replaceChildren(_scenePanelEmpty('Open a scene to run the Writers\u2019 Room.'));
+                return;
+            }
+            if (!_roomSettings) {
+                _ensureRoomSettingsLoaded().then(function() {
+                    var summaryEl = document.getElementById('roomHeaderSummary');
+                    if (summaryEl) summaryEl.textContent = _roomHeaderSummaryText();
+                });
+            }
+
+            var prevInput = document.getElementById('roomInput');
+            if (prevInput) _roomDraftInput = prevInput.value;
+
+            // Every change redraws the pane, so keep the reader where they were:
+            // following the debate if they were at the bottom, else in place.
+            // Read from the last scroll, not the old pane: a pane hidden behind
+            // another tab (after Apply opens the chat) reports a scroll of 0.
+            var keepScroll = _roomScrollByScene[path] || null;
+            pane.replaceChildren();
+            var session = _roomSessionFor(path);
+            _restoreLatestRoomSession(path);
+
+            // 1. Header strip
+            var header = elementWith('room-header-strip');
+            var summary = elementWith('room-header-summary', _roomHeaderSummaryText());
+            summary.id = 'roomHeaderSummary';
+            var actions = elementWith('room-header-actions');
+            if (session.turns.length > 0 || session.busy || session.error) {
+                var resetBtn = document.createElement('button');
+                resetBtn.type = 'button';
+                resetBtn.id = 'roomResetBtn';
+                resetBtn.className = 'room-header-btn';
+                resetBtn.textContent = '\u21ba New';
+                resetBtn.setAttribute('data-tip', 'Clear this room session and return to the starter cards');
+                resetBtn.onclick = resetRoomSession;
+                actions.appendChild(resetBtn);
+            }
+            var historyBtn = document.createElement('button');
+            historyBtn.type = 'button';
+            historyBtn.id = 'roomHistoryBtn';
+            historyBtn.className = 'room-header-btn' + (_roomHistoryOpen ? ' is-active' : '');
+            historyBtn.textContent = 'History';
+            historyBtn.setAttribute('aria-expanded', _roomHistoryOpen ? 'true' : 'false');
+            historyBtn.setAttribute('data-tip', 'Open a previous Writers\u2019 Room debate on this scene');
+            historyBtn.onclick = function() {
+                _roomHistoryOpen = !_roomHistoryOpen;
+                renderSceneRoomPane();
+            };
+            actions.appendChild(historyBtn);
+            var gearBtn = document.createElement('button');
+            gearBtn.type = 'button';
+            gearBtn.id = 'roomSettingsBtn';
+            gearBtn.className = 'room-header-btn';
+            gearBtn.textContent = '\u2699 Settings';
+            gearBtn.setAttribute('data-tip', 'Configure critics, models, turns, and role prompts in Settings \u2192 Writers\u2019 Room');
+            gearBtn.onclick = function() {
+                if (typeof openRoomSettings === 'function') openRoomSettings();
+            };
+            actions.appendChild(gearBtn);
+            header.append(summary, actions);
+            pane.appendChild(header);
+
+            // 2. Scrollable body
+            var body = elementWith('room-body');
+            body.id = 'roomBody';
+            if (_roomHistoryOpen) _renderRoomHistoryMenu(body, path, session);
+
+            if (session.turns.length === 0 && !session.busy && !session.error) {
+                var empty = elementWith('discuss-empty room-empty');
+                var title = document.createElement('strong');
+                title.textContent = 'What should the room debate?';
+                empty.appendChild(title);
+                empty.appendChild(document.createTextNode('Pick a starter below, or type any question in the box at the bottom.'));
+
+                var presets = (_roomSettings && _roomSettings.presets && _roomSettings.presets.length)
+                    ? _roomSettings.presets
+                    : ROOM_DEFAULT_PRESETS;
+                var groups = [];
+                presets.forEach(function(card) {
+                    var g = groups.find(function(item) { return item.name === card.group; });
+                    if (!g) { g = {name: card.group, cards: []}; groups.push(g); }
+                    g.cards.push(card);
+                });
+                groups.forEach(function(g) {
+                    empty.appendChild(elementWith('discuss-story-group', g.name));
+                    var list = elementWith('discuss-story-actions');
+                    g.cards.forEach(function(card) {
+                        var btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'discuss-story-action room-starter-card';
+                        btn.dataset.preset = card.id;
+                        var head = elementWith('room-starter-head');
+                        head.append(
+                            elementWith('discuss-story-action-title', card.label),
+                            elementWith('room-starter-badge', card.badge)
+                        );
+                        btn.append(head, elementWith('discuss-story-action-copy', card.copy));
+                        btn.onclick = function() {
+                            startRoomDebate({presetId: card.id, label: card.label, badge: card.badge});
+                        };
+                        list.appendChild(btn);
+                    });
+                    empty.appendChild(list);
+                });
+                body.appendChild(empty);
+            } else {
+                // Active session topic banner
+                if (session.topicLabel || session.question) {
+                    var banner = elementWith('room-topic-banner');
+                    var bannerTop = elementWith('room-topic-top');
+                    bannerTop.appendChild(elementWith('room-topic-title', session.topicLabel || 'Writers\u2019 Room'));
+                    if (session.topicBadge) {
+                        bannerTop.appendChild(elementWith('room-topic-badge', session.topicBadge));
+                    }
+                    banner.appendChild(bannerTop);
+                    if (session.question && session.presetId) {
+                        banner.appendChild(elementWith('room-topic-question', session.question));
+                    } else if (session.question && !session.presetId) {
+                        banner.appendChild(elementWith('room-topic-question', '\u201c' + session.question + '\u201d'));
+                    }
+                    body.appendChild(banner);
+                }
+
+                // Turns list
+                var turnsWrap = elementWith('room-turns-list');
+                var placedPlans = {};
+                var appendPlansAfter = function(count) {
+                    (session.plans || []).forEach(function(plan, pIdx) {
+                        if (placedPlans[pIdx] || plan.afterTurn !== count) return;
+                        placedPlans[pIdx] = true;
+                        turnsWrap.appendChild(_buildRoomPlanCard(session, plan, pIdx === session.plans.length - 1, path));
+                    });
+                };
+                session.turns.forEach(function(turn, turnIdx) {
+                    if (turn.role === 'user') {
+                        var uCard = elementWith('room-turn-card chat-message-card is-user');
+                        var uHead = elementWith('room-turn-head chat-message-header');
+                        uHead.appendChild(elementWith('chat-message-name', 'Me'));
+                        uCard.appendChild(uHead);
+                        var uBody = elementWith('room-turn-body discuss-message');
+                        renderDiscussMarkdown(uBody, turn.text);
+                        uCard.appendChild(uBody);
+                        addCopyButton(uCard, function() { return turn.text; }, 'Copy message');
+                        turnsWrap.appendChild(uCard);
+                        appendPlansAfter(turnIdx + 1);
+                        return;
+                    }
+                    var seatCls = turn.seat === 2 ? 'is-critic-2' : 'is-critic-1';
+                    var card = elementWith('room-turn-card chat-message-card ' + seatCls);
+                    var head = elementWith('room-turn-head chat-message-header');
+                    var left = elementWith('room-turn-head-left');
+                    left.appendChild(elementWith('chat-message-name', _roomSpeakerName(turn.seat, turn.agent)));
+                    if (turn.tag) left.appendChild(elementWith('room-turn-tag', turn.tag));
+                    head.appendChild(left);
+                    if (turn.model) head.appendChild(elementWith('room-turn-model', turn.model));
+                    card.appendChild(head);
+                    var textWrap = elementWith('room-turn-body discuss-message assistant');
+                    renderDiscussMarkdown(textWrap, _roomLinkLines(turn.text, path));
+                    card.appendChild(textWrap);
+                    addCopyButton(card, function() { return turn.text; }, 'Copy message');
+                    turnsWrap.appendChild(card);
+                    if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_roomToolReview(session, turn));
+                    appendPlansAfter(turnIdx + 1);
+                });
+                // A plan whose turns were cut short still shows, at the end.
+                (session.plans || []).forEach(function(plan, pIdx) {
+                    if (!placedPlans[pIdx]) {
+                        turnsWrap.appendChild(_buildRoomPlanCard(session, plan, pIdx === session.plans.length - 1, path));
+                    }
+                });
+                body.appendChild(turnsWrap);
+
+                // Live status spinner
+                if (session.busy) {
+                    var statusRow = elementWith('room-live-status');
+                    statusRow.setAttribute('role', 'status');
+                    var spin = elementWith('hl-card-spinner');
+                    var statusMsg = elementWith('room-live-status-text', session.statusText || 'Thinking\u2026');
+                    statusMsg.id = 'roomLiveStatusText';
+                    var stopBtn = document.createElement('button');
+                    stopBtn.type = 'button';
+                    stopBtn.className = 'room-stop-btn';
+                    stopBtn.textContent = 'Stop';
+                    stopBtn.onclick = stopRoomDebate;
+                    statusRow.append(spin, statusMsg, stopBtn);
+                    body.appendChild(statusRow);
+                    var liveBox = elementWith('room-live-progress');
+                    liveBox.id = 'roomLiveProgress';
+                    liveBox.hidden = true;
+                    body.appendChild(liveBox);
+                    var approvalsBox = elementWith('room-live-approvals');
+                    approvalsBox.id = 'roomLiveApprovals';
+                    body.appendChild(approvalsBox);
+                    if (session.live) setTimeout(_renderRoomLive, 0);
+                }
+
+                // Error banner
+                if (session.error) {
+                    var errBox = elementWith('room-error-banner');
+                    errBox.appendChild(elementWith('room-error-text', session.error));
+                    body.appendChild(errBox);
+                }
+
+            }
+            pane.appendChild(body);
+            body.dataset.scene = path;
+            body.addEventListener('scroll', function() {
+                if (!body.isConnected || !body.clientHeight) return;
+                _roomScrollByScene[path] = {
+                    top: body.scrollTop,
+                    atBottom: body.scrollHeight - body.scrollTop - body.clientHeight < 40
+                };
+            });
+            if (keepScroll) {
+                var restoreScroll = function() {
+                    body.scrollTop = keepScroll.atBottom ? body.scrollHeight : keepScroll.top;
+                };
+                restoreScroll();
+                // Again once the composer below has taken its share of the height.
+                requestAnimationFrame(restoreScroll);
+                setTimeout(restoreScroll, 60);
+            }
+            if (_roomLatestPlan(session)) _syncRoomApplyButton(session);
+
+            // 3. Bottom composer
+            var composer = elementWith('room-composer');
+            composer.id = 'roomComposer';
+            var targetRow = elementWith('room-composer-bar');
+            var targetLeft = elementWith('room-composer-target');
+            targetLeft.appendChild(elementWith('room-apply-label', 'To:'));
+            var targetSelect = document.createElement('select');
+            targetSelect.id = 'roomTargetSelect';
+            targetSelect.className = 'room-target-select';
+            targetSelect.setAttribute('aria-label', 'Room message recipient');
+            [
+                {value: 'both', label: 'Room (Both editors)'},
+                {value: 'critic1', label: _roomSeatName(1) + ' only'},
+                {value: 'critic2', label: _roomSeatName(2) + ' only'}
+            ].forEach(function(opt) {
+                var o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                targetSelect.appendChild(o);
+            });
+            targetSelect.value = _roomTargetChoice;
+            targetSelect.onchange = function() { _roomTargetChoice = targetSelect.value; };
+            targetLeft.appendChild(targetSelect);
+            targetRow.append(targetLeft, elementWith('room-composer-hint', 'Enter to send'));
+            composer.appendChild(targetRow);
+
+            if (_roomPendingSelection) {
+                var chip = elementWith('room-selection-chip');
+                chip.id = 'roomSelectionChip';
+                var excerpt = _roomPendingSelection.replace(/\s+/g, ' ');
+                chip.appendChild(elementWith('room-selection-text',
+                    'Selection: \u201c' + (excerpt.length > 90 ? excerpt.slice(0, 90) + '\u2026' : excerpt) + '\u201d'));
+                var clearSel = document.createElement('button');
+                clearSel.type = 'button';
+                clearSel.className = 'room-selection-clear';
+                clearSel.setAttribute('aria-label', 'Remove selection');
+                clearSel.textContent = '\u00d7';
+                clearSel.onclick = function() { _roomPendingSelection = ''; renderSceneRoomPane(); };
+                chip.appendChild(clearSel);
+                composer.appendChild(chip);
+            }
+
+            var inputRow = elementWith('room-composer-input-row');
+            var textarea = document.createElement('textarea');
+            textarea.id = 'roomInput';
+            textarea.className = 'room-input';
+            textarea.rows = 2;
+            textarea.placeholder = _roomPendingSelection
+                ? 'Ask about this selection; type @ for editors or files\u2026'
+                : session.turns.length
+                ? 'Message the room, or type @ for editors or files\u2026'
+                : 'Ask a question, type @ for editors or files, or pick a starter\u2026';
+            textarea.value = _roomDraftInput;
+            textarea.oninput = function() {
+                _roomDraftInput = textarea.value;
+                sendBtn.disabled = session.busy || _roomHasReview(session) || !_roomDraftInput.trim();
+            };
+            var sendBtn = document.createElement('button');
+            sendBtn.type = 'button';
+            sendBtn.id = 'roomSendBtn';
+            sendBtn.className = 'room-send-btn';
+            sendBtn.textContent = 'Send';
+            sendBtn.disabled = session.busy || _roomHasReview(session) || !_roomDraftInput.trim();
+            sendBtn.onclick = sendRoomComposerMessage;
+            inputRow.append(textarea, sendBtn);
+            var mentionMenu = elementWith('room-mention-menu');
+            mentionMenu.id = 'roomMentionMenu';
+            mentionMenu.setAttribute('role', 'listbox');
+            mentionMenu.setAttribute('aria-label', 'Mention an editor or project file');
+            mentionMenu.hidden = true;
+            var mentionHint = elementWith('room-mention-hint');
+            mentionHint.setAttribute('aria-live', 'polite');
+            composer.appendChild(mentionMenu);
+            composer.appendChild(inputRow);
+            composer.appendChild(mentionHint);
+            _wireRoomMentions(textarea, mentionMenu, targetSelect, mentionHint);
+            pane.appendChild(composer);
+        }
+
+        function _buildRoomPlanCard(session, plan, isLatest, path) {
+            var planCard = elementWith('room-plan-card' + (isLatest ? ' is-latest' : ''));
+            if (isLatest) planCard.id = 'roomPlanCard';
+            var applied = plan.items.filter(function(item) { return item.applied; }).length;
+            var planHead = elementWith('room-plan-head');
+            planHead.append(
+                elementWith('room-plan-title', 'Revision plan'),
+                elementWith('room-plan-sub', isLatest
+                    ? (plan.agent ? _roomSpeakerName('moderator', plan.agent) : _roomSeatName('moderator') + ' \u00b7 agent not recorded') + ' \u00b7 choose changes to apply or add as TODO'
+                    : 'Earlier plan \u00b7 ' + plan.items.length + (plan.items.length === 1 ? ' item' : ' items')
+                        + (applied ? ' \u00b7 ' + applied + ' applied' : ''))
+            );
+            planCard.appendChild(planHead);
+            // Earlier plans fold to their heading; their line numbers may be
+            // out of date once later changes are applied.
+            if (!isLatest) {
+                var toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'room-plan-toggle';
+                toggle.textContent = plan.expanded ? 'Hide' : 'Show';
+                toggle.setAttribute('aria-expanded', plan.expanded ? 'true' : 'false');
+                toggle.onclick = function() {
+                    plan.expanded = !plan.expanded;
+                    renderSceneRoomPane();
+                };
+                planHead.appendChild(toggle);
+                if (!plan.expanded) return planCard;
+            }
+
+            var groups = {};
+            ['agreed', 'suggested'].forEach(function(kind) {
+                var section = document.createElement('section');
+                section.className = 'room-plan-section';
+                section.dataset.consensus = kind;
+                var title = document.createElement('h3');
+                title.className = 'room-plan-section-title';
+                title.textContent = kind === 'agreed' ? 'Agreed changes' : 'Other suggestions';
+                section.setAttribute('aria-label', title.textContent);
+                section.appendChild(title);
+                var list = elementWith('room-plan-list');
+                section.appendChild(list);
+                groups[kind] = {section: section, list: list};
+            });
+            plan.items.forEach(function(item) {
+                var row = elementWith('room-plan-item' + (item.applied ? ' is-applied' : ''));
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'room-plan-check';
+                cb.checked = !!item.checked || !!item.applied;
+                cb.disabled = !!item.applied;
+                cb.setAttribute('aria-label', item.title);
+                var content = elementWith('room-plan-item-text');
+                var b = document.createElement('strong');
+                b.textContent = item.title;
+                content.appendChild(b);
+                if (item.original || item.replacement) {
+                    // The change itself, the way the critics write it: the line,
+                    // the scene's words in italics, the new words plain.
+                    var md = [];
+                    if (item.line) md.push('Line ' + item.line + (item.replacement ? (item.original ? '' : ', insert:') : ', cut:'));
+                    if (item.original) md.push(item.original.split('\n').map(function(l) { return '> *' + l.trim() + '*'; }).join('\n>\n'));
+                    if (item.replacement) md.push(item.replacement.split('\n').map(function(l) { return '> ' + l; }).join('\n'));
+                    if (item.detail) md.push(item.detail);
+                    var change = elementWith('room-plan-change discuss-message assistant');
+                    renderDiscussMarkdown(change, _roomLinkLines(md.join('\n\n'), path));
+                    content.appendChild(change);
+                } else if (item.detail) {
+                    content.appendChild(document.createTextNode(' \u2014 ' + item.detail));
+                }
+                if (item.proposedBy || item.applied) {
+                    content.appendChild(elementWith('room-plan-by',
+                        (item.applied ? '\u2713 Applied with ' + item.applied + (item.proposedBy ? ' \u00b7 ' : '') : '')
+                        + (item.proposedBy ? _roomProposerName(item.proposedBy) + (item.accepted ? ' \u00b7 both agree' : ' \u00b7 not yet endorsed by both editors') : '')));
+                }
+                var todoBtn = document.createElement('button');
+                todoBtn.type = 'button';
+                todoBtn.className = 'room-todo-btn' + (item.todoAdded ? ' is-added' : '');
+                todoBtn.textContent = item.todoAdded ? '\u2713 TODO' : '+ TODO';
+                todoBtn.disabled = !!item.todoAdded || !!item.applied;
+                todoBtn.setAttribute('data-tip', 'Insert an inline <!-- TODO: ... --> comment for this item into the scene');
+                todoBtn.onclick = function() { insertRoomPlanTodo(item); };
+
+                cb.onchange = function() {
+                    item.checked = cb.checked;
+                    if (isLatest) _syncRoomApplyButton(session);
+                    _saveRoomSession(session);
+                };
+                row.append(cb, content, todoBtn);
+                groups[item.accepted ? 'agreed' : 'suggested'].list.appendChild(row);
+            });
+            ['agreed', 'suggested'].forEach(function(kind) {
+                if (groups[kind].list.childNodes.length) planCard.appendChild(groups[kind].section);
+            });
+            if (!plan.items.length && !(plan.open || []).length && !plan.authorsCall) {
+                planCard.appendChild(elementWith('room-plan-empty', 'No new changes to suggest.'));
+            }
+
+            if (plan.open && plan.open.length) {
+                var openBox = elementWith('room-open');
+                openBox.appendChild(elementWith('room-open-title', 'Still open \u00b7 your call'));
+                plan.open.forEach(function(item) {
+                    var openItem = elementWith('room-open-item');
+                    openItem.appendChild(elementWith('room-open-issue', item.issue || ''));
+                    [['Critic 1', item.critic1], ['Critic 2', item.critic2]].forEach(function(pair) {
+                        if (!pair[1]) return;
+                        var line = elementWith('room-open-side');
+                        var who = document.createElement('strong');
+                        who.textContent = _roomProposerName(pair[0]) + ': ';
+                        line.append(who, document.createTextNode(pair[1]));
+                        openItem.appendChild(line);
+                    });
+                    openBox.appendChild(openItem);
+                });
+                planCard.appendChild(openBox);
+            }
+
+            if (plan.authorsCall) {
+                var callBox = elementWith('room-authors-call');
+                var callTitle = document.createElement('strong');
+                callTitle.textContent = 'Author\u2019s Call (Unresolved trade-off): ';
+                callBox.append(callTitle, document.createTextNode(plan.authorsCall));
+                planCard.appendChild(callBox);
+            }
+            if (!isLatest || session.busy || _roomHasReview(session)) return planCard;
+
+            var app = (_roomSettings && _roomSettings.app) || {};
+            _roomApplyAgentChoice = _roomApplyAgentChoice
+                || ((app.critic2 || {}).agent)
+                || ((app.critic1 || {}).agent)
+                || 'claude';
+
+            var actBar = elementWith('room-plan-actions');
+            var applyLabel = elementWith('room-apply-label', 'Apply with:');
+            var agentSelect = document.createElement('select');
+            agentSelect.id = 'roomApplyAgentSelect';
+            agentSelect.className = 'room-apply-select';
+            agentSelect.setAttribute('aria-label', 'Agent to apply ticked revisions');
+            [{id: 'claude', label: 'Claude'}, {id: 'codex', label: 'Codex'}].forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.label;
+                agentSelect.appendChild(opt);
+            });
+            agentSelect.value = _roomApplyAgentChoice;
+            agentSelect.onchange = function() {
+                _roomApplyAgentChoice = agentSelect.value;
+                _syncRoomApplyButton(session);
+            };
+
+            var applyBtn = document.createElement('button');
+            applyBtn.type = 'button';
+            applyBtn.id = 'roomApplyBtn';
+            applyBtn.className = 'room-apply-btn';
+            applyBtn.onclick = function() {
+                applyRoomPlanWithAgent(_roomApplyAgentChoice, plan);
+            };
+
+            var moreBtn = document.createElement('button');
+            moreBtn.type = 'button';
+            moreBtn.id = 'roomMoreTurnBtn';
+            moreBtn.className = 'room-more-turn-btn';
+            moreBtn.textContent = '+1 Turn';
+            moreBtn.setAttribute('data-tip', 'Ask the other critic to respond one more time, then update the plan');
+            moreBtn.onclick = runRoomPlusOneTurn;
+
+            actBar.append(applyLabel, agentSelect, applyBtn, moreBtn);
+            planCard.appendChild(actBar);
+            return planCard;
+        }
+
+        function _syncRoomApplyButton(session) {
+            var btn = document.getElementById('roomApplyBtn');
+            if (!btn || !session) return;
+            var latest = _roomLatestPlan(session);
+            var count = (latest ? latest.items : []).filter(function(item) { return item.checked && !item.applied; }).length;
+            var agentLabel = _roomAgentDisplay(_roomApplyAgentChoice || 'claude');
+            btn.disabled = count === 0;
+            btn.textContent = count > 0
+                ? ('Apply ' + count + ' ticked ' + (count === 1 ? 'item' : 'items') + ' with ' + agentLabel + ' \u2192')
+                : 'Tick an item to apply';
         }
 
         function renderSceneAnalysisPane() {
@@ -1489,8 +3024,8 @@
         var _discussStreamPaintQueued = false;
 
         function discussStreamDraft() {
-            var draft = elementWith('discuss-message assistant discuss-stream-draft');
-            draft.appendChild(elementWith('discuss-message-label', discussAgentLabel()));
+            var draft = elementWith('discuss-message assistant chat-message-card discuss-stream-draft');
+            draft.appendChild(elementWith('discuss-message-label chat-message-header chat-message-name', discussAgentLabel()));
             draft.appendChild(elementWith('discuss-stream-body'));
             paintDiscussStreamDraft(draft);
             return draft;
@@ -2792,14 +4327,12 @@
                 appendNoticesForRequest(group.latest.client_request_id);
             });
             (snapshot.messages || []).forEach(function(message) {
-                var wrap = elementWith('discuss-message ' + (message.role === 'user' ? 'user' : 'assistant'));
-                var label = elementWith('discuss-message-label', message.role === 'user' ? 'You' : discussAgentLabel());
+                var wrap = elementWith('discuss-message chat-message-card ' + (message.role === 'user' ? 'user' : 'assistant'));
+                var label = elementWith('discuss-message-label chat-message-header chat-message-name', message.role === 'user' ? 'Me' : discussAgentLabel());
                 wrap.appendChild(label);
                 renderDiscussMarkdown(wrap, message.text);
-                if (message.role === 'user') {
-                    var sent = String(message.text || '');
-                    addCopyButton(wrap, function() { return sent; }, 'Copy message');
-                }
+                var sent = String(message.text || '');
+                addCopyButton(wrap, function() { return sent; }, 'Copy message');
                 log.appendChild(wrap);
                 if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
             });
@@ -3376,7 +4909,8 @@
                 .catch(function(error) { renderDiscussError(error.message); });
         }
 
-        function renderDiscussApproval(approval) {
+        function renderDiscussApproval(approval, resolve) {
+            resolve = resolve || resolveDiscussApproval;
             var card = elementWith('discuss-approval'); card.dataset.approvalId = approval.request_id;
             var title = document.createElement('h3'); title.textContent = approval.status === 'pending' ? 'Approval required' : 'Approval ' + approval.status; card.appendChild(title);
             if (approval.kind === 'stdin') {
@@ -3415,7 +4949,7 @@
                     var button = document.createElement('button'); button.type = 'button'; button.textContent = option[1];
                     if (option[0] === 'accept_for_session') button.title = 'Allows matching requests until this Codex session ends';
                     button.onclick = function() {
-                        resolveDiscussApproval(approval.request_id, option[0], button, approval.permissions);
+                        resolve(approval.request_id, option[0], button, approval.permissions);
                     };
                     actions.appendChild(button);
                 });

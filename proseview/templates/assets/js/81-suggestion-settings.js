@@ -122,7 +122,7 @@
             body.replaceChildren();
 
             // Per agent, on this computer.
-            var grid = _sgEl('div', 'suggestion-grid');
+            var grid = _sgEl('div', 'suggestion-grid room-seat-grid');
             grid.appendChild(_sgEl('span', 'settings-unit', 'On this computer'));
             SG_AGENTS.forEach(function(agent) { grid.appendChild(_sgEl('strong', 'suggestion-agent', agent.label)); });
 
@@ -259,10 +259,11 @@
             });
         }
 
-        // Settings has two tabs, so the suggestions' long list does not make
-        // the everyday settings scroll.
+        // Settings has three tabs: General, Suggestions, and Writers' Room.
+        var SETTINGS_TABS = ['general', 'suggestions', 'room'];
+
         function selectSettingsTab(name) {
-            ['general', 'suggestions'].forEach(function(tab) {
+            SETTINGS_TABS.forEach(function(tab) {
                 var on = tab === name;
                 var id = tab.charAt(0).toUpperCase() + tab.slice(1);
                 var button = document.getElementById('settingsTab' + id);
@@ -274,6 +275,7 @@
                 if (panel) panel.hidden = !on;
             });
             if (name === 'suggestions' && !_sg) loadSuggestionSettings();
+            if (name === 'room' && !_rm) loadRoomSettings();
         }
 
         // The card's gear: Settings, opened on the Suggestions tab.
@@ -288,16 +290,263 @@
             if (tab) tab.focus({preventScroll: true});
         }
 
+        // The Room header's gear: Settings, opened on the Writers' Room tab.
+        function openRoomSettings() {
+            var dlg = document.getElementById('settingsDialog');
+            if (dlg && dlg.parentElement !== document.body) document.body.appendChild(dlg);
+            if (typeof openSettings === 'function') openSettings();
+            selectSettingsTab('room');
+            var tab = document.getElementById('settingsTabRoom');
+            if (tab) tab.focus({preventScroll: true});
+        }
+
+        // ── Settings › Writers' Room ───────────────────────────────────
+        var _rm = null;
+        var _rmDirty = false;
+        var RM_SEATS = [
+            {key: 'critic1', label: 'Story Editor', description: 'Plot, stakes, pacing, and continuity.'},
+            {key: 'critic2', label: 'Voice Editor', description: 'Character voice, emotion, atmosphere, and rhythm.'},
+            {key: 'moderator', label: 'Moderator', description: 'Brings the discussion together into a revision plan.'}
+        ];
+
+        function _rmChanged() {
+            _rmDirty = true;
+            if (typeof markSettingsDirty === 'function') markSettingsDirty();
+        }
+
+        function loadRoomSettings() {
+            var body = document.getElementById('roomSettingsBody');
+            return _sgPost('/api/discuss/room-settings', {}).then(function(data) {
+                var prevCatalogs = (_rm && _rm.catalogs) || {};
+                _rm = data.settings;
+                _rm.catalogs = prevCatalogs;
+                _rmDirty = false;
+                renderRoomSettings();
+                if (typeof syncRoomSettingsState === 'function') syncRoomSettingsState(_rm);
+                SG_AGENTS.forEach(function(agent) {
+                    if (_rm.catalogs[agent.id]) return;
+                    _sgPost('/api/discuss/models', {agent: agent.id}).then(function(res) {
+                        _rm.catalogs[agent.id] = res.catalog;
+                        renderRoomSettings();
+                    }).catch(function() {
+                        _rm.catalogs[agent.id] = {unavailable: true, models: []};
+                        renderRoomSettings();
+                    });
+                });
+                return _rm;
+            }).catch(function(error) {
+                if (body) body.replaceChildren(_sgEl('p', 'settings-unit', 'Could not load: ' + error.message));
+            });
+        }
+
+        function saveRoomSettings() {
+            if (!_rm || !_rmDirty) return Promise.resolve();
+            return _sgPost('/api/discuss/room-settings', {save: true, book: _rm.book, app: _rm.app})
+                .then(function(data) {
+                    var catalogs = _rm.catalogs;
+                    _rm = data.settings;
+                    _rm.catalogs = catalogs;
+                    _rmDirty = false;
+                    renderRoomSettings();
+                    if (typeof syncRoomSettingsState === 'function') syncRoomSettingsState(_rm);
+                });
+        }
+
+        function _rmSelect(options, value, onChange, label) {
+            var select = _sgEl('select', 'settings-input');
+            select.setAttribute('aria-label', label);
+            options.forEach(function(opt) {
+                var o = _sgEl('option', '', opt.label);
+                o.value = opt.value;
+                select.appendChild(o);
+            });
+            select.value = String(value);
+            if (select.value !== String(value) && value) {
+                var o = _sgEl('option', '', value + ' (not listed)');
+                o.value = String(value);
+                select.appendChild(o);
+                select.value = String(value);
+            }
+            select.onchange = function() { onChange(select.value); _rmChanged(); };
+            return select;
+        }
+
+        function _rmPromptField(label, value, fallback, onChange) {
+            var wrap = _sgEl('div', 'suggestion-prompt');
+            var head = _sgEl('div', 'suggestion-prompt-head');
+            var title = _sgEl('span', 'settings-label', label);
+            var reset = _sgEl('button', 'settings-plain-btn', 'Reset to default');
+            reset.type = 'button';
+            reset.disabled = value === fallback;
+            var area = _sgEl('textarea', 'suggestion-prompt-text');
+            area.value = value;
+            area.rows = Math.min(8, Math.max(2, Math.ceil(value.length / 70)));
+            area.setAttribute('aria-label', label + ' prompt');
+            area.oninput = function() { onChange(area.value); reset.disabled = area.value === fallback; _rmChanged(); };
+            reset.onclick = function() { area.value = fallback; onChange(fallback); reset.disabled = true; _rmChanged(); };
+            head.append(title, reset);
+            wrap.append(head, area);
+            return wrap;
+        }
+
+        function renderRoomSettings() {
+            var body = document.getElementById('roomSettingsBody');
+            if (!body || !_rm) return;
+            body.replaceChildren();
+
+            var grid = _sgEl('div', 'suggestion-grid room-seat-grid');
+            grid.appendChild(_sgEl('span', 'settings-unit', 'On this computer'));
+            RM_SEATS.forEach(function(seat) { grid.appendChild(_sgEl('strong', 'suggestion-agent', seat.label)); });
+
+            // Agent row
+            var agentHead = _sgEl('span', 'settings-label', 'Agent');
+            agentHead.title = 'Choose Codex or Claude for each critic. Set both to the same agent if you only use one.';
+            grid.appendChild(agentHead);
+            RM_SEATS.forEach(function(seat) {
+                var cell = _sgEl('div', 'suggestion-cell');
+                cell.dataset.seat = seat.key;
+                var seatCfg = _rm.app[seat.key];
+                var opts = SG_AGENTS.map(function(a) { return {value: a.id, label: a.label}; });
+                cell.appendChild(_rmSelect(opts, seatCfg.agent, function(v) {
+                    seatCfg.agent = v;
+                    seatCfg.model = '';
+                    seatCfg.effort = '';
+                    renderRoomSettings();
+                }, seat.label + ' agent'));
+                grid.appendChild(cell);
+            });
+
+            // Model row
+            var modelHead = _sgEl('span', 'settings-label', 'Model');
+            modelHead.title = 'Same as chat uses whatever that agent’s chat is set to.';
+            grid.appendChild(modelHead);
+            RM_SEATS.forEach(function(seat) {
+                var cell = _sgEl('div', 'suggestion-cell');
+                var seatCfg = _rm.app[seat.key];
+                var catalog = (_rm.catalogs || {})[seatCfg.agent];
+                var options = [{value: '', label: 'Same as chat'}].concat(((catalog || {}).models || []).map(function(m) {
+                    return {value: m.id, label: m.label || m.id};
+                }));
+                cell.appendChild(_rmSelect(options, seatCfg.model, function(v) {
+                    seatCfg.model = v;
+                    seatCfg.effort = '';
+                    renderRoomSettings();
+                }, seat.label + ' model'));
+                grid.appendChild(cell);
+            });
+
+            // Effort row
+            var effortHead = _sgEl('span', 'settings-label', 'Effort');
+            effortHead.title = 'How long the model thinks per turn.';
+            grid.appendChild(effortHead);
+            RM_SEATS.forEach(function(seat) {
+                var cell = _sgEl('div', 'suggestion-cell');
+                var seatCfg = _rm.app[seat.key];
+                var catalog = (_rm.catalogs || {})[seatCfg.agent];
+                var row = ((catalog || {}).models || []).find(function(m) { return m.id === seatCfg.model; });
+                var efforts = row && row.efforts && row.efforts.length ? row.efforts.map(function(e) { return e.id; })
+                    : ['low', 'medium', 'high'];
+                var options = [{value: '', label: 'Same as chat'}].concat(efforts.map(function(e) {
+                    return {value: e, label: e.charAt(0).toUpperCase() + e.slice(1)};
+                }));
+                cell.appendChild(_rmSelect(options, seatCfg.effort, function(v) {
+                    seatCfg.effort = v;
+                }, seat.label + ' effort'));
+                grid.appendChild(cell);
+            });
+
+            body.appendChild(grid);
+
+            // Turn count & length
+            var turnOptions = [1, 2, 3, 4, 5, 6].map(function(n) {
+                return {value: String(n), label: n + (n === 1 ? ' turn' : ' turns') + (n === 4 ? ' (default)' : '')};
+            });
+            var lengthOptions = Object.keys(_rm.lengths || {}).map(function(k) {
+                return {value: k, label: _rm.lengths[k]};
+            });
+            var appRows = [
+                ['Most turns', 'The critics alternate up to this many turns, and stop early when one has nothing new. Then the moderator writes the plan.',
+                 _rmSelect(turnOptions, String(_rm.app.turns || 4), function(v) { _rm.app.turns = parseInt(v, 10) || 4; }, 'Most turns')],
+                ['Turn length', 'Prefer brief, focused replies or fuller explanations. Editors can take the space needed to answer you.',
+                 _rmSelect(lengthOptions, _rm.app.length || 'concise', function(v) { _rm.app.length = v; }, 'Turn length')]
+            ];
+            appRows.forEach(function(r) {
+                var row = _sgEl('div', 'settings-row');
+                var label = _sgEl('span', 'settings-label', r[0]);
+                label.title = r[1];
+                var field = _sgEl('span', 'settings-field');
+                field.appendChild(r[2]);
+                row.append(label, field);
+                body.appendChild(row);
+            });
+
+            // Per book, in .proseview.yaml
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'In this book (.proseview.yaml)'));
+            var book = _rm.book;
+            var defaults = _rm.defaults;
+            body.appendChild(_sgEl('p', 'settings-note', 'Display names change the labels only. Role instructions control each editor’s focus. Claude or Codex always stays visible beside the name.'));
+            RM_SEATS.forEach(function(seat) {
+                var row = _sgEl('div', 'settings-row');
+                var label = _sgEl('label', 'settings-label', seat.label + ' display name');
+                var field = _sgEl('input', 'settings-input');
+                var key = seat.key + '_name';
+                field.id = 'room-' + seat.key + '-name';
+                label.htmlFor = field.id;
+                field.type = 'text';
+                field.maxLength = 60;
+                field.value = book[key] || defaults[key] || seat.label;
+                field.placeholder = defaults[key] || seat.label;
+                field.oninput = function() { book[key] = field.value; _rmChanged(); };
+                var fieldWrap = _sgEl('span', 'settings-field');
+                fieldWrap.appendChild(field);
+                row.append(label, fieldWrap);
+                body.appendChild(row);
+                body.appendChild(_sgEl('p', 'settings-note', seat.description));
+            });
+            body.appendChild(_rmPromptField(
+                'Story Editor role instructions',
+                book.critic1_prompt,
+                defaults.critic1_prompt,
+                function(v) { book.critic1_prompt = v; }
+            ));
+            body.appendChild(_rmPromptField(
+                'Voice Editor role instructions',
+                book.critic2_prompt,
+                defaults.critic2_prompt,
+                function(v) { book.critic2_prompt = v; }
+            ));
+
+            var presetsDetails = _sgEl('details', 'suggestion-prompts');
+            presetsDetails.appendChild(_sgEl('summary', '', 'Starter card prompts (3)'));
+            (_rm.presets || []).forEach(function(preset) {
+                var key = preset.id;
+                presetsDetails.appendChild(_rmPromptField(
+                    preset.label + ' (' + preset.badge + ')',
+                    book.preset_prompts[key] || defaults.preset_prompts[key] || '',
+                    defaults.preset_prompts[key] || '',
+                    function(v) { book.preset_prompts[key] = v; }
+                ));
+            });
+            body.appendChild(presetsDetails);
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             // Arrow keys move between the tabs, as in any tab row.
             var row = document.querySelector('.settings-tabs');
             if (row) row.addEventListener('keydown', function(e) {
                 if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-                var next = document.getElementById('settingsTabGeneral').getAttribute('aria-selected') === 'true'
-                    ? 'suggestions' : 'general';
+                var idx = SETTINGS_TABS.findIndex(function(t) {
+                    var id = t.charAt(0).toUpperCase() + t.slice(1);
+                    var btn = document.getElementById('settingsTab' + id);
+                    return btn && btn.getAttribute('aria-selected') === 'true';
+                });
+                if (idx < 0) idx = 0;
+                var delta = e.key === 'ArrowRight' ? 1 : -1;
+                var next = SETTINGS_TABS[(idx + delta + SETTINGS_TABS.length) % SETTINGS_TABS.length];
                 selectSettingsTab(next);
-                document.getElementById(next === 'general' ? 'settingsTabGeneral' : 'settingsTabSuggestions')
-                    .focus({preventScroll: true});
+                var nextId = next.charAt(0).toUpperCase() + next.slice(1);
+                var nextBtn = document.getElementById('settingsTab' + nextId);
+                if (nextBtn) nextBtn.focus({preventScroll: true});
                 e.preventDefault();
             });
         });

@@ -635,6 +635,8 @@ for line in sys.stdin:
                 '[external](https://example.test/reference) '
                 '[unsafe](javascript:alert(1))'
             )
+        if "in a Writers' Room on the manuscript scene" in prompt:
+            answer = '### 1. Weather opening\\n\\n> *The weather was grey.*\\n\\nCut it and open on the safe combination.\\n\\n> She had used the same four digits since spring.'
         schema = params.get('outputSchema') or {}
         kind = ((((schema.get('properties') or {}).get('kind') or {}).get('enum') or [None])[0])
         selection = ''
@@ -664,6 +666,14 @@ for line in sys.stdin:
                 'explanation': 'This sentence preserves the old safe-code history.',
                 'replacement': 'She had changed the four digits at the start of spring.'
             }]})
+        elif 'agreed' in (schema.get('properties') or {}):
+            answer = json.dumps({
+                'agreed': [
+                    {'title': 'Cut the opening weather line', 'line': '17', 'original': 'The weather was grey.', 'replacement': 'She had used the same four digits since spring.', 'why': 'Open on the safe.', 'proposed_by': 'Critic 1', 'accepted': True},
+                    {'title': 'Keep the dialogue subtext clipped', 'line': '', 'original': '', 'replacement': '', 'why': 'Let the pause carry the tension.', 'proposed_by': 'Critic 2', 'accepted': False},
+                ],
+                'open': [{'issue': 'When to reveal the safe code', 'critic1': 'In this scene, to raise the stakes.', 'critic2': 'In the next, to keep the subtext.'}],
+            })
         emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
         stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique', 'continuity_report'} else answer

@@ -21,6 +21,22 @@ from proseview.claude_agent_client import ClaudeRequestError, sanitize_claude_me
 from proseview.codex_app_server import CodexRequestError
 
 
+
+#: What a fake moderator makes of any Writers' Room debate.
+ROOM_MODERATOR_ANSWER = {
+    "agreed": [
+        {"title": "Tighten the opening beat", "line": "3", "original": "It was a morning like any other.",
+         "replacement": "Mira counted the ledger twice.", "why": "Open on action, not setup.",
+         "proposed_by": "Critic 1", "accepted": True},
+        {"title": "Sharpen Mira's exit", "line": "line 9", "original": "", "replacement": "Dawn smelled of wet tar.",
+         "why": "Insert after her last line to ground the exit.", "proposed_by": "Critic 2", "accepted": False},
+    ],
+    "open": [
+        {"issue": "When Mira leaves", "critic1": "Before she speaks, to keep it cold.",
+         "critic2": "After, so the line lands."},
+    ],
+}
+
 class CodexFakeClient:
     def __init__(self, callback, agent: str = "codex"):
         self.agent = agent
@@ -128,6 +144,8 @@ class CodexFakeClient:
                     answer = json.dumps({"kind": "alternatives", "summary": "A tighter beat.", "alternatives": choices[:count]})
                 elif kind == "critique":
                     answer = json.dumps({"kind": "critique", "findings": [{"observation": "The opening is abstract.", "evidence": "First document.", "why_it_matters": "The image is hard to picture.", "next_step": "Use one concrete detail."}]})
+                elif "agreed" in (schema.get("properties") or {}):
+                    answer = json.dumps(ROOM_MODERATOR_ANSWER)
                 elif kind == "continuity_report":
                     answer = json.dumps({
                         "kind": "continuity_report",
@@ -306,6 +324,8 @@ class ClaudeFakeClient:
                 "why_it_matters": "The image is hard to picture.",
                 "next_step": "Use one concrete detail.",
             }]})
+        if "agreed" in (schema.get("properties") or {}):
+            return json.dumps(ROOM_MODERATOR_ANSWER)
         return f"Answer {turn_id}"
 
     def request(self, method, params, *, timeout=None):

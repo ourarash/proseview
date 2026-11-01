@@ -2759,3 +2759,43 @@ def test_a_notice_keeps_the_command_that_fixes_it(tmp_path: Path):
     notice = manager.get_snapshot(cid)["notices"][-1]
     assert (notice["kind"], notice["message"], notice["command"]) == ("error", LOGIN_EXPIRED, LOGIN_COMMAND)
     manager.close()
+
+
+def test_next_beats_skill_is_offered_and_runs_with_previous_scene_tail_and_frontmatter(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "---\ntitle: Opening\n---\n# Opening\n\n"
+        "First paragraph of scene one.\n\n"
+        "Patel locked the brass drawer and pocketed the key.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "two.md").write_text(
+        "---\ntitle: Follow-up\npov: Patel\nwhere: Archive\n"
+        "goal: Check the ledger before dawn\nconflict: The night watchman is still awake\n---\n"
+        "# Follow-up\n\n"
+        "<!-- TODO: How does Patel get past the watchman? -->\n",
+        encoding="utf-8",
+    )
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    by_id = {row["id"]: row for row in manager.list_actions()}
+    assert "next_beats" in by_id
+    assert by_id["next_beats"]["scene_pass"] is True
+    assert "without writing the prose for you" in by_id["next_beats"]["description"]
+
+    cid = manager.open({"kind": "scene", "path": "two.md"})["conversation_id"]
+    manager.submit(cid, client_request_id="beats-1", question="", action_id="next_beats", action_scope="scene")
+    _wait_for(lambda: bool(clients[0].prompts))
+    prompt = clients[0].prompts[0]
+    assert "Patel locked the brass drawer and pocketed the key." in prompt
+    assert "Check the ledger before dawn" in prompt
+    assert "The night watchman is still awake" in prompt
+    assert "How does Patel get past the watchman?" in prompt
+    manager.close()
+

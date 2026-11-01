@@ -426,14 +426,21 @@
         </section>
         {% else %}
         <section class="card scene-list-card" aria-labelledby="sceneListTitle">
-            <div class="card-header"><h2 id="sceneListTitle" class="card-title">Scenes</h2>
+            <div class="card-header"><h2 id="sceneListTitle" class="card-title">Scenes<span class="info-tip" tabindex="0" role="img" aria-label="Switch between Table view and Cards view (which shows each scene's POV, place, and Goal / Conflict / Outcome from YAML frontmatter). Use the filter to find scenes with TODOs, short stub drafts under 200 words, or scenes missing Goal/Conflict." data-tip="Switch between Table view and Cards view (which shows each scene's POV, place, and Goal / Conflict / Outcome from YAML frontmatter). Use the filter to find scenes with TODOs, short stub drafts under 200 words, or scenes missing Goal/Conflict.">i</span></h2>
+            <div class="scene-list-controls">
+            <div class="scene-view-switch" role="group" aria-label="Scene list view">
+                <button type="button" class="scene-view-btn active" id="sceneViewTableBtn" data-scene-view="table" onclick="setOverviewSceneView('table')" aria-pressed="true" data-tip="Table view: compare word count, dialogue %, sentence length, and status across all scenes.">Table</button>
+                <button type="button" class="scene-view-btn" id="sceneViewCardsBtn" data-scene-view="cards" onclick="setOverviewSceneView('cards')" aria-pressed="false" data-tip="Cards view: see each scene's POV, place, and Goal / Conflict / Outcome from YAML frontmatter.">Cards</button>
+            </div>
             <label class="sr-only" for="issueFilter">Show</label>
-            <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()">
-                <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>
-            </select></div>
+            <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()" title="Filter scenes by TODOs, notes, short stub drafts (< 200 words), missing Goal/Conflict in frontmatter, or status">
+                <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option value="stubs" title="Scenes with fewer than 200 words of prose that still need drafting">Short drafts / stubs (&lt; 200 words)</option><option value="missing-beats" title="Scenes without goal: or conflict: set in their YAML frontmatter">Missing Goal or Conflict in frontmatter</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>
+            </select></div></div>
             <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Running total" title="Words in the book up to and including this row.">Running total</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
-            </tbody></table></section>
+            </tbody></table>
+            <div id="sceneCardsGrid" class="scene-cards-grid" hidden></div></section>
+
         {% endif %}
     </div>
 
@@ -793,7 +800,8 @@
                 <button type="button" class="modal-close scene-toolbar-button" onclick="closeSceneModal()" aria-label="Close scene and return to dashboard" title="Close scene and return to dashboard">&times;</button>
             </div>
         </div><button id="sceneToolbarReveal" type="button" aria-label="Show scene toolbar" title="Show scene toolbar" onclick="revealSceneToolbar(true)"><span aria-hidden="true">&#8964;</span></button></header>
-        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status" title="Editing"><span class="scene-edit-dot" id="sceneEditDot"></span></span><span class="scene-edit-divider" aria-hidden="true"></span><span class="scene-edit-format" id="sceneEditFormat"><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('strong')" onmousedown="event.preventDefault();" aria-label="Bold" title="Bold (⌘B)"><b>B</b></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('em')" onmousedown="event.preventDefault();" aria-label="Italic" title="Italic (⌘I)"><i>I</i></button><button type="button" class="scene-edit-format-btn" onclick="toggleBlockquote()" onmousedown="event.preventDefault();" aria-label="Quote" title="Quote (⌘⇧9)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6H3"></path><path d="M21 12H8"></path><path d="M21 18H8"></path><path d="M3 12v6"></path></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleCallout()" onmousedown="event.preventDefault();" aria-label="Callout" title="Callout: a box for a letter, a text message or a sidebar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"></rect><path d="M7 9h10"></path><path d="M7 13h7"></path></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleFormat('code')" onmousedown="event.preventDefault();" aria-label="Code" title="Code (⌘`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleList('bullet_list')" onmousedown="event.preventDefault();" aria-label="Bullet List" title="Bullet List (⌘⇧8)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button><button type="button" class="scene-edit-format-btn" onclick="toggleList('ordered_list')" onmousedown="event.preventDefault();" aria-label="Numbered List" title="Numbered List (⌘⇧7)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><path d="M4 6h1v4"></path><path d="M4 10h2"></path><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg></button></span><span class="scene-edit-divider" aria-hidden="true"></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled aria-label="Save" title="Save"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()" aria-label="Cancel" title="Cancel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button></div></div></div>
+        <div class="scene-stat-grid" id="modalStats" hidden></div><div id="modalAlerts" class="modal-alerts"></div><div id="modalBody" class="modal-body"></div><div id="sceneEditBar" class="scene-edit-bar" hidden><span class="scene-edit-status" title="Editing"><span class="scene-edit-dot" id="sceneEditDot"></span></span><span class="scene-edit-divider" aria-hidden="true"></span><span id="sceneEditWordDelta" class="scene-edit-word-delta" data-tip="Net words added or cut in this scene since you opened Edit mode.">+0w</span><button type="button" id="sceneSprintBtn" class="scene-edit-sprint-btn" onclick="toggleSceneSprint()" onmousedown="event.preventDefault();" aria-label="Writing sprint timer" data-tip="Click to start or stop a 15-minute writing sprint timer.">⏱ 15m</button><button type="button" class="scene-edit-format-btn scene-edit-todo-btn" id="sceneEditTodoBtn" onclick="insertInlineTodoAtCaret()" onmousedown="event.preventDefault();" aria-label="Insert TODO" data-tip="Insert an inline <!-- TODO: ... --> placeholder after this paragraph (⌘⇧T) so you can keep drafting without stopping.">TODO</button><span class="scene-edit-divider" aria-hidden="true"></span><button type="button" class="scene-edit-save" onclick="saveSceneEdit()" disabled aria-label="Save" title="Save"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></button><button type="button" class="scene-edit-cancel" onclick="cancelSceneEdit()" aria-label="Cancel" title="Cancel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><button type="button" id="sceneConflictReopen" class="scene-conflict-reopen" onclick="openSceneConflictDialog()" aria-label="Resolve save conflict" hidden>Resolve conflict</button></div></div></div>
+
 
     <dialog id="sceneConflictDialog" class="scene-conflict-dialog" role="alertdialog" aria-labelledby="sceneConflictTitle" aria-describedby="sceneConflictDescription">
         <h2 id="sceneConflictTitle">Scene changed on disk</h2>
@@ -1096,6 +1104,7 @@
                     text.textContent = parsed.body;
                     this.dom.append(icon, text);
                     this.appendLineJump();
+
                     this.dom.ondblclick = null;
                     this.dom.onclick = (event) => {
                         event.preventDefault();
@@ -1199,9 +1208,30 @@
                     this.save(editable.innerText);
                 };
 
+                if (parsed.kind === 'todo') {
+                    const unstickTip = 'Ask Codex or Claude to suggest 3 ways to write or bridge this TODO beat using the paragraphs before and after it.';
+                    const unstickEdit = document.createElement('button');
+                    unstickEdit.type = 'button';
+                    unstickEdit.className = 'pm-annotation-unstick pm-annotation-unstick-edit';
+                    unstickEdit.dataset.tip = unstickTip;
+                    unstickEdit.textContent = 'Suggest';
+                    unstickEdit.onclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const bodyText = String(editable.innerText || parsed.body || '').trim();
+                        this.editing = false;
+                        this.autoSave = false;
+                        this.renderRead();
+                        if (typeof window.openTodoUnstickCard === 'function') {
+                            window.openTodoUnstickCard(this.dom, bodyText, this.getPos());
+                        }
+                    };
+                    actions.append(unstickEdit);
+                }
                 actions.append(cancel, resolve, save);
                 form.append(editable, actions);
                 this.dom.append(icon, form);
+
 
                 setTimeout(() => {
                     try { editable.focus({ preventScroll: true }); }
@@ -1232,13 +1262,16 @@
                 const raw = buildAnnotationRawFromView(parsed.tag, String(text || '').trim());
                 const pos = this.getPos();
                 const shouldAutoSave = this.autoSave;
+                const shouldFocusEditor = !!(this.insertedFrom && this.insertedFrom.focusEditorAfterSave);
                 this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null, { raw }));
                 this.editing = false;
                 this.insertedFrom = null;
                 this.autoSave = false;
                 this.renderRead();
                 if (shouldAutoSave && typeof window.saveSceneEdit === 'function') window.saveSceneEdit();
+                else if (shouldFocusEditor && this.view) this.view.focus();
             }
+
             deleteNode() {
                 const pos = this.getPos();
                 const shouldAutoSave = this.autoSave;

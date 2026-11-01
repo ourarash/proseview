@@ -67,8 +67,9 @@ def test_edit_bar_position_survives_a_reload_and_stays_on_screen(page: Page, ser
     assert box["x"] + box["width"] <= view["width"] + 1
     assert box["y"] + box["height"] <= view["height"] + 1
 
-    # A click on Bold still formats, the drag listener lets it through.
-    page.locator(".scene-edit-format-btn[aria-label='Bold']").click()
+    # A click on a dock button still works; the drag listener lets it through.
+    page.locator("#sceneSprintBtn").click()
+    assert "is-running" in (page.locator("#sceneSprintBtn").get_attribute("class") or "")
     assert page.evaluate("window._pmEditMode") is True
 
 
@@ -110,19 +111,27 @@ def test_edit_bar_sits_above_a_selection_and_goes_back(page: Page, server: Prose
 
     word_box = _select_word(page, word)
     page.wait_for_timeout(100)
-    bar = page.locator("#sceneEditBar").bounding_box()
+    # The session dock (#sceneEditBar) stays calmly at its home corner.
+    dock = page.locator("#sceneEditBar").bounding_box()
+    assert abs(dock["y"] - home["y"]) < 3
+    assert abs(dock["x"] - home["x"]) < 3
+
+    # The unified selection bar (#selectionPillBar) sits centered above the selection.
+    bar = page.locator("#selectionPillBar").bounding_box()
     assert bar["y"] + bar["height"] <= word_box["top"]
     assert 15 < word_box["top"] - (bar["y"] + bar["height"]) < 30
     centre = (word_box["x0"] + word_box["x1"]) / 2
     assert abs(bar["x"] + bar["width"] / 2 - centre) < 3
 
-    # Bold works from there and the bar stays with the selection.
+    # Bold works from the selection bar and keeps the bar with the selection.
     page.locator(".scene-edit-format-btn[aria-label='Bold']").click()
     assert page.locator("#sceneProseHost .ProseMirror strong").count() >= 1
+    assert page.locator("#selectionPill").is_visible()
 
-    # Clearing the selection puts the bar back where it was.
+    # Clearing the selection hides the selection bar while the dock stays put.
     page.keyboard.press("ArrowRight")
     page.wait_for_timeout(100)
+    assert page.locator("#selectionPill").is_hidden()
     back = page.locator("#sceneEditBar").bounding_box()
     assert abs(back["y"] - home["y"]) < 3
     assert abs(back["x"] - home["x"]) < 3

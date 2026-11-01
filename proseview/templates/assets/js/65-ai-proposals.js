@@ -534,7 +534,8 @@
             var parsed = parser.parse(String(markdownText || ''));
             var tr;
             var newRange;
-            if (parsed.childCount === 1 && parsed.firstChild && parsed.firstChild.type.name === 'paragraph') {
+            var $from = _pmView.state.doc.resolve(applyRange.from);
+            if ($from.depth > 0 && parsed.childCount === 1 && parsed.firstChild && parsed.firstChild.type.name === 'paragraph') {
                 tr = _pmView.state.tr.replaceWith(
                     applyRange.from,
                     applyRange.to,
@@ -542,7 +543,7 @@
                 );
                 newRange = {from: applyRange.from, to: applyRange.from + parsed.firstChild.content.size};
             } else {
-                var blockRange = aiTopLevelRange(applyRange);
+                var blockRange = $from.depth === 0 ? {from: applyRange.from, to: applyRange.to} : aiTopLevelRange(applyRange);
                 tr = _pmView.state.tr.replaceWith(
                     blockRange.from,
                     blockRange.to,

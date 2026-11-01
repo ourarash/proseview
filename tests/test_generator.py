@@ -732,3 +732,28 @@ def test_two_folders_with_the_same_chapter_number_stay_apart(tmp_path: Path):
     assert "Chapter 6 · ch06-legacy</td>" in html and "Chapter 6 · ch06</td>" in html
     findings = build_analysis_payload(tmp_path, Config.load(tmp_path))["findings"]
     assert findings[0]["text"] == "Two folders, ch06 and ch06-legacy, both say chapter 6."
+
+
+def test_overview_scene_table_emits_stub_and_missing_beats_attributes_and_cards_controls(tmp_path: Path):
+    book = tmp_path / "book"
+    ch = book / "manuscript" / "ch01"
+    ch.mkdir(parents=True)
+    (ch / "01-planned.md").write_text(
+        "---\ntitle: Planned\ngoal: Find the key\nconflict: Door is barred\n---\n\n"
+        + ("word " * 250) + "\n",
+        encoding="utf-8",
+    )
+    (ch / "02-stub.md").write_text(
+        "---\ntitle: Stub\n---\n\nJust a few words.\n",
+        encoding="utf-8",
+    )
+
+    html = build_dashboard(book, Config.load(book))
+    assert 'value="stubs"' in html
+    assert 'value="missing-beats"' in html
+    assert 'id="sceneCardsGrid"' in html
+    assert 'data-words="250"' in html
+    assert 'data-words="4"' in html
+    assert 'data-missing-beats="0"' in html
+    assert 'data-missing-beats="1"' in html
+

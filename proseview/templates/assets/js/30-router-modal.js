@@ -582,6 +582,89 @@
             }).join('');
         }
 
+        function _extractProseTailParagraphs(rawMarkdown) {
+            if (!rawMarkdown) return [];
+            var lines = String(rawMarkdown).split(/\r?\n/);
+            var paras = [];
+            var buf = [];
+            var inHtmlComment = false;
+            lines.forEach(function(line) {
+                var trimmed = line.trim();
+                if (!inHtmlComment && trimmed.startsWith('<!--')) {
+                    if (!trimmed.endsWith('-->')) inHtmlComment = true;
+                    return;
+                }
+                if (inHtmlComment) {
+                    if (trimmed.endsWith('-->')) inHtmlComment = false;
+                    return;
+                }
+                if (!trimmed || /^#{1,6}\s/.test(trimmed) || /^---+$/.test(trimmed)) {
+                    if (buf.length) {
+                        paras.push(buf.join(' ').trim());
+                        buf = [];
+                    }
+                    return;
+                }
+                buf.push(trimmed);
+            });
+            if (buf.length) paras.push(buf.join(' ').trim());
+            return paras.filter(Boolean).slice(-2);
+        }
+
+        function renderScenePrevTail(p) {
+            var host = document.getElementById('scenePrevTailHost');
+            if (!host) return;
+            host.replaceChildren();
+            if (typeof curIdx !== 'number' || curIdx <= 0 || !paths[curIdx - 1]) return;
+            var prevPath = paths[curIdx - 1];
+            var prevParas = _extractProseTailParagraphs(contents[prevPath] || '');
+            if (!prevParas.length) return;
+            var prevMeta = meta[prevPath] || {};
+            var curWords = (meta[p] && typeof meta[p].words === 'number') ? meta[p].words : 999;
+            var isStub = curWords < 50;
+            var details = document.createElement('details');
+            details.id = 'scenePrevTail';
+            details.className = 'scene-prev-tail';
+            if (isStub) details.open = true;
+            var tipText = 'Shows the closing 1–2 paragraphs of the scene right before this one so you can pick up the thread and tone without switching files. Opens automatically when this scene is under 50 words.';
+            var summary = document.createElement('summary');
+            summary.className = 'scene-prev-tail-summary';
+            var label = document.createElement('span');
+            label.className = 'scene-prev-tail-label';
+            label.textContent = 'Where you left off (previous scene\u2019s ending) \u00b7 ' + (prevMeta.title || prevPath);
+            var info = document.createElement('span');
+            info.className = 'info-tip';
+            info.tabIndex = 0;
+            info.setAttribute('role', 'img');
+            info.setAttribute('aria-label', tipText);
+            info.dataset.tip = tipText;
+            info.textContent = 'i';
+            info.onclick = function(e) { e.stopPropagation(); };
+            label.appendChild(info);
+            var jumpTip = 'Open the previous scene (' + (prevMeta.title || prevPath) + ') in the reader.';
+            var jumpBtn = document.createElement('button');
+            jumpBtn.type = 'button';
+            jumpBtn.className = 'scene-prev-tail-jump';
+            jumpBtn.textContent = 'Open previous scene';
+            jumpBtn.dataset.tip = jumpTip;
+            jumpBtn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openSceneModal(prevPath);
+            };
+            summary.append(label, jumpBtn);
+            var body = document.createElement('div');
+            body.className = 'scene-prev-tail-body';
+            prevParas.forEach(function(para) {
+                var pEl = document.createElement('p');
+                pEl.className = 'scene-prev-tail-para';
+                pEl.textContent = para;
+                body.appendChild(pEl);
+            });
+            details.append(summary, body);
+            host.appendChild(details);
+        }
+
         function render(preserveScroll) {
             const p = paths[curIdx], b = document.getElementById('modalBody'), m = meta[p];
             const scrollEl = document.querySelector('#sceneModal .modal-content');
@@ -740,7 +823,8 @@
             // Context and tasks live in the scene panel, not above the prose:
             // a disclosure here pushed the reading column down and reflowed it
             // on every toggle. The prose starts at the top and stays there.
-            b.innerHTML = '<div id="sceneFrontmatter"></div><div id="sceneProseHost"></div>';
+            b.innerHTML = '<div id="sceneFrontmatter"></div><div id="scenePrevTailHost"></div><div id="sceneProseHost"></div>';
+            renderScenePrevTail(p);
             if (!window._sceneContextBody) {
                 window._sceneContextBody = document.createElement('div');
                 window._sceneContextBody.id = 'sceneContextBody';

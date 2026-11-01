@@ -263,6 +263,7 @@
                 if ($from.node(depth).type === calloutType) {
                     unwrapCallout(PM, $from.before(depth));
                     _pmView.focus();
+                    if (window.refreshSelectionPillAfterFormat) window.refreshSelectionPillAfterFormat();
                     return;
                 }
             }
@@ -275,6 +276,7 @@
             tr.setSelection(PM.TextSelection.create(tr.doc, range.start + 2));
             _pmView.dispatch(tr.scrollIntoView());
             _pmView.focus();
+            if (window.refreshSelectionPillAfterFormat) window.refreshSelectionPillAfterFormat();
         };
 
         // Replaces the callout at *pos* with its blocks, its title (if any)

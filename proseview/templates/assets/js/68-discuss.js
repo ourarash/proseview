@@ -47,7 +47,7 @@
         // thing they read stays attached so a follow-up can refer to it.
         const DISCUSS_READING_ACTIONS = [
             'quick_critique', 'style_consistency', 'voice_character',
-            'pacing_tension', 'clarity_flow', 'continuity'
+            'pacing_tension', 'clarity_flow', 'continuity', 'next_beats'
         ];
         function discussIsReadingAction(actionId) {
             return DISCUSS_READING_ACTIONS.indexOf(String(actionId || '')) >= 0;
@@ -71,6 +71,11 @@
                 id: 'style_consistency',
                 label: 'Style and consistency',
                 copy: 'Proseview finds the passives, filter verbs and echoes. The agent says which ones hurt.'
+            },
+            {
+                id: 'next_beats',
+                label: 'Next beats',
+                copy: 'Concrete possibilities for what happens next in this scene, without writing the prose for you.'
             }
         ];
         // The rarer, heavier work. Same cards, same skill files behind them.

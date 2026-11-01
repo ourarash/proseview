@@ -473,7 +473,11 @@ ACTION_DEFINITIONS: dict[str, dict[str, Any]] = {
     "continuity": {
         "label": "Continuity check", "kind": "critique", "count": 5,
     },
+    "next_beats": {
+        "label": "Next beats", "kind": "critique", "count": 4,
+    },
 }
+
 
 REPOSITORY_ACTION_DEFINITIONS: dict[str, dict[str, str]] = {
     "canon_refactor": {
@@ -555,6 +559,24 @@ def action_output_schema(kind: str, count: int) -> dict[str, Any]:
         },
         "required": ["kind", "findings"], "additionalProperties": False,
     }
+
+
+def _scene_frontmatter_notes(fm: Any) -> str:
+    """The story fields of a scene's frontmatter, one per line."""
+    if not isinstance(fm, dict) or not fm:
+        return ""
+    lines: list[str] = []
+    for key in ("title", "pov", "where", "location", "when", "characters", "goal", "conflict", "outcome"):
+        val = fm.get(key)
+        if val is None or val == "" or val == []:
+            continue
+        if isinstance(val, (list, tuple)):
+            val_str = ", ".join(str(x) for x in val if x is not None)
+        else:
+            val_str = " ".join(str(val).split())
+        if val_str:
+            lines.append(f"- {key}: {val_str}")
+    return "\n".join(lines)
 
 
 class ContextError(ValueError):
@@ -855,6 +877,7 @@ class ContextBuilder:
         if mentioned:
             parts.append("\nMentioned: " + ", ".join(mentioned))
         if selection:
+
             parts.extend(["\n\nSelected text in the open file:\n", selection])
         for item in items:
             parts.extend([
@@ -1545,9 +1568,11 @@ def _validate_replacement(text: str, original: str, action_id: str) -> None:
         raise ContextError("An alternative tried to add or alter a TODO/NOTE annotation")
     if text.lstrip().startswith("---\n") or text.lstrip().startswith("---\r\n"):
         raise ContextError("An alternative included frontmatter")
-    multiplier = 4 if action_id in {"sensory_detail", "show_moment"} else 2
-    if len(text.encode("utf-8")) > max(1024, len(original.encode("utf-8")) * multiplier):
+    multiplier = 4 if action_id in {"sensory_detail", "show_moment", "todo_unstick"} else 2
+    floor = 2048 if action_id == "todo_unstick" else 1024
+    if len(text.encode("utf-8")) > max(floor, len(original.encode("utf-8")) * multiplier):
         raise ContextError("An alternative exceeded the action's safe growth limit")
+
 
 
 def validate_action_result(raw: str, task: dict[str, Any]) -> dict[str, Any]:
@@ -2635,7 +2660,7 @@ class DiscussManager:
                 raise ContextError("a scene pass reads the whole scene and takes no selection")
         else:
             selection = _nonempty_string(selection, field="selection", limit=SELECTION_MAX)
-        selection, note, _range, _stat, _revision, _raw = self._resolve_action_target(
+        selection, note, _range, _stat, _revision, raw = self._resolve_action_target(
             document=document,
             selection=selection,
             scope=scope,
@@ -2643,6 +2668,7 @@ class DiscussManager:
             selection_snapshot=selection_snapshot,
             selection_source=selection_source,
             live_content=live_content,
+            allow_empty_scene=(action_id == "next_beats"),
         )
         question = action_instruction(self.root, action_id)
         if not question:
@@ -2664,7 +2690,48 @@ class DiscussManager:
                     "style pass to judge."
                 )
             notes = "\n".join(f"- {row['label']}: {row['quote']}" for row in observations)
+        elif action_id == "next_beats":
+            notes = self._next_beats_notes(self.context._document_target(document), raw)
         return question, selection, notes
+
+    def _next_beats_notes(self, target_path: Path, raw: str) -> str:
+        """Assemble frontmatter, inline TODOs, and preceding scene tail for next_beats."""
+        sections: list[str] = []
+        fm, body = split_frontmatter(raw)
+        fm_notes = _scene_frontmatter_notes(fm)
+        if fm_notes:
+            sections.append("Scene frontmatter:\n" + fm_notes)
+        comments = [
+            m.group(1).strip()
+            for m in re.finditer(r"<!--\s*((?:TODO|NOTE(?:\[\w+\])?)\s*:\s*[\s\S]*?)\s*-->", body, re.I)
+            if m.group(1).strip()
+        ]
+        if comments:
+            sections.append("Inline scene annotations:\n" + "\n".join(f"- {c}" for c in comments[:20]))
+        try:
+            man_dir = resolve_manuscript_dir(self.root, self.context.cfg.manuscript_subdir).resolve()
+            resolved_target = target_path.resolve()
+            if resolved_target.is_relative_to(man_dir):
+                scene_files = [
+                    p.resolve()
+                    for p in sorted(man_dir.rglob("*.md"), key=lambda p: p.relative_to(man_dir).as_posix().lower())
+                    if p.is_file() and not any(part.startswith(".") for part in p.relative_to(man_dir).parts)
+                ]
+                if resolved_target in scene_files:
+                    idx = scene_files.index(resolved_target)
+                    if idx > 0:
+                        prev_path = scene_files[idx - 1]
+                        _prev_fm, prev_body = split_frontmatter(read_repo_text(prev_path))
+                        prev_prose = _SELECTION_HTML_COMMENT_RE.sub("", extract_scene_text(prev_body)).strip()
+                        prev_paras = [p.strip() for p in re.split(r"\n\s*\n", prev_prose) if p.strip()]
+                        if prev_paras:
+                            tail = "\n\n".join(prev_paras[-2:])
+                            rel_prev = prev_path.relative_to(man_dir).as_posix()
+                            sections.append(f"End of preceding scene ({rel_prev}):\n{_bounded_text(tail, 2000)}")
+        except OSError:
+            pass
+        return "\n\n".join(sections)
+
 
     def _repeat_terms(self, text: str) -> tuple[str, ...]:
         """This scene's own over-used words, for the repeats highlight pass."""
@@ -2869,6 +2936,7 @@ class DiscussManager:
         selection_snapshot: dict[str, Any] | None,
         selection_source: dict[str, Any] | None,
         live_content: str | None,
+        allow_empty_scene: bool = False,
     ) -> tuple[str, str, dict[str, int] | None, Any, str, str]:
         """The exact prose an action is about, or a refusal.
 
@@ -2886,7 +2954,11 @@ class DiscussManager:
         scope_note = ""
         if scope == "scene":
             selection, scope_note = _scene_pass_body(raw)
-            selection = _nonempty_string(selection, field="scene text", limit=SELECTION_MAX)
+            if not selection.strip() and allow_empty_scene:
+                selection = "(No prose paragraphs drafted yet in this scene; see scene notes.)"
+            else:
+                selection = _nonempty_string(selection, field="scene text", limit=SELECTION_MAX)
+
         normalized_range: dict[str, int] | None = None
         if selection_range is not None:
             if not isinstance(selection_range, dict):
@@ -4191,11 +4263,22 @@ class DiscussManager:
         book = Config.load(self.root).suggestions
         settings = (app_settings or SuggestionAppSettings()).load()[agent]
         context, context_label = paragraph, "ITS PARAGRAPH"
-        scene_path = self._scene_file(scene) if scene and book.context == "scene" else None
-        if scene_path is not None:
+        scene_path = self._scene_file(scene) if scene else None
+        if scene_path is not None and book.context == "scene":
             _frontmatter, body = split_frontmatter(read_repo_text(scene_path))
             context = prose_only(extract_scene_text(body))
             context_label = "THE WHOLE SCENE"
+        elif (
+            scene_path is not None
+            and book.context == "paragraph"
+            and context.strip() == text.strip()
+            and suggestions_module.pass_prompt_keys(pass_name, note) == ["dialogue_tags.untagged_run"]
+        ):
+            _frontmatter, body = split_frontmatter(read_repo_text(scene_path))
+            paras = [p.strip() for p in re.split(r"\n\s*\n", prose_only(extract_scene_text(body))) if p.strip()]
+            idx = next((i for i, p in enumerate(paras) if text in p or p in text), -1)
+            if idx >= 0 and len(paras) > 1:
+                context = "\n\n".join(paras[max(0, idx - 2) : idx + 7])
         if len(context.encode("utf-8")) > suggestions_module.CONTEXT_MAX:
             context, context_label = paragraph, "ITS PARAGRAPH"
         prompt = suggestions_module.render_prompt(
@@ -4211,7 +4294,7 @@ class DiscussManager:
             "cwd": str(self.root),
             "approvalPolicy": "never",
             "developerInstructions": (
-                "You are answering one question from Prosview, a writing app. You may read, never "
+                "You are answering one question from Proseview, a writing app. You may read, never "
                 "change, anything. Reply only with the structured result asked for."
             ),
             "ephemeral": True,
@@ -4284,8 +4367,9 @@ class DiscussManager:
             "kind": "alternatives",
             "max_results": HIGHLIGHT_SUGGESTION_COUNT,
             "target": {"selection": text},
-            "action_id": "rephrase",
+            "action_id": "todo_unstick" if pass_name == "todo_unstick" else "rephrase",
         })
+
         if pass_name == "sticky_sentences":
             result["original_glue_pct"] = glue_share_pct(text)
             for row in result["alternatives"]:

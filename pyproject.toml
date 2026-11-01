@@ -85,6 +85,7 @@ proseview = [
     "templates/vendor/*",
     "templates/vendor/pm/*",
     "templates/vendor/pdfjs/*",
+    "templates/app/*",
 ]
 
 [tool.pytest.ini_options]

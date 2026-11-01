@@ -200,6 +200,15 @@ my-novel/
 
 [Layout and frontmatter →](docs/manuscript.md)
 
+### Open it as an app
+
+In Chrome or Edge, click the install icon at the right of the address bar.
+The dashboard then opens in its own window with its own Dock or taskbar icon.
+It is still the local server underneath, so start `proseview` first; opened
+without it, the window says so. The app is tied to `localhost:7842`: it shows
+whichever book is served there, and a book that falls back to another port
+opens in the browser as before.
+
 ### Share a read-only copy
 
 ```bash

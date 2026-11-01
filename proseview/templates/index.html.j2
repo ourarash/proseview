@@ -83,6 +83,27 @@
             if (icon) icon.setAttribute('href', window.PROSEVIEW_PRIVACY_ICON);
         })();
     </script>
+    {% if not static_snapshot %}
+    {#- Lets Chrome and Edge install the dashboard as its own app (proseview/templates/app). #}
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="app-icon-192.png">
+    <meta name="theme-color" content="#f4f5f5">
+    <script>
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+        // The installed app's title bar takes this colour; keep it on the
+        // page background of whichever theme is showing.
+        document.addEventListener('DOMContentLoaded', () => {
+            const root = document.documentElement;
+            const meta = document.querySelector('meta[name="theme-color"]');
+            const sync = () => {
+                const bg = getComputedStyle(root).getPropertyValue('--bg-app').trim();
+                if (bg) meta.setAttribute('content', bg);
+            };
+            sync();
+            new MutationObserver(sync).observe(root, {attributes: true, attributeFilter: ['data-theme']});
+        });
+    </script>
+    {% endif %}
     <script src="vendor/chart.js"></script>
     <script src="vendor/chartjs-plugin-annotation.js"></script>
     <script src="vendor/marked.js"></script>

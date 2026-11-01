@@ -245,3 +245,14 @@ def test_a_snapshot_carries_marks_beside_the_page_not_in_it(tmp_path: Path):
     assert files and all(json.loads(f.read_text(encoding="utf-8"))["ok"] for f in files)
     html = (out / "index.html").read_text(encoding="utf-8")
     assert "\"paragraph_index\":" not in html, "no mark positions are inlined"
+
+
+def test_only_the_served_dashboard_can_be_installed_as_an_app():
+    """The manifest and service worker come from the local server, so a
+    published copy, which has neither, must not point at them."""
+    served = build_dashboard(FIXTURE, Config.load(FIXTURE))
+    published = build_dashboard(FIXTURE, Config.load(FIXTURE), static_snapshot="read-only")
+    assert '<link rel="manifest" href="manifest.webmanifest">' in served
+    assert "serviceWorker" in served
+    assert "manifest.webmanifest" not in published
+    assert "serviceWorker" not in published

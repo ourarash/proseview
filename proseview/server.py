@@ -1776,6 +1776,29 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    #: What makes the dashboard installable as its own app in Chrome and Edge:
+    #: URL path -> (file under ``templates/app/``, content type).
+    _APP_FILES: dict[str, tuple[str, str]] = {
+        "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+        "/sw.js": ("sw.js", "application/javascript; charset=utf-8"),
+        "/app-icon-192.png": ("icon-192.png", "image/png"),
+        "/app-icon-512.png": ("icon-512.png", "image/png"),
+    }
+
+    def _handle_app_file(self) -> None:
+        """Serve the web app manifest, its icons and the service worker.
+
+        The worker has to come from ``/`` so its scope covers the whole page.
+        """
+        name, mime = self._APP_FILES[self.path]
+        data = (TEMPLATE_DIR / "app" / name).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle_repo_file(self) -> None:
         """Return a fresh single-file node so the client can refresh a preview
         without reloading the whole page. Mirrors the shape produced by
@@ -2487,6 +2510,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/repo-asset/"):
             self._handle_repo_asset()
+            return
+        if self.path in self._APP_FILES:
+            self._handle_app_file()
             return
         if self.path not in ("/", "/index.html"):
             self.send_response(404)

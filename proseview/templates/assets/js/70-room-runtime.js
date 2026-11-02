@@ -29,6 +29,7 @@ function roomRuntimeEnvelope(session, action, payload) {
 function roomRuntimeRequest(session, body, options) {
     return discussApi('/api/discuss/room-run', body).then(function(data) {
         if (!data.ok || !data.room) throw new Error(data.error || 'Could not read the Room state');
+        if (body.room_id !== session.id) return data.room;
         roomRuntimeApply(session, data.room, options);
         roomRuntimePoll(session, true);
         return data.room;
@@ -92,6 +93,9 @@ function roomRuntimeApply(session, state, options) {
 }
 function roomRuntimePoll(session, wake) {
     var key = session.id, existing = _roomRuntimePolls[key];
+    if (existing && existing.session !== session) {
+        clearTimeout(existing.timer); delete _roomRuntimePolls[key]; existing = null;
+    }
     if (existing) {
         if (wake) {
             existing.idleDelay = 5000;
@@ -100,17 +104,19 @@ function roomRuntimePoll(session, wake) {
         }
         return;
     }
-    var poll = {running: false, idleDelay: 5000, timer: null, wake: false};
+    var poll = {session: session, running: false, idleDelay: 5000, timer: null, wake: false};
     function visible() {
-        return !document.hidden && _roomSessionsByScene[session.scene] === session
+        return session.id === key && !document.hidden && _roomSessionsByScene[session.scene] === session
             && roomTabIsOpen() && _roomCurrentScenePath() === session.scene;
     }
     var tick = function() {
+        if (_roomRuntimePolls[key] !== poll) return;
         if (!visible()) { delete _roomRuntimePolls[key]; return; }
         poll.running = true;
         var revision = session.runtime && session.runtime.revision;
         discussApi('/api/discuss/room-run', {action: 'state', room_id: session.id, after_revision: session.runtime && session.runtime.revision})
             .then(function(data) {
+                if (_roomRuntimePolls[key] !== poll || !visible()) return;
                 if (!data.ok || !data.room) throw new Error(data.error || 'Could not read the Room state');
                 roomRuntimeApply(session, data.room);
                 var hint = document.getElementById('roomConnectionStatus');
@@ -119,6 +125,7 @@ function roomRuntimePoll(session, wake) {
                 poll.idleDelay = revision !== data.room.revision ? 5000 : Math.min(30000, poll.idleDelay * 2);
             })
             .catch(function(error) {
+                if (_roomRuntimePolls[key] !== poll || !visible()) return;
                 poll.idleDelay = Math.min(30000, poll.idleDelay * 2);
                 var hint = document.getElementById('roomConnectionStatus');
                 if (hint) { hint.textContent = 'Connection interrupted. The server keeps accepted work; reconnecting…'; hint.title = error.message; }

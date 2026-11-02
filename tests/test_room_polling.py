@@ -49,6 +49,13 @@ async function reply(status='idle', revision=1) {
   start(); resolveRequest({ok:false,error:'Server unavailable'});await new Promise(r=>setImmediate(r));
   assert.ok(hint.textContent.includes('Connection interrupted'));
   start();await reply('idle',3);assert.equal(hint.textContent,'');
+  start();const oldReply=resolveRequest;
+  session.id='another-room';c.roomRuntimePoll(session,true);
+  oldReply({ok:true,room:{status:'running',revision:999}});await new Promise(r=>setImmediate(r));
+  assert.equal(session.runtime.revision,3,'a late old-room response must not overwrite the selected room');
+  assert.equal(onlyTimer().delay,0);start();await reply('idle',4);
+  const replacement={...session,runtime:{revision:4}};c._roomSessionsByScene['one.md']=replacement;
+  c.roomRuntimePoll(replacement,true);assert.equal(onlyTimer().delay,0);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
     runtime = Path(__file__).resolve().parents[1] / "proseview/templates/assets/js/70-room-runtime.js"

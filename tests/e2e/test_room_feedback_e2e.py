@@ -1,4 +1,5 @@
 """Room streaming and connection feedback, using the normal agent transports."""
+import json
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -78,3 +79,41 @@ def test_room_catalogue_warning_is_visible_and_recovers_when_the_picker_is_reope
     page.wait_for_function("() => document.querySelector('.room-model-control > button')?.dataset.warning === 'false'")
     assert "Models unavailable" not in chip.inner_text()
     assert page.locator('.room-model-picker:not([hidden]) [role=radio]').count() > 0
+
+
+def test_room_switching_history_ignores_a_late_poll_response(page, server):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex first saved discussion.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    first = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id")
+    pane.locator("#roomResetBtn").click()
+    pane.locator("#roomInput").fill("@Codex second saved discussion.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    second = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id")
+    held = []
+    def delay_poll(route):
+        body = route.request.post_data_json
+        if not held and body.get('action') == 'state' and body.get('room_id') == first and 'after_revision' in body:
+            # A changed server revision returns a full projection, not just a
+            # compact unchanged response. Hold it across a history switch.
+            body.pop('after_revision')
+            response = route.fetch(post_data=json.dumps(body))
+            held.append((route, response.body()))
+        else:
+            route.continue_()
+    page.route("**/api/discuss/room-run", delay_poll)
+    page.evaluate("id => openRoomHistorySession(_roomCurrentScenePath(), id)", first)
+    def poll_is_held():
+        page.evaluate("0")
+        return bool(held)
+    _wait_until(poll_is_held)
+    page.evaluate("id => openRoomHistorySession(_roomCurrentScenePath(), id)", second)
+    assert page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id") == second
+    held[0][0].fulfill(status=200, body=held[0][1], content_type="application/json")
+    page.wait_for_function("id => !_roomRuntimePolls[id]", arg=first)
+    assert page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id") == second
+    assert "second saved discussion" in pane.locator('.is-user').inner_text()

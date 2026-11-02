@@ -13238,13 +13238,26 @@
             font-weight: 700 !important;
             letter-spacing: 0.03em;
         }
-        .scene-edit-word-delta {
+        .scene-edit-word-counts {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
             padding: 0 6px;
             font-family: var(--font-mono, monospace);
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+        .scene-edit-word-delta {
             font-size: 11px;
             font-weight: 600;
             color: var(--text-muted);
-            white-space: nowrap;
+        }
+        .scene-edit-word-total {
+            font-size: 10px;
+            font-weight: 400;
+            color: var(--text-muted);
         }
         .scene-edit-word-delta.is-positive {
             color: var(--green, #16a34a);
@@ -13279,7 +13292,7 @@
         }
         .scene-edit-bar.is-at-selection .scene-edit-todo-btn,
         .scene-edit-bar.is-at-selection .scene-edit-momentum-divider,
-        .scene-edit-bar.is-at-selection .scene-edit-word-delta,
+        .scene-edit-bar.is-at-selection .scene-edit-word-counts,
         .scene-edit-bar.is-at-selection .scene-edit-sprint-btn {
             display: none !important;
         }

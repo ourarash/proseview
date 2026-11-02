@@ -2617,7 +2617,7 @@
             const words = m.words || 0;
             const wordsWarn = !!(words && md.words) && (words > md.words * 1.5 || words < md.words * 0.5);
             line.appendChild(part('', words.toLocaleString(), ' words',
-                'Words of prose in this scene.' + (md.words ? ' Your typical scene: ' + Math.round(md.words).toLocaleString() + '.' : ''), wordsWarn));
+                'Words of prose in this scene. Excludes frontmatter, TODOs, comments, and notes.' + (md.words ? ' Your typical scene: ' + Math.round(md.words).toLocaleString() + '.' : ''), wordsWarn));
             line.append(' \u00b7 ');
             line.appendChild(part('Variety ', m.mattr ? m.mattr.toFixed(2) : '\u2026', '',
                 'Word variety nearby (MATTR): how many different words a passage of 100 uses. Typical: ' + bands.mattr[0] + '\u2013' + bands.mattr[1] + '.',

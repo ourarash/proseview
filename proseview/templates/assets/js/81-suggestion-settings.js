@@ -303,12 +303,6 @@
         // ── Settings › Writers' Room ───────────────────────────────────
         var _rm = null;
         var _rmDirty = false;
-        var RM_SEATS = [
-            {key: 'critic1', label: 'Story Editor', description: 'Plot, stakes, pacing, and continuity.'},
-            {key: 'critic2', label: 'Voice Editor', description: 'Character voice, emotion, atmosphere, and rhythm.'},
-            {key: 'moderator', label: 'Moderator', description: 'Brings the discussion together into a revision plan.'}
-        ];
-
         function _rmChanged() {
             _rmDirty = true;
             if (typeof markSettingsDirty === 'function') markSettingsDirty();
@@ -327,10 +321,10 @@
                     if (_rm.catalogs[agent.id]) return;
                     _sgPost('/api/discuss/models', {agent: agent.id}).then(function(res) {
                         _rm.catalogs[agent.id] = res.catalog;
-                        renderRoomSettings();
+                        if (!document.getElementById('roomSettingsBody').contains(document.activeElement)) renderRoomSettings();
                     }).catch(function() {
                         _rm.catalogs[agent.id] = {unavailable: true, models: []};
-                        renderRoomSettings();
+                        if (!document.getElementById('roomSettingsBody').contains(document.activeElement)) renderRoomSettings();
                     });
                 });
                 return _rm;
@@ -341,7 +335,7 @@
 
         function saveRoomSettings() {
             if (!_rm || !_rmDirty) return Promise.resolve();
-            return _sgPost('/api/discuss/room-settings', {save: true, book: _rm.book, app: _rm.app})
+            return _sgPost('/api/discuss/room-settings', {save: true, library: _rm.library})
                 .then(function(data) {
                     var catalogs = _rm.catalogs;
                     _rm = data.settings;
@@ -389,145 +383,136 @@
             return wrap;
         }
 
+        function _rmField(container, label, value, onChange, multiline, maxLength) {
+            var wrap = _sgEl('label', 'room-library-field');
+            var visibleLabel = label.replace(/^(?:Profile|Preset) \d+ /, '');
+            visibleLabel = visibleLabel === 'style' ? 'Conversational style' : visibleLabel.charAt(0).toUpperCase() + visibleLabel.slice(1);
+            wrap.appendChild(_sgEl('span', 'settings-label', visibleLabel));
+            var field = _sgEl(multiline ? 'textarea' : 'input', multiline ? 'suggestion-prompt-text' : 'settings-input');
+            field.setAttribute('aria-label', label);
+            field.value = value || '';
+            if (multiline) field.rows = 3;
+            field.maxLength = maxLength || 8000;
+            field.oninput = function() { onChange(field.value); _rmChanged(); };
+            wrap.appendChild(field);
+            container.appendChild(wrap);
+        }
+
+        function _rmProfileOptions() {
+            return _rm.library.profiles.map(function(p) { return {value: p.id, label: p.name + ' · ' + (p.agent === 'claude' ? 'Claude' : 'Codex')}; });
+        }
+
+        function _rmPairFields(container, pair, prefix) {
+            pair.forEach(function(id, index) {
+                var label = _sgEl('label', 'room-library-field');
+                label.appendChild(_sgEl('span', 'settings-label', prefix.replace(/^Preset \d+ /, '') + ' ' + (index + 1)));
+                var select = _rmSelect(_rmProfileOptions().filter(function(p) { return p.value !== pair[1 - index]; }), id,
+                    function(v) { pair[index] = v; renderRoomSettings(); }, prefix + ' ' + (index + 1));
+                label.appendChild(select);
+                container.appendChild(label);
+            });
+        }
+
+        function _rmResizeInvitations(preset, count) {
+            preset.invitations = preset.invitations.slice(0, count);
+            while (preset.invitations.length < count) preset.invitations.push({seat: preset.invitations.length % 2 + 1,
+                prompt: 'Respond to the discussion so far. Agree, disagree, or refine anything useful.'});
+        }
+
         function renderRoomSettings() {
             var body = document.getElementById('roomSettingsBody');
-            if (!body || !_rm) return;
+            if (!body || !_rm || !_rm.library) return;
+            var opened = Array.from(body.querySelectorAll('.room-library-card')).map(function(card) { return card.open; });
             body.replaceChildren();
-
-            var grid = _sgEl('div', 'suggestion-grid room-seat-grid');
-            grid.appendChild(_sgEl('span', 'settings-unit', 'On this computer'));
-            RM_SEATS.forEach(function(seat) { grid.appendChild(_sgEl('strong', 'suggestion-agent', seat.label)); });
-
-            // Agent row
-            var agentHead = _sgEl('span', 'settings-label', 'Agent');
-            agentHead.title = 'Choose Codex or Claude for each critic. Set both to the same agent if you only use one.';
-            grid.appendChild(agentHead);
-            RM_SEATS.forEach(function(seat) {
-                var cell = _sgEl('div', 'suggestion-cell');
-                cell.dataset.seat = seat.key;
-                var seatCfg = _rm.app[seat.key];
-                var opts = SG_AGENTS.map(function(a) { return {value: a.id, label: a.label}; });
-                cell.appendChild(_rmSelect(opts, seatCfg.agent, function(v) {
-                    seatCfg.agent = v;
-                    seatCfg.model = '';
-                    seatCfg.effort = '';
-                    renderRoomSettings();
-                }, seat.label + ' agent'));
-                grid.appendChild(cell);
+            var library = _rm.library;
+            body.appendChild(_sgEl('p', 'settings-note', 'Profiles and presets are reusable across books on this computer. Each Room keeps its participants as they were when the conversation started. Blank model and effort choices inherit the agent’s individual chat settings.'));
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'Default participants'));
+            var defaults = _sgEl('div', 'room-library-pair');
+            _rmPairFields(defaults, library.default_profiles, 'Default participant');
+            body.appendChild(defaults);
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'Agent profiles'));
+            library.profiles.forEach(function(profile, index) {
+                var card = _sgEl('details', 'room-library-card');
+                var prefix = 'Profile ' + (index + 1);
+                card.appendChild(_sgEl('summary', '', profile.name + ' · ' + (profile.agent === 'claude' ? 'Claude' : 'Codex')));
+                _rmField(card, prefix + ' name', profile.name, function(v) { profile.name = v; }, false, 60);
+                _rmField(card, prefix + ' specialty', profile.specialty, function(v) { profile.specialty = v; }, true);
+                _rmField(card, prefix + ' style', profile.style, function(v) { profile.style = v; }, true);
+                var provider = _sgEl('label', 'room-library-field');
+                provider.appendChild(_sgEl('span', 'settings-label', 'Provider'));
+                provider.appendChild(_rmSelect(SG_AGENTS.map(function(a) { return {value: a.id, label: a.label}; }), profile.agent,
+                    function(v) { profile.agent = v; profile.model = ''; profile.effort = ''; renderRoomSettings(); }, prefix + ' provider'));
+                card.appendChild(provider);
+                var catalog = (_rm.catalogs || {})[profile.agent] || {};
+                var models = [{value: '', label: 'Same as chat'}].concat((catalog.models || []).map(function(m) { return {value: m.id, label: m.label || m.id}; }));
+                var model = _sgEl('label', 'room-library-field');
+                model.appendChild(_sgEl('span', 'settings-label', 'Model'));
+                model.appendChild(_rmSelect(models, profile.model, function(v) { profile.model = v; profile.effort = ''; renderRoomSettings(); }, prefix + ' model'));
+                card.appendChild(model);
+                var selected = (catalog.models || []).find(function(m) { return m.id === profile.model; });
+                var efforts = selected && selected.efforts && selected.efforts.length ? selected.efforts.map(function(e) { return e.id; }) : ['low', 'medium', 'high', 'xhigh', 'max'];
+                var effort = _sgEl('label', 'room-library-field');
+                effort.appendChild(_sgEl('span', 'settings-label', 'Reasoning effort'));
+                effort.appendChild(_rmSelect([{value: '', label: 'Same as chat'}].concat(efforts.map(function(e) { return {value: e, label: e}; })), profile.effort,
+                    function(v) { profile.effort = v; }, prefix + ' effort'));
+                card.appendChild(effort);
+                var used = library.default_profiles.includes(profile.id) || library.presets.some(function(p) { return p.profiles.includes(profile.id); });
+                var remove = _sgEl('button', 'settings-plain-btn', 'Delete profile');
+                remove.type = 'button'; remove.disabled = used || library.profiles.length <= 2;
+                remove.title = used ? 'Choose another profile in defaults and presets before deleting this one.' : '';
+                remove.onclick = function() { library.profiles.splice(index, 1); _rmChanged(); renderRoomSettings(); };
+                card.appendChild(remove);
+                body.appendChild(card);
             });
-
-            // Model row
-            var modelHead = _sgEl('span', 'settings-label', 'Model');
-            modelHead.title = 'Same as chat uses whatever that agent’s chat is set to.';
-            grid.appendChild(modelHead);
-            RM_SEATS.forEach(function(seat) {
-                var cell = _sgEl('div', 'suggestion-cell');
-                var seatCfg = _rm.app[seat.key];
-                var catalog = (_rm.catalogs || {})[seatCfg.agent];
-                var options = [{value: '', label: 'Same as chat'}].concat(((catalog || {}).models || []).map(function(m) {
-                    return {value: m.id, label: m.label || m.id};
-                }));
-                cell.appendChild(_rmSelect(options, seatCfg.model, function(v) {
-                    seatCfg.model = v;
-                    seatCfg.effort = '';
-                    renderRoomSettings();
-                }, seat.label + ' model'));
-                grid.appendChild(cell);
+            var addProfile = _sgEl('button', 'settings-plain-btn', '+ Add profile');
+            addProfile.type = 'button'; addProfile.disabled = library.profiles.length >= 32;
+            addProfile.onclick = function() {
+                library.profiles.push({id: 'profile-' + Date.now(), name: 'New Editor', specialty: '', style: '', agent: 'codex', model: '', effort: ''});
+                _rmChanged(); renderRoomSettings();
+                body.querySelectorAll('.room-library-card')[library.profiles.length - 1].open = true;
+            };
+            body.appendChild(addProfile);
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'Discussion presets'));
+            body.appendChild(_sgEl('p', 'settings-note', 'A preset posts invitations to the two participants. Either participant can pass. An optional recap is one extra invitation to the selected participant; the conversation stays open afterward.'));
+            library.presets.forEach(function(preset, index) {
+                var card = _sgEl('details', 'room-library-card');
+                var prefix = 'Preset ' + (index + 1);
+                card.appendChild(_sgEl('summary', '', preset.name + ' · ' + preset.invitations.length + ' invitations'));
+                _rmField(card, prefix + ' name', preset.name, function(v) { preset.name = v; }, false, 100);
+                _rmField(card, prefix + ' description', preset.description, function(v) { preset.description = v; }, true, 500);
+                _rmPairFields(card, preset.profiles, prefix + ' participant');
+                var count = _sgEl('label', 'room-library-field');
+                count.appendChild(_sgEl('span', 'settings-label', 'Invitations'));
+                count.appendChild(_rmSelect(Array.from({length: 11}, function(_, i) { return {value: String(i + 2), label: String(i + 2)}; }), preset.invitations.length,
+                    function(v) { _rmResizeInvitations(preset, Number(v)); renderRoomSettings(); }, prefix + ' invitations'));
+                card.appendChild(count);
+                var names = preset.profiles.map(function(id) { return library.profiles.find(function(p) { return p.id === id; }).name; });
+                preset.invitations.forEach(function(step, stepIndex) {
+                    var label = prefix + ' invitation ' + (stepIndex + 1);
+                    var wrap = _sgEl('div', 'room-library-step');
+                    wrap.appendChild(_rmSelect([{value: '1', label: names[0]}, {value: '2', label: names[1]}], step.seat,
+                        function(v) { step.seat = Number(v); }, label + ' recipient'));
+                    _rmField(wrap, label, step.prompt, function(v) { step.prompt = v; }, true);
+                    card.appendChild(wrap);
+                });
+                var recap = _sgEl('label', 'room-library-field');
+                recap.appendChild(_sgEl('span', 'settings-label', 'Optional recap'));
+                recap.appendChild(_rmSelect([{value: '0', label: 'No recap'}, {value: '1', label: names[0]}, {value: '2', label: names[1]}], preset.recap,
+                    function(v) { preset.recap = Number(v); }, prefix + ' recap'));
+                card.appendChild(recap);
+                var remove = _sgEl('button', 'settings-plain-btn', 'Delete preset'); remove.type = 'button';
+                remove.onclick = function() { library.presets.splice(index, 1); _rmChanged(); renderRoomSettings(); };
+                card.appendChild(remove); body.appendChild(card);
             });
-
-            // Effort row
-            var effortHead = _sgEl('span', 'settings-label', 'Effort');
-            effortHead.title = 'How long the model thinks per turn.';
-            grid.appendChild(effortHead);
-            RM_SEATS.forEach(function(seat) {
-                var cell = _sgEl('div', 'suggestion-cell');
-                var seatCfg = _rm.app[seat.key];
-                var catalog = (_rm.catalogs || {})[seatCfg.agent];
-                var row = ((catalog || {}).models || []).find(function(m) { return m.id === seatCfg.model; });
-                var efforts = row && row.efforts && row.efforts.length ? row.efforts.map(function(e) { return e.id; })
-                    : ['low', 'medium', 'high'];
-                var options = [{value: '', label: 'Same as chat'}].concat(efforts.map(function(e) {
-                    return {value: e, label: e.charAt(0).toUpperCase() + e.slice(1)};
-                }));
-                cell.appendChild(_rmSelect(options, seatCfg.effort, function(v) {
-                    seatCfg.effort = v;
-                }, seat.label + ' effort'));
-                grid.appendChild(cell);
-            });
-
-            body.appendChild(grid);
-
-            // Turn count & length
-            var turnOptions = [1, 2, 3, 4, 5, 6].map(function(n) {
-                return {value: String(n), label: n + (n === 1 ? ' turn' : ' turns') + (n === 4 ? ' (default)' : '')};
-            });
-            var lengthOptions = Object.keys(_rm.lengths || {}).map(function(k) {
-                return {value: k, label: _rm.lengths[k]};
-            });
-            var appRows = [
-                ['Most turns', 'The critics alternate up to this many turns, and stop early when one has nothing new. Then the moderator writes the plan.',
-                 _rmSelect(turnOptions, String(_rm.app.turns || 4), function(v) { _rm.app.turns = parseInt(v, 10) || 4; }, 'Most turns')],
-                ['Turn length', 'Prefer brief, focused replies or fuller explanations. Editors can take the space needed to answer you.',
-                 _rmSelect(lengthOptions, _rm.app.length || 'concise', function(v) { _rm.app.length = v; }, 'Turn length')]
-            ];
-            appRows.forEach(function(r) {
-                var row = _sgEl('div', 'settings-row');
-                var label = _sgEl('span', 'settings-label', r[0]);
-                label.title = r[1];
-                var field = _sgEl('span', 'settings-field');
-                field.appendChild(r[2]);
-                row.append(label, field);
-                body.appendChild(row);
-            });
-
-            // Per book, in .proseview.yaml
-            body.appendChild(_sgEl('p', 'suggestion-subhead', 'In this book (.proseview.yaml)'));
-            var book = _rm.book;
-            var defaults = _rm.defaults;
-            body.appendChild(_sgEl('p', 'settings-note', 'Display names change the labels only. Role instructions control each editor’s focus. Claude or Codex always stays visible beside the name.'));
-            RM_SEATS.forEach(function(seat) {
-                var row = _sgEl('div', 'settings-row');
-                var label = _sgEl('label', 'settings-label', seat.label + ' display name');
-                var field = _sgEl('input', 'settings-input');
-                var key = seat.key + '_name';
-                field.id = 'room-' + seat.key + '-name';
-                label.htmlFor = field.id;
-                field.type = 'text';
-                field.maxLength = 60;
-                field.value = book[key] || defaults[key] || seat.label;
-                field.placeholder = defaults[key] || seat.label;
-                field.oninput = function() { book[key] = field.value; _rmChanged(); };
-                var fieldWrap = _sgEl('span', 'settings-field');
-                fieldWrap.appendChild(field);
-                row.append(label, fieldWrap);
-                body.appendChild(row);
-                body.appendChild(_sgEl('p', 'settings-note', seat.description));
-            });
-            body.appendChild(_rmPromptField(
-                'Story Editor role instructions',
-                book.critic1_prompt,
-                defaults.critic1_prompt,
-                function(v) { book.critic1_prompt = v; }
-            ));
-            body.appendChild(_rmPromptField(
-                'Voice Editor role instructions',
-                book.critic2_prompt,
-                defaults.critic2_prompt,
-                function(v) { book.critic2_prompt = v; }
-            ));
-
-            var presetsDetails = _sgEl('details', 'suggestion-prompts');
-            presetsDetails.appendChild(_sgEl('summary', '', 'Starter card prompts (3)'));
-            (_rm.presets || []).forEach(function(preset) {
-                var key = preset.id;
-                presetsDetails.appendChild(_rmPromptField(
-                    preset.label + ' (' + preset.badge + ')',
-                    book.preset_prompts[key] || defaults.preset_prompts[key] || '',
-                    defaults.preset_prompts[key] || '',
-                    function(v) { book.preset_prompts[key] = v; }
-                ));
-            });
-            body.appendChild(presetsDetails);
+            var addPreset = _sgEl('button', 'settings-plain-btn', '+ Add preset'); addPreset.type = 'button'; addPreset.disabled = library.presets.length >= 32;
+            addPreset.onclick = function() {
+                library.presets.push({id: 'preset-' + Date.now(), name: 'New discussion', description: '', profiles: library.default_profiles.slice(), recap: 0,
+                    invitations: [{seat: 1, prompt: 'Give your opinion on this scene.'}, {seat: 2, prompt: 'Give your own view and respond to the discussion.'}]});
+                _rmChanged(); renderRoomSettings();
+                var cards = body.querySelectorAll('.room-library-card'); cards[cards.length - 1].open = true;
+            };
+            body.appendChild(addPreset);
+            body.querySelectorAll('.room-library-card').forEach(function(card, i) { card.open = !!opened[i]; });
         }
 
         document.addEventListener('DOMContentLoaded', function() {

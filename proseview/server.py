@@ -2661,6 +2661,9 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.room_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
+                if path == "/api/discuss/room-run":
+                    self._send_json({"ok": True, "room": self.discuss_manager.room_command(body)})
+                    return
                 if path == "/api/discuss/room-turn":
                     result = self.discuss_manager.run_room_turn(
                         scene=str(body.get("scene") or ""),
@@ -2674,6 +2677,8 @@ class _Handler(BaseHTTPRequestHandler):
                         run_id=str(body.get("run_id") or ""),
                         debate_id=str(body.get("debate_id") or ""),
                         attachments=body.get("attachments"),
+                        participants=body.get("participants"),
+                        skill=body.get("skill"),
                     )
                     self._send_json({"ok": True, **result})
                     return

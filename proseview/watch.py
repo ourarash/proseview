@@ -160,4 +160,5 @@ def watch(
         )
         on_change(changed)
         cfg = Config.load(root)
-        baseline = snapshot_paths(root, cfg)
+        # Keep the snapshot that produced this notification. A new baseline
+        # here would silently absorb edits made while on_change was running.

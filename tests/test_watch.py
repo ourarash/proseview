@@ -5,12 +5,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from proseview.config import Config  # noqa: E402
-from proseview.watch import snapshot_paths, wait_for_change  # noqa: E402
+from proseview.watch import snapshot_paths, wait_for_change, watch  # noqa: E402
 
 
 def test_snapshot_tracks_missing_and_present_config(tmp_path: Path):
@@ -84,3 +86,41 @@ def test_snapshot_ignores_internal_cache_dirs(tmp_path: Path):
     snapshot = snapshot_paths(tmp_path, Config())
 
     assert ".proseview/history-cache.json" not in snapshot
+
+
+@pytest.mark.parametrize("change", ["edit", "create", "delete"])
+def test_watch_notifies_changes_made_during_callback(tmp_path: Path, change: str):
+    scene = tmp_path / "scene.md"
+    scene.write_text("original", encoding="utf-8")
+    other = tmp_path / "other.md"
+    if change == "delete":
+        other.write_text("another scene", encoding="utf-8")
+    notifications: list[tuple[str, ...]] = []
+    polls = 0
+
+    class StopWatching(Exception):
+        pass
+
+    def fake_sleep(_seconds: float) -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 1:
+            scene.write_text("first agent edit", encoding="utf-8")
+        elif polls > 2:
+            pytest.fail("The change during the callback was silently absorbed")
+
+    def on_change(paths: tuple[str, ...]) -> None:
+        notifications.append(paths)
+        if len(notifications) == 2:
+            raise StopWatching
+        if change == "edit":
+            scene.write_text("second agent edit, during callback", encoding="utf-8")
+        elif change == "create":
+            other.write_text("new scene", encoding="utf-8")
+        else:
+            other.unlink()
+
+    with pytest.raises(StopWatching):
+        watch(tmp_path, on_change, cfg=Config(), debounce=0, sleep_fn=fake_sleep)
+
+    assert notifications == [("scene.md",), ("scene.md" if change == "edit" else "other.md",)]

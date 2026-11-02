@@ -1144,6 +1144,7 @@
         var _refreshTimer = null;
         var _refreshInFlight = false;
         var _refreshQueued = false;
+        var _refreshRetryDelay = 1000;
 
         function pathListContains(pathsList, path) {
             if (!pathsList || !pathsList.length || !path) return true;
@@ -1342,8 +1343,15 @@
             }
             _refreshInFlight = true;
             var refreshSucceeded = false;
+            var refreshFailed = false;
+            var refreshRetryable = true;
             fetch('/scene-data?path=' + encodeURIComponent(scenePath), { cache: 'no-store' }).then(function(r) {
-                if (!r.ok) throw new Error('Refresh failed: ' + r.status);
+                if (!r.ok) {
+                    // Deleted scenes and denied requests need a new change
+                    // or user action, rather than repeated background fetches.
+                    refreshRetryable = r.status === 408 || r.status === 429 || r.status >= 500;
+                    throw new Error('Refresh failed: ' + r.status);
+                }
                 return r.json();
             }).then(function(data) {
                 // The writer may have opened the editor while this was in
@@ -1375,12 +1383,24 @@
                     setPmDirty(false);
                     if (typeof _applyEditingProseClass === 'function') _applyEditingProseClass();
                 }
-            }).catch(function() {}).finally(function() {
+            }).catch(function() {
+                refreshFailed = true;
+                _scenesChangedOnDisk[scenePath] = true;
+            }).finally(function() {
                 _refreshInFlight = false;
-                if (!refreshSucceeded) return;
+                if (refreshSucceeded) _refreshRetryDelay = 1000;
+                // A newer change (possibly for another scene) still needs
+                // its turn even if this request failed or was no longer current.
                 if (_refreshQueued) {
                     _refreshQueued = false;
                     scheduleContentRefresh(0);
+                } else if (refreshFailed && refreshRetryable &&
+                    document.documentElement.dataset.view === 'scene' && paths[curIdx] === scenePath &&
+                    !(_pmEditMode && _pmDirty)) {
+                    // A transient failure must recover without another file
+                    // edit. Back off while offline, keeping unsaved work safe.
+                    scheduleContentRefresh(_refreshRetryDelay);
+                    _refreshRetryDelay = Math.min(_refreshRetryDelay * 2, 10000);
                 }
             });
         }

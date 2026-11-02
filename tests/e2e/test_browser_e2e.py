@@ -6998,6 +6998,38 @@ def test_external_change_highlight(page: Page, server: ProseviewServer):
     text = highlighted_paras[-1].inner_text()
     assert "brand new externally added paragraph" in text, f"Text was: {text}"
 
+@pytest.mark.parametrize("failure", ["network", "503"])
+@pytest.mark.allow_http_errors("/scene-data")
+def test_external_scene_change_recovers_after_one_failed_refresh(page: Page, server: ProseviewServer, failure: str):
+    open_scene(page, server)
+    page.wait_for_function("() => !_refreshInFlight")
+    attempts = 0
+    navigations: list[str] = []
+    page.on("framenavigated", lambda frame: navigations.append(frame.url) if frame == page.main_frame else None)
+
+    def fail_first_refresh(route):
+        nonlocal attempts
+        attempts += 1
+        if attempts > 1:
+            route.continue_()
+        elif failure == "network":
+            route.abort("failed")
+        else:
+            route.fulfill(status=503, content_type="application/json", body='{"error": "temporarily unavailable"}')
+
+    page.route("**/scene-data?*", fail_first_refresh)
+    path = server.scene_path()
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.replace("cold coffee", "burnt toast"), encoding="utf-8")
+
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost .ProseMirror').innerText.includes('burnt toast')",
+        timeout=15_000,
+    )
+    assert attempts >= 2, "the failed refresh was never retried"
+    assert navigations == [], "recovering a refresh must not reload the page"
+
+
 def test_editor_list_and_quote_formatting(page: Page, server: ProseviewServer):
     open_scene(page, server)
     page.wait_for_selector(".ProseMirror")

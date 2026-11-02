@@ -167,6 +167,7 @@
             } catch (e) {}
             _applyLineNumbersClass();
             _applyEditingProseClass();
+            if (_pmEditMode) _updateEditWordDelta();
             if (typeof aiMaybeRefocusActiveProposal === 'function') {
                 setTimeout(function() { aiMaybeRefocusActiveProposal(p); }, 0);
             }
@@ -499,6 +500,8 @@
             var delta = now - _pmEditStartWords;
             var sign = delta >= 0 ? '+' : '';
             el.textContent = sign + delta + 'w';
+            var totalEl = document.getElementById('sceneEditWordTotal');
+            if (totalEl) totalEl.textContent = now.toLocaleString() + (now === 1 ? ' word' : ' words');
             el.classList.toggle('is-positive', delta > 0);
             el.classList.toggle('is-negative', delta < 0);
             var tip = 'Net words added or cut in this scene since you opened Edit mode (' + now + ' words total in scene).';
@@ -591,7 +594,6 @@
             _pmView.setProps({ editable: function() { return true; } });
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) editBar.hidden = false;
-            if (window._placeEditBar) window._placeEditBar();
             var btn = document.getElementById('sceneEditBtn');
             if (btn) btn.textContent = '✗ Cancel';
             var p = paths[curIdx];
@@ -600,6 +602,7 @@
             renderSceneFrontmatter(p);
             _pmEditStartWords = _countDocWords(_pmView.state.doc);
             _updateEditWordDelta();
+            if (window._placeEditBar) window._placeEditBar();
             setPmDirty(false);
             _applyEditingProseClass();
             // Back to the caret of the last edit of this scene, unless the

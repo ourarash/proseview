@@ -89,6 +89,19 @@ var _roomSkillCatalogs = Object.create(null);
 var _roomSkillRequests = Object.create(null);
 var _roomModelCatalogs = Object.create(null);
 var _roomModelRequests = Object.create(null);
+var _roomProviderStatus = null;
+var _roomProviderStatusAt = 0;
+var _roomProviderRequest = null;
+
+function roomLoadProviderStatus(force) {
+    if (!force && _roomProviderStatus && Date.now() - _roomProviderStatusAt < 30000) return Promise.resolve(_roomProviderStatus);
+    if (!_roomProviderRequest) _roomProviderRequest = discussApi('/api/discuss/agents', {}).then(function(data) {
+        if (!data.ok || !Array.isArray(data.agents)) throw new Error(data.error || 'Could not check agent availability');
+        _roomProviderStatus = data.agents; _roomProviderStatusAt = Date.now();
+        return data.agents;
+    }).finally(function() { _roomProviderRequest = null; });
+    return _roomProviderRequest;
+}
 
 function roomDraftKey(path) {
     return 'proseview-room-draft:' + (((typeof meta !== 'undefined' && meta[path]) || {}).abs_path || path);
@@ -179,15 +192,18 @@ function createRoomModelControl(session, profile) {
     var explanation = document.createElement('span'); desc.append(effortLabel, explanation);
     var efforts = elementWith('discuss-model-efforts'); efforts.setAttribute('role', 'group'); efforts.setAttribute('aria-label', 'Reasoning effort');
     var foot = elementWith('discuss-model-foot'); panel.append(head, list, desc, efforts, foot); wrap.append(chip, panel);
-    var catalog = null, note = '';
+    var catalog = null, note = '', providerWarning = '', providerUnavailable = false, catalogWarning = '';
     function inherited() { return ((_roomSettings || {}).chat_models || {})[profile.agent] || {}; }
     function paintChip() {
         var selection = inherited(), id = profile.model || selection.model || '', row = discussModelRow(catalog, id);
         var name = row && row.label || id || (catalog && catalog.default && (catalog.default.label || catalog.default.model)) || 'Same as chat';
         var effort = profile.effort || selection.effort || (row && row.default_effort) || (catalog && catalog.default && catalog.default.effort) || '';
-        chip.textContent = profile.name + ' · ' + name + (effort ? ' · ' + effort : '') + ' ▾';
-        chip.setAttribute('aria-label', 'Model for ' + profile.name + ': ' + name + (effort ? ', effort ' + effort : ''));
-        chip.title = profile.name + ' · ' + _roomAgentDisplay(profile.agent) + '. Applies to the next message in this Room.';
+        var warning = providerWarning || catalogWarning;
+        var label = providerUnavailable ? 'Agent unavailable' : providerWarning ? 'Availability unknown' : catalogWarning ? 'Models unavailable' : name + (effort ? ' · ' + effort : '');
+        chip.textContent = (warning ? '⚠ ' : '') + profile.name + ' · ' + label + ' ▾';
+        chip.dataset.warning = warning ? 'true' : 'false';
+        chip.setAttribute('aria-label', 'Model for ' + profile.name + ': ' + (warning || name + (effort ? ', effort ' + effort : '')));
+        chip.title = warning ? warning + ' Open the picker to retry.' : profile.name + ' · ' + _roomAgentDisplay(profile.agent) + ' · ' + name + (effort ? ' · ' + effort : '') + '. Applies to the next message in this Room.';
         chip.dataset.inherited = !profile.model && !profile.effort ? 'true' : 'false';
     }
     function save(model, effort) {
@@ -219,14 +235,25 @@ function createRoomModelControl(session, profile) {
         panel.hidden = !opening; chip.setAttribute('aria-expanded', String(opening));
         if (!opening) return;
         if (catalog) { paintOptions(); list.querySelector('[aria-checked="true"]').focus(); }
-        else { list.textContent = 'Loading models…'; loadCatalog(); }
+        else list.textContent = 'Loading models…';
+        loadCatalog(true);
     };
     paintChip();
-    function loadCatalog() {
+    function loadCatalog(force) {
+        roomLoadProviderStatus(force).then(function(rows) {
+            var provider = rows.find(function(row) { return row.id === profile.agent; });
+            providerUnavailable = !!(provider && !provider.available);
+            providerWarning = provider && !provider.available ? _roomAgentDisplay(profile.agent) + ': ' + (provider.reason || 'Agent unavailable') : '';
+        }).catch(function(error) { providerUnavailable = false; providerWarning = 'Availability unknown: ' + error.message; })
+            .finally(function() { if (chip.isConnected) paintChip(); });
         return roomLoadModelCatalog(profile.agent).then(function(value) {
             if (!value) throw new Error('No model catalogue was returned.');
-            catalog = value; if (chip.isConnected) { paintChip(); paintOptions(); }
-        }).catch(function(error) { list.textContent = 'Models unavailable: ' + error.message + ' Close and reopen to retry.'; });
+            catalog = value; catalogWarning = ''; if (chip.isConnected) { paintChip(); paintOptions(); }
+        }).catch(function(error) {
+            catalog = null; catalogWarning = 'Models unavailable: ' + error.message;
+            list.textContent = catalogWarning + ' Close and reopen to retry.';
+            if (chip.isConnected) paintChip();
+        });
     }
     loadCatalog();
     return wrap;

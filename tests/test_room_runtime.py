@@ -127,6 +127,27 @@ def test_preset_continues_after_a_pass_without_a_browser(tmp_path, monkeypatch):
         manager.close()
 
 
+def test_preset_checks_all_required_providers_before_any_invitation_starts(tmp_path, monkeypatch):
+    manager = _manager(_repo(tmp_path), clients := [])
+    unavailable = True
+    def probe(agent):
+        if unavailable and agent == "claude":
+            raise RuntimeError("Claude CLI is not installed")
+    monkeypatch.setattr(manager, "_probe_agent", probe)
+    monkeypatch.setattr(manager, "run_room_turn", lambda **kw: reply(kw))
+    try:
+        invitations = [{"seat": 1, "prompt": "Your view?"}, {"seat": 2, "prompt": "Your view?"}]
+        with pytest.raises(ContextError, match="Claude.*unavailable.*not installed"):
+            command(manager, "preset", initial=initial(manager), invitations=invitations)
+        state = command(manager)
+        assert state["steps"] == state["turns"] == [] and clients == []
+        unavailable = False
+        command(manager, "preset", invitations=invitations)
+        wait_for(lambda: (s := command(manager))["status"] == "idle" and len(s["turns"]) == 4)
+    finally:
+        manager.close()
+
+
 def test_restart_recovers_a_completed_reply_without_repeating_it(tmp_path, monkeypatch):
     root = _repo(tmp_path)
     first = _manager(root, [])

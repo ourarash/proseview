@@ -314,6 +314,12 @@ class RoomRuntime:
         for step in invitations:
             if not isinstance(step, dict) or type(step.get("seat")) is not int or step["seat"] not in (1, 2) or not isinstance(step.get("prompt"), str) or not step["prompt"].strip():
                 raise RoomRuntimeError("Invalid preset invitation")
+        for agent in {room["participants"][step["seat"] - 1]["agent"] for step in invitations}:
+            try:
+                self.manager._probe_agent(agent)
+            except Exception as exc:
+                raise RoomRuntimeError(f"{agent.title()} is unavailable: {exc}") from exc
+        for step in invitations:
             room["steps"].append({"id": uuid.uuid4().hex, "seat": step["seat"], "state": "queued",
                 "kind": "invitation", "prompt": step["prompt"], "recap": bool(step.get("recap")), "attachments": copy.deepcopy(step.get("attachments") or [])})
 

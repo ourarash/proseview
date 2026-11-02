@@ -204,6 +204,25 @@ function submitManagedRoomMessage() {
     _roomSaveDraft(scene); renderSceneRoomPane(); drainRoomOutbox(session);
 }
 function startManagedRoomPreset(session) {
+    if (!session.pendingPreset || session.startingPreset) return;
+    var preset = session.pendingPreset;
+    session.startingPreset = true; session.presetError = ''; renderSceneRoomPane();
+    return roomLoadProviderStatus(true).then(function(rows) {
+        if (session.pendingPreset !== preset || _roomSessionsByScene[session.scene] !== session) return;
+        var required = preset.invitations.map(function(step) { return step.seat; });
+        if (preset.recap) required.push(preset.recap);
+        var missing = session.participants.filter(function(profile) {
+            return required.includes(profile.seat) && rows.some(function(row) { return row.id === profile.agent && !row.available; });
+        });
+        if (missing.length) throw new Error(missing.map(function(profile) {
+            var row = rows.find(function(row) { return row.id === profile.agent; });
+            return profile.name + ' · ' + _roomAgentDisplay(profile.agent) + ': ' + (row.reason || 'Agent unavailable');
+        }).join('\n'));
+        queueManagedRoomPreset(session);
+    }).catch(function(error) { if (session.pendingPreset === preset) session.presetError = error.message; })
+        .finally(function() { session.startingPreset = false; if (_roomSessionsByScene[session.scene] === session) renderSceneRoomPane(); });
+}
+function queueManagedRoomPreset(session) {
     var preset = session.pendingPreset;
     if (!preset) return;
     session.id = _roomNewId(); session.createdAt = Date.now() / 1000;

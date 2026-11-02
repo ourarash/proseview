@@ -14011,7 +14011,7 @@
         }
         .room-composer {
             position: relative;
-            padding: 10px 14px;
+            padding: 8px 12px;
             border-top: 1px solid var(--border);
             background: var(--bg-subtle, rgba(127, 127, 127, 0.04));
             display: flex;
@@ -14061,9 +14061,6 @@
             background: var(--surface-muted);
             font-size: 12px;
         }
-        .room-tool-review details { margin: 10px 0; }
-        .room-tool-review summary { cursor: pointer; overflow-wrap: anywhere; }
-        .room-tool-review .discuss-review-table { overflow-x: auto; margin: 8px 0; }
         .room-live-approvals:empty { display: none; }
         .room-mention-option {
             display: flex;
@@ -14116,3 +14113,77 @@
 .room-selection-chip{display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--muted)}
 .room-selection-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic}
 .room-selection-clear{border:0;background:none;cursor:pointer;font-size:14px;line-height:1;color:inherit;padding:0 2px}
+
+        /* Reusable Room profiles and explicit preset invitations. */
+        .room-library-pair, .room-participant-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .room-library-field, .room-participant-choice {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 12px 0;
+            min-width: 0;
+        }
+        .room-participant-choice { margin: 0; font-size: 12px; color: var(--text-muted); }
+        .room-library-card {
+            padding: 14px;
+            margin: 10px 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .room-library-card > summary { cursor: pointer; font-weight: 600; }
+        .room-library-field :is(input, textarea, select) { width: 100%; box-sizing: border-box; }
+        .room-library-step { border-left: 2px solid var(--border); padding-left: 14px; margin-top: 18px; }
+        .room-preset-preview { margin-top: 12px; text-align: left; color: var(--text); width: 100%; }
+        .room-preset-preview ol { padding-left: 24px; }
+        .room-preset-preview li { margin: 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .room-preset-actions { display: flex; gap: 8px; margin-top: 18px; }
+        .room-preset-invitation { display: flex; gap: 8px; color: var(--text-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+        .room-preset-invitation > :last-child { min-width: 0; white-space: pre-wrap; }
+        .room-preset-label { font-weight: 600; flex-shrink: 0; }
+
+        .room-empty { width: 100%; max-width: 640px; margin: 16px auto 0; text-align: left; }
+        .room-library-field input.settings-input { text-align: left; }
+
+        .chat-mention {
+            display: inline-block;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--primary) 16%, transparent);
+            color: var(--text-main);
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: bottom;
+            user-select: all;
+        }
+        .room-input-wrap { position: relative; flex: 1; min-width: 0; border-radius: 6px; background: var(--bg-card, var(--surface-card)); }
+        .room-input-wrap .room-input { position: relative; display: block; width: 100%; box-sizing: border-box; background: transparent; line-height: 1.4; overflow-wrap: break-word; word-break: break-word; }
+        .room-input-mirror { position: absolute; inset: 0; box-sizing: border-box; border: 1px solid transparent; padding: 7px 9px; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; font: inherit; font-size: 12.5px; line-height: 1.4; color: transparent; pointer-events: none; }
+        .room-input-mirror .discuss-mention { color: transparent; background: color-mix(in srgb, var(--primary) 22%, transparent); border-radius: 4px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent); }
+        #discussDiffModalContent table.diff { font-size: inherit; }
+        #discussDiffModalContent .discuss-review-table { max-height: none; overflow: visible; }
+        .room-composer .room-input { min-height: 56px; max-height: 180px; resize: vertical; padding: 9px 10px; }
+        .room-composer .room-input-mirror { padding: 9px 10px; }
+        .room-composer-bar { flex-wrap: nowrap; }
+        .room-composer-target { flex-shrink: 0; }
+        .room-composer-bar .discuss-sees-slot { min-width: 0; }
+        .room-send-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; margin-top: 0; gap: 8px; }
+        .room-composer-actions { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); min-width: 0; }
+        .room-connection-status:empty { display: none; }
+        .room-model-control { min-width: 0; max-width: 100%; }
+        .room-model-control > .discuss-model-chip { width: 100%; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+        .room-model-picker { left: 12px; right: auto; bottom: calc(100% + 6px); width: min(340px, calc(100% - 24px)); box-sizing: border-box; }
+        .room-quick-send { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 11px; }
+        .room-quick-send[hidden] { display: none; }
+        .room-quick-send .discuss-presets-inline { flex-wrap: wrap; }
+        .room-message-queue { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .room-composer-hint { margin-left: auto; }
+        .room-send-row > .room-send-btn { margin-left: auto; }

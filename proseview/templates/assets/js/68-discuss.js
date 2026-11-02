@@ -916,36 +916,16 @@
             return p;
         }
 
-        // ── Writers' Room (Multi-agent scene critique & revision plan) ───────
-        const ROOM_DEFAULT_PRESETS = [
-            {
-                id: 'editorial_critique',
-                group: 'Critique this scene',
-                label: 'Editorial critique',
-                badge: 'Plot & pacing vs. Voice & subtext',
-                copy: 'One pushes on structure, stakes and continuity; the other defends character voice, atmosphere and subtext. Ends with a revision plan.'
-            },
-            {
-                id: 'tough_love',
-                group: 'Critique this scene',
-                label: 'Tough-love critique',
-                badge: 'No praise \u00b7 Red pen',
-                copy: 'Straight to what isn\u2019t working: slow openings, clich\u00e9s, convenient turns and flat dialogue, debated without sugarcoating.'
-            },
-            {
-                id: 'pitch_next_beat',
-                group: 'What happens next',
-                label: 'Pitch the next beat',
-                badge: 'Plot twist vs. Character truth',
-                copy: 'One pitches a high-stakes plot escalation; the other challenges it from character motivation so you get two distinct directions.'
-            }
-        ];
-
+        // ── Writers' Room: shared chat and preset invitations ────────────
         var _roomSettings = null;
+        var _roomSettingsLoading = null;
 
         // Seat identifiers stay canonical in the transcript and summary payloads.
-        // Display names are book preferences and never change an agent's instructions.
+        // Each conversation retains a snapshot of its selected profiles.
         function _roomSeatName(seat) {
+            var session = _roomSessionsByScene[_roomCurrentScenePath()];
+            var participant = ((session && session.participants) || (_roomSettings && _roomSettings.participants) || [])[Number(seat) - 1];
+            if (participant) return participant.name;
             var key = seat === 2 ? 'critic2' : seat === 'moderator' ? 'moderator' : 'critic1';
             var fallback = {critic1: 'Story Editor', critic2: 'Voice Editor', moderator: 'Moderator'};
             return ((_roomSettings && _roomSettings.book) || {})[key + '_name'] || fallback[key];
@@ -965,7 +945,68 @@
         var _roomTargetChoice = 'both';
 
         function _roomMentionOptions() {
-            return (_roomSettings && _roomSettings.participants) || [];
+            var session = _roomSessionsByScene[_roomCurrentScenePath()];
+            return (session && session.participants) || (_roomSettings && _roomSettings.participants) || [];
+        }
+
+        function _roomProfiles(ids) {
+            var library = (_roomSettings || {}).library;
+            if (!library) return [];
+            return _roomSnapshotPair(ids.map(function(id) { return library.profiles.find(function(profile) { return profile.id === id; }); }));
+        }
+
+        function _roomSnapshotPair(profiles) {
+            var pair = JSON.parse(JSON.stringify(profiles));
+            var handles = pair.map(function(profile, index) { return profile.name.replace(/[^\p{L}\p{N}_-]/gu, '') || 'Editor' + (index + 1); });
+            if (handles[0].toLowerCase() === handles[1].toLowerCase()) handles = handles.map(function(handle, index) { return handle + (index + 1); });
+            pair.forEach(function(profile, index) {
+                profile.seat = index + 1;
+                profile.handle = handles[index];
+                profile.aliases = [profile.handle];
+                if (pair.filter(function(p) { return p.agent === profile.agent; }).length === 1
+                        && !handles.some(function(handle) { return handle.toLowerCase() === profile.agent; })) profile.aliases.push(profile.agent);
+            });
+            return pair;
+        }
+
+        function _roomEnsureParticipants(session) {
+            if (!session.participants && _roomSettings && _roomSettings.library) {
+                session.participants = _roomProfiles(_roomSettings.library.default_profiles);
+            }
+            return session.participants || [];
+        }
+
+        function _roomPairPicker(session, container, onChange) {
+            var library = (_roomSettings || {}).library;
+            if (!library) return;
+            var pair = _roomEnsureParticipants(session);
+            pair.forEach(function(profile, index) {
+                var label = document.createElement('label');
+                label.className = 'room-participant-choice';
+                label.appendChild(document.createTextNode('Participant ' + (index + 1)));
+                var select = document.createElement('select');
+                select.className = 'room-target-select';
+                select.setAttribute('aria-label', 'Room participant ' + (index + 1));
+                library.profiles.forEach(function(option) {
+                    var node = document.createElement('option');
+                    node.value = option.id;
+                    node.textContent = option.name + ' · ' + _roomAgentDisplay(option.agent);
+                    node.disabled = pair[1 - index].id === option.id;
+                    select.appendChild(node);
+                });
+                select.value = profile.id;
+                select.disabled = !!session.turns.length || session.busy || session.managed || !!(session.outbox && session.outbox.length);
+                select.onchange = function() {
+                    var ids = pair.map(function(p) { return p.id; });
+                    ids[index] = select.value;
+                    session.participants = _roomProfiles(ids);
+                    session.participantsChosen = true;
+                    if (onChange) onChange(ids);
+                    renderSceneRoomPane();
+                };
+                label.appendChild(select);
+                container.appendChild(label);
+            });
         }
 
         function _roomHasReview(session) {
@@ -973,6 +1014,12 @@
         }
 
         function _roomFinishReview(session, turn) {
+            if (session.managed) {
+                return roomRuntimeControl(session, 'reviewed', {conversation_id: turn.tool_conversation_id}).then(function() {
+                    try { sessionStorage.removeItem('proseview-room-review:' + turn.tool_conversation_id); } catch (error) {}
+                }).catch(function() {});
+                return;
+            }
             turn.review_pending = false;
             _saveRoomSession(session);
             if (!_roomHasReview(session)) {
@@ -982,79 +1029,171 @@
             } else renderSceneRoomPane();
         }
 
+        // Review state belongs to the Room turn, independently of the active
+        // individual chat. Both surfaces use the same cards and expanded viewer.
+        var _roomReviewContexts = new WeakMap();
+
         function _roomToolReview(session, turn) {
             var box = elementWith('room-tool-review');
             box.appendChild(elementWith('room-open-title', 'Review ' + _roomSpeakerName(turn.seat, turn.agent) + '’s changes'));
-            var content = elementWith('room-tool-review-files', 'Loading changes…');
-            box.appendChild(content);
-            var continueBtn = document.createElement('button');
-            continueBtn.type = 'button';
-            continueBtn.className = 'room-header-btn';
-            continueBtn.textContent = 'Continue discussion';
-            continueBtn.disabled = true;
-            continueBtn.onclick = function() { _roomFinishReview(session, turn); };
-            box.appendChild(continueBtn);
-            var url = '/api/discuss/conversations/' + encodeURIComponent(turn.tool_conversation_id);
-            function load() {
-                discussApi(url + '/changes', {mode: 'inline'}).then(function(data) {
-                    if (!box.isConnected) return;
-                    content.replaceChildren();
-                    var files = data.files || [];
-                    files.forEach(function(file) {
-                        var detail = document.createElement('details');
-                        var heading = document.createElement('summary');
-                        heading.textContent = file.path + ' · changes are saved';
-                        detail.appendChild(heading);
-                        (file.blocks || []).forEach(function(block) {
-                            var diff = elementWith('discuss-review-table');
-                            diff.innerHTML = block.html;
-                            detail.appendChild(diff);
+            var content = elementWith('room-tool-review-files');
+            var notice = elementWith('room-error-text');
+            notice.setAttribute('role', 'status');
+            box.append(content, notice);
+            var review = _roomReviewContexts.get(turn);
+            if (!review) {
+                review = {conversationId: turn.tool_conversation_id, agentLabel: _roomSpeakerName(turn.seat, turn.agent),
+                    mode: 'side-by-side', files: [], unreviewable: [], keep: {}, loaded: false, applying: false, error: ''};
+                var savedChoices = {};
+                try { savedChoices = JSON.parse(sessionStorage.getItem('proseview-room-review:' + review.conversationId) || '{}'); } catch (error) {}
+                review.keep = savedChoices.keep || {};
+                review.mode = savedChoices.mode === 'inline' ? 'inline' : 'side-by-side';
+                review.save = function() {
+                    var fingerprints = Object.assign({}, review.fingerprints || savedChoices.fingerprints || {});
+                    review.files.forEach(function(file) {
+                        var chosen = review.keep[file.path] || {};
+                        if (!Object.keys(chosen).some(function(id) { return chosen[id] === false; })) fingerprints[file.path] = file.fingerprint;
+                    });
+                    review.fingerprints = fingerprints;
+                    try { sessionStorage.setItem('proseview-room-review:' + review.conversationId, JSON.stringify({keep: review.keep, mode: review.mode, fingerprints: fingerprints})); } catch (error) {}
+                };
+                review.onSettled = function() { return _roomFinishReview(session, turn); };
+                _roomReviewContexts.set(turn, review);
+                review.refresh = function() {
+                    var token = review.loadToken = (review.loadToken || 0) + 1;
+                    return discussApi('/api/discuss/conversations/' + encodeURIComponent(review.conversationId) + '/changes', {mode: review.mode})
+                        .then(function(data) {
+                            if (review.loadToken !== token) return;
+                            review.files = data.files || []; review.unreviewable = data.unreviewable || [];
+                            review.loaded = true; review.error = '';
+                            Object.keys(review.keep).forEach(function(path) {
+                                if (!review.files.some(function(file) { return file.path === path; })) delete review.keep[path];
+                            });
+                            review.render();
+                        }).catch(function(error) {
+                            if (review.loadToken !== token) return;
+                            review.error = 'The original review is unavailable: ' + error.message + ' Use file history to inspect changes.';
+                            review.render();
                         });
-                        var undo = document.createElement('button');
-                        undo.type = 'button';
-                        undo.className = 'room-header-btn';
-                        undo.textContent = 'Undo changes to ' + file.path;
-                        undo.onclick = function() {
-                            undo.disabled = true;
-                            discussApi(url + '/changes/apply', {path: file.path, keep: [], fingerprint: file.fingerprint})
-                                .then(load).catch(function(error) { content.appendChild(elementWith('room-error-text', error.message)); undo.disabled = false; });
-                        };
-                        detail.appendChild(undo);
-                        content.appendChild(detail);
-                    });
-                    (data.unreviewable || []).forEach(function(path) {
-                        content.appendChild(elementWith('room-error-text', path + ': the agent changed this without a prior snapshot. Use file history to review it.'));
-                    });
-                    if (!files.length && !(data.unreviewable || []).length) content.textContent = 'No outstanding changes.';
-                    continueBtn.disabled = false;
-                }).catch(function(error) {
-                    if (!box.isConnected) return;
-                    content.textContent = 'The original review is unavailable: ' + error.message + ' Use file history to inspect changes.';
-                    continueBtn.disabled = false;
-                });
+                };
             }
-            // Rendering builds this node before it is attached to the pane.
-            queueMicrotask(load);
+            review.render = function(focusPath) {
+                review.save();
+                if (!box.isConnected) return;
+                content.replaceChildren();
+                if (!review.loaded) content.textContent = review.error ? '' : 'Loading changes…';
+                review.files.forEach(function(file) { content.appendChild(renderDiscussReviewCard(file, review)); });
+                review.unreviewable.forEach(function(path) {
+                    content.appendChild(elementWith('room-error-text', path + ': the agent changed this without a prior snapshot. Use file history to review it.'));
+                });
+                if (review.loaded && !review.files.length && !review.unreviewable.length) content.textContent = 'No outstanding changes.';
+                notice.textContent = review.error;
+                if (focusPath) {
+                    var card = Array.from(content.querySelectorAll('[data-review-path]')).find(function(node) { return node.dataset.reviewPath === focusPath; });
+                    if (card) card.querySelector('button').focus({preventScroll: true});
+                    else document.getElementById('roomInput').focus({preventScroll: true});
+                }
+            };
+            queueMicrotask(function() { review.render(); review.refresh(); });
             return box;
         }
 
-        function _roomMentionRecipients(text) {
-            var options = _roomMentionOptions();
-            var seats = [];
-            var files = discussMentionRanges(text);
-            // An email address, partial handle, or attached selection is not a recipient.
+        function chatMentionRanges(text, participants) {
+            if (text.indexOf('@') < 0) return [];
+            var ranges = discussMentionRanges(text);
             var pattern = /(?:^|[\s(])@([\p{L}\p{N}_-]+)(?=$|[\s.,!?:;)\]'’])/gu;
             var match;
             while ((match = pattern.exec(text))) {
                 var start = match.index + match[0].indexOf('@');
-                if (files.some(function(file) { return start >= file.start && start < file.end; })) continue;
+                if (ranges.some(function(file) { return start >= file.start && start < file.end; })) continue;
                 var handle = match[1].toLowerCase();
-                var option = options.find(function(p) {
+                var participant = (participants || []).find(function(p) {
                     return p.aliases.some(function(alias) { return alias.toLowerCase() === handle; });
                 });
-                if (option && seats.indexOf(option.seat) < 0) seats.push(option.seat);
+                if (participant) ranges.push({start: start, end: start + match[1].length + 1, kind: 'agent', participant: participant});
             }
+            return ranges.sort(function(a, b) { return a.start - b.start; });
+        }
+
+        function highlightChatMentions(parent, participants) {
+            var walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT);
+            var nodes = [], node;
+            while ((node = walker.nextNode())) {
+                if (!node.parentElement.closest('a, code, pre, .chat-mention')) nodes.push(node);
+            }
+            nodes.forEach(function(textNode) {
+                var text = textNode.nodeValue, ranges = chatMentionRanges(text, participants);
+                if (!ranges.length) return;
+                var fragment = document.createDocumentFragment(), last = 0;
+                ranges.forEach(function(range) {
+                    if (range.start < last) return;
+                    fragment.appendChild(document.createTextNode(text.slice(last, range.start)));
+                    var chip = document.createElement('span'); chip.className = 'chat-mention';
+                    chip.dataset.kind = range.kind;
+                    chip.textContent = text.slice(range.start, range.end);
+                    chip.title = range.participant ? range.participant.name + ' · ' + _roomAgentDisplay(range.participant.agent) : range.path;
+                    fragment.appendChild(chip); last = range.end;
+                });
+                fragment.appendChild(document.createTextNode(text.slice(last)));
+                textNode.replaceWith(fragment);
+            });
+        }
+
+        function chatComposerMentionRanges(input, participants) {
+            return chatMentionRanges(input.value, participants).concat(input.id === 'roomInput' ? roomSkillMentionRanges(input.value) : discussSkillRanges(input.value))
+                .sort(function(a, b) { return a.start - b.start; });
+        }
+
+        function deleteChatMention(event, input, participants) {
+            if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || !['Backspace', 'Delete'].includes(event.key)) return false;
+            var start = input.selectionStart, end = input.selectionEnd;
+            var ranges = chatComposerMentionRanges(input, participants);
+            var hits = ranges.filter(function(range) {
+                if (start !== end) return start < range.end && end > range.start;
+                return event.key === 'Backspace' ? start > range.start && start <= range.end
+                    || start === range.end + 1 && input.value.charAt(range.end) === ' '
+                    : start >= range.start && start < range.end;
+            });
+            if (!hits.length) return false;
+            event.preventDefault();
+            hits.forEach(function(range) { start = Math.min(start, range.start); end = Math.max(end, range.end); });
+            input.setRangeText('', start, end, 'end');
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            return true;
+        }
+
+        function wireChatMentionReplacement(input, participants) {
+            input.addEventListener('beforeinput', function(event) {
+                if (event.isComposing || !event.inputType.startsWith('insert')) return;
+                var start = input.selectionStart, end = input.selectionEnd;
+                chatComposerMentionRanges(input, participants()).forEach(function(range) {
+                    if (start === end ? start > range.start && start < range.end : start < range.end && end > range.start) {
+                        start = Math.min(start, range.start); end = Math.max(end, range.end);
+                    }
+                });
+                input.setSelectionRange(start, end);
+            });
+        }
+
+        function _roomMentionRecipients(text) {
+            var seats = [];
+            chatMentionRanges(text, _roomMentionOptions()).forEach(function(range) {
+                if (range.participant && !seats.includes(range.participant.seat)) seats.push(range.participant.seat);
+            });
             return seats;
+        }
+
+        function paintRoomMentions(input, mirror) {
+            var text = input.value, last = 0;
+            mirror.replaceChildren();
+            chatMentionRanges(text, _roomMentionOptions()).concat(roomSkillMentionRanges(text)).sort(function(a, b) { return a.start - b.start; }).forEach(function(range) {
+                if (range.start < last) return;
+                mirror.appendChild(document.createTextNode(text.slice(last, range.start)));
+                var mark = document.createElement('mark'); mark.className = 'discuss-mention';
+                mark.textContent = text.slice(range.start, range.end); mirror.appendChild(mark); last = range.end;
+            });
+            mirror.appendChild(document.createTextNode(text.slice(last) + ' '));
+            mirror.scrollTop = input.scrollTop; mirror.scrollLeft = input.scrollLeft;
         }
 
         function _wireRoomMentions(input, menu, target, hint) {
@@ -1074,12 +1213,13 @@
                 target.disabled = seats.length > 0;
                 hint.textContent = seats.length
                     ? 'Replies: ' + seats.map(_roomSeatName).join(', ')
-                    : 'Type @ to mention an editor or file';
+                    : '';
             }
             function choose(option) {
                 if (!range) return;
-                var token = option.kind === 'editor' ? option.handle : option.path + (option.kind === 'folder' ? '/' : '');
-                input.setRangeText('@' + token + ' ', range.start, range.end, 'end');
+                var token = option.kind === 'skill' ? '$' + option.name : '@' + (option.kind === 'editor' ? option.handle : option.path + (option.kind === 'folder' ? '/' : ''));
+                if (option.kind === 'skill' && !_roomMentionRecipients(input.value).length && _roomTargetChoice === 'both') token = '@' + option.participant.handle + ' ' + token;
+                input.setRangeText(token + ' ', range.start, range.end, 'end');
                 close();
                 input.dispatchEvent(new Event('input', {bubbles: true}));
                 input.focus();
@@ -1088,7 +1228,7 @@
                 menu.replaceChildren();
                 var group = '';
                 choices.forEach(function(option, index) {
-                    var category = option.kind === 'editor' ? 'Editors' : 'Files and folders';
+                    var category = option.kind === 'skill' ? 'Skills · ' + option.participant.name + ' · ' + _roomAgentDisplay(option.participant.agent) : option.kind === 'editor' ? 'Editors' : 'Files and folders';
                     if (group !== category) {
                         var heading = elementWith('room-mention-group', category);
                         heading.setAttribute('role', 'presentation');
@@ -1102,8 +1242,8 @@
                     button.setAttribute('role', 'option');
                     button.setAttribute('aria-selected', index === active ? 'true' : 'false');
                     button.append(
-                        elementWith('room-mention-name', option.kind === 'editor' ? option.name + ' \u00b7 ' + _roomAgentDisplay(option.agent) : option.path),
-                        elementWith('room-mention-handle', option.kind === 'editor' ? '@' + option.handle : option.kind === 'folder' ? 'Folder' : 'File')
+                        elementWith('room-mention-name', option.kind === 'skill' ? '$' + option.name : option.kind === 'editor' ? option.name + ' \u00b7 ' + _roomAgentDisplay(option.agent) : option.path),
+                        elementWith('room-mention-handle', option.kind === 'skill' ? option.description || 'Skill' : option.kind === 'editor' ? '@' + option.handle : option.kind === 'folder' ? 'Folder' : 'File')
                     );
                     button.onpointerdown = function(event) { event.preventDefault(); };
                     button.onclick = function() { choose(option); };
@@ -1117,9 +1257,28 @@
             function render() {
                 updateRecipients();
                 var prefix = input.value.slice(0, input.selectionStart);
-                var match = /(?:^|[\s(])@([^\s@$]*)$/u.exec(prefix);
+                var match = /(?:^|[\s(])([@$])([^\s@$]*)$/u.exec(prefix);
                 if (!match || input.selectionStart !== input.selectionEnd) { close(); return; }
-                var query = match[1].toLowerCase();
+                var query = match[2].toLowerCase();
+                if (match[1] === '$') {
+                    range = {start: input.selectionStart - match[2].length - 1, end: input.selectionStart + /^[\p{L}\p{N}_-]*/u.exec(input.value.slice(input.selectionStart))[0].length};
+                    var participants = _roomMentionOptions().filter(function(profile) { return roomRequestedSeats(input.value).includes(profile.seat); });
+                    choices = []; var pending = false;
+                    participants.forEach(function(profile) {
+                        var skills = _roomSkillCatalogs[profile.agent];
+                        if (!skills) {
+                            pending = true;
+                            roomLoadSkills(profile.agent).then(function() { if (input.isConnected && document.activeElement === input) render(); })
+                                .catch(function(error) { if (input.isConnected && document.activeElement === input) { menu.textContent = 'Skills unavailable: ' + error.message; menu.hidden = false; } });
+                            return;
+                        }
+                        skills.filter(function(skill) { return (skill.name + ' ' + (skill.display_name || '') + ' ' + (skill.description || '')).toLowerCase().includes(query); }).forEach(function(skill) { choices.push(Object.assign({kind: 'skill', participant: profile}, skill)); });
+                    });
+                    choices = choices.slice(0, 12); active = 0;
+                    if (choices.length) paint();
+                    else { menu.textContent = pending ? 'Loading skills…' : 'No matching skills for the selected participants.'; menu.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+                    return;
+                }
                 var editors = _roomMentionOptions().filter(function(option) {
                     return [option.name, option.agent].concat(option.aliases).some(function(value) {
                         return value.toLowerCase().indexOf(query) >= 0;
@@ -1131,7 +1290,7 @@
                 choices = editors.concat(files);
                 if (!choices.length) { close(); return; }
                 var suffix = /^[\p{L}\p{N}_./-]*/u.exec(input.value.slice(input.selectionStart))[0];
-                range = {start: input.selectionStart - match[1].length - 1, end: input.selectionStart + suffix.length};
+                range = {start: input.selectionStart - match[2].length - 1, end: input.selectionStart + suffix.length};
                 active = 0;
                 paint();
             }
@@ -1143,6 +1302,10 @@
             input.addEventListener('blur', close);
             input.onkeydown = function(event) {
                 if (event.isComposing) return;
+                if (deleteChatMention(event, input, _roomMentionOptions())) return;
+                if (!menu.hidden && !choices.length && ['Enter', 'Tab', 'Escape'].includes(event.key)) {
+                    event.preventDefault(); if (event.key === 'Escape') { event.stopPropagation(); close(); } return;
+                }
                 if (!menu.hidden && choices.length) {
                     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                         event.preventDefault();
@@ -1199,7 +1362,6 @@
         function _roomWithSelection(text) {
             if (!_roomPendingSelection) return text;
             var quoted = _roomPendingSelection.split('\n').map(function(line) { return '> ' + line; }).join('\n');
-            _roomPendingSelection = '';
             return text + '\n\nSelected passage:\n' + quoted;
         }
 
@@ -1235,21 +1397,23 @@
         }
 
         function _roomHeaderSummaryText() {
-            var app = (_roomSettings && _roomSettings.app) || {
-                critic1: {agent: 'codex', model: ''},
-                critic2: {agent: 'claude', model: ''},
-                turns: 4,
-                length: 'concise'
-            };
-            var c1 = _roomAgentDisplay((app.critic1 || {}).agent || 'codex');
-            var c2 = _roomAgentDisplay((app.critic2 || {}).agent || 'claude');
-            var turns = app.turns || 4;
-            var len = (app.length || 'concise') === 'detailed' ? 'Detailed' : 'Concise';
-            return c1 + ' \u2194 ' + c2 + ' \u00b7 ' + turns + (turns === 1 ? ' turn' : ' turns') + ' \u00b7 ' + len;
+            var session = _roomSessionsByScene[_roomCurrentScenePath()];
+            var pair = (session && session.participants) || (_roomSettings && _roomSettings.participants) || [];
+            return pair.length ? pair.map(function(p) { return p.name + ' · ' + _roomAgentDisplay(p.agent); }).join(' ↔ ') : 'Writers’ Room';
         }
 
         function syncRoomSettingsState(settings) {
-            if (settings) _roomSettings = settings;
+            if (settings) {
+                _roomSettings = settings;
+                Object.keys(_roomSessionsByScene).forEach(function(path) {
+                    var session = _roomSessionsByScene[path];
+                    if (!session.managed && !session.turns.length && !session.pendingPreset && !session.busy) {
+                        var selected = session.participantsChosen && session.participants && session.participants.map(function(p) { return p.id; });
+                        var available = selected && selected.every(function(id) { return settings.library.profiles.some(function(p) { return p.id === id; }); });
+                        session.participants = _roomProfiles(available ? selected : settings.library.default_profiles);
+                    }
+                });
+            }
             var summaryEl = document.getElementById('roomHeaderSummary');
             if (summaryEl) summaryEl.textContent = _roomHeaderSummaryText();
             var pane = document.getElementById('sceneRoomPane');
@@ -1258,26 +1422,25 @@
 
         function _ensureRoomSettingsLoaded() {
             if (_roomSettings) return Promise.resolve(_roomSettings);
-            if (typeof loadRoomSettings === 'function') {
-                return loadRoomSettings().then(function(s) {
-                    if (s) _roomSettings = s;
-                    return _roomSettings;
-                });
-            }
-            return fetch('/api/discuss/room-settings', {
-                method: 'POST',
-                headers: pvHeaders(),
-                body: JSON.stringify({})
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                if (data && data.ok && data.settings) _roomSettings = data.settings;
-                return _roomSettings;
-            }).catch(function() { return null; });
+            if (_roomSettingsLoading) return _roomSettingsLoading;
+            _roomSettingsLoading = (typeof loadRoomSettings === 'function' ? loadRoomSettings() :
+                fetch('/api/discuss/room-settings', {method: 'POST', headers: pvHeaders(), body: '{}'})
+                    .then(function(r) { return r.json(); }).then(function(data) { return data.settings; }))
+                .then(function(settings) {
+                    if (!settings) throw new Error('Could not load Room profiles and presets. Reopen the Room to retry.');
+                    _roomSettings = settings;
+                    return settings;
+                }).finally(function() { _roomSettingsLoading = null; });
+            return _roomSettingsLoading;
         }
 
         function resetRoomSession() {
             var path = _roomCurrentScenePath();
             if (!path) return;
             _roomRunToken++;
+            _roomDraftInput = ''; _roomPendingSelection = ''; _roomTargetChoice = 'both';
+            var input = document.getElementById('roomInput'); if (input) input.value = '';
+            try { sessionStorage.removeItem(roomDraftKey(path)); } catch (error) {}
             delete _roomSessionsByScene[path];
             _roomHistoryChecked[path] = true;
             _roomHistoryOpen = false;
@@ -1293,7 +1456,10 @@
                 method: 'POST',
                 headers: pvHeaders(),
                 body: JSON.stringify(payload)
-            }).then(function(r) { return r.json(); });
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data || !data.ok) throw new Error((data && data.error) || 'Could not access Room history');
+                return data;
+            });
         }
 
         // A debate keeps every plan the moderator wrote, each placed in the
@@ -1319,6 +1485,7 @@
         }
 
         function _saveRoomSession(session) {
+            if (session && session.managed) { saveManagedRoom(session); return; }
             if (!session || !session.turns.length) return;
             if (!session.id) session.id = _roomNewId();
             // One save at a time per debate, the last one carrying the latest
@@ -1335,6 +1502,7 @@
                     preset_id: session.presetId || '',
                     question: session.question || '',
                     created_at: session.createdAt || 0,
+                    participants: session.participants,
                     turns: session.turns,
                     plans: (session.plans || []).map(function(plan) {
                         return {
@@ -1355,7 +1523,10 @@
                 }
             }).then(function() {
                 delete _roomHistoryList[session.scene];
-            }).catch(function() {}).then(function() {
+            }).catch(function(error) {
+                session.error = 'Could not save this Room: ' + error.message;
+                if (!session.busy && session.scene === _roomCurrentScenePath()) renderSceneRoomPane();
+            }).then(function() {
                 session._saving = false;
                 if (session._saveAgain) {
                     session._saveAgain = false;
@@ -1374,7 +1545,9 @@
         }
 
         function openRoomHistorySession(scenePath, sessionId) {
-            return _roomHistoryRequest({action: 'get', id: sessionId}).then(function(data) {
+            return _ensureRoomSettingsLoaded().then(function() {
+                return _roomHistoryRequest({action: 'get', id: sessionId});
+            }).then(function(data) {
                 if (!data || !data.ok || !data.session) return;
                 var saved = data.session;
                 var current = _roomSessionsByScene[scenePath];
@@ -1387,6 +1560,23 @@
                 session.topicBadge = saved.badge || '';
                 session.question = saved.question || '';
                 session.turns = saved.turns || [];
+                session.participants = saved.participants || null;
+                if (!session.participants && _roomSettings && _roomSettings.library) {
+                    // Older debates used book-specific seat names and prompts.
+                    var book = _roomSettings.book || {};
+                    var app = _roomSettings.app || {};
+                    var snapshots = [1, 2].map(function(seat) {
+                        var previous = session.turns.find(function(t) { return t.role === 'critic' && t.seat === seat; });
+                        var recordedName = previous && String(previous.label || '').replace(/\s*·\s*(?:Codex|Claude).*$/, '').trim();
+                        if (/^Critic\s*[12]$/i.test(recordedName || '')) recordedName = '';
+                        var config = app['critic' + seat] || {};
+                        var agent = previous ? previous.agent : config.agent || (seat === 1 ? 'codex' : 'claude');
+                        return {id: 'legacy-' + seat, name: recordedName || book['critic' + seat + '_name'] || (seat === 1 ? 'Story Editor' : 'Voice Editor'),
+                            specialty: book['critic' + seat + '_prompt'] || '', style: '',
+                            agent: agent, model: config.agent === agent ? config.model || '' : '', effort: config.agent === agent ? config.effort || '' : ''};
+                    });
+                    session.participants = _roomSnapshotPair(snapshots);
+                }
                 var savedPlans = Array.isArray(saved.plans) && saved.plans.length ? saved.plans
                     : ((saved.plan || []).length || (saved.open || []).length || saved.authors_call)
                         ? [{after_turn: session.turns.length, items: saved.plan || [], open: saved.open || [], authors_call: saved.authors_call || ''}]
@@ -1408,8 +1598,8 @@
                 session.queue = [];
                 session.live = null;
                 _roomHistoryOpen = false;
-                if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane();
-            }).catch(function() {});
+                return attachManagedRoom(session).then(function() { if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane(); });
+            }).catch(function(error) { var session = _roomSessionFor(scenePath); session.error = error.message; if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane(); });
         }
 
         function deleteRoomHistorySession(scenePath, sessionId) {
@@ -1426,10 +1616,20 @@
         function _restoreLatestRoomSession(scenePath) {
             if (_roomHistoryChecked[scenePath]) return;
             _roomHistoryChecked[scenePath] = true;
+            var pending = _roomSessionsByScene[scenePath];
+            if (pending && (pending.outbox || []).length) {
+                var request = pending.outbox[0];
+                roomRuntimeRequest(pending, {action: 'state', room_id: request.room_id, initial: request.initial})
+                    .then(function() { drainRoomOutbox(pending); })
+                    .catch(function(error) { pending.sendError = error.message; renderSceneRoomPane(); });
+                return;
+            }
+            var draftAtStart = _roomDraftInput;
             _loadRoomHistoryList(scenePath).then(function(rows) {
                 var session = _roomSessionsByScene[scenePath];
-                if (!rows.length || (session && (session.turns.length || session.busy))) return;
-                openRoomHistorySession(scenePath, rows[0].id);
+                if (!rows.length || (session && (session.turns.length || session.busy)) || (scenePath === _roomDraftScene && _roomDraftInput !== draftAtStart)) return;
+                var selected = session && rows.find(function(row) { return row.id === session.id; });
+                openRoomHistorySession(scenePath, (selected || rows[0]).id);
             });
         }
 
@@ -1482,207 +1682,32 @@
         }
 
         function stopRoomDebate() {
-            var path = _roomCurrentScenePath();
-            var session = _roomSessionFor(path);
-            _roomRunToken++;
-            if (session) {
-                if (session.runId) {
-                    fetch('/api/discuss/room-stop', {
-                        method: 'POST',
-                        headers: pvHeaders(),
-                        body: JSON.stringify({run_id: session.runId})
-                    }).catch(function() {});
-                    session.runId = '';
-                }
-                session.busy = false;
-                session.statusText = '';
-                session.queue = [];
-                session.live = null;
-                _saveRoomSession(session);
-            }
-            renderSceneRoomPane();
+            var session = _roomSessionFor(_roomCurrentScenePath());
+            if (session && session.managed) roomRuntimeControl(session, 'stop').catch(function() {});
         }
 
         function startRoomDebate(options) {
             options = options || {};
             var path = _roomCurrentScenePath();
             if (!path) return;
-            _roomRunToken++;
-            var token = _roomRunToken;
             var session = _roomSessionFor(path);
-            session.id = _roomNewId();
-            session.createdAt = Date.now() / 1000;
-            _roomHistoryOpen = false;
-            session.presetId = options.presetId || '';
-            session.topicLabel = options.label || (options.question ? 'Custom question' : 'Writers\u2019 Room');
-            session.topicBadge = options.badge || (options.question ? _roomSeatName(1) + ' & ' + _roomSeatName(2) : '');
-            session.question = options.question || '';
-            session.turns = options.question ? [{role: 'user', label: 'Me (Writer)', text: options.question}] : [];
-            session.plans = [];
-            session.error = '';
-            session.busy = true;
-            session.statusText = 'Starting Writers\u2019 Room\u2026';
-            renderSceneRoomPane();
-
-            _ensureRoomSettingsLoaded().then(function() {
-                if (_roomRunToken !== token) return;
-                var app = (_roomSettings && _roomSettings.app) || {};
-                var totalTurns = Math.max(1, Math.min(6, parseInt(app.turns || 4, 10) || 4));
-                var queue = [];
-                for (var i = 1; i <= totalTurns; i++) {
-                    queue.push({seat: (i % 2 === 1) ? 1 : 2, turnIndex: i, totalTurns: totalTurns});
-                }
-                queue.push({moderator: true});
-                session.queue = queue;
-                _processRoomQueue(path, token);
-            });
-        }
-
-        function _processRoomQueue(scenePath, token) {
-            var session = _roomSessionFor(scenePath);
-            if (!session || _roomRunToken !== token) return;
-            if (!session.queue || !session.queue.length) {
-                session.busy = false;
-                session.statusText = '';
-                session.runId = '';
+            if (session.busy) return;
+            var library = (_roomSettings || {}).library;
+            if (!library) return;
+            if (!options.start) {
+                var preset = library.presets.find(function(p) { return p.id === options.presetId; });
+                if (!preset) return;
+                session.pendingPreset = JSON.parse(JSON.stringify(preset));
+                session.participants = _roomProfiles(preset.profiles);
                 renderSceneRoomPane();
                 return;
             }
-            var step = session.queue.shift();
-            var app = (_roomSettings && _roomSettings.app) || {};
-            var seatCfg = step.moderator
-                ? (app.moderator || {agent: 'claude'})
-                : ((step.seat === 2 ? app.critic2 : app.critic1) || {agent: step.seat === 2 ? 'claude' : 'codex'});
-            session.busy = true;
-            session.error = '';
-            if (step.moderator) {
-                session.statusText = _roomSpeakerName('moderator', seatCfg.agent) + ' is writing the plan\u2026';
-            } else {
-                session.statusText = _roomSpeakerName(step.seat, seatCfg.agent) + ' '
-                    + (step.turnIndex === 1 ? 'is reading the scene' : 'is replying')
-                    + ' \u00b7 Turn ' + step.turnIndex + ' of ' + step.totalTurns + '\u2026';
-            }
-            renderSceneRoomPane();
+            startManagedRoomPreset(session);
+        }
 
-            var runId = 'room-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-            session.runId = runId;
-            session.live = {statusText: session.statusText, elapsed: 0, progress: '', steps: [], draft: ''};
-            var stopPolling = _pollRoomProgress(session, runId, token);
-            var history = session.turns.map(function(t) {
-                return {role: t.role, label: t.label, text: t.text};
-            });
-            var attachments = [];
-            var references = [session.question || ''].concat(session.turns.filter(function(turn) {
-                return turn.role === 'user';
-            }).map(function(turn) { return turn.text; }));
-            references.forEach(function(text) {
-                // A selected manuscript passage is quoted context, not an
-                // instruction to open any @paths that happen to occur in it.
-                var authored = text.split('\n\nSelected passage:\n')[0];
-                discussMentionsIn(authored).forEach(function(file) {
-                    if (!attachments.some(function(item) { return item.path === file.path; })) attachments.push(file);
-                });
-            });
-
-            var request;
-            if (step.moderator) {
-                var earlier = [];
-                (session.plans || []).forEach(function(plan) {
-                    plan.items.forEach(function(item) {
-                        earlier.push({title: item.title, line: item.line || '', replacement: item.replacement || '',
-                                      applied: !!item.applied});
-                    });
-                });
-                request = {url: '/api/discuss/room-moderator', body: {
-                    scene: scenePath,
-                    preset_id: session.presetId,
-                    question: session.question,
-                    history: history,
-                    earlier: earlier,
-                    run_id: runId
-                }};
-            } else {
-                var liveContent = '';
-                if (typeof _proseEditorView !== 'undefined' && _proseEditorView && typeof getEditedMarkdown === 'function') {
-                    try { liveContent = getEditedMarkdown() || ''; } catch (e) {}
-                }
-                request = {url: '/api/discuss/room-turn', body: {
-                    scene: scenePath,
-                    attachments: attachments,
-                    live_content: liveContent,
-                    seat: step.seat,
-                    turn_index: step.turnIndex,
-                    total_turns: step.totalTurns,
-                    preset_id: session.presetId,
-                    question: session.question,
-                    history: history,
-                    run_id: runId,
-                    debate_id: session.id || ''
-                }};
-            }
-
-            fetch(request.url, {
-                method: 'POST',
-                headers: pvHeaders(),
-                body: JSON.stringify(request.body)
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                stopPolling();
-                session.live = null;
-                if (_roomRunToken !== token) return;
-                if (!data || !data.ok) {
-                    throw new Error((data && data.error) || (step.moderator ? 'The moderator failed' : 'Critic turn failed'));
-                }
-                if (step.moderator) {
-                    var items = (data.plan || []).map(_roomPlanItem);
-                    var open = Array.isArray(data.open) ? data.open : [];
-                    // Even an empty summary supersedes the earlier plan.
-                    session.plans.push({
-                        id: 'plan-' + Date.now(),
-                        afterTurn: session.turns.length,
-                        agent: data.agent || '',
-                        items: items,
-                        open: open,
-                        authorsCall: '',
-                        expanded: false
-                    });
-                } else {
-                    session.turns.push({
-                        role: 'critic',
-                        seat: data.seat,
-                        agent: data.agent,
-                        model: data.model || '',
-                        label: 'Critic ' + data.seat + ' \u00b7 ' + _roomAgentDisplay(data.agent),
-                        tag: 'Turn ' + step.turnIndex + ' \u00b7 '
-                            + (data.done ? 'Nothing new' : (step.turnIndex === 1 ? 'Opening' : 'Reply')),
-                        text: data.reply || '',
-                        tool_conversation_id: data.tool_conversation_id || '',
-                        review_pending: !!((data.changed_files || []).length || (data.unreviewable || []).length)
-                    });
-                    // A critic with nothing new ends the debate; the moderator still sums it up.
-                    if (data.done) {
-                        session.queue = session.queue.filter(function(next) { return next.moderator || next.respondingToWriter; });
-                    }
-                }
-                _saveRoomSession(session);
-                if (_roomHasReview(session)) {
-                    session.busy = false;
-                    session.live = null;
-                    session.runId = '';
-                    renderSceneRoomPane();
-                    return;
-                }
-                _processRoomQueue(scenePath, token);
-            }).catch(function(err) {
-                stopPolling();
-                session.live = null;
-                if (_roomRunToken !== token) return;
-                session.busy = false;
-                session.statusText = '';
-                session.runId = '';
-                session.queue = [];
-                session.error = err.message || 'Could not complete Writers\u2019 Room turn.';
-                renderSceneRoomPane();
-            });
+        function _processRoomQueue(scenePath) {
+            var session = _roomSessionFor(scenePath);
+            if (session && session.managed) roomRuntimePoll(session);
         }
 
         // What the critic is doing while its turn runs, as the single chat
@@ -1755,7 +1780,8 @@
                 });
                 box.appendChild(steps);
             }
-            if (live.draft) {
+            var quietPass = live.draft && '[ROOM_PASS]'.startsWith(live.draft.trim().toUpperCase());
+            if (live.draft && !quietPass) {
                 var draft = elementWith('room-live-draft room-turn-body discuss-message assistant');
                 renderDiscussMarkdown(draft, _roomLinkLines(live.draft, session.scene));
                 box.appendChild(draft);
@@ -1787,67 +1813,14 @@
         }
 
         function runRoomPlusOneTurn() {
-            var path = _roomCurrentScenePath();
-            var session = _roomSessionFor(path);
-            if (!session || session.busy || _roomHasReview(session)) return;
-            var lastCritic = null;
-            for (var i = session.turns.length - 1; i >= 0; i--) {
-                if (session.turns[i].role === 'critic') { lastCritic = session.turns[i]; break; }
-            }
-            var nextSeat = (lastCritic && lastCritic.seat === 1) ? 2 : 1;
-            var criticCount = session.turns.filter(function(t) { return t.role === 'critic'; }).length;
-            _roomRunToken++;
-            var token = _roomRunToken;
-            session.queue = [
-                {seat: nextSeat, turnIndex: criticCount + 1, totalTurns: criticCount + 1},
-                {moderator: true}
-            ];
-            _processRoomQueue(path, token);
+            var session = _roomSessionFor(_roomCurrentScenePath());
+            if (!session || session.busy) return;
+            var last = session.turns.filter(function(turn) { return turn.role === 'critic'; }).slice(-1)[0];
+            var seat = last && last.seat === 1 ? 2 : 1;
+            roomRuntimeControl(session, 'submit', {message_id: _roomNewId(), text: '@' + session.participants[seat - 1].handle + ' continue the discussion.', seats: [seat]}).catch(function() {});
         }
 
-        function sendRoomComposerMessage() {
-            var path = _roomCurrentScenePath();
-            var session = _roomSessionFor(path);
-            var input = document.getElementById('roomInput');
-            var text = input ? input.value.trim() : _roomDraftInput.trim();
-            if (!path || !session || session.busy || _roomHasReview(session) || !text) return;
-            var mentioned = _roomMentionRecipients(text);
-            var seats = mentioned.length ? mentioned : _roomTargetChoice === 'critic1' ? [1] : _roomTargetChoice === 'critic2' ? [2] : [1, 2];
-            _roomDraftInput = '';
-            if (input) input.value = '';
-            text = _roomWithSelection(text);
-
-            // If no turns have run yet and target is both, run a full fresh room debate on this custom question.
-            if (session.turns.length === 0 && !mentioned.length && _roomTargetChoice === 'both') {
-                startRoomDebate({question: text});
-                return;
-            }
-
-            if (!session.topicLabel) {
-                session.topicLabel = 'Custom question';
-                session.topicBadge = _roomSeatName(1) + ' & ' + _roomSeatName(2);
-            }
-            if (!session.id) {
-                session.id = _roomNewId();
-                session.createdAt = Date.now() / 1000;
-            }
-            if (!session.turns.length) session.question = text;
-            session.turns.push({
-                role: 'user',
-                label: 'Me (Writer)',
-                text: text
-            });
-            _saveRoomSession(session);
-            var criticCount = session.turns.filter(function(t) { return t.role === 'critic'; }).length;
-            _roomRunToken++;
-            var token = _roomRunToken;
-            session.queue = seats.map(function(seat, index) {
-                return {seat: seat, turnIndex: criticCount + index + 1,
-                    totalTurns: criticCount + seats.length, respondingToWriter: true};
-            });
-            session.queue.push({moderator: true});
-            _processRoomQueue(path, token);
-        }
+        function sendRoomComposerMessage() { return submitRoomComposerMessage(); }
 
         function insertRoomPlanTodo(item) {
             var path = _roomCurrentScenePath();
@@ -1918,7 +1891,7 @@
             var path = _roomCurrentScenePath();
             var session = _roomSessionFor(path);
             plan = plan || _roomLatestPlan(session);
-            if (!session || !plan || _roomHasReview(session)) return;
+            if (!session || !plan) return;
             var ticked = plan.items.filter(function(item) { return item.checked && !item.applied; });
             if (!ticked.length) return;
             var targetAgent = (agent === 'codex' || agent === 'claude') ? agent : 'claude';
@@ -1953,6 +1926,45 @@
             openDiscuss(null, {sendInstruction: instruction});
         }
 
+        function _renderRoomPresetPreview(session, container) {
+            var preset = session.pendingPreset;
+            var preview = elementWith('room-preset-preview');
+            preview.id = 'roomPresetPreview';
+            var title = document.createElement('strong'); title.textContent = preset.name; preview.appendChild(title);
+            if (preset.description) { var description = document.createElement('p'); description.textContent = preset.description; preview.appendChild(description); }
+            var countLabel = document.createElement('label');
+            countLabel.textContent = 'Invitations ';
+            var count = document.createElement('select');
+            count.className = 'room-target-select';
+            count.setAttribute('aria-label', 'Preset invitations');
+            for (var n = 2; n <= 12; n++) {
+                var option = document.createElement('option'); option.value = String(n); option.textContent = String(n); count.appendChild(option);
+            }
+            count.value = String(preset.invitations.length);
+            count.onchange = function() { _rmResizeInvitations(preset, Number(count.value)); renderSceneRoomPane(); };
+            countLabel.appendChild(count); preview.appendChild(countLabel);
+            var list = document.createElement('ol');
+            preset.invitations.forEach(function(step) {
+                var item = document.createElement('li');
+                item.textContent = '@' + session.participants[step.seat - 1].handle + ', ' + step.prompt;
+                list.appendChild(item);
+            });
+            preview.appendChild(list);
+            var recapLabel = document.createElement('label'); recapLabel.textContent = 'Optional recap ';
+            var recap = document.createElement('select'); recap.className = 'room-target-select'; recap.setAttribute('aria-label', 'Preset recap');
+            [{value: 0, name: 'No recap'}].concat(session.participants.map(function(p) { return {value: p.seat, name: p.name + ' · ' + _roomAgentDisplay(p.agent)}; })).forEach(function(p) {
+                var option = document.createElement('option'); option.value = String(p.value); option.textContent = p.name; recap.appendChild(option);
+            });
+            recap.value = String(preset.recap); recap.onchange = function() { preset.recap = Number(recap.value); };
+            recapLabel.appendChild(recap); preview.appendChild(recapLabel);
+            var actions = elementWith('room-preset-actions');
+            var start = document.createElement('button'); start.type = 'button'; start.id = 'roomStartPresetBtn'; start.className = 'room-send-btn'; start.textContent = 'Start discussion';
+            start.onclick = function() { startRoomDebate({start: true}); };
+            var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'room-header-btn'; cancel.textContent = 'Cancel';
+            cancel.onclick = function() { session.pendingPreset = null; renderSceneRoomPane(); };
+            actions.append(start, cancel); preview.appendChild(actions); container.appendChild(preview);
+        }
+
         function renderSceneRoomPane() {
             const pane = document.getElementById('sceneRoomPane');
             if (!pane) return;
@@ -1962,14 +1974,17 @@
                 return;
             }
             if (!_roomSettings) {
+                pane.replaceChildren(_scenePanelEmpty('Loading Room profiles…'));
                 _ensureRoomSettingsLoaded().then(function() {
-                    var summaryEl = document.getElementById('roomHeaderSummary');
-                    if (summaryEl) summaryEl.textContent = _roomHeaderSummaryText();
-                });
+                    if (!pane.querySelector('#roomInput')) renderSceneRoomPane();
+                }).catch(function(error) { pane.replaceChildren(_scenePanelEmpty(error.message)); });
+                return;
             }
 
             var prevInput = document.getElementById('roomInput');
-            if (prevInput) _roomDraftInput = prevInput.value;
+            var inputFocus = prevInput && document.activeElement === prevInput ? {start: prevInput.selectionStart, end: prevInput.selectionEnd} : null;
+            if (prevInput) { _roomDraftInput = prevInput.value; _roomSaveDraft(_roomDraftScene); }
+            _roomLoadDraft(path);
 
             // Every change redraws the pane, so keep the reader where they were:
             // following the debate if they were at the bottom, else in place.
@@ -1979,13 +1994,14 @@
             pane.replaceChildren();
             var session = _roomSessionFor(path);
             _restoreLatestRoomSession(path);
+            _roomEnsureParticipants(session);
 
             // 1. Header strip
             var header = elementWith('room-header-strip');
             var summary = elementWith('room-header-summary', _roomHeaderSummaryText());
             summary.id = 'roomHeaderSummary';
             var actions = elementWith('room-header-actions');
-            if (session.turns.length > 0 || session.busy || session.error) {
+            if (session.turns.length > 0 || session.busy || session.error || session.managed) {
                 var resetBtn = document.createElement('button');
                 resetBtn.type = 'button';
                 resetBtn.id = 'roomResetBtn';
@@ -1993,6 +2009,7 @@
                 resetBtn.textContent = '\u21ba New';
                 resetBtn.setAttribute('data-tip', 'Clear this room session and return to the starter cards');
                 resetBtn.onclick = resetRoomSession;
+                resetBtn.disabled = session.busy;
                 actions.appendChild(resetBtn);
             }
             var historyBtn = document.createElement('button');
@@ -2012,7 +2029,7 @@
             gearBtn.id = 'roomSettingsBtn';
             gearBtn.className = 'room-header-btn';
             gearBtn.textContent = '\u2699 Settings';
-            gearBtn.setAttribute('data-tip', 'Configure critics, models, turns, and role prompts in Settings \u2192 Writers\u2019 Room');
+            gearBtn.setAttribute('data-tip', 'Choose reusable profiles and discussion presets in Settings → Writers’ Room');
             gearBtn.onclick = function() {
                 if (typeof openRoomSettings === 'function') openRoomSettings();
             };
@@ -2025,16 +2042,20 @@
             body.id = 'roomBody';
             if (_roomHistoryOpen) _renderRoomHistoryMenu(body, path, session);
 
-            if (session.turns.length === 0 && !session.busy && !session.error) {
+            if (session.turns.length === 0 && !session.busy && !session.error && !(session.outbox || []).length) {
                 var empty = elementWith('discuss-empty room-empty');
                 var title = document.createElement('strong');
-                title.textContent = 'What should the room debate?';
+                title.textContent = session.pendingPreset ? 'Preview discussion' : 'What should we discuss?';
                 empty.appendChild(title);
-                empty.appendChild(document.createTextNode('Pick a starter below, or type any question in the box at the bottom.'));
+                empty.appendChild(document.createTextNode(session.pendingPreset ? 'Review the participants and invitations before starting.' : 'Choose participants, then type a message or preview a discussion preset.'));
+                var pairPicker = elementWith('room-participant-picker');
+                _roomPairPicker(session, pairPicker, function(ids) { if (session.pendingPreset) session.pendingPreset.profiles = ids; });
+                empty.appendChild(pairPicker);
+                if (session.pendingPreset) {
+                    _renderRoomPresetPreview(session, empty);
+                } else {
 
-                var presets = (_roomSettings && _roomSettings.presets && _roomSettings.presets.length)
-                    ? _roomSettings.presets
-                    : ROOM_DEFAULT_PRESETS;
+                var presets = _roomSettings ? _roomSettings.presets : [];
                 var groups = [];
                 presets.forEach(function(card) {
                     var g = groups.find(function(item) { return item.name === card.group; });
@@ -2062,6 +2083,7 @@
                     });
                     empty.appendChild(list);
                 });
+                }
                 body.appendChild(empty);
             } else {
                 // Active session topic banner
@@ -2092,6 +2114,19 @@
                     });
                 };
                 session.turns.forEach(function(turn, turnIdx) {
+                    if (turn.passed) {
+                        if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_roomToolReview(session, turn));
+                    if (turn.review_unavailable) turnsWrap.appendChild(elementWith('room-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
+                        appendPlansAfter(turnIdx + 1); return;
+                    }
+                    if (turn.role === 'invitation') {
+                        var invitation = elementWith('room-preset-invitation');
+                        invitation.append(elementWith('room-preset-label', turn.label || 'Preset'), elementWith('room-preset-text', turn.text));
+                        highlightChatMentions(invitation, session.participants);
+                        turnsWrap.appendChild(invitation);
+                        appendPlansAfter(turnIdx + 1);
+                        return;
+                    }
                     if (turn.role === 'user') {
                         var uCard = elementWith('room-turn-card chat-message-card is-user');
                         var uHead = elementWith('room-turn-head chat-message-header');
@@ -2099,6 +2134,7 @@
                         uCard.appendChild(uHead);
                         var uBody = elementWith('room-turn-body discuss-message');
                         renderDiscussMarkdown(uBody, turn.text);
+                        highlightChatMentions(uBody, session.participants);
                         uCard.appendChild(uBody);
                         addCopyButton(uCard, function() { return turn.text; }, 'Copy message');
                         turnsWrap.appendChild(uCard);
@@ -2116,10 +2152,12 @@
                     card.appendChild(head);
                     var textWrap = elementWith('room-turn-body discuss-message assistant');
                     renderDiscussMarkdown(textWrap, _roomLinkLines(turn.text, path));
+                    highlightChatMentions(textWrap, session.participants);
                     card.appendChild(textWrap);
                     addCopyButton(card, function() { return turn.text; }, 'Copy message');
                     turnsWrap.appendChild(card);
                     if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_roomToolReview(session, turn));
+                    if (turn.review_unavailable) turnsWrap.appendChild(elementWith('room-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
                     appendPlansAfter(turnIdx + 1);
                 });
                 // A plan whose turns were cut short still shows, at the end.
@@ -2162,6 +2200,7 @@
                 }
 
             }
+            renderManagedRoomQueue(session, body);
             pane.appendChild(body);
             body.dataset.scene = path;
             body.addEventListener('scroll', function() {
@@ -2182,84 +2221,16 @@
             }
             if (_roomLatestPlan(session)) _syncRoomApplyButton(session);
 
-            // 3. Bottom composer
-            var composer = elementWith('room-composer');
-            composer.id = 'roomComposer';
-            var targetRow = elementWith('room-composer-bar');
-            var targetLeft = elementWith('room-composer-target');
-            targetLeft.appendChild(elementWith('room-apply-label', 'To:'));
-            var targetSelect = document.createElement('select');
-            targetSelect.id = 'roomTargetSelect';
-            targetSelect.className = 'room-target-select';
-            targetSelect.setAttribute('aria-label', 'Room message recipient');
-            [
-                {value: 'both', label: 'Room (Both editors)'},
-                {value: 'critic1', label: _roomSeatName(1) + ' only'},
-                {value: 'critic2', label: _roomSeatName(2) + ' only'}
-            ].forEach(function(opt) {
-                var o = document.createElement('option');
-                o.value = opt.value;
-                o.textContent = opt.label;
-                targetSelect.appendChild(o);
-            });
-            targetSelect.value = _roomTargetChoice;
-            targetSelect.onchange = function() { _roomTargetChoice = targetSelect.value; };
-            targetLeft.appendChild(targetSelect);
-            targetRow.append(targetLeft, elementWith('room-composer-hint', 'Enter to send'));
-            composer.appendChild(targetRow);
-
-            if (_roomPendingSelection) {
-                var chip = elementWith('room-selection-chip');
-                chip.id = 'roomSelectionChip';
-                var excerpt = _roomPendingSelection.replace(/\s+/g, ' ');
-                chip.appendChild(elementWith('room-selection-text',
-                    'Selection: \u201c' + (excerpt.length > 90 ? excerpt.slice(0, 90) + '\u2026' : excerpt) + '\u201d'));
-                var clearSel = document.createElement('button');
-                clearSel.type = 'button';
-                clearSel.className = 'room-selection-clear';
-                clearSel.setAttribute('aria-label', 'Remove selection');
-                clearSel.textContent = '\u00d7';
-                clearSel.onclick = function() { _roomPendingSelection = ''; renderSceneRoomPane(); };
-                chip.appendChild(clearSel);
-                composer.appendChild(chip);
+            // The Room uses the same composer controls, with one model choice per participant.
+            pane.appendChild(createRoomComposer(session));
+            if (session.managed) roomRuntimePoll(session);
+            if (inputFocus) {
+                var restoredInput = document.getElementById('roomInput');
+                restoredInput.focus({preventScroll: true});
+                restoredInput.setSelectionRange(inputFocus.start, inputFocus.end);
             }
-
-            var inputRow = elementWith('room-composer-input-row');
-            var textarea = document.createElement('textarea');
-            textarea.id = 'roomInput';
-            textarea.className = 'room-input';
-            textarea.rows = 2;
-            textarea.placeholder = _roomPendingSelection
-                ? 'Ask about this selection; type @ for editors or files\u2026'
-                : session.turns.length
-                ? 'Message the room, or type @ for editors or files\u2026'
-                : 'Ask a question, type @ for editors or files, or pick a starter\u2026';
-            textarea.value = _roomDraftInput;
-            textarea.oninput = function() {
-                _roomDraftInput = textarea.value;
-                sendBtn.disabled = session.busy || _roomHasReview(session) || !_roomDraftInput.trim();
-            };
-            var sendBtn = document.createElement('button');
-            sendBtn.type = 'button';
-            sendBtn.id = 'roomSendBtn';
-            sendBtn.className = 'room-send-btn';
-            sendBtn.textContent = 'Send';
-            sendBtn.disabled = session.busy || _roomHasReview(session) || !_roomDraftInput.trim();
-            sendBtn.onclick = sendRoomComposerMessage;
-            inputRow.append(textarea, sendBtn);
-            var mentionMenu = elementWith('room-mention-menu');
-            mentionMenu.id = 'roomMentionMenu';
-            mentionMenu.setAttribute('role', 'listbox');
-            mentionMenu.setAttribute('aria-label', 'Mention an editor or project file');
-            mentionMenu.hidden = true;
-            var mentionHint = elementWith('room-mention-hint');
-            mentionHint.setAttribute('aria-live', 'polite');
-            composer.appendChild(mentionMenu);
-            composer.appendChild(inputRow);
-            composer.appendChild(mentionHint);
-            _wireRoomMentions(textarea, mentionMenu, targetSelect, mentionHint);
-            pane.appendChild(composer);
         }
+
 
         function _buildRoomPlanCard(session, plan, isLatest, path) {
             var planCard = elementWith('room-plan-card' + (isLatest ? ' is-latest' : ''));
@@ -2384,7 +2355,7 @@
                 callBox.append(callTitle, document.createTextNode(plan.authorsCall));
                 planCard.appendChild(callBox);
             }
-            if (!isLatest || session.busy || _roomHasReview(session)) return planCard;
+            if (!isLatest || session.busy) return planCard;
 
             var app = (_roomSettings && _roomSettings.app) || {};
             _roomApplyAgentChoice = _roomApplyAgentChoice
@@ -4331,6 +4302,7 @@
                 var label = elementWith('discuss-message-label chat-message-header chat-message-name', message.role === 'user' ? 'Me' : discussAgentLabel());
                 wrap.appendChild(label);
                 renderDiscussMarkdown(wrap, message.text);
+                highlightChatMentions(wrap, []);
                 var sent = String(message.text || '');
                 addCopyButton(wrap, function() { return sent; }, 'Copy message');
                 log.appendChild(wrap);
@@ -5034,7 +5006,14 @@ function updateDiscussDiffFontSize(size) {
 
 // The expanded view of one reviewed file: the same blocks and the same ticks,
 // with room to read them and the split view a long paragraph needs.
-function openDiscussReviewModal(path) {
+var _currentDiscussReviewPath = null;
+var _currentDiscussDiffString = null;
+var _currentDiscussDiffMode = 'side-by-side';
+var _currentDiscussReviewContext = null;
+var _discussDiffLoadToken = 0;
+
+function openDiscussReviewModal(path, review) {
+    _currentDiscussReviewContext = review || null;
     _currentDiscussReviewPath = path;
     _currentDiscussDiffString = null;
     document.getElementById('discussDiffModalTitle').textContent = path;
@@ -5043,12 +5022,15 @@ function openDiscussReviewModal(path) {
     var overlay = document.getElementById('discussDiffModalOverlay');
     overlay.hidden = false;
     _discussReturnFocus = document.activeElement;
-    setDiscussDiffMode(_discussReviewMode);
+    setDiscussDiffMode(review ? review.mode : _discussReviewMode);
     var initialSize = document.getElementById('discussDiffFontSize').value;
     updateDiscussDiffFontSize(initialSize);
 }
 
 function openDiscussDiffModal(diffString) {
+    _currentDiscussReviewContext = null;
+    _discussReturnFocus = document.activeElement;
+    document.getElementById('discussDiffModalTitle').textContent = 'Review Changes';
     _currentDiscussReviewPath = null;
     _currentDiscussDiffString = diffString;
     document.getElementById('discussDiffModalNote').textContent = 'Review the changes the agent made.';
@@ -5067,12 +5049,18 @@ function openDiscussDiffModal(diffString) {
 }
 
 function closeDiscussDiffModal() {
-    document.getElementById("discussDiffModalOverlay").hidden = true;
+    var review = _currentDiscussReviewContext, path = _currentDiscussReviewPath;
+    document.getElementById('discussDiffModalOverlay').hidden = true;
+    _discussDiffLoadToken++;
     _currentDiscussDiffString = null;
     _currentDiscussReviewPath = null;
-    // The card is the one that applies, so it has to show what was ticked here.
-    if (_discussSnapshot) renderDiscussSnapshot();
-    if (_discussReturnFocus && _discussReturnFocus.focus) _discussReturnFocus.focus();
+    _currentDiscussReviewContext = null;
+    // Each surface reads back the same choices made in the expanded view.
+    if (review) review.render(path);
+    else {
+        if (_discussSnapshot) renderDiscussSnapshot();
+        if (_discussReturnFocus && _discussReturnFocus.focus) _discussReturnFocus.focus();
+    }
 }
 
 function setDiscussDiffMode(mode) {
@@ -5094,39 +5082,44 @@ function setDiscussDiffMode(mode) {
 
 function loadDiscussDiffMode(mode) {
     var contentDiv = document.getElementById('discussDiffModalContent');
+    var token = ++_discussDiffLoadToken;
     if (_currentDiscussReviewPath) {
-        // Remembered as the review's mode too: closing the expanded view and
-        // going back to the card should not throw the choice away.
-        _discussReviewMode = mode;
-        var file = (_discussReview || []).filter(function(row) {
-            return row.path === _currentDiscussReviewPath;
-        })[0];
-        contentDiv.textContent = '';
+        var review = _currentDiscussReviewContext;
+        if (review) { review.mode = mode; if (review.save) review.save(); } else _discussReviewMode = mode;
+        var path = _currentDiscussReviewPath;
+        var conversationId = review ? review.conversationId : _discussConversationId;
+        var file = ((review ? review.files : _discussReview) || []).find(function(row) { return row.path === path; });
+        contentDiv.replaceChildren();
         if (!file) {
             contentDiv.appendChild(elementWith('discuss-diff-status', 'This file has no changes left to review.'));
             return;
         }
-        discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/changes',
-                   {mode: mode})
+        contentDiv.appendChild(elementWith('discuss-diff-status', 'Loading changes…'));
+        discussApi('/api/discuss/conversations/' + encodeURIComponent(conversationId) + '/changes', {mode: mode})
             .then(function(res) {
-                if (_currentDiscussReviewPath !== file.path) return;
-                _discussReview = res.files || [];
-                var fresh = _discussReview.filter(function(row) { return row.path === file.path; })[0];
-                contentDiv.textContent = '';
-                (((fresh || file).blocks) || []).forEach(function(block) {
-                    contentDiv.appendChild(renderDiscussReviewBlock(fresh || file, block).row);
+                if (token !== _discussDiffLoadToken || _currentDiscussReviewPath !== path || _currentDiscussReviewContext !== review) return;
+                if (!review && conversationId !== _discussConversationId) return;
+                var files = res.files || [];
+                if (review) review.files = files; else _discussReview = files;
+                var fresh = files.find(function(row) { return row.path === path; });
+                contentDiv.replaceChildren();
+                if (!fresh) {
+                    contentDiv.appendChild(elementWith('discuss-diff-status', 'This file has no changes left to review.'));
+                    return;
+                }
+                (fresh.blocks || []).forEach(function(block) {
+                    contentDiv.appendChild(renderDiscussReviewBlock(fresh, block, null, review).row);
                 });
-            })
-            .catch(function(err) {
-                contentDiv.textContent = '';
-                contentDiv.appendChild(elementWith('discuss-diff-status', 'Could not render this diff: ' + err.message));
+            }).catch(function(error) {
+                if (token !== _discussDiffLoadToken) return;
+                contentDiv.replaceChildren(elementWith('discuss-diff-status', 'Could not render this diff: ' + error.message));
             });
         return;
     }
     if (!_currentDiscussDiffString) return;
     discussApi('/api/discuss/format_patch', {patch: _currentDiscussDiffString, mode: mode})
-        .then(function(res) { contentDiv.innerHTML = res.diff_html; })
-        .catch(function(err) { contentDiv.textContent = 'Could not render this diff: ' + err.message; });
+        .then(function(res) { if (token === _discussDiffLoadToken) contentDiv.innerHTML = res.diff_html; })
+        .catch(function(error) { if (token === _discussDiffLoadToken) contentDiv.textContent = 'Could not render this diff: ' + error.message; });
 }
 
 
@@ -5140,7 +5133,8 @@ function loadDiscussDiffMode(mode) {
         var _discussReviewUnreviewable = [];
         var _discussReviewKeep = {};
 
-        function discussReviewKeep(path) {
+        function discussReviewKeep(path, review) {
+            if (review) { if (!review.keep[path]) review.keep[path] = {}; return review.keep[path]; }
             if (!_discussReviewKeep[path]) _discussReviewKeep[path] = {};
             return _discussReviewKeep[path];
         }
@@ -5188,8 +5182,8 @@ function loadDiscussDiffMode(mode) {
 
         // One row, used by the card and by the expanded view. Both write the
         // same ticked state, so a change made in either shows in the other.
-        function renderDiscussReviewBlock(file, block, onChange) {
-            var keep = discussReviewKeep(file.path);
+        function renderDiscussReviewBlock(file, block, onChange, review) {
+            var keep = discussReviewKeep(file.path, review);
             var row = elementWith('discuss-review-block');
             var label = document.createElement('label');
             label.className = 'discuss-review-choice';
@@ -5214,6 +5208,11 @@ function loadDiscussDiffMode(mode) {
             }
             box.onchange = function() {
                 keep[block.id] = box.checked;
+                if (review && review.save) {
+                    if (!review.fingerprints) review.fingerprints = {};
+                    review.fingerprints[file.path] = file.fingerprint;
+                    review.save();
+                }
                 paint();
                 if (onChange) onChange();
             };
@@ -5221,7 +5220,7 @@ function loadDiscussDiffMode(mode) {
             return {row: row, box: box};
         }
 
-        function renderDiscussReviewCard(file) {
+        function renderDiscussReviewCard(file, review) {
             var card = elementWith('discuss-review');
             card.dataset.reviewPath = file.path;
 
@@ -5239,21 +5238,21 @@ function loadDiscussDiffMode(mode) {
             // The changes are already in the file. The card says so, and its
             // one decision is what, if anything, to undo. Ticks are made in
             // Expand view; the card reads them back.
-            var keep = discussReviewKeep(file.path);
+            var keep = discussReviewKeep(file.path, review);
             var blocks = file.blocks || [];
             var kept = blocks.filter(function(block) { return keep[block.id] !== false; });
             var off = blocks.length - kept.length;
             var plural = function(n) { return n + (n === 1 ? ' change' : ' changes'); };
             count.textContent = off
                 ? 'Undoing ' + off + ' of ' + blocks.length
-                : discussAgentLabel() + ' changed this file · ' + plural(blocks.length) + ' · saved';
+                : (review ? review.agentLabel : discussAgentLabel()) + ' changed this file · ' + plural(blocks.length) + ' · saved';
 
             var actions = elementWith('discuss-review-actions');
             var expand = document.createElement('button');
             expand.type = 'button';
             expand.className = 'discuss-chip discuss-chip-outline';
             expand.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: text-bottom;"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg> Expand view';
-            expand.onclick = function(event) { event.preventDefault(); openDiscussReviewModal(file.path); };
+            expand.onclick = function(event) { event.preventDefault(); openDiscussReviewModal(file.path, review); };
             actions.appendChild(expand);
             actions.appendChild(elementWith('discuss-review-hint', 'Kept when you ask your next question.'));
             var undoAll = document.createElement('button');
@@ -5261,28 +5260,38 @@ function loadDiscussDiffMode(mode) {
             undoAll.className = 'discuss-review-undo-all';
             undoAll.textContent = 'Undo all';
             undoAll.hidden = !kept.length;
-            undoAll.onclick = function() { applyDiscussReview(file, [], undoAll); };
+            undoAll.onclick = function() { applyDiscussReview(file, [], undoAll, review); };
             actions.appendChild(undoAll);
             var apply = document.createElement('button');
             apply.type = 'button';
             apply.className = 'discuss-primary';
             apply.textContent = !off ? 'Looks good' : (kept.length ? 'Undo ' + plural(off) : 'Undo all');
             apply.onclick = function() {
-                applyDiscussReview(file, kept.map(function(block) { return block.id; }), apply);
+                applyDiscussReview(file, kept.map(function(block) { return block.id; }), apply, review);
             };
             actions.appendChild(apply);
             card.appendChild(actions);
+            if (review && review.applying) card.querySelectorAll('button').forEach(function(button) { button.disabled = true; });
             return card;
         }
 
-        function applyDiscussReview(file, keep, button) {
+        function applyDiscussReview(file, keep, button, review) {
+            if (review && review.applying) return;
             button.disabled = true;
-            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/changes/apply', {
+            if (review) { review.applying = true; review.error = ''; review.render(); }
+            var conversationId = review ? review.conversationId : _discussConversationId;
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(conversationId) + '/changes/apply', {
                 path: file.path,
                 keep: keep,
                 fingerprint: file.fingerprint || ''
             })
                 .then(function(res) {
+                    if (review) {
+                        delete review.keep[file.path]; review.applying = false;
+                        return review.refresh().then(function() {
+                            if (!review.files.length && !review.unreviewable.length && review.onSettled) return review.onSettled();
+                        });
+                    }
                     document.getElementById('discussAnnouncement').textContent = res.dropped
                         ? 'Undid ' + (res.total - res.kept.length) + ' of ' + res.total + ' changes in ' + file.path
                         : 'Kept every change in ' + file.path;
@@ -5291,6 +5300,10 @@ function loadDiscussDiffMode(mode) {
                     scheduleDiscussSnapshot();
                 })
                 .catch(function(error) {
+                    if (review) {
+                        review.applying = false;
+                        return review.refresh().then(function() { review.error = error.message; review.render(); });
+                    }
                     button.disabled = false;
                     renderDiscussError(error.message);
                     // The file moved underneath the writer; show them what it
@@ -5603,10 +5616,11 @@ function loadDiscussDiffMode(mode) {
                 || (configuredDiscussInstructions().indexOf(value) >= 0 && favoriteDiscussInstructions().indexOf(value) < 0);
         }
 
-        function toggleDiscussInstructionSelectionOnly(value) {
+        function toggleDiscussInstructionSelectionOnly(value, refresh) {
             var rows = selectionOnlyDiscussInstructions(); var index = rows.indexOf(value);
             if (index >= 0) rows.splice(index, 1); else rows.unshift(value);
             try { localStorage.setItem('proseview-codex-selection-only-instructions', JSON.stringify(rows.slice(0, 12))); } catch(e) {}
+            if (refresh) { refresh(); return; }
             renderDiscussTaskMode();
             var details = document.querySelector('#discussTaskMode .discuss-presets-more');
             if (!details) return;
@@ -5641,10 +5655,11 @@ function loadDiscussDiffMode(mode) {
             return saved[0] || 'Polish this';
         }
 
-        function toggleDiscussInstructionFavorite(value, reopenMenu) {
+        function toggleDiscussInstructionFavorite(value, reopenMenu, refresh) {
             var rows = favoriteDiscussInstructions(); var index = rows.indexOf(value);
             if (index >= 0) rows.splice(index, 1); else rows.unshift(value);
             try { localStorage.setItem('proseview-codex-favorite-instructions', JSON.stringify(rows.slice(0, 12))); } catch(e) {}
+            if (refresh) { refresh(); return; }
             renderDiscussTaskMode();
             if (reopenMenu) {
                 var details = document.querySelector('#discussTaskMode .discuss-presets-more');
@@ -5677,14 +5692,14 @@ function loadDiscussDiffMode(mode) {
             sendDiscussQuestion();
         }
 
-        function appendDiscussPresetMenuRow(node, value, favorite, details) {
+        function appendDiscussPresetMenuRow(node, value, favorite, details, controls) {
             var wrap = elementWith('discuss-preset-menu-row');
             var button = document.createElement('button'); button.type = 'button'; button.className = 'discuss-preset-menu-choice'; button.textContent = value;
             button.title = value;
-            button.onclick = function() { chooseDiscussInstruction(value, details); };
+            button.onclick = function() { (controls ? controls.choose : chooseDiscussInstruction)(value, details); };
             var star = document.createElement('button'); star.type = 'button'; star.className = 'discuss-favorite'; star.textContent = favorite ? '★' : '☆';
             star.setAttribute('aria-label', (favorite ? 'Remove from favorites: ' : 'Add to favorites: ') + value);
-            star.onclick = function() { toggleDiscussInstructionFavorite(value, true); };
+            star.onclick = function() { toggleDiscussInstructionFavorite(value, true, controls && controls.refresh); };
             wrap.appendChild(button);
             if (favorite) {
                 var only = selectionOnlyDiscussInstructions().indexOf(value) >= 0;
@@ -5693,29 +5708,29 @@ function loadDiscussDiffMode(mode) {
                 scope.title = only ? 'Shown only while text is selected' : 'Shown always. Click to show only while text is selected';
                 scope.setAttribute('aria-label', 'Only with selected text: ' + value);
                 scope.setAttribute('aria-pressed', only ? 'true' : 'false');
-                scope.onclick = function() { toggleDiscussInstructionSelectionOnly(value); };
+                scope.onclick = function() { toggleDiscussInstructionSelectionOnly(value, controls && controls.refresh); };
                 wrap.appendChild(scope);
             } else wrap.appendChild(document.createElement('span'));
             wrap.appendChild(star); node.appendChild(wrap);
         }
 
-        function appendDiscussPresetsMenu(node, presets, recents) {
+        function appendDiscussPresetsMenu(node, presets, recents, controls) {
             var details = document.createElement('details'); details.className = 'discuss-presets-more';
             var summary = document.createElement('summary'); summary.textContent = presets.length ? 'More…' : 'Add from recent…';
             summary.setAttribute('role', 'button');
             summary.setAttribute('aria-label', 'More presets and recent instructions');
             details.appendChild(summary);
-            var popover = elementWith('discuss-presets-popover'); popover.id = 'discussPresetsPopover';
+            var popover = elementWith('discuss-presets-popover'); popover.id = controls ? 'roomPresetsPopover' : 'discussPresetsPopover';
             var favorites = favoriteDiscussInstructions();
             if (presets.length) {
                 var presetHeading = document.createElement('strong'); presetHeading.textContent = 'Presets'; popover.appendChild(presetHeading);
                 presets.forEach(function(value) {
-                    appendDiscussPresetMenuRow(popover, value, favorites.indexOf(value) >= 0, details);
+                    appendDiscussPresetMenuRow(popover, value, favorites.indexOf(value) >= 0, details, controls);
                 });
             }
             if (recents.length) {
                 var recentHeading = document.createElement('strong'); recentHeading.textContent = 'Recent'; popover.appendChild(recentHeading);
-                recents.forEach(function(value) { appendDiscussPresetMenuRow(popover, value, false, details); });
+                recents.forEach(function(value) { appendDiscussPresetMenuRow(popover, value, false, details, controls); });
             }
             details.appendChild(popover); node.appendChild(details);
         }
@@ -5981,88 +5996,11 @@ function loadDiscussDiffMode(mode) {
 
         function renderDiscussModelPicker() {
             var catalog = discussModelCatalog();
-            var list = document.getElementById('discussModelList');
-            var efforts = document.getElementById('discussModelEfforts');
-            if (!catalog || !list) return;
-            var selection = discussModelSelection();
-            // Choosing anything rebuilds both rows, which would drop a keyboard
-            // user back to the document. Remember where they were standing.
-            var active = document.activeElement;
-            var restore = active && active.dataset && (active.dataset.discussModel !== undefined
-                ? {kind: 'model', id: active.dataset.discussModel}
-                : (active.dataset.discussEffort ? {kind: 'effort', id: active.dataset.discussEffort} : null));
-            list.replaceChildren();
-            var rows = [{
-                id: '',
-                label: 'Follow ' + discussAgentLabel() + ' settings',
-                description: catalog.default.label
-                    ? (catalog.default.label + (catalog.default.effort ? ' · ' + catalog.default.effort : '')
-                       + ', from ' + (catalog.default.source || 'your own configuration'))
-                    : (catalog.default.source || 'Whatever this agent is configured to use'),
-                badge: 'Default'
-            }].concat(catalog.models || []);
-            rows.forEach(function(row) {
-                var option = document.createElement('button');
-                option.type = 'button';
-                option.className = 'discuss-model-option';
-                option.setAttribute('role', 'radio');
-                var checked = (row.id || '') === selection.model;
-                option.setAttribute('aria-checked', checked ? 'true' : 'false');
-                option.appendChild(elementWith('discuss-model-option-tick', checked ? '●' : ''));
-                var body = document.createElement('span');
-                body.style.minWidth = '0';
-                var name = document.createElement('strong');
-                name.textContent = row.label || row.id;
-                body.appendChild(name);
-                body.appendChild(elementWith('', row.description || ''));
-                option.appendChild(body);
-                if (row.badge) option.appendChild(elementWith('discuss-model-badge', row.badge));
-                else if (row.retiring) option.appendChild(elementWith('discuss-model-badge retiring', 'Retiring'));
-                else option.appendChild(document.createElement('span'));
-                option.dataset.discussModel = row.id || '';
-                option.onclick = function() { chooseDiscussModel(row.id || ''); };
-                list.appendChild(option);
-            });
-            var ladder = selection.model ? discussModelEfforts(catalog, selection.model) : [];
-            var describedBy = null;
-            efforts.replaceChildren();
-            // Always the full union, with this model's missing rungs greyed
-            // out: a row that silently loses its top entries hides the reason
-            // a cheaper model cannot think as hard.
-            discussModelEffortUnion(catalog).forEach(function(entry) {
-                var button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'discuss-model-effort-option';
-                button.textContent = entry.id;
-                var supported = !ladder.length ? false : ladder.some(function(row) { return row.id === entry.id; });
-                button.disabled = !supported;
-                var active = supported && selection.effort === entry.id;
-                button.setAttribute('aria-pressed', active ? 'true' : 'false');
-                if (active) describedBy = entry.description || '';
-                if (entry.description) button.title = entry.description;
-                button.dataset.discussEffort = entry.id;
-                button.onclick = function() { chooseDiscussEffort(entry.id); };
-                efforts.appendChild(button);
-            });
-            if (restore) {
-                var again = restore.kind === 'model'
-                    ? list.querySelector('[data-discuss-model="' + CSS.escape(restore.id) + '"]')
-                    : efforts.querySelector('[data-discuss-effort="' + CSS.escape(restore.id) + '"]:not(:disabled)');
-                if (again) again.focus();
-            }
-            document.getElementById('discussModelEffortDesc').textContent = selection.model
-                ? (describedBy || 'Model default')
-                : 'Set by your ' + discussAgentLabel() + ' configuration';
-            var foot = document.getElementById('discussModelFoot');
-            if (_discussModelNote) {
-                foot.textContent = _discussModelNote;
-                foot.dataset.kind = 'warning';
-            } else {
-                foot.dataset.kind = 'info';
-                foot.textContent = selection.model
-                    ? 'Pinned to this conversation, from your next message on.'
-                    : 'Prosview sends no model, so ' + discussAgentLabel() + ' uses its own configuration.';
-            }
+            if (!catalog) return;
+            renderChatModelOptions({catalog: catalog, selection: discussModelSelection(), agentLabel: discussAgentLabel(),
+                list: document.getElementById('discussModelList'), efforts: document.getElementById('discussModelEfforts'),
+                description: document.getElementById('discussModelEffortDesc'), foot: document.getElementById('discussModelFoot'),
+                chooseModel: chooseDiscussModel, chooseEffort: chooseDiscussEffort, note: _discussModelNote});
         }
 
         // Codex advertises a different ladder per model, so the row shows every
@@ -6093,6 +6031,7 @@ function loadDiscussDiffMode(mode) {
                 {model: selection.model, effort: selection.effort}
             ).then(function(data) {
                 if (_discussSnapshot) _discussSnapshot.model = data.model || {model: '', effort: ''};
+                if (_roomSettings && _roomSettings.chat_models) _roomSettings.chat_models[_discussAgent] = data.model || {model: '', effort: ''};
                 renderDiscussModelChip();
                 document.getElementById('discussAnnouncement').textContent =
                     'Model set to ' + document.getElementById('discussModelName').textContent
@@ -6454,6 +6393,7 @@ function loadDiscussDiffMode(mode) {
         // Put `@path ` into the question, opening the panel first if needed:
         // the file browser's "Mention in chat" does this.
         function mentionInDiscuss(path) {
+            if (roomTabIsOpen()) { roomInsertContext('@' + path + ' '); return; }
             var insert = function() {
                 var input = document.getElementById('discussInput');
                 if (!input) return;
@@ -6493,6 +6433,10 @@ function loadDiscussDiffMode(mode) {
                 get: function() { return native.get.call(this); },
                 set: function(next) { native.set.call(this, next); paintDiscussMentions(); syncDiscussSendEmpty(); }
             });
+            wireChatMentionReplacement(input, function() { return []; });
+            input.addEventListener('keydown', function(event) {
+                if (deleteChatMention(event, input, [])) event.stopImmediatePropagation();
+            }, true);
             input.addEventListener('input', paintDiscussMentions);
             input.addEventListener('input', syncDiscussSendEmpty);
             syncDiscussSendEmpty();

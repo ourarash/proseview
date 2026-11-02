@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import RoomConfig, SuggestionsConfig
+from .room import clean_library, clean_participants
 
 #: Placeholders a prompt may use, and what each becomes.
 PROMPT_PLACEHOLDERS: dict[str, str] = {
@@ -415,15 +416,39 @@ class RoomComputerSettings:
     moderator: RoomSeatSettings = field(default_factory=lambda: RoomSeatSettings(agent="claude", effort="low"))
     turns: int = ROOM_TURNS_DEFAULT
     length: str = "concise"
+    library: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        result = {
             "critic1": self.critic1.to_json(),
             "critic2": self.critic2.to_json(),
             "moderator": self.moderator.to_json(),
             "turns": self.turns,
             "length": self.length,
         }
+        if self.library is not None:
+            result["library"] = self.library
+        return result
+
+    def effective_library(self, book: RoomConfig) -> dict[str, Any]:
+        if self.library is not None:
+            return clean_library(self.library)
+        profiles = [
+            {"id": "story-editor", "name": book.critic1_name, "specialty": book.critic1_prompt or DEFAULT_ROOM_CRITIC1_PROMPT,
+             "style": "Direct and constructive.", **self.critic1.to_json()},
+            {"id": "voice-editor", "name": book.critic2_name, "specialty": book.critic2_prompt or DEFAULT_ROOM_CRITIC2_PROMPT,
+             "style": "Attentive to character voice and emotional nuance.", **self.critic2.to_json()},
+        ]
+        pair = [p["id"] for p in profiles]
+        presets = []
+        for card in ROOM_PRESET_CARDS:
+            first = book.preset_prompt(card["id"]) or DEFAULT_ROOM_PRESET_PROMPTS[card["id"]]
+            steps = [{"seat": 1, "prompt": first}, {"seat": 2, "prompt": "Give your own perspective and respond to the first participant's contribution."}]
+            for index in range(2, self.turns):
+                steps.append({"seat": index % 2 + 1, "prompt": "Respond to the discussion. Reconsider, challenge, or build on the other perspective where useful."})
+            presets.append({"id": card["id"], "name": card["label"], "description": card["copy"].replace("Ends with a revision plan.", "An optional recap closes the discussion."),
+                            "profiles": pair, "invitations": steps[:max(2, self.turns)], "recap": 2})
+        return clean_library({"profiles": profiles, "presets": presets, "default_profiles": pair})
 
     @classmethod
     def from_json(cls, raw: Any) -> "RoomComputerSettings":
@@ -447,6 +472,7 @@ class RoomComputerSettings:
             moderator=moderator,
             turns=turns,
             length=length,
+            library=raw.get("library"),
         )
 
 
@@ -519,15 +545,24 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
     if not _ROOM_ID_RE.fullmatch(session_id) or not scene:
         return None
     turns: list[dict[str, Any]] = []
-    for turn in (raw.get("turns") or [])[:40]:
-        if not isinstance(turn, dict) or not str(turn.get("text") or "").strip():
+    raw_turns = raw.get("turns") or []
+    if not isinstance(raw_turns, list):
+        raise ValueError("Room turns must be a list")
+    for turn in raw_turns:
+        if not isinstance(turn, dict) or not (str(turn.get("text") or "").strip() or turn.get("passed")):
             continue
-        role = "user" if turn.get("role") == "user" else "critic"
+        role = turn.get("role") if turn.get("role") in ("user", "invitation") else "critic"
         row: dict[str, Any] = {
             "role": role,
             "label": _clip(turn.get("label"), 120),
-            "text": _clip(turn.get("text"), 8000),
+            "text": str(turn.get("text") or ""),
         }
+        if turn.get("step_id"):
+            row["step_id"] = _clip(turn.get("step_id"), 120)
+        if turn.get("message_id"):
+            row["message_id"] = _clip(turn.get("message_id"), 80)
+        if role in ("user", "invitation") and isinstance(turn.get("attachments"), list):
+            row["attachments"] = [{"kind": item.get("kind", "file"), "path": str(item.get("path") or "")} for item in turn["attachments"] if isinstance(item, dict)]
         if role == "critic":
             row.update(
                 seat=2 if turn.get("seat") == 2 else 1,
@@ -536,9 +571,14 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
                 tag=_clip(turn.get("tag"), 120),
                 tool_conversation_id=_clip(turn.get("tool_conversation_id"), 120),
                 review_pending=bool(turn.get("review_pending")),
+                review_unavailable=bool(turn.get("review_unavailable")),
+                passed=bool(turn.get("passed")),
             )
+        if role == "invitation":
+            row["seat"] = 2 if turn.get("seat") == 2 else 1
+            row["recap"] = bool(turn.get("recap"))
         turns.append(row)
-    if not turns:
+    if not turns and not raw.get("managed"):
         return None
     def clean_plan(raw_plan: dict[str, Any], after_turn: Any) -> dict[str, Any]:
         items = [
@@ -595,7 +635,7 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
         created = float(raw.get("created_at") or now)
     except (TypeError, ValueError):
         created = now
-    return {
+    result = {
         "id": session_id,
         "scene": scene,
         "title": _clip(raw.get("title"), 200).strip() or "Writers\u2019 Room",
@@ -606,7 +646,11 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
         "plans": plans,
         "created_at": created,
         "updated_at": now,
+        "managed": bool(raw.get("managed")),
     }
+    if raw.get("participants") is not None:
+        result["participants"] = clean_participants(raw["participants"])
+    return result
 
 
 class RoomHistoryStore:

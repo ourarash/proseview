@@ -622,198 +622,219 @@ def test_where_you_left_off_preview_and_overview_scene_cards_and_filters(page: P
     assert page.locator("#sceneTable").is_visible()
 
 
-def test_writers_room_debate_settings_todo_and_apply_plan(page: Page, server: ProseviewServer):
+@pytest.fixture(autouse=True)
+def restore_room_library(request, server):
+    if not (request.node.name.startswith("test_room_") or request.node.name.startswith("test_writers_room_")):
+        yield
+        return
+    original = server.post_json("/api/discuss/room-settings", {}).json()["settings"]["library"]
+    yield
+    server.post_json("/api/discuss/room-settings", {"save": True, "library": original})
+
+
+class _RoomCalls:
+    """Observed server invitations, independent of the browser's polling cadence."""
+    def __init__(self, page):
+        self.page, self.rows = page, {}
+
+    def snapshot(self):
+        data = self.page.evaluate("""() => {
+            const session = _roomSessionsByScene[_roomCurrentScenePath()];
+            return session && session.runtime ? session.runtime : null;
+        }""")
+        if data:
+            for step in data["steps"]:
+                if step["state"] in ("queued", "cancelled"):
+                    continue
+                turns = data["turns"]
+                end = next((i for i, turn in enumerate(turns) if turn.get("step_id") == step["id"] and turn["role"] == "critic"), len(turns))
+                history = turns[:end]
+                attachments = []
+                for turn in history:
+                    for item in turn.get("attachments", []):
+                        if item not in attachments:
+                            attachments.append(item)
+                self.rows[step["id"]] = {"seat": step["seat"], "participants": data["participants"], "history": history, "attachments": attachments}
+        return list(self.rows.values())
+
+    def __iter__(self): return iter(self.snapshot())
+    def __getitem__(self, index): return self.snapshot()[index]
+    def __len__(self): return len(self.snapshot())
+    def __eq__(self, other): return self.snapshot() == other
+
+
+def _room_idle(page):
+    page.wait_for_function("() => { const s = _roomSessionsByScene[_roomCurrentScenePath()]; return s && s.turns.length && !s.busy && !s.queue.length && !(s.outbox || []).length && !s.sendingOutbox && (!s.runtime || ['idle', 'review'].includes(s.runtime.status)); }")
+
+
+def test_writers_room_previews_explicit_invitations_and_optional_recap(page: Page, server: ProseviewServer):
+    requests, moderators = _RoomCalls(page), []
+    page.on("request", lambda req: moderators.append(req.url) if req.url.endswith('/api/discuss/room-moderator') else None)
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('room')")
     pane = page.locator("#sceneRoomPane")
-    pane.wait_for(state="visible")
+    _wait_until(lambda: pane.locator(".room-starter-card").count() == 3)
+    assert "Story Editor · Codex" in pane.locator("#roomHeaderSummary").inner_text()
+    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
+    preview = pane.locator("#roomPresetPreview")
+    preview.wait_for()
+    assert requests == []
+    pane.get_by_role("combobox", name="Preset invitations", exact=True).select_option("3")
+    pane.get_by_role("combobox", name="Preset recap", exact=True).select_option("2")
+    assert preview.locator("li").count() == 3
+    pane.locator("#roomStartPresetBtn").click()
+    _room_idle(page)
+    assert [r["seat"] for r in requests] == [1, 2, 1, 2]
+    assert pane.locator(".room-preset-invitation").count() == 4
+    assert pane.locator(".room-turn-card.is-critic-1").count() == 2
+    assert pane.locator(".room-turn-card.is-critic-2").count() == 2
+    assert pane.locator(".room-turn-tag").last.inner_text() == "Recap"
+    pane.locator("#roomInput").fill("What about the ending?")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    assert [r["seat"] for r in requests] == [1, 2, 1, 2, 1, 2]
+    assert pane.locator(".room-preset-invitation").count() == 4
+    assert pane.locator("#roomPlanCard").count() == 0 and moderators == []
+    pane.locator("#roomInput").fill("@Claude summarize the action items we all agreed on.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    assert [r["seat"] for r in requests][-1:] == [2]
+    assert len(requests[-1]["history"]) == 12, "the complete shared thread reaches the ordinary agent"
 
-    # Empty state shows the 3 starter cards and the header summary.
-    assert pane.locator(".room-starter-card").count() == 3
-    _wait_until(lambda: "Codex ↔ Claude · 4 turns · Concise" in pane.locator("#roomHeaderSummary").inner_text())
 
-    # Open Settings -> Writers' Room from the gear button and change default turns to 2.
+def test_room_profiles_presets_and_snapshot_names_survive_reload(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
     page.click("#roomSettingsBtn")
-    page.wait_for_selector("#settingsDialog[open]")
-    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
-    assert page.locator("#settingsTabRoom").get_attribute("aria-selected") == "true"
-
-    page.locator('#settingsPanelRoom select[aria-label="Most turns"]').select_option("2")
-    page.locator('#settingsPanelRoom select[aria-label="Turn length"]').select_option("detailed")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .room-library-card")
+    cards = page.locator("#roomSettingsBody .room-library-card")
+    cards.nth(0).locator("summary").click()
+    page.get_by_role("textbox", name="Profile 1 name", exact=True).fill("Plot & Stakes <b>")
+    page.get_by_role("textbox", name="Profile 1 style", exact=True).fill("Curious and direct")
+    cards.nth(2).locator("summary").click()
+    page.get_by_role("combobox", name="Preset 1 invitations", exact=True).select_option("2")
+    page.get_by_role("combobox", name="Preset 1 recap", exact=True).select_option("0")
+    page.get_by_role("textbox", name="Preset 1 invitation 1", exact=True).fill("Look at the opening with fresh eyes.")
+    assert "Moderator" not in page.locator("#settingsPanelRoom").inner_text()
     page.click("#settingsSaveBtn")
     _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
     page.click("#settingsDialog .ledger-close")
-    _wait_until(lambda: "Codex ↔ Claude · 2 turns · Detailed" in pane.locator("#roomHeaderSummary").inner_text())
-
-    # Start a debate via the Editorial critique starter card.
+    pane.locator("#roomInput").fill("continue")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    user = pane.locator(".room-turn-card.is-user")
+    assert user.locator(".chat-message-name").inner_text() == "Me"
+    box = user.bounding_box()
+    assert box["width"] < 200 and box["height"] < 90
+    assert pane.locator(".is-critic-1 .chat-message-name").inner_text() == "Plot & Stakes <b> · Codex"
+    assert pane.locator(".is-critic-1 .chat-message-name b").count() == 0
+    # Settings edits do not rename an ongoing or saved conversation.
+    page.click("#roomSettingsBtn")
+    profile = page.locator("#roomSettingsBody .room-library-card").first
+    if profile.get_attribute("open") is None:
+        profile.locator("summary").click()
+    page.get_by_role("textbox", name="Profile 1 name", exact=True).fill("Renamed Editor")
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+    assert "Plot & Stakes <b> · Codex" in pane.inner_text()
+    page.wait_for_function("() => !_roomSessionFor(_roomCurrentScenePath())._saving")
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator(".is-critic-2 .chat-message-name").wait_for(timeout=20000)
+    assert "Plot & Stakes <b> · Codex" in pane.inner_text()
+    pane.locator("#roomResetBtn").click()
     pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
-    plan_card = pane.locator("#roomPlanCard")
-    plan_card.wait_for(state="visible", timeout=20000)
+    assert pane.locator("#roomPresetPreview li").count() == 2
+    assert "Look at the opening with fresh eyes." in pane.locator("#roomPresetPreview").inner_text()
+    assert pane.get_by_role("combobox", name="Preset recap", exact=True).input_value() == "0"
+    assert "Renamed Editor" in pane.locator("#roomHeaderSummary").inner_text()
 
-    # Both critics (Turn 1 Codex, Turn 2 Claude) rendered their turns, then the moderator's plan:
-    # what they agreed, who proposed it, and what is still open.
-    assert pane.locator(".room-turn-card.is-critic-1").count() == 1
-    assert pane.locator(".room-turn-card.is-critic-2").count() == 1
-    assert pane.locator(".room-turn-card.is-critic-1 blockquote").count() == 2
-    assert plan_card.locator(".room-plan-item").count() == 2
-    assert "Story Editor · both agree" in plan_card.locator(".room-plan-by").first.inner_text()
-    first_change = plan_card.locator(".room-plan-change").first
-    assert first_change.locator("blockquote").count() == 2, "the original in italics, then the replacement"
-    assert first_change.locator("blockquote em").inner_text() == "The weather was grey."
-    assert "When to reveal the safe code" in plan_card.locator(".room-open").inner_text()
 
-    # Click + TODO on the first plan item and verify it writes <!-- TODO: ... --> to the scene.
-    first_todo_btn = plan_card.locator(".room-todo-btn").first
-    first_todo_btn.click()
-    _wait_until(lambda: first_todo_btn.inner_text() == "✓ TODO")
-    scene_file = server.root / "manuscript" / SCENE_REL
-    assert "<!-- TODO: Cut the opening weather line" in scene_file.read_text(encoding="utf-8")
+@pytest.mark.parametrize("both_pass", [False, True])
+def test_room_pass_is_quiet_and_does_not_cancel_the_next_invitation(page: Page, server: ProseviewServer, both_pass):
+    requests = _RoomCalls(page)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("Anything to add? ROOM_PASS_CODEX" + (" ROOM_PASS_CLAUDE" if both_pass else ""))
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    assert [r["seat"] for r in requests] == [1, 2]
+    assert requests[1]["history"][-1]["passed"] is True
+    assert pane.locator(".is-critic-1").count() == 0
+    assert pane.locator(".is-critic-2").count() == (0 if both_pass else 1)
+    assert "[ROOM_PASS]" not in pane.inner_text()
+    page.wait_for_function("() => !_roomSessionFor(_roomCurrentScenePath())._saving")
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator(".is-user").wait_for(timeout=20000)
+    assert pane.locator(".is-critic-1").count() == 0
 
-    # The individual suggestion starts unticked; only the agreed edit is selected.
-    plan_card.locator(".room-plan-check").nth(1).uncheck()
-    assert "Apply 1 ticked item with Claude" in page.locator("#roomApplyBtn").inner_text()
 
-    # Clicking Apply switches to the Claude tab and submits the revision instruction.
-    page.click("#roomApplyBtn")
+def test_room_settings_can_create_profiles_and_presets_and_preview_a_different_pair(page: Page, server: ProseviewServer, tmp_path):
+    requests = _RoomCalls(page)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    page.click("#roomSettingsBtn")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .room-library-card")
+    page.get_by_role("button", name="+ Add profile", exact=True).click()
+    page.get_by_role("textbox", name="Profile 3 name", exact=True).fill("First Reader")
+    page.get_by_role("textbox", name="Profile 3 specialty", exact=True).fill("Reader expectations and unanswered questions")
+    page.get_by_role("combobox", name="Profile 3 provider", exact=True).select_option("claude")
+    profile_id = page.evaluate("_rm.library.profiles[2].id")
+    page.get_by_role("button", name="+ Add preset", exact=True).click()
+    page.get_by_role("textbox", name="Preset 4 name", exact=True).fill("Fresh reader discussion")
+    page.get_by_role("combobox", name="Preset 4 participant 1", exact=True).select_option(profile_id)
+    page.get_by_role("combobox", name="Preset 4 participant 2", exact=True).select_option("story-editor")
+    page.get_by_role("combobox", name="Preset 4 invitations", exact=True).select_option("2")
+    page.get_by_role("textbox", name="Preset 4 invitation 1", exact=True).fill("What questions would a new reader ask?")
+    page.locator("#settingsDialog").screenshot(path=str(tmp_path / "room-settings.png"))
+    page.click("#settingsSaveBtn")
+    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
+    page.click("#settingsDialog .ledger-close")
+    pane.get_by_role("button", name="Fresh reader discussion 2 invitations", exact=False).click()
+    assert pane.get_by_role("combobox", name="Room participant 1", exact=True).input_value() == profile_id
+    assert pane.get_by_role("combobox", name="Room participant 2", exact=True).input_value() == "story-editor"
+    assert "@FirstReader, What questions would a new reader ask?" in pane.locator("#roomPresetPreview").inner_text()
+    pane.screenshot(path=str(tmp_path / "room-preview.png"))
+    assert requests == []
+    pane.locator("#roomStartPresetBtn").click()
+    _room_idle(page)
+    assert [r["participants"][r["seat"] - 1]["agent"] for r in requests] == ["claude", "codex"]
+    assert pane.locator(".is-critic-1 .chat-message-name").inner_text() == "First Reader · Claude"
+    assert pane.locator(".is-critic-2 .chat-message-name").inner_text() == "Story Editor · Codex"
+    pane.screenshot(path=str(tmp_path / "room-conversation.png"))
+
+
+def test_room_legacy_plan_can_still_be_reopened_added_to_todo_and_applied(page: Page, server: ProseviewServer):
+    response = server.post_json("/api/discuss/room-history", {"action": "save", "session": {
+        "id": "legacy-plan", "scene": SCENE_REL, "title": "Earlier discussion", "turns": [{"role": "user", "text": "Review this scene."}],
+        "plans": [{"after_turn": 1, "agent": "claude", "items": [
+            {"title": "Cut the opening weather line", "line": "17", "original": "The weather was grey.", "replacement": "She had used the same four digits since spring.", "detail": "Open on the safe.", "proposed_by": "Critic 1", "accepted": True},
+            {"title": "Keep the dialogue subtext clipped", "detail": "Let the pause carry the tension.", "proposed_by": "Critic 2", "accepted": False}],
+            "open": [{"issue": "When to reveal the safe code", "critic1": "Here", "critic2": "Later"}]}]}})
+    assert response.json()["ok"]
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    plan = page.locator("#roomPlanCard")
+    plan.wait_for(timeout=20000)
+    assert plan.locator(".room-plan-item").count() == 2
+    assert plan.locator('[data-consensus="agreed"] .room-plan-check').is_checked()
+    assert not plan.locator('[data-consensus="suggested"] .room-plan-check').is_checked()
+    plan.locator(".room-todo-btn").first.click()
+    _wait_until(lambda: "<!-- TODO: Cut the opening weather line" in (server.root / "manuscript" / SCENE_REL).read_text())
+    page.locator("#roomApplyBtn").click()
     _wait_until(lambda: page.locator("#utilityTabClaude").get_attribute("aria-selected") == "true")
     _wait_until(lambda: "Writers’ Room revision plan" in page.locator("#discussLog").inner_text())
 
 
-    # Back in the Room, the applied item says so; a follow-up question gets a
-    # plan of its own in the thread, and the first one folds away.
-    page.evaluate("showScenePanelTab('room')")
-    pane.wait_for(state="visible")
-    assert "Applied with Claude" in plan_card.locator(".room-plan-item").first.inner_text()
-    page.fill("#roomInput", "What about the ending?")
-    page.click("#roomSendBtn")
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
-    earlier, latest = pane.locator(".room-plan-card").nth(0), pane.locator(".room-plan-card").nth(1)
-    assert "Earlier plan" in earlier.inner_text() and earlier.locator(".room-plan-item").count() == 0
-    assert latest.get_attribute("id") == "roomPlanCard"
-    assert pane.locator(".room-turn-card").count() >= 4, "the new plan comes after the new turns"
-
-
-def test_room_names_summary_groups_and_shared_chat_cards_survive_reload(page: Page, server: ProseviewServer):
-    open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
-    pane = page.locator("#sceneRoomPane")
-    pane.wait_for(state="visible")
-    page.click("#roomSettingsBtn")
-    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
-    name = page.get_by_role("textbox", name="Story Editor display name", exact=True)
-    assert name.input_value() == "Story Editor"
-    name.fill("Plot & Stakes <b>")
-    page.get_by_role("textbox", name="Moderator display name", exact=True).fill("Chair")
-    page.get_by_role("combobox", name="Most turns", exact=True).select_option("2")
-    page.click("#settingsSaveBtn")
-    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
-    page.click("#settingsDialog .ledger-close")
-    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
-    plan = pane.locator("#roomPlanCard")
-    plan.wait_for(state="visible", timeout=20000)
-    assert pane.locator(".is-critic-1 .chat-message-name").inner_text() == "Plot & Stakes <b> · Codex"
-    assert pane.locator(".is-critic-1 .chat-message-name b").count() == 0
-    assert pane.locator(".is-critic-2 .chat-message-name").inner_text() == "Voice Editor · Claude"
-    assert "Chair · Claude" in plan.locator(".room-plan-sub").inner_text()
-    agreed = plan.locator('[data-consensus="agreed"]')
-    suggested = plan.locator('[data-consensus="suggested"]')
-    assert agreed.get_by_role("heading", name="Agreed changes", exact=True).is_visible()
-    assert suggested.get_by_role("heading", name="Other suggestions", exact=True).is_visible()
-    assert agreed.locator(".room-plan-item").count() == suggested.locator(".room-plan-item").count() == 1
-    assert agreed.locator(".room-plan-check").is_checked()
-    assert not suggested.locator(".room-plan-check").is_checked()
-    assert "not yet endorsed" in suggested.inner_text()
-    assert "Still open" in plan.locator(".room-open").inner_text()
-    assert "Apply 1 ticked item" in page.locator("#roomApplyBtn").inner_text()
-    suggested.locator(".room-plan-check").focus()
-    page.keyboard.press("Space")
-    assert suggested.locator(".room-plan-check").is_checked()
-    assert "Apply 2 ticked items" in page.locator("#roomApplyBtn").inner_text()
-    page.keyboard.press("Space")
-    assert not suggested.locator(".room-plan-check").is_checked()
-
-    page.fill("#roomInput", "I kept only the second change. What else would you suggest?")
-    page.click("#roomSendBtn")
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
-    user = pane.locator(".room-turn-card.is-user").last
-    assert user.locator(".chat-message-name").inner_text() == "Me"
-    cards = pane.locator(".room-turn-card")
-    assert cards.nth(cards.count()-2).get_attribute("class").find("is-critic-1") >= 0
-    assert cards.last.get_attribute("class").find("is-critic-2") >= 0
-    layout = user.evaluate('''el => {
-        const parent = el.parentElement.getBoundingClientRect();
-        const box = el.getBoundingClientRect();
-        const next = el.nextElementSibling.getBoundingClientRect();
-        const style = getComputedStyle(el);
-        return {right: Math.abs(parent.right-box.right)<2, inset: box.left-parent.left,
-            gap: next.top-box.bottom, padding:parseFloat(style.paddingLeft), overflow:el.scrollWidth>el.clientWidth};
-    }''')
-    assert layout["right"] and layout["inset"] > 10 and layout["gap"] >= 30 and layout["padding"] >= 14
-    assert not layout["overflow"]
-    assert user.get_by_role("button", name="Copy message", exact=True).count() == 1
-    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
-    user.get_by_role("button", name="Copy message", exact=True).click()
-    assert page.evaluate("navigator.clipboard.readText()") == "I kept only the second change. What else would you suggest?"
-
-    # The same card and Me header are used by both individual chat providers.
-    for agent in ("codex", "claude"):
-        page.evaluate("agent => showDiscussAgentTab(agent)", agent)
-        page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
-        page.fill("#discussInput", "A short chat to check the shared message layout.")
-        page.click("#discussSend")
-        _wait_until(lambda: page.locator("#discussLog > .discuss-message.assistant").count() > 0, timeout=20)
-        chat_user = page.locator("#discussLog > .chat-message-card.user").last
-        chat_agent = page.locator("#discussLog > .chat-message-card.assistant:not(.discuss-stream-draft)").last
-        assert chat_user.locator(".chat-message-name").inner_text() == "Me"
-        assert chat_agent.locator(".chat-message-name").inner_text() == agent.title()
-        assert chat_agent.get_by_role("button", name="Copy message", exact=True).count() == 1
-        assert chat_user.evaluate("el => getComputedStyle(el).borderRadius") == user.evaluate("el => getComputedStyle(el).borderRadius")
-        _wait_until(lambda: "Answered in" in page.locator("#discussPanel").inner_text())
-        replies = page.locator("#discussLog > .discuss-message.assistant").count()
-        page.fill("#discussInput", "continue")
-        page.click("#discussSend")
-        _wait_until(lambda: page.locator("#discussLog > .discuss-message.assistant").count() > replies, timeout=20)
-        short = page.locator("#discussLog > .chat-message-card.user").last
-        assert "continue" in short.inner_text()
-        short_box = short.bounding_box()
-        assert short_box["width"] < 200, "a one-word reply should not fill the chat column"
-        assert short_box["height"] < 90, "a short reply should have a compact header and padding"
-
-    page.reload()
-    open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
-    assert "Plot & Stakes <b> · Codex" in pane.inner_text()
-    assert pane.locator('#roomPlanCard [data-consensus="suggested"] .room-plan-item').count() == 1
-    assert pane.locator(".is-user .chat-message-name").last.inner_text() == "Me"
-
-
-def test_room_empty_followup_summary_replaces_the_previous_plan(page: Page, server: ProseviewServer):
-    open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
-    pane = page.locator("#sceneRoomPane")
-    pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
-    page.route("**/api/discuss/room-moderator", lambda route: route.fulfill(
-        json={"ok": True, "agent": "claude", "plan": [], "open": []}))
-    page.fill("#roomInput", "Leave all of these changes out. Nothing else for now.")
-    page.click("#roomSendBtn")
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=10)
-    latest = pane.locator("#roomPlanCard")
-    assert "No new changes to suggest" in latest.inner_text()
-    assert latest.locator(".room-plan-item").count() == 0
-    assert page.locator("#roomApplyBtn").is_disabled()
-    page.reload()
-    open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
-    assert pane.locator(".room-plan-card").count() == 2
-    assert "No new changes to suggest" in pane.locator("#roomPlanCard").inner_text()
-
-
 def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, server: ProseviewServer):
-    requests = []
-    page.on("request", lambda req: requests.append(req.post_data_json) if req.url.endswith('/api/discuss/room-turn') else None)
+    requests = _RoomCalls(page)
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('room')")
     pane = page.locator("#sceneRoomPane")
@@ -835,7 +856,7 @@ def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, ser
     assert not pane.locator("#roomTargetSelect").is_enabled()
     pane.locator("#roomInput").press_sequentially("What do you think about the voice?")
     pane.locator("#roomInput").press("Enter")
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    _room_idle(page)
     assert [req['seat'] for req in requests] == [2]
     assert pane.locator(".room-turn-card.is-critic-1").count() == 0
     assert "@VoiceEditor" in pane.locator(".room-turn-card.is-user").inner_text()
@@ -843,13 +864,13 @@ def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, ser
     # Unique provider aliases work without opening the picker.
     pane.locator("#roomInput").fill("@Codex give me another take.")
     pane.locator("#roomSendBtn").click()
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    _room_idle(page)
     assert [req['seat'] for req in requests] == [2, 1]
 
     # Mention order is speaking order, independent of the normal To selector.
     pane.locator("#roomInput").fill("@VoiceEditor and @StoryEditor: discuss this together.")
     pane.locator("#roomSendBtn").click()
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 3, timeout=20)
+    _room_idle(page)
     assert [req['seat'] for req in requests] == [2, 1, 2, 1]
     pane.locator("#roomInput").fill("Email me at someone@claude.example; this is not a mention.")
     assert pane.locator("#roomTargetSelect").is_enabled()
@@ -859,13 +880,17 @@ def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, ser
     assert picker.is_hidden()
     assert pane.locator("#roomInput").input_value() == "@"
     page.click("#roomSettingsBtn")
-    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .suggestion-grid")
-    page.get_by_role("textbox", name="Story Editor display name", exact=True).fill("Editor")
-    page.get_by_role("textbox", name="Voice Editor display name", exact=True).fill("Editor")
-    page.get_by_role("combobox", name="Voice Editor agent", exact=True).select_option("codex")
+    page.wait_for_selector("#settingsPanelRoom:not([hidden]) .room-library-card")
+    page.locator("#roomSettingsBody .room-library-card").nth(0).locator("summary").click()
+    page.locator("#roomSettingsBody .room-library-card").nth(1).locator("summary").click()
+    page.get_by_role("textbox", name="Profile 1 name", exact=True).fill("Editor")
+    page.get_by_role("textbox", name="Profile 2 name", exact=True).fill("Editor")
+    page.get_by_role("combobox", name="Profile 2 provider", exact=True).select_option("codex")
     page.click("#settingsSaveBtn")
     _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
     page.click("#settingsDialog .ledger-close")
+    assert "Story Editor · Codex" in pane.inner_text(), "current participants are frozen"
+    pane.locator("#roomResetBtn").click()
     pane.locator("#roomInput").fill("@Codex")
     assert picker.get_by_role("option").filter(has_text="Editor · Codex").count() == 2
     assert pane.locator("#roomTargetSelect").is_enabled(), "an ambiguous provider alias must not silently choose a seat"
@@ -873,19 +898,12 @@ def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, ser
     assert pane.locator("#roomInput").input_value() == "@Editor2 "
     pane.locator("#roomInput").press_sequentially("Please give me your view.")
     pane.locator("#roomSendBtn").click()
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 4, timeout=20)
+    _room_idle(page)
     assert [req['seat'] for req in requests] == [2, 1, 2, 1, 2]
-    # Computer preferences are shared by the existing E2E home fixture.
-    page.click("#roomSettingsBtn")
-    page.get_by_role("combobox", name="Voice Editor agent", exact=True).select_option("claude")
-    page.click("#settingsSaveBtn")
-    _wait_until(lambda: page.locator("#settingsSaveBtn").inner_text() == "Saved")
-    page.click("#settingsDialog .ledger-close")
 
 
 def test_room_file_mentions_supply_reference_text_without_changing_editor_routing(page: Page, server: ProseviewServer):
-    requests = []
-    page.on("request", lambda req: requests.append(req.post_data_json) if req.url.endswith('/api/discuss/room-turn') else None)
+    requests = _RoomCalls(page)
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('room')")
     pane = page.locator("#sceneRoomPane")
@@ -897,7 +915,7 @@ def test_room_file_mentions_supply_reference_text_without_changing_editor_routin
     assert pane.locator("#roomInput").input_value() == "@Codex Compare this with @manuscript/ch01/02-walk.md "
     assert pane.locator("#roomTargetSelect").input_value() == "critic1"
     pane.locator("#roomInput").press("Enter")
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    _room_idle(page)
     assert [req["seat"] for req in requests] == [1]
     assert requests[0]["attachments"] == [{"kind": "file", "path": "manuscript/ch01/02-walk.md"}]
     records = [json.loads(line) for line in (server.home / "fake-codex-received.jsonl").read_text().splitlines()]
@@ -914,12 +932,12 @@ def test_room_file_mentions_supply_reference_text_without_changing_editor_routin
     assert pane.locator("#roomTargetSelect").is_enabled()
     assert pane.locator("#roomTargetSelect").input_value() == "both"
     pane.locator("#roomSendBtn").click()
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 2, timeout=20)
+    _room_idle(page)
     assert [req["seat"] for req in requests] == [1, 1, 2]
     page.evaluate("attachSelectionToRoom('Quoted @scripts/check_continuity.py', null)")
     pane.locator("#roomInput").fill("Keep discussing the scene.")
     pane.locator("#roomSendBtn").click()
-    _wait_until(lambda: pane.locator(".room-plan-card").count() == 3, timeout=20)
+    _room_idle(page)
     assert requests[-1]["attachments"] == [{"kind": "file", "path": "manuscript/ch01/02-walk.md"}], "quoted selections must not add file reads"
 
 
@@ -935,7 +953,7 @@ def test_room_tools_show_approvals_in_the_room_and_leave_single_chat_separate(pa
     assert "printf approved" in approvals.inner_text()
     assert page.locator("#utilityTabRoom").get_attribute("aria-selected") == "true"
     approvals.get_by_role("button", name=decision, exact=True).click()
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    _room_idle(page)
     assert pane.locator(".room-turn-card.is-critic-1").count() == 1
     assert pane.locator(".room-turn-card.is-critic-2").count() == 0
     assert ("Approval resolved: accept" if decision == "Accept once" else "Approval resolved: decline") in pane.inner_text()
@@ -965,12 +983,448 @@ def test_room_file_edits_can_be_undone_before_the_discussion_continues(page: Pag
     pane.locator("#roomInput").fill("@Codex SELECT_FILE_CHANGE make this edit.")
     pane.locator("#roomSendBtn").click()
     review = pane.locator(".room-tool-review")
-    review.get_by_role("button", name="Continue discussion").wait_for(timeout=20000)
-    assert pane.locator("#roomPlanCard").count() == 0, "the queue waits for the writer's review"
+    review.get_by_role("button", name="Expand view", exact=True).wait_for(timeout=20000)
+    _room_idle(page)
+    assert pane.locator("#roomSendBtn").inner_text() == "Send"
+    assert pane.get_by_role("button", name="Continue discussion").count() == 0
     assert (server.root / "manuscript" / SCENE_REL).read_text() != original
-    review.locator("summary").click()
-    assert review.locator(".discuss-review-table").count() > 0
-    review.get_by_role("button", name="Undo changes to manuscript/" + SCENE_REL).click()
+    review.get_by_role("button", name="Expand view", exact=True).click()
+    page.locator("#discussDiffModalContent .discuss-review-table").first.wait_for()
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    review.get_by_role("button", name="Undo all", exact=True).click()
     _wait_until(lambda: (server.root / "manuscript" / SCENE_REL).read_text() == original)
-    review.get_by_role("button", name="Continue discussion").click()
-    pane.locator("#roomPlanCard").wait_for(timeout=20000)
+    _wait_until(lambda: review.count() == 0)
+    _room_idle(page)
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_shared_chat_cards_keep_short_messages_compact(page: Page, server: ProseviewServer, agent):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.locator("#discussInput").fill("continue")
+    page.locator("#discussSend").click()
+    _wait_until(lambda: page.locator("#discussLog > .discuss-message.assistant:not(.discuss-stream-draft)").count() > 0, timeout=20)
+    user = page.locator("#discussLog > .chat-message-card.user").last
+    reply = page.locator("#discussLog > .chat-message-card.assistant:not(.discuss-stream-draft)").last
+    assert user.locator(".chat-message-name").inner_text() == "Me"
+    assert reply.locator(".chat-message-name").inner_text() == agent.title()
+    assert reply.get_by_role("button", name="Copy message", exact=True).count() == 1
+    box = user.bounding_box()
+    assert box["width"] < 200 and box["height"] < 90
+
+
+def test_room_mentions_remain_highlighted_unbroken_and_edit_as_one_item(page: Page, server: ProseviewServer, tmp_path):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    text = "@StoryEditor compare this with @manuscript/ch01/02-walk.md please."
+    input = pane.locator("#roomInput")
+    input.fill(text)
+    assert pane.locator(".room-input-mirror .discuss-mention").all_text_contents() == ["@StoryEditor", "@manuscript/ch01/02-walk.md"]
+    # Both typed and picked mentions delete as a whole item.
+    input.evaluate("el => el.setSelectionRange(13, 13)")
+    input.press("Backspace")
+    assert input.input_value() == "compare this with @manuscript/ch01/02-walk.md please."
+    input.fill(text)
+    end = text.index(" please.")
+    input.evaluate("(el, end) => el.setSelectionRange(end, end)", end)
+    input.press("Backspace")
+    assert input.input_value() == "@StoryEditor compare this with  please."
+    # Replacing part of a mention replaces the complete token.
+    input.fill(text)
+    input.evaluate("el => el.setSelectionRange(2, 4)")
+    input.press_sequentially("Hello")
+    assert input.input_value().startswith("Hello compare this")
+    input.fill(text)
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    user = pane.locator(".is-user")
+    chips = user.locator(".chat-mention")
+    assert chips.all_text_contents() == ["@StoryEditor", "@manuscript/ch01/02-walk.md"]
+    assert chips.evaluate_all("els => els.every(el => getComputedStyle(el).whiteSpace === 'nowrap' && getComputedStyle(el).userSelect === 'all')")
+    assert chips.nth(1).get_attribute("title") == "manuscript/ch01/02-walk.md"
+    pane.screenshot(path=str(tmp_path / "room-mention-chips.png"))
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    user.get_by_role("button", name="Copy message", exact=True).click()
+    assert page.evaluate("navigator.clipboard.readText()") == text
+    page.wait_for_function("() => !_roomSessionFor(_roomCurrentScenePath())._saving")
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator(".is-user .chat-mention").first.wait_for(timeout=20000)
+    assert pane.locator(".is-user .chat-mention").all_text_contents() == ["@StoryEditor", "@manuscript/ch01/02-walk.md"]
+
+
+def test_single_chat_file_mentions_keep_their_highlight_after_sending(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showDiscussAgentTab('codex')")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    text = "Compare with @manuscript/ch01/02-walk.md please."
+    page.locator("#discussInput").fill(text)
+    page.locator("#discussSend").click()
+    user = page.locator("#discussLog > .chat-message-card.user").last
+    user.locator(".chat-mention").wait_for()
+    assert user.locator(".chat-mention").inner_text() == "@manuscript/ch01/02-walk.md"
+
+
+@pytest.mark.parametrize("finish", ["Send follow-up", "Undo 1 change"])
+def test_room_uses_the_large_chat_review_and_applies_its_per_change_choices(page: Page, server: ProseviewServer, tmp_path, finish):
+    from .test_browser_e2e import OPENED_SECOND, CHANGED_SECOND, CHANGED_SENTENCE
+    scene = server.root / "manuscript" / SCENE_REL
+    open_scene(page, server, SCENE_REL)
+    original_chat = page.evaluate("_discussConversationId")
+    original_keep = page.evaluate("JSON.stringify(_discussReviewKeep)")
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("SELECT_FILE_CHANGE make these edits, then discuss them together.")
+    pane.locator("#roomSendBtn").click()
+    review = pane.locator(".room-tool-review")
+    expand = review.get_by_role("button", name="Expand view", exact=True)
+    expand.wait_for(timeout=20000)
+    _room_idle(page)
+    assert pane.locator(".is-critic-2").count() == 1, "the next agent responds without a review gate"
+    assert pane.locator("#roomSendBtn").inner_text() == "Send"
+    assert review.locator(".discuss-review-block").count() == 0, "the card stays compact"
+    expand.click()
+    modal = page.locator("#discussDiffModalOverlay")
+    modal.wait_for(state="visible")
+    page.locator("#discussDiffModalContent table.diff-side-by-side").first.wait_for()
+    assert modal.locator(".diff-modal").bounding_box()["width"] > pane.bounding_box()["width"]
+    assert modal.locator(".diff-modal").evaluate("el => getComputedStyle(el).resize") == "both"
+    assert page.locator("#discussDiffModalTitle").inner_text() == "manuscript/" + SCENE_REL
+    room_id = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).turns.find(t => t.review_pending).tool_conversation_id")
+    assert page.evaluate("_currentDiscussReviewContext.conversationId") == room_id
+    assert page.evaluate("_discussConversationId") == original_chat
+    choices = page.locator("#discussDiffModalContent .discuss-review-choice input")
+    assert choices.count() == 2
+    choices.nth(1).uncheck()
+    page.locator("#discussDiffToggleInline").click()
+    page.locator("#discussDiffModalContent table.diff-inline").first.wait_for()
+    assert not choices.nth(1).is_checked()
+    page.locator("#discussDiffFontSize").fill("30")
+    assert page.locator("#discussDiffModalContent table.diff").first.evaluate("el => getComputedStyle(el).fontSize") == "30px"
+    modal.screenshot(path=str(tmp_path / "room-expanded-review.png"))
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    assert "Undoing 1 of 2" in review.inner_text()
+    assert page.evaluate("JSON.stringify(_discussReviewKeep)") == original_keep
+    # The same mode and choices return when expanding the Room card again.
+    review.get_by_role("button", name="Expand view", exact=True).click()
+    page.locator("#discussDiffModalContent table.diff-inline").first.wait_for()
+    assert not choices.nth(1).is_checked()
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    if finish == "Send follow-up":
+        pane.locator("#roomInput").fill("@VoiceEditor how does it read with the kept change?")
+        pane.locator("#roomSendBtn").click()
+    else:
+        review.get_by_role("button", name=finish, exact=True).click()
+    _wait_until(lambda: review.count() == 0)
+    _room_idle(page)
+    assert pane.locator(".is-critic-2").count() == (2 if finish == "Send follow-up" else 1)
+    text = scene.read_text()
+    assert CHANGED_SENTENCE in text and OPENED_SECOND in text and CHANGED_SECOND not in text
+    assert pane.locator(".room-tool-review").count() == 0
+
+
+def test_room_looks_good_settles_the_review_before_continuing(page: Page, server: ProseviewServer):
+    from .test_browser_e2e import CHANGED_SECOND, CHANGED_SENTENCE
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@Codex SELECT_FILE_CHANGE make these edits.")
+    pane.locator("#roomSendBtn").click()
+    review = pane.locator(".room-tool-review")
+    review.get_by_role("button", name="Looks good", exact=True).wait_for(timeout=20000)
+    review.get_by_role("button", name="Looks good", exact=True).click()
+    _wait_until(lambda: review.count() == 0)
+    _room_idle(page)
+    pane.locator("#roomInput").fill("Ready for a follow-up")
+    assert pane.locator("#roomSendBtn").is_enabled()
+    assert pane.locator("#roomSendBtn").inner_text() == "Send"
+    text = (server.root / "manuscript" / SCENE_REL).read_text()
+    assert CHANGED_SENTENCE in text and CHANGED_SECOND in text
+
+
+def test_room_composer_has_context_skills_models_quick_send_and_saved_drafts(page: Page, server: ProseviewServer, tmp_path):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("localStorage.setItem('proseview-codex-favorite-instructions', JSON.stringify(['Continue', 'Polish this']))")
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.get_by_role("button", name="Add people, files and folders", exact=True).click()
+    picker = pane.get_by_role("listbox", name="Mention an editor or project file")
+    picker.wait_for(state="visible")
+    assert "Story Editor" in picker.inner_text() and "manuscript/ch01/02-walk.md" in picker.inner_text()
+    input = pane.locator("#roomInput")
+    input.press("Escape")
+    input.fill("")
+    page.evaluate("mentionInDiscuss('manuscript/ch01/02-walk.md')")
+    assert input.input_value() == "@manuscript/ch01/02-walk.md "
+    assert pane.is_visible()
+    input.fill("")
+    pane.get_by_role("combobox", name="Room message recipient", exact=True).select_option("critic2")
+    page.evaluate("attachSelectionToRoom('The passage selected for this question.', null)")
+    input.fill("Keep this unsent draft.")
+    input.evaluate("el => { el.style.height = '140px'; el.dispatchEvent(new Event('input', {bubbles:true})); }")
+    assert input.evaluate("el => getComputedStyle(el).resize") == "vertical"
+    assert pane.locator(".discuss-sees").inner_text() == SCENE_REL
+    assert pane.locator("#roomQuickSend").is_visible()
+    assert pane.locator("#roomQuickSend button.discuss-preset-inline:enabled").count() == 0
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    input.wait_for()
+    assert input.input_value() == "Keep this unsent draft."
+    assert input.evaluate("el => el.style.height") == "140px"
+    assert pane.locator("#roomTargetSelect").input_value() == "critic2"
+    assert "The passage selected" in pane.locator("#roomSelectionChip").inner_text()
+    pane.screenshot(path=str(tmp_path / "room-full-composer.png"))
+    input.fill("")
+    assert pane.locator("#roomQuickSend button.discuss-preset-inline:enabled").count() > 0
+    pane.locator("#roomQuickSend button.discuss-preset-inline").first.click()
+    _room_idle(page)
+    assert pane.locator(".is-user").count() == 1
+    assert pane.locator(".is-critic-2").count() == 1
+    assert pane.locator("#roomSelectionChip").is_visible(), "selection stays attached for follow-up questions"
+
+
+def test_room_composer_models_apply_to_this_room_without_changing_profiles_or_single_chat(page: Page, server: ProseviewServer):
+    requests = _RoomCalls(page)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    chip = pane.get_by_role("button", name=re.compile("^Model for Story Editor:"))
+    chip.click()
+    picker = pane.get_by_role("dialog", name="Choose model for Story Editor", exact=True)
+    picker.get_by_role("radio", name=re.compile("GPT-5.6-Luna")).click()
+    picker.get_by_role("button", name="high", exact=True).click()
+    assert picker.get_by_role("button", name="max", exact=True).is_disabled()
+    picker.get_by_role("button", name="Close model picker", exact=True).click()
+    assert "GPT-5.6-Luna" in chip.inner_text() and "high" in chip.inner_text()
+    assert page.evaluate("_roomSettings.library.profiles[0].model") == ""
+    assert page.evaluate("(((_discussSnapshot || {}).model || {}).model) || ''") == ""
+    pane.locator("#roomInput").fill("@StoryEditor use the selected model.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    assert requests[0]["participants"][0]["model"] == "gpt-5.6-luna"
+    assert requests[0]["participants"][0]["effort"] == "high"
+    assert pane.locator(".is-critic-1 .room-turn-model").inner_text() == "gpt-5.6-luna"
+    page.wait_for_function("() => !_roomSessionFor(_roomCurrentScenePath())._saving")
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane.locator(".is-critic-1").wait_for()
+    assert "GPT-5.6-Luna" in chip.inner_text()
+
+
+def test_room_composer_skill_picker_sends_the_native_skill_to_the_selected_agent(page: Page, server: ProseviewServer):
+    requests = _RoomCalls(page)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("$")
+    picker = pane.get_by_role("listbox", name="Mention an editor or project file")
+    choice = picker.get_by_role("option").filter(has_text="$tighten-prose")
+    choice.wait_for()
+    choice.click()
+    input = pane.locator("#roomInput")
+    assert input.input_value() == "@StoryEditor $tighten-prose "
+    assert pane.locator(".room-input-mirror .discuss-mention").all_text_contents() == ["@StoryEditor", "$tighten-prose"]
+    input.press_sequentially("Keep the scene's voice.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    assert [req["seat"] for req in requests] == [1]
+    assert "$tighten-prose" in requests[0]["history"][-1]["text"]
+    records = [json.loads(line) for line in (server.home / "fake-codex-received.jsonl").read_text().splitlines()]
+    assert any(any(item.get("type") == "skill" and item.get("name") == "tighten-prose" for item in row.get("params", {}).get("input", [])) for row in records)
+
+
+def test_room_composer_queues_messages_while_agents_reply_and_can_remove_them(page: Page, server: ProseviewServer):
+    requests = _RoomCalls(page)
+    with server.hold_codex_request("turn/start") as reached:
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane = page.locator("#sceneRoomPane")
+        pane.locator("#roomInput").fill("@StoryEditor answer this first.")
+        pane.locator("#roomSendBtn").click()
+        _wait_until(reached.exists)
+        pane.locator("#roomInput").fill("@VoiceEditor answer this next.")
+        assert pane.locator("#roomSendBtn").inner_text() == "Queue"
+        pane.locator("#roomSendBtn").click()
+        pane.locator("#roomInput").fill("@StoryEditor remove this queued question.")
+        pane.locator("#roomSendBtn").click()
+        pane.get_by_role("button", name="Remove queued message 2", exact=True).click()
+        _wait_until(lambda: pane.locator(".room-message-queue .discuss-queue-item").count() == 1)
+    _room_idle(page)
+    assert [req["seat"] for req in requests] == [1, 2]
+    assert pane.locator(".is-user").count() == 2
+    assert "answer this next" in pane.locator(".is-user").last.inner_text()
+    assert pane.locator(".room-message-queue").count() == 0
+
+
+def test_room_discussion_and_queued_messages_survive_reload_without_resending(page: Page, server: ProseviewServer):
+    requests = _RoomCalls(page)
+    with server.hold_codex_request("turn/start") as reached:
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane = page.locator("#sceneRoomPane")
+        pane.locator("#roomInput").fill("@StoryEditor first question.")
+        pane.locator("#roomSendBtn").click()
+        _wait_until(reached.exists)
+        pane.locator("#roomInput").fill("@VoiceEditor keep this queued message.")
+        pane.locator("#roomSendBtn").click()
+        pane.get_by_role("button", name="Remove queued message 1", exact=True).wait_for()
+        page.reload()
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane.locator(".is-user").wait_for()
+        assert "keep this queued message" in pane.locator(".room-message-queue").inner_text()
+    _room_idle(page)
+    assert [req["seat"] for req in requests] == [1, 2]
+    assert pane.locator(".is-user").count() == 2
+    assert pane.locator(".is-critic-1").count() == pane.locator(".is-critic-2").count() == 1
+
+
+def test_diff_viewer_can_expand_a_patch_before_any_review_is_opened(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("openDiscussDiffModal('--- a/scene.md\\n+++ b/scene.md\\n@@ -1 +1 @@\\n-Old sentence.\\n+New sentence.\\n')")
+    page.locator("#discussDiffModalContent table.diff-side-by-side").wait_for()
+    assert page.locator("#discussDiffModalTitle").inner_text() == "Review Changes"
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    assert page.locator("#discussDiffModalOverlay").is_hidden()
+
+
+def test_room_preset_runs_remaining_invitations_after_reload(page: Page, server: ProseviewServer):
+    with server.hold_codex_request("turn/start") as reached:
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane = page.locator("#sceneRoomPane")
+        pane.locator('.room-starter-card[data-preset="editorial_critique"]').click()
+        pane.get_by_role("combobox", name="Preset invitations", exact=True).select_option("3")
+        pane.get_by_role("combobox", name="Preset recap", exact=True).select_option("2")
+        pane.locator("#roomStartPresetBtn").click()
+        _wait_until(reached.exists)
+        page.reload()
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane.locator(".room-preset-invitation").first.wait_for()
+    _room_idle(page)
+    state = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).runtime")
+    assert [step["seat"] for step in state["steps"]] == [1, 2, 1, 2]
+    assert all(step["state"] == "completed" for step in state["steps"])
+    assert pane.locator(".room-preset-invitation").count() == 4
+    assert pane.locator(".room-turn-tag").last.inner_text() == "Recap"
+
+
+def test_room_review_and_queued_invitation_survive_server_restart(page: Page, server: ProseviewServer):
+    scene = server.root / "manuscript" / SCENE_REL
+    original = scene.read_text()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("SELECT_FILE_CHANGE make these edits, then discuss them together.")
+    pane.locator("#roomSendBtn").click()
+    review = pane.locator(".room-tool-review")
+    review.get_by_role("button", name="Expand view", exact=True).wait_for(timeout=20000)
+    _room_idle(page)
+    room_id = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id")
+    review.get_by_role("button", name="Expand view", exact=True).click()
+    page.locator("#discussDiffModalContent .discuss-review-choice input").nth(1).uncheck()
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    pane.locator("#roomInput").fill("Unsent draft preserved through restart")
+    server.restart()
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    review.get_by_role("button", name="Expand view", exact=True).wait_for(timeout=20000)
+    assert page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id") == room_id
+    assert pane.locator("#roomInput").input_value() == "Unsent draft preserved through restart"
+    assert pane.locator(".is-critic-2").count() == 1
+    review.get_by_role("button", name="Expand view", exact=True).click()
+    page.locator("#discussDiffModalContent .discuss-review-table").first.wait_for()
+    assert page.locator("#discussDiffModalContent .discuss-review-choice input").count() == 2
+    assert not page.locator("#discussDiffModalContent .discuss-review-choice input").nth(1).is_checked()
+    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    review.get_by_role("button", name="Undo all", exact=True).click()
+    _wait_until(lambda: scene.read_text() == original)
+    _wait_until(lambda: review.count() == 0)
+    _room_idle(page)
+    assert pane.locator(".is-critic-1").count() == pane.locator(".is-critic-2").count() == 1
+
+
+def test_room_restart_during_a_reply_requires_an_explicit_retry_or_skip(page: Page, server: ProseviewServer):
+    with server.hold_codex_request("turn/start") as reached:
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane = page.locator("#sceneRoomPane")
+        pane.locator("#roomInput").fill("@StoryEditor answer this question.")
+        pane.locator("#roomSendBtn").click()
+        _wait_until(reached.exists)
+        server.restart()
+        page.reload()
+        open_scene(page, server, SCENE_REL)
+        page.evaluate("showScenePanelTab('room')")
+        pane.get_by_role("button", name="Skip interrupted invitation", exact=True).wait_for(timeout=20000)
+        assert pane.get_by_role("button", name="Retry interrupted invitation", exact=True).is_enabled()
+        assert pane.locator(".is-critic-1").count() == 0
+        pane.get_by_role("button", name="Skip interrupted invitation", exact=True).click()
+    _room_idle(page)
+    assert pane.locator(".is-user").count() == 1
+    assert pane.locator(".is-critic-1").count() == 0
+    assert page.evaluate("_roomSessionFor(_roomCurrentScenePath()).runtime.steps[0].state") == "cancelled"
+
+
+def test_room_reload_retries_an_unconfirmed_send_without_duplicate_messages(page: Page, server: ProseviewServer):
+    accepted = []
+    def lose_ack(route):
+        body = route.request.post_data_json
+        if body.get("action") == "submit" and not accepted:
+            response = route.fetch()
+            assert response.ok
+            accepted.append(body)
+            route.abort()
+        else:
+            route.continue_()
+    page.route("**/api/discuss/room-run", lose_ack)
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@StoryEditor deliver this once.")
+    pane.locator("#roomSendBtn").click()
+    page.wait_for_function("() => { const s = _roomSessionFor(_roomCurrentScenePath()); return s.sendError || s.runtime; }")
+    assert accepted
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    _room_idle(page)
+    assert pane.locator(".is-user").count() == pane.locator(".is-critic-1").count() == 1
+    state = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).runtime")
+    assert len(state["steps"]) == 1 and accepted[0]["request_id"] in state["acknowledged_requests"]
+
+
+def test_room_recovers_an_unsent_outbox_before_opening_an_older_room(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    pane = page.locator("#sceneRoomPane")
+    pane.locator("#roomInput").fill("@StoryEditor an older discussion.")
+    pane.locator("#roomSendBtn").click()
+    _room_idle(page)
+    pane.locator("#roomResetBtn").click()
+    def offline_submit(route):
+        if route.request.post_data_json.get("action") == "submit":
+            route.abort()
+        else:
+            route.continue_()
+    page.route("**/api/discuss/room-run", offline_submit)
+    pane.locator("#roomInput").fill("@VoiceEditor recover this new discussion.")
+    pane.locator("#roomSendBtn").click()
+    page.wait_for_function("() => !!_roomSessionFor(_roomCurrentScenePath()).sendError")
+    new_id = page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id")
+    page.unroute("**/api/discuss/room-run", offline_submit)
+    page.reload()
+    open_scene(page, server, SCENE_REL)
+    page.evaluate("showScenePanelTab('room')")
+    _room_idle(page)
+    assert page.evaluate("_roomSessionFor(_roomCurrentScenePath()).id") == new_id
+    assert pane.locator(".is-user").count() == pane.locator(".is-critic-2").count() == 1
+    assert "recover this new discussion" in pane.locator(".is-user").inner_text()
+    assert pane.locator(".is-critic-1").count() == 0

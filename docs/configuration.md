@@ -82,64 +82,96 @@ callouts:
 Every key has a sensible default. Missing optional folders are skipped, but the
 configured manuscript directory is required.
 
-## Writers’ Room names and conversation
+## Writers’ Room profiles and conversation
 
-**Settings → Writers’ Room** lets you name the two editorial seats and the
-moderator. The defaults are **Story Editor** (plot, stakes, pacing, and
-continuity), **Voice Editor** (voice, emotion, atmosphere, and rhythm), and
-**Moderator** (the revision plan). Display names only change labels; role
-instructions control each editor’s focus. Every editor header still identifies
-Claude or Codex, independently of the name.
+**Settings → Writers’ Room** holds a reusable library of agent profiles and
+discussion presets on this computer. The default pair is **Story Editor**
+(plot, stakes, pacing, continuity) and **Voice Editor** (voice, emotion,
+atmosphere, rhythm). Each profile has a display name, specialty, conversational
+style, Claude or Codex provider, and optional model and reasoning effort.
+Blank model and effort choices inherit the provider’s individual chat settings.
+Claude or Codex stays visible beside each name. A specialty guides perspective
+without limiting what the agent can discuss.
 
-Names are saved with the book and can also be configured directly:
+Choose two profiles before starting a Room. Each conversation saves its own
+participant snapshots, so later Settings edits or deletions do not rename or
+change a saved conversation. Existing book-level Room names and prompts seed
+the library until you save the new Settings; the original `.proseview.yaml`
+configuration and saved revision plans remain available.
 
-```yaml
-room:
-  critic1_name: Story Editor
-  critic2_name: Voice Editor
-  moderator_name: Moderator
-```
+A discussion preset selects two profiles and 2–12 explicit invitations, each
+with a recipient and prompt. Click a starter card to preview its invitations,
+swap participants, adjust the count, or select an optional recap. **Start
+discussion** posts the invitations as small **Preset** notes in the shared
+thread. A recap is an additional invitation to one of the existing participants.
+There is no permanent moderator, and you can keep talking after the preset ends.
+Edit preset names, descriptions, participants, invitations, and recap choices
+in Settings, or add your own presets and profiles.
 
-Names may contain up to 60 characters; blank names use the defaults. Agent,
-model, effort, and turn-count preferences remain on this computer.
+Type **@** in the Room composer to choose an agent or project file/folder.
+The default tags are `@StoryEditor` and `@VoiceEditor`; `@Codex` or `@Claude`
+also work when that provider belongs to just one participant. Tags override
+the **To** selector for that message. Tag one agent for one invitation, or tag
+both to invite them in mention order. Untagged messages default to both agents,
+in displayed order; you can also choose a recipient with **To**. Either agent
+can quietly pass when they have nothing useful to add. A pass completes only
+that invitation, never implies agreement, and does not cancel the next agent.
+Use the arrow keys and Enter or Tab to choose a tag, Enter again to send, or
+Escape to dismiss the picker. Custom names get corresponding tags, with a
+number added when needed to distinguish duplicate names. Agent and file mentions
+stay highlighted after sending, keep together as one token, and delete as a
+whole mention in the composer. Copying a message preserves its original text.
 
-When you send a message to both editors, the first answers you directly and the
-second responds to your direction and the first editor’s contribution. Replies
-use natural language rather than mandatory Agree/Disagree/Add labels. Concise
-and Detailed set a preference for reply depth rather than a hard word limit.
+File mentions identify reference material rather than changing who replies.
+For example, `@VoiceEditor compare this with @story-bible/characters/shadi.md`
+addresses the Voice Editor and makes that reference available in the discussion.
+Room participants use the same tools and project settings as their individual
+chats: they can read project files, search, and use configured tools and MCP
+servers. References remain available when continuing or reopening the saved
+thread, and mentioned paths must remain inside the project.
 
-Type **@** in the Room composer to choose an editor or a project file/folder.
-The picker groups editors separately and shows each editor’s provider.
-The default tags are `@StoryEditor` and `@VoiceEditor`; `@Codex` or
-`@Claude` also work when that provider belongs to just one editor. Tags override
-the **To** selector for that message. Tag one editor for one reply, or tag both
-to have them reply in mention order. Untagged messages use the selected
-recipient as before, and all replies remain in the shared Room transcript.
-Use the arrow keys and Enter or Tab to choose a tag; press Enter again to send,
-or Escape to dismiss the picker. Custom names get corresponding tags, with a
-number added when necessary to distinguish duplicate names.
+The composer includes the same context and model controls as individual chat:
+**+** opens people/files/folders, **$** lists available agent skills, and each
+participant has a model/effort picker. Model overrides belong to this Room and
+leave the reusable profile and individual chat unchanged. The scene label shows
+the current context. Quick send uses the same favorites, selection presets and
+recent instructions as individual chat. The text box can be resized; unsent
+drafts and selected passages survive reload, and a selection stays attached for
+follow-ups until removed or changed by an agent.
 
-File mentions supply reference material rather than changing who replies. For
-example, `@VoiceEditor compare this with @story-bible/characters/shadi.md`
-addresses the Voice Editor and includes that file in the discussion. Room
-editors use the same tools and project settings as their individual chats:
-they can read other project files, search, and use configured tools and MCP
-servers. File mentions identify references for the agent to inspect, as in
-single chat. References remain available when continuing or reopening the
-saved discussion, and mentioned paths must remain inside the project.
+You can queue a message while agents are replying.
+Queued messages keep their chosen recipients and can be removed before they
+run. They are posted to the shared thread after the current invitations finish.
+Change reviews never pause the discussion. Reloading reconnects to the server-owned discussion, including
+remaining preset invitations and queued messages, without sending them twice.
+After Stop, use **Resume remaining invitations** when you are ready.
+
+Review snapshots and agent conversation links survive server restarts, so saved
+changes can still be inspected or undone. If the server stops during a reply,
+the Room first checks whether that reply completed. Otherwise it preserves any
+partial reply and saved changes, then offers **Retry interrupted invitation**
+or **Skip interrupted invitation**. It never automatically repeats an uncertain
+edit. Saved changes remain available for optional review. An older review
+that predates recovery support may be unavailable; the Room explains this and
+keeps messages usable, with file history available to inspect the saved edits.
 
 Tool permission requests appear in the Room with the same decisions as in
-single chat. A critique or proposed revision does not itself authorize an edit;
-editors change files when you ask them to. After an editor changes files, the
-Room shows a review with the saved changes and an Undo action. Review the edits
-and choose **Continue discussion** before the next editor or moderator proceeds.
-The moderator only summarizes the transcript and does not use editing tools.
+single chat. A critique or proposal does not itself authorize an edit.
+After an agent changes files, the Room uses the same compact review card and
+**Expand view** as individual chat. The large viewer can be resized, offers
+split/inline layouts and font-size controls, and lets you untick individual
+changes. Close it to use **Looks good**, **Undo all**, or undo only the unticked
+changes. The next agent can reply immediately. Sending your next message keeps
+the saved edits and applies any unticked changes automatically, as in single
+chat; there is no separate **Continue discussion** step.
 
-The revision plan separates **Agreed changes** (explicit support from both
-editors for the same fix), **Other suggestions** (not yet endorsed by both), and
-**Still open** (unresolved questions or competing fixes). Other suggestions
-start unticked; you can select them to apply or add them as TODOs. Agreement on
-a problem does not imply agreement on its replacement wording.
+Ask either agent to summarize when you want, for example
+`@Claude summarize the action items we all agreed on`. The agent receives the
+shared discussion, including earlier proposals and corrections. Background
+guidance asks it to distinguish the writer’s approval, agreement about a
+direction, agreement on exact wording, and unresolved alternatives. Summaries
+are ordinary chat replies and do not authorize edits. Existing revision-plan
+cards from earlier Rooms can still be reopened, applied, or added as TODOs.
 
 ## Privacy screen password
 

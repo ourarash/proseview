@@ -674,6 +674,8 @@ for line in sys.stdin:
                 ],
                 'open': [{'issue': 'When to reveal the safe code', 'critic1': 'In this scene, to raise the stakes.', 'critic2': 'In the next, to keep the subtext.'}],
             })
+        if 'ROOM_PASS_CODEX' in prompt:
+            answer = '[ROOM_PASS]'
         emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
         stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique', 'continuity_report'} else answer

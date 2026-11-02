@@ -14075,6 +14075,7 @@
             font-size: 12px;
         }
         .room-live-approvals:empty { display: none; }
+        .room-pass-note { color: var(--text-muted); font-size: 11.5px; padding: 2px 0; }
         .room-mention-option {
             display: flex;
             align-items: center;

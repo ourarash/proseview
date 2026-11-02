@@ -142,6 +142,10 @@ selection presets and recent instructions as individual chat. The text box can b
 drafts and selected passages survive reload, and a selection stays attached for
 follow-ups until removed or changed by an agent.
 
+Editors can pass when they have nothing to add. A small status note acknowledges
+the pass; if both pass on the same message, one note says neither had additions.
+Passing does not stop the next invitation or create an empty reply card.
+
 You can queue a message while agents are replying.
 Queued messages keep their chosen recipients and can be removed before they
 run. They are posted to the shared thread after the current invitations finish.

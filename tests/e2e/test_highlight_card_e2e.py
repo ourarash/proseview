@@ -767,12 +767,16 @@ def test_room_pass_is_quiet_and_does_not_cancel_the_next_invitation(page: Page, 
     assert pane.locator(".is-critic-1").count() == 0
     assert pane.locator(".is-critic-2").count() == (0 if both_pass else 1)
     assert "[ROOM_PASS]" not in pane.inner_text()
+    note = pane.locator('.room-pass-note')
+    assert note.count() == 1
+    assert note.inner_text() == ('Both editors had no additions.' if both_pass else 'Story Editor · Codex had no additions.')
     page.wait_for_function("() => !_roomSessionFor(_roomCurrentScenePath())._saving")
     page.reload()
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('room')")
     pane.locator(".is-user").wait_for(timeout=20000)
     assert pane.locator(".is-critic-1").count() == 0
+    assert pane.locator('.room-pass-note').inner_text() == ('Both editors had no additions.' if both_pass else 'Story Editor · Codex had no additions.')
 
 
 def test_room_settings_can_create_profiles_and_presets_and_preview_a_different_pair(page: Page, server: ProseviewServer, tmp_path):

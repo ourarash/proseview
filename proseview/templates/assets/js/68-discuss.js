@@ -2118,8 +2118,13 @@
                 };
                 session.turns.forEach(function(turn, turnIdx) {
                     if (turn.passed) {
+                        var previous = session.turns[turnIdx - 1], next = session.turns[turnIdx + 1];
+                        if (!(previous && previous.passed && previous.seat !== turn.seat)) {
+                            var both = next && next.passed && next.seat !== turn.seat;
+                            turnsWrap.appendChild(elementWith('room-pass-note', both ? 'Both editors had no additions.' : _roomSpeakerName(turn.seat, turn.agent) + ' had no additions.'));
+                        }
                         if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_roomToolReview(session, turn));
-                    if (turn.review_unavailable) turnsWrap.appendChild(elementWith('room-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
+                        if (turn.review_unavailable) turnsWrap.appendChild(elementWith('room-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
                         appendPlansAfter(turnIdx + 1); return;
                     }
                     if (turn.role === 'invitation') {

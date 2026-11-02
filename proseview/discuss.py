@@ -2265,6 +2265,7 @@ class _OneOff:
         #: caller that shows progress (the Writers' Room).
         self.progress = ""
         self.draft = ""
+        self.structured_output = False
         self.started_at = time.monotonic()
         #: Stops the turn on the agent's side, once it has started.
         self.interrupt: Any = None
@@ -5077,6 +5078,7 @@ class DiscussManager:
             except (CodexRequestError, ClaudeRequestError) as exc:
                 raise _RoomThreadGone(str(exc)) from exc
         one_off = _OneOff()
+        one_off.structured_output = bool(schema)
         if regular:
             context = self.room_runtime.context
             room_id, step_id = getattr(context, "room_id", ""), getattr(context, "step_id", "")
@@ -5307,7 +5309,7 @@ class DiscussManager:
             "elapsed": round(time.monotonic() - one_off.started_at, 1),
             "progress": one_off.progress.strip()[-1200:],
             "steps": [row["title"] for row in one_off.activities.values() if row.get("title")][-6:],
-            "draft": _partial_json_string(one_off.draft, "reply"),
+            "draft": _partial_json_string(one_off.draft, "reply") if one_off.structured_output else one_off.draft,
             "conversation_id": conversation.id if conversation else "",
             "approvals": [
                 {key: value for key, value in item.items() if key != "protocol_request_id"}

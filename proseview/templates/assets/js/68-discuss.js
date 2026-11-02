@@ -5647,14 +5647,6 @@ function loadDiscussDiffMode(mode) {
             );
         }
 
-        // What Polish selection sends: the writer's own saved "Polish..."
-        // instruction when there is one, so P matches the Quick send button.
-        function polishDiscussInstruction() {
-            var saved = presetDiscussInstructions().concat(recentDiscussInstructions())
-                .filter(function(value) { return /^polish\b/i.test(value); });
-            return saved[0] || 'Polish this';
-        }
-
         function toggleDiscussInstructionFavorite(value, reopenMenu, refresh) {
             var rows = favoriteDiscussInstructions(); var index = rows.indexOf(value);
             if (index >= 0) rows.splice(index, 1); else rows.unshift(value);

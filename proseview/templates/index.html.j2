@@ -1028,7 +1028,7 @@
                     class: 'pm-annotation pm-annotation-' + kind,
                     contenteditable: 'false',
                     'data-tag': tag,
-                    title: body,
+                    title: kind === 'todo' ? '' : body,
                 }, ['span', { class: 'pm-annotation-icon' }, icon],
                    ['span', { class: 'pm-annotation-text' }, body]];
             }
@@ -1084,7 +1084,7 @@
                 } else {
                     this.dom.className = 'pm-annotation pm-annotation-' + parsed.kind + (this.editing ? ' pm-annotation-editing' : '');
                     this.dom.dataset.tag = parsed.tag.toLowerCase();
-                    this.dom.title = this.editing ? '' : parsed.body;
+                    this.dom.title = this.editing || parsed.kind === 'todo' ? '' : parsed.body;
                 }
             }
             renderRead() {

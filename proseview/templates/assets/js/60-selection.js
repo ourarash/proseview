@@ -705,7 +705,7 @@
             document.getElementById('selectionPolishBtn').addEventListener('click', function(e) {
                 e.stopPropagation();
                 if (!managedSelectionIsCurrent()) return;
-                handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
+                handoffSelectionToDiscuss({sendInstruction: 'Polish this'});
             });
 
             // A and P act on the reading-mode selection, as the menu's items
@@ -735,7 +735,7 @@
                 if (e.key !== 'p' && e.key !== 'P') return;
                 if (!selectionShortcutApplies(e)) return;
                 e.preventDefault();
-                handoffSelectionToDiscuss({sendInstruction: polishDiscussInstruction()});
+                handoffSelectionToDiscuss({sendInstruction: 'Polish this'});
             });
 
             // Drag from the pill background, format buttons, or the ··· button. A press that

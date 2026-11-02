@@ -7032,31 +7032,21 @@ def test_external_scene_change_recovers_after_one_failed_refresh(page: Page, ser
 
 def test_editor_list_and_quote_formatting(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.wait_for_selector(".ProseMirror")
-    
-    # Empty editor, type something
-    page.click(".ProseMirror")
-    page.keyboard.type("List item")
-    
-    # Select text
-    page.keyboard.press("Shift+ArrowLeft")
-    page.keyboard.press("Shift+ArrowLeft")
-    
-    # Reveal toolbar if hidden
-    page.click("#sceneToolbarReveal", force=True)
-    
-    # Click bullet list
-    page.click("button[aria-label='Bullet List']")
+    enter_edit_mode(page)
+    text = "The loft smelled of cold coffee"
+
+    select_prose(page, text)
+    page.locator("#selectionPillBar").get_by_role("button", name="Bullet List", exact=True).click()
     page.wait_for_selector(".ProseMirror ul li")
     assert page.locator(".ProseMirror ul li").count() > 0, "Bullet list was not created"
     
-    # Click ordered list
-    page.click("button[aria-label='Numbered List']")
+    select_prose(page, text)
+    page.locator("#selectionPillBar").get_by_role("button", name="Numbered List", exact=True).click()
     page.wait_for_selector(".ProseMirror ol li")
     assert page.locator(".ProseMirror ol li").count() > 0, "Ordered list was not created"
     
-    # Click quote
-    page.click("button[aria-label='Quote']")
+    select_prose(page, text)
+    page.locator("#selectionPillBar").get_by_role("button", name="Quote", exact=True).click()
     page.wait_for_selector(".ProseMirror blockquote")
     assert page.locator(".ProseMirror blockquote").count() > 0, "Blockquote was not created"
 
@@ -7078,6 +7068,8 @@ def test_switching_a_list_type_keeps_every_item(page: Page, server: ProseviewSer
             const selection = window._PM.TextSelection.create(state.doc, starts[3] + 3, starts[4] + 1);
             _pmView.dispatch(state.tr.setSelection(selection));
             _pmView.focus();
+            // The selection toolbar opens when the writer finishes selecting.
+            document.getElementById('modalBody').dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
         }"""
     )
 
@@ -7097,29 +7089,23 @@ def test_switching_a_list_type_keeps_every_item(page: Page, server: ProseviewSer
 
 def test_editor_list_enter_splits_item(page: Page, server: ProseviewServer):
     open_scene(page, server)
-    page.wait_for_selector(".ProseMirror")
-    
-    page.click(".ProseMirror")
+    enter_edit_mode(page)
+    _caret_at_end_of(page, "The loft smelled of cold coffee")
+    page.keyboard.press("Enter")
     page.keyboard.type("List item 1")
-    
-    page.keyboard.press("Shift+ArrowLeft")
-    page.keyboard.press("Shift+ArrowLeft")
-    
-    page.click("#sceneToolbarReveal", force=True)
-    page.click("button[aria-label='Bullet List']")
+    select_prose(page, "List item 1")
+    page.locator("#selectionPillBar").get_by_role("button", name="Bullet List", exact=True).click()
     page.wait_for_selector(".ProseMirror ul li")
     
-    # Go to end of the line
-    page.evaluate("() => { const sel = window.getSelection(); sel.modify('move', 'forward', 'lineboundary'); }")
-    
-    # Press Enter
+    # Put the editor caret at the item's end before splitting it.
+    _caret_at_end_of(page, "List item 1")
     page.keyboard.press("Enter")
     page.keyboard.type("List item 2")
     
     # Verify there are two list items
     page.wait_for_function("() => document.querySelectorAll('.ProseMirror ul li').length === 2")
     list_items = page.locator(".ProseMirror ul li").all_inner_texts()
-    assert len(list_items) == 2
+    assert list_items == ["List item 1", "List item 2"]
 
 def test_discuss_panel_state_preserved_on_reload(page: Page, server: ProseviewServer):
     open_scene(page, server, SCENE_REL)

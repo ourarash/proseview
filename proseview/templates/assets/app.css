@@ -14192,6 +14192,7 @@
         .room-composer-actions { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); min-width: 0; }
         .room-connection-status:empty { display: none; }
         .room-model-control { min-width: 0; max-width: 100%; }
+        .room-model-control > button[data-warning="true"] { color: var(--warning, #d6a850); border-color: var(--warning, #d6a850); }
         .room-model-control > .discuss-model-chip { width: 100%; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
         .room-model-picker { left: 12px; right: auto; bottom: calc(100% + 6px); width: min(340px, calc(100% - 24px)); box-sizing: border-box; }
         .room-quick-send { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 11px; }

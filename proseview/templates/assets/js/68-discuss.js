@@ -1958,7 +1958,10 @@
             recap.value = String(preset.recap); recap.onchange = function() { preset.recap = Number(recap.value); };
             recapLabel.appendChild(recap); preview.appendChild(recapLabel);
             var actions = elementWith('room-preset-actions');
+            if (session.presetError) { var error = elementWith('room-error-text', session.presetError); error.setAttribute('role', 'alert'); preview.appendChild(error); }
             var start = document.createElement('button'); start.type = 'button'; start.id = 'roomStartPresetBtn'; start.className = 'room-send-btn'; start.textContent = 'Start discussion';
+            start.disabled = !!session.startingPreset;
+            if (session.startingPreset) start.textContent = 'Checking agents…';
             start.onclick = function() { startRoomDebate({start: true}); };
             var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'room-header-btn'; cancel.textContent = 'Cancel';
             cancel.onclick = function() { session.pendingPreset = null; renderSceneRoomPane(); };

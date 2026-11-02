@@ -131,11 +131,14 @@ servers. References remain available when continuing or reopening the saved
 thread, and mentioned paths must remain inside the project.
 
 The composer includes the same context and model controls as individual chat:
-**+** opens people/files/folders, **$** lists available agent skills, and each
+**+** opens people/files/folders, typing **$** lists available agent skills, and each
 participant has a model/effort picker. Model overrides belong to this Room and
-leave the reusable profile and individual chat unchanged. The scene label shows
-the current context. Quick send uses the same favorites, selection presets and
-recent instructions as individual chat. The text box can be resized; unsent
+leave the reusable profile and individual chat unchanged. A warning on a model
+chip identifies an unavailable agent or model catalogue; open it to retry.
+Presets check required agents before starting any invitations. These availability
+checks do not guarantee authentication or connectivity for a later request.
+The scene label shows the current context. Quick send uses the same favorites,
+selection presets and recent instructions as individual chat. The text box can be resized; unsent
 drafts and selected passages survive reload, and a selection stays attached for
 follow-ups until removed or changed by an agent.
 

@@ -30,7 +30,7 @@ function roomRuntimeRequest(session, body, options) {
     return discussApi('/api/discuss/room-run', body).then(function(data) {
         if (!data.ok || !data.room) throw new Error(data.error || 'Could not read the Room state');
         roomRuntimeApply(session, data.room, options);
-        roomRuntimePoll(session);
+        roomRuntimePoll(session, true);
         return data.room;
     });
 }
@@ -90,22 +90,63 @@ function roomRuntimeApply(session, state, options) {
     if (oldRevision !== current.revision || !document.getElementById('roomComposer')) renderSceneRoomPane();
     else if (session.live) _renderRoomLive();
 }
-function roomRuntimePoll(session) {
-    if (_roomRuntimePolls[session.id]) return;
-    var tick = function() {
-        if (_roomSessionsByScene[session.scene] !== session || !roomTabIsOpen() || _roomCurrentScenePath() !== session.scene) {
-            delete _roomRuntimePolls[session.id]; return;
+function roomRuntimePoll(session, wake) {
+    var key = session.id, existing = _roomRuntimePolls[key];
+    if (existing) {
+        if (wake) {
+            existing.idleDelay = 5000;
+            if (existing.running) existing.wake = true;
+            else { clearTimeout(existing.timer); existing.timer = setTimeout(existing.tick, 0); }
         }
-        _roomRuntimePolls[session.id] = true;
+        return;
+    }
+    var poll = {running: false, idleDelay: 5000, timer: null, wake: false};
+    function visible() {
+        return !document.hidden && _roomSessionsByScene[session.scene] === session
+            && roomTabIsOpen() && _roomCurrentScenePath() === session.scene;
+    }
+    var tick = function() {
+        if (!visible()) { delete _roomRuntimePolls[key]; return; }
+        poll.running = true;
+        var revision = session.runtime && session.runtime.revision;
         discussApi('/api/discuss/room-run', {action: 'state', room_id: session.id, after_revision: session.runtime && session.runtime.revision})
-            .then(function(data) { if (data.ok && data.room) { roomRuntimeApply(session, data.room); if (!session.sendError) drainRoomOutbox(session); } })
+            .then(function(data) {
+                if (!data.ok || !data.room) throw new Error(data.error || 'Could not read the Room state');
+                roomRuntimeApply(session, data.room);
+                var hint = document.getElementById('roomConnectionStatus');
+                if (hint) { hint.textContent = ''; hint.title = ''; }
+                if (!session.sendError) drainRoomOutbox(session);
+                poll.idleDelay = revision !== data.room.revision ? 5000 : Math.min(30000, poll.idleDelay * 2);
+            })
             .catch(function(error) {
+                poll.idleDelay = Math.min(30000, poll.idleDelay * 2);
                 var hint = document.getElementById('roomConnectionStatus');
                 if (hint) { hint.textContent = 'Connection interrupted. The server keeps accepted work; reconnecting…'; hint.title = error.message; }
-            }).finally(function() { _roomRuntimePolls[session.id] = setTimeout(tick, 800); });
+            }).finally(function() {
+                poll.running = false;
+                if (_roomRuntimePolls[key] !== poll) return;
+                if (!visible()) { delete _roomRuntimePolls[key]; return; }
+                var active = session.busy || session.sendingOutbox || (session.outbox || []).length;
+                var delay = poll.wake ? 0 : active ? 800 : poll.idleDelay;
+                poll.wake = false;
+                poll.timer = setTimeout(tick, delay);
+            });
     };
-    _roomRuntimePolls[session.id] = setTimeout(tick, 800);
+    poll.tick = tick;
+    _roomRuntimePolls[key] = poll;
+    poll.timer = setTimeout(tick, 0);
 }
+function wakeCurrentRoomPoll() {
+    var session = _roomSessionsByScene[_roomCurrentScenePath()];
+    if (session && session.managed && roomTabIsOpen() && !document.hidden) roomRuntimePoll(session, true);
+}
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) { wakeCurrentRoomPoll(); return; }
+    Object.keys(_roomRuntimePolls).forEach(function(key) {
+        clearTimeout(_roomRuntimePolls[key].timer); delete _roomRuntimePolls[key];
+    });
+});
+window.addEventListener('focus', wakeCurrentRoomPoll);
 function attachManagedRoom(session) {
     if (!session.id) return Promise.resolve();
     return roomRuntimeRequest(session, roomRuntimeEnvelope(session, 'state')).then(function() {
@@ -156,6 +197,7 @@ function submitManagedRoomMessage() {
         seats: roomRequestedSeats(text), attachments: discussMentionsIn(text), review_choices: roomReviewChoices(session), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})});
     if (!session.outbox) session.outbox = [];
     session.outbox.push(body);
+    if (session.managed) roomRuntimePoll(session, true);
     rememberDiscussInstruction(text);
     _roomDraftInput = ''; if (input) input.value = '';
     session.busy = true; session.statusText = 'Sending message…';

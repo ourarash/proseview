@@ -48,7 +48,7 @@ from .raw_html import HtmlBreak, HtmlClose, HtmlImage, HtmlOpen, HtmlText, MarkS
 DOCX_LAYOUTS: tuple[str, ...] = ("manuscript", "book")
 
 #: Page sizes in twentieths of a point (twips), as Word measures them.
-PAGE_SIZES: dict[str, tuple[int, int]] = {"letter": (12240, 15840), "a4": (11906, 16838)}
+PAGE_SIZES: dict[str, tuple[int, int]] = {"letter": (12240, 15840), "a4": (11906, 16838), "a5": (8391, 11906)}
 
 _TWIPS_PER_INCH = 1440
 _EMU_PER_INCH = 914400
@@ -447,7 +447,7 @@ class _Writer:
         if options.layout not in DOCX_LAYOUTS:
             raise ExportError(f"Unknown Word layout {options.layout!r}; expected manuscript or book")
         if options.paper not in PAGE_SIZES:
-            raise ExportError(f"Unknown paper size {options.paper!r}; expected letter or a4")
+            raise ExportError(f"Unknown paper size {options.paper!r}; expected letter, a4 or a5")
         from .typst_render import _markdown
 
         self.book = book
@@ -463,8 +463,9 @@ class _Writer:
         self.break_next = False
         self._md = _markdown()
         self.callout_fills = print_fills(self.style.callouts if self.style else (), book.callouts)
+        self.margin = 1008 if options.paper == "a5" else _MARGIN
         width, _ = PAGE_SIZES[options.paper]
-        self.text_width_in = (width - 2 * _MARGIN) / _TWIPS_PER_INCH
+        self.text_width_in = (width - 2 * self.margin) / _TWIPS_PER_INCH
 
     # -- paragraphs and runs ----------------------------------------------------
 
@@ -646,6 +647,7 @@ class _Writer:
 
     def _section_xml(self, *, body: bool, header: str = "", footer: str = "") -> str:
         width, height = PAGE_SIZES[self.options.paper]
+        margin = self.margin
         refs = ""
         if header:
             refs += f'<w:headerReference w:type="default" r:id="{header}"/>'
@@ -654,7 +656,7 @@ class _Writer:
         numbering = '<w:pgNumType w:start="1"/>' if body else ""
         return (
             f"<w:sectPr>{refs}<w:pgSz w:w=\"{width}\" w:h=\"{height}\"/>"
-            f'<w:pgMar w:top="{_MARGIN}" w:right="{_MARGIN}" w:bottom="{_MARGIN}" w:left="{_MARGIN}" '
+            f'<w:pgMar w:top="{margin}" w:right="{margin}" w:bottom="{margin}" w:left="{margin}" '
             f'w:header="720" w:footer="720" w:gutter="0"/>{numbering}</w:sectPr>'
         )
 

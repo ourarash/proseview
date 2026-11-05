@@ -88,13 +88,14 @@ def test_outline_lists_chapters_and_scenes_with_words(book: Path):
     assert data["details"] == {
         "title": "", "subtitle": "", "author": "", "language": "en-US", "epub_version": "epub3",
         "style": "classic", "scene_titles": False, "cover_image": "", "format": "epub",
-        "trim": "5.5x8.5", "paper": "letter", "recto_chapters": True, "contact": "", "watermark": "",
+        "trim": "5.5x8.5", "paper": "letter", "font_size": "", "point_size": "", "recto_chapters": True, "contact": "", "watermark": "",
         "copyright_page": True, "isbn": "", "dedication": "", "also_by": "", "matter_files": True,
     }
     styles = {style["name"]: style for style in data["styles"]}
     assert styles["classic"]["formats"] == ["epub", "pdf-print", "pdf-share", "docx"]
     assert styles["manuscript"]["formats"] == ["pdf-share", "docx"]
     assert [f["name"] for f in data["formats"]] == ["epub", "pdf-print", "pdf-share", "docx", "all"]
+    assert data["papers"] == [{"name": "letter", "label": "US Letter"}, {"name": "a4", "label": "A4"}, {"name": "a5", "label": "A5"}]
 
 
 def test_outline_word_counts_leave_out_todo_comments(book: Path):
@@ -525,6 +526,18 @@ def test_route_pdf_remembers_a_layout_chosen_in_the_reader(client):
     # Export starts from it.
     _, outline = client.json("GET", "/api/export/outline")
     assert (outline["details"]["style"], outline["details"]["format"]) == ("manuscript", "pdf-share")
+
+
+def test_route_pdf_remembers_point_size_chosen_in_the_reader(client):
+    status, headers, data = client.request("POST", "/api/export/pdf", {"remember": {"font_size": "11.5pt"}})
+    assert status == 200 and data.startswith(b"%PDF")
+    assert headers["X-Proseview-Font_Size"] == "11.5pt"
+    assert headers["X-Proseview-Point_Size"] == "11.5pt"
+    saved = Config.load(client_root(client)).export
+    assert saved.font_size == "11.5pt"
+    assert saved.point_size == "11.5pt"
+    _, outline = client.json("GET", "/api/export/outline")
+    assert outline["details"]["font_size"] == "11.5pt"
 
 
 def test_route_pdf_explains_what_it_cannot_lay_out(client):

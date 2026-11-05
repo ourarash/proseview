@@ -47,7 +47,10 @@ from .export import (
     saved_cover_path,
 )
 from .lexical import count_words, prose_only
-from .pdf import DEFAULT_TRIM, PAPER_LABELS, PAPER_SIZES, TRIM_LABELS, TRIM_SIZES, WORDS_PER_PAGE, default_paper
+from .pdf import (
+    DEFAULT_TRIM, PAPER_LABELS, PAPER_SIZES, TRIM_LABELS, TRIM_SIZES, WORDS_PER_PAGE, default_paper,
+    normalize_font_size, normalize_point_size, _TRIM_TEXT,
+)
 from .repo import resolve_visible_repository_path
 
 #: Cover formats a store accepts (no SVG), by extension.
@@ -190,6 +193,8 @@ def saved_details(root: Path, cfg: Config) -> dict[str, Any]:
         "format": saved.format or "epub",
         "trim": saved.trim if saved.trim in TRIM_SIZES else DEFAULT_TRIM,
         "paper": saved.paper if saved.paper in PAPER_SIZES else default_paper(saved.language or "en-US"),
+        "font_size": saved.font_size or saved.point_size or "",
+        "point_size": saved.font_size or saved.point_size or "",
         "recto_chapters": saved.recto_chapters if saved.recto_chapters is not None else True,
         "contact": saved.contact,
         "watermark": "",
@@ -392,6 +397,8 @@ class ExportRequest:
     format: str = "epub"
     trim: str = DEFAULT_TRIM
     paper: str = "letter"
+    font_size: str = ""
+    point_size: str = ""
     recto_chapters: bool = True
     contact: str = ""
     copyright_page: bool = True
@@ -445,6 +452,9 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
     paper = text("paper") or default_paper(language)
     if paper not in PAPER_SIZES:
         raise ExportError(f"Unknown paper size {paper!r}")
+    font_size = text("font_size") or text("point_size")
+    if font_size:
+        font_size = normalize_font_size(font_size)
     recto = raw.get("recto_chapters", True)
     if not isinstance(recto, bool):
         raise ExportError("recto_chapters must be true or false")
@@ -482,6 +492,8 @@ def request_details(body: dict[str, Any]) -> ExportRequest:
         format=fmt,
         trim=trim,
         paper=paper,
+        font_size=font_size,
+        point_size=font_size,
         recto_chapters=recto,
         contact=contact,
         watermark=text("watermark", 120),
@@ -709,7 +721,7 @@ def save_reading_layout(root: Path, cfg: Config, wanted: dict[str, Any]) -> None
     if not isinstance(wanted, dict):
         raise ExportError("The layout must be an object")
     raw = saved_details(root, cfg)
-    for key in ("style", "format", "trim", "paper"):
+    for key in ("style", "format", "trim", "paper", "font_size", "point_size"):
         if key in wanted:
             raw[key] = wanted[key]
     if raw["style"] not in available_styles():
@@ -718,7 +730,7 @@ def save_reading_layout(root: Path, cfg: Config, wanted: dict[str, Any]) -> None
     if raw["format"] not in formats or raw["format"] not in {"pdf-print", "pdf-share"}:
         raw["format"] = "pdf-print" if "pdf-print" in formats else "pdf-share"
     details = request_details({"details": raw})
-    save_book_details(root, cfg, {key: getattr(details, key) for key in ("style", "format", "trim", "paper")})
+    save_book_details(root, cfg, {key: getattr(details, key) for key in ("style", "format", "trim", "paper", "font_size", "point_size")})
 
 
 class PdfPages:
@@ -769,9 +781,22 @@ class PdfPages:
             json.dumps([body.get("selection"), details.__dict__, fmt], sort_keys=True, default=str),
             self._stamp(root, documents, cover),
         )
+        size_val = details.font_size or details.point_size
+        if details.style == "manuscript":
+            actual_size = "12pt"
+        elif size_val:
+            actual_size = normalize_font_size(size_val)
+        elif fmt == "pdf-print":
+            actual_size = _TRIM_TEXT.get(details.trim, "11pt")
+        elif details.paper == "a5":
+            actual_size = "11pt"
+        else:
+            actual_size = "12pt"
         facts = {
             "layout": "print" if fmt == "pdf-print" else "share",
             "style": details.style, "trim": details.trim, "paper": details.paper,
+            "font_size": actual_size,
+            "point_size": actual_size,
         }
         with self._lock:
             if self._last is not None and self._last[0] == key:
@@ -813,6 +838,8 @@ def _book_options(root: Path, cfg: Config, details: ExportRequest) -> dict[str, 
         "cover_image": _cover(root, details),
         "trim": details.trim,
         "paper": details.paper,
+        "font_size": details.font_size or details.point_size,
+        "point_size": details.font_size or details.point_size,
         "recto_chapters": details.recto_chapters,
         "watermark": details.watermark,
         "contact": details.contact,

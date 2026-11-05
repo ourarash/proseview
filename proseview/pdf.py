@@ -54,8 +54,8 @@ DEFAULT_TRIM = "5.5x8.5"
 #: "First 50 pages" pick. (A manuscript page holds about 250.)
 WORDS_PER_PAGE: dict[str, int] = {"5x8": 250, "5.25x8": 260, "5.5x8.5": 290, "6x9": 330, "a5": 290}
 
-PAPER_SIZES: dict[str, tuple[str, str]] = {"letter": ("8.5in", "11in"), "a4": ("210mm", "297mm")}
-PAPER_LABELS: dict[str, str] = {"letter": "US Letter", "a4": "A4"}
+PAPER_SIZES: dict[str, tuple[str, str]] = {"letter": ("8.5in", "11in"), "a4": ("210mm", "297mm"), "a5": ("148mm", "210mm")}
+PAPER_LABELS: dict[str, str] = {"letter": "US Letter", "a4": "A4", "a5": "A5"}
 
 #: Text size per trim: smaller pages get slightly smaller type.
 _TRIM_TEXT = {"5x8": "10.5pt", "5.25x8": "10.5pt", "5.5x8.5": "11pt", "6x9": "11.5pt", "a5": "11pt"}
@@ -81,6 +81,23 @@ def default_paper(language: str) -> str:
     return "letter" if region in {"US", "CA", ""} and language.lower().startswith("en") else "a4"
 
 
+def normalize_font_size(value: str | float | int | None) -> str:
+    """Normalize a font/point size string or number (e.g. '11pt', 10.5) to 'Xpt'."""
+    if not value:
+        return ""
+    val = str(value).strip().lower().removesuffix("pt").strip()
+    try:
+        pts = float(val)
+    except ValueError:
+        raise ExportError(f"Unknown font size {value!r}; expected e.g. 11pt or 10.5")
+    if not (7.0 <= pts <= 24.0):
+        raise ExportError(f"Font size {pts:g}pt out of range; expected between 7pt and 24pt")
+    return f"{pts:g}pt"
+
+
+normalize_point_size = normalize_font_size
+
+
 @dataclass(frozen=True)
 class PdfOptions:
     layout: str = "print"
@@ -88,6 +105,8 @@ class PdfOptions:
     show_scene_titles: bool = False
     trim: str = DEFAULT_TRIM
     paper: str = ""
+    font_size: str = ""
+    point_size: str = ""
     recto_chapters: bool = True
     watermark: str = ""
     cover_image: Path | None = None
@@ -156,7 +175,10 @@ class _Source:
             raise ExportError(f"Unknown trim size {options.trim!r}; expected one of {', '.join(TRIM_SIZES)}")
         paper = options.paper or default_paper(book.language)
         if options.layout == "share" and paper not in PAPER_SIZES:
-            raise ExportError(f"Unknown paper size {paper!r}; expected letter or a4")
+            raise ExportError(f"Unknown paper size {paper!r}; expected letter, a4 or a5")
+        size_opt = options.font_size or options.point_size
+        if size_opt:
+            normalize_font_size(size_opt)
         self.book = book
         self.options = options
         self.paper = paper
@@ -172,12 +194,25 @@ class _Source:
         language, _, region = book.language.partition("-")
         if options.layout == "print":
             width, height = TRIM_SIZES[options.trim]
-            size = _TRIM_TEXT[options.trim]
             margins = {"inside": _length(gutter + 0.25), "outside": "0.6in", "top": "0.75in", "bottom": "0.8in"}
+        elif self.paper == "a5":
+            width, height = PAPER_SIZES[self.paper]
+            margins = {"inside": "0.7in", "outside": "0.7in", "top": "0.8in", "bottom": "0.8in"}
         else:
             width, height = PAPER_SIZES[self.paper]
-            size = "12pt"
             margins = {"inside": "1.1in", "outside": "1.1in", "top": "1in", "bottom": "1in"}
+
+        size_opt = options.font_size or options.point_size
+        if options.style and options.style.name.casefold() == "manuscript":
+            size = "12pt"
+        elif size_opt:
+            size = normalize_font_size(size_opt)
+        elif options.layout == "print":
+            size = _TRIM_TEXT[options.trim]
+        elif self.paper == "a5":
+            size = "11pt"
+        else:
+            size = "12pt"
         cover = "none"
         if options.cover_image is not None and options.layout == "share":
             cover = string("/" + self._inside(options.cover_image, "The cover image").as_posix())

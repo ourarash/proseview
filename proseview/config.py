@@ -223,6 +223,8 @@ class ExportConfig:
     format: str = ""
     trim: str = ""
     paper: str = ""
+    font_size: str = ""
+    point_size: str = ""
     recto_chapters: bool | None = None
     contact: str = ""
     copyright_page: bool | None = None
@@ -834,6 +836,8 @@ def _coerce_export(v: Any) -> ExportConfig:
         format=fmt,
         trim=_coerce_str(v.get("trim", ""), "export.trim").strip().lower(),
         paper=_coerce_str(v.get("paper", ""), "export.paper").strip().lower(),
+        font_size=_coerce_str(v.get("font_size") or v.get("point_size") or "", "export.font_size").strip().lower(),
+        point_size=_coerce_str(v.get("font_size") or v.get("point_size") or "", "export.point_size").strip().lower(),
         recto_chapters=recto,
         contact=_coerce_str(v.get("contact", ""), "export.contact").strip(),
         copyright_page=_coerce_optional_bool(v.get("copyright_page"), "export.copyright_page"),

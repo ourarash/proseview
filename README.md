@@ -13,19 +13,14 @@
 [Start a book in your browser](https://ourarash.github.io/proseview/write/) ·
 [Quick start](#quick-start)
 
-Proseview turns a folder of Markdown scenes into a place to write a book. Read
-and edit each scene on a typeset page, read the whole manuscript from start to
-finish, revise with prose analysis, and export an e-book, a print-ready PDF or
-a Word document. Your files stay plain `.md` where they are, so Proseview works
-alongside Obsidian, VS Code, Vim, git or any other tool, and a save changes
-only what you edited.
+Proseview turns a folder of Markdown scenes into a place to write, structure, revise, and publish a book.
 
-Everything runs on your computer: no account, subscription, database or
-telemetry. Asking an AI is optional and goes through the Codex or Claude you
-already use.
+You read and edit each scene in clean book typography instead of looking at raw Markdown code (`#`, `**`, YAML). Your files stay plain `.md` on your computer, so you can keep using Obsidian, VS Code, Vim, or Git alongside it. A save changes only what you edited.
+
+Everything runs locally on your machine: no account, no subscription, no database, and no telemetry. AI is optional and off until you ask; without it, Proseview is still a complete writing studio that works offline.
 
 ```bash
-pipx install "proseview[claude]"
+pipx install proseview
 proseview --root /path/to/your/novel
 ```
 
@@ -40,72 +35,126 @@ it as a folder to carry on in the installed app.
 
 ## Features
 
-### Write
+### Write and draft
 
-- **A typeset page that is also the editor.** Press `E` to edit the page you
-  are reading; `Mod-S` saves and returns to reading. A save rewrites only the
-  paragraphs you changed, and a conflict guard never overwrites a change made
-  in another editor.
-- **Read the book.** The whole manuscript as one continuous text, or page by
-  page exactly as Export will print it, and it reopens where you stopped.
-- **Every Markdown file.** Story bible, plans and notes open and edit the same
-  way, with backups. Obsidian wikilinks, callouts and embeds stay as written.
-- **Files and search.** Create, rename and move files from the sidebar;
-  `Mod-K` searches paths, metadata, TODOs, notes and prose from anywhere.
-- **Live reload and deep links.** Save in your own editor and the page
-  follows. Every scene has a URL. Six themes and seven fonts.
-- **Privacy screen.** Hold `Mod` and tap `J` twice (`Mod-J J`) to cover the
-  page with a plain budget spreadsheet; do it again to uncover it, with your
-  edit, caret and scroll as you left them.
+- **Read like a book, edit in place.** Your prose appears with comfortable
+  margins, serif type, and dialogue formatting, with no Markdown symbols in the
+  way.
+  Press `E` to edit directly on the page with the same typography; press `Mod-S`
+  to save and return to reading.
+- **Conflict guard.** If you edit a scene in Obsidian, Vim, or any external
+  editor while Proseview is open, Proseview prevents overwriting it and shows a
+  side-by-side diff of what changed on disk.
+- **Drafting aids and callouts.** Highlight any line to reformat it, add a
+  callout box (`> [!letter]` for letters or text messages), or drop in an inline
+  `<!-- TODO -->` or `<!-- NOTE -->` without leaving your drafting flow.
+- **Read the book.** Read the whole manuscript as one continuous text, or turn
+  on **Print layout** to read facing pages with running heads and chapter drops
+  exactly as Export will print them. It reopens where you stopped.
+- **Every Markdown file.** Story bibles, character bios, and worldbuilding
+  notes open and edit the same way, with automatic backups. Obsidian wikilinks,
+  callouts, and embeds stay as written.
+- **Files and search.** Create, rename, and move scenes from the sidebar;
+  `Mod-K` searches scene titles, YAML metadata, TODOs, notes, and prose across
+  the whole book.
+- **Privacy screen.** Press `Mod-J J` (hold `Mod` and tap `J` twice) to instantly
+  cover the page with a plain budget spreadsheet; do it again to uncover your
+  prose, caret, and scroll exactly where you left them.
   [Optional password →](docs/configuration.md#privacy-screen-password)
+
+### Structure and story
+
+- **Beat Map.** Your agent reads a scene and maps how it moves: its beats on
+  an estimated tension curve (from calm to crisis), and its moments by kind:
+  dialogue, action, inner thought, or silent reaction. Click a moment to jump
+  to its paragraph. It is made only when you ask, and is marked out of date
+  when the scene changes.
+- **Timeline and storylines.** See the proportion of your chapters, words per
+  scene, and storylines as parallel lanes. Compare reading order against story
+  chronology so flashbacks and out-of-order scenes are easy to audit.
+- **Character presence and pairings.** See which chapters each character
+  appears in, and check a co-occurrence chart to see which characters share
+  scenes and who never meets.
+- **Progress and What changed.** A Progress card tracking words against your
+  goal, today's word count, writing pace, and streak. **What changed** shows
+  the words written and cut scene by scene, either by period or against a Git
+  commit.
 
 ### Revise
 
-- **Dashboard.** A Progress card for the book against its goal, with today's
-  words, pace, writing streak and days to finish, and **What changed**: the
-  words written and cut in each scene. Below it, the scenes you worked on last
-  and the scene list.
-- **Analysis.** Opens with what stands out, in plain sentences that name the
-  scenes, then who is in each chapter, words by place and word variety. Every
-  figure has an ⓘ that says what it measures.
-  [What the numbers mean →](docs/analytics.md)
-- **Editorial highlights.** Nine prose passes marked on the page, each with
-  its match count: repetition, passive voice, filter verbs, crutch words,
-  hyperbole, lyrical reach, sensory density, repeated sentence openings and
-  first-person slips.
-- **Timeline.** The shape of the book, storylines as lanes, and reading order
-  against the order events happen.
-- **TODOs and notes.** Select a passage and add a `TODO` or a tagged `NOTE`;
-  it is saved in the file as a Markdown comment, and the Tasks tab lists them
-  all.
-- **File history.** Earlier versions of a scene, restored through a diff you
-  can read first.
+- **13 Editorial passes.** Built-in checks mark the page with quiet underlines
+  and match counts:
+  - *Pacing and flow:* sticky sentences (glue words that slow a sentence
+    down) and repeated sentence openings.
+  - *Repetition:* echoes (a word back within 50 words) and the scene's most
+    repeated words.
+  - *Clarity and style:* passive voice, filter verbs ("she heard", "he saw"),
+    crutch words, hyperbole, figurative language, and sensory details.
+  - *Dialogue and POV:* dialogue tags (fancy verbs, adverbs, long runs with no
+    tag), all speech tinted, and first-person slips in third-person scenes.
+- **Highlight cards.** Click any mark for a short note on what the check
+  found. With an agent, **Suggest** offers rewrites in the card, and one click
+  applies one.
+- **Word variety (MATTR & MTLD).** Tracks vocabulary richness across nearby
+  words and whole scenes against typical ranges for your genre (contemporary,
+  literary, speculative, or children's). Every metric includes an ⓘ explaining
+  how it is measured. [What the numbers mean →](docs/analytics.md)
+- **Tasks and notes.** Aggregates every `TODO` and tagged `NOTE` comment across
+  all scene files into one place so you don't lose track of revision thoughts.
+- **File history.** Step back through earlier versions of a scene, comparing
+  changes in a side-by-side or inline diff before restoring.
 
 ### Publish
 
-- **EPUB, PDF and Word.** Export the whole book, a chapter, a scene or any mix
-  as a styled e-book, a print-ready paperback interior (5 × 8 to 6 × 9 in, or
-  A5), a PDF to share, or a Word document for an editor's tracked changes, in
-  four styles including standard manuscript format. Preview the pages first,
-  and get a plain-language check that the book is ready for the stores.
-  [Export guide →](docs/export.md)
-- **A read-only copy to share.** `proseview snapshot` writes the dashboard as
-  a static site for beta readers. [Details →](#share-a-read-only-copy)
+- **Print-ready PDF.** Typesets a paperback interior using Typst across
+  standard trim sizes (5 × 8, 5.25 × 8, 5.5 × 8.5, 6 × 9 in, or A5). Includes
+  recto chapter starts, running heads, and page numbers.
+- **EPUB e-books.** Exports clean, store-ready EPUB3 files with your cover art,
+  metadata, and formatted chapters.
+- **Word documents (`.docx`).** Exports formatted manuscripts for editors or
+  beta readers, including standard submission manuscript format with support for
+  tracked changes.
+- **Interactive print preview.** Preview the facing pages, trim sizes, and
+  typography before exporting. [Export guide →](docs/export.md)
+- **A read-only copy to share.** `proseview snapshot` compiles the dashboard
+  into a static website you can host anywhere (such as GitHub Pages) for beta
+  readers to browse. [Details →](#share-a-read-only-copy)
 
-### Ask an agent (optional)
+### Working with an agent (optional)
 
-Proseview has no model and needs no API key. It drives the Codex and Claude
-command-line tools already signed in on your computer, one tab each in the side
-panel, each with its own conversation about the project. An agent sees the file
-you have open, your selection and any file you `@`mention, and reads the rest of
-the project itself, as it does in the VS Code extensions. Claude uses your own
-Claude settings (permissions, `CLAUDE.md`, skills, MCP servers); Codex asks
-before running a command that would change something.
+Proseview has no AI model of its own and needs no API keys. It drives the
+Codex or Claude command-line tools already installed and signed in on your
+computer, so your agent works under your own account and its own privacy
+terms. Proseview itself sends nothing anywhere.
 
-An edit an agent makes is saved and summarised in a card with the diff,
-**Undo all** and **Looks good**. Reading passes such as Quick critique make no
-edits, and continuity questions come back with citations. Nothing runs until
-you ask. [How the AI features work →](docs/ai.md)
+Nothing runs until you ask:
+
+- **The Writers’ Room.** One conversation with two editors (by default, a
+  **Story Editor** for plot and pacing and a **Voice Editor** for tone and
+  style) who discuss your book with you and with each other. `@mention` one to
+  ask just them.
+- **Codex and Claude tabs.** One tab per agent in the side panel, each with
+  its own conversation. Mention files with `@` or select prose to ask about
+  it.
+- **Edits you can see.** An edit an agent makes is saved and shown in a card
+  with the diff, **Undo all** and **Looks good**.
+- **Continuity checks.** Ask whether a passage fits the rest of the book, and
+  the answer cites the lines it relies on.
+
+[How the AI features work →](docs/ai.md)
+
+## Everyday shortcuts
+
+| Key | Action |
+| :--- | :--- |
+| `E` | Edit the scene you are reading |
+| `Mod-S` | Save edits and return to reading |
+| `Mod-K` | Search scenes, notes, and prose |
+| `Mod-J J` | Cover / uncover with the privacy screen |
+| `P` | Polish the selected prose with your agent |
+| `A` | Ask an agent about the selected passage |
+| `X` | Open the Export dialog |
+| `F` / `Shift-F` | Distraction-free focus layout / Fullscreen |
 
 ## Screenshots
 
@@ -173,13 +222,13 @@ Wonderland* (public domain), split into 39 scenes across 12 chapters. See
 Requires Python 3.11+ on macOS, Linux or Windows.
 
 ```bash
-pipx install "proseview[claude]"
+pipx install proseview
 proseview --root /path/to/your/novel
 ```
 
-A browser tab opens at `http://localhost:7842`; press Ctrl-C to stop. The
-`[claude]` extra adds what the Claude tab needs; leave it off if you will not
-use Claude.
+A browser tab opens at `http://localhost:7842`; press Ctrl-C to stop. If you
+want to use Claude in the side panel, install the `[claude]` extra instead:
+`pipx install "proseview[claude]"`.
 
 Proseview's book features read a `manuscript/` folder with one folder per
 chapter and one Markdown file per scene. Frontmatter is optional. Point it at a
@@ -222,13 +271,24 @@ the folder's name. `--demo` also lets visitors try editing (saved only in their
 browser) and download ready-made EPUB, PDF and Word files. `--title`,
 `--site-url` and `--preview-image` set how a link to it looks when shared.
 
+## CLI commands
+
+| Command | Description |
+| :--- | :--- |
+| `proseview serve` | Start the local dashboard server (default) |
+| `proseview export` | Compile the manuscript into an EPUB, PDF, or Word document |
+| `proseview snapshot` | Write a read-only copy of the dashboard as static files |
+| `proseview roster` | Suggest character names found in the manuscript prose |
+| `proseview privacy-password` | Set or change the password that uncovers the privacy screen |
+| `proseview init` | Write a starter `.proseview.yaml` in the book's folder |
+
 ## Configuration
 
 Proseview needs no config file. A `.proseview.yaml` at the root of the book can
 change where things live, set word goals, choose which agent tab opens first,
 or point the Timeline at your own frontmatter keys; `proseview init` writes a
-starter file. Goals, word variety (genre) and colour theme can also be changed in Settings,
-behind the gear in the header.
+starter file. Goals, word variety (genre), and color theme can also be changed
+in Settings, behind the gear in the header.
 
 ```yaml
 manuscript_path: manuscript/

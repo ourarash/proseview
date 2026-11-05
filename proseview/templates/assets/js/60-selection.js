@@ -1133,6 +1133,8 @@
             // Don't interfere if the diff modal is open
             const diffModal = document.getElementById('diffModalOverlay');
             if (diffModal && !diffModal.hidden) return;
+            const discussDiffModal = document.getElementById('discussDiffModalOverlay');
+            if (discussDiffModal && !discussDiffModal.hidden) return;
             // A TODO or note being edited cancels itself on Escape.
             if (document.querySelector('#sceneProseHost .pm-annotation-editing')) return;
             if (tryEscapeEditMode()) {

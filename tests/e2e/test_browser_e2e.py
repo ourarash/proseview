@@ -4800,6 +4800,104 @@ def test_cancelling_a_todo_added_from_the_gutter_removes_it(page: Page, server: 
     assert page.evaluate("window._pmDirty") is False, "cancelling left the scene marked unsaved"
 
 
+def test_clicking_outside_unchanged_todo_exits_edit_mode(page: Page, server: ProseviewServer):
+    """Clicking outside an unchanged TODO exits edit mode and restores reading mode."""
+    open_annotated_scene(page, server)
+    assert page.evaluate("window._pmEditMode") is not True
+
+    click_annotation(page, TODO_BODY)
+    assert page.locator(".pm-annotation-editing").count() == 1
+    assert page.evaluate("window._pmEditMode") is True
+
+    # Click outside on a paragraph in the scene prose host
+    page.click("#sceneProseHost p")
+    page.wait_for_selector(".pm-annotation-editing", state="detached")
+    assert page.locator(".pm-annotation-editing").count() == 0
+    assert TODO_BODY in page.locator(".pm-annotation-todo").inner_text()
+    assert page.evaluate("window._pmEditMode") is False
+
+
+def test_clicking_outside_modified_todo_retains_edit_mode(page: Page, server: ProseviewServer):
+    """Clicking outside a modified TODO does not dismiss it, preserving unsaved edits."""
+    open_annotated_scene(page, server)
+    click_annotation(page, TODO_BODY)
+    assert page.locator(".pm-annotation-editing").count() == 1
+
+    page.keyboard.type("Modified todo text that should not disappear")
+    # Click outside on a paragraph
+    page.click("#sceneProseHost p")
+    page.wait_for_timeout(300)
+
+    # Remains in edit mode with modified content
+    assert page.locator(".pm-annotation-editing").count() == 1
+    assert "Modified todo text" in page.locator(".pm-annotation-editing .pm-annotation-edit-text").inner_text()
+
+
+def test_clicking_outside_unchanged_note_exits_edit_mode(page: Page, server: ProseviewServer):
+    """Clicking outside an unchanged Note also exits edit mode."""
+    open_annotated_scene(page, server)
+    click_annotation(page, NOTE_BODY)
+    assert page.locator(".pm-annotation-editing").count() == 1
+
+    page.click("#sceneProseHost p")
+    page.wait_for_selector(".pm-annotation-editing", state="detached")
+    assert page.locator(".pm-annotation-editing").count() == 0
+    assert NOTE_BODY in page.locator(".pm-annotation-note").inner_text()
+
+
+def test_backspace_on_empty_line_below_todo_does_not_delete_todo(page: Page, server: ProseviewServer):
+    """Hitting backspace on an empty line below a TODO deletes the line, NOT the TODO."""
+    open_annotated_scene(page, server)
+    enter_edit_mode(page)
+
+    # Insert an empty paragraph directly after the TODO node
+    page.evaluate("""() => {
+        let pos = null;
+        _pmView.state.doc.descendants((node, offset) => {
+            if (pos === null && node.type.name === 'annotation') {
+                pos = offset + node.nodeSize;
+            }
+        });
+        const p = _pmView.state.schema.nodes.paragraph.createAndFill();
+        const tr = _pmView.state.tr.insert(pos, p);
+        tr.setSelection(_PM.TextSelection.create(tr.doc, pos + 1));
+        _pmView.dispatch(tr);
+        _pmView.focus();
+    }""")
+
+    assert page.locator(".pm-annotation-todo").count() == 1
+    page.keyboard.press("Backspace")
+
+    # The TODO must STILL be there!
+    assert page.locator(".pm-annotation-todo").count() == 1
+    assert TODO_BODY in page.locator(".pm-annotation-todo").inner_text()
+
+
+def test_backspace_at_start_of_paragraph_after_todo_preserves_todo(page: Page, server: ProseviewServer):
+    """Hitting backspace at start of paragraph after a TODO does not delete the TODO."""
+    open_annotated_scene(page, server)
+    enter_edit_mode(page)
+
+    # Position cursor at offset 0 of the paragraph right after the annotation
+    page.evaluate("""() => {
+        let pos = null;
+        _pmView.state.doc.descendants((node, offset) => {
+            if (pos === null && node.type.name === 'annotation') {
+                pos = offset + node.nodeSize;
+            }
+        });
+        _pmView.dispatch(_pmView.state.tr.setSelection(_PM.TextSelection.create(_pmView.state.doc, pos + 1)));
+        _pmView.focus();
+    }""")
+
+    assert page.locator(".pm-annotation-todo").count() == 1
+    page.keyboard.press("Backspace")
+
+    # The TODO must STILL be there!
+    assert page.locator(".pm-annotation-todo").count() == 1
+    assert TODO_BODY in page.locator(".pm-annotation-todo").inner_text()
+
+
 def test_the_caret_can_go_between_todos_stacked_together(page: Page, server: ProseviewServer):
     """Two TODOs side by side hold no text between them, so without a gap
     cursor the caret skipped past and typing landed in the next paragraph."""

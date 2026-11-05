@@ -48,6 +48,7 @@ from .generator import (
 )
 from .lexical import paragraph_blocks, calculate_lexical_stats, prose_only
 from .repo import (
+    CONTEXT_SKIP_DIRS,
     backup_dir_for,
     build_sidebar_tree,
     record_file_backup,
@@ -1492,6 +1493,28 @@ class _Handler(BaseHTTPRequestHandler):
         except ExportError:
             self._send_json({"ok": False, "error": "Could not open the folder."}, 500)
 
+    def _handle_add_repo_folder(self) -> None:
+        """Add a repository folder to repo_tab.folders in .proseview.yaml."""
+        try:
+            body = self._read_json_limited(16 * 1024)
+            folder = str(body.get("folder") or "").strip().strip("/")
+            if not folder:
+                raise ContextError("folder name is required")
+            root = Path(self.repo_root).resolve()
+            candidate = root / folder
+            if not candidate.is_dir():
+                raise ContextError(f"Folder '{folder}' does not exist on disk")
+            if folder.startswith(".") or folder in CONTEXT_SKIP_DIRS:
+                raise ContextError(f"Folder '{folder}' cannot be added")
+            from .config import add_repo_tab_folder
+            folders = add_repo_tab_folder(root, folder)
+            self.invalidate("content", (".proseview.yaml",))
+            self._send_json({"ok": True, "folder": folder, "folders": folders})
+        except ContextError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 500)
+
     def _handle_note_save(self) -> None:
         """Save a Markdown note edited in the file view (story bible, plans, …)."""
         try:
@@ -2563,6 +2586,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path in {"/api/files/create", "/api/files/rename", "/api/files/delete"}:
             self._handle_file_mutation(path)
+            return
+        if path == "/api/files/add-folder":
+            self._handle_add_repo_folder()
             return
         if path == "/api/files/save":
             self._handle_note_save()

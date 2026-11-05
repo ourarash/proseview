@@ -150,6 +150,34 @@
             });
         }
 
+        function sidebarNodeUrl(node) {
+            var isScene = !!(node.is_scene && (node.scene_path || (typeof paths !== 'undefined' && paths.indexOf(node.path) >= 0)));
+            var sceneKey = node.scene_path || node.path;
+            var route = isScene
+                ? '#/scene/' + encodeURIComponent(sceneKey)
+                : '#/file/' + encodeURIComponent(node.path);
+            return new URL(route, window.location.href).href;
+        }
+
+        function sidebarOpenFileInNewTab(node, anchor) {
+            if (anchor && anchor.isConnected) anchor.focus({preventScroll: true});
+            window.open(sidebarNodeUrl(node), '_blank');
+        }
+
+        function sidebarCopyNodeUrl(node, anchor) {
+            var url = sidebarNodeUrl(node);
+            function restoreFocus() {
+                if (anchor && anchor.isConnected) anchor.focus({preventScroll: true});
+            }
+            sidebarWriteClipboard(url).then(function() {
+                sidebarShowToast('Copied URL.');
+                restoreFocus();
+            }, function() {
+                sidebarShowToast('Could not copy URL. Clipboard access is unavailable.', true);
+                restoreFocus();
+            });
+        }
+
         function sidebarOpenNodeMenu(node, anchor, point) {
             var menu = document.getElementById('sidebarContextMenu');
             if (!menu) return;
@@ -157,7 +185,15 @@
             _sidebarMenuReturnFocus = anchor;
             menu.innerHTML = '';
             menu.setAttribute('aria-label', 'Actions for ' + node.name);
-            if (!node.is_file) {
+            if (node.is_file) {
+                menu.appendChild(sidebarMenuButton('Open in new tab', 'open-new-tab', function() {
+                    sidebarOpenFileInNewTab(node, anchor);
+                }));
+                menu.appendChild(sidebarMenuButton('Copy URL', 'copy-url', function() {
+                    sidebarCopyNodeUrl(node, anchor);
+                }));
+                menu.appendChild(document.createElement('hr'));
+            } else {
                 menu.appendChild(sidebarMenuButton('New file here', 'new-file', function() {
                     sidebarOpenCreateDialog('file', node.path);
                 }));

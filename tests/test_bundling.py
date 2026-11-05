@@ -402,6 +402,34 @@ def test_search_respects_min_query_length_and_cap():
     assert "SEARCH_RESULT_CAP" in bundle
 
 
+def test_sidebar_footer_present_and_wired():
+    """Sidebar has an ambient footer communicating manuscript and configured
+    folder count with an action to configure repo_tab.folders.
+    """
+    template = (REPO_ROOT / "proseview" / "templates" / "index.html.j2").read_text(encoding="utf-8")
+    assert 'id="sidebarFooter"' in template
+    assert 'id="sidebarFooterLabel"' in template
+    assert 'id="sidebarFooterAction"' in template
+    assert 'id="sidebarFooterCaption"' in template
+
+    bundle = _load_app_js()
+    assert "function updateSidebarFooter(" in bundle
+    assert "repo_tab.folders" in bundle
+
+
+def test_search_indexes_repository_folders_and_tags_repository_files():
+    """Search matches unlisted repository folders on disk and tags files
+    outside the active manuscript/sidebar folders as 'Repository file'.
+    """
+    bundle = _load_app_js()
+    assert "'FOLDERS'" in bundle or '"FOLDERS"' in bundle
+    assert "Repository Folders" in bundle
+    assert "Repository file" in bundle
+    assert "function _openConfigFileFromSearch(" in bundle
+    assert "function _addFolderToFiles(" in bundle
+    assert "+ Add to Files" in bundle
+
+
 def test_data_json_contract_round_trips_through_json():
     """Whatever ``build_scene_data`` returns must be JSON-serializable as-is,
     since the server hands it straight to ``json.dumps``.

@@ -350,3 +350,35 @@ def test_save_can_unset_a_band_so_it_follows_its_default_again(tmp_path: Path):
     text = (tmp_path / ".proseview.yaml").read_text()
     assert "mtld_band" not in text and "genre: literary" in text
     assert Config.load(tmp_path).mtld_band == (85.0, 110.0)
+
+
+def test_add_repo_tab_folder(tmp_path: Path):
+    from proseview.config import add_repo_tab_folder
+
+    # Adding when no file exists creates .proseview.yaml with defaults + folder
+    folders = add_repo_tab_folder(tmp_path, "source")
+    assert "source" in folders
+    assert "plans" in folders
+    cfg = Config.load(tmp_path)
+    assert "source" in cfg.repo_tab.folders
+
+    # Adding another folder preserves existing folders
+    folders2 = add_repo_tab_folder(tmp_path, "scripts")
+    assert "scripts" in folders2
+    assert "source" in folders2
+    cfg2 = Config.load(tmp_path)
+    assert "scripts" in cfg2.repo_tab.folders
+    assert "source" in cfg2.repo_tab.folders
+
+    # Adding an already present folder is a no-op
+    folders3 = add_repo_tab_folder(tmp_path, "source")
+    assert folders3.count("source") == 1
+
+    # Invalid names raise ValueError
+    with pytest.raises(ValueError):
+        add_repo_tab_folder(tmp_path, "")
+    with pytest.raises(ValueError):
+        add_repo_tab_folder(tmp_path, "../outside")
+    with pytest.raises(ValueError):
+        add_repo_tab_folder(tmp_path, ".hidden")
+

@@ -163,6 +163,13 @@
             </div>
         </div>
         <div id="sidebarTree" class="repo-tree sidebar-tree"></div>
+        <div id="sidebarFooter" class="sidebar-footer">
+            <div class="sidebar-footer-row">
+                <span id="sidebarFooterLabel" class="sidebar-footer-label"></span>
+                <button id="sidebarFooterAction" type="button" class="sidebar-footer-link" onclick="previewRepoFile('.proseview.yaml', {focus: true})" title="Configure repo_tab.folders in .proseview.yaml">+ Show more</button>
+            </div>
+            <div id="sidebarFooterCaption" class="sidebar-footer-caption">Configured in <code>repo_tab.folders</code></div>
+        </div>
         <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" tabindex="0" aria-label="Resize file browser" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="520" aria-valuenow="280"></div>
     </nav>
     <div id="sidebarContextMenu" class="sidebar-action-menu sidebar-context-menu" role="menu" hidden></div>

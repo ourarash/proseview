@@ -135,6 +135,76 @@ class ClaudeSDKClient:
             answer = json.dumps(structured)
         elif "in a Writers' Room on the manuscript scene" in prompt:
             answer = "**Agree:** Issue 1, and cut the weather outright.\n\n**Add:** a sharper pause before she speaks."
+        elif "Visual Beat Map" in prompt:
+            structured = {
+                "overall_scene_summary": "Test scene dramatic progression.",
+                "beats": [
+                    {
+                        "order": 1,
+                        "title": "Opening tension",
+                        "summary": "Initial confrontation begins.",
+                        "start_paragraph": 0,
+                        "end_paragraph": 1,
+                        "estimated_tension": 30,
+                        "is_turning_point": False,
+                        "moments": [
+                            {
+                                "order": 1,
+                                "type": "action",
+                                "speaker": None,
+                                "text": "The dial turned with a dry clatter.",
+                                "source_ref": {
+                                    "paragraph": 0,
+                                    "exact_quote": "The dial turned with a dry clatter."
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "order": 2,
+                        "title": "Rising conflict",
+                        "summary": "Tension escalates between the characters.",
+                        "start_paragraph": 2,
+                        "end_paragraph": 3,
+                        "estimated_tension": 75,
+                        "is_turning_point": True,
+                        "moments": [
+                            {
+                                "order": 2,
+                                "type": "dialogue",
+                                "speaker": "Rena",
+                                "text": "What are you doing?",
+                                "source_ref": {
+                                    "paragraph": 2,
+                                    "exact_quote": ""
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "order": 3,
+                        "title": "Resolution",
+                        "summary": "The conflict settles temporarily.",
+                        "start_paragraph": 4,
+                        "end_paragraph": 4,
+                        "estimated_tension": 40,
+                        "is_turning_point": False,
+                        "moments": [
+                            {
+                                "order": 3,
+                                "type": "interiority",
+                                "speaker": None,
+                                "text": "She looked away.",
+                                "source_ref": {
+                                    "paragraph": 4,
+                                    "exact_quote": ""
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            answer = json.dumps(structured)
         if "ROOM_PASS_CLAUDE" in prompt:
             answer = "[ROOM_PASS]"
         rows.append(SimpleNamespace(

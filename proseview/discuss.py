@@ -913,6 +913,17 @@ class ContextBuilder:
             "optionally followed by #L<number>; never use an absolute filesystem path.",
             " Answer in prose unless this turn supplies an output schema.",
         ]
+        beatmap_text = ""
+        if document.get("kind") == "scene":
+            try:
+                from .beatmap import format_beatmap_for_context, get_scene_beatmap
+                res = get_scene_beatmap(self.root, str(document.get("path") or ""))
+                if res.get("has_map") and res.get("beatmap"):
+                    beatmap_text = format_beatmap_for_context(res["beatmap"])
+            except Exception:
+                pass
+        if beatmap_text:
+            prefix_parts.extend(["\n\n", beatmap_text])
         if selection:
             prefix_parts.extend(["\n\nBEGIN USER SELECTION\n", selection, "\nEND USER SELECTION"])
         if notes:
@@ -1055,6 +1066,17 @@ class ContextBuilder:
                 item.content,
                 f"\nEND UNTRUSTED DOCUMENT {json.dumps(item.path)}",
             ])
+        beatmap_text = ""
+        if document.get("kind") == "scene":
+            try:
+                from .beatmap import format_beatmap_for_context, get_scene_beatmap
+                res = get_scene_beatmap(self.root, str(document.get("path") or ""))
+                if res.get("has_map") and res.get("beatmap"):
+                    beatmap_text = format_beatmap_for_context(res["beatmap"])
+            except Exception:
+                pass
+        if beatmap_text:
+            parts.extend(["\n\n", beatmap_text])
         if notes:
             parts.extend(["\n\nBEGIN PROSVIEW NOTES\n", notes, "\nEND PROSVIEW NOTES"])
         parts.extend(["\n\nUSER QUESTION\n", question])
@@ -2321,7 +2343,12 @@ class DiscussManager:
         "for the user to review after the turn, so it needs no separate approval. To delete, move or rename "
         "a file, use the shell (for example rm or git mv). Do not run other side-effectful "
         "commands or use network access without the user's explicit approval. Give short progress notes "
-        "while you work and a clear final answer."
+        "while you work and a clear final answer. When a scene beat map is provided, you can reference its "
+        "dramatic tension, narrative beats, and moments. If the user asks you to adjust or update a beat "
+        "(such as tension score 0-100, title, summary, or turning point), output a ```proseview:beatmap-patch block "
+        "containing {\"beat_order\": <int>, \"patch\": {...}}. If the user asks to restructure or recreate the "
+        "beat map, output a ```proseview:beatmap-recreate block containing {\"guidance\": \"...\"}. Prosview will "
+        "render an interactive 1-click card for the writer to apply your update."
     )
 
     #: Per-conversation agent settings, as the VS Code extension has them:
@@ -4949,7 +4976,15 @@ class DiscussManager:
                 "Use your tools to inspect the mentioned project files as needed for this discussion.",
                 mentions=attachments,
             ).prompt
-        scene_hash = hashlib.sha256((scene_name + '\0' + scene_text + '\0' + reference_text).encode("utf-8")).hexdigest()
+        beatmap_text = ""
+        try:
+            from .beatmap import format_beatmap_for_context, get_scene_beatmap
+            res = get_scene_beatmap(self.root, scene_name)
+            if res.get("has_map") and res.get("beatmap"):
+                beatmap_text = format_beatmap_for_context(res["beatmap"])
+        except Exception:
+            pass
+        scene_hash = hashlib.sha256((scene_name + '\0' + scene_text + '\0' + reference_text + '\0' + beatmap_text).encode("utf-8")).hexdigest()
         signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
         known = self._room_threads.get(key) if key else None
@@ -4974,6 +5009,7 @@ class DiscussManager:
                     seat=seat_num, history=clean[known["seen"]:], scene_path=scene_name,
                     scene_text="" if known["scene"] == scene_hash else scene_text,
                     reference_text="" if known["scene"] == scene_hash else reference_text,
+                    beatmap_text="" if known["scene"] == scene_hash else beatmap_text,
                 )
             else:
                 followup = suggestions_module.render_room_followup(
@@ -5000,6 +5036,7 @@ class DiscussManager:
                 prompt = room_module.chat_prompt(
                     seat=seat_num, history=clean or [{"role": "user", "text": question}],
                     scene_path=scene_name, scene_text=scene_text, reference_text=reference_text,
+                    beatmap_text=beatmap_text,
                 )
             else:
                 prompt = suggestions_module.render_room_prompt(

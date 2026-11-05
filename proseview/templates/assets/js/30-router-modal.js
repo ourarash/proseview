@@ -145,6 +145,7 @@
             // chapter folders above it.
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
+            if (typeof loadSceneBeatMap === 'function') loadSceneBeatMap(p);
             // Deliberately does not open the dock. Forcing it open here made
             // `body.discuss-open` -- and its `margin-right` -- apply to every
             // scene, which silently narrowed the reading column, the file
@@ -309,6 +310,12 @@
                 && !(document.getElementById('sceneAnalysisPane') || {hidden: true}).hidden) {
                 renderSceneAnalysisPane();
             }
+            if (typeof loadSceneBeatMap === 'function' && typeof paths !== 'undefined' && curIdx >= 0 && paths[curIdx]) {
+                loadSceneBeatMap(paths[curIdx]);
+            } else if (typeof renderSceneBeatMapPane === 'function'
+                && !(document.getElementById('sceneBeatMapPane') || {hidden: true}).hidden) {
+                renderSceneBeatMapPane();
+            }
             syncSceneDisclosureState(true);
         }
 
@@ -447,6 +454,11 @@
             opener.setAttribute('aria-expanded', 'true');
         }
 
+        function isHorizontalBeatMapOpen() {
+            var strip = document.getElementById('sceneBeatMapStripContainer');
+            return !!(strip && !strip.hidden);
+        }
+
         function resetSceneToolbarForRoute() {
             var scroller = document.querySelector('#sceneModal .modal-content');
             clearSceneToolbarHideTimer();
@@ -454,7 +466,11 @@
             closeSceneToolbarMenus();
             syncSceneToolbarModeControls();
             var focusLayout = !!(scroller && scroller.classList.contains('modal-focus'));
-            setSceneToolbarHidden(focusLayout || _sceneToolbarMode === 'hidden');
+            if (isHorizontalBeatMapOpen()) {
+                setSceneToolbarHidden(false);
+            } else {
+                setSceneToolbarHidden(focusLayout || _sceneToolbarMode === 'hidden');
+            }
         }
 
         function handleSceneToolbarScroll(event) {
@@ -463,6 +479,12 @@
             var delta = current - _sceneToolbarLastScrollTop;
             _sceneToolbarLastScrollTop = current;
             if (performance.now() < _sceneScrollIsOursUntil) return;
+            // Disable auto-hide when the horizontal beat map strip is open
+            // to keep the toolbar and beat strip rock-solid without layout jumps
+            if (isHorizontalBeatMapOpen()) {
+                revealSceneToolbar(false);
+                return;
+            }
             if (_sceneToolbarMode !== 'auto' || sceneToolbarReducedMotion()) return;
             if (document.querySelector('#sceneModal .modal-content.modal-focus')) return;
             if (current < 24 || delta < -8) {

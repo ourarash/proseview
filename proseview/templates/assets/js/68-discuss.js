@@ -644,7 +644,7 @@
         // the highlight passes and the version log, all derived from the file
         // on disk. Codex and Claude are the surfaces that call a model. Keeping
         // that boundary legible is the point of the split.
-        const SCENE_PANEL_TABS = ['scene', 'analysis', 'history', 'codex', 'claude', 'room'];
+        const SCENE_PANEL_TABS = ['scene', 'beats', 'analysis', 'history', 'codex', 'claude', 'room'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -662,6 +662,7 @@
 
         const UTILITY_TAB_IDS = {
             scene: ['utilityTabScene'],
+            beats: ['utilityTabBeats'],
             analysis: ['utilityTabAnalysis'],
             history: ['utilityTabHistory'],
             codex: ['utilityTabCodex'],
@@ -716,6 +717,7 @@
 
         const SCENE_PANEL_PANES = {
             scene: {id: 'sceneDetailsPane', heading: 'Scene', render: renderSceneDetailsPane},
+            beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }},
             analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }},
             room: {id: 'sceneRoomPane', heading: 'Writers\u2019 Room', render: renderSceneRoomPane}
@@ -724,6 +726,7 @@
         // What a scene tab says over the dashboard, where there is no scene.
         const SCENE_PANEL_AWAY = {
             scene: 'Open a scene to see its details.',
+            beats: 'Open a scene to see its beat map.',
             analysis: 'Open a scene to see its analysis.',
             history: 'Open a scene to see its history.',
             room: 'Open a scene to run the Writers\u2019 Room.'
@@ -807,6 +810,7 @@
         // Kept as a named seam: it is the entry point the scene modal and the
         // tests reach for, and it now means "the deterministic scene tab".
         function showSceneDetailsTab() { showScenePanelTab('scene'); }
+        function showSceneBeatMapTab() { showScenePanelTab('beats'); }
         function showSceneAnalysisTab() { showScenePanelTab('analysis'); }
 
         function _showDiscussBody() {
@@ -3527,6 +3531,267 @@
             return decoded;
         }
 
+        function renderDiscussBeatmapCard(lang, rawText, parent, ctx) {
+            var payload;
+            try {
+                payload = JSON.parse(String(rawText || '').trim());
+            } catch (e) {
+                var pre = document.createElement('pre');
+                var code = document.createElement('code');
+                code.textContent = decodeMarkdownText(rawText || '');
+                pre.appendChild(code);
+                parent.appendChild(withCopyButton(pre, function() { return code.textContent; }));
+                return;
+            }
+
+            var isPatch = (lang === 'proseview:beatmap-patch');
+            var card = document.createElement('div');
+            card.className = 'discuss-beatmap-card ' + (isPatch ? 'is-patch' : 'is-recreate');
+
+            // Header
+            var header = document.createElement('div');
+            header.className = 'discuss-beatmap-header';
+
+            var headerLeft = document.createElement('div');
+            headerLeft.className = 'discuss-beatmap-header-left';
+
+            var icon = document.createElement('span');
+            icon.className = 'discuss-beatmap-icon';
+            icon.innerHTML = isPatch
+                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>';
+            headerLeft.appendChild(icon);
+
+            var title = document.createElement('span');
+            title.className = 'discuss-beatmap-title';
+            title.textContent = isPatch ? 'BEAT MAP UPDATE PROPOSAL' : 'BEAT MAP RECREATION PROPOSAL';
+            headerLeft.appendChild(title);
+            header.appendChild(headerLeft);
+
+            var badge = document.createElement('span');
+            badge.className = 'discuss-beatmap-badge';
+            badge.textContent = isPatch ? 'Targeted Patch' : 'Structural Re-creation';
+            header.appendChild(badge);
+            card.appendChild(header);
+
+            // Bind proposal to originating scene and revision at render time (Bug 5)
+            var boundScenePath = (payload && (payload.scene_path || payload.path)) || '';
+            if (!boundScenePath && ctx) {
+                if (ctx.scenePath) boundScenePath = ctx.scenePath;
+                else if (ctx.document && ctx.document.path) boundScenePath = ctx.document.path;
+            }
+            if (!boundScenePath && typeof _discussSnapshot !== 'undefined' && _discussSnapshot && _discussSnapshot.document && _discussSnapshot.document.path) {
+                boundScenePath = _discussSnapshot.document.path;
+            }
+            if (!boundScenePath && typeof discussTurnDocument === 'function' && discussTurnDocument() && discussTurnDocument().path) {
+                boundScenePath = discussTurnDocument().path;
+            }
+            if (!boundScenePath && typeof paths !== 'undefined' && typeof curIdx !== 'undefined' && curIdx >= 0 && paths[curIdx]) {
+                boundScenePath = paths[curIdx];
+            }
+            if (!boundScenePath && window.location.hash) {
+                var locMatch = window.location.hash.match(/^#\/scene\/(.+)$/);
+                if (locMatch) {
+                    try { boundScenePath = decodeURIComponent(locMatch[1]); } catch (e) { boundScenePath = locMatch[1]; }
+                }
+            }
+            if (!boundScenePath && typeof window.getBeatMapData === 'function' && window.getBeatMapData() && window.getBeatMapData().scene_path) {
+                boundScenePath = window.getBeatMapData().scene_path;
+            }
+
+            var boundRevision = (payload && (payload.expected_revision || payload.target_revision || payload.analyzed_revision_hash || payload.revision)) || '';
+            if (!boundRevision && typeof window.getBeatMapData === 'function' && window.getBeatMapData() && window.getBeatMapData().scene_path === boundScenePath) {
+                boundRevision = window.getBeatMapData().analyzed_revision_hash || '';
+            }
+            var boundMapVersion = (payload && (payload.expected_map_version || payload.target_map_version || payload.map_version)) || '';
+            if (!boundMapVersion && typeof window.getBeatMapData === 'function' && window.getBeatMapData() && window.getBeatMapData().scene_path === boundScenePath) {
+                boundMapVersion = window.getBeatMapData().map_version || '';
+            }
+
+            if (boundScenePath) {
+                var targetTag = document.createElement('div');
+                targetTag.className = 'discuss-beatmap-target-scene';
+                targetTag.style.cssText = 'font-size:10px; font-family:var(--font-mono); color:var(--text-muted); padding:3px 12px 6px;';
+                targetTag.textContent = 'Scene: ' + boundScenePath + (boundRevision ? ' (' + boundRevision.slice(0, 7) + ')' : '');
+                card.appendChild(targetTag);
+            }
+
+            // Body
+            var body = document.createElement('div');
+            body.className = 'discuss-beatmap-body';
+
+            if (isPatch) {
+                var patches = (payload && Array.isArray(payload.beats)) ? payload.beats : [];
+                if (!patches.length && payload && (payload.beat_order || payload.order)) {
+                    var single = Object.assign({}, payload.patch || payload);
+                    single.order = payload.beat_order || payload.order;
+                    patches.push(single);
+                }
+
+                if (patches.length > 0) {
+                    patches.forEach(function(p) {
+                        var row = document.createElement('div');
+                        row.className = 'discuss-beatmap-patch-row';
+                        var order = p.order || p.beat_order || 1;
+
+                        var beatTag = document.createElement('span');
+                        beatTag.className = 'patch-beat-label';
+                        beatTag.textContent = 'Beat ' + order;
+                        row.appendChild(beatTag);
+
+                        var detailsDiv = document.createElement('div');
+                        detailsDiv.className = 'patch-details';
+
+                        var items = [];
+                        if (p.estimated_tension !== undefined) {
+                            var tSpan = document.createElement('span');
+                            tSpan.className = 'patch-tension';
+                            tSpan.textContent = 'Tension: ' + p.estimated_tension + '%';
+                            items.push(tSpan);
+                        }
+                        if (p.title) {
+                            var tiSpan = document.createElement('span');
+                            tiSpan.className = 'patch-title';
+                            tiSpan.textContent = 'Title: "' + p.title + '"';
+                            items.push(tiSpan);
+                        }
+                        if (p.is_turning_point !== undefined) {
+                            var tpSpan = document.createElement('span');
+                            tpSpan.className = 'patch-tp';
+                            tpSpan.textContent = p.is_turning_point ? '⚡ Turning Point' : 'Normal Beat';
+                            items.push(tpSpan);
+                        }
+                        if (p.summary) {
+                            var smSpan = document.createElement('span');
+                            smSpan.className = 'patch-summary';
+                            smSpan.textContent = p.summary;
+                            items.push(smSpan);
+                        }
+
+                        items.forEach(function(it, idx) {
+                            if (idx > 0) {
+                                var dot = document.createElement('span');
+                                dot.className = 'patch-sep';
+                                dot.textContent = ' • ';
+                                detailsDiv.appendChild(dot);
+                            }
+                            detailsDiv.appendChild(it);
+                        });
+
+                        row.appendChild(detailsDiv);
+                        body.appendChild(row);
+                    });
+                } else {
+                    var rawPre = document.createElement('pre');
+                    rawPre.className = 'discuss-beatmap-raw';
+                    rawPre.textContent = JSON.stringify(payload, null, 2);
+                    body.appendChild(rawPre);
+                }
+            } else {
+                var guidanceText = (payload && payload.guidance) ? payload.guidance : 'Restructure scene beats';
+                var guidanceWrap = document.createElement('div');
+                guidanceWrap.className = 'discuss-beatmap-guidance';
+
+                var gLabel = document.createElement('div');
+                gLabel.className = 'guidance-label';
+                gLabel.textContent = 'Author Guidance:';
+                guidanceWrap.appendChild(gLabel);
+
+                var gQuote = document.createElement('div');
+                gQuote.className = 'guidance-quote';
+                gQuote.textContent = '“' + guidanceText + '”';
+                guidanceWrap.appendChild(gQuote);
+
+                body.appendChild(guidanceWrap);
+            }
+            card.appendChild(body);
+
+            // Footer
+            var footer = document.createElement('div');
+            footer.className = 'discuss-beatmap-footer';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'discuss-beatmap-btn';
+            btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+
+            var statusSpan = document.createElement('span');
+            statusSpan.className = 'discuss-beatmap-status';
+
+            btn.onclick = function() {
+                btn.disabled = true;
+                btn.textContent = isPatch ? 'Applying…' : 'Generating…';
+                statusSpan.textContent = '';
+                statusSpan.className = 'discuss-beatmap-status';
+
+                var targetPath = boundScenePath;
+                if (!targetPath) {
+                    btn.disabled = false;
+                    btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+                    statusSpan.textContent = 'Error: Cannot resolve originating scene path for proposal';
+                    statusSpan.classList.add('error');
+                    return;
+                }
+
+                var url = (isPatch || (payload && payload.replace)) ? '/api/scene/beatmap/patch' : '/api/scene/beatmap/generate';
+                var reqPayload = Object.assign({}, payload, {
+                    path: targetPath,
+                    scene_path: targetPath,
+                });
+                if (boundRevision && !reqPayload.expected_revision && !reqPayload.target_revision) {
+                    reqPayload.expected_revision = boundRevision;
+                }
+                if (boundMapVersion && !reqPayload.expected_map_version && !reqPayload.target_map_version) {
+                    reqPayload.expected_map_version = boundMapVersion;
+                }
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: (typeof pvHeaders === 'function') ? pvHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqPayload),
+                })
+                .then(function(res) {
+                    if (!res.ok) {
+                        return res.json().then(function(errData) {
+                            throw new Error(errData.error || ('HTTP ' + res.status));
+                        }).catch(function(e) {
+                            throw new Error(e.message || ('HTTP ' + res.status));
+                        });
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    if (!data.ok) {
+                        throw new Error(data.error || 'Server error');
+                    }
+                    btn.style.display = 'none';
+                    statusSpan.textContent = isPatch ? '✓ Applied to Beat Map' : '✓ Beat Map Recreated';
+                    statusSpan.classList.add('success');
+
+                    // Only update the active scene's beatmap view if the proposal was applied to the currently open scene
+                    var currentScene = (typeof _beatMapCurrentScene !== 'undefined') ? _beatMapCurrentScene : (typeof paths !== 'undefined' && curIdx >= 0 ? paths[curIdx] : null);
+                    if (currentScene === targetPath) {
+                        if (typeof window.updateBeatMapState === 'function') {
+                            window.updateBeatMapState(data.beatmap);
+                        }
+                    }
+                    window.dispatchEvent(new CustomEvent('beatmap-updated', { detail: data }));
+                })
+                .catch(function(err) {
+                    btn.disabled = false;
+                    btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+                    statusSpan.textContent = 'Error: ' + (err.message || String(err));
+                    statusSpan.classList.add('error');
+                });
+            };
+
+            footer.appendChild(btn);
+            footer.appendChild(statusSpan);
+            card.appendChild(footer);
+
+            parent.appendChild(card);
+        }
+
         function appendMarkdownTokens(parent, tokens, ctx) {
             (tokens || []).forEach(function(token) {
                 var node;
@@ -3548,6 +3813,10 @@
                 else if (token.type === 'em') node = document.createElement('em');
                 else if (token.type === 'codespan') { node = document.createElement('code'); node.textContent = decodeMarkdownText(token.text || ''); }
                 else if (token.type === 'code') {
+                    if (token.lang === 'proseview:beatmap-patch' || token.lang === 'proseview:beatmap-recreate') {
+                        renderDiscussBeatmapCard(token.lang, token.text, parent, ctx);
+                        return;
+                    }
                     node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = decodeMarkdownText(token.text || ''); node.appendChild(code);
                     if (ctx.agentOutput) {
                         var codeText = code.textContent;

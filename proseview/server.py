@@ -2405,6 +2405,21 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
             return
+        if self.path.startswith("/api/scene/beatmap?"):
+            try:
+                query = parse_qs(urlparse(self.path).query)
+                rel = query.get("path", [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .beatmap import get_scene_beatmap
+                res = get_scene_beatmap(Path(self.repo_root), rel)
+                self._send_json(res)
+            except FileNotFoundError:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
         if self.path == "/api/backups/stats":
             try:
                 backups_dir = Path(self.repo_root).resolve() / ".proseview" / "backups"
@@ -2601,6 +2616,52 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/export/"):
             self._handle_export_post(path)
+            return
+        if path == "/api/scene/beatmap/generate":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                agent = str(body.get("agent") or "claude").strip().lower()
+                model = str(body.get("model") or "").strip()
+                guidance = str(body.get("guidance") or "").strip()
+                from .beatmap import generate_scene_beatmap
+                res = generate_scene_beatmap(
+                    Path(self.repo_root),
+                    rel,
+                    agent=agent,
+                    model=model,
+                    guidance=guidance,
+                    discuss_manager=getattr(self, "discuss_manager", None),
+                )
+                self._send_json(res)
+            except FileNotFoundError:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/beatmap/patch":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .beatmap import patch_scene_beatmap
+                res = patch_scene_beatmap(
+                    Path(self.repo_root),
+                    rel,
+                    body,
+                )
+                self._send_json(res)
+            except FileNotFoundError:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
             return
         if path.startswith("/api/discuss/"):
             try:

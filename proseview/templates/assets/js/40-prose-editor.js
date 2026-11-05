@@ -862,6 +862,9 @@
                 if (historyPane && !historyPane.hidden && paths[curIdx] && typeof loadSceneHistory === 'function') {
                     loadSceneHistory(paths[curIdx]);
                 }
+                if (typeof loadSceneBeatMap === 'function' && paths[curIdx]) {
+                    loadSceneBeatMap(paths[curIdx]);
+                }
                 if (exitEditMode !== false) cancelSceneEdit();
                 if (typeof onSaved === 'function') onSaved();
             }).catch(function(err) {

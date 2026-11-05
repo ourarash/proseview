@@ -91,6 +91,15 @@ class DiscussConfig:
     agent: str = "codex"
 
 
+@dataclass(frozen=True)
+class BeatMapConfig:
+    """The ``beatmap:`` block in .proseview.yaml."""
+
+    agent: str = "claude"
+    model: str = ""
+    placement: str = "vertical"
+
+
 #: Agents Discuss can be pointed at.
 DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude")
 
@@ -268,6 +277,7 @@ class Config:
     max_backups: int = 50
     #: Background colours per callout type (see :mod:`proseview.callouts`).
     callouts: CalloutColours = ()
+    beatmap: BeatMapConfig = field(default_factory=BeatMapConfig)
 
     @property
     def manuscript_subdir(self) -> str:
@@ -345,6 +355,7 @@ class Config:
             export=_coerce_export(raw.get("export")),
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
             callouts=_coerce_callouts(raw.get("callouts")),
+            beatmap=_coerce_beatmap(raw.get("beatmap")),
         )
 
     def with_overrides(self, **kwargs: Any) -> "Config":
@@ -566,7 +577,23 @@ def _config_field_names() -> tuple[str, ...]:
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
         "characters", "locations", "editor", "repo_tab", "story", "images",
         "discuss", "suggestions", "room", "export", "max_backups", "callouts",
+        "beatmap",
     )
+
+
+def _coerce_beatmap(v: Any) -> BeatMapConfig:
+    if v is None:
+        return BeatMapConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'beatmap' must be a mapping, got {type(v).__name__}: {v!r}")
+    agent = str(v.get("agent", "claude")).strip().lower()
+    if agent not in {"claude", "codex"}:
+        agent = "claude"
+    placement = str(v.get("placement", "vertical")).strip().lower()
+    if placement not in {"vertical", "horizontal"}:
+        placement = "vertical"
+    model = str(v.get("model", "")).strip()
+    return BeatMapConfig(agent=agent, model=model, placement=placement)
 
 
 def _coerce_callouts(v: Any) -> CalloutColours:

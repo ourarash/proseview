@@ -100,6 +100,14 @@
         return '<div class="pacing-bar-track" role="navigation" aria-label="Scene Beat Pacing">' + segmentsHtml + '</div>';
     }
 
+    // A quote that opens with its own quotation mark (most dialogue) is
+    // shown as written; anything else is wrapped in curly quotes.
+    function quotedMoment(text) {
+        var t = String(text || '').trim();
+        if (/^["\u201c\u2018']/.test(t)) return escHtml(t);
+        return '\u201c' + escHtml(t) + '\u201d';
+    }
+
     function safeMomentType(type) {
         if (typeof type !== 'string') return 'action';
         var clean = type.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
@@ -201,6 +209,10 @@
                 if (data.ok && data.has_map) {
                     _beatMapData = data.beatmap;
                     _beatMapStale = !!data.stale;
+                    // The picker names the agent that made this map, so
+                    // Update asks the same one.
+                    var maker = String(data.beatmap.agent_used || '').toLowerCase();
+                    if (maker === 'claude' || maker === 'codex') _beatMapAgent = maker;
                 } else {
                     _beatMapData = null;
                     _beatMapStale = false;
@@ -823,7 +835,7 @@
                 '<span class="moment-type-tag type-' + sType + '">' + escHtml(sType.replace(/_/g, ' ')) + '</span>' +
                 '</div>' +
                 (speakerHtml ? '<div>' + speakerHtml + '</div>' : '') +
-                '<div class="moment-quote">“' + escHtml(quoteText) + '”</div>' +
+                '<div class="moment-quote">' + quotedMoment(quoteText) + '</div>' +
                 '</div>';
         }).join('');
 
@@ -1148,7 +1160,7 @@ function renderSceneBeatMapPane() {
                     '<span class="moment-type-tag type-' + sType + '">' + escHtml(sType.replace(/_/g, ' ')) + '</span>' +
                     '</div>' +
                     '<div style="font-size:11px; line-height:1.35; color:var(--text-main); font-style:italic;">' +
-                    speakerHtml + '“' + escHtml(quote) + '”' +
+                    speakerHtml + quotedMoment(quote) +
                     '</div>' +
                     '</div>';
             }).join('');

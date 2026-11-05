@@ -1652,6 +1652,11 @@ def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
         return []
     if method == "item/reasoning/summaryTextDelta":
         return [{"type": "progress.delta", **common, "text": _bounded_text(params.get("delta"))}]
+    if method == "item/reasoning/summaryPartAdded":
+        # Each summary part is its own bold heading and paragraph. Without a
+        # break between them, "**One**" and "**Two**" run together as
+        # "**One****Two**", which renders as stray asterisks.
+        return [{"type": "progress.delta", **common, "text": "\n\n"}]
     if method == "item/agentMessage/delta":
         return [{
             "type": "response.delta",

@@ -355,3 +355,17 @@ def test_context_builder_finds_a_scene_in_a_folder_without_manuscript(tmp_path: 
     bundle = ContextBuilder(tmp_path).build({"kind": "scene", "path": "Part One/01 Rain.md"}, "Why rain?")
     assert [item.path for item in bundle.items] == ["Part One/01 Rain.md"]
     assert "It rained." in bundle.prompt
+
+
+def test_reasoning_summary_parts_are_separated_so_their_headings_do_not_run_together():
+    common = {"threadId": "t", "turnId": "u"}
+    events = []
+    for message in (
+        {"method": "item/reasoning/summaryTextDelta", "params": {**common, "delta": "**Reading the scene**"}},
+        {"method": "item/reasoning/summaryPartAdded", "params": {**common, "summaryIndex": 1}},
+        {"method": "item/reasoning/summaryTextDelta", "params": {**common, "delta": "**Weighing the hook**"}},
+    ):
+        events.extend(sanitize_agent_message(message))
+    text = "".join(e["text"] for e in events if e["type"] == "progress.delta")
+    assert "****" not in text
+    assert text == "**Reading the scene**\n\n**Weighing the hook**"

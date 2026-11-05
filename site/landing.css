@@ -333,7 +333,7 @@ kbd {
 .faq details { border-bottom: 1px solid var(--line); padding: 18px 0; }
 .faq summary { cursor: pointer; font-family: var(--serif); font-size: 21px; font-weight: 600; }
 .faq details p { margin: 12px 0 0; color: var(--muted); }
-.faq code, .feature li code { font: 15px var(--mono); }
+.faq code, .feature li code, .fine code { font: 15px var(--mono); }
 
 /* Closing and footer */
 

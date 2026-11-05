@@ -961,7 +961,9 @@ class ClaudeAgentClient:
         out: list[tuple[str, dict[str, Any]]] = []
 
         if name == "AssistantMessage":
-            for block in getattr(message, "content", []) or []:
+            blocks = list(getattr(message, "content", []) or [])
+            has_tool = any(type(b).__name__ == "ToolUseBlock" for b in blocks)
+            for block in blocks:
                 block_name = type(block).__name__
                 if block_name == "ThinkingBlock":
                     # Never forward raw reasoning; the translator drops it too.
@@ -975,9 +977,15 @@ class ClaudeAgentClient:
                         # answer arrives as structured output; treating this as
                         # the final message would fail the manager's validator.
                         continue
+                    phase = "thought" if has_tool else "final_answer"
                     out.append((
                         "assistant/message",
-                        {**common, "itemId": getattr(message, "uuid", None), "text": getattr(block, "text", "")},
+                        {
+                            **common,
+                            "itemId": getattr(message, "uuid", None),
+                            "text": getattr(block, "text", ""),
+                            "phase": phase,
+                        },
                     ))
                 elif block_name == "ToolUseBlock":
                     tool = getattr(block, "name", "")

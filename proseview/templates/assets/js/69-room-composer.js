@@ -104,7 +104,7 @@ function roomLoadProviderStatus(force) {
 }
 
 function roomDraftKey(path) {
-    return 'proseview-room-draft:' + (((typeof meta !== 'undefined' && meta[path]) || {}).abs_path || path);
+    return 'proseview-room-draft:book:' + repoRoot;
 }
 function _roomSaveDraft(path) {
     if (!path) return;
@@ -113,18 +113,24 @@ function _roomSaveDraft(path) {
     try {
         var previous = JSON.parse(sessionStorage.getItem(roomDraftKey(path)) || '{}'), current = path === _roomDraftScene;
         sessionStorage.setItem(roomDraftKey(path), JSON.stringify({text: current ? _roomDraftInput : previous.text || '',
-            selection: current ? _roomPendingSelection : previous.selection || '', target: current ? _roomTargetChoice : previous.target || 'both',
+            selection: current ? _roomPendingSelection : previous.selection || '', target: current ? _roomTargetChoice : previous.target || 'auto',
+            selectionScene: current ? _roomPendingSelectionScene : previous.selectionScene || '',
             roomId: session && session.id || '', participants: session && session.participants,
             pending: session && session.managed ? [] : session && session.pendingMessages || [], outbox: session && session.outbox || [], height: current && input ? input.style.height : previous.height || ''}));
     } catch (error) { /* An unavailable draft store must not prevent sending. */ }
 }
 function _roomLoadDraft(path) {
     if (_roomDraftScene === path) return;
+    if (_roomDraftScene) { _roomDraftScene = path; _roomSessionFor(path); return; }
     _roomDraftScene = path;
     var saved = {};
-    try { saved = JSON.parse(sessionStorage.getItem(roomDraftKey(path)) || '{}'); } catch (error) {}
+    try {
+        var legacyKey = 'proseview-room-draft:' + (((typeof meta !== 'undefined' && meta[path]) || {}).abs_path || path);
+        saved = JSON.parse(sessionStorage.getItem(roomDraftKey(path)) || sessionStorage.getItem(legacyKey) || '{}');
+    } catch (error) {}
     _roomDraftInput = saved.text || ''; _roomPendingSelection = saved.selection || '';
-    _roomTargetChoice = ['both', 'critic1', 'critic2'].includes(saved.target) ? saved.target : 'both';
+    _roomPendingSelectionScene = saved.selectionScene || path;
+    _roomTargetChoice = ['critic1', 'critic2', 'both'].includes(saved.target) ? saved.target : 'auto';
     var session = _roomSessionFor(path);
     if (!session.turns.length && !session.participants && Array.isArray(saved.participants) && saved.participants.length === 2
             && saved.participants.every(function(p) { return _roomSettings.library.profiles.some(function(available) { return available.id === p.id; }); })) {
@@ -137,9 +143,12 @@ function _roomLoadDraft(path) {
     if (!session.outbox && Array.isArray(saved.outbox)) session.outbox = saved.outbox;
     if (!session.id) session.id = session.outbox && session.outbox.length ? session.outbox[0].room_id : saved.roomId || '';
 }
-function roomRequestedSeats(text) {
+function roomRequestedSeats(text, session) {
     var mentioned = _roomMentionRecipients(text);
-    return mentioned.length ? mentioned : _roomTargetChoice === 'critic1' ? [1] : _roomTargetChoice === 'critic2' ? [2] : [1, 2];
+    if (mentioned.length) return mentioned;
+    session = session || _roomSessionFor(_roomCurrentScenePath());
+    var effective = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : 'both';
+    return effective === 'critic1' ? [1] : effective === 'critic2' ? [2] : [1, 2];
 }
 function submitRoomComposerMessage() { return submitManagedRoomMessage(); }
 function roomLoadSkills(agent) {
@@ -260,8 +269,9 @@ function createRoomModelControl(session, profile) {
 }
 function renderRoomQuickSend(node, session) {
     var hasDraft = !!_roomDraftInput.trim();
-    var presets = presetDiscussInstructions().filter(function(value) { return _roomPendingSelection || !discussInstructionNeedsSelection(value); });
-    var recents = recentDiscussInstructions().filter(function(value) { return presets.indexOf(value) < 0 && (_roomPendingSelection || !discussInstructionNeedsSelection(value)); });
+    var allPresets = presetDiscussInstructions();
+    var presets = allPresets.filter(function(value) { return _roomPendingSelection || !discussInstructionNeedsSelection(value); });
+    var recents = recentDiscussInstructions().filter(function(value) { return allPresets.indexOf(value) < 0 && (_roomPendingSelection || !discussInstructionNeedsSelection(value)); });
     node.replaceChildren(); node.hidden = !presets.length && !recents.length;
     node.appendChild(elementWith('discuss-presets-label', 'Quick send:'));
     var controls = {choose: function(value, details) {
@@ -279,7 +289,7 @@ function renderRoomQuickSend(node, session) {
         button.onclick = function() { controls.choose(value); }; inline.appendChild(button);
     });
     node.appendChild(inline);
-    if (presets.length > 3 || recents.length || favoriteDiscussInstructions().length) appendDiscussPresetsMenu(node, presets, recents, controls);
+    if (allPresets.length > presets.length || presets.length > 3 || recents.length || favoriteDiscussInstructions().length) appendDiscussPresetsMenu(node, allPresets, recents, controls);
     node.querySelectorAll('.discuss-preset-inline, .discuss-preset-menu-choice').forEach(function(button) { button.disabled = hasDraft; });
 }
 function createRoomComposer(session) {
@@ -287,17 +297,20 @@ function createRoomComposer(session) {
     var targetRow = elementWith('room-composer-bar'), targetLeft = elementWith('room-composer-target');
     targetLeft.appendChild(elementWith('room-apply-label', 'To:'));
     var target = document.createElement('select'); target.id = 'roomTargetSelect'; target.className = 'room-target-select'; target.setAttribute('aria-label', 'Room message recipient');
-    [{value: 'both', name: 'Room (Both editors)'}, {value: 'critic1', name: _roomSeatName(1) + ' only'}, {value: 'critic2', name: _roomSeatName(2) + ' only'}].forEach(function(item) {
+    var bothLabel = typeof _roomBothLabel === 'function' ? _roomBothLabel(session) : 'Room (Both editors)';
+    var critic1Label = (typeof _roomSeatLabel === 'function' ? _roomSeatLabel(1, session) : _roomSeatName(1)) + ' only';
+    var critic2Label = (typeof _roomSeatLabel === 'function' ? _roomSeatLabel(2, session) : _roomSeatName(2)) + ' only';
+    [{value: 'both', name: bothLabel}, {value: 'critic1', name: critic1Label}, {value: 'critic2', name: critic2Label}].forEach(function(item) {
         var option = document.createElement('option'); option.value = item.value; option.textContent = item.name; target.appendChild(option);
     });
-    target.value = _roomTargetChoice; target.onchange = function() { _roomTargetChoice = target.value; _roomSaveDraft(session.scene); };
+    target.value = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : 'both'; target.onchange = function() { _roomTargetChoice = target.value; _roomSaveDraft(session.scene); };
     targetLeft.appendChild(target); targetRow.appendChild(targetLeft); composer.appendChild(targetRow);
     if (_roomPendingSelection) {
         var selection = elementWith('discuss-selection-chip room-selection-chip'); selection.id = 'roomSelectionChip';
         var words = _roomPendingSelection.trim().split(/\s+/).length;
         var excerpt = elementWith('discuss-selection-chip-text', 'Selection · ' + words + ' words · “' + _roomPendingSelection.replace(/\s+/g, ' ').slice(0, 72) + '”'); excerpt.title = _roomPendingSelection;
         var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'room-selection-clear'; remove.setAttribute('aria-label', 'Remove selection'); remove.textContent = '×';
-        remove.onclick = function() { _roomPendingSelection = ''; _roomSaveDraft(session.scene); renderSceneRoomPane(); };
+        remove.onclick = function() { _roomPendingSelection = ''; _roomPendingSelectionScene = ''; _roomSaveDraft(session.scene); renderSceneRoomPane(); };
         selection.append(excerpt, remove); composer.appendChild(selection);
     }
     var quick = elementWith('room-quick-send'); quick.id = 'roomQuickSend'; composer.appendChild(quick);
@@ -343,11 +356,10 @@ document.addEventListener('keydown', function(event) {
 }, true);
 
 function roomClearEditedSelection(scenePath, files) {
-    if (!files.some(function(file) { var target = prosviewTargetForRepositoryPath(file); return target && target.kind === 'scene' && target.path === scenePath; })) return;
-    if (_roomDraftScene === scenePath) _roomPendingSelection = '';
-    else {
-        try { var draft = JSON.parse(sessionStorage.getItem(roomDraftKey(scenePath)) || '{}'); draft.selection = ''; sessionStorage.setItem(roomDraftKey(scenePath), JSON.stringify(draft)); } catch (error) {}
-    }
+    var selectedScene = _roomPendingSelectionScene || scenePath;
+    if (!files.some(function(file) { var target = prosviewTargetForRepositoryPath(file); return target && target.kind === 'scene' && target.path === selectedScene; })) return;
+    _roomPendingSelection = ''; _roomPendingSelectionScene = '';
+    _roomSaveDraft(_roomDraftScene || scenePath);
 }
 
 function roomSkillMentionRanges(text) {

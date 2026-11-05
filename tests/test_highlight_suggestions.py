@@ -601,7 +601,7 @@ def test_writers_room_history_saves_lists_reopens_and_deletes_debates_per_scene(
         assert rows[0]["turns"] == 1 and rows[0]["has_plan"] is True
 
         reopened = manager.room_history({"action": "get", "id": "second"})["session"]
-        assert reopened["turns"][1] == {"role": "user", "label": "You (Writer)", "text": "What about Mira?"}
+        assert reopened["turns"][1] == {"role": "user", "label": "You (Writer)", "text": "What about Mira?", "scene": "one.md"}
         assert len(reopened["plans"]) == 1, "a debate saved with one plan reopens with it"
         assert reopened["plans"][0]["after_turn"] == 2
         assert reopened["plans"][0]["items"][0]["checked"] is False

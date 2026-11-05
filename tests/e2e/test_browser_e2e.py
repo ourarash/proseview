@@ -3369,6 +3369,79 @@ def test_file_explorer_icons_distinguish_file_types(page: Page, server: Prosevie
     }
 
 
+def test_discuss_and_room_cards_real_estate_and_user_bubble(page: Page, server: ProseviewServer):
+    """Verify discuss & room cards eliminate wasted real estate, use full width, tight 6px margins, and calm meta."""
+    open_dashboard(page, server)
+
+    styles = page.evaluate(
+        """() => {
+            const host = document.createElement('div');
+            host.className = 'discuss-log';
+            document.body.appendChild(host);
+
+            const assistantCard = document.createElement('div');
+            assistantCard.className = 'discuss-message chat-message-card assistant';
+            const assistantHeader = document.createElement('div');
+            assistantHeader.className = 'discuss-message-label chat-message-header';
+            const aName = document.createElement('span');
+            aName.className = 'chat-message-name';
+            aName.textContent = 'Claude';
+            assistantHeader.appendChild(aName);
+            const aMeta = _buildMessageMeta(1700000000, 2400);
+            if (aMeta) assistantHeader.appendChild(aMeta);
+            assistantCard.appendChild(assistantHeader);
+            host.appendChild(assistantCard);
+
+            const userCard = document.createElement('div');
+            userCard.className = 'discuss-message chat-message-card user';
+            const userHeader = document.createElement('div');
+            userHeader.className = 'discuss-message-label chat-message-header';
+            const uName = document.createElement('span');
+            uName.className = 'chat-message-name';
+            uName.textContent = 'Me';
+            userHeader.appendChild(uName);
+            const uMeta = _buildMessageMeta(1700000000, null);
+            if (uMeta) userHeader.appendChild(uMeta);
+            userCard.appendChild(userHeader);
+            host.appendChild(userCard);
+
+            const aComputed = window.getComputedStyle(assistantCard);
+            const uComputed = window.getComputedStyle(userCard);
+            const aHeaderComputed = window.getComputedStyle(assistantHeader);
+
+            const res = {
+                assistantPadding: aComputed.padding,
+                assistantMarginBottom: aComputed.marginBottom,
+                assistantBorderLeftWidth: aComputed.borderLeftWidth,
+                assistantHeaderDisplay: aHeaderComputed.display,
+                assistantHeaderJustify: aHeaderComputed.justifyContent,
+                userBorderRightWidth: uComputed.borderRightWidth,
+                userMarginBottom: uComputed.marginBottom,
+                userBorderRadius: uComputed.borderRadius,
+                userNameText: uName.textContent,
+                hasDuration: !!assistantHeader.querySelector('.chat-message-duration'),
+                hasTime: !!userHeader.querySelector('.chat-message-time'),
+                durationText: assistantHeader.querySelector('.chat-message-duration') ? assistantHeader.querySelector('.chat-message-duration').textContent : ''
+            };
+            host.remove();
+            return res;
+        }"""
+    )
+    assert styles["userNameText"] == "Me"
+    assert styles["assistantMarginBottom"] == "6px"
+    assert styles["userMarginBottom"] == "6px"
+    # Assistant card has uniform 1px border and no 3px left border
+    assert styles["assistantBorderLeftWidth"] in ["1px", "0px"]
+    # Header is a single horizontal flex line, not stacked block
+    assert styles["assistantHeaderDisplay"] == "flex"
+    assert styles["assistantHeaderJustify"] == "space-between"
+    # User card has clean 1px border and no 3px border-right
+    assert styles["userBorderRightWidth"] in ["1px", "0px"]
+    assert styles["hasDuration"] is True
+    assert styles["hasTime"] is True
+    assert "2.4s" in styles["durationText"]
+
+
 # ── editor round-trip fidelity ──────────────────────────────────────────────
 
 
@@ -6298,6 +6371,40 @@ def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: Prosev
     assert page.locator("#discussPresetsPopover").is_hidden()
 
 
+def test_default_canned_responses_available_out_of_the_box(page: Page, server: ProseviewServer):
+    """When localStorage and proseview.yaml have no presets, default canned responses are provided.
+
+    Replies ('good, apply it') show without a selection; selection presets
+    ('Make this more direct.', etc.) appear when text is selected or under More.
+    """
+    page.goto(f"{server.base_url}#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    # Without selection: Quick send is visible with general reply preset 'good, apply it'
+    presets = page.locator("#discussTaskMode .discuss-preset-inline")
+    assert presets.all_inner_texts() == ["good, apply it"]
+    more = page.get_by_role("button", name="More presets and recent instructions")
+    assert more.is_visible()
+
+    # More menu reveals all default presets
+    more.click()
+    popover = page.locator("#discussPresetsPopover")
+    assert popover.is_visible()
+    assert "Make this more direct." in popover.inner_text()
+    assert "Is the grammar correct?" in popover.inner_text()
+    assert "Check the point of view." in popover.inner_text()
+    page.keyboard.press("Escape")
+
+    # With selected text: top selection presets show inline
+    open_selection_menu(page, "the slow algebra")
+    page.click("#selectionCodexBtn")
+    page.wait_for_function("() => document.querySelectorAll('#discussTaskMode .discuss-preset-inline').length >= 3")
+    inline_presets = page.locator("#discussTaskMode .discuss-preset-inline").all_inner_texts()
+    assert inline_presets == ["good, apply it", "Make this more direct.", "Is the grammar correct?"]
+
+
 def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
     page: Page, server: ProseviewServer
 ):
@@ -6935,8 +7042,7 @@ def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
 def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
     page: Page, shared_server: ProseviewServer
 ):
-    """The handle is an in-flow flex child, so the offset the absolutely
-    positioned handles use pushed its bar 10px inside the dock."""
+    """The handle overlays the seam without reserving space inside the dock."""
     open_scene(page, shared_server)
     open_scene_details(page)
 
@@ -6946,6 +7052,7 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
         const bar = getComputedStyle(handle, '::after');
         return {
             panelLeft: panel.getBoundingClientRect().left,
+            shellLeft: panel.querySelector('.discuss-shell').getBoundingClientRect().left,
             handleLeft: handle.getBoundingClientRect().left,
             barOffset: parseFloat(bar.left),
             barWidth: parseFloat(bar.width),
@@ -6955,6 +7062,7 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
     bar_centre = bar_left + edges["barWidth"] / 2
     # The bar straddles the dock's own left edge rather than sitting inside it.
     assert abs(bar_centre - edges["panelLeft"]) <= 2.5, edges
+    assert abs(edges["shellLeft"] - edges["panelLeft"]) <= 2.5, edges
 
 
 def test_the_dashboard_toolbar_never_overflows_its_container(
@@ -7605,6 +7713,35 @@ def test_the_expanded_view_opens_split_and_remembers_the_choice(page: Page, serv
 
     _expand(page, card)
     page.wait_for_selector("#discussDiffModalContent table.diff-inline")
+
+
+def test_escape_closes_discuss_expanded_diff_modal(page: Page, server: ProseviewServer) -> None:
+    """Pressing Escape on the expanded diff viewer closes the modal."""
+    open_scene(page, server)
+    card = _review_card(page)
+
+    _expand(page, card)
+    page.wait_for_selector("#discussDiffModalOverlay:not([hidden])")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#discussDiffModalOverlay", state="hidden")
+
+
+def test_escape_on_discuss_diff_modal_does_not_exit_scene_edit_mode(page: Page, server: ProseviewServer) -> None:
+    """Escape while the diff modal is open closes the diff without exiting scene edit mode."""
+    open_scene(page, server)
+    enter_edit_mode(page)
+    assert page.evaluate("() => window._pmEditMode === true")
+
+    # Open diff modal
+    page.evaluate("openDiscussDiffModal('--- a/scene.md\\n+++ b/scene.md\\n@@ -1 +1 @@\\n-Old sentence.\\n+New sentence.\\n')")
+    page.wait_for_selector("#discussDiffModalOverlay:not([hidden])")
+
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#discussDiffModalOverlay", state="hidden")
+
+    # Verify still in edit mode, no unsaved dialog popped
+    assert page.evaluate("() => window._pmEditMode === true")
+    assert page.locator(".unsaved-dialog-overlay").count() == 0
 
 
 def test_ticks_in_the_expanded_view_are_what_the_card_applies(

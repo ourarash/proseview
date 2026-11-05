@@ -70,7 +70,8 @@ function roomRuntimeApply(session, state, options) {
         var oldOutboxLength = (session.outbox || []).length;
         session.outbox = (session.outbox || []).filter(function(body) { return !acknowledged.includes(body.request_id); });
         if (oldOutboxLength > session.outbox.length) session.sendError = '';
-        delete _roomHistoryList[session.scene];
+        session.originScene = state.scene;
+        delete _roomHistoryList.book;
     } else {
         Object.assign(session.runtime, {status: state.status, live: state.live, partial_reply: state.partial_reply});
     }
@@ -200,14 +201,17 @@ function submitManagedRoomMessage() {
     var scene = _roomCurrentScenePath(), session = _roomSessionFor(scene), input = document.getElementById('roomInput');
     var text = input ? input.value.trim() : _roomDraftInput.trim();
     if (!scene || !text) return;
-    var body = roomRuntimeEnvelope(session, 'submit', {message_id: _roomNewId(), text: _roomWithSelection(text), authored: text,
-        seats: roomRequestedSeats(text), attachments: discussMentionsIn(text), review_choices: roomReviewChoices(session), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})});
+    var body = roomRuntimeEnvelope(session, 'submit', {message_id: _roomNewId(), scene: scene, text: _roomWithSelection(text), authored: text,
+        created_at: Date.now() / 1000,
+        seats: roomRequestedSeats(text, session), attachments: discussMentionsIn(text), review_choices: roomReviewChoices(session), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})});
     if (!session.outbox) session.outbox = [];
     session.outbox.push(body);
     if (session.managed) roomRuntimePoll(session, true);
     rememberDiscussInstruction(text);
     _roomDraftInput = ''; if (input) input.value = '';
+    _roomTargetChoice = 'auto';
     session.busy = true; session.statusText = 'Sending message…';
+    if (typeof _roomScrollByScene !== 'undefined') _roomScrollByScene[scene] = {top: 0, atBottom: true};
     _roomSaveDraft(scene); renderSceneRoomPane(); drainRoomOutbox(session);
 }
 function startManagedRoomPreset(session) {
@@ -236,10 +240,11 @@ function queueManagedRoomPreset(session) {
     session.topicLabel = preset.name; session.presetId = preset.id;
     session.topicBadge = preset.invitations.length + ' invitations' + (preset.recap ? ' + recap' : '');
     var invitations = preset.invitations.map(function(step) { return {seat: step.seat, prompt: step.prompt, attachments: discussMentionsIn(step.prompt)}; });
-    if (preset.recap) invitations.push({seat: preset.recap, recap: true, prompt: 'Summarize where we landed and any agreed action items.'});
+    if (preset.recap) invitations.push({seat: preset.recap, recap: true, prompt: 'Summarize where we landed: 3–5 bullets on agreed edits, what to keep, and any open choices for the writer.'});
     var body = roomRuntimeEnvelope(session, 'preset', {invitations: invitations});
     session.pendingPreset = null; session.outbox = [body];
     session.busy = true; session.statusText = 'Starting discussion…';
+    if (typeof _roomScrollByScene !== 'undefined') _roomScrollByScene[session.scene] = {top: 0, atBottom: true};
     _roomSaveDraft(session.scene); renderSceneRoomPane(); drainRoomOutbox(session);
 }
 function saveManagedRoom(session) {

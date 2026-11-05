@@ -99,6 +99,15 @@ change a saved conversation. Existing book-level Room names and prompts seed
 the library until you save the new Settings; the original `.proseview.yaml`
 configuration and saved revision plans remain available.
 
+Rooms belong to the book. Opening another scene keeps the current discussion;
+the scene label shows the context for your next message. Messages already sent
+or queued retain their original scene, and older line references still open
+the scene they describe. **History** lists conversations across the whole book,
+with their starting scenes. Open a saved Room without leaving the scene you are
+reading, or choose **New** to start a separate discussion. A Room started by
+typing uses its first message as its title. Existing discussions stay separate
+and remain available in History.
+
 A discussion preset selects two profiles and 2–12 explicit invitations, each
 with a recipient and prompt. Click a starter card to preview its invitations,
 swap participants, adjust the count, or select an optional recap. **Start
@@ -111,10 +120,11 @@ in Settings, or add your own presets and profiles.
 Type **@** in the Room composer to choose an agent or project file/folder.
 The default tags are `@StoryEditor` and `@VoiceEditor`; `@Codex` or `@Claude`
 also work when that provider belongs to just one participant. Tags override
-the **To** selector for that message. Tag one agent for one invitation, or tag
-both to invite them in mention order. Untagged messages default to both agents,
-in displayed order; you can also choose a recipient with **To**. Either agent
-can quietly pass when they have nothing useful to add. A pass completes only
+the **To** selector for that message. Tag one agent for one invitation, tag
+both to invite them in mention order, or use `@all` to address both editors.
+Untagged messages default to both agents on a new discussion, and then follow the
+last agent that replied for seamless back-and-forth conversation. You can also
+choose a recipient with **To**. Either agent can quietly pass when they have nothing useful to add. A pass completes only
 that invitation, never implies agreement, and does not cancel the next agent.
 Use the arrow keys and Enter or Tab to choose a tag, Enter again to send, or
 Escape to dismiss the picker. Custom names get corresponding tags, with a

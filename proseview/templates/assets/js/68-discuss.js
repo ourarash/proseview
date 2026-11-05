@@ -920,6 +920,16 @@
         var _roomSettings = null;
         var _roomSettingsLoading = null;
 
+        function _roomAgentDisplay(agentId) {
+            if (!agentId) return '';
+            var lower = String(agentId).toLowerCase();
+            if (lower === 'claude') return 'Claude';
+            if (lower === 'codex') return 'Codex';
+            if (lower === 'gemini') return 'Gemini';
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        }
+        window._roomAgentDisplay = _roomAgentDisplay;
+
         // Seat identifiers stay canonical in the transcript and summary payloads.
         // Each conversation retains a snapshot of its selected profiles.
         function _roomSeatName(seat) {
@@ -931,6 +941,51 @@
             return ((_roomSettings && _roomSettings.book) || {})[key + '_name'] || fallback[key];
         }
 
+        function _roomSeatParticipant(seat, session) {
+            var s = session || _roomSessionsByScene[_roomCurrentScenePath()];
+            var list = (s && s.participants) || (_roomSettings && _roomSettings.participants) || [];
+            if (Array.isArray(list)) {
+                var byIndex = list[Number(seat) - 1];
+                if (byIndex && (Number(byIndex.seat) === Number(seat) || !byIndex.seat)) return byIndex;
+                for (var i = 0; i < list.length; i++) {
+                    if (Number(list[i].seat) === Number(seat)) return list[i];
+                }
+            }
+            return null;
+        }
+
+        function _roomSeatAgent(seat, session) {
+            var p = _roomSeatParticipant(seat, session);
+            if (p && p.agent) return p.agent;
+            var book = (_roomSettings && _roomSettings.book) || {};
+            var key = Number(seat) === 2 ? 'critic2_agent' : Number(seat) === 1 ? 'critic1_agent' : 'moderator_agent';
+            return book[key] || (Number(seat) === 2 ? 'claude' : 'codex');
+        }
+
+        function _roomSeatLabel(seat, session) {
+            var name = _roomSeatName(seat);
+            var agent = _roomAgentDisplay(_roomSeatAgent(seat, session));
+            if (agent && name.toLowerCase().indexOf(agent.toLowerCase()) < 0) {
+                return name + ' (' + agent + ')';
+            }
+            return name;
+        }
+        window._roomSeatLabel = _roomSeatLabel;
+
+        function _roomBothAgents(session) {
+            var a1 = _roomAgentDisplay(_roomSeatAgent(1, session));
+            var a2 = _roomAgentDisplay(_roomSeatAgent(2, session));
+            if (a1 && a2 && a1 !== a2) return a1 + ', ' + a2;
+            return a1 || a2 || '';
+        }
+        window._roomBothAgents = _roomBothAgents;
+
+        function _roomBothLabel(session) {
+            var both = _roomBothAgents(session);
+            return both ? 'Room (Both: ' + both + ')' : 'Room (Both editors)';
+        }
+        window._roomBothLabel = _roomBothLabel;
+
         function _roomSpeakerName(seat, agent) {
             return _roomSeatName(seat) + ' \u00b7 ' + _roomAgentDisplay(agent);
         }
@@ -941,8 +996,30 @@
             return value === 'Writer' ? 'Me' : value;
         }
         var _roomSessionsByScene = Object.create(null);
+        var _roomActiveSession = null;
         var _roomDraftInput = '';
-        var _roomTargetChoice = 'both';
+        var _roomTargetChoice = 'auto';
+
+        function _roomLastCriticSeat(session) {
+            if (!session || !session.turns || !session.turns.length) return null;
+            for (var i = session.turns.length - 1; i >= 0; i--) {
+                var turn = session.turns[i];
+                if (turn.role === 'critic' && (turn.seat === 1 || turn.seat === 2)) {
+                    return turn.seat;
+                }
+            }
+            return null;
+        }
+        window._roomLastCriticSeat = _roomLastCriticSeat;
+
+        function _roomEffectiveTarget(session) {
+            if (_roomTargetChoice && _roomTargetChoice !== 'auto') {
+                return _roomTargetChoice;
+            }
+            var lastSeat = _roomLastCriticSeat(session);
+            return lastSeat ? 'critic' + lastSeat : 'both';
+        }
+        window._roomEffectiveTarget = _roomEffectiveTarget;
 
         function _roomMentionOptions() {
             var session = _roomSessionsByScene[_roomCurrentScenePath()];
@@ -962,7 +1039,7 @@
             pair.forEach(function(profile, index) {
                 profile.seat = index + 1;
                 profile.handle = handles[index];
-                profile.aliases = [profile.handle];
+                profile.aliases = [profile.handle, profile.handle + '-' + _roomAgentDisplay(profile.agent), profile.handle + _roomAgentDisplay(profile.agent)];
                 if (pair.filter(function(p) { return p.agent === profile.agent; }).length === 1
                         && !handles.some(function(handle) { return handle.toLowerCase() === profile.agent; })) profile.aliases.push(profile.agent);
             });
@@ -1107,8 +1184,18 @@
                 var start = match.index + match[0].indexOf('@');
                 if (ranges.some(function(file) { return start >= file.start && start < file.end; })) continue;
                 var handle = match[1].toLowerCase();
+                if (handle === 'all' || handle === 'everyone') {
+                    ranges.push({
+                        start: start,
+                        end: start + match[1].length + 1,
+                        kind: 'agent',
+                        isAll: true,
+                        participant: {name: 'All editors', handle: handle, agent: 'all', seat: 'all'}
+                    });
+                    continue;
+                }
                 var participant = (participants || []).find(function(p) {
-                    return p.aliases.some(function(alias) { return alias.toLowerCase() === handle; });
+                    return p.aliases && p.aliases.some(function(alias) { return alias.toLowerCase() === handle; });
                 });
                 if (participant) ranges.push({start: start, end: start + match[1].length + 1, kind: 'agent', participant: participant});
             }
@@ -1130,8 +1217,19 @@
                     fragment.appendChild(document.createTextNode(text.slice(last, range.start)));
                     var chip = document.createElement('span'); chip.className = 'chat-mention';
                     chip.dataset.kind = range.kind;
+                    if (range.participant) {
+                        chip.dataset.agent = range.participant.agent;
+                        var mentionText = text.slice(range.start, range.end).toLowerCase();
+                        if (range.isAll) {
+                            var bothAgents = typeof _roomBothAgents === 'function' ? _roomBothAgents() : '';
+                            if (bothAgents) chip.dataset.showAgent = bothAgents;
+                        } else if (!mentionText.includes(range.participant.agent.toLowerCase())) {
+                            chip.dataset.showAgent = _roomAgentDisplay(range.participant.agent);
+                        }
+                    }
                     chip.textContent = text.slice(range.start, range.end);
-                    chip.title = range.participant ? range.participant.name + ' · ' + _roomAgentDisplay(range.participant.agent) : range.path;
+                    var bothTitle = typeof _roomBothAgents === 'function' ? _roomBothAgents() : '';
+                    chip.title = range.isAll ? (bothTitle ? 'All editors (' + bothTitle + ')' : 'All editors in the room') : (range.participant ? range.participant.name + ' · ' + _roomAgentDisplay(range.participant.agent) : range.path);
                     fragment.appendChild(chip); last = range.end;
                 });
                 fragment.appendChild(document.createTextNode(text.slice(last)));
@@ -1177,9 +1275,20 @@
 
         function _roomMentionRecipients(text) {
             var seats = [];
+            var hasAll = false;
             chatMentionRanges(text, _roomMentionOptions()).forEach(function(range) {
-                if (range.participant && !seats.includes(range.participant.seat)) seats.push(range.participant.seat);
+                if (range.isAll) {
+                    hasAll = true;
+                } else if (range.participant && typeof range.participant.seat === 'number' && !seats.includes(range.participant.seat)) {
+                    seats.push(range.participant.seat);
+                }
             });
+            if (hasAll) {
+                var opts = _roomMentionOptions();
+                var allSeats = opts.map(function(p) { return p.seat; }).filter(function(s) { return typeof s === 'number'; });
+                if (!allSeats.length) allSeats = [1, 2];
+                return allSeats.sort();
+            }
             return seats;
         }
 
@@ -1209,16 +1318,20 @@
             }
             function updateRecipients() {
                 var seats = _roomMentionRecipients(input.value);
-                target.value = seats.length > 1 ? 'both' : seats.length ? 'critic' + seats[0] : _roomTargetChoice;
+                var session = _roomSessionFor(_roomCurrentScenePath());
+                var effective = _roomEffectiveTarget(session);
+                target.value = seats.length > 1 ? 'both' : seats.length ? 'critic' + seats[0] : effective;
                 target.disabled = seats.length > 0;
                 hint.textContent = seats.length
-                    ? 'Replies: ' + seats.map(_roomSeatName).join(', ')
+                    ? 'Replies: ' + seats.map(function(s) { return _roomSeatLabel(s, session); }).join(', ')
                     : '';
             }
             function choose(option) {
                 if (!range) return;
                 var token = option.kind === 'skill' ? '$' + option.name : '@' + (option.kind === 'editor' ? option.handle : option.path + (option.kind === 'folder' ? '/' : ''));
-                if (option.kind === 'skill' && !_roomMentionRecipients(input.value).length && _roomTargetChoice === 'both') token = '@' + option.participant.handle + ' ' + token;
+                var session = _roomSessionFor(_roomCurrentScenePath());
+                var effective = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : _roomTargetChoice;
+                if (option.kind === 'skill' && !_roomMentionRecipients(input.value).length && effective === 'both') token = '@' + option.participant.handle + ' ' + token;
                 input.setRangeText(token + ' ', range.start, range.end, 'end');
                 close();
                 input.dispatchEvent(new Event('input', {bubbles: true}));
@@ -1241,9 +1354,21 @@
                     button.className = 'room-mention-option';
                     button.setAttribute('role', 'option');
                     button.setAttribute('aria-selected', index === active ? 'true' : 'false');
+                    var session = _roomSessionFor(_roomCurrentScenePath());
+                    var both = typeof _roomBothAgents === 'function' ? _roomBothAgents(session) : '';
+                    var labelText = option.kind === 'skill'
+                        ? '$' + option.name
+                        : option.kind === 'editor'
+                            ? (option.isAll ? (both ? 'All editors \u00b7 ' + both : 'All editors') : (option.name + ' \u00b7 ' + _roomAgentDisplay(option.agent)))
+                            : option.path;
+                    var handleText = option.kind === 'skill'
+                        ? (option.description || 'Skill')
+                        : option.kind === 'editor'
+                            ? (option.isAll ? '@all' : ('@' + option.handle + ((option.aliases || []).includes(option.agent) ? ' \u00b7 @' + _roomAgentDisplay(option.agent) : ' \u00b7 @' + option.handle + '-' + _roomAgentDisplay(option.agent))))
+                            : (option.kind === 'folder' ? 'Folder' : 'File');
                     button.append(
-                        elementWith('room-mention-name', option.kind === 'skill' ? '$' + option.name : option.kind === 'editor' ? option.name + ' \u00b7 ' + _roomAgentDisplay(option.agent) : option.path),
-                        elementWith('room-mention-handle', option.kind === 'skill' ? option.description || 'Skill' : option.kind === 'editor' ? '@' + option.handle : option.kind === 'folder' ? 'Folder' : 'File')
+                        elementWith('room-mention-name', labelText),
+                        elementWith('room-mention-handle', handleText)
                     );
                     button.onpointerdown = function(event) { event.preventDefault(); };
                     button.onclick = function() { choose(option); };
@@ -1279,9 +1404,25 @@
                     else { menu.textContent = pending ? 'Loading skills…' : 'No matching skills for the selected participants.'; menu.hidden = false; input.setAttribute('aria-expanded', 'true'); }
                     return;
                 }
-                var editors = _roomMentionOptions().filter(function(option) {
-                    return [option.name, option.agent].concat(option.aliases).some(function(value) {
-                        return value.toLowerCase().indexOf(query) >= 0;
+                var session = _roomSessionFor(_roomCurrentScenePath());
+                var both = _roomBothAgents(session);
+                var allOption = {kind: 'editor', name: both ? 'All editors (' + both + ')' : 'All editors', handle: 'all', agent: 'all', isAll: true, aliases: ['all', 'everyone']};
+                var editorOptions = [];
+                var rawParticipants = _roomMentionOptions();
+                rawParticipants.forEach(function(profile) {
+                    var seatLabel = _roomSeatLabel(profile.seat, session);
+                    var agentDisplay = _roomAgentDisplay(profile.agent);
+                    editorOptions.push(Object.assign({}, profile, {
+                        kind: 'editor',
+                        displayName: seatLabel,
+                        handle: profile.handle,
+                        secondaryHandle: agentDisplay ? '@' + agentDisplay : ''
+                    }));
+                });
+                editorOptions.push(allOption);
+                var editors = editorOptions.filter(function(option) {
+                    return [option.name || '', option.displayName || '', option.agent || '', option.handle || ''].concat(option.aliases || []).some(function(value) {
+                        return typeof value === 'string' && value.toLowerCase().indexOf(query) >= 0;
                     });
                 }).map(function(option) { return Object.assign({kind: 'editor'}, option); });
                 var files = discussContextCandidates().filter(function(option) {
@@ -1327,14 +1468,15 @@
         }
         var _roomApplyAgentChoice = '';
         var _roomRunToken = 0;
-        // Saved debates, as the chats keep their threads: per scene, on this
-        // computer. A scene's latest debate comes back when the Room opens.
+        // The active Room follows scene navigation. History is shared across
+        // this book; each message freezes its own scene context when sent.
         var _roomHistoryChecked = Object.create(null);
         var _roomHistoryList = Object.create(null);
         var _roomHistoryOpen = false;
         var _roomScrollByScene = Object.create(null);
         // A passage picked with Ask or Polish, sent with the next message.
         var _roomPendingSelection = '';
+        var _roomPendingSelectionScene = '';
 
         function roomTabIsOpen() {
             var panel = document.getElementById('discussPanel');
@@ -1347,6 +1489,7 @@
             // A debate is running: hold the passage and the request for the writer to send.
             if (instruction && session.busy && _roomPendingSelection) return;
             _roomPendingSelection = String(selection || '').trim();
+            _roomPendingSelectionScene = _roomCurrentScenePath();
             renderSceneRoomPane();
             var input = document.getElementById('roomInput');
             if (instruction && input) {
@@ -1362,7 +1505,9 @@
         function _roomWithSelection(text) {
             if (!_roomPendingSelection) return text;
             var quoted = _roomPendingSelection.split('\n').map(function(line) { return '> ' + line; }).join('\n');
-            return text + '\n\nSelected passage:\n' + quoted;
+            var source = _roomPendingSelectionScene && _roomPendingSelectionScene !== _roomCurrentScenePath()
+                ? '> From scene: ' + _roomPendingSelectionScene + '\n' : '';
+            return text + '\n\nSelected passage:\n' + source + quoted;
         }
 
         function _roomCurrentScenePath() {
@@ -1371,8 +1516,8 @@
 
         function _roomSessionFor(scenePath) {
             if (!scenePath) return null;
-            if (!_roomSessionsByScene[scenePath]) {
-                _roomSessionsByScene[scenePath] = {
+            if (!_roomActiveSession) {
+                _roomActiveSession = {
                     scene: scenePath,
                     presetId: '',
                     topicLabel: '',
@@ -1389,7 +1534,9 @@
                     queue: []
                 };
             }
-            return _roomSessionsByScene[scenePath];
+            _roomActiveSession.scene = scenePath;
+            _roomSessionsByScene[scenePath] = _roomActiveSession;
+            return _roomActiveSession;
         }
 
         function _roomAgentDisplay(agentId) {
@@ -1438,11 +1585,12 @@
             var path = _roomCurrentScenePath();
             if (!path) return;
             _roomRunToken++;
-            _roomDraftInput = ''; _roomPendingSelection = ''; _roomTargetChoice = 'both';
+            _roomDraftInput = ''; _roomPendingSelection = ''; _roomPendingSelectionScene = ''; _roomTargetChoice = 'auto';
             var input = document.getElementById('roomInput'); if (input) input.value = '';
             try { sessionStorage.removeItem(roomDraftKey(path)); } catch (error) {}
-            delete _roomSessionsByScene[path];
-            _roomHistoryChecked[path] = true;
+            Object.keys(_roomSessionsByScene).forEach(function(key) { if (_roomSessionsByScene[key] === _roomActiveSession) delete _roomSessionsByScene[key]; });
+            _roomActiveSession = null;
+            _roomHistoryChecked.book = true;
             _roomHistoryOpen = false;
             renderSceneRoomPane();
         }
@@ -1522,7 +1670,7 @@
                     })
                 }
             }).then(function() {
-                delete _roomHistoryList[session.scene];
+                delete _roomHistoryList.book;
             }).catch(function(error) {
                 session.error = 'Could not save this Room: ' + error.message;
                 if (!session.busy && session.scene === _roomCurrentScenePath()) renderSceneRoomPane();
@@ -1536,10 +1684,10 @@
         }
 
         function _loadRoomHistoryList(scenePath) {
-            if (_roomHistoryList[scenePath]) return Promise.resolve(_roomHistoryList[scenePath]);
-            return _roomHistoryRequest({action: 'list', scene: scenePath}).then(function(data) {
+            if (_roomHistoryList.book) return Promise.resolve(_roomHistoryList.book);
+            return _roomHistoryRequest({action: 'list'}).then(function(data) {
                 var rows = (data && data.ok && Array.isArray(data.sessions)) ? data.sessions : [];
-                _roomHistoryList[scenePath] = rows;
+                _roomHistoryList.book = rows;
                 return rows;
             }).catch(function() { return []; });
         }
@@ -1552,8 +1700,9 @@
                 var saved = data.session;
                 var current = _roomSessionsByScene[scenePath];
                 if (current && current.busy) return;
-                var session = _roomSessionFor(scenePath);
+                var session = _roomSessionFor(_roomCurrentScenePath() || scenePath);
                 session.id = saved.id;
+                session.originScene = saved.scene;
                 session.createdAt = saved.created_at || 0;
                 session.presetId = saved.preset_id || '';
                 session.topicLabel = saved.title || '';
@@ -1598,24 +1747,25 @@
                 session.queue = [];
                 session.live = null;
                 _roomHistoryOpen = false;
-                return attachManagedRoom(session).then(function() { if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane(); });
+                return attachManagedRoom(session).then(function() { if (session.scene === _roomCurrentScenePath()) renderSceneRoomPane(); });
             }).catch(function(error) { var session = _roomSessionFor(scenePath); session.error = error.message; if (scenePath === _roomCurrentScenePath()) renderSceneRoomPane(); });
         }
 
         function deleteRoomHistorySession(scenePath, sessionId) {
             _roomHistoryRequest({action: 'delete', id: sessionId}).then(function() {
-                delete _roomHistoryList[scenePath];
+                delete _roomHistoryList.book;
                 var session = _roomSessionsByScene[scenePath];
                 if (session && session.id === sessionId && !session.busy) {
-                    delete _roomSessionsByScene[scenePath];
+                    Object.keys(_roomSessionsByScene).forEach(function(key) { if (_roomSessionsByScene[key] === session) delete _roomSessionsByScene[key]; });
+                    _roomActiveSession = null;
                 }
                 renderSceneRoomPane();
             }).catch(function() {});
         }
 
         function _restoreLatestRoomSession(scenePath) {
-            if (_roomHistoryChecked[scenePath]) return;
-            _roomHistoryChecked[scenePath] = true;
+            if (_roomHistoryChecked.book) return;
+            _roomHistoryChecked.book = true;
             var pending = _roomSessionsByScene[scenePath];
             if (pending && (pending.outbox || []).length) {
                 var request = pending.outbox[0];
@@ -1627,9 +1777,9 @@
             var draftAtStart = _roomDraftInput;
             _loadRoomHistoryList(scenePath).then(function(rows) {
                 var session = _roomSessionsByScene[scenePath];
-                if (!rows.length || (session && (session.turns.length || session.busy)) || (scenePath === _roomDraftScene && _roomDraftInput !== draftAtStart)) return;
+                if (_roomActiveSession !== pending || !rows.length || (session && (session.turns.length || session.busy)) || _roomDraftInput !== draftAtStart) return;
                 var selected = session && rows.find(function(row) { return row.id === session.id; });
-                openRoomHistorySession(scenePath, (selected || rows[0]).id);
+                openRoomHistorySession(_roomCurrentScenePath(), (selected || rows[0]).id);
             });
         }
 
@@ -1643,9 +1793,48 @@
             return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
         }
 
+        function _formatMessageTime(seconds) {
+            if (!seconds) return '';
+            var d = new Date(seconds > 1e11 ? seconds : seconds * 1000);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+        }
+
+        function _formatMessageDuration(ms) {
+            if (!ms || ms < 0) return '';
+            if (ms < 1000) return (ms / 1000).toFixed(1) + 's';
+            if (ms < 60000) {
+                var s = ms / 1000;
+                return (s < 10 ? s.toFixed(1) : Math.round(s)) + 's';
+            }
+            var totalSec = Math.round(ms / 1000);
+            var mins = Math.floor(totalSec / 60);
+            var rem = totalSec % 60;
+            return mins + 'm ' + (rem ? rem + 's' : '');
+        }
+
+        function _buildMessageMeta(createdAt, durationMs) {
+            var timeStr = _formatMessageTime(createdAt);
+            var durStr = _formatMessageDuration(durationMs);
+            if (!timeStr && !durStr) return null;
+            var meta = elementWith('chat-message-meta');
+            if (timeStr) {
+                var timeEl = elementWith('chat-message-time', timeStr);
+                timeEl.title = 'Sent at ' + timeStr;
+                meta.appendChild(timeEl);
+            }
+            if (durStr) {
+                if (timeStr) meta.appendChild(elementWith('chat-message-meta-sep', '\u00b7'));
+                var durEl = elementWith('chat-message-duration', durStr);
+                durEl.title = 'Responded in ' + (durationMs >= 1000 ? (durationMs / 1000).toFixed(1) + 's' : durationMs + 'ms');
+                meta.appendChild(durEl);
+            }
+            return meta;
+        }
+
         function _renderRoomHistoryMenu(body, scenePath, session) {
             var menu = elementWith('room-history-menu');
-            menu.appendChild(elementWith('room-history-head', 'Previous debates on this scene'));
+            menu.appendChild(elementWith('room-history-head', 'Room conversations in this book'));
             var list = elementWith('room-history-list');
             list.appendChild(elementWith('room-history-empty', 'Loading\u2026'));
             menu.appendChild(list);
@@ -1663,7 +1852,7 @@
                     open.className = 'room-history-open';
                     open.append(
                         elementWith('room-history-title', row.title || 'Writers\u2019 Room'),
-                        elementWith('room-history-meta', row.turns + (row.turns === 1 ? ' turn' : ' turns')
+                        elementWith('room-history-meta', (row.scene ? row.scene + ' · ' : '') + row.turns + (row.turns === 1 ? ' reply' : ' replies')
                             + (row.has_plan ? ' \u00b7 plan' : '') + ' \u00b7 ' + _formatRoomWhen(row.updated_at))
                     );
                     open.disabled = !!session.busy;
@@ -1768,6 +1957,8 @@
             var textEl = document.getElementById('roomLiveStatusText');
             var box = document.getElementById('roomLiveProgress');
             if (!live || !textEl || !box) return;
+            var body = document.getElementById('roomBody');
+            var wasAtBottom = body && (body.scrollHeight - body.scrollTop - body.clientHeight < 48);
             textEl.textContent = (session.statusText || 'Thinking\u2026')
                 + (live.elapsed ? ' \u00b7 ' + _formatRoomElapsed(live.elapsed) : '');
             box.textContent = '';
@@ -1783,7 +1974,8 @@
             var quietPass = live.draft && '[ROOM_PASS]'.startsWith(live.draft.trim().toUpperCase());
             if (live.draft && !quietPass) {
                 var draft = elementWith('room-live-draft room-turn-body discuss-message assistant');
-                renderDiscussMarkdown(draft, _roomLinkLines(live.draft, session.scene));
+                var active = session.runtime && session.runtime.steps.find(function(step) { return step.id === session.runtime.active_step; });
+                renderDiscussMarkdown(draft, _roomLinkLines(live.draft, active && active.scene || session.originScene || session.scene));
                 box.appendChild(draft);
             } else if (live.progress) {
                 var note = live.progress.length > 400 ? '\u2026' + live.progress.slice(-400) : live.progress;
@@ -1792,6 +1984,12 @@
                 box.appendChild(noteEl);
             }
             box.hidden = !box.childNodes.length;
+            if (body && wasAtBottom) {
+                body.scrollTop = body.scrollHeight;
+                if (session && session.scene) {
+                    _roomScrollByScene[session.scene] = {top: body.scrollTop, atBottom: true};
+                }
+            }
             var approvals = document.getElementById('roomLiveApprovals');
             if (approvals) {
                 var key = JSON.stringify(live.approvals || []);
@@ -1817,6 +2015,7 @@
             if (!session || session.busy) return;
             var last = session.turns.filter(function(turn) { return turn.role === 'critic'; }).slice(-1)[0];
             var seat = last && last.seat === 1 ? 2 : 1;
+            if (session.scene) _roomScrollByScene[session.scene] = {top: 0, atBottom: true};
             roomRuntimeControl(session, 'submit', {message_id: _roomNewId(), text: '@' + session.participants[seat - 1].handle + ' continue the discussion.', seats: [seat]}).catch(function() {});
         }
 
@@ -1989,15 +2188,28 @@
             if (prevInput) { _roomDraftInput = prevInput.value; _roomSaveDraft(_roomDraftScene); }
             _roomLoadDraft(path);
 
-            // Every change redraws the pane, so keep the reader where they were:
-            // following the debate if they were at the bottom, else in place.
-            // Read from the last scroll, not the old pane: a pane hidden behind
-            // another tab (after Apply opens the chat) reports a scroll of 0.
+            var oldBody = document.getElementById('roomBody');
+            var oldWasAtBottom = oldBody && oldBody.clientHeight > 0
+                ? (oldBody.scrollHeight - oldBody.scrollTop - oldBody.clientHeight < 48)
+                : null;
+            var oldScrollTop = oldBody && oldBody.clientHeight > 0 ? oldBody.scrollTop : null;
+
             var keepScroll = _roomScrollByScene[path] || null;
+            if (oldWasAtBottom !== null) {
+                keepScroll = {
+                    top: oldScrollTop,
+                    atBottom: oldWasAtBottom
+                };
+                _roomScrollByScene[path] = keepScroll;
+            }
             pane.replaceChildren();
             var session = _roomSessionFor(path);
             _restoreLatestRoomSession(path);
             _roomEnsureParticipants(session);
+            if (!keepScroll && session && session.turns && session.turns.length > 0) {
+                keepScroll = {top: 0, atBottom: true};
+                _roomScrollByScene[path] = keepScroll;
+            }
 
             // 1. Header strip
             var header = elementWith('room-header-strip');
@@ -2139,6 +2351,9 @@
                         var uCard = elementWith('room-turn-card chat-message-card is-user');
                         var uHead = elementWith('room-turn-head chat-message-header');
                         uHead.appendChild(elementWith('chat-message-name', 'Me'));
+                        var uTime = turn.created_at || (session.createdAt ? (session.createdAt + turnIdx * 60) : 0);
+                        var uMeta = _buildMessageMeta(uTime, null);
+                        if (uMeta) uHead.appendChild(uMeta);
                         uCard.appendChild(uHead);
                         var uBody = elementWith('room-turn-body discuss-message');
                         renderDiscussMarkdown(uBody, turn.text);
@@ -2156,10 +2371,13 @@
                     left.appendChild(elementWith('chat-message-name', _roomSpeakerName(turn.seat, turn.agent)));
                     if (turn.tag) left.appendChild(elementWith('room-turn-tag', turn.tag));
                     head.appendChild(left);
+                    var cTime = turn.created_at || (session.createdAt ? (session.createdAt + turnIdx * 60) : 0);
+                    var cMeta = _buildMessageMeta(cTime, turn.duration_ms);
+                    if (cMeta) head.appendChild(cMeta);
                     if (turn.model) head.appendChild(elementWith('room-turn-model', turn.model));
                     card.appendChild(head);
                     var textWrap = elementWith('room-turn-body discuss-message assistant');
-                    renderDiscussMarkdown(textWrap, _roomLinkLines(turn.text, path));
+                    renderDiscussMarkdown(textWrap, _roomLinkLines(turn.text, turn.scene || session.originScene || path));
                     highlightChatMentions(textWrap, session.participants);
                     card.appendChild(textWrap);
                     addCopyButton(card, function() { return turn.text; }, 'Copy message');
@@ -2210,32 +2428,32 @@
             }
             renderManagedRoomQueue(session, body);
             pane.appendChild(body);
+            // Append the composer before restoring scroll so body already has its final flex height:
+            pane.appendChild(createRoomComposer(session));
             body.dataset.scene = path;
             body.addEventListener('scroll', function() {
                 if (!body.isConnected || !body.clientHeight) return;
                 _roomScrollByScene[path] = {
                     top: body.scrollTop,
-                    atBottom: body.scrollHeight - body.scrollTop - body.clientHeight < 40
+                    atBottom: body.scrollHeight - body.scrollTop - body.clientHeight < 48
                 };
             });
             if (keepScroll) {
                 var restoreScroll = function() {
+                    if (!body.isConnected) return;
                     body.scrollTop = keepScroll.atBottom ? body.scrollHeight : keepScroll.top;
                 };
                 restoreScroll();
-                // Again once the composer below has taken its share of the height.
                 requestAnimationFrame(restoreScroll);
-                setTimeout(restoreScroll, 60);
             }
             if (_roomLatestPlan(session)) _syncRoomApplyButton(session);
-
-            // The Room uses the same composer controls, with one model choice per participant.
-            pane.appendChild(createRoomComposer(session));
             if (session.managed) roomRuntimePoll(session);
             if (inputFocus) {
                 var restoredInput = document.getElementById('roomInput');
-                restoredInput.focus({preventScroll: true});
-                restoredInput.setSelectionRange(inputFocus.start, inputFocus.end);
+                if (restoredInput) {
+                    restoredInput.focus({preventScroll: true});
+                    restoredInput.setSelectionRange(inputFocus.start, inputFocus.end);
+                }
             }
         }
 
@@ -3004,7 +3222,12 @@
 
         function discussStreamDraft() {
             var draft = elementWith('discuss-message assistant chat-message-card discuss-stream-draft');
-            draft.appendChild(elementWith('discuss-message-label chat-message-header chat-message-name', discussAgentLabel()));
+            var head = elementWith('discuss-message-label chat-message-header');
+            head.appendChild(elementWith('chat-message-name', discussAgentLabel()));
+            var meta = elementWith('chat-message-meta');
+            meta.appendChild(elementWith('chat-message-duration', 'Thinking\u2026'));
+            head.appendChild(meta);
+            draft.appendChild(head);
             draft.appendChild(elementWith('discuss-stream-body'));
             paintDiscussStreamDraft(draft);
             return draft;
@@ -4305,10 +4528,39 @@
                 log.appendChild(renderDiscussTask(group.latest, group.previous));
                 appendNoticesForRequest(group.latest.client_request_id);
             });
-            (snapshot.messages || []).forEach(function(message) {
-                var wrap = elementWith('discuss-message chat-message-card ' + (message.role === 'user' ? 'user' : 'assistant'));
-                var label = elementWith('discuss-message-label chat-message-header chat-message-name', message.role === 'user' ? 'Me' : discussAgentLabel());
-                wrap.appendChild(label);
+            var messages = snapshot.messages || [];
+            var lastAssistantIndexByTurn = {};
+            messages.forEach(function(m, idx) {
+                if (m.role === 'assistant' && m.turn_id) {
+                    lastAssistantIndexByTurn[m.turn_id] = idx;
+                }
+            });
+            messages.forEach(function(message, mIdx) {
+                var isUser = message.role === 'user';
+                var isThought = false;
+                if (!isUser) {
+                    if (message.phase === 'thought' || message.phase === 'commentary') {
+                        isThought = true;
+                    } else if (message.turn_id) {
+                        var isLastInTurn = lastAssistantIndexByTurn[message.turn_id] === mIdx;
+                        var isTurnActive = snapshot.active_turn_id && snapshot.active_turn_id === message.turn_id;
+                        if (isTurnActive) {
+                            var turnActivities = discussTurnActivities(snapshot, message.turn_id);
+                            isThought = !isLastInTurn || turnActivities.length > 0;
+                        } else {
+                            isThought = !isLastInTurn;
+                        }
+                    }
+                }
+                var wrap = elementWith('discuss-message chat-message-card ' + (isUser ? 'user' : ('assistant' + (isThought ? ' is-thought' : ''))));
+                var head = elementWith('discuss-message-label chat-message-header');
+                var agentName = discussAgentLabel();
+                var label = elementWith('chat-message-name', isUser ? 'Me' : (isThought ? (agentName + ' \u00b7 Thought') : agentName));
+                head.appendChild(label);
+                var mTime = message.created_at || (snapshot.conversation && snapshot.conversation.created_at ? (snapshot.conversation.created_at + mIdx * 60) : 0);
+                var meta = _buildMessageMeta(mTime, message.duration_ms);
+                if (meta) head.appendChild(meta);
+                wrap.appendChild(head);
                 renderDiscussMarkdown(wrap, message.text);
                 highlightChatMentions(wrap, []);
                 var sent = String(message.text || '');
@@ -5058,18 +5310,31 @@ function openDiscussDiffModal(diffString) {
 
 function closeDiscussDiffModal() {
     var review = _currentDiscussReviewContext, path = _currentDiscussReviewPath;
-    document.getElementById('discussDiffModalOverlay').hidden = true;
+    var overlay = document.getElementById('discussDiffModalOverlay');
+    if (!overlay || overlay.hidden) return;
+    overlay.hidden = true;
     _discussDiffLoadToken++;
     _currentDiscussDiffString = null;
     _currentDiscussReviewPath = null;
     _currentDiscussReviewContext = null;
     // Each surface reads back the same choices made in the expanded view.
     if (review) review.render(path);
-    else {
-        if (_discussSnapshot) renderDiscussSnapshot();
-        if (_discussReturnFocus && _discussReturnFocus.focus) _discussReturnFocus.focus();
+    else if (_discussSnapshot) renderDiscussSnapshot();
+    if (_discussReturnFocus && _discussReturnFocus.focus && _discussReturnFocus.isConnected) {
+        _discussReturnFocus.focus();
     }
 }
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        var overlay = document.getElementById('discussDiffModalOverlay');
+        if (overlay && !overlay.hidden) {
+            closeDiscussDiffModal();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+        }
+    }
+}, true);
 
 function setDiscussDiffMode(mode) {
     _currentDiscussDiffMode = mode;
@@ -5618,10 +5883,24 @@ function loadDiscussDiffMode(mode) {
             catch(e) { return []; }
         }
 
+        var DEFAULT_DISCUSS_INSTRUCTIONS = [
+            'good, apply it',
+            'Make this more direct.',
+            'Is the grammar correct?',
+            'Check the point of view.'
+        ];
+        var DEFAULT_DISCUSS_SELECTION_ONLY = [
+            'Make this more direct.',
+            'Is the grammar correct?',
+            'Check the point of view.'
+        ];
+
         // Presets from the book's settings are selection presets by name.
         function discussInstructionNeedsSelection(value) {
-            return selectionOnlyDiscussInstructions().indexOf(value) >= 0
-                || (configuredDiscussInstructions().indexOf(value) >= 0 && favoriteDiscussInstructions().indexOf(value) < 0);
+            if (selectionOnlyDiscussInstructions().indexOf(value) >= 0) return true;
+            if (configuredDiscussInstructions().indexOf(value) >= 0 && favoriteDiscussInstructions().indexOf(value) < 0) return true;
+            if (DEFAULT_DISCUSS_SELECTION_ONLY.indexOf(value) >= 0 && favoriteDiscussInstructions().indexOf(value) < 0) return true;
+            return false;
         }
 
         function toggleDiscussInstructionSelectionOnly(value, refresh) {
@@ -5649,8 +5928,14 @@ function loadDiscussDiffMode(mode) {
         }
 
         function presetDiscussInstructions() {
+            var favorites = favoriteDiscussInstructions();
+            var configured = configuredDiscussInstructions();
+            var merged = favorites.concat(configured);
+            if (!merged.length) {
+                merged = DEFAULT_DISCUSS_INSTRUCTIONS.slice();
+            }
             return normalizedDiscussInstructions(
-                favoriteDiscussInstructions().concat(configuredDiscussInstructions()),
+                merged,
                 24
             );
         }
@@ -5856,7 +6141,7 @@ function loadDiscussDiffMode(mode) {
                     inline.appendChild(button);
                 });
                 if (offered.length) node.appendChild(inline);
-                if (offered.length > 3 || recents.length || favoriteDiscussInstructions().length) {
+                if (presets.length > offered.length || offered.length > 3 || recents.length || favoriteDiscussInstructions().length) {
                     appendDiscussPresetsMenu(node, presets, recents);
                 }
             }

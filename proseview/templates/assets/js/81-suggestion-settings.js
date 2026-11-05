@@ -416,7 +416,7 @@
         function _rmResizeInvitations(preset, count) {
             preset.invitations = preset.invitations.slice(0, count);
             while (preset.invitations.length < count) preset.invitations.push({seat: preset.invitations.length % 2 + 1,
-                prompt: 'Respond to the discussion so far. Agree, disagree, or refine anything useful.'});
+                prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'});
         }
 
         function renderRoomSettings() {
@@ -507,7 +507,8 @@
             var addPreset = _sgEl('button', 'settings-plain-btn', '+ Add preset'); addPreset.type = 'button'; addPreset.disabled = library.presets.length >= 32;
             addPreset.onclick = function() {
                 library.presets.push({id: 'preset-' + Date.now(), name: 'New discussion', description: '', profiles: library.default_profiles.slice(), recap: 0,
-                    invitations: [{seat: 1, prompt: 'Give your opinion on this scene.'}, {seat: 2, prompt: 'Give your own view and respond to the discussion.'}]});
+                    invitations: [{seat: 1, prompt: 'Identify the 1–2 most important friction points in this scene. Quote lines and propose concrete fixes.'},
+                                  {seat: 2, prompt: 'Respond specifically to the first editor’s notes. Agree, refine, or offer a punchier alternative.'}]});
                 _rmChanged(); renderRoomSettings();
                 var cards = body.querySelectorAll('.room-library-card'); cards[cards.length - 1].open = true;
             };

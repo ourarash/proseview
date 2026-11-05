@@ -402,3 +402,71 @@ def test_existing_review_paused_room_resumes_its_pending_agent_after_upgrade(tmp
         assert second.turn_file_changes(cid)["files"][0]["after"] == scene.read_text()
     finally:
         second.close()
+
+
+def test_room_turns_preserve_and_recover_timestamps_across_restart(tmp_path):
+    root = _repo(tmp_path)
+    first = _manager(root, [])
+    try:
+        session_id = "test-timestamps-room"
+        raw_room = {
+            "id": session_id,
+            "scene": "manuscript/ch01/01-opening.md",
+            "managed": True,
+            "created_at": 1700000000.0,
+            "updated_at": 1700000600.0,
+            "turns": [
+                {"role": "user", "text": "Can you check the dialogue?", "message_id": "msg-1"},
+                {"role": "critic", "seat": 1, "agent": "codex", "text": "The rhythm is good.", "step_id": "step-1", "created_at": 1700000120.0, "duration_ms": 3500},
+                {"role": "critic", "seat": 2, "agent": "claude", "text": "I agree with Codex.", "step_id": "step-2"},
+            ],
+            "plans": [],
+        }
+        first.room_runtime.store.write("rooms", session_id, raw_room)
+    finally:
+        first.close()
+
+    second = _manager(root, [])
+    try:
+        room = second.room_runtime._load(session_id)
+        turns = room["turns"]
+        assert len(turns) == 3
+        # First turn was missing created_at, should be populated via interpolation:
+        assert isinstance(turns[0].get("created_at"), float)
+        assert turns[0]["created_at"] >= 1700000000.0
+        # Second turn had explicit created_at and duration_ms:
+        assert turns[1]["created_at"] == 1700000120.0
+        assert turns[1]["duration_ms"] == 3500
+        # Third turn was missing created_at, populated via interpolation:
+        assert isinstance(turns[2].get("created_at"), float)
+        assert turns[2]["created_at"] <= 1700000600.0
+    finally:
+        second.close()
+
+
+def test_room_submit_auto_targets_both_initially_and_last_critic_afterwards_unless_all(tmp_path, monkeypatch):
+    manager = _manager(_repo(tmp_path), [])
+    calls = []
+    def run(**kw):
+        calls.append(kw["seat"])
+        return reply(kw, f"Reply from critic {kw['seat']}.")
+    monkeypatch.setattr(manager, "run_room_turn", run)
+    try:
+        # 1. No messages yet: message without explicit seats goes to both [1, 2]
+        command(manager, "submit", initial=initial(manager), message_id="first", text="Initial question")
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 2 and s)
+        assert calls == [1, 2]
+
+        # 2. Both replied (last was seat 2): next message without seats goes to seat 2
+        calls.clear()
+        command(manager, "submit", message_id="followup-1", text="Followup for last critic")
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 3 and s)
+        assert calls == [2]
+
+        # 3. Next message with @all goes to both [1, 2]
+        calls.clear()
+        command(manager, "submit", message_id="to-all", text="@all what do both of you think?")
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 5 and s)
+        assert calls == [1, 2]
+    finally:
+        manager.close()

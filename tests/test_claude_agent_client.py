@@ -241,6 +241,27 @@ def test_thinking_reports_life_without_reporting_the_thought():
         client.close()
 
 
+def test_intermediate_commentary_with_tool_is_emitted_as_thought():
+    """When Claude outputs prose alongside a tool call, it is marked as thought/commentary."""
+    client, seen, _made = make_client(script=[
+        AssistantMessage(content=[
+            TextBlock("I'll inspect Alice's scene first."),
+            ToolUseBlock("Read", {"path": "manuscript/ch01/01.md"}, id="t-1"),
+        ]),
+        ResultMessage(),
+    ])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "inspect"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        messages = [m for m in seen if m["method"] == "assistant/message"]
+        assert len(messages) == 1
+        assert messages[0]["params"]["phase"] == "thought"
+        assert messages[0]["params"]["text"] == "I'll inspect Alice's scene first."
+    finally:
+        client.close()
+
+
 def test_translator_ignores_unknown_methods():
     assert sanitize_claude_message({"method": "something/else", "params": {}}) == []
 

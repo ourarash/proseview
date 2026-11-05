@@ -82,6 +82,50 @@ def test_pass_is_an_individual_outcome_and_survives_history(tmp_path, monkeypatc
         manager.close()
 
 
+def test_book_history_lists_all_scenes_with_useful_titles_and_stays_private_to_the_book(tmp_path):
+    manager = _manager(root := _repo(tmp_path), [])
+    other = _manager(_repo(tmp_path / "other"), [])
+    try:
+        for key, scene, text in [("opening", "one.md", "Help me strengthen the opening."), ("ending", "two.md", "Can we revisit the ending?")]:
+            manager.room_history({"action": "save", "session": {"id": key, "scene": scene, "title": "Conversation", "turns": [{"role": "user", "text": text}]}})
+        rows = manager.room_history({"action": "list"})["sessions"]
+        assert [(row["id"], row["scene"], row["title"]) for row in rows] == [
+            ("ending", "two.md", "Can we revisit the ending?"), ("opening", "one.md", "Help me strengthen the opening.")]
+        assert [row["id"] for row in manager.room_history({"action": "list", "scene": "one.md"})["sessions"]] == ["opening"]
+        assert other.room_history({"action": "list"})["sessions"] == []
+    finally:
+        manager.close()
+        other.close()
+
+
+def test_saving_new_rooms_does_not_silently_remove_older_history(tmp_path):
+    manager = _manager(_repo(tmp_path), [])
+    try:
+        for index in range(35):
+            manager.room_history({"action": "save", "session": {"id": f"room-{index}", "scene": "one.md", "turns": [{"role": "user", "text": f"Discussion {index}"}]}})
+        assert len(manager.room_history({"action": "list"})["sessions"]) == 35
+        assert manager.room_history({"action": "get", "id": "room-0"})["session"]["turns"][0]["text"] == "Discussion 0"
+    finally:
+        manager.close()
+
+
+def test_native_room_conversation_continues_when_the_scene_changes(tmp_path):
+    manager = _manager(root := _repo(tmp_path), clients := [])
+    (root / "manuscript" / "two.md").write_text((root / "manuscript" / "one.md").read_text())
+    try:
+        participants = manager.room_settings()["participants"]
+        history = [{"role": "user", "scene": "one.md", "text": "Consider the opening."}]
+        first = manager.run_room_turn(scene="one.md", participants=participants, history=history, debate_id="same-room")
+        history.extend([{"role": "critic", "scene": "one.md", "text": first["reply"]}, {"role": "user", "scene": "two.md", "text": "Now consider this other scene."}])
+        manager.run_room_turn(scene="two.md", participants=participants, history=history, debate_id="same-room")
+        assert len(clients[0].thread_start_params) == 1
+        assert "`two.md`" in clients[0].prompts[-1]
+        assert "CURRENT SCENE" in clients[0].prompts[-1]
+        assert "Now consider this other scene." in clients[0].prompts[-1]
+    finally:
+        manager.close()
+
+
 @pytest.mark.parametrize("agent", ["codex", "claude"])
 def test_profile_inherits_individual_chat_model_and_effort_and_keeps_tools(tmp_path, agent):
     manager = _manager(_repo(tmp_path), clients := [])

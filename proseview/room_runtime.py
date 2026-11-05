@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .room import PASS_MARKER, clean_participants
-from .suggestions import RoomHistoryStore, _clean_room_session, _room_history_path
+from .suggestions import RoomHistoryStore, _clean_room_session, _room_history_path, room_title
 
 
 class RoomRuntimeError(ValueError):
@@ -77,6 +77,7 @@ class RoomRuntime:
         self.closing = False
 
     def _save(self, room: dict[str, Any]) -> None:
+        room["title"] = room_title(room)
         room["revision"] = room.get("revision", 0) + 1
         room["updated_at"] = time.time()
         self.store.write("rooms", room["id"], room)
@@ -89,11 +90,12 @@ class RoomRuntime:
             return self.rooms[key]
         room = self.store.read("rooms", key)
         if room is None:
-            saved = self.history.get(key) or initial
+            saved_history = self.history.get(key)
+            saved = saved_history or initial
             if not isinstance(saved, dict):
                 raise RoomRuntimeError("This Room has not been created")
             scene = str(saved.get("scene") or "")
-            if self.manager._scene_file(scene) is None:
+            if not saved_history and self.manager._scene_file(scene) is None:
                 raise RoomRuntimeError("Open a manuscript scene before starting the Room")
             participants = clean_participants(saved.get("participants") or (initial or {}).get("participants") or self.manager.room_settings()["participants"])
             raw = {**saved, "id": key, "participants": participants}
@@ -114,6 +116,23 @@ class RoomRuntime:
             return room
         if room.get("deleted"):
             raise RoomRuntimeError("This Room was deleted")
+        room.setdefault("status", "idle")
+        room.setdefault("steps", [])
+        room.setdefault("commands", {})
+        room.setdefault("native_threads", {})
+        cleaned = _clean_room_session(room)
+        if cleaned:
+            room["turns"] = cleaned["turns"]
+        session_created = float(room.get("created_at") or time.time())
+        session_updated = float(room.get("updated_at") or session_created)
+        turns = room.get("turns") or []
+        n_turns = len(turns)
+        for i, t in enumerate(turns):
+            if not t.get("created_at"):
+                if n_turns <= 1 or session_updated <= session_created:
+                    t["created_at"] = session_created
+                else:
+                    t["created_at"] = session_created + (session_updated - session_created) * (i / (n_turns - 1))
         self.rooms[key] = room
         restored = self._restore_reviews(room)
         if room["status"] == "review":
@@ -253,18 +272,28 @@ class RoomRuntime:
         if len(text.encode()) > 128 * 1024:
             raise RoomRuntimeError("The Room message is too large")
         seats = body.get("seats")
+        if seats is None:
+            text_str = str(text or "")
+            if re.search(r"(?:^|[\s(])@(all|everyone)(?=$|[\s.,!?:;)\]'’])", text_str, re.IGNORECASE):
+                seats = [1, 2]
+            else:
+                last_seat = next((turn["seat"] for turn in reversed(room.get("turns", [])) if turn.get("role") == "critic" and turn.get("seat") in (1, 2)), None)
+                seats = [last_seat] if last_seat in (1, 2) else [1, 2]
         if not isinstance(seats, list) or not seats or any(type(s) is not int or s not in (1, 2) for s in seats) or len(set(seats)) != len(seats):
             raise RoomRuntimeError("Choose one or both participants")
         mid = identifier(body.get("message_id"))
         if any(step.get("message_id") == mid for step in room["steps"]):
             raise RoomRuntimeError("That message id is already in use")
-        self.manager.context.build_mentions({"kind": "scene", "path": room["scene"]}, text, mentions=body.get("attachments") or [])
+        scene = body.get("scene") or room["scene"]
+        if not isinstance(scene, str) or self.manager._scene_file(scene) is None:
+            raise RoomRuntimeError("Open a manuscript scene before sending to the Room")
+        self.manager.context.build_mentions({"kind": "scene", "path": scene}, text, mentions=body.get("attachments") or [])
         live_document = body.get("live_document")
-        self.manager._validated_live_document({"kind": "scene", "path": room["scene"]}, live_document)
+        self.manager._validated_live_document({"kind": "scene", "path": scene}, live_document)
         choices = self._review_choices(body)
         for index, seat in enumerate(seats):
             room["steps"].append({"id": uuid.uuid4().hex, "message_id": mid, "seat": seat,
-                "state": "queued", "text": text, "authored": str(body.get("authored") or text.split("\n\nSelected passage:\n")[0]),
+                "state": "queued", "scene": scene, "text": text, "authored": str(body.get("authored") or text.split("\n\nSelected passage:\n")[0]),
                 "settle_reviews": index == 0, "review_choices": copy.deepcopy(choices) if index == 0 else [],
                 "live_document": copy.deepcopy(live_document), "attachments": copy.deepcopy(body.get("attachments") or []), "kind": "message"})
         if room["status"] == "idle":
@@ -334,6 +363,7 @@ class RoomRuntime:
                     "partial_reply": (active or {}).get("draft", "")}
         result = {key: copy.deepcopy(value) for key, value in room.items() if key not in ("commands", "native_threads", "version")}
         result["acknowledged_requests"] = list(room["commands"])
+        result["title"] = room_title(room)
         active = self._active(room)
         result["live"] = self.manager.room_progress(active.get("run_id", "")) if active and room["status"] == "running" else None
         # A disk checkpoint is also readable if the process died between a
@@ -384,23 +414,25 @@ class RoomRuntime:
                     new_message = not any(turn.get("message_id") == step["message_id"] for turn in room["turns"])
                     step.setdefault("settle_reviews", new_message)
                     if new_message:
-                        room["turns"].append({"role": "user", "label": "Me (Writer)", "text": step["text"], "message_id": step["message_id"], "attachments": copy.deepcopy(step.get("attachments") or [])})
+                        room["turns"].append({"role": "user", "label": "Me (Writer)", "scene": step.get("scene") or room["scene"], "text": step["text"], "message_id": step["message_id"], "attachments": copy.deepcopy(step.get("attachments") or []), "created_at": step.get("created_at") or time.time()})
                     authored = step["authored"]
                 else:
                     if not any(turn.get("step_id") == step["id"] for turn in room["turns"]):
                         profile = room["participants"][step["seat"] - 1]
                         room["turns"].append({"role": "invitation", "label": "Preset", "seat": step["seat"],
-                            "recap": step.get("recap", False), "step_id": step["id"], "text": f"@{profile['handle']}, {step['prompt']}", "attachments": copy.deepcopy(step.get("attachments") or [])})
+                            "recap": step.get("recap", False), "step_id": step["id"], "text": f"@{profile['handle']}, {step['prompt']}", "attachments": copy.deepcopy(step.get("attachments") or []),
+                            "created_at": step.get("created_at") or time.time()})
                     authored = step["prompt"]
                 if step.get("retry"):
                     recovery_id = step["id"] + "-retry-" + str(step.get("attempt", 0))
                     if not any(turn.get("step_id") == recovery_id for turn in room["turns"]):
                         room["turns"].append({"role": "invitation", "label": "Recovery", "step_id": recovery_id,
-                            "text": "The previous attempt was interrupted. Check the current files before continuing this request. Preserve work already applied; do not repeat edits blindly."})
+                            "text": "The previous attempt was interrupted. Check the current files before continuing this request. Preserve work already applied; do not repeat edits blindly.",
+                            "created_at": time.time()})
                 self._save(room)
                 history = copy.deepcopy(room["turns"])
                 participants = copy.deepcopy(room["participants"])
-                scene, run_id = room["scene"], step["run_id"]
+                scene, run_id = step.get("scene") or room["scene"], step["run_id"]
                 native = copy.deepcopy(room["native_threads"].get(str(step["seat"])))
             try:
                 self.context.room_id, self.context.step_id = key, step["id"]
@@ -457,12 +489,14 @@ class RoomRuntime:
         step["state"] = "passed" if result.get("passed") else "completed"
         profile = room["participants"][step["seat"] - 1]
         if not any(turn.get("step_id") == step["id"] and turn["role"] == "critic" for turn in room["turns"]):
-            room["turns"].append({"role": "critic", "step_id": step["id"], "seat": step["seat"],
+            room["turns"].append({"role": "critic", "step_id": step["id"], "seat": step["seat"], "scene": step.get("scene") or room["scene"],
                 "agent": result["agent"], "model": result.get("model", ""), "label": profile["name"] + " · " + result["agent"].title(),
                 "tag": "Recap" if step.get("recap") else "Reply", "text": result.get("reply", ""), "passed": bool(result.get("passed")),
                 "changed_files": result.get("changed_files", []),
                 "tool_conversation_id": result.get("tool_conversation_id", ""),
-                "review_pending": bool(result.get("changed_files") or result.get("unreviewable"))})
+                "review_pending": bool(result.get("changed_files") or result.get("unreviewable")),
+                "created_at": result.get("created_at") or time.time(),
+                "duration_ms": result.get("duration_ms")})
         if step.get("native_cache"):
             room["native_threads"][str(step["seat"])] = step["native_cache"]
         room["active_step"] = ""
@@ -483,7 +517,7 @@ class RoomRuntime:
         profile = room["participants"][step["seat"] - 1]
         room["turns"].append({"role": "critic", "step_id": interrupted_id, "seat": step["seat"], "agent": profile["agent"],
             "label": profile["name"] + " · " + profile["agent"].title() + " · interrupted reply (incomplete)", "text": step.get("draft") or "This invitation was interrupted. Review any saved changes before retrying or skipping it.",
-            "tag": "Interrupted", "tool_conversation_id": cid, "review_pending": True})
+            "tag": "Interrupted", "tool_conversation_id": cid, "review_pending": True, "created_at": time.time()})
 
     def checkpoint(self, room_id: str, step_id: str, fields: dict[str, Any]) -> None:
         with self.lock:

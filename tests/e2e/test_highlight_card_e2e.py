@@ -815,7 +815,7 @@ def test_writers_room_previews_explicit_invitations_and_optional_recap(page: Pag
     assert pane.locator(".room-turn-card.is-critic-1").count() == 2
     assert pane.locator(".room-turn-card.is-critic-2").count() == 2
     assert pane.locator(".room-turn-tag").last.inner_text() == "Recap"
-    pane.locator("#roomInput").fill("What about the ending?")
+    pane.locator("#roomInput").fill("@all What about the ending?")
     pane.locator("#roomSendBtn").click()
     _room_idle(page)
     assert [r["seat"] for r in requests] == [1, 2, 1, 2, 1, 2]
@@ -1004,7 +1004,7 @@ def test_room_mentions_pick_and_route_only_the_addressed_editors(page: Page, ser
     assert [req['seat'] for req in requests] == [2, 1, 2, 1]
     pane.locator("#roomInput").fill("Email me at someone@claude.example; this is not a mention.")
     assert pane.locator("#roomTargetSelect").is_enabled()
-    assert pane.locator("#roomTargetSelect").input_value() == "both"
+    assert pane.locator("#roomTargetSelect").input_value() == "critic1"
     pane.locator("#roomInput").fill("@")
     pane.locator("#roomInput").press("Escape")
     assert picker.is_hidden()
@@ -1060,10 +1060,10 @@ def test_room_file_mentions_supply_reference_text_without_changing_editor_routin
     # File-only messages retain the ordinary To setting and shared context.
     pane.locator("#roomInput").fill("Compare again with @manuscript/ch01/02-walk.md")
     assert pane.locator("#roomTargetSelect").is_enabled()
-    assert pane.locator("#roomTargetSelect").input_value() == "both"
+    assert pane.locator("#roomTargetSelect").input_value() == "critic1"
     pane.locator("#roomSendBtn").click()
     _room_idle(page)
-    assert [req["seat"] for req in requests] == [1, 1, 2]
+    assert [req["seat"] for req in requests] == [1, 1]
     page.evaluate("attachSelectionToRoom('Quoted @scripts/check_continuity.py', null)")
     pane.locator("#roomInput").fill("Keep discussing the scene.")
     pane.locator("#roomSendBtn").click()
@@ -1419,7 +1419,7 @@ def test_diff_viewer_can_expand_a_patch_before_any_review_is_opened(page: Page, 
     page.evaluate("openDiscussDiffModal('--- a/scene.md\\n+++ b/scene.md\\n@@ -1 +1 @@\\n-Old sentence.\\n+New sentence.\\n')")
     page.locator("#discussDiffModalContent table.diff-side-by-side").wait_for()
     assert page.locator("#discussDiffModalTitle").inner_text() == "Review Changes"
-    page.get_by_role("button", name="Close diff viewer", exact=True).click()
+    page.keyboard.press("Escape")
     assert page.locator("#discussDiffModalOverlay").is_hidden()
 
 

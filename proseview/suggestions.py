@@ -326,28 +326,47 @@ DEFAULT_ROOM_METHOD: str = (
 )
 
 DEFAULT_ROOM_CRITIC1_PROMPT: str = (
-    "Lean toward plot mechanics, stakes, pacing, cause-and-effect, and continuity."
+    "Narrative drive, stakes, scene structure, cause-and-effect, pacing, and continuity."
 )
 
 DEFAULT_ROOM_CRITIC2_PROMPT: str = (
-    "Lean toward character voice, emotional subtext, sensory atmosphere, and rhythm."
+    "Character voice, dialogue subtext, sensory grounding, emotional nuance, and prose rhythm."
 )
 
 DEFAULT_ROOM_PRESET_PROMPTS: dict[str, str] = {
     "editorial_critique": (
-        "Critique this scene together and find the changes that would most improve it. "
-        "Where a structural fix would flatten the voice, or a voice choice blurs the structure, say so."
+        "Find the 1–2 biggest friction points in this scene's pacing, stakes, or cause-and-effect. "
+        "Quote the lines, diagnose why they stall momentum, and propose a concrete cut or rewrite. Under 200 words."
     ),
     "tough_love": (
-        "A no-sugarcoating red-pen critique. Skip praise and go straight to what is working against "
-        "the scene: slow openings, clichés, convenient turns, weak verbs, flat dialogue. Call out a "
-        "note that is too soft."
+        "A ruthless red-pen pass. Skip praise and pleasantries. Call out the 2 weakest spots in the text "
+        "(slow openings, clichés, filter verbs, sluggish dialogue). Quote each line and provide a sharp drop-in replacement."
     ),
     "pitch_next_beat": (
-        "Pitch what happens next in or immediately after this scene, without writing the prose. "
-        "Each issue is a beat: what happens, why it follows from what the characters want, and what "
-        "it costs them. Challenge any contrivance."
+        "Pitch 2 concrete next beats that escalate the conflict immediately after this scene, without writing prose. "
+        "For each: what happens, why it forces an uncomfortable choice, and what it costs the character."
     ),
+}
+
+DEFAULT_ROOM_PRESET_STEPS: dict[str, list[dict[str, Any]]] = {
+    "editorial_critique": [
+        {"seat": 1, "prompt": "Find the 1–2 biggest friction points in this scene's pacing, stakes, or cause-and-effect. Quote the lines, diagnose why they stall momentum, and propose a concrete cut or rewrite. Under 200 words."},
+        {"seat": 2, "prompt": "React specifically to Editor 1's proposed changes. Defend any line whose voice or emotional nuance is worth protecting, or offer an alternative phrasing that preserves character truth. Under 200 words."},
+        {"seat": 1, "prompt": "Weigh Editor 2's pushback. Where can we compromise so the scene keeps its momentum without flattening character voice? Under 150 words."},
+        {"seat": 2, "prompt": "Settle on the final wording for the agreed changes. Highlight any remaining open choice for the writer. Under 150 words."},
+    ],
+    "tough_love": [
+        {"seat": 1, "prompt": "A ruthless red-pen pass. Skip praise and pleasantries. Call out the 2 weakest spots in the text (slow openings, clichés, filter verbs, sluggish dialogue). Quote each line and provide a sharp drop-in replacement."},
+        {"seat": 2, "prompt": "Review Editor 1's rewrites. Challenge any fix that feels bland, unnatural, or over-corrected. Provide your own punchier alternative for the lines in question."},
+        {"seat": 1, "prompt": "Compare your rewrites with Editor 2's. Pick the strongest versions and discard what doesn't work. Under 150 words."},
+        {"seat": 2, "prompt": "Confirm the final polished lines. If any issue was left unresolved, give the author two clear choices. Under 150 words."},
+    ],
+    "pitch_next_beat": [
+        {"seat": 1, "prompt": "Pitch 2 concrete next beats that escalate the conflict immediately after this scene, without writing prose. For each: what happens, why it forces an uncomfortable choice, and what it costs the character."},
+        {"seat": 2, "prompt": "Pressure-test both beats against the character's core desires and flaws. Which beat feels genuinely earned, and what unexpected complication would that character trigger?"},
+        {"seat": 1, "prompt": "Refine the stronger beat using Editor 2's feedback. Frame the exact cliffhanger or pivot that ends the sequence. Under 150 words."},
+        {"seat": 2, "prompt": "Give your verdict on the refined beat: what makes it work, and what trap the author must avoid while drafting it. Under 150 words."},
+    ],
 }
 
 ROOM_PRESET_CARDS: tuple[dict[str, str], ...] = (
@@ -435,17 +454,21 @@ class RoomComputerSettings:
             return clean_library(self.library)
         profiles = [
             {"id": "story-editor", "name": book.critic1_name, "specialty": book.critic1_prompt or DEFAULT_ROOM_CRITIC1_PROMPT,
-             "style": "Direct and constructive.", **self.critic1.to_json()},
+             "style": "Direct, structural, and concise. Spots where momentum drags, quotes the line, and suggests a cut or beat.", **self.critic1.to_json()},
             {"id": "voice-editor", "name": book.critic2_name, "specialty": book.critic2_prompt or DEFAULT_ROOM_CRITIC2_PROMPT,
-             "style": "Attentive to character voice and emotional nuance.", **self.critic2.to_json()},
+             "style": "Attentive to ear, rhythm, and subtext. Challenges wooden dialogue and offers punchy, authentic phrasing.", **self.critic2.to_json()},
         ]
         pair = [p["id"] for p in profiles]
         presets = []
         for card in ROOM_PRESET_CARDS:
-            first = book.preset_prompt(card["id"]) or DEFAULT_ROOM_PRESET_PROMPTS[card["id"]]
-            steps = [{"seat": 1, "prompt": first}, {"seat": 2, "prompt": "Give your own perspective and respond to the first participant's contribution."}]
-            for index in range(2, self.turns):
-                steps.append({"seat": index % 2 + 1, "prompt": "Respond to the discussion. Reconsider, challenge, or build on the other perspective where useful."})
+            template = DEFAULT_ROOM_PRESET_STEPS.get(card["id"], [])
+            first = book.preset_prompt(card["id"]) or (template[0]["prompt"] if template else DEFAULT_ROOM_PRESET_PROMPTS[card["id"]])
+            steps = [{"seat": 1, "prompt": first}]
+            for index in range(1, max(2, self.turns)):
+                if index < len(template):
+                    steps.append({"seat": template[index]["seat"], "prompt": template[index]["prompt"]})
+                else:
+                    steps.append({"seat": index % 2 + 1, "prompt": "Respond to the latest proposal. Agree, push back, or offer a concrete alternative."})
             presets.append({"id": card["id"], "name": card["label"], "description": card["copy"].replace("Ends with a revision plan.", "An optional recap closes the discussion."),
                             "profiles": pair, "invitations": steps[:max(2, self.turns)], "recap": 2})
         return clean_library({"profiles": profiles, "presets": presets, "default_profiles": pair})
@@ -485,7 +508,7 @@ def room_participants(book: RoomConfig, app: RoomComputerSettings) -> list[dict[
     agents = [app.critic1.agent, app.critic2.agent]
     participants = []
     for seat, (name, handle, agent) in enumerate(zip(names, handles, agents), 1):
-        aliases = [handle]
+        aliases = [handle, f"{handle}-{agent.title()}", f"{handle}{agent.title()}"]
         if agents.count(agent) == 1 and agent not in [h.lower() for h in handles]:
             aliases.append(agent)
         participants.append({"seat": seat, "name": name, "handle": handle, "agent": agent, "aliases": aliases})
@@ -524,7 +547,6 @@ class RoomAppSettings:
         tmp.replace(self.path)
 
 
-ROOM_HISTORY_PER_SCENE = 30
 _ROOM_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
@@ -534,6 +556,15 @@ def _room_history_path() -> Path:
 
 def _clip(value: Any, limit: int) -> str:
     return str(value or "")[:limit]
+
+
+def room_title(raw: dict[str, Any]) -> str:
+    title = str(raw.get("title") or "").strip()
+    if title and title not in {"Conversation", "Writers' Room", "Writers’ Room", "New Room"}:
+        return title[:200]
+    first = next((str(turn.get("text") or "") for turn in raw.get("turns", []) if turn.get("role") == "user"), "")
+    first = " ".join(first.split("\n\nSelected passage:\n")[0].split())
+    return (first[:79].rstrip() + "…" if len(first) > 80 else first) or "New Room"
 
 
 def _clean_room_session(raw: Any) -> dict[str, Any] | None:
@@ -561,6 +592,7 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
             row["step_id"] = _clip(turn.get("step_id"), 120)
         if turn.get("message_id"):
             row["message_id"] = _clip(turn.get("message_id"), 80)
+        row["scene"] = _clip(turn.get("scene") or scene, 1000)
         if role in ("user", "invitation") and isinstance(turn.get("attachments"), list):
             row["attachments"] = [{"kind": item.get("kind", "file"), "path": str(item.get("path") or "")} for item in turn["attachments"] if isinstance(item, dict)]
         if role == "critic":
@@ -577,6 +609,16 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
         if role == "invitation":
             row["seat"] = 2 if turn.get("seat") == 2 else 1
             row["recap"] = bool(turn.get("recap"))
+        if "created_at" in turn and turn["created_at"]:
+            try:
+                row["created_at"] = float(turn["created_at"])
+            except (ValueError, TypeError):
+                pass
+        if "duration_ms" in turn and turn["duration_ms"] is not None:
+            try:
+                row["duration_ms"] = int(turn["duration_ms"])
+            except (ValueError, TypeError):
+                pass
         turns.append(row)
     if not turns and not raw.get("managed"):
         return None
@@ -638,7 +680,7 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
     result = {
         "id": session_id,
         "scene": scene,
-        "title": _clip(raw.get("title"), 200).strip() or "Writers\u2019 Room",
+        "title": room_title({**raw, "turns": turns}),
         "badge": _clip(raw.get("badge"), 200),
         "preset_id": _clip(raw.get("preset_id"), 64),
         "question": _clip(raw.get("question"), 2000),
@@ -654,7 +696,7 @@ def _clean_room_session(raw: Any) -> dict[str, Any] | None:
 
 
 class RoomHistoryStore:
-    """Writers' Room debates on this computer, per book and scene, newest first."""
+    """Room conversations on this computer, isolated by book, newest first."""
 
     _locks: dict[str, threading.Lock] = {}
     _locks_guard = threading.Lock()
@@ -690,15 +732,16 @@ class RoomHistoryStore:
             sessions = book["sessions"] = []
         return sessions
 
-    def list(self, scene: str) -> list[dict[str, Any]]:
+    def list(self, scene: str = "") -> list[dict[str, Any]]:
         with self._lock:
             sessions = self._sessions(self._load())
-        rows = [s for s in sessions if isinstance(s, dict) and s.get("scene") == scene]
+        rows = [s for s in sessions if isinstance(s, dict) and (not scene or s.get("scene") == scene)]
         rows.sort(key=lambda s: s.get("updated_at") or 0, reverse=True)
         return [
             {
                 "id": s.get("id"),
-                "title": s.get("title") or "",
+                "title": room_title(s),
+                "scene": s.get("scene") or "",
                 "turns": sum(1 for t in s.get("turns") or [] if t.get("role") == "critic"),
                 "has_plan": bool(s.get("plans") or s.get("plan") or s.get("open")),
                 "updated_at": s.get("updated_at") or 0,
@@ -723,13 +766,6 @@ class RoomHistoryStore:
                 session["created_at"] = old.get("created_at") or session["created_at"]
                 sessions.remove(old)
             sessions.append(session)
-            same_scene = sorted(
-                (s for s in sessions if s.get("scene") == session["scene"]),
-                key=lambda s: s.get("updated_at") or 0,
-                reverse=True,
-            )
-            for stale in same_scene[ROOM_HISTORY_PER_SCENE:]:
-                sessions.remove(stale)
             self._write(data)
         return session
 

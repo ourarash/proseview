@@ -2649,24 +2649,80 @@ class DiscussManager:
                 # or unrelated protocol content from leaking packaged files.
                 unsafe_turns += 1
                 continue
+            turn_created_at = None
+            for key in ("created_at", "createdAt", "timestamp"):
+                if key in turn and turn[key]:
+                    try:
+                        val = float(turn[key])
+                        turn_created_at = val / 1000.0 if val > 1e11 else val
+                        break
+                    except (ValueError, TypeError):
+                        pass
+
+            turn_duration_ms = None
+            for key in ("duration_ms", "durationMs", "duration"):
+                if key in turn and turn[key] is not None:
+                    try:
+                        turn_duration_ms = int(turn[key])
+                        break
+                    except (ValueError, TypeError):
+                        pass
+
             for item in items:
                 if not isinstance(item, dict):
                     continue
+                item_created_at = turn_created_at
+                for key in ("created_at", "createdAt", "timestamp"):
+                    if key in item and item[key]:
+                        try:
+                            val = float(item[key])
+                            item_created_at = val / 1000.0 if val > 1e11 else val
+                            break
+                        except (ValueError, TypeError):
+                            pass
+
                 if item.get("type") == "userMessage":
                     text = "\n".join(
                         str(part.get("text") or "") for part in item.get("content") or []
                         if isinstance(part, dict) and part.get("type") == "text"
                     )
                     visible = text.rsplit(marker, 1)[-1]
-                    restored.append({"role": "user", "text": _bounded_text(visible), "restored": True})
+                    user_msg: dict[str, Any] = {"role": "user", "text": _bounded_text(visible), "restored": True}
+                    if item_created_at:
+                        user_msg["created_at"] = item_created_at
+                    restored.append(user_msg)
                 elif item.get("type") == "agentMessage":
                     phase = item.get("phase") or "final_answer"
                     if phase == "final_answer":
-                        restored.append({
+                        asst_msg: dict[str, Any] = {
                             "role": "assistant",
                             "text": _bounded_text(item.get("text")),
                             "restored": True,
-                        })
+                        }
+                        if item_created_at:
+                            asst_msg["created_at"] = item_created_at
+                        if turn_duration_ms is not None:
+                            asst_msg["duration_ms"] = turn_duration_ms
+                        restored.append(asst_msg)
+        if any("created_at" not in m for m in restored):
+            row = None
+            try:
+                row = next((
+                    item for item in self.state.list(
+                        conversation.document["kind"],
+                        conversation.document["path"],
+                        conversation.agent,
+                    ) if item["thread_id"] == conversation.thread_id
+                ), None)
+            except Exception:
+                pass
+            if row and row.get("created_at"):
+                c_start = float(row["created_at"])
+                c_end = float(row.get("updated_at") or c_start)
+                n = len(restored)
+                for idx, msg in enumerate(restored):
+                    if "created_at" not in msg:
+                        msg["created_at"] = c_start if n <= 1 or c_end <= c_start else c_start + (c_end - c_start) * (idx / (n - 1))
         conversation.messages = restored
         if rebuild_tasks:
             for task in restored_tasks.values():
@@ -3762,7 +3818,12 @@ class DiscussManager:
             if task:
                 conversation.tasks[task["id"]] = task
             else:
-                conversation.messages.append({"role": "user", "text": bundle.question, "client_request_id": request_id})
+                conversation.messages.append({
+                    "role": "user",
+                    "text": bundle.question,
+                    "client_request_id": request_id,
+                    "created_at": time.time(),
+                })
             self._ensure_worker(conversation)
         conversation.publish("turn.queued", result)
         return result
@@ -4348,12 +4409,41 @@ class DiscussManager:
                                 "message": str(exc),
                             })
                     else:
+                        duration_ms = None
+                        if conversation.active_turn_started_monotonic is not None:
+                            duration_ms = int((time.monotonic() - conversation.active_turn_started_monotonic) * 1000)
                         conversation.messages.append({
                             "role": "assistant",
                             "text": event.get("text") or "",
                             "turn_id": event.get("turn_id"),
                             "client_request_id": conversation.active_request_id or "",
+                            "created_at": time.time(),
+                            "duration_ms": duration_ms,
+                            "phase": "final_answer",
                         })
+                elif event.get("phase") == "thought":
+                    duration_ms = None
+                    if conversation.active_turn_started_monotonic is not None:
+                        duration_ms = int((time.monotonic() - conversation.active_turn_started_monotonic) * 1000)
+                    conversation.messages.append({
+                        "role": "assistant",
+                        "text": event.get("text") or "",
+                        "turn_id": event.get("turn_id"),
+                        "client_request_id": conversation.active_request_id or "",
+                        "created_at": time.time(),
+                        "duration_ms": duration_ms,
+                        "phase": "thought",
+                    })
+                    text = str(event.get("text") or "").strip()
+                    if text:
+                        note_id = f"note-{event.get('item_id') or len(conversation.activities)}"
+                        conversation.activities[note_id] = {
+                            "id": note_id,
+                            "kind": "commentary",
+                            "status": "completed",
+                            "text": _bounded_text(text, 2000),
+                            "turn_id": event.get("turn_id") or conversation.active_turn_id or "",
+                        }
                 else:
                     text = str(event.get("text") or "")
                     conversation.progress.append(text)
@@ -4799,6 +4889,8 @@ class DiscussManager:
         """
         book = Config.load(self.root).room
         app = (app_settings or RoomAppSettings()).load()
+        turn_start_monotonic = time.monotonic()
+        turn_created_at = time.time()
         seat_num = 2 if int(seat or 1) == 2 else 1
         turn_idx = max(1, min(2000, int(turn_index or 1)))
         total_cnt = max(turn_idx, min(2000, int(total_turns or app.turns)))
@@ -4844,7 +4936,7 @@ class DiscussManager:
                 "Use your tools to inspect the mentioned project files as needed for this discussion.",
                 mentions=attachments,
             ).prompt
-        scene_hash = hashlib.sha256((scene_text + '\0' + reference_text).encode("utf-8")).hexdigest()
+        scene_hash = hashlib.sha256((scene_name + '\0' + scene_text + '\0' + reference_text).encode("utf-8")).hexdigest()
         signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
         known = self._room_threads.get(key) if key else None
@@ -4936,6 +5028,7 @@ class DiscussManager:
         changes = self.turn_file_changes(tool_conversation.id) if tool_conversation else {"files": [], "unreviewable": []}
         if key and tool_conversation:
             self._room_threads[key]["conversation_id"] = tool_conversation.id
+        turn_duration_ms = int((time.monotonic() - turn_start_monotonic) * 1000)
         return {
             "seat": seat_num,
             "agent": seat_cfg.agent,
@@ -4949,6 +5042,8 @@ class DiscussManager:
             "tool_conversation_id": tool_conversation.id if tool_conversation else "",
             "changed_files": [file["path"] for file in changes["files"]],
             "unreviewable": changes["unreviewable"],
+            "created_at": turn_created_at,
+            "duration_ms": turn_duration_ms,
         }
 
     def run_room_moderator(
@@ -5010,12 +5105,24 @@ class DiscussManager:
         entries = history if isinstance(history, list) else []
         for entry in entries:
             if isinstance(entry, dict):
-                clean.append({
+                row = {
                     "role": entry.get("role") if entry.get("role") in ("user", "invitation") else "critic",
                     "label": _bounded_text(str(entry.get("label") or ""), 120),
                     "text": str(entry.get("text") or ""),
                     "passed": bool(entry.get("passed")),
-                })
+                    "scene": str(entry.get("scene") or ""),
+                }
+                if "created_at" in entry and entry["created_at"]:
+                    try:
+                        row["created_at"] = float(entry["created_at"])
+                    except (ValueError, TypeError):
+                        pass
+                if "duration_ms" in entry and entry["duration_ms"] is not None:
+                    try:
+                        row["duration_ms"] = int(entry["duration_ms"])
+                    except (ValueError, TypeError):
+                        pass
+                clean.append(row)
         return clean
 
     def _run_room_call(
@@ -5265,7 +5372,7 @@ class DiscussManager:
         return True
 
     def room_history(self, body: dict[str, Any], store: RoomHistoryStore | None = None) -> dict[str, Any]:
-        """List, open, save or delete the saved Writers' Room debates of a scene."""
+        """List, open, save or delete this book's Rooms, optionally filtering by scene."""
         store = store or RoomHistoryStore(self.root)
         action = str(body.get("action") or "list")
         if action == "save":

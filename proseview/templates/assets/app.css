@@ -5116,23 +5116,22 @@
         .discuss-resize-handle {
             width: 24px;
             cursor: ew-resize;
-            flex: 0 0 auto;
             background: transparent;
-            position: relative;
+            position: absolute;
+            inset: 0 auto 0 -12px;
+            z-index: 10;
         }
 
-        /* Unlike the sidebar handle, this one is an in-flow flex child, so its
-           left edge already *is* the dock's edge -- there is no negative offset
-           to compensate for. Its `left: 10px` would push the bar 10px inside
-           the dock, away from the seam it is supposed to mark. -2px straddles
-           the 1px border instead. */
+        /* Overlay the seam so the handle keeps a usable hit area without
+           reserving a blank column inside the dock. */
         .discuss-resize-handle::after {
             content: '';
             position: absolute;
-            inset: 0 auto 0 -2px;
+            inset: 0 auto 0 10px;
             width: 4px;
             background: transparent;
             transition: background 0.15s, opacity 0.15s;
+            pointer-events: none;
         }
 
         .discuss-resize-handle:hover::after,
@@ -5699,7 +5698,7 @@
         .discuss-log {
             flex: 1;
             overflow: auto;
-            padding: 14px 14px 28px;
+            padding: 10px 10px 24px;
             scroll-behavior: smooth;
         }
 
@@ -5802,16 +5801,15 @@
         .room-turn-card.chat-message-card {
             --chat-accent: var(--room-accent, var(--primary));
             box-sizing: border-box;
-            width: 92%;
+            width: 100%;
             min-width: 0;
-            margin: 0 0 32px;
-            padding: 20px;
+            margin: 0 0 6px;
+            padding: 11px 13px;
             border: 1px solid var(--border);
-            border-left: 3px solid var(--chat-accent);
-            border-radius: 10px;
+            border-radius: 8px;
             background: var(--surface-card);
             color: var(--text-reading);
-            line-height: 1.65;
+            line-height: 1.55;
             overflow-wrap: anywhere;
         }
 
@@ -5819,22 +5817,24 @@
         .room-turn-card.chat-message-card.is-user {
             --chat-accent: var(--accent, var(--primary));
             width: fit-content;
-            max-width: 84%;
+            max-width: 86%;
             margin-left: auto;
-            padding: 12px 16px;
-            border-left: 1px solid var(--border);
-            border-right: 3px solid var(--chat-accent);
-            background: var(--surface-muted);
+            margin-bottom: 6px;
+            padding: 9px 13px;
+            border: 1px solid color-mix(in srgb, var(--chat-accent) 22%, var(--border));
+            border-radius: 14px 14px 4px 14px;
+            background: color-mix(in srgb, var(--chat-accent) 9%, var(--surface-card));
         }
 
         .chat-message-card .chat-message-header {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             flex-wrap: wrap;
-            gap: 8px 16px;
-            min-height: 22px;
-            margin: 0 0 16px;
-            padding-right: 32px;
+            gap: 6px 12px;
+            min-height: 20px;
+            margin: 0 0 6px;
+            padding-right: 28px;
             font-size: 12px;
             letter-spacing: normal;
             text-transform: none;
@@ -5844,7 +5844,39 @@
         .chat-message-card.user .chat-message-header,
         .chat-message-card.is-user .chat-message-header {
             justify-content: flex-end;
-            margin-bottom: 8px;
+            gap: 8px;
+            margin-bottom: 4px;
+            padding-right: 0;
+        }
+
+        .chat-message-card .chat-message-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--text-faint);
+            font-variant-numeric: tabular-nums;
+            margin-left: auto;
+        }
+
+        .chat-message-card.user .chat-message-meta,
+        .chat-message-card.is-user .chat-message-meta {
+            margin-left: 0;
+        }
+
+        .chat-message-card .chat-message-time {
+            color: var(--text-muted);
+        }
+
+        .chat-message-card .chat-message-duration {
+            color: var(--text-faint);
+            font-family: var(--font-mono, monospace);
+            font-size: 10.5px;
+        }
+
+        .chat-message-card .chat-message-meta-sep {
+            color: var(--text-faint);
+            opacity: 0.6;
         }
 
         .chat-message-card .chat-message-name {
@@ -5862,36 +5894,89 @@
             background: var(--chat-accent);
         }
 
-        .chat-message-card .discuss-message-label.chat-message-header { display: block; }
-        .chat-message-card.user .discuss-message-label.chat-message-header { text-align: right; }
 
         .chat-message-card > .md-copy-btn {
-            top: 20px;
-            right: 16px;
+            top: 10px;
+            right: 10px;
             transform: none;
+            opacity: 0.35;
+            transition: opacity 120ms ease;
+        }
+
+        .chat-message-card:hover > .md-copy-btn,
+        .chat-message-card:focus-within > .md-copy-btn {
             opacity: 1;
         }
 
-        .chat-message-card > :last-child:not(.md-copy-btn) {
+        .chat-message-card > :last-child,
+        .chat-message-card > :last-child:not(.md-copy-btn),
+        .chat-message-card > :nth-last-child(2):not(.chat-message-header):not(.md-copy-btn),
+        .room-turn-body > :last-child {
             margin-bottom: 0;
         }
 
         .chat-message-card.user > .md-copy-btn,
         .chat-message-card.is-user > .md-copy-btn {
-            top: 12px;
-            right: 12px;
+            top: 8px;
+            right: 8px;
         }
 
-        .chat-message-card.user > :nth-last-child(2):not(.chat-message-header) {
-            margin-bottom: 0;
+        /* Intermediate thinking / scratchpad / working note cards */
+        .discuss-log > .chat-message-card.is-thought {
+            background: color-mix(in srgb, var(--warning, #f59e0b) 6%, var(--surface-card));
+            border: 1px dashed color-mix(in srgb, var(--warning, #f59e0b) 32%, var(--border));
+            border-radius: 7px;
+            padding: 8px 12px 7px;
+            font-size: 12.5px;
+            color: var(--text-soft);
+        }
+
+        .discuss-log > .chat-message-card.is-thought .chat-message-header {
+            margin-bottom: 4px;
+        }
+
+        .discuss-log > .chat-message-card.is-thought .chat-message-name {
+            font-size: 11.5px;
+            font-weight: 550;
+            color: var(--warning, #d97706);
+            letter-spacing: 0.02em;
+        }
+
+        .discuss-log > .chat-message-card.is-thought .chat-message-name::before {
+            background: transparent;
+            border: 1.5px solid var(--warning, #d97706);
+            width: 6px;
+            height: 6px;
+            margin-right: 6px;
+        }
+
+        .discuss-log > .chat-message-card.is-thought p {
+            color: var(--text-soft);
+            font-style: italic;
+            margin-bottom: 4px;
+            line-height: 1.5;
+        }
+
+        .discuss-log > .chat-message-card.is-thought > .md-copy-btn {
+            top: 6px;
+            right: 6px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .discuss-log > .chat-message-card.is-thought:hover > .md-copy-btn,
+        .discuss-log > .chat-message-card.is-thought:focus-within > .md-copy-btn {
+            opacity: 0.55;
+            pointer-events: auto;
         }
 
         @media (max-width: 600px) {
             .discuss-log > .chat-message-card,
-            .room-turn-card.chat-message-card { width: 96%; padding: 14px; }
+            .room-turn-card.chat-message-card { width: 100%; padding: 12px; }
+            .discuss-log > .chat-message-card.is-thought { padding: 8px 10px; }
             .discuss-log > .chat-message-card.user,
-            .room-turn-card.chat-message-card.is-user { width: fit-content; max-width: 94%; padding: 12px 16px; }
-            .chat-message-card > .md-copy-btn { top: 14px; right: 12px; }
+            .room-turn-card.chat-message-card.is-user { width: fit-content; max-width: 92%; padding: 10px 12px; }
+            .chat-message-card > .md-copy-btn { top: 8px; right: 8px; opacity: 0.7; }
         }
 
         .discuss-message p {
@@ -5905,8 +5990,8 @@
         .discuss-message h5,
         .discuss-message h6 {
             margin: 16px 0 8px;
-            color: var(--primary);
-            font-weight: 700;
+            color: var(--text-main);
+            font-weight: 650;
             line-height: 1.3;
         }
 
@@ -6997,6 +7082,10 @@
 
         .discuss-input-wrap:has(textarea:not(:placeholder-shown)) > .discuss-task-mode[data-mode="presets"] {
             display: none;
+        }
+
+        .discuss-input-wrap > .discuss-task-mode[data-mode="presets"] .discuss-presets-popover {
+            bottom: calc(100% + 56px);
         }
 
         .discuss-task-mode strong {
@@ -13761,7 +13850,8 @@
         .room-body {
             flex: 1;
             overflow-y: auto;
-            padding: 14px 16px;
+            overflow-anchor: auto;
+            padding: 10px 10px;
             display: flex;
             flex-direction: column;
             gap: 12px;
@@ -13814,13 +13904,11 @@
         .room-turns-list {
             display: flex;
             flex-direction: column;
-            gap: 32px;
+            gap: 6px;
         }
         /* Seat accents supplement the name; provider and model remain explicit. */
         .room-turn-card {
             --room-accent: var(--primary);
-            padding: 2px 0 2px 12px;
-            border-left: 3px solid var(--room-accent);
         }
         .room-turn-card.is-critic-1 {
             --room-accent: #0284c7;
@@ -14374,6 +14462,12 @@
             text-overflow: ellipsis;
             vertical-align: bottom;
             user-select: all;
+        }
+        .chat-mention[data-show-agent]::after {
+            content: " (" attr(data-show-agent) ")";
+            font-weight: 500;
+            opacity: 0.72;
+            font-size: 0.9em;
         }
         .room-input-wrap { position: relative; flex: 1; min-width: 0; border-radius: 6px; background: var(--bg-card, var(--surface-card)); }
         .room-input-wrap .room-input { position: relative; display: block; width: 100%; box-sizing: border-box; background: transparent; line-height: 1.4; overflow-wrap: break-word; word-break: break-word; }

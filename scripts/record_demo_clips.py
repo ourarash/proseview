@@ -20,6 +20,10 @@ from playwright.sync_api import sync_playwright
 REPO = Path("/Users/ari/github/proseview")
 BOOK = REPO / "fixtures" / "demo-book"
 SCRATCH = Path(__file__).resolve().parents[1] / "docs" / "_clips"
+#: Beat maps saved by a real agent against the demo book's opening scene.
+#: Make one by opening that scene in a copy of the demo book, choosing the
+#: Beats tab and Generate Beat Map, then copy .proseview/beatmaps/ here.
+BEATMAPS = SCRATCH / "beatmaps"
 THEME = "graphite-dark"
 #: The Claude model the agents clip asks, independent of local Claude settings.
 CLIP_CLAUDE_MODEL = "opus"
@@ -81,6 +85,11 @@ def book_with_history() -> Path:
                        cwd=root, check=True, env=env)
         subprocess.run(["git", "commit", "-qm", f"Draft"], cwd=root, check=True,
                        env={**env, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+    # A beat map an agent made earlier for the opening scene (see
+    # flow_beatmap). A real agent takes a minute or two to map a scene, which
+    # is too long to sit through in a README clip.
+    if BEATMAPS.is_dir():
+        shutil.copytree(BEATMAPS, root / ".proseview" / "beatmaps")
     return root
 
 
@@ -120,6 +129,7 @@ def record(name: str, flow, port: int = 7860) -> Path:
             )
             ctx.add_init_script(f"localStorage.setItem('proseview-theme','{THEME}')")
             page = ctx.new_page()
+            ROOM_MARKS["start"] = time.monotonic()
             flow(page, base, scenes(base))
             ctx.close()
             browser.close()
@@ -314,13 +324,108 @@ def flow_agents(page, base, docs):
     beat(page, 2400)
 
 
+def flow_beatmap(page, base, docs):
+    """The Beats tab: the tension line, the beats, and moments that find their paragraph.
+
+    Needs a beat map in docs/_clips/beatmaps (see BEATMAPS); the map in the
+    clip is what an agent made for this scene.
+    """
+    page.add_init_script("localStorage.setItem('proseview-frontmatter-collapsed','true')")
+    open_scene(page, base, SCENE)
+    page.evaluate("() => setSidebarOpen(false)")
+    beat(page, 900)
+    page.evaluate("() => showScenePanelTab('beats')")
+    page.wait_for_selector(".sidebar-beat-group", timeout=30000)
+    beat(page, 1800)
+    cards = page.locator(".sidebar-moment-card")
+    for i in range(min(3, cards.count())):
+        cards.nth(i).hover()
+        beat(page, 300)
+        cards.nth(i).click()
+        beat(page, 1600)
+    groups = page.locator(".sidebar-beat-group")
+    if groups.count() > 2:
+        groups.nth(2).click(position={"x": 60, "y": 14})
+        beat(page, 1400)
+        moment = page.locator(".sidebar-moment-card").first
+        if moment.count():
+            moment.click()
+            beat(page, 2000)
+
+
+def flow_room(page, base, docs):
+    """The Writers' Room: one question, and both editors answer in one conversation.
+
+    Requires `codex` and `claude` signed in on this machine. The answers are
+    real, so the clip is long while they think; main() speeds that part up.
+    """
+    page.add_init_script("localStorage.setItem('proseview-frontmatter-collapsed','true')")
+    page.add_init_script("""
+        new MutationObserver(() => document.querySelectorAll('.discuss-notice').forEach(n => {
+            if (/requirements layers/.test(n.textContent)) n.remove();
+        })).observe(document.documentElement, {childList: true, subtree: true});
+    """)
+    open_scene(page, base, SCENE)
+    page.evaluate("() => setSidebarOpen(false)")
+    beat(page, 900)
+    page.evaluate("() => showScenePanelTab('room')")
+    page.wait_for_selector("#roomInput", state="visible", timeout=30000)
+    beat(page, 1600)
+    page.click("#roomInput")
+    page.keyboard.type("In two or three sentences: does the opening hook work?", delay=40)
+    beat(page, 700)
+    ROOM_MARKS["send"] = time.monotonic() - ROOM_MARKS["start"]
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        """() => { const s = _roomSessionsByScene[_roomCurrentScenePath()];
+            return s && s.turns.filter(t => t.role === 'critic').length >= 2 && !s.busy
+                && !s.queue.length && (!s.runtime || ['idle', 'review'].includes(s.runtime.status)); }""",
+        timeout=600000,
+    )
+    ROOM_MARKS["done"] = time.monotonic() - ROOM_MARKS["start"]
+    beat(page, 1200)
+    # Read both answers: back up to the question, then down through them.
+    page.evaluate("""() => { const el = document.querySelector('#sceneRoomPane .room-log, #roomLog')
+        || document.querySelector('#sceneRoomPane [class*=scroll]'); if (el) el.scrollTop = 0; }""")
+    beat(page, 2000)
+    for _ in range(6):
+        page.mouse.move(1050, 380)
+        page.mouse.wheel(0, 220)
+        beat(page, 1300)
+    beat(page, 1500)
+
+
+#: Times in the room clip, in seconds from the start of the recording.
+ROOM_MARKS: dict[str, float] = {}
+
+
 FLOWS = {
     "demo-highlights": flow_highlights,
     "demo-writing": flow_writing,
     "demo-search": flow_search,
     "demo-timeline": flow_timeline,
     "demo-agents": flow_agents,
+    "demo-beatmap": flow_beatmap,
+    "demo-room": flow_room,
 }
+#: Clips that need a signed-in agent, left out of a plain run.
+AGENT_CLIPS = {"demo-agents", "demo-room"}
+
+
+def speed_up(webm: Path, start: float, end: float, factor: int = 12) -> Path:
+    """Play the stretch between start and end seconds `factor` times faster."""
+    if end - start < 3:
+        return webm
+    out = webm.with_name("trimmed.mp4")
+    graph = (
+        f"[0:v]trim=0:{start},setpts=PTS-STARTPTS[a];"
+        f"[0:v]trim={start}:{end},setpts=(PTS-STARTPTS)/{factor}[b];"
+        f"[0:v]trim={end},setpts=PTS-STARTPTS[c];"
+        "[a][b][c]concat=n=3:v=1:a=0[v]"
+    )
+    subprocess.run(["ffmpeg", "-y", "-i", str(webm), "-filter_complex", graph, "-map", "[v]",
+                    "-an", str(out)], check=True, capture_output=True)
+    return out
 
 
 def to_gif(webm: Path, out: Path, fps: int = 8, width: int = 780) -> Path:
@@ -344,7 +449,7 @@ def to_gif(webm: Path, out: Path, fps: int = 8, width: int = 780) -> Path:
 
 
 def main(argv: list[str]) -> int:
-    names = argv[1:] or [n for n in FLOWS if n != "demo-agents"] + list(SHOTS)
+    names = argv[1:] or [n for n in FLOWS if n not in AGENT_CLIPS] + list(SHOTS)
     unknown = [n for n in names if n not in FLOWS and n not in SHOTS]
     if unknown:
         print(f"unknown target(s): {', '.join(unknown)}")
@@ -362,6 +467,9 @@ def main(argv: list[str]) -> int:
             continue
         print(f"recording {name} ...")
         webm = record(name, FLOWS[name])
+        if name == "demo-room" and "done" in ROOM_MARKS:
+            # The editors take a while to think; play that stretch fast.
+            webm = speed_up(webm, ROOM_MARKS["send"] + 2.5, ROOM_MARKS["done"] - 1.5)
         to_gif(webm, dest / f"{name}.gif")
     return 0
 
@@ -497,7 +605,23 @@ SHOTS = {
     "dashboard": shot_dashboard,
     "analytics": shot_analytics,
     "read-the-book": shot_book,
+    "beat-map": None,  # set below
 }
+
+
+def shot_beatmap(page, base, docs):
+    # The Beats tab beside the opening scene, with a moment chosen and its
+    # paragraph marked in the prose. Needs a map in BEATMAPS.
+    page.add_init_script("localStorage.setItem('proseview-frontmatter-collapsed','true')")
+    open_scene(page, base, SCENE)
+    page.evaluate("() => setSidebarOpen(false)")
+    page.evaluate("() => showScenePanelTab('beats')")
+    page.wait_for_selector(".sidebar-beat-group", timeout=30000)
+    page.locator(".sidebar-moment-card").nth(2).click()
+    page.wait_for_timeout(1500)
+
+
+SHOTS["beat-map"] = shot_beatmap
 
 
 def capture(name: str, flow, port: int = 7861) -> Path:

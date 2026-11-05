@@ -35,10 +35,10 @@
   <h1>Write your novel in plain&nbsp;Markdown.</h1>
   <p class="lede">Proseview turns a folder of Markdown scenes into a writing studio. Read it like a book, revise it with an editor's eye, and export an e-book or paperback.</p>
   <div class="actions">
-    <a class="button primary" href="write/">Try it in your browser</a>
+    <a class="button primary" href="#get-started">Install Proseview</a>
     <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
-  <p class="fine"><a href="#get-started">Install Proseview</a> to write your own book.</p>
+  <p class="fine">In a terminal: <code>pipx install proseview</code></p>
   <ul class="badges" aria-label="Promises">
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Every draft backed up with git</li>
@@ -93,7 +93,7 @@
     <p class="eyebrow">Revise</p>
     <h2>An editor's eye, on your terms.</h2>
     <ul>
-      <li>Nine prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
+      <li>13 prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
       <li>Analysis that says what stands out in plain sentences, and shows who is in each chapter.</li>
       <li>Today's words, your pace and streak, and what changed: the words written and cut in each scene.</li>
     </ul>
@@ -113,20 +113,34 @@
   <figure class="shot"><img src="images/storylines.png" width="1956" height="1022" loading="lazy" alt="The Timeline tab for Alice's Adventures in Wonderland: each chapter's share of the book, a bar of words for every scene, and four storylines (rabbit, size, wonderland and court) as lanes showing which scenes belong to each"></figure>
 </section>
 
-<section class="feature flip" id="ai">
+<section class="feature flip" id="beat-map">
+  <div class="copy">
+    <p class="eyebrow">Beat Map</p>
+    <h2>See how a scene moves.</h2>
+    <ul>
+      <li>An estimated tension curve for the scene, and its moments in order: dialogue, action, internal thought and silent reaction.</li>
+      <li>Click a moment to jump to that paragraph.</li>
+      <li>Made by your own Codex or Claude when you ask, without editing anything. It is saved with the book, and marked out of date when the scene changes.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/beat-map.png" width="2560" height="1520" loading="lazy" alt="A scene open beside its Beat Map: a tension curve across the scene above its moments, each marked as dialogue, action, internal thought or silent reaction"></figure>
+</section>
+
+<section class="feature" id="ai">
   <div class="copy">
     <p class="eyebrow">Ask, if you want to</p>
     <h2>Your own Codex or Claude, when you ask.</h2>
     <ul>
+      <li>The Writers' Room: two editors talk through your book in one conversation, by default a Story Editor for plot and pacing and a Voice Editor for tone and style. Ask them both, or <code>@mention</code> one.</li>
       <li>A real agent, not a single reply. It searches the whole book, opens the scenes it needs, edits several files at once, runs commands and looks things up on the web.</li>
       <li>No new model, no API keys and no limits from Proseview. It uses the Codex or Claude you already sign in to, the way their VS Code extensions do.</li>
       <li>Optional, and it never runs on its own. Every edit is saved with a small card that shows what changed, and Undo all puts it back.</li>
     </ul>
   </div>
-  <figure class="shot"><img src="images/demo-agents.gif" width="780" height="463" loading="lazy" alt="Asking an agent about the open scene in Proseview's side panel"></figure>
+  <figure class="shot"><img src="images/demo-room.gif" width="780" height="463" loading="lazy" alt="The Writers' Room in Proseview's side panel, with the Story Editor and the Voice Editor each replying about the open scene"></figure>
 </section>
 
-<section class="feature" id="publish">
+<section class="feature flip" id="publish">
   <div class="copy">
     <p class="eyebrow">Publish</p>
     <h2>From manuscript to the shelf.</h2>
@@ -190,13 +204,14 @@
         <li>Everything, including print-ready PDFs and the optional Codex and Claude panel.</li>
       </ul>
       <div class="install">
-        <code id="installCmd">pipx install "proseview[claude]"</code>
+        <code id="installCmd">pipx install proseview</code>
         <button type="button" data-copy="installCmd">Copy</button>
       </div>
       <div class="install">
         <code id="runCmd">proseview --root ~/my-novel</code>
         <button type="button" data-copy="runCmd">Copy</button>
       </div>
+      <p class="fine">For the Claude tab, install <code>"proseview[claude]"</code> instead. Codex needs nothing extra.</p>
       <a class="button" href="https://github.com/ourarash/proseview#quick-start">Read the quick start</a>
     </article>
   </div>
@@ -226,6 +241,10 @@
     <p>No. Everything except the agent panel works without it, and the agent panel does nothing until you ask it something.</p>
   </details>
   <details>
+    <summary>Can I try it without installing?</summary>
+    <p>Yes. The <a href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">sample book</a> shows the dashboard for <em>Alice's Adventures in Wonderland</em>, and you can <a href="write/">start a book in your browser</a> with nothing to install. A book started there stays in that browser until you download it.</p>
+  </details>
+  <details>
     <summary>Can I move a book from the browser to my computer?</summary>
     <p>Yes. <em>Download it</em> gives you the book as a zip of its folder. Unzip it and run <code>proseview --root</code> on that folder.</p>
   </details>
@@ -235,7 +254,7 @@
   <h2>Start the next chapter.</h2>
   <div class="actions">
     <a class="button primary" href="#get-started">Install Proseview</a>
-    <a class="button" href="write/">Try it in your browser</a>
+    <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
 </section>
 

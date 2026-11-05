@@ -194,6 +194,20 @@ easy to spot.
 
 ![The Timeline tab showing chapter proportion, words per scene, three storyline lanes, and reading order against story order, with a scene card on hover](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-timeline.gif)
 
+### Beat Map
+
+Your agent maps a scene's beats on a tension line and lists its moments by
+kind. Click a moment and the page shows its paragraph.
+
+![The Beats tab beside the opening scene: a tension line across five beats, the first beat open to its moments, and the chosen moment's sentence marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-beatmap.gif)
+
+### Writers' Room
+
+Ask the room a question and both editors answer in one conversation, each
+from their own side of the book.
+
+![The Room tab: a question about the opening scene, answered first by the Story Editor on Claude and then by the Voice Editor on Codex](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
+
 ### Agents
 
 Codex and Claude each keep their own conversation. Opening another file does

@@ -2704,6 +2704,18 @@ class DiscussManager:
                         if turn_duration_ms is not None:
                             asst_msg["duration_ms"] = turn_duration_ms
                         restored.append(asst_msg)
+                    elif phase in {"thought", "commentary"}:
+                        asst_msg = {
+                            "role": "assistant",
+                            "text": _bounded_text(item.get("text")),
+                            "phase": "thought",
+                            "restored": True,
+                        }
+                        if item_created_at:
+                            asst_msg["created_at"] = item_created_at
+                        if turn_duration_ms is not None:
+                            asst_msg["duration_ms"] = turn_duration_ms
+                        restored.append(asst_msg)
         if any("created_at" not in m for m in restored):
             row = None
             try:
@@ -4421,7 +4433,7 @@ class DiscussManager:
                             "duration_ms": duration_ms,
                             "phase": "final_answer",
                         })
-                elif event.get("phase") == "thought":
+                elif event.get("phase") in {"thought", "commentary"}:
                     duration_ms = None
                     if conversation.active_turn_started_monotonic is not None:
                         duration_ms = int((time.monotonic() - conversation.active_turn_started_monotonic) * 1000)
@@ -4444,6 +4456,7 @@ class DiscussManager:
                             "text": _bounded_text(text, 2000),
                             "turn_id": event.get("turn_id") or conversation.active_turn_id or "",
                         }
+                    conversation.progress.append(text)
                 else:
                     text = str(event.get("text") or "")
                     conversation.progress.append(text)

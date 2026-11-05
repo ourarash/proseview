@@ -679,6 +679,11 @@ def test_what_codex_says_between_commands_is_a_step_in_its_place(tmp_path: Path,
         ("commandExecution", "bash -lc 'cat one.md'"),
     ]
     assert rows[0]["turn_id"] == turn_id
+    messages = manager.get_snapshot(cid)["messages"]
+    asst_messages = [m for m in messages if m["role"] == "assistant"]
+    assert len(asst_messages) == 1
+    assert asst_messages[0]["text"] == "I'll compare the two chapters."
+    assert asst_messages[0]["phase"] == "thought"
     manager.stop(cid, turn_id)
     manager.close()
 

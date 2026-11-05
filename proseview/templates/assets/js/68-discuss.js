@@ -1983,6 +1983,8 @@
                 box.appendChild(draft);
             } else if (live.progress) {
                 var note = live.progress.length > 400 ? '\u2026' + live.progress.slice(-400) : live.progress;
+                // Summary headings that arrived without a break between them.
+                note = note.replace(/\*\*\*\*/g, '**\n\n**');
                 var noteEl = elementWith('room-live-note room-turn-body');
                 renderDiscussMarkdown(noteEl, note);
                 box.appendChild(noteEl);

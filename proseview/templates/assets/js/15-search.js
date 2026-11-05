@@ -11,6 +11,7 @@
         const SEARCH_PROSE_PER_SCENE = 2;
         const SEARCH_DEBOUNCE_MS = 50;
         const SEARCH_GROUP_ORDER = [
+            ['FOLDERS', 'Repository Folders'],
             ['FILES',  'Files'],
             ['SCENES', 'Scenes'],
             ['TODOS',  'TODOs'],
@@ -112,6 +113,17 @@
             return s;
         }
 
+        function _sidebarFolderSet() {
+            const set = new Set();
+            if (typeof sidebarTree !== 'undefined' && Array.isArray(sidebarTree)) {
+                for (let i = 0; i < sidebarTree.length; i++) {
+                    const n = sidebarTree[i];
+                    if (n && !n.is_file && n.name) set.add(n.name);
+                }
+            }
+            return set;
+        }
+
         function _runSearch(query) {
             // Returns a flat array of result objects, capped at
             // SEARCH_RESULT_CAP. Each result has at least:
@@ -125,6 +137,49 @@
 
             const seenFiles = new Set();
             const seenScenes = new Set();
+            const sidebarFolders = _sidebarFolderSet();
+
+            // 0. FOLDERS — repository folders matching the query.
+            const seenDirs = new Set();
+            function _scanDirs(nodes) {
+                if (!nodes) return;
+                for (let i = 0; i < nodes.length; i++) {
+                    const n = nodes[i];
+                    if (!n || n.is_file || !n.path) continue;
+                    const dp = n.path;
+                    if (seenDirs.has(dp)) continue;
+                    const nameHit = n.name && n.name.toLowerCase().indexOf(q) !== -1;
+                    const pathHit = dp.toLowerCase().indexOf(q) !== -1;
+                    if (nameHit || pathHit) {
+                        seenDirs.add(dp);
+                        _searchTotalHits++;
+                        if (out.length < SEARCH_RESULT_CAP) {
+                            const topSeg = dp.split('/')[0];
+                            const inFiles = (typeof sidebarWholeFolder !== 'undefined' && sidebarWholeFolder)
+                                || sidebarFolders.has(topSeg);
+                            const secLabel = inFiles
+                                ? 'Folder in Files list'
+                                : 'Folder on disk · Click "+ Add to Files" to show in your Files tree';
+                            out.push({
+                                category: 'FOLDERS',
+                                path: dp,
+                                folderName: topSeg,
+                                isDir: true,
+                                inFiles: inFiles,
+                                canAdd: !inFiles,
+                                primary: dp + '/',
+                                secondary: secLabel,
+                                primaryHi: _searchHighlight(dp + '/', query),
+                                badge: inFiles ? '' : 'Not shown in Files',
+                            });
+                        }
+                    }
+                    if (n.children) _scanDirs(n.children);
+                }
+            }
+            if (typeof repositoryTree !== 'undefined' && Array.isArray(repositoryTree)) {
+                _scanDirs(repositoryTree);
+            }
 
             // 1. FILES — every safe repository path, independent of the
             // configured sidebar/preview folders.
@@ -140,13 +195,22 @@
                 seenFiles.add(fp);
                 _searchTotalHits++;
                 if (out.length < SEARCH_RESULT_CAP) {
+                    const topSeg = fp.split('/')[0];
+                    const inFiles = (typeof sidebarWholeFolder !== 'undefined' && sidebarWholeFolder)
+                        || sidebarFolders.has(topSeg)
+                        || fp === '.proseview.yaml'
+                        || (node && !!node.is_scene);
+                    const secLabel = inFiles ? 'file' : 'Repository file';
                     out.push({
                         category: 'FILES',
                         path: node.is_scene ? node.scene_path : fp,
                         repoPath: fp,
                         isScene: !!node.is_scene,
-                        primary: fp, secondary: 'file',
+                        inFiles: inFiles,
+                        primary: fp,
+                        secondary: secLabel,
                         primaryHi: _searchHighlight(fp, query),
+                        badge: inFiles ? '' : 'Repository file',
                     });
                 }
             }
@@ -298,8 +362,10 @@
             }
             if (!results.length) {
                 panel.hidden = false;
-                panel.innerHTML = '<div class="search-empty">No matches for “'
-                    + _searchEscHtml(query) + '”.</div>';
+                panel.innerHTML = '<div class="search-empty">'
+                    + '<div class="search-empty-title">No matches for “' + _searchEscHtml(query) + '”.</div>'
+                    + '<div class="search-empty-hint">Search scans manuscript scenes and repository files. To show an unlisted folder in your Files list, add it to <code>repo_tab.folders</code> in <a href="#" class="search-empty-link" onclick="_openConfigFileFromSearch(event)">.proseview.yaml</a>.</div>'
+                    + '</div>';
                 if (input) { input.setAttribute('aria-expanded', 'true'); input.removeAttribute('aria-activedescendant'); }
                 if (status) status.textContent = 'No search results';
                 return;
@@ -324,10 +390,18 @@
                     const item = rows[i];
                     const r = item.row;
                     const activeCls = item.idx === _searchCursor ? ' search-row-active' : '';
+                    let actionHtml = '';
+                    if (r.canAdd && r.folderName) {
+                        actionHtml = '<button type="button" class="search-action-btn" onclick="_addFolderToFiles(\''
+                            + _searchEscHtml(r.folderName) + '\', event)" title="Add ' + _searchEscHtml(r.folderName)
+                            + ' to Files in .proseview.yaml">+ Add to Files</button>';
+                    } else if (r.badge) {
+                        actionHtml = '<span class="search-badge">' + _searchEscHtml(r.badge) + '</span>';
+                    }
                     html += '<div class="search-row' + activeCls
                         + '" id="searchResult' + item.idx + '" role="option" aria-selected="'
                         + (item.idx === _searchCursor ? 'true' : 'false') + '" data-idx="' + item.idx + '">'
-                        + '<div class="search-row-primary">' + r.primaryHi + '</div>'
+                        + '<div class="search-row-primary"><span class="search-row-title">' + r.primaryHi + '</span>' + actionHtml + '</div>'
                         + '<div class="search-row-secondary">'
                         + (r.secondaryHi || _searchEscHtml(r.secondary || '')) + '</div>'
                         + '</div>';
@@ -439,6 +513,18 @@
             if (warning) warning.hidden = true;
             _closeSearch({ restoreFocus: false });
 
+            if (r.category === 'FOLDERS') {
+                if (r.inFiles) {
+                    if (typeof setSidebarOpen === 'function') setSidebarOpen(true);
+                    if (typeof highlightSidebarItem === 'function') highlightSidebarItem(r.path);
+                } else {
+                    if (typeof previewRepoFile === 'function') {
+                        previewRepoFile('.proseview.yaml', { focus: true });
+                    }
+                }
+                return;
+            }
+
             // Anything the scene index does not know (a manuscript note
             // nested below a chapter dir, say) opens in the file preview:
             // openSceneModal() has no entry to render for it.
@@ -505,6 +591,55 @@
             }
             _searchReturnFocus = null;
         }
+
+        function _openConfigFileFromSearch(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            _closeSearch();
+            if (typeof previewRepoFile === 'function') {
+                previewRepoFile('.proseview.yaml', { focus: true });
+            }
+        }
+        window._openConfigFileFromSearch = _openConfigFileFromSearch;
+
+        function _addFolderToFiles(folder, event) {
+            if (event) {
+                if (event.stopPropagation) event.stopPropagation();
+                if (event.preventDefault) event.preventDefault();
+            }
+            const btn = event && event.target ? event.target : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Adding…';
+            }
+            fetch('/api/files/add-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder: folder })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data && data.ok) {
+                    if (btn) {
+                        btn.className = 'search-action-btn added';
+                        btn.textContent = '✓ Added to Files';
+                    }
+                } else {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '+ Add to Files';
+                    }
+                    alert('Could not add folder: ' + ((data && data.error) || 'unknown error'));
+                }
+            })
+            .catch(function(err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '+ Add to Files';
+                }
+                alert('Could not add folder: ' + err.message);
+            });
+        }
+        window._addFolderToFiles = _addFolderToFiles;
 
         function _restoreSearchToDashboard() {
             const mount = document.getElementById('dashboardSearchMount');

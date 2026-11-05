@@ -3053,8 +3053,20 @@ def test_file_explorer_copies_absolute_and_repository_relative_paths(
     row.click(button="right")
     menu = page.locator("#sidebarContextMenu")
     assert menu.get_by_role("menuitem").all_inner_texts() == [
-        "Mention in chat", "Open in VS Code", REVEAL_LABEL, "Copy path", "Copy relative path", "Rename", "Delete…"
+        "Open in new tab", "Copy URL", "Mention in chat", "Open in VS Code", REVEAL_LABEL, "Copy path", "Copy relative path", "Rename", "Delete…"
     ]
+    menu.get_by_role("menuitem", name="Copy URL", exact=True).click()
+    page.wait_for_function("value => window.__sidebarCopiedPath && window.__sidebarCopiedPath.includes(value)", arg="#/file/plans%2Fbook-plan.md")
+    assert page.locator("#sidebarFileToast").inner_text() == "Copied URL."
+
+    row.click(button="right")
+    with page.expect_popup() as popup_info:
+        menu.get_by_role("menuitem", name="Open in new tab", exact=True).click()
+    new_page = popup_info.value
+    assert "#/file/plans%2Fbook-plan.md" in new_page.url or "#/file/plans/book-plan.md" in new_page.url
+    new_page.close()
+
+    row.click(button="right")
     menu.get_by_role("menuitem", name="Copy relative path", exact=True).click()
     page.wait_for_function("value => window.__sidebarCopiedPath === value", arg=relative)
     assert page.locator("#sidebarFileToast").inner_text() == "Copied relative path."
@@ -3065,6 +3077,13 @@ def test_file_explorer_copies_absolute_and_repository_relative_paths(
     page.wait_for_function("value => window.__sidebarCopiedPath === value", arg=absolute)
     assert page.locator("#sidebarFileToast").inner_text() == "Copied path."
     assert page.evaluate("document.activeElement.getAttribute('aria-label')") == "More actions for book-plan.md"
+
+    page.locator('#sidebarTree .dir-toggle[data-path="manuscript/ch01"]').click()
+    scene_row = page.locator(f'#sidebarTree .file-link[data-scene-path="{SCENE_REL}"]')
+    scene_row.click(button="right")
+    menu.get_by_role("menuitem", name="Copy URL", exact=True).click()
+    page.wait_for_function("value => window.__sidebarCopiedPath && window.__sidebarCopiedPath.includes(value)", arg="#/scene/ch01%2F01-opening.md")
+    assert page.locator("#sidebarFileToast").inner_text() == "Copied URL."
 
     page.evaluate(
         """() => {
@@ -3298,6 +3317,56 @@ def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
     assert not page.evaluate(
         "document.documentElement.scrollWidth > document.documentElement.clientWidth"
     )
+
+
+def test_file_explorer_icons_distinguish_file_types(page: Page, server: ProseviewServer):
+    """File explorer icons resolve specifically by file format / extension."""
+    open_dashboard(page, server)
+    page.wait_for_selector("#sidebarTree", state="visible")
+
+    # In the test repo, verify file-type icons are rendered
+    icon_classes = page.evaluate(
+        """() => {
+            const icons = [...document.querySelectorAll('#sidebarTree .file-link .sidebar-node-icon')];
+            return icons.map(el => [...el.classList]);
+        }"""
+    )
+    assert len(icon_classes) >= 1
+    # Check that scene icons and specific type icons exist
+    has_scene = any("sidebar-scene-icon" in classes for classes in icon_classes)
+    assert has_scene, f"Expected at least one scene icon in sidebar, found: {icon_classes}"
+
+    # Verify that sidebarFileType maps extensions accurately
+    type_checks = page.evaluate(
+        """() => {
+            return {
+                scene: sidebarFileType({ is_scene: true, name: 'scene.md' }),
+                md: sidebarFileType({ is_scene: false, name: 'notes.md' }),
+                txt: sidebarFileType({ is_scene: false, name: 'scratch.txt' }),
+                yaml: sidebarFileType({ is_scene: false, name: '.proseview.yaml' }),
+                json: sidebarFileType({ is_scene: false, name: 'data.json' }),
+                img: sidebarFileType({ is_scene: false, name: 'map.png' }),
+                pdf: sidebarFileType({ is_scene: false, name: 'proof.pdf' }),
+                audio: sidebarFileType({ is_scene: false, name: 'voice.m4a' }),
+                data: sidebarFileType({ is_scene: false, name: 'goals.csv' }),
+                code: sidebarFileType({ is_scene: false, name: 'build.py' }),
+                fallback: sidebarFileType({ is_scene: false, name: 'unknown.xyz' })
+            };
+        }"""
+    )
+    assert type_checks == {
+        "scene": "scene",
+        "md": "markdown",
+        "txt": "text",
+        "yaml": "yaml",
+        "json": "json",
+        "img": "image",
+        "pdf": "pdf",
+        "audio": "audio",
+        "data": "data",
+        "code": "code",
+        "fallback": "file",
+    }
 
 
 # ── editor round-trip fidelity ──────────────────────────────────────────────

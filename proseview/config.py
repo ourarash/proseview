@@ -446,6 +446,56 @@ class Config:
             yaml.dump(data, f)
 
 
+def add_repo_tab_folder(repo_root: Path, folder: str) -> list[str]:
+    """Add *folder* to ``repo_tab.folders`` in ``.proseview.yaml``, preserving formatting.
+
+    Creates ``.proseview.yaml`` if missing, or updates existing file.
+    Returns the updated list of folders.
+    """
+    import ruamel.yaml
+
+    folder_clean = str(folder or "").strip().strip("/").replace("\\", "/")
+    if not folder_clean or folder_clean.startswith(".") or ".." in folder_clean or "/" in folder_clean:
+        raise ValueError(f"Invalid folder name: {folder!r}")
+
+    path = repo_root / ".proseview.yaml"
+    yaml = ruamel.yaml.YAML()
+    yaml.preserve_quotes = True
+    yaml.indent(mapping=2, sequence=4, offset=2)
+
+    if path.exists():
+        try:
+            data = yaml.load(path)
+        except Exception:
+            data = {}
+    else:
+        data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    repo_tab = data.get("repo_tab")
+    if not isinstance(repo_tab, dict):
+        repo_tab = {}
+        data["repo_tab"] = repo_tab
+
+    existing = repo_tab.get("folders")
+    if isinstance(existing, (list, tuple)):
+        current_folders = [str(x).strip() for x in existing if str(x).strip()]
+    else:
+        current_folders = list(DEFAULT_REPO_TAB_FOLDERS)
+
+    if folder_clean not in current_folders:
+        current_folders.append(folder_clean)
+
+    repo_tab["folders"] = current_folders
+
+    with path.open("w", encoding="utf-8") as f:
+        yaml.dump(data, f)
+
+    return current_folders
+
+
 class ConfigError(ValueError):
     """Raised when ``.proseview.yaml`` contains an invalid value for a known key."""
 

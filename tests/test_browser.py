@@ -64,6 +64,16 @@ def test_creating_a_file_saves_it_and_tells_the_page_to_reload(book: Path):
     assert browser.request("GET", "/data.json")["events"] == []
 
 
+def test_adding_repo_folder_endpoint(book: Path):
+    (book / "source").mkdir()
+    reply = _post("/api/files/add-folder", {"folder": "source"})
+    assert reply["status"] == 200, reply["body"]
+    data = json.loads(reply["body"])
+    assert data["ok"] is True
+    assert "source" in data["folders"]
+    assert reply["events"] and ".proseview.yaml" in reply["events"][0]
+
+
 def test_book_zip_holds_the_book_but_not_proseviews_working_files(book: Path):
     (book / ".proseview" / "backups").mkdir(parents=True)
     (book / ".proseview" / "backups" / "x.md").write_text("old", encoding="utf-8")

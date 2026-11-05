@@ -2673,7 +2673,7 @@ def test_scene_toolbar_stays_single_row_with_dock_and_at_two_hundred_percent_zoo
         "() => { const h = document.querySelector('#sceneModal .modal-header'); "
         "return h.scrollWidth <= h.clientWidth; }"
     )
-    for selector in ("#sceneMoreBtn", "#sceneAppearanceBtn", "#sceneEditBtn"):
+    for selector in ("#sceneMoreBtn", "#sceneAppearanceBtn", "#sceneEditBtn", "#sceneBeatMapBtn"):
         action = page.locator(selector).bounding_box()
         assert action
         assert action["x"] >= 0 and action["x"] + action["width"] <= 1400
@@ -8025,6 +8025,9 @@ def test_the_file_browser_reveals_the_scene_being_read(page: Page, server: Prose
     revealed = _revealed(page)
     assert revealed["path"].startswith("manuscript/ch01/")
     assert all(revealed["open"]) and revealed["visible"]
+    # Let the new scene's lexical request finish before the fixture closes the
+    # browser; closing immediately can abort it and report a fetch error.
+    page.wait_for_function("() => typeof meta[paths[curIdx]].mattr === 'number'")
 
 
 def _reading_position(page: Page) -> tuple[str, int]:

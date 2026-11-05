@@ -5455,9 +5455,11 @@
             cursor: pointer;
         }
 
-        #sceneFrontmatter {
+        #sceneFrontmatter,
+        #scenePrevTailHost {
+            width: min(100%, var(--reading-measure, 760px));
             max-width: var(--reading-measure, 760px);
-            margin: 0 auto;
+            margin-inline: auto;
         }
 
         .sidebar-tree-note {
@@ -13338,6 +13340,8 @@
         }
 
         .scene-prev-tail {
+            box-sizing: border-box;
+            width: 100%;
             margin: 0 0 18px;
             padding: 8px 12px;
             border: 1px solid var(--border);
@@ -13386,6 +13390,24 @@
         .scene-prev-tail-para:last-child {
             margin-bottom: 0;
         }
+        .modal-body .scene-prev-tail-body blockquote {
+            margin: 6px 0 8px 8px;
+            padding: 4px 10px;
+            border-left: 2px solid color-mix(in srgb, var(--primary) 70%, var(--border));
+            background: color-mix(in srgb, var(--surface-card, var(--bg-card)) 70%, transparent);
+            border-radius: 0 4px 4px 0;
+            color: var(--text-secondary, var(--text-muted));
+            font-size: 0.95em;
+        }
+        .modal-body .scene-prev-tail-body blockquote:last-child {
+            margin-bottom: 0;
+        }
+        .modal-body .scene-prev-tail-body blockquote p {
+            margin: 0 0 4px;
+        }
+        .modal-body .scene-prev-tail-body blockquote p:last-child {
+            margin-bottom: 0;
+        }
 
         .scene-edit-todo-btn {
             width: auto !important;
@@ -13399,11 +13421,25 @@
             flex-direction: column;
             align-items: center;
             gap: 2px;
-            padding: 0 6px;
+            padding: 2px 6px;
+            border: none;
+            background: transparent;
+            font: inherit;
             font-family: var(--font-mono, monospace);
             font-variant-numeric: tabular-nums;
             line-height: 1.1;
             white-space: nowrap;
+            cursor: pointer;
+            border-radius: 4px;
+            color: inherit;
+            transition: background 120ms ease;
+        }
+        .scene-edit-word-counts:hover {
+            background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+        }
+        .scene-edit-word-counts:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
         }
         .scene-edit-word-delta {
             font-size: 11px;
@@ -13604,6 +13640,7 @@
         .scene-prev-tail-jump[data-tip],
         .scene-overview-card-words[data-tip],
         .scene-overview-card-beat dt[data-tip],
+        .scene-edit-word-counts[data-tip],
         #sceneEditTodoBtn[data-tip],
         #sceneEditWordDelta[data-tip],
         #sceneSprintBtn[data-tip] {
@@ -13614,6 +13651,7 @@
         .scene-view-btn[data-tip]::after,
         .scene-overview-card-words[data-tip]::after,
         .scene-overview-card-beat dt[data-tip]::after,
+        .scene-edit-word-counts[data-tip]::after,
         #sceneEditTodoBtn[data-tip]::after,
         #sceneEditWordDelta[data-tip]::after,
         #sceneSprintBtn[data-tip]::after {
@@ -13623,7 +13661,7 @@
             left: 50%;
             z-index: 4000;
             width: max-content;
-            max-width: 260px;
+            max-width: 320px;
             padding: 8px 10px;
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -13640,6 +13678,7 @@
             display: none;
             pointer-events: none;
         }
+        .scene-edit-word-counts[data-tip]::after,
         #sceneEditTodoBtn[data-tip]::after,
         #sceneEditWordDelta[data-tip]::after,
         #sceneSprintBtn[data-tip]::after {
@@ -13660,6 +13699,8 @@
         .scene-view-btn[data-tip]:focus-visible::after,
         .scene-overview-card-words[data-tip]:hover::after,
         .scene-overview-card-beat dt[data-tip]:hover::after,
+        .scene-edit-word-counts[data-tip]:hover::after,
+        .scene-edit-word-counts[data-tip]:focus-visible::after,
         #sceneEditTodoBtn[data-tip]:hover::after,
         #sceneEditTodoBtn[data-tip]:focus-visible::after,
         #sceneEditWordDelta[data-tip]:hover::after,

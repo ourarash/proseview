@@ -593,12 +593,60 @@ def test_drafting_momentum_todo_insertion_word_delta_and_sprint_timer(page: Page
     page.wait_for_function("window._pmEditMode === false")
 
 
+def test_scene_edit_word_counts_toggle_format_between_exact_and_compact(page: Page, server: ProseviewServer):
+    open_scene(page, server, SCENE_REL)
+    page.click("#sceneEditBtn")
+    page.wait_for_function("window._pmEditMode === true")
+
+    total_el = page.locator("#sceneEditWordTotal")
+    counts_btn = page.locator("#sceneEditWordCounts")
+    total_el.wait_for(state="visible")
+
+    # Format B (default): exact "X / Y"
+    initial_text = total_el.inner_text()
+    assert "/" in initial_text
+    parts = [p.strip() for p in initial_text.split("/")]
+    assert len(parts) == 2
+    assert not parts[0].endswith("k")
+    assert not parts[1].endswith("k")
+
+    # Tooltip mentions session, scene and manuscript
+    tip = counts_btn.get_attribute("data-tip")
+    assert "in scene" in tip
+    assert "in manuscript" in tip
+
+    # Click toggles to Format A (compact)
+    counts_btn.click()
+    compact_text = total_el.inner_text()
+    assert "/" in compact_text
+    c_parts = [p.strip() for p in compact_text.split("/")]
+    assert c_parts[1].endswith("k") or int(c_parts[1].replace(",", "")) < 1000
+
+    # Click again toggles back to Format B
+    counts_btn.click()
+    assert total_el.inner_text() == initial_text
+
+    page.click("#sceneEditBar .scene-edit-cancel")
+    page.wait_for_function("window._pmEditMode === false")
+
+
 def test_where_you_left_off_preview_and_overview_scene_cards_and_filters(page: Page, server: ProseviewServer):
     # Scene after the first shows "Where you left off" from the previous scene.
     open_scene(page, server, ANNOTATED_SCENE_REL)
     tail = page.locator("#scenePrevTail")
     tail.wait_for(state="visible")
     assert "Where you left off" in tail.locator(".scene-prev-tail-summary").inner_text()
+    tail_box = tail.bounding_box()
+    prose_box = page.locator("#sceneProseHost").bounding_box()
+    assert abs(tail_box["width"] - prose_box["width"]) <= 1, f"Tail width {tail_box['width']} must match prose width {prose_box['width']}"
+    assert abs(tail_box["x"] - prose_box["x"]) <= 1, f"Tail left {tail_box['x']} must be flush with prose left {prose_box['x']}"
+    # Verify alignment also holds when the window is maximized / widened:
+    page.set_viewport_size({"width": 2048, "height": 1080})
+    page.wait_for_timeout(200)
+    tail_box_wide = tail.bounding_box()
+    prose_box_wide = page.locator("#sceneProseHost").bounding_box()
+    assert abs(tail_box_wide["width"] - prose_box_wide["width"]) <= 1, f"Wide tail width {tail_box_wide['width']} must match prose width {prose_box_wide['width']}"
+    assert abs(tail_box_wide["x"] - prose_box_wide["x"]) <= 1, f"Wide tail left {tail_box_wide['x']} must be flush with prose left {prose_box_wide['x']}"
     tail.locator(".scene-prev-tail-summary").click()
     assert len(tail.locator(".scene-prev-tail-para").all_inner_texts()) >= 1
 
@@ -620,6 +668,84 @@ def test_where_you_left_off_preview_and_overview_scene_cards_and_filters(page: P
     page.select_option("#issueFilter", "all")
     page.click("#sceneViewTableBtn")
     assert page.locator("#sceneTable").is_visible()
+
+
+def test_where_you_left_off_renders_blockquote(page: Page, server: ProseviewServer):
+    open_scene(page, server, ANNOTATED_SCENE_REL)
+    result = page.evaluate("""() => {
+        const mdWithQuote = [
+            'Earlier paragraph.',
+            '',
+            '> Nima,',
+            '>',
+            '> Congratulations, and thank you for inviting me.',
+            '>',
+            '> Please stop by my office when you get a chance.',
+            '>',
+            '> Professor Perkins, PhD',
+            '',
+            'I didn\\'t invite you, lady. Patel did.'
+        ].join('\\n');
+
+        const prevParas = _extractProseTailParagraphs(mdWithQuote);
+        const host = document.createElement('div');
+        host.id = 'testTailHost';
+        document.body.appendChild(host);
+
+        const details = document.createElement('details');
+        const body = document.createElement('div');
+        body.className = 'scene-prev-tail-body';
+        prevParas.forEach(function(para) {
+            if (typeof renderSafeMarkdown === 'function') {
+                var block = document.createElement('div');
+                renderSafeMarkdown(block, para);
+                while (block.firstChild) {
+                    var child = block.firstChild;
+                    if (child.nodeType === 1) {
+                        if (child.tagName === 'P') child.classList.add('scene-prev-tail-para');
+                        child.querySelectorAll('p').forEach(function(pEl) {
+                            pEl.classList.add('scene-prev-tail-para');
+                        });
+                    }
+                    body.appendChild(child);
+                }
+            }
+        });
+        details.appendChild(body);
+        host.appendChild(details);
+
+        const bq = body.querySelector('blockquote');
+        const bqParas = bq ? [...bq.querySelectorAll('p')].map(p => p.textContent) : [];
+        const bodyText = body.textContent;
+        const allParaClasses = [...body.querySelectorAll('p')].every(p => p.classList.contains('scene-prev-tail-para'));
+        host.remove();
+
+        // Also test markdown ending directly in a blockquote
+        const mdEndingInQuote = [
+            'Intro prose.',
+            '',
+            '> Final thought in a blockquote.'
+        ].join('\\n');
+        const endingQuoteParas = _extractProseTailParagraphs(mdEndingInQuote);
+
+        return {
+            prevParasCount: prevParas.length,
+            hasBlockquote: !!bq,
+            bqParas: bqParas,
+            bodyText: bodyText,
+            allParaClasses: allParaClasses,
+            hasRawQuoteSyntax: bodyText.includes('> >') || bodyText.includes('> Nima'),
+            endingQuoteParasCount: endingQuoteParas.length,
+            endingQuoteIsRaw: endingQuoteParas[1] && endingQuoteParas[1].startsWith('>')
+        };
+    }""")
+    assert result["prevParasCount"] == 2
+    assert result["hasBlockquote"] is True
+    assert "Congratulations, and thank you for inviting me." in result["bqParas"]
+    assert result["hasRawQuoteSyntax"] is False
+    assert result["allParaClasses"] is True
+    assert result["endingQuoteParasCount"] == 2
+    assert result["endingQuoteIsRaw"] is True
 
 
 @pytest.fixture(autouse=True)

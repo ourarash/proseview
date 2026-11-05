@@ -91,6 +91,7 @@
             content: 'callout_title block+',
             group: 'block',
             defining: true,
+            createGapCursor: true,
             parseDOM: [{tag: 'div.pv-callout', getAttrs: function(dom) {
                 return {type: dom.getAttribute('data-callout-type') || 'note', fold: dom.getAttribute('data-callout-fold') || ''};
             }}],

@@ -221,8 +221,9 @@
                 var $pos = state.doc.resolve(pos);
                 var beside = forward ? $pos.nodeAfter : $pos.nodeBefore;
                 var own = $head.node(1);
-                var isGap = beside && (beside.type.name === 'annotation' ||
-                    isGapBetween(forward ? own : beside, forward ? beside : own));
+                var isGap = beside ? (beside.type.name === 'annotation' ||
+                    isGapBetween(forward ? own : beside, forward ? beside : own))
+                    : (!own.isTextblock && !own.isAtom && PM.GapCursor && PM.GapCursor.valid && PM.GapCursor.valid($pos));
                 if (!isGap) return false;
                 if (dispatch) dispatch(state.tr.setSelection(new PM.GapCursor($pos)).scrollIntoView());
                 return true;
@@ -247,6 +248,11 @@
                                 isGapBetween(prev.node, node)) found = offset;
                             prev = { node: node, bottom: rect.bottom };
                         });
+                        if (found === null && prev && event.clientY >= prev.bottom &&
+                            !prev.node.isTextblock && !prev.node.isAtom &&
+                            PM.GapCursor && PM.GapCursor.valid && PM.GapCursor.valid(doc.resolve(doc.content.size))) {
+                            found = doc.content.size;
+                        }
                         if (found === null) return false;
                         view.dispatch(view.state.tr.setSelection(new PM.GapCursor(doc.resolve(found))));
                         return true;
@@ -493,6 +499,49 @@
             return total;
         }
 
+        var WORD_COUNT_COMPACT_KEY = 'proseview-edit-word-compact';
+        var _wordCountCompact = false;
+        try {
+            _wordCountCompact = localStorage.getItem(WORD_COUNT_COMPACT_KEY) === 'true';
+        } catch (e) {}
+
+        function _formatCompactWords(num) {
+            if (typeof num !== 'number' || isNaN(num)) return '0';
+            if (num >= 1000000) {
+                return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            }
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            }
+            return num.toLocaleString();
+        }
+
+        function _getBookBaselineWords() {
+            var sum = 0;
+            if (typeof paths !== 'undefined' && Array.isArray(paths) && typeof meta === 'object' && meta) {
+                var counted = 0;
+                for (var i = 0; i < paths.length; i++) {
+                    var sp = paths[i];
+                    if (meta[sp] && typeof meta[sp].words === 'number') {
+                        sum += meta[sp].words;
+                        counted++;
+                    }
+                }
+                if (counted > 0) return sum;
+            }
+            if (typeof storyModel === 'object' && storyModel && typeof storyModel.total_words === 'number' && storyModel.total_words > 0) {
+                return storyModel.total_words;
+            }
+            if (typeof meta === 'object' && meta) {
+                for (var k in meta) {
+                    if (meta[k] && typeof meta[k].words === 'number') {
+                        sum += meta[k].words;
+                    }
+                }
+            }
+            return sum;
+        }
+
         function _updateEditWordDelta() {
             var el = document.getElementById('sceneEditWordDelta');
             if (!el || !_pmView) return;
@@ -500,13 +549,43 @@
             var delta = now - _pmEditStartWords;
             var sign = delta >= 0 ? '+' : '';
             el.textContent = sign + delta + 'w';
-            var totalEl = document.getElementById('sceneEditWordTotal');
-            if (totalEl) totalEl.textContent = now.toLocaleString() + (now === 1 ? ' word' : ' words');
             el.classList.toggle('is-positive', delta > 0);
             el.classList.toggle('is-negative', delta < 0);
-            var tip = 'Net words added or cut in this scene since you opened Edit mode (' + now + ' words total in scene).';
-            el.dataset.tip = tip;
+
+            var bookBaseline = _getBookBaselineWords();
+            var bookNow = Math.max(0, bookBaseline + delta);
+
+            var totalEl = document.getElementById('sceneEditWordTotal');
+            if (totalEl) {
+                if (_wordCountCompact) {
+                    var sceneCompact = (now >= 10000) ? _formatCompactWords(now) : now.toLocaleString();
+                    var bookCompact = _formatCompactWords(bookNow);
+                    totalEl.textContent = sceneCompact + ' / ' + bookCompact;
+                } else {
+                    totalEl.textContent = now.toLocaleString() + ' / ' + bookNow.toLocaleString();
+                }
+            }
+
+            var tip = (delta >= 0 ? '+' : '') + delta + ' words this session · '
+                + now.toLocaleString() + ' in scene · '
+                + bookNow.toLocaleString() + ' in manuscript (click to toggle format)';
+            var countsBtn = document.getElementById('sceneEditWordCounts');
+            if (countsBtn) {
+                countsBtn.dataset.tip = tip;
+                el.removeAttribute('data-tip');
+            } else {
+                el.dataset.tip = tip;
+            }
         }
+
+        window.toggleEditWordCountFormat = function(e) {
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            _wordCountCompact = !_wordCountCompact;
+            try {
+                localStorage.setItem(WORD_COUNT_COMPACT_KEY, _wordCountCompact ? 'true' : 'false');
+            } catch (err) {}
+            _updateEditWordDelta();
+        };
 
         function _renderSprintBtn() {
             var btn = document.getElementById('sceneSprintBtn');
@@ -769,6 +848,7 @@
                 // someone else changed the file underneath us.
                 if (meta[p] && data.mtime) meta[p].mtime = data.mtime;
                 if (meta[p] && data.revision) meta[p].revision = data.revision;
+                if (meta[p] && _pmView) meta[p].words = _countDocWords(_pmView.state.doc);
                 contents[p] = markdown;
                 var liveMarkdown = serializeSceneEditorMarkdown();
                 if (liveMarkdown !== markdown) {

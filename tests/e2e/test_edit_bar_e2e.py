@@ -156,3 +156,87 @@ def test_selection_pill_drags_from_its_button_and_still_opens(page: Page, server
     # A plain click still opens the menu.
     page.click("#selectionPillBtn")
     page.wait_for_selector("#selectionPillMenu", state="visible")
+
+
+def test_quote_at_end_arrow_right_exits_and_types_outside(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    enter_edit_mode(page)
+    page.wait_for_selector(".ProseMirror")
+
+    # Set editor content to end with a blockquote
+    page.evaluate("""() => {
+        const PM = window._PM;
+        const parser = new PM.MarkdownParser(PM.mySchema, PM.defaultMarkdownParser.tokenizer, PM.defaultMarkdownParser.tokens);
+        const doc = parser.parse("Intro narration.\\n\\n> Perkins, PhD\\n");
+        const tr = window._pmView.state.tr.replaceWith(0, window._pmView.state.doc.content.size, doc.content);
+        window._pmView.dispatch(tr);
+    }""")
+
+    # Put cursor at end of the quote text
+    page.evaluate("""() => {
+        const view = window._pmView;
+        const PM = window._PM;
+        const doc = view.state.doc;
+        const pos = doc.content.size - 2;
+        view.dispatch(view.state.tr.setSelection(PM.TextSelection.create(doc, pos)));
+    }""")
+
+    inside = page.evaluate("""() => {
+        const sel = window._pmView.state.selection;
+        return sel.$head.depth > 1 && sel.$head.node(1).type.name === 'blockquote';
+    }""")
+    assert inside is True
+
+    # 1. Pressing ArrowRight exits the blockquote into a GapCursor
+    page.keyboard.press("ArrowRight")
+
+    is_gap = page.evaluate("""() => {
+        const sel = window._pmView.state.selection;
+        const PM = window._PM;
+        return (sel instanceof PM.GapCursor) && sel.$from.pos === window._pmView.state.doc.content.size;
+    }""")
+    assert is_gap is True
+
+    # 2. Pressing ArrowLeft steps back inside the quote
+    page.keyboard.press("ArrowLeft")
+    back_inside = page.evaluate("""() => {
+        const sel = window._pmView.state.selection;
+        return sel.$head.depth > 1 && sel.$head.node(1).type.name === 'blockquote';
+    }""")
+    assert back_inside is True
+
+    # 3. Pressing ArrowRight again exits, and typing creates a new paragraph outside the quote
+    page.keyboard.press("ArrowRight")
+    page.keyboard.type("And now for something completely different.")
+
+    doc_after = page.evaluate("""() => {
+        const doc = window._pmView.state.doc;
+        return {
+            childCount: doc.childCount,
+            lastType: doc.lastChild.type.name,
+            lastText: doc.lastChild.textContent
+        };
+    }""")
+    assert doc_after["childCount"] == 3
+    assert doc_after["lastType"] == "paragraph"
+    assert doc_after["lastText"] == "And now for something completely different."
+
+    # 4. ArrowDown from end of blockquote also exits into GapCursor
+    page.evaluate("""() => {
+        const PM = window._PM;
+        const parser = new PM.MarkdownParser(PM.mySchema, PM.defaultMarkdownParser.tokenizer, PM.defaultMarkdownParser.tokens);
+        const doc = parser.parse("Intro narration.\\n\\n> Perkins, PhD\\n");
+        const tr = window._pmView.state.tr.replaceWith(0, window._pmView.state.doc.content.size, doc.content);
+        window._pmView.dispatch(tr);
+        const pos = window._pmView.state.doc.content.size - 2;
+        window._pmView.dispatch(window._pmView.state.tr.setSelection(PM.TextSelection.create(window._pmView.state.doc, pos)));
+    }""")
+    page.keyboard.press("ArrowDown")
+    is_gap_down = page.evaluate("""() => {
+        const sel = window._pmView.state.selection;
+        const PM = window._PM;
+        return (sel instanceof PM.GapCursor) && sel.$from.pos === window._pmView.state.doc.content.size;
+    }""")
+    assert is_gap_down is True
+
+

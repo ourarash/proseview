@@ -584,7 +584,26 @@
 
         function _extractProseTailParagraphs(rawMarkdown) {
             if (!rawMarkdown) return [];
-            var lines = String(rawMarkdown).split(/\r?\n/);
+            var cleaned = String(rawMarkdown).replace(/^---[\s\S]*?\n---\s*/, '');
+            if (typeof marked !== 'undefined' && marked.lexer) {
+                try {
+                    var tokens = marked.lexer(cleaned, {gfm: true});
+                    var proseTokens = tokens.filter(function(tok) {
+                        if (tok.type === 'space') return false;
+                        if (tok.type === 'heading' || tok.type === 'hr') return false;
+                        if (tok.type === 'html') {
+                            if (/^<!--[\s\S]*?-->$/.test((tok.raw || tok.text || '').trim())) return false;
+                        }
+                        return true;
+                    });
+                    return proseTokens.slice(-2).map(function(tok) {
+                        return (tok.raw || tok.text || '').trim();
+                    }).filter(Boolean);
+                } catch (e) {
+                    // Fall back to line-based parser below
+                }
+            }
+            var lines = String(cleaned).split(/\r?\n/);
             var paras = [];
             var buf = [];
             var inHtmlComment = false;
@@ -598,16 +617,17 @@
                     if (trimmed.endsWith('-->')) inHtmlComment = false;
                     return;
                 }
-                if (!trimmed || /^#{1,6}\s/.test(trimmed) || /^---+$/.test(trimmed)) {
+                var isEmpty = !trimmed || /^>+\s*$/.test(trimmed);
+                if (isEmpty || /^#{1,6}\s/.test(trimmed) || /^---+$/.test(trimmed)) {
                     if (buf.length) {
-                        paras.push(buf.join(' ').trim());
+                        paras.push(buf.join('\n').trim());
                         buf = [];
                     }
                     return;
                 }
-                buf.push(trimmed);
+                buf.push(line);
             });
-            if (buf.length) paras.push(buf.join(' ').trim());
+            if (buf.length) paras.push(buf.join('\n').trim());
             return paras.filter(Boolean).slice(-2);
         }
 
@@ -656,10 +676,25 @@
             var body = document.createElement('div');
             body.className = 'scene-prev-tail-body';
             prevParas.forEach(function(para) {
-                var pEl = document.createElement('p');
-                pEl.className = 'scene-prev-tail-para';
-                pEl.textContent = para;
-                body.appendChild(pEl);
+                if (typeof renderSafeMarkdown === 'function') {
+                    var block = document.createElement('div');
+                    renderSafeMarkdown(block, para);
+                    while (block.firstChild) {
+                        var child = block.firstChild;
+                        if (child.nodeType === 1) {
+                            if (child.tagName === 'P') child.classList.add('scene-prev-tail-para');
+                            child.querySelectorAll('p').forEach(function(pEl) {
+                                pEl.classList.add('scene-prev-tail-para');
+                            });
+                        }
+                        body.appendChild(child);
+                    }
+                } else {
+                    var pEl = document.createElement('p');
+                    pEl.className = 'scene-prev-tail-para';
+                    pEl.textContent = para;
+                    body.appendChild(pEl);
+                }
             });
             details.append(summary, body);
             host.appendChild(details);

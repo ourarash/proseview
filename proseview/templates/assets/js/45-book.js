@@ -452,9 +452,26 @@
                 document.getElementById('bookPrintFormat').value = facts.layout === 'print' ? 'pdf-print' : 'pdf-share';
                 if (facts.trim) document.getElementById('bookPrintTrim').value = facts.trim;
                 if (facts.paper) document.getElementById('bookPrintPaper').value = facts.paper;
+                var sizeVal = facts.font_size || facts.point_size;
+                if (sizeVal) {
+                    var pts = parseFloat(sizeVal);
+                    if (!isNaN(pts)) {
+                        var slider = document.getElementById('bookPrintFontSize') || document.getElementById('bookPrintPointSize');
+                        var out = document.getElementById('bookPrintFontSizeOut') || document.getElementById('bookPrintPointSizeOut');
+                        if (slider) slider.value = String(pts);
+                        if (out) out.textContent = pts + ' pt';
+                    }
+                }
                 _bookSyncPrintFields();
             }).catch(function() {});
         }
+
+        function updatePrintFontSize(value) {
+            var out = document.getElementById('bookPrintFontSizeOut') || document.getElementById('bookPrintPointSizeOut');
+            if (out) out.textContent = value + ' pt';
+        }
+        window.updatePrintFontSize = updatePrintFontSize;
+        window.updatePrintPointSize = updatePrintFontSize;
 
         function _bookSyncPrintFields() {
             var style = document.getElementById('bookPrintStyle').value;
@@ -467,6 +484,12 @@
             var print = format.value === 'pdf-print';
             document.getElementById('bookPrintTrimField').hidden = !print;
             document.getElementById('bookPrintPaperField').hidden = print;
+            var isManuscript = style === 'manuscript';
+            var fontSizeField = document.getElementById('bookPrintFontSizeField') || document.getElementById('bookPrintPointSizeField');
+            if (fontSizeField) fontSizeField.hidden = isManuscript;
+            var isManuscript = style === 'manuscript';
+            var fontSizeField = document.getElementById('bookPrintFontSizeField') || document.getElementById('bookPrintPointSizeField');
+            if (fontSizeField) fontSizeField.hidden = isManuscript;
         }
 
         // A new style or size: laid out again where the reader is, and
@@ -476,11 +499,16 @@
             _bookSyncPrintFields();
             // Where the reader is, as a scene and how far into it.
             var anchor = _bookPages.anchor('scene-');
+            var ptInput = document.getElementById('bookPrintFontSize') || document.getElementById('bookPrintPointSize');
+            var ptField = document.getElementById('bookPrintFontSizeField') || document.getElementById('bookPrintPointSizeField');
+            var ptVal = ptInput && (!ptField || !ptField.hidden) ? ptInput.value : '';
             var source = fetchBookPdf({remember: {
                 style: document.getElementById('bookPrintStyle').value,
                 format: document.getElementById('bookPrintFormat').value,
                 trim: document.getElementById('bookPrintTrim').value,
                 paper: document.getElementById('bookPrintPaper').value,
+                font_size: ptVal ? ptVal + 'pt' : '',
+                point_size: ptVal ? ptVal + 'pt' : '',
             }});
             source.then(_bookFillPrintFields, function() {});
             _bookPages.load(source, anchor ? {dest: anchor.name, anchor: anchor} : null);

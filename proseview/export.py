@@ -291,6 +291,8 @@ def export_book(
     fmt: str = "epub",
     trim: str = "",
     paper: str = "",
+    font_size: str = "",
+    point_size: str = "",
     recto_chapters: bool | None = None,
     watermark: str = "",
     contact: str = "",
@@ -385,12 +387,15 @@ def export_book(
 
         if recto_chapters is None:
             recto_chapters = saved.recto_chapters if saved.recto_chapters is not None else True
+        size_val = font_size or point_size or saved.font_size or saved.point_size
         result = write_pdf(book, output, PdfOptions(
             layout="print" if fmt == "pdf-print" else "share",
             style=book_style,
             show_scene_titles=scene_titles,
             trim=trim or saved.trim or "5.5x8.5",
             paper=paper or saved.paper,
+            font_size=size_val,
+            point_size=size_val,
             recto_chapters=recto_chapters,
             watermark=watermark,
             cover_image=cover_image,
@@ -675,7 +680,7 @@ def save_book_identifier(root: Path, identifier: str) -> None:
 #: The book details the dashboard remembers under ``export:``, in file order.
 BOOK_DETAIL_KEYS: tuple[str, ...] = (
     "title", "subtitle", "author", "language", "format", "epub_version", "style", "scene_titles",
-    "trim", "paper", "recto_chapters", "contact", "cover_image",
+    "trim", "paper", "font_size", "point_size", "recto_chapters", "contact", "cover_image",
     "copyright_page", "isbn", "dedication", "also_by", "matter_files",
 )
 

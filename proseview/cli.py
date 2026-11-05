@@ -234,8 +234,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Paperback trim size for pdf-print (default: export.trim, else 5.5x8.5).",
     )
     pdf.add_argument(
-        "--paper", choices=["letter", "a4"], default="",
+        "--paper", choices=["letter", "a4", "a5"], default="",
         help="Page size for pdf-share and docx (default: export.paper, else Letter for US English, A4 otherwise).",
+    )
+    pdf.add_argument(
+        "--font-size", "--point-size", dest="font_size", default="",
+        help="Font size for PDF body text (e.g. 11pt, 10.5; default: trim-specific).",
     )
     pdf.add_argument(
         "--recto-chapters", action=argparse.BooleanOptionalAction, default=None,
@@ -721,6 +725,8 @@ def export_manuscript(args: argparse.Namespace) -> int:
                 fmt=each,
                 trim=args.trim,
                 paper=args.paper,
+                font_size=args.font_size,
+                point_size=args.font_size,
                 recto_chapters=args.recto_chapters,
                 watermark=args.watermark,
                 contact=args.contact.replace("\\n", "\n"),

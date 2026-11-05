@@ -374,10 +374,14 @@ def test_print_layout_style_and_size_are_exports_own(page: Page, book_server: Pr
     expect(stage.locator(".pdf-page canvas").first).to_be_visible(timeout=20_000)
     page.get_by_role("button", name="Reading appearance").click()
     style, kind = page.locator("#bookPrintStyle"), page.locator("#bookPrintFormat")
-    # Export's defaults: Classic, the printed book, 5.5 × 8.5 in.
+    # Export's defaults: Classic, the printed book, 5.5 × 8.5 in, 11 pt.
     expect(style).to_have_value("classic")
     expect(kind).to_have_value("pdf-print")
     expect(page.locator("#bookPrintTrim")).to_have_value("5.5x8.5")
+    expect(page.locator("#bookPrintFontSizeField")).to_be_visible()
+    expect(page.locator("#bookPrintFontSizeField")).to_contain_text("Font size")
+    expect(page.locator("#bookPrintFontSize")).to_have_value("11")
+    expect(page.locator("#bookPrintFontSizeOut")).to_have_text("11 pt")
     width = stage.locator(".pdf-page").first.evaluate("el => el.getBoundingClientRect().width / el.getBoundingClientRect().height")
 
     # A new trim lays the book out again, in the same scene, and Export keeps it.
@@ -389,11 +393,19 @@ def test_print_layout_style_and_size_are_exports_own(page: Page, book_server: Pr
     expect(page.locator("#bookNavWhere")).to_contain_text("III. A Caucus-Race")
     assert "trim: 6x9" in config.read_text(encoding="utf-8")
 
-    # Manuscript makes only a shareable PDF, and says so.
+    # The font size slider adjusts the typography and remembers it.
+    page.locator("#bookPrintFontSize").fill("12.5")
+    page.locator("#bookPrintFontSize").dispatch_event("input")
+    page.locator("#bookPrintFontSize").dispatch_event("change")
+    expect(page.locator("#bookPrintFontSizeOut")).to_have_text("12.5 pt")
+    _wait_until(lambda: "font_size: 12.5pt" in config.read_text(encoding="utf-8") or "point_size: 12.5pt" in config.read_text(encoding="utf-8"), message="font size was not saved")
+
+    # Manuscript makes only a shareable PDF, says so, and hides the font size slider (strictly 12pt).
     style.select_option("manuscript")
     expect(kind).to_have_value("pdf-share")
     expect(page.locator("#bookPrintNote")).to_have_text("Manuscript makes a shareable PDF only.")
     expect(page.locator("#bookPrintPaper")).to_be_visible()
+    expect(page.locator("#bookPrintFontSizeField")).to_be_hidden()
     _wait_until(lambda: "style: manuscript" in config.read_text(encoding="utf-8"), message="the style was not saved")
     saved = config.read_text(encoding="utf-8")
     assert "format: pdf-share" in saved

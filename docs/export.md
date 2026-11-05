@@ -319,7 +319,8 @@ export:
   format: epub          # pdf-print, pdf-share, docx or all
   epub_version: epub3   # or epub2
   trim: 5.5x8.5         # 5x8, 5.25x8, 6x9 or a5
-  paper: letter         # or a4
+  paper: letter         # a4 or a5
+  font_size: 11pt       # or e.g. 10.5pt, 12pt
   recto_chapters: true  # print chapters open on a right-hand page
   contact: "you@example.com\n+1 555 0100"   # a manuscript's title page
   copyright_page: true

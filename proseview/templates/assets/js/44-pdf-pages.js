@@ -35,11 +35,14 @@
                             throw new Error(data.error || 'The pages could not be laid out.');
                         });
                     }
-                    // What it was laid out as: layout (print or share), style, trim, paper.
+                    // What it was laid out as: layout (print or share), style, trim, paper, point_size/font_size.
                     var facts = {};
-                    ['layout', 'style', 'trim', 'paper'].forEach(function(name) {
-                        facts[name] = response.headers.get('X-Proseview-' + name.charAt(0).toUpperCase() + name.slice(1)) || '';
+                    ['layout', 'style', 'trim', 'paper', 'point_size', 'font_size'].forEach(function(name) {
+                        var header = 'X-Proseview-' + name.charAt(0).toUpperCase() + name.slice(1);
+                        facts[name] = response.headers.get(header) || response.headers.get('X-Proseview-' + name) || '';
                     });
+                    if (!facts.font_size && facts.point_size) facts.font_size = facts.point_size;
+                    if (!facts.point_size && facts.font_size) facts.point_size = facts.font_size;
                     if (!facts.layout) facts.layout = 'share';
                     return response.arrayBuffer().then(function(data) { facts.data = data; return facts; });
                 });

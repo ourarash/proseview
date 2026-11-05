@@ -191,6 +191,11 @@ def test_paper_size_is_letter_or_a4(tmp_path: Path, book: Path):
     a4 = export_book(book, Config.load(book), tmp_path / "a4.docx", fmt="docx", paper="a4").path
     size = next(_document(a4).iter(f"{W}pgSz"))
     assert (size.get(f"{W}w"), size.get(f"{W}h")) == ("11906", "16838")
+    a5 = export_book(book, Config.load(book), tmp_path / "a5.docx", fmt="docx", paper="a5").path
+    size = next(_document(a5).iter(f"{W}pgSz"))
+    assert (size.get(f"{W}w"), size.get(f"{W}h")) == ("8391", "11906")
+    mar = next(_document(a5).iter(f"{W}pgMar"))
+    assert mar.get(f"{W}top") == "1008"
 
 
 # -- the book layout -------------------------------------------------------------------------

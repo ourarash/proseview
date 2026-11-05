@@ -32,7 +32,7 @@ from proseview.book_styles import load_style  # noqa: E402
 from proseview.config import Config, ConfigError  # noqa: E402
 from proseview.export import collect_scene_documents, default_output_path, export_book  # noqa: E402
 from proseview.pdf import (  # noqa: E402
-    TRIM_SIZES, PdfOptions, approximate_words, default_paper, gutter_for, page_count, typst_source,
+    TRIM_SIZES, PdfOptions, approximate_words, default_paper, gutter_for, normalize_font_size, normalize_point_size, page_count, typst_source,
 )
 from proseview.pdf_check import pdf_facts, readiness, structural_problems  # noqa: E402
 from proseview.typst_render import RenderContext, TypstRenderer, escape  # noqa: E402
@@ -163,6 +163,42 @@ def test_paper_follows_the_language():
     assert default_paper("en-US") == "letter"
     assert default_paper("en-GB") == "a4"
     assert default_paper("fr-FR") == "a4"
+
+
+def test_shareable_pdf_lays_out_a5_paper(tmp_path: Path, book: Path):
+    result = _pdf(tmp_path, book, fmt="pdf-share", paper="a5")
+    data = result.path.read_bytes()
+    assert pdf_facts(data).page_sizes == ((419.5, 595.3),)
+    source = typst_source(result.book, PdfOptions(layout="share", paper="a5", style=load_style("classic")))
+    assert "size: 11pt" in source
+
+
+def test_normalize_font_size():
+    assert normalize_font_size("11pt") == "11pt"
+    assert normalize_font_size("10.5") == "10.5pt"
+    assert normalize_font_size(12) == "12pt"
+    assert normalize_font_size("") == ""
+    assert normalize_point_size("11pt") == "11pt"
+    with pytest.raises(ExportError, match="Unknown font size"):
+        normalize_font_size("huge")
+    with pytest.raises(ExportError, match="out of range"):
+        normalize_font_size("3pt")
+
+
+def test_custom_font_size_is_applied_in_typst(tmp_path: Path, book: Path):
+    source = typst_source(
+        build_book(collect_scene_documents(book, Config.load(book)), collect_scene_documents(book, Config.load(book)), title="Alice"),
+        PdfOptions(layout="print", font_size="10.5pt", style=load_style("classic")),
+    )
+    assert 'size: 10.5pt' in source
+
+
+def test_manuscript_style_ignores_custom_point_size(tmp_path: Path, book: Path):
+    source = typst_source(
+        build_book(collect_scene_documents(book, Config.load(book)), collect_scene_documents(book, Config.load(book)), title="Alice"),
+        PdfOptions(layout="share", point_size="14pt", style=load_style("manuscript")),
+    )
+    assert 'size: 12pt' in source
 
 
 def test_a_shareable_pdf_has_the_cover_contents_and_a_watermark(tmp_path: Path, book: Path):

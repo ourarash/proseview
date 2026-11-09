@@ -545,6 +545,9 @@
         function _updateEditWordDelta() {
             var el = document.getElementById('sceneEditWordDelta');
             if (!el || !_pmView) return;
+            try {
+                _wordCountCompact = localStorage.getItem(WORD_COUNT_COMPACT_KEY) === 'true';
+            } catch (err) {}
             var now = _countDocWords(_pmView.state.doc);
             var delta = now - _pmEditStartWords;
             var sign = delta >= 0 ? '+' : '';
@@ -578,6 +581,10 @@
             }
         }
 
+        window._getBookBaselineWords = _getBookBaselineWords;
+        window._formatCompactWords = _formatCompactWords;
+        window._updateEditWordDelta = _updateEditWordDelta;
+
         window.toggleEditWordCountFormat = function(e) {
             if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
             _wordCountCompact = !_wordCountCompact;
@@ -585,6 +592,9 @@
                 localStorage.setItem(WORD_COUNT_COMPACT_KEY, _wordCountCompact ? 'true' : 'false');
             } catch (err) {}
             _updateEditWordDelta();
+            if (typeof refreshSceneSummary === 'function') {
+                refreshSceneSummary();
+            }
         };
 
         function _renderSprintBtn() {
@@ -674,7 +684,13 @@
             var editBar = document.getElementById('sceneEditBar');
             if (editBar) editBar.hidden = false;
             var btn = document.getElementById('sceneEditBtn');
-            if (btn) btn.textContent = '✗ Cancel';
+            if (btn) {
+                var label = btn.querySelector('.scene-toolbar-action-label');
+                if (label) label.textContent = 'Cancel';
+                btn.setAttribute('aria-pressed', 'true');
+                btn.setAttribute('aria-label', 'Cancel editing (Esc)');
+                btn.setAttribute('title', 'Cancel editing (Esc)');
+            }
             var p = paths[curIdx];
             _pmOpenMtime = meta[p] && meta[p].mtime;
             _pmFrontmatterDraft = null;
@@ -979,7 +995,13 @@
                 editBar.classList.remove('is-saving', 'is-saved', 'is-dirty');
             }
             var btn = document.getElementById('sceneEditBtn');
-            if (btn) btn.textContent = '✏ Edit';
+            if (btn) {
+                var label = btn.querySelector('.scene-toolbar-action-label');
+                if (label) label.textContent = 'Edit';
+                btn.removeAttribute('aria-pressed');
+                btn.setAttribute('aria-label', 'Edit scene');
+                btn.setAttribute('title', 'Edit scene in place (E)');
+            }
             var p = paths[curIdx];
             // Where the caret was, so E picks up from there.
             if (_pmView) _pmLastCaret = {path: p, pos: _pmView.state.selection.head};

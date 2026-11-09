@@ -1543,7 +1543,10 @@
         }
 
         .scene-toolbar-button:hover,
-        .scene-toolbar-button[aria-expanded="true"] {
+        .scene-toolbar-button[aria-expanded="true"],
+        .scene-toolbar-button[aria-pressed="true"],
+        .scene-toolbar-button.is-active,
+        body.discuss-open .discuss-open-btn {
             background: var(--button-hover);
             color: var(--text-main);
         }
@@ -10095,6 +10098,31 @@
 
         .scene-summary-part.is-warn b {
             color: var(--stat-warn);
+        }
+
+        .scene-summary-words {
+            cursor: pointer;
+            border-radius: 4px;
+            padding: 1px 4px;
+            margin: -1px -4px;
+            transition: background 120ms ease;
+            user-select: none;
+        }
+
+        .scene-summary-words:hover {
+            background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+        }
+
+        .scene-summary-words:focus-visible {
+            outline: 2px solid var(--primary, #dd635f);
+            outline-offset: 1px;
+        }
+
+        .scene-summary-unit {
+            font-size: 11px;
+            font-weight: 400;
+            color: var(--text-soft);
+            margin-left: 2px;
         }
 
         .scene-pass-count {

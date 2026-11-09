@@ -288,8 +288,13 @@
             document.getElementById('fileEditBar').hidden = false;
             document.getElementById('fileEditConflict').hidden = true;
             var button = document.getElementById('filePreviewEditBtn');
-            button.querySelector('span').textContent = 'Editing';
-            button.setAttribute('aria-pressed', 'true');
+            if (button) {
+                var span = button.querySelector('span');
+                if (span) span.textContent = 'Editing';
+                button.setAttribute('aria-pressed', 'true');
+                button.setAttribute('aria-label', 'Edit');
+                button.setAttribute('title', 'Editing file (E to finish)');
+            }
             fileEditSetDirty(false);
         }
 
@@ -347,8 +352,11 @@
             document.getElementById('filePreviewBody').classList.remove('is-editing');
             var button = document.getElementById('filePreviewEditBtn');
             if (button) {
-                button.querySelector('span').textContent = 'Edit';
+                var span = button.querySelector('span');
+                if (span) span.textContent = 'Edit';
                 button.removeAttribute('aria-pressed');
+                button.setAttribute('aria-label', 'Edit file (E)');
+                button.setAttribute('title', 'Edit file in place (E)');
             }
         }
 

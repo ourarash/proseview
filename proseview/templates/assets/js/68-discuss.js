@@ -2837,7 +2837,144 @@
             return {text: text, warn: warn, typical: warn && typicalText ? 'vs typical ' + typicalText : ''};
         }
 
-        // Words and the two variety scores, with their typical ranges on hover.
+        function _normalizeChapterKey(ch, path) {
+            const folder = (path && path.indexOf('/') !== -1) ? path.split('/')[0].trim() : '';
+            const mFolder = folder ? folder.match(/^ch0*(\d+)$/i) : null;
+            const chStr = ch != null ? String(ch).trim() : '';
+            const mCh = chStr ? chStr.match(/^(?:chapter|ch)?\s*0*(\d+)$/i) : null;
+            if (mFolder) return 'num:' + parseInt(mFolder[1], 10);
+            if (mCh) return 'num:' + parseInt(mCh[1], 10);
+            if (folder && folder.toLowerCase() !== 'manuscript') return 'folder:' + folder.toLowerCase();
+            if (chStr && chStr.toLowerCase() !== 'manuscript') return 'ch:' + chStr.toLowerCase();
+            return 'path:' + (path || '');
+        }
+
+        function _getSceneChapterWords(path) {
+            if (!path || typeof meta !== 'object' || !meta) return 0;
+            const currentMeta = meta[path] || {};
+            const ch = (currentMeta.chapter != null ? String(currentMeta.chapter).trim() : '')
+                || (currentMeta.fm && currentMeta.fm.chapter != null ? String(currentMeta.fm.chapter).trim() : '');
+            const targetKey = _normalizeChapterKey(ch, path);
+
+            let sum = 0;
+            let counted = 0;
+            for (const p in meta) {
+                if (!meta[p] || typeof meta[p].words !== 'number') continue;
+                const pCh = (meta[p].chapter != null ? String(meta[p].chapter).trim() : '')
+                    || (meta[p].fm && meta[p].fm.chapter != null ? String(meta[p].fm.chapter).trim() : '');
+                const pKey = _normalizeChapterKey(pCh, p);
+                if (targetKey === pKey) {
+                    sum += meta[p].words;
+                    counted++;
+                }
+            }
+            if (counted > 0) return sum;
+
+            // Fallback: try storyModel.bands
+            if (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.bands)) {
+                const band = storyModel.bands.find(function(b) {
+                    return b.chapter != null && _normalizeChapterKey(b.chapter, '') === targetKey;
+                });
+                if (band && typeof band.words === 'number' && band.words > 0) {
+                    return band.words;
+                }
+            }
+
+            return typeof currentMeta.words === 'number' ? currentMeta.words : 0;
+        }
+
+        function _getChapterLabel(path) {
+            if (!path || typeof meta !== 'object' || !meta) return 'chapter';
+            const currentMeta = meta[path] || {};
+            const ch = (currentMeta.chapter != null ? String(currentMeta.chapter).trim() : '')
+                || (currentMeta.fm && currentMeta.fm.chapter != null ? String(currentMeta.fm.chapter).trim() : '');
+            const targetKey = _normalizeChapterKey(ch, path);
+
+            // Look for a nicely formatted name among sibling scenes
+            for (const p in meta) {
+                if (!meta[p]) continue;
+                const pCh = (meta[p].chapter != null ? String(meta[p].chapter).trim() : '')
+                    || (meta[p].fm && meta[p].fm.chapter != null ? String(meta[p].fm.chapter).trim() : '');
+                if (_normalizeChapterKey(pCh, p) === targetKey) {
+                    if (pCh && pCh.toLowerCase() !== 'manuscript' && !/^ch0*\d+$/i.test(pCh)) {
+                        return /^\d+$/.test(pCh) ? 'Chapter ' + pCh : pCh;
+                    }
+                }
+            }
+
+            if (targetKey.startsWith('num:')) {
+                return 'Chapter ' + targetKey.slice(4);
+            }
+            if (ch && ch.toLowerCase() !== 'manuscript') {
+                return /^\d+$/.test(ch) ? 'Chapter ' + ch : ch;
+            }
+            if (path.indexOf('/') !== -1) {
+                const folder = path.split('/')[0];
+                const match = folder.match(/^ch0*(\d+)$/i);
+                if (match) return 'Chapter ' + parseInt(match[1], 10);
+                return folder;
+            }
+            return 'chapter';
+        }
+
+        function _getBookTotalWords() {
+            if (typeof window._getBookBaselineWords === 'function') {
+                return window._getBookBaselineWords();
+            }
+            let sum = 0;
+            if (typeof paths !== 'undefined' && Array.isArray(paths) && typeof meta === 'object' && meta) {
+                let counted = 0;
+                for (let i = 0; i < paths.length; i++) {
+                    const sp = paths[i];
+                    if (meta[sp] && typeof meta[sp].words === 'number') {
+                        sum += meta[sp].words;
+                        counted++;
+                    }
+                }
+                if (counted > 0) return sum;
+            }
+            if (typeof storyModel === 'object' && storyModel && typeof storyModel.total_words === 'number' && storyModel.total_words > 0) {
+                return storyModel.total_words;
+            }
+            if (typeof meta === 'object' && meta) {
+                for (const k in meta) {
+                    if (meta[k] && typeof meta[k].words === 'number') {
+                        sum += meta[k].words;
+                    }
+                }
+            }
+            return sum;
+        }
+
+        function _formatWordsCompact(num) {
+            if (typeof num !== 'number' || isNaN(num)) return '0';
+            if (num >= 1000000) {
+                return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            }
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            }
+            return num.toLocaleString();
+        }
+
+        var WORD_COUNT_COMPACT_KEY = typeof WORD_COUNT_COMPACT_KEY !== 'undefined' ? WORD_COUNT_COMPACT_KEY : 'proseview-edit-word-compact';
+        function _isWordCountCompact() {
+            try {
+                return localStorage.getItem(WORD_COUNT_COMPACT_KEY) === 'true';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function _toggleWordCountCompact() {
+            const next = !_isWordCountCompact();
+            try {
+                localStorage.setItem(WORD_COUNT_COMPACT_KEY, next ? 'true' : 'false');
+            } catch (e) {}
+            return next;
+        }
+
+        // Words (scene / chapter / total book) and the two variety scores, with typical ranges on hover.
         function _sceneSummaryLine(path) {
             const m = (typeof meta !== 'undefined' && meta[path]) || {};
             const md = (typeof medians !== 'undefined' && medians) || {};
@@ -2857,9 +2994,83 @@
                 return span;
             };
             const words = m.words || 0;
+            const chWords = _getSceneChapterWords(path);
+            const bookWords = _getBookTotalWords();
             const wordsWarn = !!(words && md.words) && (words > md.words * 1.5 || words < md.words * 0.5);
-            line.appendChild(part('', words.toLocaleString(), ' words',
-                'Words of prose in this scene. Excludes frontmatter, TODOs, comments, and notes.' + (md.words ? ' Your typical scene: ' + Math.round(md.words).toLocaleString() + '.' : ''), wordsWarn));
+
+            const isCompact = _isWordCountCompact();
+            const sceneStr = (isCompact && words >= 10000) ? _formatWordsCompact(words) : words.toLocaleString();
+            const chStr = isCompact ? _formatWordsCompact(chWords) : chWords.toLocaleString();
+            const bookStr = isCompact ? _formatWordsCompact(bookWords) : bookWords.toLocaleString();
+
+            const chLabel = _getChapterLabel(path);
+            let tip = 'Words of prose in this scene. Excludes frontmatter, TODOs, comments, and notes. '
+                + (md.words ? 'Your typical scene: ' + Math.round(md.words).toLocaleString() + '. ' : '')
+                + '\n• ' + words.toLocaleString() + ' in scene'
+                + (bookWords > 0 ? '\n• ' + chWords.toLocaleString() + ' in ' + chLabel : '')
+                + (bookWords > 0 ? '\n• ' + bookWords.toLocaleString() + ' in manuscript' : '')
+                + '\n\n(Click to toggle compact format)';
+
+            const wordSpan = document.createElement('span');
+            wordSpan.className = 'scene-summary-part scene-summary-words' + (wordsWarn ? ' is-warn' : '');
+            wordSpan.title = tip;
+            wordSpan.setAttribute('role', 'button');
+            wordSpan.setAttribute('tabindex', '0');
+            wordSpan.setAttribute('aria-label', 'Word count: ' + words + ' in scene' + (bookWords > 0 ? ', ' + chWords + ' in ' + chLabel + ', ' + bookWords + ' in book' : '') + '. Click to toggle format.');
+            wordSpan.onclick = function(e) {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                _toggleWordCountCompact();
+                refreshSceneSummary();
+                if (typeof window._updateEditWordDelta === 'function') {
+                    window._updateEditWordDelta();
+                }
+            };
+            wordSpan.onkeydown = function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    wordSpan.click();
+                }
+            };
+
+            const bScene = document.createElement('b');
+            bScene.textContent = sceneStr;
+            wordSpan.appendChild(bScene);
+
+            if (bookWords > 0 && (bookWords !== words || chWords !== words)) {
+                const uScene = document.createElement('span');
+                uScene.className = 'scene-summary-unit';
+                uScene.textContent = ' scene';
+                wordSpan.appendChild(uScene);
+
+                if (chWords > 0 && chWords !== bookWords) {
+                    wordSpan.append(' / ');
+                    const bCh = document.createElement('b');
+                    bCh.textContent = chStr;
+                    wordSpan.appendChild(bCh);
+
+                    const uCh = document.createElement('span');
+                    uCh.className = 'scene-summary-unit';
+                    uCh.textContent = ' ch';
+                    wordSpan.appendChild(uCh);
+                }
+
+                if (bookWords > 0 && bookWords !== words) {
+                    wordSpan.append(' / ');
+                    const bBook = document.createElement('b');
+                    bBook.textContent = bookStr;
+                    wordSpan.appendChild(bBook);
+
+                    const uBook = document.createElement('span');
+                    uBook.className = 'scene-summary-unit';
+                    uBook.textContent = ' book';
+                    wordSpan.appendChild(uBook);
+                }
+            } else {
+                wordSpan.append(' words');
+            }
+
+            line.appendChild(wordSpan);
+
             line.append(' \u00b7 ');
             line.appendChild(part('Variety ', m.mattr ? m.mattr.toFixed(2) : '\u2026', '',
                 'Word variety nearby (MATTR): how many different words a passage of 100 uses. Typical: ' + bands.mattr[0] + '\u2013' + bands.mattr[1] + '.',
@@ -2907,6 +3118,7 @@
             const path = typeof paths !== 'undefined' ? paths[curIdx] : null;
             if (old && path) old.replaceWith(_sceneSummaryLine(path));
         }
+        window.refreshSceneSummary = refreshSceneSummary;
 
         function _scenePassRow(name, count, path, counts) {
             const on = !!hls[name];

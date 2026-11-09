@@ -397,7 +397,11 @@
                         selected = String(currentSelectionText || '').trim();
                     }
                     if (!selected) {
-                        alert('Select the intended text in the scene first.');
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast('Select the intended text in the scene first.', true);
+                        } else {
+                            alert('Select the intended text in the scene first.');
+                        }
                         return;
                     }
                     proposal.quote = selected;

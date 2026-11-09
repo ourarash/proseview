@@ -522,9 +522,25 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.ok) setTimeout(function() { location.reload(); }, 300);
-                    else { if (disableBtn) disableBtn.disabled = false; alert(errorMsg + ': ' + (data.error || 'unknown error')); }
+                    else {
+                        if (disableBtn) disableBtn.disabled = false;
+                        var msg = errorMsg + ': ' + (data.error || 'unknown error');
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast(msg, true);
+                        } else {
+                            alert(msg);
+                        }
+                    }
                 })
-                .catch(function(err) { if (disableBtn) disableBtn.disabled = false; alert('Request failed: ' + err); });
+                .catch(function(err) {
+                    if (disableBtn) disableBtn.disabled = false;
+                    var msg = 'Request failed: ' + (err.message || err);
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast(msg, true);
+                    } else {
+                        alert(msg);
+                    }
+                });
         }
 
         document.addEventListener('click', function(e) {
@@ -952,7 +968,14 @@
                     previewRepoFile(path, { route: false });
                 })
                 .catch(function(err) {
-                    if (!options.silent) alert('Could not refresh file: ' + err);
+                    if (!options.silent) {
+                        var msg = 'Could not refresh file: ' + (err.message || err);
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast(msg, true);
+                        } else {
+                            alert(msg);
+                        }
+                    }
                 })
                 .finally(function() {
                     if (btn && !options.silent) { btn.disabled = false; btn.innerHTML = prevHTML || '\u21BB'; }

@@ -506,15 +506,6 @@
             });
         }
 
-        function sidebarShowToast(message, isError) {
-            var toast = document.getElementById('sidebarFileToast');
-            if (!toast || !message) return;
-            toast.setAttribute('role', isError ? 'alert' : 'status');
-            toast.textContent = message;
-            toast.hidden = false;
-            setTimeout(function() { toast.hidden = true; }, 5000);
-        }
-
         (function initSidebarFileManagement() {
             var createButton = document.getElementById('sidebarCreateBtn');
             var createMenu = document.getElementById('sidebarCreateMenu');

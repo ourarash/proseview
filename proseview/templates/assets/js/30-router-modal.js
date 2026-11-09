@@ -1134,6 +1134,10 @@ window.completeFmTodo = function(checkbox, absPath, text, openMtime) {
         checkbox.checked = false;
         checkbox.nextElementSibling.textContent = originalText;
         console.error(err);
-        alert('Could not complete TODO: ' + err.message);
+        if (typeof sidebarShowToast === 'function') {
+            sidebarShowToast('Could not complete TODO: ' + err.message, true);
+        } else {
+            alert('Could not complete TODO: ' + err.message);
+        }
     });
 };

@@ -14738,6 +14738,95 @@
             border-color: var(--border-hover, var(--border));
         }
 
+        .beatmap-delete-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted, #8a9096);
+            border-radius: 4px;
+            padding: 2px 5px;
+            cursor: pointer;
+            font-size: 11px;
+            line-height: 1;
+            transition: all 0.15s ease;
+            opacity: 0.7;
+        }
+
+        .beatmap-delete-btn:hover {
+            opacity: 1;
+            color: #f87171;
+            background: rgba(248, 113, 113, 0.08);
+            border-color: rgba(248, 113, 113, 0.2);
+        }
+
+        .beatmap-delete-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .beatmap-delete-confirm-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--surface-field, rgba(0, 0, 0, 0.2));
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            animation: beatmap-fade-in 0.15s ease-out;
+        }
+
+        @keyframes beatmap-fade-in {
+            from { opacity: 0; transform: translateY(-1px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .beatmap-delete-prompt {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            user-select: none;
+        }
+
+        .beatmap-delete-confirm-btn {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(248, 113, 113, 0.12);
+            border: 1px solid rgba(248, 113, 113, 0.35);
+            color: #f87171;
+            font-size: 10.5px;
+            font-weight: 500;
+            padding: 1px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .beatmap-delete-confirm-btn:hover {
+            background: rgba(248, 113, 113, 0.22);
+            border-color: rgba(248, 113, 113, 0.5);
+            color: #ffffff;
+        }
+
+        .beatmap-delete-cancel-btn {
+            display: inline-flex;
+            align-items: center;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 10.5px;
+            padding: 1px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .beatmap-delete-cancel-btn:hover {
+            color: var(--text-main);
+            background: var(--surface-card-hover, rgba(255, 255, 255, 0.05));
+        }
+
         .beat-agent-select {
             background: transparent;
             border: 0;
@@ -15297,7 +15386,7 @@
             display: flex;
             flex-direction: column;
             height: 100%;
-            overflow-y: auto;
+            overflow: hidden;
             background: var(--bg-app);
             padding: 0;
             box-sizing: border-box;
@@ -15349,6 +15438,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+            z-index: 2;
             transition: all 0.15s ease;
         }
         .beat-collapse-btn:hover {
@@ -15510,6 +15601,149 @@
         }
         .beatmap-agent-picker:hover {
             border-color: var(--border-hover, #4a4f54);
+        }
+
+        /* ── Beat Map Generation Progress & Spinner ────────────────────────── */
+        .beatmap-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: beatmap-spin 0.75s linear infinite;
+            vertical-align: middle;
+            margin-right: 5px;
+            flex-shrink: 0;
+        }
+
+        .beatmap-spinner.subtle {
+            border: 1.5px solid var(--border);
+            border-top-color: var(--primary, #dd635f);
+        }
+
+        @keyframes beatmap-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .beatmap-generate-btn.is-generating {
+            opacity: 0.92;
+            cursor: wait;
+            background: color-mix(in srgb, var(--primary, #dd635f) 75%, #000);
+        }
+
+        .strip-btn.is-generating {
+            opacity: 0.85;
+            cursor: wait;
+            pointer-events: none;
+        }
+
+        .beatmap-btn-elapsed {
+            font-family: var(--font-mono, monospace);
+            font-size: 11px;
+            opacity: 0.9;
+            margin-left: 3px;
+        }
+
+        .beatmap-progress-panel {
+            width: 100%;
+            margin: 12px 0 10px;
+            background: color-mix(in srgb, var(--surface-card) 60%, var(--bg-app, #18191c));
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 12px;
+            text-align: left;
+            box-sizing: border-box;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
+
+        .beatmap-progress-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: var(--surface-muted, rgba(255, 255, 255, 0.08));
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .beatmap-progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary, #dd635f), #f59e0b, var(--primary, #dd635f));
+            background-size: 200% 100%;
+            border-radius: 3px;
+            transition: width 0.35s ease;
+            animation: beatmap-shimmer 2s linear infinite;
+        }
+
+        @keyframes beatmap-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .beatmap-progress-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-main);
+            font-weight: 500;
+            gap: 8px;
+        }
+
+        .beatmap-progress-stage {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .beatmap-progress-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--font-mono, monospace);
+            flex-shrink: 0;
+        }
+
+        .beatmap-progress-subtext {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .beatmap-pulse-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--primary, #dd635f);
+            animation: beatmap-pulse 1.2s ease-in-out infinite alternate;
+            flex-shrink: 0;
+        }
+
+        @keyframes beatmap-pulse {
+            0% { opacity: 0.35; transform: scale(0.85); }
+            100% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 6px var(--primary, #dd635f); }
+        }
+
+        .beatmap-empty-hero.is-generating .beatmap-empty-wave path {
+            animation: beatmap-wave-pulse 1.8s ease-in-out infinite alternate;
+        }
+
+        @keyframes beatmap-wave-pulse {
+            0% { stroke-opacity: 0.45; filter: drop-shadow(0 0 1px var(--primary, #dd635f)); }
+            100% { stroke-opacity: 1; filter: drop-shadow(0 0 6px var(--primary, #dd635f)); }
+        }
+
+        .beatmap-empty-hero.is-generating .beatmap-ghost-row {
+            animation: beatmap-ghost-pulse 1.4s ease-in-out infinite alternate;
+        }
+
+        @keyframes beatmap-ghost-pulse {
+            0% { opacity: 0.35; }
+            100% { opacity: 0.85; }
         }
 
         .beatmap-empty-footnote {
@@ -15706,4 +15940,49 @@
 
         .discuss-beatmap-status.error {
             color: #ef4444;
+        }
+
+        .discuss-beatmap-btn-timer {
+            font-family: var(--font-mono, monospace);
+            font-size: 11px;
+            margin-left: 4px;
+            opacity: 0.95;
+        }
+
+        .discuss-beatmap-progress-panel {
+            width: 100%;
+            margin: 8px 0 10px;
+            background: color-mix(in srgb, var(--surface-card) 60%, var(--bg-app, #18191c));
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 9px 12px;
+            text-align: left;
+            box-sizing: border-box;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
+
+        .discuss-beatmap-clock {
+            font-family: var(--font-mono, monospace);
+            font-size: 11px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .discuss-beatmap-stage {
+            font-size: 11.5px;
+            color: var(--text-main);
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .discuss-beatmap-subtext-msg {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .beatmap-inline-progress-wrap {
+            width: 100%;
+            box-sizing: border-box;
         }

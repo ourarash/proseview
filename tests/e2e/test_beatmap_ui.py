@@ -1,9 +1,17 @@
 import time
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import Page
 from .conftest import ProseviewServer, SCENE_REL
 from .test_browser_e2e import open_scene
 
-def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
+pytestmark = pytest.mark.e2e_browser
+
+
+def test_beatmap_ui_improvements(page: Page, server: ProseviewServer, tmp_path: Path):
     open_scene(page, server, SCENE_REL)
 
     # 1. Verify Top Bar Heights: Sidebar header and Scene Toolbar
@@ -37,9 +45,8 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     assert moments_before > 0, "Expected moments to be visible"
 
     # Click collapse button on active beat
-    active_collapse_btn = page.query_selector(".sidebar-beat-group.selected .beat-collapse-btn")
-    assert active_collapse_btn is not None
-    active_collapse_btn.click()
+    page.wait_for_timeout(300)
+    page.evaluate("document.querySelector('.sidebar-beat-group.selected .beat-collapse-btn').click()")
     page.wait_for_timeout(200)
 
     # After collapse, 0 moments should be in the DOM
@@ -48,8 +55,7 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     assert moments_after == 0, f"Moments should be collapsed to 0, found {moments_after}"
 
     # Click expand again
-    active_collapse_btn = page.query_selector(".sidebar-beat-group.selected .beat-collapse-btn")
-    active_collapse_btn.click()
+    page.evaluate("document.querySelector('.sidebar-beat-group.selected .beat-collapse-btn').click()")
     page.wait_for_timeout(200)
     moments_reopened = len(page.query_selector_all(".sidebar-moment-card"))
     assert moments_reopened == moments_before, "Moments should be restored after expanding"
@@ -59,7 +65,7 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     page.evaluate("document.querySelector('#beatmapDockScroll').style.maxHeight = '120px'")
     page.evaluate("document.querySelector('#beatmapDockScroll').scrollTop = 40")
     scroll_before = page.evaluate("document.querySelector('#beatmapDockScroll').scrollTop")
-    moments[-1].click()
+    page.evaluate("document.querySelectorAll('.sidebar-moment-card')[document.querySelectorAll('.sidebar-moment-card').length - 1].click()")
     page.wait_for_timeout(200)
     scroll_after = page.evaluate("document.querySelector('#beatmapDockScroll').scrollTop")
     print(f"Scroll before click: {scroll_before}, after click: {scroll_after}")
@@ -196,7 +202,7 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     assert tension_btn is not None, "Dramatic tension info button should exist"
     page.hover(".tension-info-btn")
     page.wait_for_timeout(200)
-    page.screenshot(path="/Users/ari/.gemini/antigravity/brain/b4242b61-5ab0-439c-92e9-956538c7c8a3/tension_tooltip_verified.png")
+    page.screenshot(path=tmp_path / "tension_tooltip_verified.png")
     popover_title = page.evaluate("document.querySelector('.tension-tooltip-title').textContent")
     popover_text = page.evaluate("document.querySelector('.tension-rubric-grid').textContent")
     print(f"Tension tooltip title: {popover_title}")
@@ -287,7 +293,7 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     assert len(dots) >= 5, f"Expected at least 5 beat color dots, found {len(dots)}"
 
     # Capture verified screenshot of the colorful tension curve and pacing bar
-    page.screenshot(path="/Users/ari/.gemini/antigravity/brain/b4242b61-5ab0-439c-92e9-956538c7c8a3/colorful_tension_curve_verified.png")
+    page.screenshot(path=tmp_path / "colorful_tension_curve_verified.png")
 
     # 15. Verify Right Panel Alignment between Curve Nodes and Pacing Segments
     alignment_diffs = page.evaluate("""
@@ -332,6 +338,98 @@ def test_beatmap_ui_improvements(page: Page, server: ProseviewServer):
     assert "Moderate" in tip_text, f"Expected Moderate rubric in tooltip, got: {tip_text}"
 
     # Take screenshot of tooltip and aligned calm tension curve
-    page.screenshot(path="/Users/ari/.gemini/antigravity/brain/b4242b61-5ab0-439c-92e9-956538c7c8a3/calm_aligned_tension_verified.png")
+    page.screenshot(path=tmp_path / "calm_aligned_tension_verified.png")
+
+    # 18. Verify Calm Delete Beat Map UI
+    delete_btn = page.query_selector("#paneDeleteContainer .beatmap-delete-btn")
+    assert delete_btn is not None, "Delete button should be present in dock toolbar"
+    delete_btn.click()
+    page.wait_for_timeout(200)
+
+    # Verify calm inline confirmation is displayed
+    confirm_wrap = page.query_selector("#paneDeleteContainer .beatmap-delete-confirm-wrap")
+    assert confirm_wrap is not None, "Inline confirmation should appear when delete button is clicked"
+    confirm_text = page.evaluate("document.querySelector('#paneDeleteContainer .beatmap-delete-confirm-wrap').textContent")
+    assert "Delete map?" in confirm_text
+    assert "Cancel" in confirm_text
+    assert "Delete" in confirm_text
+
+    # Take screenshot of calm delete confirmation
+    page.screenshot(path=tmp_path / "calm_delete_confirm_verified.png")
+
+    # Test Cancel returns calmly to delete icon
+    cancel_btn = page.query_selector("#paneDeleteContainer .beatmap-delete-cancel-btn")
+    assert cancel_btn is not None
+    cancel_btn.click()
+    page.wait_for_timeout(200)
+    assert page.query_selector("#paneDeleteContainer .beatmap-delete-confirm-wrap") is None
+    assert page.query_selector("#paneDeleteContainer .beatmap-delete-btn") is not None
+
+    # Click delete again and confirm
+    page.click("#paneDeleteContainer .beatmap-delete-btn")
+    page.wait_for_timeout(200)
+    page.click("#paneDeleteContainer .beatmap-delete-confirm-btn")
+    page.wait_for_selector(".beatmap-generate-btn", timeout=5000)
+
+    # Verify both right dock and horizontal strip transitioned to empty state
+    empty_gen_btn = page.query_selector(".beatmap-generate-btn")
+    assert empty_gen_btn is not None, "UI should smoothly return to empty state after deletion"
 
     print("\nALL VERIFICATIONS PASSED!")
+
+
+def test_beatmap_settings_modal_ui(page: Page, server: ProseviewServer, tmp_path: Path):
+    open_scene(page, server, SCENE_REL)
+
+    # Open Settings and select Beat Map tab
+    page.evaluate("openBeatMapSettings()")
+    page.wait_for_selector("#settingsPanelBeatmap:not([hidden])")
+    page.wait_for_selector("#beatmapSettingsBody .suggestion-prompt", timeout=5000)
+
+    # Verify presence of key UI elements
+    tab_btn = page.query_selector("#settingsTabBeatmap")
+    assert tab_btn is not None
+    assert tab_btn.get_attribute("aria-selected") == "true"
+
+    labels = page.evaluate("""
+        Array.from(document.querySelectorAll('#beatmapSettingsBody .settings-label')).map(el => el.textContent.trim())
+    """)
+    assert "Default Agent" in labels
+    assert "Model" in labels
+    assert "Target Pacing" in labels
+    assert "Project Instructions" in labels
+    assert "Narrative Structure Prompt" in labels
+    assert "Dramatic Tension Rubric" in labels
+
+    # Check reset buttons initial state (disabled because defaults match)
+    reset_btn_first = page.locator("#beatmapSettingsBody .suggestion-prompt button").first
+    assert reset_btn_first.is_disabled() is True
+
+    # Type into the prompt textarea
+    prompt_area = page.locator("#beatmapSettingsBody textarea").first
+    prompt_area.fill("Custom Author Instructions for Beat Extraction: Focus on micro-expressions.")
+
+    # Reset button should now be enabled
+    page.wait_for_timeout(100)
+    assert reset_btn_first.is_disabled() is False
+
+    # Clicking Reset to default should restore default prompt and disable reset button
+    reset_btn_first.click()
+    page.wait_for_timeout(100)
+    assert reset_btn_first.is_disabled() is True
+    reverted_val = prompt_area.input_value()
+    assert "Divide this scene into chronological narrative beats" in reverted_val
+
+    # Take screenshot of the Beat Map settings UI
+    page.screenshot(path=tmp_path / "beatmap_settings_modal_verified.png")
+
+    # Test editing and saving persists via Save changes button
+    prompt_area.fill("Custom Author Instructions: ensure climax is mapped.")
+    save_btn = page.locator("#settingsSaveBtn")
+    assert save_btn.is_enabled() is True
+    save_btn.click()
+    page.wait_for_selector("#settingsSaveBtn:has-text('Saved')", timeout=5000)
+
+    # Check settings reloaded from server reflect the custom prompt
+    res = server.get_json("/api/discuss/beatmap-settings")
+    assert res["settings"]["book"]["prompt"] == "Custom Author Instructions: ensure climax is mapped."

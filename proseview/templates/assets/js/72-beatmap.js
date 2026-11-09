@@ -17,6 +17,10 @@
     var _beatMapStale = false;
     var _beatMapCollapsedBeats = {};
     var _beatMapOpSeq = 0;
+    var _beatMapGenerateStartedAt = 0;
+    var _beatMapGenerateTimer = null;
+    var _beatMapGeneratePollTimer = null;
+    var _beatMapGenerateStatus = null;
 
     var ALLOWED_MOMENT_TYPES = ['dialogue', 'action', 'silent_reaction', 'interiority'];
 
@@ -50,6 +54,154 @@
         if (t <= 50) return { label: 'Moderate', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' };
         if (t <= 75) return { label: 'High', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.15)' };
         return { label: 'Crisis', color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)' };
+    }
+
+    function formatElapsed(sec) {
+        var s = Math.max(0, Math.floor(sec || 0));
+        var m = Math.floor(s / 60);
+        var rem = s % 60;
+        return m + ':' + (rem < 10 ? '0' : '') + rem;
+    }
+
+    function getGenerationStageInfo(elapsedSec, status, agent) {
+        var agentName = (agent === 'codex' ? 'Codex CLI' : 'Claude CLI');
+        var wordCount = (status && status.word_count) ? status.word_count : 0;
+        var totalParas = (status && status.total_paragraphs) ? status.total_paragraphs : 0;
+        var draftLen = (status && typeof status.draft_length === 'number') ? status.draft_length : 0;
+        var tokensStarted = !!(status && status.tokens_started);
+
+        var countText = '';
+        if (wordCount > 0 && totalParas > 0) {
+            countText = wordCount.toLocaleString() + ' words &bull; ' + totalParas + ' paragraphs';
+        } else if (wordCount > 0) {
+            countText = wordCount.toLocaleString() + ' words';
+        }
+
+        if (tokensStarted || draftLen > 0) {
+            var streamProgress = Math.min(45, Math.floor(draftLen / 65));
+            var percent = Math.min(95, 50 + streamProgress);
+            var sub = draftLen > 0
+                ? draftLen.toLocaleString() + ' chars streamed' + (countText ? ' &bull; ' + countText : '')
+                : (countText || 'Streaming beat structure');
+
+            return {
+                percent: percent,
+                stage: 'Extracting narrative beats & dialogue moments…',
+                subtext: sub
+            };
+        }
+
+        if (elapsedSec <= 4) {
+            var p = Math.min(20, Math.floor(5 + elapsedSec * 3.5));
+            return {
+                percent: p,
+                stage: 'Initializing ' + agentName + '…',
+                subtext: countText || 'Loading scene context'
+            };
+        } else if (elapsedSec <= 15) {
+            var p2 = Math.min(38, Math.floor(20 + (elapsedSec - 4) * 1.6));
+            return {
+                percent: p2,
+                stage: agentName + ' reading scene & evaluating dramatic tension…',
+                subtext: countText ? 'Analyzing ' + countText : 'Analyzing scene narrative arc'
+            };
+        } else if (elapsedSec <= 30) {
+            var p3 = Math.min(46, Math.floor(38 + (elapsedSec - 15) * 0.5));
+            return {
+                percent: p3,
+                stage: agentName + ' synthesizing beats, pacing & dialogue…',
+                subtext: countText ? 'Synthesizing ' + countText : 'Synthesizing beat progression'
+            };
+        } else {
+            var p4 = Math.min(49, Math.floor(46 + (elapsedSec - 30) * 0.08));
+            return {
+                percent: p4,
+                stage: agentName + ' reasoning across narrative arc…',
+                subtext: 'Deep scene analysis in progress (' + formatElapsed(elapsedSec) + ' elapsed)'
+            };
+        }
+    }
+
+    function clearGenerationTimers() {
+        if (_beatMapGenerateTimer) {
+            clearInterval(_beatMapGenerateTimer);
+            _beatMapGenerateTimer = null;
+        }
+        if (_beatMapGeneratePollTimer) {
+            clearInterval(_beatMapGeneratePollTimer);
+            _beatMapGeneratePollTimer = null;
+        }
+    }
+
+    function startGenerationTimers(scenePath) {
+        clearGenerationTimers();
+
+        _beatMapGenerateTimer = setInterval(function () {
+            if (_beatMapUpdatingScene !== scenePath) {
+                clearGenerationTimers();
+                return;
+            }
+            updateGenerationProgressDom();
+        }, 1000);
+
+        function pollStatus() {
+            if (_beatMapUpdatingScene !== scenePath) {
+                clearGenerationTimers();
+                return;
+            }
+            fetch('/api/scene/beatmap/status?path=' + encodeURIComponent(scenePath))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (_beatMapUpdatingScene !== scenePath) return;
+                    if (data && data.ok && data.status) {
+                        _beatMapGenerateStatus = data.status;
+                        updateGenerationProgressDom();
+                    }
+                })
+                .catch(function () {});
+        }
+
+        setTimeout(pollStatus, 800);
+        _beatMapGeneratePollTimer = setInterval(pollStatus, 1500);
+    }
+
+    function updateGenerationProgressDom() {
+        var isGeneratingCurrent = (_beatMapUpdatingScene !== null && _beatMapUpdatingScene === _beatMapCurrentScene);
+        if (!isGeneratingCurrent) return;
+
+        var elapsedSec = Math.max(0, Math.floor((Date.now() - _beatMapGenerateStartedAt) / 1000));
+        var elapsedFormatted = formatElapsed(elapsedSec);
+        var stageInfo = getGenerationStageInfo(elapsedSec, _beatMapGenerateStatus, _beatMapAgent);
+
+        var elapsedEls = document.querySelectorAll('.beatmap-btn-elapsed');
+        elapsedEls.forEach(function (el) {
+            el.textContent = elapsedFormatted;
+        });
+
+        var fillEls = document.querySelectorAll('.beatmap-progress-bar-fill');
+        fillEls.forEach(function (fill) {
+            fill.style.width = stageInfo.percent + '%';
+        });
+
+        var stageEls = document.querySelectorAll('.beatmap-progress-stage');
+        stageEls.forEach(function (st) {
+            st.textContent = stageInfo.stage;
+        });
+
+        var timeEls = document.querySelectorAll('.beatmap-progress-time');
+        timeEls.forEach(function (t) {
+            t.textContent = elapsedFormatted;
+        });
+
+        var subtextEls = document.querySelectorAll('.beatmap-progress-subtext');
+        subtextEls.forEach(function (sub) {
+            sub.innerHTML = '<span class="beatmap-pulse-dot"></span> ' + escHtml(stageInfo.subtext);
+        });
+
+        var crumbEl = document.getElementById('stripSubbarCrumb');
+        if (crumbEl) {
+            crumbEl.textContent = stageInfo.stage + ' (' + elapsedFormatted + ')';
+        }
     }
 
     function getBeatFractions(beats) {
@@ -240,6 +392,9 @@
         var generatingScene = _beatMapCurrentScene;
         _beatMapUpdatingScene = generatingScene;
         _beatMapIsUpdating = true;
+        _beatMapGenerateStartedAt = Date.now();
+        _beatMapGenerateStatus = null;
+        startGenerationTimers(generatingScene);
         renderCurrentPlacement();
 
         var payload = {
@@ -263,6 +418,9 @@
                 return res.json();
             })
             .then(function (data) {
+                clearGenerationTimers();
+                _beatMapGenerateStatus = null;
+                _beatMapGenerateStartedAt = 0;
                 if (_beatMapUpdatingScene === generatingScene) {
                     _beatMapUpdatingScene = null;
                 }
@@ -282,11 +440,20 @@
                     syncStaleIndicator();
                     renderCurrentPlacement();
                 } else {
-                    alert('Beat map generation failed: ' + (data.error || 'unknown error'));
+                    var errMsg = data.error || 'unknown error';
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast('Beat map generation failed: ' + errMsg, true);
+                    }
+                    window.dispatchEvent(new CustomEvent('beatmap-generation-failed', {
+                        detail: { scene_path: generatingScene, error: errMsg }
+                    }));
                     renderCurrentPlacement();
                 }
             })
             .catch(function (err) {
+                clearGenerationTimers();
+                _beatMapGenerateStatus = null;
+                _beatMapGenerateStartedAt = 0;
                 if (_beatMapUpdatingScene === generatingScene) {
                     _beatMapUpdatingScene = null;
                 }
@@ -295,9 +462,109 @@
                     renderCurrentPlacement();
                     return;
                 }
-                alert('Beat map request failed: ' + (err.message || err));
+                var errMsg = err.message || String(err);
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Beat map request failed: ' + errMsg, true);
+                }
+                window.dispatchEvent(new CustomEvent('beatmap-generation-failed', {
+                    detail: { scene_path: generatingScene, error: errMsg }
+                }));
                 renderCurrentPlacement();
             });
+    }
+
+    function deleteSceneBeatMap(scenePath) {
+        if (!scenePath) return;
+        fetch('/api/scene/beatmap/delete', {
+            method: 'POST',
+            headers: (typeof pvHeaders === 'function') ? pvHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: scenePath })
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && data.ok) {
+                    if (_beatMapCurrentScene === scenePath) {
+                        clearGenerationTimers();
+                        _beatMapData = null;
+                        _beatMapStale = false;
+                        _beatMapUpdatingScene = null;
+                        _beatMapIsUpdating = false;
+                        syncStaleIndicator();
+                        renderCurrentPlacement();
+                    }
+                    window.dispatchEvent(new CustomEvent('beatmap-deleted', { detail: { scene_path: scenePath } }));
+                } else {
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast('Failed to delete beat map: ' + (data.error || 'unknown error'), true);
+                    }
+                    renderCurrentPlacement();
+                }
+            })
+            .catch(function (err) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Failed to delete beat map: ' + (err.message || String(err)), true);
+                }
+                renderCurrentPlacement();
+            });
+    }
+
+    function renderTrashIconSvg() {
+        return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<polyline points="3 6 5 6 21 6"></polyline>' +
+            '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>' +
+            '</svg>';
+    }
+
+    function bindDeleteHandler(containerEl, scenePath) {
+        if (!containerEl || !scenePath) return;
+
+        function renderDefault() {
+            containerEl.innerHTML =
+                '<button type="button" class="beatmap-delete-btn" title="Delete beat map for this scene" aria-label="Delete beat map">' +
+                renderTrashIconSvg() +
+                '</button>';
+
+            var btn = containerEl.querySelector('.beatmap-delete-btn');
+            if (btn) {
+                btn.onclick = function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    renderConfirm();
+                };
+            }
+        }
+
+        function renderConfirm() {
+            containerEl.innerHTML =
+                '<div class="beatmap-delete-confirm-wrap">' +
+                '<span class="beatmap-delete-prompt">Delete map?</span>' +
+                '<button type="button" class="beatmap-delete-confirm-btn" title="Confirm deletion">Delete</button>' +
+                '<button type="button" class="beatmap-delete-cancel-btn" title="Cancel">Cancel</button>' +
+                '</div>';
+
+            var confirmBtn = containerEl.querySelector('.beatmap-delete-confirm-btn');
+            var cancelBtn = containerEl.querySelector('.beatmap-delete-cancel-btn');
+
+            if (cancelBtn) {
+                cancelBtn.onclick = function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    renderDefault();
+                };
+            }
+
+            if (confirmBtn) {
+                confirmBtn.onclick = function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = '…';
+                    deleteSceneBeatMap(scenePath);
+                };
+            }
+        }
+
+        renderDefault();
     }
 
     function syncStaleIndicator() {
@@ -445,51 +712,96 @@
         syncProseHighlight(target);
     }
 
+    function normalizeProseString(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/[\u201c\u201d"]/g, '"')       // smart double quotes -> "
+            .replace(/[\u2018\u2019']/g, "'")       // smart single quotes / curly apostrophes -> '
+            .replace(/[\u2013\u2014]/g, '-')        // en-dash / em-dash -> -
+            .replace(/\u2026/g, '...')              // ellipsis -> ...
+            .replace(/\s+/g, ' ')                   // all newlines, tabs, and spaces -> single space
+            .trim();
+    }
+
     function findProseParagraph(paraIdx, exactQuote, validAnchor) {
-        if (validAnchor === false) return null;
         var host = document.getElementById('sceneProseHost');
         if (!host) return null;
         var root = host.querySelector('.ProseMirror');
         if (!root) return null;
 
-        // 1. Gather only text paragraphs (<p>), strictly ignoring headings, annotations, and widgets
-        var pElements = [];
+        // 1. Gather all top-level prose blocks matching Python paragraph_blocks()
+        // (excludes headings and decoration widgets, but includes <p>, <hr>, <blockquote> etc.)
+        var blocks = [];
         for (var i = 0; i < root.children.length; i++) {
             var child = root.children[i];
-            if (child.tagName === 'P') {
-                pElements.push(child);
-            }
+            if (/^H[1-6]$/i.test(child.tagName)) continue;
+            if (child.classList && child.classList.contains('ProseMirror-widget')) continue;
+            blocks.push(child);
         }
+        if (!blocks.length) return null;
 
-        var cleanQuote = exactQuote ? exactQuote.replace(/^[“”"'\s]+|[“”"'\s]+$/g, '').slice(0, 30) : '';
+        var cleanQuote = exactQuote ? exactQuote.replace(/^[“”"'\s]+|[“”"'\s]+$/g, '').trim() : '';
+        var normQuote = normalizeProseString(cleanQuote);
 
-        // 2. If paraIdx is valid and matches the quote (or quote is empty), return it directly
-        if (typeof paraIdx === 'number' && paraIdx >= 0 && paraIdx < pElements.length) {
-            var candidate = pElements[paraIdx];
-            if (!cleanQuote) return candidate;
-            var normCand = candidate.textContent.replace(/["“”]/g, '"');
-            var normQ = cleanQuote.replace(/["“”]/g, '"');
-            if (normCand.indexOf(normQ) !== -1) {
-                return candidate;
+        // 2. Direct check at paraIdx
+        if (typeof paraIdx === 'number' && paraIdx >= 0 && paraIdx < blocks.length) {
+            var candidate = blocks[paraIdx];
+            if (candidate && candidate.tagName === 'P') {
+                if (!normQuote) return candidate;
+                if (normalizeProseString(candidate.textContent).indexOf(normQuote) !== -1) {
+                    return candidate;
+                }
             }
-        }
-
-        // 3. If index shifted, search all <p> elements for the quote
-        if (cleanQuote && cleanQuote.length >= 4) {
-            var normSearch = cleanQuote.replace(/["“”]/g, '"');
-            for (var j = 0; j < pElements.length; j++) {
-                var normText = pElements[j].textContent.replace(/["“”]/g, '"');
-                if (normText.indexOf(normSearch) !== -1) {
-                    return pElements[j];
+            // Check immediately adjacent blocks (±1, ±2) in case of divider or annotation offset
+            for (var offset = 1; offset <= 2; offset++) {
+                var prev = blocks[paraIdx - offset];
+                if (prev && prev.tagName === 'P' && normQuote && normalizeProseString(prev.textContent).indexOf(normQuote) !== -1) {
+                    return prev;
+                }
+                var next = blocks[paraIdx + offset];
+                if (next && next.tagName === 'P' && normQuote && normalizeProseString(next.textContent).indexOf(normQuote) !== -1) {
+                    return next;
                 }
             }
         }
 
-        // 4. Fallback ONLY if there was NO quote specified and validAnchor is not false.
-        // If an exactQuote was provided but cannot be found in the manuscript,
-        // do not fall back to an arbitrary paragraph index (prevents highlighting unrelated prose).
-        if (!cleanQuote && typeof paraIdx === 'number' && paraIdx >= 0 && paraIdx < pElements.length) {
-            return pElements[paraIdx];
+        // 3. Search all blocks for the full normalized quote
+        if (normQuote && normQuote.length >= 3) {
+            for (var j = 0; j < blocks.length; j++) {
+                var b = blocks[j];
+                if (b.tagName !== 'P' && !b.textContent) continue;
+                if (normalizeProseString(b.textContent).indexOf(normQuote) !== -1) {
+                    return b;
+                }
+            }
+        }
+
+        // 4. If full quote didn't match (e.g. quote was very long or slightly paraphrased),
+        // try searching for the first 3-4 words (at least 10 chars)
+        if (normQuote && normQuote.length >= 10) {
+            var words = normQuote.split(' ');
+            if (words.length >= 3) {
+                var snippet = words.slice(0, 4).join(' ');
+                if (snippet.length >= 10) {
+                    for (var k = 0; k < blocks.length; k++) {
+                        var b2 = blocks[k];
+                        if (b2.tagName !== 'P' && !b2.textContent) continue;
+                        if (normalizeProseString(b2.textContent).indexOf(snippet) !== -1) {
+                            return b2;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Fallback: If quote text search failed, jump to referenced paraIdx if valid
+        // (prevents unresponsive clicks; always lands author in the right neighborhood)
+        if (typeof paraIdx === 'number' && paraIdx >= 0 && paraIdx < blocks.length) {
+            var target = blocks[paraIdx];
+            if (target && target.tagName === 'P') return target;
+            if (paraIdx + 1 < blocks.length && blocks[paraIdx + 1].tagName === 'P') return blocks[paraIdx + 1];
+            if (paraIdx - 1 >= 0 && blocks[paraIdx - 1].tagName === 'P') return blocks[paraIdx - 1];
+            return target;
         }
 
         return null;
@@ -497,15 +809,9 @@
 
     function syncProseHighlight(moment) {
         if (!moment) return;
-        if (!isMomentAnchorValid(moment)) {
-            // Anchor is marked invalid/unresolved - do not jump to or highlight unrelated prose
-            return;
-        }
         var sourceRef = moment.source_ref;
-        if (!sourceRef) return;
-        var paraIdx = sourceRef.paragraph;
-        if (typeof paraIdx !== 'number') return;
-        var quote = sourceRef.exact_quote ? sourceRef.exact_quote.trim() : '';
+        var paraIdx = sourceRef ? sourceRef.paragraph : null;
+        var quote = (sourceRef && sourceRef.exact_quote) ? sourceRef.exact_quote.trim() : (moment.text || '');
         var validAnchor = isMomentAnchorValid(moment);
 
         // Find block in ProseMirror
@@ -535,27 +841,62 @@
     }
 
     function highlightSubstringInElement(el, searchText) {
-        var cleanSearch = searchText.replace(/^[“”"'\s]+|[“”"'\s]+$/g, '');
-        if (!cleanSearch || cleanSearch.length < 3) return;
+        if (!el || !searchText) return;
+        var rawSearch = searchText.replace(/^[“”"'\s]+|[“”"'\s]+$/g, '').trim();
+        if (!rawSearch || rawSearch.length < 2) return;
+
+        var normSearch = normalizeProseString(rawSearch);
+        if (!normSearch) return;
 
         var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
         var node;
         while ((node = walker.nextNode())) {
-            var idx = node.nodeValue.indexOf(cleanSearch);
+            var val = node.nodeValue || '';
+            if (!val) continue;
+
+            // 1. Direct match in node
+            var idx = val.indexOf(rawSearch);
+            var matchLen = rawSearch.length;
+
+            // 2. Normalized match in node (handles smart quotes, curly apostrophes, and \n -> space)
             if (idx === -1) {
-                // Try normalised quote marks
-                var normText = node.nodeValue.replace(/["“”]/g, '"');
-                var normSearch = cleanSearch.replace(/["“”]/g, '"');
-                idx = normText.indexOf(normSearch);
+                var cleanVal = val.replace(/[\u201c\u201d"]/g, '"').replace(/[\u2018\u2019']/g, "'").replace(/\s+/g, ' ');
+                var cleanKey = normSearch.length > 35 ? normSearch.slice(0, 35) : normSearch;
+                var cleanKeyFixed = cleanKey.replace(/[\u201c\u201d"]/g, '"').replace(/[\u2018\u2019']/g, "'").replace(/\s+/g, ' ');
+                var kIdx = cleanVal.indexOf(cleanKeyFixed);
+                if (kIdx !== -1) {
+                    idx = kIdx;
+                    matchLen = Math.min(cleanKeyFixed.length, val.length - idx);
+                }
             }
-            if (idx !== -1) {
-                var range = document.createRange();
-                range.setStart(node, idx);
-                range.setEnd(node, idx + cleanSearch.length);
-                var span = document.createElement('span');
-                span.className = 'moment-active-highlight';
-                range.surroundContents(span);
-                break;
+
+            // 3. Fallback: match first 2-3 words in node if long
+            if (idx === -1 && normSearch.length > 15) {
+                var words = normSearch.split(' ');
+                if (words.length >= 2) {
+                    var leadWords = words.slice(0, 3).join(' ');
+                    var leadClean = leadWords.replace(/[\u201c\u201d"]/g, '"').replace(/[\u2018\u2019']/g, "'").replace(/\s+/g, ' ');
+                    var cleanVal2 = val.replace(/[\u201c\u201d"]/g, '"').replace(/[\u2018\u2019']/g, "'").replace(/\s+/g, ' ');
+                    var lIdx = cleanVal2.indexOf(leadClean);
+                    if (lIdx !== -1) {
+                        idx = lIdx;
+                        matchLen = Math.min(leadClean.length, val.length - idx);
+                    }
+                }
+            }
+
+            if (idx !== -1 && idx + matchLen <= val.length) {
+                try {
+                    var range = document.createRange();
+                    range.setStart(node, idx);
+                    range.setEnd(node, idx + matchLen);
+                    var span = document.createElement('span');
+                    span.className = 'moment-active-highlight';
+                    range.surroundContents(span);
+                    return;
+                } catch (e) {
+                    // Ignore DOM range boundary error
+                }
             }
         }
     }
@@ -707,46 +1048,69 @@
     if (!container) return;
 
     var isGeneratingCurrent = (_beatMapUpdatingScene !== null && _beatMapUpdatingScene === _beatMapCurrentScene);
+    var elapsedSec = isGeneratingCurrent ? Math.max(0, Math.floor((Date.now() - _beatMapGenerateStartedAt) / 1000)) : 0;
+    var stageInfo = isGeneratingCurrent ? getGenerationStageInfo(elapsedSec, _beatMapGenerateStatus, _beatMapAgent) : null;
 
     if (!_beatMapData || !_beatMapData.beats || !_beatMapData.beats.length) {
         container.innerHTML =
             '<div class="beat-strip-horizontal">' +
             '<div class="strip-control-bar">' +
             '<div class="strip-status-left">' +
-            '<span class="status-saved-tag"><span class="status-dot stale"></span> Beat map not generated</span>' +
+            (isGeneratingCurrent
+                ? '<span class="status-saved-tag"><span class="beatmap-pulse-dot"></span> <strong style="color:var(--text-main);">Generating Beat Map</strong> <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span></span>'
+                : '<span class="status-saved-tag"><span class="status-dot stale"></span> Beat map not generated</span>') +
             '</div>' +
             '<div class="strip-controls-right">' +
             '<div style="display:inline-flex; align-items:center; gap:6px;">' +
-            '<select id="stripAgentSelect" class="beatmap-agent-picker" style="font-size:11px; padding:2px 6px;">' +
+            '<select id="stripAgentSelect" class="beatmap-agent-picker" style="font-size:11px; padding:2px 6px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
             '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
             '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
             '</select>' +
-            '<button type="button" class="beatmap-generate-btn" id="stripGenerateBtn" style="font-size:11px; padding:3px 10px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-            (isGeneratingCurrent ? 'Generating…' : '↻ Generate Beat Map') +
+            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripGenerateBtn" style="font-size:11px; padding:3px 10px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            (isGeneratingCurrent
+                ? '<span class="beatmap-spinner"></span> Generating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
+                : '↻ Generate Beat Map') +
             '</button>' +
             '</div>' +
             '<button type="button" class="strip-close-btn" id="emptyStripCloseBtn" title="Close horizontal beat strip">✕</button>' +
             '</div>' +
             '</div>' +
             '<div class="strip-cards-viewport" style="align-items:center; justify-content:center;">' +
-            '<div style="display:flex; align-items:center; gap:16px; background:var(--surface-card); border:1px dashed var(--border); border-radius:6px; padding:10px 18px; max-width:650px;">' +
-            '<svg style="width:120px; height:32px; flex-shrink:0;" viewBox="0 0 120 32">' +
-            '<line x1="5" y1="28" x2="115" y2="28" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 2"/>' +
-            '<path d="M 10 22 Q 40 18 70 8 T 110 16" fill="none" stroke="var(--primary)" stroke-width="1.8"/>' +
-            '<circle cx="10" cy="22" r="2.5" fill="var(--primary)"/>' +
-            '<circle cx="70" cy="8" r="3.5" fill="#fff" stroke="var(--primary)" stroke-width="1.5"/>' +
-            '<circle cx="110" cy="16" r="2.5" fill="var(--primary)"/>' +
-            '</svg>' +
-            '<div style="font-size:11px; color:var(--text-muted); line-height:1.4;">' +
-            '<strong style="color:var(--text-main); font-size:11.5px; display:block; margin-bottom:2px;">Visual Beat Progression</strong>' +
-            'Click <strong>↻ Generate Beat Map</strong> to extract narrative beats, tension curve, and sequential dialogue moments for this scene.' +
-            '</div>' +
-            '</div>' +
+            (isGeneratingCurrent
+                ? '<div class="beatmap-progress-panel" style="max-width:620px; width:100%; margin:0 20px;">' +
+                  '<div class="beatmap-progress-bar-wrap">' +
+                  '<div class="beatmap-progress-bar-fill" style="width:' + stageInfo.percent + '%;"></div>' +
+                  '</div>' +
+                  '<div class="beatmap-progress-label">' +
+                  '<span class="beatmap-progress-stage">' + escHtml(stageInfo.stage) + '</span>' +
+                  '<span class="beatmap-progress-time">' + formatElapsed(elapsedSec) + '</span>' +
+                  '</div>' +
+                  '<div class="beatmap-progress-subtext">' +
+                  '<span class="beatmap-pulse-dot"></span> ' + escHtml(stageInfo.subtext) +
+                  '</div>' +
+                  '</div>'
+                : '<div style="display:flex; align-items:center; gap:16px; background:var(--surface-card); border:1px dashed var(--border); border-radius:6px; padding:10px 18px; max-width:650px;">' +
+                  '<svg style="width:120px; height:32px; flex-shrink:0;" viewBox="0 0 120 32">' +
+                  '<line x1="5" y1="28" x2="115" y2="28" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 2"/>' +
+                  '<path d="M 10 22 Q 40 18 70 8 T 110 16" fill="none" stroke="var(--primary)" stroke-width="1.8"/>' +
+                  '<circle cx="10" cy="22" r="2.5" fill="var(--primary)"/>' +
+                  '<circle cx="70" cy="8" r="3.5" fill="#fff" stroke="var(--primary)" stroke-width="1.5"/>' +
+                  '<circle cx="110" cy="16" r="2.5" fill="var(--primary)"/>' +
+                  '</svg>' +
+                  '<div style="font-size:11px; color:var(--text-muted); line-height:1.4;">' +
+                  '<strong style="color:var(--text-main); font-size:11.5px; display:block; margin-bottom:2px;">Visual Beat Progression</strong>' +
+                  'Click <strong>↻ Generate Beat Map</strong> to extract narrative beats, tension curve, and sequential dialogue moments for this scene.' +
+                  '</div>' +
+                  '</div>') +
             '</div>' +
             '<div class="scene-text-subbar">' +
             '<div class="subbar-left">' +
             '<span class="subbar-scene-label">Scene text</span>' +
-            '<span class="subbar-crumb">Awaiting beat map generation</span>' +
+            '<span class="subbar-crumb" id="stripSubbarCrumb">' +
+            (isGeneratingCurrent
+                ? escHtml(stageInfo.stage) + ' (' + formatElapsed(elapsedSec) + ')'
+                : 'Awaiting beat map generation') +
+            '</span>' +
             '</div>' +
             '<div class="subbar-right">' +
             '<span style="color:var(--text-muted); font-size:10.5px;">• On demand</span>' +
@@ -784,7 +1148,9 @@
     var controlBar =
         '<div class="strip-control-bar">' +
         '<div class="strip-status-left">' +
-        '<span class="status-saved-tag"><span class="' + statusDotCls + '"></span> ' + statusLabel + '</span>' +
+        (isGeneratingCurrent
+            ? '<span class="status-saved-tag"><span class="beatmap-pulse-dot"></span> Updating map… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span></span>'
+            : '<span class="status-saved-tag"><span class="' + statusDotCls + '"></span> ' + statusLabel + '</span>') +
         '</div>' +
         '<div class="strip-controls-right">' +
         '<div class="moment-stepper">' +
@@ -792,14 +1158,17 @@
         '<span>' + counterText + '</span>' +
         '<button type="button" class="stepper-btn" id="stepperNext" title="Next moment">&gt;</button>' +
         '</div>' +
-        '<div style="display:inline-flex; align-items:center; background:var(--surface-field); border:1px solid var(--border); border-radius:4px; padding:1px 6px;">' +
-        '<select id="stripActiveAgent" class="beat-agent-select">' +
+        '<div style="display:inline-flex; align-items:center; background:var(--surface-field); border:1px solid var(--border); border-radius:4px; padding:1px 6px; gap:4px;">' +
+        '<select id="stripActiveAgent" class="beat-agent-select"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
         '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
         '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
         '</select>' +
-        '<button type="button" class="strip-btn" id="stripUpdateBtn" style="border:0; padding:2px 4px;">' +
-        (isGeneratingCurrent ? 'Updating…' : '↻ Update') +
+        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripUpdateBtn" style="border:0; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        (isGeneratingCurrent
+            ? '<span class="beatmap-spinner subtle"></span> Updating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
+            : '↻ Update') +
         '</button>' +
+        (!isGeneratingCurrent ? '<div id="stripDeleteContainer" style="display:inline-flex; align-items:center;"></div>' : '') +
         '</div>' +
         '<button type="button" class="strip-close-btn" id="stripCloseBtn" title="Close horizontal beat strip">✕</button>' +
         '</div>' +
@@ -886,9 +1255,22 @@
         '</div>' +
         '</div>';
 
+    var inlineStripProgress = isGeneratingCurrent
+        ? '<div class="beatmap-inline-progress-wrap" style="padding:4px 16px; background:var(--surface-card); border-bottom:1px solid var(--border);">' +
+          '<div class="beatmap-progress-bar-wrap" style="height:3px; margin-bottom:4px;">' +
+          '<div class="beatmap-progress-bar-fill" style="width:' + stageInfo.percent + '%;"></div>' +
+          '</div>' +
+          '<div class="beatmap-progress-label" style="font-size:10.5px;">' +
+          '<span class="beatmap-progress-stage" style="color:var(--text-main); font-weight:500;"><span class="beatmap-pulse-dot" style="margin-right:5px;"></span>' + escHtml(stageInfo.stage) + '</span>' +
+          '<span class="beatmap-progress-time" style="font-family:var(--font-mono, monospace); color:var(--text-muted);">' + formatElapsed(elapsedSec) + '</span>' +
+          '</div>' +
+          '</div>'
+        : '';
+
     container.innerHTML =
         '<div class="beat-strip-horizontal">' +
         controlBar +
+        inlineStripProgress +
         tensionRow +
         cardsViewport +
         subBar +
@@ -926,6 +1308,8 @@
         }
         updateSceneBeatMap();
     };
+
+    bindDeleteHandler(container.querySelector('#stripDeleteContainer'), _beatMapCurrentScene);
 
     var returnAllBtn = container.querySelector('#btnReturnAllBeats');
     if (returnAllBtn) returnAllBtn.onclick = function () {
@@ -1008,25 +1392,49 @@ function renderSceneBeatMapPane() {
     }
 
     var isGeneratingCurrent = (_beatMapUpdatingScene !== null && _beatMapUpdatingScene === _beatMapCurrentScene);
+    var elapsedSec = isGeneratingCurrent ? Math.max(0, Math.floor((Date.now() - _beatMapGenerateStartedAt) / 1000)) : 0;
+    var stageInfo = isGeneratingCurrent ? getGenerationStageInfo(elapsedSec, _beatMapGenerateStatus, _beatMapAgent) : null;
 
     if (!_beatMapData || !_beatMapData.beats || !_beatMapData.beats.length) {
         var emptyToggleBtn =
+            '<div style="display:inline-flex; align-items:center; gap:6px;">' +
             '<button type="button" class="beatmap-toggle-strip-btn' + (isHorizontalStripVisible() ? ' active' : '') + '" id="emptyPaneToggleStripBtn" title="Toggle horizontal timeline strip at top of scene">' +
             '<span>⬌</span> Top Strip' +
-            '</button>';
+            '</button>' +
+            '<button type="button" class="beatmap-toggle-strip-btn" id="emptyPaneSettingsBtn" title="Beat Map settings">' +
+            '⚙ Settings' +
+            '</button>' +
+            '</div>';
 
         var emptyHeaderHtml =
             '<div class="beatmap-dock-header">' +
             '<div style="display:flex; align-items:center; gap:8px;">' +
             '<span style="font-weight:600; font-size:12px; color:var(--text-main);">Scene Beat Map</span>' +
-            '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="status-dot stale"></span> Not generated</span>' +
+            (isGeneratingCurrent
+                ? '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="beatmap-pulse-dot"></span> Generating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span></span>'
+                : '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="status-dot stale"></span> Not generated</span>') +
             '</div>' +
             emptyToggleBtn +
             '</div>';
 
+        var progressPanelHtml = isGeneratingCurrent
+            ? '<div class="beatmap-progress-panel" id="beatmapProgressPanel">' +
+              '<div class="beatmap-progress-bar-wrap">' +
+              '<div class="beatmap-progress-bar-fill" style="width:' + stageInfo.percent + '%;"></div>' +
+              '</div>' +
+              '<div class="beatmap-progress-label">' +
+              '<span class="beatmap-progress-stage">' + escHtml(stageInfo.stage) + '</span>' +
+              '<span class="beatmap-progress-time">' + formatElapsed(elapsedSec) + '</span>' +
+              '</div>' +
+              '<div class="beatmap-progress-subtext">' +
+              '<span class="beatmap-pulse-dot"></span> ' + escHtml(stageInfo.subtext) +
+              '</div>' +
+              '</div>'
+            : '';
+
         var emptyHeroHtml =
             '<div class="beatmap-empty-state">' +
-            '<div class="beatmap-empty-hero">' +
+            '<div class="beatmap-empty-hero' + (isGeneratingCurrent ? ' is-generating' : '') + '">' +
             '<svg class="beatmap-empty-wave" viewBox="0 0 280 40">' +
             '<line x1="10" y1="34" x2="270" y2="34" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>' +
             '<path d="M 20 28 Q 70 24 120 16 T 190 8 T 260 22" fill="none" stroke="var(--primary, #dd635f)" stroke-width="1.8" stroke-linecap="round" opacity="0.85"/>' +
@@ -1040,18 +1448,21 @@ function renderSceneBeatMapPane() {
             '<div class="beatmap-empty-desc">' +
             'Map narrative trajectory, dramatic tension, and sequential dialogue and moments across this scene without reading the entire text.' +
             '</div>' +
+            progressPanelHtml +
             '<div class="beatmap-empty-ghosts">' +
             '<div class="beatmap-ghost-row"><span>BEAT 1 &bull; Opening</span><span>Tension 25%</span></div>' +
             '<div class="beatmap-ghost-row"><span>BEAT 2 &bull; Complication</span><span>Tension 60%</span></div>' +
             '<div class="beatmap-ghost-row"><span>BEAT 3 &bull; Turning point</span><span style="color:var(--primary, #dd635f); font-weight:700;">Tension 95%</span></div>' +
             '</div>' +
             '<div class="beatmap-action-group">' +
-            '<select id="paneAgentSelect" class="beatmap-agent-picker">' +
+            '<select id="paneAgentSelect" class="beatmap-agent-picker"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
             '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
             '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
             '</select>' +
-            '<button type="button" class="beatmap-generate-btn" id="paneGenerateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-            (isGeneratingCurrent ? 'Generating…' : '↻ Generate Beat Map') +
+            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneGenerateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            (isGeneratingCurrent
+                ? '<span class="beatmap-spinner"></span> Generating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
+                : '↻ Generate Beat Map') +
             '</button>' +
             '</div>' +
             '<div class="beatmap-empty-footnote">Generated on demand &bull; Stored locally with revision hash</div>' +
@@ -1062,6 +1473,8 @@ function renderSceneBeatMapPane() {
 
         var emptyToggle = pane.querySelector('#emptyPaneToggleStripBtn');
         if (emptyToggle) emptyToggle.onclick = function () { toggleHorizontalStrip(); };
+        var emptySettings = pane.querySelector('#emptyPaneSettingsBtn');
+        if (emptySettings) emptySettings.onclick = function () { if (typeof openBeatMapSettings === 'function') openBeatMapSettings(); };
 
         var genBtn = pane.querySelector('#paneGenerateBtn');
         var agentSel = pane.querySelector('#paneAgentSelect');
@@ -1083,15 +1496,22 @@ function renderSceneBeatMapPane() {
     // 1. Pane Header
     var isStripOn = isHorizontalStripVisible();
     var stripToggleBtn =
+        '<div style="display:inline-flex; align-items:center; gap:6px;">' +
         '<button type="button" class="beatmap-toggle-strip-btn' + (isStripOn ? ' active' : '') + '" id="paneToggleStripBtn" title="Toggle horizontal timeline strip at top of scene">' +
         '<span>⬌</span> Top Strip' +
-        '</button>';
+        '</button>' +
+        '<button type="button" class="beatmap-toggle-strip-btn" id="paneSettingsBtn" title="Beat Map settings">' +
+        '⚙ Settings' +
+        '</button>' +
+        '</div>';
 
     var headerHtml =
         '<div class="beatmap-dock-header">' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
         '<span style="font-weight:600; font-size:12px; color:var(--text-main);">Scene Beat Map</span>' +
-        '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="' + statusDotCls + '"></span> ' + statusLabel + '</span>' +
+        (isGeneratingCurrent
+            ? '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="beatmap-pulse-dot"></span> Updating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span></span>'
+            : '<span class="status-saved-tag" style="font-size:10.5px; color:var(--text-muted);"><span class="' + statusDotCls + '"></span> ' + statusLabel + '</span>') +
         '</div>' +
         stripToggleBtn +
         '</div>';
@@ -1101,15 +1521,31 @@ function renderSceneBeatMapPane() {
         '<div style="padding:6px 14px; border-bottom:1px solid var(--border); background:var(--bg-app); display:flex; justify-content:space-between; align-items:center;">' +
         '<div style="display:inline-flex; align-items:center; gap:4px; font-size:11px;">' +
         '<span style="color:var(--text-muted);">Agent:</span>' +
-        '<select id="paneActiveAgent" class="beat-agent-select" style="background:var(--surface-field); border:1px solid var(--border); border-radius:3px; padding:2px 4px;">' +
+        '<select id="paneActiveAgent" class="beat-agent-select" style="background:var(--surface-field); border:1px solid var(--border); border-radius:3px; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
         '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
         '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
         '</select>' +
         '</div>' +
-        '<button type="button" class="strip-btn" id="paneUpdateBtn">' +
-        (isGeneratingCurrent ? 'Updating…' : '↻ Update') +
+        '<div style="display:inline-flex; align-items:center; gap:6px;">' +
+        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneUpdateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        (isGeneratingCurrent
+            ? '<span class="beatmap-spinner subtle"></span> Updating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
+            : '↻ Update') +
         '</button>' +
-        '</div>';
+        (!isGeneratingCurrent ? '<div id="paneDeleteContainer" style="display:inline-flex; align-items:center;"></div>' : '') +
+        '</div>' +
+        '</div>' +
+        (isGeneratingCurrent
+            ? '<div class="beatmap-inline-progress-wrap" style="padding:6px 14px; background:color-mix(in srgb, var(--surface-card) 60%, var(--bg-app, #18191c)); border-bottom:1px solid var(--border);">' +
+              '<div class="beatmap-progress-bar-wrap" style="height:4px; margin-bottom:5px;">' +
+              '<div class="beatmap-progress-bar-fill" style="width:' + stageInfo.percent + '%;"></div>' +
+              '</div>' +
+              '<div class="beatmap-progress-label" style="font-size:10.5px;">' +
+              '<span class="beatmap-progress-stage" style="color:var(--text-main); font-weight:500;"><span class="beatmap-pulse-dot" style="margin-right:5px;"></span>' + escHtml(stageInfo.stage) + '</span>' +
+              '<span class="beatmap-progress-time" style="font-family:var(--font-mono, monospace); color:var(--text-muted);">' + formatElapsed(elapsedSec) + '</span>' +
+              '</div>' +
+              '</div>'
+            : '');
 
     // 3. Tension Curve
     var peakBeat = beats.length ? beats.reduce(function (max, b) {
@@ -1199,6 +1635,8 @@ function renderSceneBeatMapPane() {
     // Attach listeners
     var toggleStrip = pane.querySelector('#paneToggleStripBtn');
     if (toggleStrip) toggleStrip.onclick = function () { toggleHorizontalStrip(); };
+    var paneSettings = pane.querySelector('#paneSettingsBtn');
+    if (paneSettings) paneSettings.onclick = function () { if (typeof openBeatMapSettings === 'function') openBeatMapSettings(); };
 
     var updateBtn = pane.querySelector('#paneUpdateBtn');
     var activeAgentSel = pane.querySelector('#paneActiveAgent');
@@ -1209,6 +1647,8 @@ function renderSceneBeatMapPane() {
         }
         updateSceneBeatMap();
     };
+
+    bindDeleteHandler(pane.querySelector('#paneDeleteContainer'), _beatMapCurrentScene);
 
     pane.querySelectorAll('.curve-node').forEach(function (node) {
         node.onclick = function () {
@@ -1239,7 +1679,8 @@ function renderSceneBeatMapPane() {
     });
 
     pane.querySelectorAll('.sidebar-beat-header').forEach(function (hdr) {
-        hdr.onclick = function () {
+        hdr.onclick = function (e) {
+            if (e && e.target && e.target.closest && e.target.closest('.beat-collapse-btn')) return;
             var order = parseInt(hdr.dataset.beatOrder, 10);
             if (_beatMapSelectedBeat === order && !_beatMapCollapsedBeats[order]) {
                 _beatMapCollapsedBeats[order] = true;
@@ -1264,12 +1705,18 @@ function updateBeatMapState(data) {
     if (!data) return;
     var bm = data.beatmap || data;
     if (bm && bm.beats) {
+        clearGenerationTimers();
+        _beatMapGenerateStatus = null;
+        _beatMapGenerateStartedAt = 0;
+        _beatMapUpdatingScene = null;
+        _beatMapIsUpdating = false;
         // Drop updates if they target another scene than the one currently open
         if (bm.scene_path && _beatMapCurrentScene && bm.scene_path !== _beatMapCurrentScene) {
             return;
         }
         _beatMapData = bm;
         _beatMapStale = !!data.stale;
+        syncStaleIndicator();
         renderCurrentPlacement();
     }
 }
@@ -1287,7 +1734,52 @@ window.toggleBeatMapPlacement = toggleBeatMapPlacement;
 window.selectBeat = selectBeat;
 window.selectMoment = selectMoment;
 window.jumpToActiveMoment = jumpToActiveMoment;
+window.deleteSceneBeatMap = deleteSceneBeatMap;
 window.getBeatMapData = function () { return _beatMapData; };
+
+window.addEventListener('beatmap-deleted', function (evt) {
+    if (!evt || !evt.detail) return;
+    var target = evt.detail.scene_path;
+    if (target && target === _beatMapCurrentScene) {
+        clearGenerationTimers();
+        _beatMapData = null;
+        _beatMapStale = false;
+        _beatMapUpdatingScene = null;
+        _beatMapIsUpdating = false;
+        syncStaleIndicator();
+        renderCurrentPlacement();
+    }
+});
+
+window.addEventListener('beatmap-generating', function (evt) {
+    if (!evt || !evt.detail) return;
+    var target = evt.detail.scene_path;
+    if (!target) return;
+    var isCurrent = (_beatMapCurrentScene && target === _beatMapCurrentScene);
+    _beatMapUpdatingScene = target;
+    _beatMapIsUpdating = isCurrent;
+    _beatMapGenerateStartedAt = Date.now();
+    _beatMapGenerateStatus = null;
+    if (evt.detail.agent) {
+        _beatMapAgent = evt.detail.agent;
+    }
+    startGenerationTimers(target);
+    if (isCurrent) {
+        renderCurrentPlacement();
+    }
+});
+
+window.addEventListener('beatmap-generation-failed', function (evt) {
+    if (!evt || !evt.detail) return;
+    if (!_beatMapUpdatingScene || evt.detail.scene_path === _beatMapUpdatingScene) {
+        clearGenerationTimers();
+        _beatMapGenerateStatus = null;
+        _beatMapGenerateStartedAt = 0;
+        _beatMapUpdatingScene = null;
+        _beatMapIsUpdating = false;
+        renderCurrentPlacement();
+    }
+});
 
 window.addEventListener('beatmap-updated', function (evt) {
     if (evt && evt.detail) {

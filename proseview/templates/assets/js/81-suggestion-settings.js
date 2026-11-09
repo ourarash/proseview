@@ -259,8 +259,8 @@
             });
         }
 
-        // Settings has three tabs: General, Suggestions, and Writers' Room.
-        var SETTINGS_TABS = ['general', 'suggestions', 'room'];
+        // Settings has four tabs: General, Suggestions, Writers' Room, and Beat Map.
+        var SETTINGS_TABS = ['general', 'suggestions', 'room', 'beatmap'];
 
         function selectSettingsTab(name) {
             SETTINGS_TABS.forEach(function(tab) {
@@ -276,6 +276,7 @@
             });
             if (name === 'suggestions' && !_sg) loadSuggestionSettings();
             if (name === 'room' && !_rm) loadRoomSettings();
+            if (name === 'beatmap' && typeof loadBeatMapSettings === 'function' && !_bmSettings) loadBeatMapSettings();
         }
 
         // The card's gear: Settings, opened on the Suggestions tab.

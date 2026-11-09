@@ -3836,7 +3836,8 @@
                 var targetTag = document.createElement('div');
                 targetTag.className = 'discuss-beatmap-target-scene';
                 targetTag.style.cssText = 'font-size:10px; font-family:var(--font-mono); color:var(--text-muted); padding:3px 12px 6px;';
-                targetTag.textContent = 'Scene: ' + boundScenePath + (boundRevision ? ' (' + boundRevision.slice(0, 7) + ')' : '');
+                var shortRev = boundRevision ? String(boundRevision).replace(/^sha256:/i, '').slice(0, 7) : '';
+                targetTag.textContent = 'Scene: ' + boundScenePath + (shortRev ? ' (' + shortRev + ')' : '');
                 card.appendChild(targetTag);
             }
 
@@ -3934,28 +3935,157 @@
             var footer = document.createElement('div');
             footer.className = 'discuss-beatmap-footer';
 
+            var progressPanel = document.createElement('div');
+            progressPanel.className = 'discuss-beatmap-progress-panel';
+            progressPanel.style.display = 'none';
+
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'discuss-beatmap-btn';
-            btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+            var originalBtnText = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+            btn.textContent = originalBtnText;
 
             var statusSpan = document.createElement('span');
             statusSpan.className = 'discuss-beatmap-status';
 
-            btn.onclick = function() {
-                btn.disabled = true;
-                btn.textContent = isPatch ? 'Applying…' : 'Generating…';
-                statusSpan.textContent = '';
-                statusSpan.className = 'discuss-beatmap-status';
+            function getProposalStageInfo(elapsedSec, status, agent) {
+                var agentName = (agent === 'codex' ? 'Codex CLI' : 'Claude CLI');
+                var wordCount = (status && status.word_count) ? status.word_count : 0;
+                var totalParas = (status && status.total_paragraphs) ? status.total_paragraphs : 0;
+                var draftLen = (status && typeof status.draft_length === 'number') ? status.draft_length : 0;
+                var tokensStarted = !!(status && status.tokens_started);
 
+                var countText = '';
+                if (wordCount > 0 && totalParas > 0) {
+                    countText = wordCount.toLocaleString() + ' words • ' + totalParas + ' paragraphs';
+                } else if (wordCount > 0) {
+                    countText = wordCount.toLocaleString() + ' words';
+                }
+
+                if (tokensStarted || draftLen > 0) {
+                    var streamProgress = Math.min(45, Math.floor(draftLen / 65));
+                    var percent = Math.min(95, 50 + streamProgress);
+                    var sub = draftLen > 0
+                        ? draftLen.toLocaleString() + ' chars streamed' + (countText ? ' • ' + countText : '')
+                        : (countText || 'Streaming beat structure');
+
+                    return {
+                        percent: percent,
+                        stage: 'Extracting narrative beats & dialogue moments…',
+                        subtext: sub
+                    };
+                }
+
+                if (elapsedSec <= 4) {
+                    var p = Math.min(20, Math.floor(5 + elapsedSec * 3.5));
+                    return {
+                        percent: p,
+                        stage: 'Initializing ' + agentName + '…',
+                        subtext: countText || 'Loading scene context'
+                    };
+                } else if (elapsedSec <= 15) {
+                    var p2 = Math.min(38, Math.floor(20 + (elapsedSec - 4) * 1.6));
+                    return {
+                        percent: p2,
+                        stage: agentName + ' reading scene & evaluating dramatic tension…',
+                        subtext: countText ? 'Analyzing ' + countText : 'Analyzing scene narrative arc'
+                    };
+                } else if (elapsedSec <= 30) {
+                    var p3 = Math.min(46, Math.floor(38 + (elapsedSec - 15) * 0.5));
+                    return {
+                        percent: p3,
+                        stage: agentName + ' synthesizing beats, pacing & dialogue…',
+                        subtext: countText ? 'Synthesizing ' + countText : 'Synthesizing beat progression'
+                    };
+                } else {
+                    var p4 = Math.min(49, Math.floor(46 + (elapsedSec - 30) * 0.08));
+                    var m = Math.floor(elapsedSec / 60);
+                    var s = elapsedSec % 60;
+                    var timeStr = m + ':' + (s < 10 ? '0' : '') + s;
+                    return {
+                        percent: p4,
+                        stage: agentName + ' reasoning across narrative arc…',
+                        subtext: 'Deep scene analysis in progress (' + timeStr + ' elapsed)'
+                    };
+                }
+            }
+
+            btn.onclick = function() {
                 var targetPath = boundScenePath;
                 if (!targetPath) {
                     btn.disabled = false;
-                    btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+                    btn.textContent = originalBtnText;
                     statusSpan.textContent = 'Error: Cannot resolve originating scene path for proposal';
                     statusSpan.classList.add('error');
                     return;
                 }
+
+                btn.disabled = true;
+                statusSpan.textContent = '';
+                statusSpan.className = 'discuss-beatmap-status';
+
+                var startTime = Date.now();
+                var generationStatus = null;
+                var targetAgent = (payload && payload.agent) || 'claude';
+
+                function formatClock(sec) {
+                    var s = Math.max(0, Math.floor(sec || 0));
+                    var m = Math.floor(s / 60);
+                    var rem = s % 60;
+                    return m + ':' + (rem < 10 ? '0' : '') + rem;
+                }
+
+                function formatDurationBadge(sec) {
+                    var s = Math.max(1, Math.round(sec || 0));
+                    if (s >= 60) {
+                        return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+                    }
+                    return s + 's';
+                }
+
+                function updateProgressView() {
+                    var elapsedSec = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+                    var clockStr = formatClock(elapsedSec);
+                    var stageInfo = getProposalStageInfo(elapsedSec, generationStatus, targetAgent);
+
+                    btn.innerHTML = '<span class="beatmap-spinner"></span> ' +
+                        (isPatch ? 'Applying… ' : 'Generating… ') +
+                        '<span class="discuss-beatmap-btn-timer">' + clockStr + '</span>';
+
+                    progressPanel.innerHTML =
+                        '<div class="beatmap-progress-bar-wrap" style="height:5px; margin-bottom:6px;">' +
+                        '<div class="beatmap-progress-bar-fill" style="width:' + stageInfo.percent + '%;"></div>' +
+                        '</div>' +
+                        '<div class="beatmap-progress-label">' +
+                        '<span class="discuss-beatmap-stage">' + stageInfo.stage + '</span>' +
+                        '<span class="discuss-beatmap-clock">' + clockStr + '</span>' +
+                        '</div>' +
+                        '<div class="beatmap-progress-subtext">' +
+                        '<span class="beatmap-pulse-dot"></span> <span class="discuss-beatmap-subtext-msg">' + stageInfo.subtext + '</span>' +
+                        '</div>';
+                }
+
+                progressPanel.style.display = 'block';
+                updateProgressView();
+
+                var ticker = setInterval(updateProgressView, 1000);
+
+                var poller = setInterval(function() {
+                    fetch('/api/scene/beatmap/status?path=' + encodeURIComponent(targetPath))
+                        .then(function(res) { return res.json(); })
+                        .then(function(d) {
+                            if (d && d.ok && d.status) {
+                                generationStatus = d.status;
+                                if (d.status.agent) targetAgent = d.status.agent;
+                                updateProgressView();
+                            }
+                        })
+                        .catch(function() {});
+                }, 1500);
+
+                window.dispatchEvent(new CustomEvent('beatmap-generating', {
+                    detail: { scene_path: targetPath, agent: targetAgent }
+                }));
 
                 var url = (isPatch || (payload && payload.replace)) ? '/api/scene/beatmap/patch' : '/api/scene/beatmap/generate';
                 var reqPayload = Object.assign({}, payload, {
@@ -3985,11 +4115,17 @@
                     return res.json();
                 })
                 .then(function(data) {
+                    clearInterval(ticker);
+                    clearInterval(poller);
+                    progressPanel.style.display = 'none';
+
                     if (!data.ok) {
                         throw new Error(data.error || 'Server error');
                     }
                     btn.style.display = 'none';
-                    statusSpan.textContent = isPatch ? '✓ Applied to Beat Map' : '✓ Beat Map Recreated';
+                    var totalSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+                    var durationText = formatDurationBadge(totalSec);
+                    statusSpan.textContent = (isPatch ? '✓ Applied to Beat Map in ' : '✓ Beat Map Recreated in ') + durationText;
                     statusSpan.classList.add('success');
 
                     // Only update the active scene's beatmap view if the proposal was applied to the currently open scene
@@ -4002,13 +4138,22 @@
                     window.dispatchEvent(new CustomEvent('beatmap-updated', { detail: data }));
                 })
                 .catch(function(err) {
+                    clearInterval(ticker);
+                    clearInterval(poller);
+                    progressPanel.style.display = 'none';
+
                     btn.disabled = false;
-                    btn.textContent = isPatch ? 'Apply to Beat Map' : 'Recreate Beat Map';
+                    btn.textContent = originalBtnText;
                     statusSpan.textContent = 'Error: ' + (err.message || String(err));
                     statusSpan.classList.add('error');
+
+                    window.dispatchEvent(new CustomEvent('beatmap-generation-failed', {
+                        detail: { scene_path: targetPath, error: err.message || String(err) }
+                    }));
                 });
             };
 
+            card.appendChild(progressPanel);
             footer.appendChild(btn);
             footer.appendChild(statusSpan);
             card.appendChild(footer);

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -27,7 +28,36 @@ from .scenes import extract_scene_text, resolve_manuscript_dir, split_frontmatte
 BEATMAP_SCHEMA_VERSION = 1
 #: How long an agent may take to map a scene. A real agent needs well over
 #: 25 seconds for a scene of a few thousand words.
-BEATMAP_AGENT_TIMEOUT = 180.0
+BEATMAP_AGENT_TIMEOUT = 300.0
+
+_active_beatmap_jobs: dict[str, dict[str, Any]] = {}
+_active_beatmap_lock = threading.Lock()
+
+
+def get_beatmap_generation_status(repo_root: Path, rel_path: str) -> dict[str, Any]:
+    """Return live status of an ongoing beat map generation job, if any."""
+    clean_path = str(Path(rel_path)).replace("\\", "/")
+    job_key = f"{repo_root.resolve()}:{clean_path}"
+    with _active_beatmap_lock:
+        job = _active_beatmap_jobs.get(job_key)
+        if not job:
+            return {"active": False, "scene_path": clean_path}
+        holder = job.get("holder")
+        elapsed = time.time() - float(job.get("started_at", time.time()))
+        tokens_started = bool(holder and holder.first_token is not None)
+        draft_len = len(holder.draft) if holder and holder.draft else 0
+        progress_text = holder.progress if holder and holder.progress else ""
+        return {
+            "active": True,
+            "scene_path": clean_path,
+            "agent": job.get("agent", "agent"),
+            "elapsed_seconds": int(elapsed),
+            "word_count": job.get("word_count", 0),
+            "total_paragraphs": job.get("total_paragraphs", 0),
+            "tokens_started": tokens_started,
+            "draft_length": draft_len,
+            "progress_text": progress_text.strip(),
+        }
 
 
 def compute_scene_hash(text: str) -> str:
@@ -73,7 +103,26 @@ def save_cached_beatmap(repo_root: Path, rel_path: str, data: dict[str, Any]) ->
     atomic_write_text(target, json.dumps(data, indent=2, ensure_ascii=False))
 
 
+def delete_cached_beatmap(repo_root: Path, rel_path: str) -> bool:
+    """Delete the cached beatmap for a scene if it exists. Returns True if deleted."""
+    path = beatmap_cache_path(repo_root, rel_path)
+    if path.is_file():
+        try:
+            path.unlink(missing_ok=True)
+            return True
+        except Exception:
+            return False
+    return False
+
+
 VALID_MOMENT_TYPES = {"dialogue", "action", "silent_reaction", "interiority"}
+
+
+def _normalize_prose_for_matching(text: str) -> str:
+    """Normalize whitespace and quotation marks for robust anchor matching."""
+    t = text.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    t = t.replace("—", "-").replace("–", "-").replace("…", "...")
+    return " ".join(t.split())
 
 
 def validate_beatmap_anchors(beatmap: dict[str, Any], raw_scene_text: str) -> dict[str, Any]:
@@ -93,65 +142,118 @@ def validate_beatmap_anchors(beatmap: dict[str, Any], raw_scene_text: str) -> di
     _fm, body = split_frontmatter(raw_scene_text)
     prose = prose_only(extract_scene_text(body))
     paras = paragraph_blocks(prose)
+    total_paras = max(1, len(paras))
 
-    for b_idx, beat in enumerate(beatmap.get("beats", [])):
-        try:
-            beat["order"] = int(beat.get("order"))
-        except (ValueError, TypeError):
-            beat["order"] = b_idx + 1
-        clean_b_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(beat.get("id") or f"beat-{beat['order']}"))
-        beat["id"] = clean_b_id or f"beat-{beat['order']}"
-        beat["title"] = str(beat.get("title") or "Beat").strip()[:120]
-        beat["summary"] = str(beat.get("summary") or "").strip()[:500]
-        try:
-            beat["estimated_tension"] = max(0, min(100, int(round(float(beat.get("estimated_tension", 50))))))
-        except (ValueError, TypeError):
-            beat["estimated_tension"] = 50
-        beat["is_turning_point"] = bool(beat.get("is_turning_point", False))
-
-        for m_idx, moment in enumerate(beat.get("moments", [])):
+    beats = beatmap.get("beats", [])
+    if beats:
+        def _safe_beat_order(b: Any, default: int) -> int:
             try:
-                moment["order"] = int(moment.get("order"))
+                return int(b.get("order"))
+            except (ValueError, TypeError, AttributeError):
+                return default
+
+        for b_idx, beat in enumerate(beats):
+            beat["order"] = _safe_beat_order(beat, b_idx + 1)
+
+        beats.sort(key=lambda b: _safe_beat_order(b, 0))
+
+        for b_idx, beat in enumerate(beats):
+            clean_b_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(beat.get("id") or f"beat-{beat['order']}"))
+            beat["id"] = clean_b_id or f"beat-{beat['order']}"
+            beat["title"] = str(beat.get("title") or "Beat").strip()[:120]
+            beat["summary"] = str(beat.get("summary") or "").strip()[:1000]
+            try:
+                beat["estimated_tension"] = max(0, min(100, int(round(float(beat.get("estimated_tension", 50))))))
             except (ValueError, TypeError):
-                moment["order"] = m_idx + 1
-            clean_m_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(moment.get("id") or f"m-{moment['order']:02d}"))
-            moment["id"] = clean_m_id or f"m-{moment['order']:02d}"
+                beat["estimated_tension"] = 50
+            beat["is_turning_point"] = bool(beat.get("is_turning_point", False))
 
-            # Validate moment type against allowlist to prevent arbitrary strings / XSS
-            raw_type = str(moment.get("type") or "").strip().lower()
-            clean_type = re.sub(r'[^a-z0-9_-]', '', raw_type)
-            if clean_type in VALID_MOMENT_TYPES:
-                moment["type"] = clean_type
-            else:
-                moment["type"] = "action"
+            moment_paras: list[int] = []
+            for m_idx, moment in enumerate(beat.get("moments", [])):
+                try:
+                    moment["order"] = int(moment.get("order"))
+                except (ValueError, TypeError):
+                    moment["order"] = m_idx + 1
+                clean_m_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(moment.get("id") or f"m-{moment['order']:02d}"))
+                moment["id"] = clean_m_id or f"m-{moment['order']:02d}"
 
-            if moment.get("speaker") is not None:
-                moment["speaker"] = str(moment["speaker"]).strip()[:80]
-            moment["text"] = str(moment.get("text") or "").strip()[:500]
+                # Validate moment type against allowlist to prevent arbitrary strings / XSS
+                raw_type = str(moment.get("type") or "").strip().lower()
+                clean_type = re.sub(r'[^a-z0-9_-]', '', raw_type)
+                if clean_type in VALID_MOMENT_TYPES:
+                    moment["type"] = clean_type
+                else:
+                    moment["type"] = "action"
 
-            source_ref = moment.get("source_ref") or {}
-            para_idx = source_ref.get("paragraph")
-            quote = (source_ref.get("exact_quote") or "").strip()
+                if moment.get("speaker") is not None:
+                    moment["speaker"] = str(moment["speaker"]).strip()[:80]
+                moment["text"] = str(moment.get("text") or "").strip()[:500]
 
-            valid = False
-            if isinstance(para_idx, int) and 0 <= para_idx < len(paras):
-                p_text = paras[para_idx]
-                if quote and (quote in p_text or quote.replace('"', '“').replace('"', '”') in p_text):
-                    valid = True
-                elif not quote:
-                    valid = True
+                source_ref = moment.get("source_ref") or {}
+                para_idx = source_ref.get("paragraph")
+                raw_quote = str(source_ref.get("exact_quote") or "").strip()
+                # Clean any truncation artifacts
+                quote = raw_quote.replace("\n… output truncated by Prosview …", "").replace("… output truncated by Prosview …", "").strip()
+                source_ref["exact_quote"] = quote
 
-            # If paragraph shifted slightly due to edits, check neighboring paragraphs
-            if not valid and quote:
-                for idx, p_text in enumerate(paras):
-                    if quote in p_text or quote.replace('"', '“').replace('"', '”') in p_text:
+                valid = False
+                norm_q = _normalize_prose_for_matching(quote) if quote else ""
+                if isinstance(para_idx, int) and 0 <= para_idx < len(paras):
+                    p_text = paras[para_idx]
+                    if norm_q and (quote in p_text or norm_q in _normalize_prose_for_matching(p_text)):
                         valid = True
-                        source_ref["paragraph"] = idx
-                        break
+                    elif not quote:
+                        valid = True
 
-            moment["valid_anchor"] = valid
-            source_ref["valid_anchor"] = valid
-            moment["source_ref"] = source_ref
+                # If paragraph shifted slightly due to edits, scene breaks, etc., check other paragraphs
+                if not valid and norm_q:
+                    for idx, p_text in enumerate(paras):
+                        if quote in p_text or norm_q in _normalize_prose_for_matching(p_text):
+                            valid = True
+                            source_ref["paragraph"] = idx
+                            para_idx = idx
+                            break
+
+                moment["valid_anchor"] = valid
+                source_ref["valid_anchor"] = valid
+                moment["source_ref"] = source_ref
+                if isinstance(para_idx, int) and 0 <= para_idx < total_paras:
+                    moment_paras.append(para_idx)
+
+            # Determine start_paragraph and end_paragraph
+            try:
+                start_p = int(beat.get("start_paragraph"))
+            except (ValueError, TypeError):
+                start_p = min(moment_paras) if moment_paras else (beats[b_idx - 1]["end_paragraph"] + 1 if b_idx > 0 else 0)
+
+            try:
+                end_p = int(beat.get("end_paragraph"))
+            except (ValueError, TypeError):
+                end_p = max(moment_paras) if moment_paras else start_p
+
+            start_p = max(0, min(total_paras - 1, start_p))
+            end_p = max(start_p, min(total_paras - 1, end_p))
+            beat["start_paragraph"] = start_p
+            beat["end_paragraph"] = end_p
+
+        # Pass 2: Ensure full continuous coverage across all scene paragraphs
+        if beats[0]["start_paragraph"] > 0:
+            beats[0]["start_paragraph"] = 0
+
+        for b_idx in range(len(beats) - 1):
+            curr_b = beats[b_idx]
+            next_b = beats[b_idx + 1]
+            if curr_b["end_paragraph"] < next_b["start_paragraph"] - 1:
+                curr_b["end_paragraph"] = next_b["start_paragraph"] - 1
+            elif curr_b["end_paragraph"] >= next_b["start_paragraph"]:
+                if curr_b["end_paragraph"] < total_paras - 1:
+                    next_b["start_paragraph"] = max(next_b["start_paragraph"], curr_b["end_paragraph"] + 1)
+                    if next_b["end_paragraph"] < next_b["start_paragraph"]:
+                        next_b["end_paragraph"] = next_b["start_paragraph"]
+
+        # Ensure the final beat covers through to the very last paragraph of the scene
+        if beats[-1]["end_paragraph"] < total_paras - 1:
+            beats[-1]["end_paragraph"] = total_paras - 1
 
     return beatmap
 
@@ -302,7 +404,30 @@ def heuristic_beatmap_extractor(rel_path: str, raw_scene_text: str, agent: str =
     }
 
 
-def build_beatmap_prompt(scene_text: str, rel_path: str, guidance: str = "") -> str:
+DEFAULT_BEATMAP_PROMPT = """Divide this scene into chronological narrative beats based on genuine shifts in dramatic progression, conflict, or character dynamics (or adhere strictly to the Author Guidance if provided).
+For each beat, provide:
+- title: concise (2-4 words)
+- summary: 1 clear sentence summarizing the causal progression
+- start_paragraph: integer paragraph index
+- end_paragraph: integer paragraph index
+- estimated_tension: integer between 0 and 100 representing narrative dramatic tension (psychological stakes, conflict, uncertainty, and emotional intensity).
+- is_turning_point: boolean (mark true for pivotal shift, confrontation, or climax beats)
+- moments: ordered sequence of 3 to 6 key dramatic moments inside this beat."""
+
+DEFAULT_BEATMAP_TENSION_RUBRIC = """- 0-25: Low / Calm exposition, domestic routine, low external or internal conflict.
+- 26-50: Moderate / Simmering friction, subtle unease, curiosity, subtext.
+- 51-75: High / Active confrontation, escalation, heightened stakes, urgency.
+- 76-100: Peak / Climax, major revelation, acute crisis, life-altering turning point."""
+
+
+def build_beatmap_prompt(
+    scene_text: str,
+    rel_path: str,
+    guidance: str = "",
+    custom_prompt: str = "",
+    custom_rubric: str = "",
+    target_beats: str = "",
+) -> str:
     """Build the prompt instructing the AI agent to produce a structured beat map."""
     _fm, body = split_frontmatter(scene_text)
     prose = prose_only(extract_scene_text(body))
@@ -316,39 +441,43 @@ def build_beatmap_prompt(scene_text: str, rel_path: str, guidance: str = "") -> 
         else ""
     )
 
+    pacing_note = ""
+    if target_beats and str(target_beats).strip().lower() != "auto":
+        pacing_note = f"\n   - Target Beat Count: Aim for approximately {str(target_beats).strip()} beats across this scene."
+
+    structure_instructions = custom_prompt.strip() if custom_prompt.strip() else DEFAULT_BEATMAP_PROMPT
+    scoring_rubric = custom_rubric.strip() if custom_rubric.strip() else DEFAULT_BEATMAP_TENSION_RUBRIC
+
     return f"""You are analyzing a manuscript scene for Proseview's Visual Beat Map.
 Scene Path: {rel_path}
-Total Paragraphs: {len(paras)}
+Total Paragraphs: {len(paras)} (indexed 0 to {len(paras) - 1})
 {guidance_section}
 Instructions:
-1. Divide this scene into 4 to 6 chronological narrative beats.
-2. For each beat, provide:
-   - title: concise (2-4 words)
-   - summary: 1 clear sentence summarizing the causal progression
-   - start_paragraph: integer paragraph index
-   - end_paragraph: integer paragraph index
-   - estimated_tension: integer between 0 and 100 representing narrative dramatic tension (psychological stakes, conflict, uncertainty, and emotional intensity).
-     Scoring Rubric:
-     * 0-25: Low / Calm exposition, domestic routine, low external or internal conflict.
-     * 26-50: Moderate / Simmering friction, subtle unease, curiosity, subtext.
-     * 51-75: High / Active confrontation, escalation, heightened stakes, urgency.
-     * 76-100: Peak / Climax, major revelation, acute crisis, life-altering turning point.
-   - is_turning_point: boolean (mark true for the pivotal shift or crisis beat)
-   - moments: ordered sequence of events inside this beat.
+1. COMPLETE SCENE COVERAGE (CRITICAL):
+   - Your narrative beats MUST span the ENTIRE scene continuously from start to finish without gaps or early cutoff.
+   - Beat 1 must begin at paragraph 0 (start_paragraph: 0).
+   - The final beat MUST end at paragraph {len(paras) - 1} (end_paragraph: {len(paras) - 1}).
+   - You MUST analyze and map the entire scene all the way through to the final closing lines ([Paragraph {len(paras) - 1}]). Do NOT stop or truncate before the end of the manuscript text.{pacing_note}
+2. Structure & Pacing:
+{structure_instructions}
+
+   Scoring Rubric for estimated_tension (0 to 100):
+{scoring_rubric}
 3. For each moment:
    - order: sequential 1-based integer numbered continuously across the entire scene (1, 2, 3...)
    - type: one of "dialogue", "action", "silent_reaction", "interiority"
    - speaker: character name if dialogue or attributed reaction, else null
    - text: concise description of the moment
    - source_ref: {{"paragraph": <int>, "exact_quote": "<EXACT VERBATIM SUBSTRING FROM MANUSCRIPT>"}}
-   CRITICAL: "exact_quote" MUST be an exact character-for-character substring of that paragraph in the manuscript so Proseview can highlight and anchor to it. Do NOT paraphrase.
+   CRITICAL: "exact_quote" MUST be an exact character-for-character substring of that paragraph in the manuscript so Proseview can highlight and anchor to it. Do NOT paraphrase or invent quotes.
+   IMPORTANT: Ensure the output is strictly valid JSON. Any double quotes inside string fields (like dialogue quotes in "exact_quote" or "text") MUST be properly escaped with a backslash (\"). Do NOT include trailing commas.
 
 Numbered Scene Paragraphs:
 {numbered_paras}
 
 Output valid JSON matching this schema:
 {{
-  "overall_scene_summary": "1-2 sentence overview of the scene",
+  "overall_scene_summary": "1-2 sentence overview of the entire scene from opening to final lines",
   "beats": [
     {{
       "order": 1,
@@ -376,6 +505,124 @@ Output valid JSON matching this schema:
 """
 
 
+def parse_agent_json(raw_text: str, agent: str = "agent") -> dict[str, Any]:
+    """Robustly parse JSON returned by an LLM agent, repairing common syntax glitches.
+
+    Handles:
+    - Markdown code fences (```json ... ```)
+    - Chat preamble or concluding remarks
+    - Unescaped internal double quotes inside strings (common in dialogue excerpts)
+    - Trailing commas in arrays or objects
+    - Unescaped newlines in string literals
+    - Root wrappers (e.g. {"beatmap": {"beats": ...}})
+    """
+    if not raw_text or not raw_text.strip():
+        raise ValueError(f"Agent '{agent}' returned empty response.")
+
+    text = raw_text.strip()
+
+    # 1. First, try markdown code block extraction if present
+    code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    candidates: list[str] = []
+    if code_blocks:
+        for cb in code_blocks:
+            cb_str = cb.strip()
+            if "{" in cb_str or "[" in cb_str:
+                candidates.append(cb_str)
+
+    # 2. Add unclosed markdown blocks, greedy brace/bracket extraction, and text starting from first delimiter
+    unclosed = re.search(r"```(?:json)?\s*([{\[][\s\S]*)", text, re.IGNORECASE)
+    if unclosed:
+        candidates.append(unclosed.group(1).strip())
+
+    m_brace = re.search(r"\{[\s\S]*\}", text)
+    if m_brace:
+        candidates.append(m_brace.group(0))
+
+    m_bracket = re.search(r"\[[\s\S]*\]", text)
+    if m_bracket:
+        candidates.append(m_bracket.group(0))
+
+    first_brace = text.find("{")
+    if first_brace != -1:
+        candidates.append(text[first_brace:])
+
+    first_bracket = text.find("[")
+    if first_bracket != -1:
+        candidates.append(text[first_bracket:])
+
+    candidates.append(text)
+
+    def _extract_beats_dict(obj: Any) -> dict[str, Any] | None:
+        if isinstance(obj, dict):
+            if "beats" in obj and isinstance(obj["beats"], list):
+                return obj
+            for key in ("beatmap", "scene_beatmap", "beat_map", "scene_beat_map", "data", "narrative_beats", "story_beats", "result"):
+                nested = obj.get(key)
+                if isinstance(nested, dict) and "beats" in nested and isinstance(nested["beats"], list):
+                    return nested
+                if isinstance(nested, list) and nested and isinstance(nested[0], dict):
+                    return {"beats": nested}
+            # Also check if any key in the dict holds a list of beat-like objects
+            for key, val in obj.items():
+                if isinstance(val, list) and val and isinstance(val[0], dict) and ("title" in val[0] or "order" in val[0] or "summary" in val[0]):
+                    return {**obj, "beats": val}
+        elif isinstance(obj, list) and obj and isinstance(obj[0], dict) and ("title" in obj[0] or "order" in obj[0] or "summary" in obj[0]):
+            return {"beats": obj}
+        return None
+
+    # 3. Fast path: Standard json.loads
+    for cand in candidates:
+        try:
+            parsed = json.loads(cand, strict=False)
+            res = _extract_beats_dict(parsed)
+            if res is not None:
+                return res
+        except Exception:
+            pass
+
+    # 4. Try json_repair library (specialized in fixing LLM JSON syntax errors)
+    try:
+        import json_repair
+
+        for cand in candidates:
+            try:
+                parsed = json_repair.loads(cand)
+                res = _extract_beats_dict(parsed)
+                if res is not None:
+                    return res
+            except Exception:
+                pass
+        try:
+            parsed = json_repair.loads(text)
+            res = _extract_beats_dict(parsed)
+            if res is not None:
+                return res
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
+    # 5. Native regex repair fallback (handles trailing commas, unescaped quotes, etc.)
+    for cand in candidates:
+        try:
+            # Strip trailing commas before closing braces/brackets
+            repaired = re.sub(r",\s*([}\]])", r"\1", cand)
+            brace_m = re.search(r"\{[\s\S]*\}", repaired)
+            if brace_m:
+                repaired = brace_m.group(0)
+            parsed = json.loads(repaired, strict=False)
+            res = _extract_beats_dict(parsed)
+            if res is not None:
+                return res
+        except Exception:
+            pass
+
+    # If all parsing attempts failed, raise a descriptive error
+    preview = (text[:120] + "...") if len(text) > 120 else text
+    raise ValueError(f"Agent '{agent}' output did not contain a valid beat map JSON object. (Received: {preview!r})")
+
+
 def extract_beatmap_with_agent(
     repo_root: Path,
     rel_path: str,
@@ -391,13 +638,27 @@ def extract_beatmap_with_agent(
         if not client:
             raise RuntimeError(f"Agent '{agent}' client could not be started.")
 
-        prompt = build_beatmap_prompt(raw_scene_text, rel_path, guidance=guidance)
+        cfg = Config.load(repo_root) if repo_root else Config()
+        prompt = build_beatmap_prompt(
+            raw_scene_text,
+            rel_path,
+            guidance=guidance,
+            custom_prompt=cfg.beatmap.prompt,
+            custom_rubric=cfg.beatmap.tension_rubric,
+            target_beats=cfg.beatmap.target_beats,
+        )
         # Ephemeral turn call
         thread_params: dict[str, Any] = {
             "cwd": str(repo_root),
             "approvalPolicy": "never",
             "ephemeral": True,
         }
+        if agent == "codex":
+            if not cfg.beatmap.instructions:
+                thread_params["config"] = {"project_doc_max_bytes": 0}
+        else:
+            thread_params["settingSources"] = ["user", "project", "local"] if cfg.beatmap.instructions else ["user"]
+
         started = client.request("thread/start", thread_params)
         thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
         thread_id = str(thread.get("id") or "")
@@ -412,8 +673,9 @@ def extract_beatmap_with_agent(
             "sandboxPolicy": {"type": "readOnly", "networkAccess": False},
             "mayWrite": False,
         }
-        if model:
-            turn_params["model"] = model
+        chosen_model = model or cfg.beatmap.model
+        if chosen_model:
+            turn_params["model"] = chosen_model
 
         # Check if client can execute one-off turn
         one_off = getattr(discuss_manager, "_one_offs", None)
@@ -424,34 +686,51 @@ def extract_beatmap_with_agent(
         from .discuss import _OneOff
         holder = _OneOff()
         discuss_manager._one_offs[key] = holder
+        _fm, body = split_frontmatter(raw_scene_text)
+        prose = prose_only(extract_scene_text(body))
+        clean_rel = str(Path(rel_path)).replace("\\", "/")
+        job_key = f"{repo_root.resolve()}:{clean_rel}"
+        with _active_beatmap_lock:
+            _active_beatmap_jobs[job_key] = {
+                "scene_path": clean_rel,
+                "agent": agent,
+                "started_at": time.time(),
+                "holder": holder,
+                "word_count": len(prose.split()),
+                "total_paragraphs": len(paragraph_blocks(prose)),
+            }
         try:
             client.request("turn/start", turn_params)
             if not holder.done.wait(timeout=BEATMAP_AGENT_TIMEOUT):
                 raise TimeoutError(f"Agent '{agent}' timed out after {BEATMAP_AGENT_TIMEOUT:.0f} seconds.")
-            if not holder.text:
+            raw_output = (holder.text or holder.draft or "").strip()
+            if not raw_output:
                 raise RuntimeError(f"Agent '{agent}' returned empty response.")
-            # Extract JSON block
-            m = re.search(r'\{[\s\S]*\}', holder.text)
-            if not m:
-                raise ValueError(f"Agent '{agent}' output did not contain valid JSON.")
-            parsed = json.loads(m.group(0))
-            if "beats" not in parsed or not isinstance(parsed["beats"], list):
-                raise ValueError(f"Agent '{agent}' output missing 'beats' array.")
+            # Robustly parse and repair agent JSON output, falling back to heuristic with guidance if malformed
+            try:
+                parsed = parse_agent_json(raw_output, agent=agent)
+            except Exception:
+                parsed = heuristic_beatmap_extractor(rel_path, raw_scene_text, agent=agent, guidance=guidance)
+                parsed["model_used"] = f"{agent}-heuristic-fallback"
             parsed["schema_version"] = BEATMAP_SCHEMA_VERSION
-            parsed["map_version"] = f"bm_{uuid.uuid4().hex[:12]}"
+            if not parsed.get("map_version"):
+                parsed["map_version"] = f"bm_{uuid.uuid4().hex[:12]}"
             parsed["scene_path"] = str(Path(rel_path)).replace("\\", "/")
             parsed["analyzed_revision_hash"] = compute_scene_hash(raw_scene_text)
             parsed["generated_at"] = datetime.now(timezone.utc).isoformat()
             parsed["agent_used"] = agent
-            parsed["model_used"] = model or f"{agent}-cli"
+            if not parsed.get("model_used"):
+                parsed["model_used"] = model or f"{agent}-cli"
             # Add IDs if missing
-            for b_idx, b in enumerate(parsed["beats"]):
+            for b_idx, b in enumerate(parsed.get("beats", [])):
                 b["id"] = b.get("id") or f"beat-{b_idx + 1}"
                 b["order"] = b.get("order") or (b_idx + 1)
                 for m_idx, mo in enumerate(b.get("moments", [])):
                     mo["id"] = mo.get("id") or f"m-{mo.get('order', m_idx + 1):02d}"
             return parsed
         finally:
+            with _active_beatmap_lock:
+                _active_beatmap_jobs.pop(job_key, None)
             discuss_manager._one_offs.pop(key, None)
 
     return heuristic_beatmap_extractor(rel_path, raw_scene_text, agent=agent, guidance=guidance)
@@ -489,13 +768,15 @@ def get_scene_beatmap(repo_root: Path, rel_path: str) -> dict[str, Any]:
 def generate_scene_beatmap(
     repo_root: Path,
     rel_path: str,
-    agent: str = "claude",
+    agent: str = "",
     model: str = "",
     guidance: str = "",
     discuss_manager: Any = None,
 ) -> dict[str, Any]:
     """Generate or update the beatmap for a scene on demand and persist it."""
     cfg = Config.load(repo_root)
+    agent = agent or cfg.beatmap.agent or "claude"
+    model = model or cfg.beatmap.model or ""
     manuscript_dir = resolve_manuscript_dir(repo_root, cfg.manuscript_subdir)
     scene_path = (manuscript_dir / rel_path).resolve()
 
@@ -573,10 +854,12 @@ def patch_scene_beatmap(
         or patch_payload.get("revision")
     )
     if expected_rev and beatmap.get("analyzed_revision_hash"):
-        if beatmap["analyzed_revision_hash"] != expected_rev:
+        exp_clean = expected_rev.removeprefix("sha256:")
+        act_clean = beatmap["analyzed_revision_hash"].removeprefix("sha256:")
+        if exp_clean != act_clean:
             raise ValueError(
-                f"Beatmap revision conflict: proposal was created for revision {expected_rev[:8]}, "
-                f"but active map revision is {beatmap['analyzed_revision_hash'][:8]}."
+                f"Beatmap revision conflict: proposal was created for revision {exp_clean[:8]}, "
+                f"but active map revision is {act_clean[:8]}."
             )
 
     # Support full structural replacement if supplied directly by chat agent
@@ -595,7 +878,7 @@ def patch_scene_beatmap(
                 mo["id"] = mo.get("id") or f"m-{mo.get('order', m_idx + 1):02d}"
         beatmap["beats"] = new_beats
         if "overall_scene_summary" in patch_payload and patch_payload["overall_scene_summary"]:
-            beatmap["overall_scene_summary"] = str(patch_payload["overall_scene_summary"])[:500]
+            beatmap["overall_scene_summary"] = str(patch_payload["overall_scene_summary"])[:2000]
         beatmap["generated_at"] = datetime.now(timezone.utc).isoformat()
         beatmap["map_version"] = f"bm_{uuid.uuid4().hex[:12]}"
         validated = validate_beatmap_anchors(beatmap, raw_text)
@@ -640,7 +923,20 @@ def patch_scene_beatmap(
 
         target_beat = beats_by_order.get(order_int)
         if not target_beat:
-            continue
+            # Create and append new beat if it does not yet exist
+            target_beat = {
+                "id": str(item.get("id") or f"beat-{order_int}"),
+                "order": order_int,
+                "title": str(item.get("title") or f"Beat {order_int}").strip()[:120],
+                "summary": str(item.get("summary") or "").strip()[:1000],
+                "start_paragraph": int(item.get("start_paragraph", 0)) if "start_paragraph" in item else 0,
+                "end_paragraph": int(item.get("end_paragraph", 0)) if "end_paragraph" in item else 0,
+                "estimated_tension": max(0, min(100, int(round(float(item.get("estimated_tension", 50)))))),
+                "is_turning_point": bool(item.get("is_turning_point", False)),
+                "moments": list(item.get("moments") or []),
+            }
+            beats.append(target_beat)
+            beats_by_order[order_int] = target_beat
 
         # Tension update (clamped 0 to 100)
         if "estimated_tension" in item:
@@ -662,6 +958,22 @@ def patch_scene_beatmap(
             if clean_summary:
                 target_beat["summary"] = clean_summary[:1000]
 
+        # Paragraph range updates
+        if "start_paragraph" in item:
+            try:
+                target_beat["start_paragraph"] = int(item["start_paragraph"])
+            except (ValueError, TypeError):
+                pass
+        if "end_paragraph" in item:
+            try:
+                target_beat["end_paragraph"] = int(item["end_paragraph"])
+            except (ValueError, TypeError):
+                pass
+
+        # Moments list update
+        if "moments" in item and isinstance(item["moments"], list):
+            target_beat["moments"] = item["moments"]
+
         # Turning point update
         if "is_turning_point" in item:
             target_beat["is_turning_point"] = bool(item["is_turning_point"])
@@ -671,6 +983,14 @@ def patch_scene_beatmap(
     if not updated_orders:
         raise ValueError("No matching beats found to patch.")
 
+    def _safe_sort_key(b: Any) -> int:
+        try:
+            return int(b.get("order", 0))
+        except (ValueError, TypeError, AttributeError):
+            return 0
+
+    beats.sort(key=_safe_sort_key)
+    beatmap["beats"] = beats
     beatmap["generated_at"] = datetime.now(timezone.utc).isoformat()
     beatmap["map_version"] = f"bm_{uuid.uuid4().hex[:12]}"
     validated = validate_beatmap_anchors(beatmap, raw_text)

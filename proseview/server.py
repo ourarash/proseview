@@ -2190,6 +2190,17 @@ class _Handler(BaseHTTPRequestHandler):
                     shutil.rmtree(backups_dir)
                 self._send_json({"ok": True})
                 return
+
+            if self.path.startswith("/api/scene/beatmap"):
+                qs = parse_qs(urlparse(self.path).query)
+                rel = (qs.get("path") or [""])[0]
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .beatmap import delete_cached_beatmap
+                deleted = delete_cached_beatmap(Path(self.repo_root), rel)
+                self._send_json({"ok": True, "deleted": deleted})
+                return
                 
             self.send_response(404)
             self.end_headers()
@@ -2222,6 +2233,13 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if discuss_path == "/api/privacy":
             self._send_json({"ok": True, **self.privacy.state()})
+            return
+        if discuss_path == "/api/discuss/beatmap-settings":
+            try:
+                settings = self.discuss_manager.beatmap_settings()
+                self._send_json({"ok": True, "settings": settings})
+            except Exception as exc:
+                self._send_discuss_error(exc)
             return
         if discuss_path == "/events":
             if not self._authorize_event_stream_generation():
@@ -2404,6 +2422,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, "mattr": lex.mattr, "mtld": lex.mtld})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if discuss_path == "/api/scene/beatmap/status":
+            query = parse_qs(urlparse(self.path).query)
+            rel = query.get("path", [""])[0]
+            if not rel:
+                self._send_json({"ok": False, "error": "missing path"}, 400)
+                return
+            from .beatmap import get_beatmap_generation_status
+            status = get_beatmap_generation_status(Path(self.repo_root), rel)
+            self._send_json({"ok": True, "status": status})
             return
         if self.path.startswith("/api/scene/beatmap?"):
             try:
@@ -2663,6 +2691,19 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
             return
+        if path == "/api/scene/beatmap/delete":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .beatmap import delete_cached_beatmap
+                deleted = delete_cached_beatmap(Path(self.repo_root), rel)
+                self._send_json({"ok": True, "deleted": deleted})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
         if path.startswith("/api/discuss/"):
             try:
                 body = self._read_json_limited()
@@ -2746,6 +2787,13 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.save_room_settings(body)
                     else:
                         settings = self.discuss_manager.room_settings()
+                    self._send_json({"ok": True, "settings": settings})
+                    return
+                if path == "/api/discuss/beatmap-settings":
+                    if body.get("save"):
+                        settings = self.discuss_manager.save_beatmap_settings(body)
+                    else:
+                        settings = self.discuss_manager.beatmap_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
                 if path == "/api/discuss/room-run":

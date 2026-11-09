@@ -1577,7 +1577,7 @@ class EventBuffer:
             return self._next_id - 1
 
 
-def _bounded_text(value: Any, limit: int = 16_384) -> str:
+def _bounded_text(value: Any, limit: int = 524_288) -> str:
     text = str(value or "")
     return text if len(text) <= limit else text[:limit] + "\n… output truncated by Prosview …"
 
@@ -1662,7 +1662,7 @@ def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             "type": "response.delta",
             **common,
             "item_id": params.get("itemId"),
-            "text": _bounded_text(params.get("delta")),
+            "text": _bounded_text(params.get("delta"), 65_536),
         }]
     if method == "turn/plan/updated":
         plan = []
@@ -1690,7 +1690,7 @@ def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
                 **common,
                 "item_id": item.get("id"),
                 "phase": item.get("phase") or "final_answer",
-                "text": _bounded_text(item.get("text")),
+                "text": _bounded_text(item.get("text"), 524_288),
             }]
         if item_type in {"commandExecution", "fileChange", "mcpToolCall", "webSearch", "dynamicToolCall"}:
             activity = {
@@ -2313,7 +2313,7 @@ class _OneOff:
         elif kind == "progress.delta":
             self.progress = (self.progress + str(event.get("text") or ""))[-4000:]
         elif kind == "response.delta":
-            self.draft = (self.draft + str(event.get("text") or ""))[-16000:]
+            self.draft = (self.draft + str(event.get("text") or ""))[-262_144:]
         elif kind == "activity.updated":
             activity = event.get("activity") or {}
             target = activity.get("path") or activity.get("pattern") or ""
@@ -2728,7 +2728,7 @@ class DiscussManager:
                     if phase == "final_answer":
                         asst_msg: dict[str, Any] = {
                             "role": "assistant",
-                            "text": _bounded_text(item.get("text")),
+                            "text": _bounded_text(item.get("text"), 524_288),
                             "restored": True,
                         }
                         if item_created_at:
@@ -2739,7 +2739,7 @@ class DiscussManager:
                     elif phase in {"thought", "commentary"}:
                         asst_msg = {
                             "role": "assistant",
-                            "text": _bounded_text(item.get("text")),
+                            "text": _bounded_text(item.get("text"), 524_288),
                             "phase": "thought",
                             "restored": True,
                         }

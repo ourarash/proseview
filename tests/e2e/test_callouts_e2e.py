@@ -142,7 +142,7 @@ def test_the_toolbar_wraps_a_paragraph_in_a_callout_with_a_title(page: Page, cal
     page.wait_for_function("() => window._pmEditMode === true")
     prose = page.locator("#sceneProseHost .ProseMirror")
 
-    prose.locator("p", has_text="Her phone buzzed").click()
+    prose.locator("p", has_text="Her phone buzzed").click(click_count=3)
     page.get_by_role("button", name="Callout", exact=True).click()
     box = prose.locator(".pv-callout").last
     expect(box.locator(".pv-callout-title")).to_have_class("pv-callout-title is-empty")

@@ -143,7 +143,7 @@ class ClaudeRequestError(ClaudeError):
         self.code = code
 
 
-def _bounded(value: Any, limit: int = 16_384) -> str:
+def _bounded(value: Any, limit: int = 524_288) -> str:
     text = str(value or "")
     return text if len(text) <= limit else text[:limit] + "\n… output truncated by Prosview …"
 
@@ -234,7 +234,7 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             "type": "response.delta",
             **common,
             "item_id": params.get("itemId"),
-            "text": _bounded(params.get("delta")),
+            "text": _bounded(params.get("delta"), 65_536),
         }]
     if method == "assistant/message":
         return [{
@@ -242,7 +242,7 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             **common,
             "item_id": params.get("itemId"),
             "phase": params.get("phase") or "final_answer",
-            "text": _bounded(params.get("text")),
+            "text": _bounded(params.get("text"), 524_288),
         }]
     if method in {"turn/started", "turn/completed"}:
         return [{
@@ -1080,7 +1080,7 @@ class ClaudeAgentClient:
                     "id": str(getattr(row, "uuid", "") or f"turn-{len(turns) + 1}"),
                     "items": [{
                         "type": "userMessage",
-                        "content": [{"type": "text", "text": _bounded(text, 65536)}],
+                        "content": [{"type": "text", "text": _bounded(text, 524_288)}],
                     }],
                 }
                 turns.append(current)
@@ -1088,7 +1088,7 @@ class ClaudeAgentClient:
                 current["items"].append({
                     "type": "agentMessage",
                     "phase": "final_answer",
-                    "text": _bounded(text, 65536),
+                    "text": _bounded(text, 524_288),
                 })
         return {"thread": {"id": session_id, "turns": turns}, "turns": turns}
 

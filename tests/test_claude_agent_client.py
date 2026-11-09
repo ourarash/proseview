@@ -1034,8 +1034,16 @@ def test_an_ephemeral_thread_allows_its_tools_and_denies_the_rest_without_asking
     try:
         session = _Session("t-1")
         session.thread_params = {"ephemeral": True, "tools": ["Read"]}
-        allow = asyncio.run(client._permission_prompt(session, "Read", {}))
-        deny = asyncio.run(client._permission_prompt(session, "Bash", {}))
+        fut_allow = asyncio.run_coroutine_threadsafe(
+            client._permission_prompt(session, "Read", {}),
+            client._loop,
+        )
+        fut_deny = asyncio.run_coroutine_threadsafe(
+            client._permission_prompt(session, "Bash", {}),
+            client._loop,
+        )
+        allow = fut_allow.result(timeout=5.0)
+        deny = fut_deny.result(timeout=5.0)
         assert allow == {"behavior": "allow"} and deny["behavior"] == "deny"
         assert not any(m["method"].endswith("requestApproval") for m in seen)
     finally:

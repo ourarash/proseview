@@ -280,7 +280,7 @@ def test_pick_by_character_in_the_modern_style_with_a_dedication(page: Page, dem
     expect(page.locator("#exportTree .export-chapter").first).to_be_visible()
 
     page.get_by_label("What to pick by").select_option("characters")
-    page.get_by_label("Which").select_option("Queen")
+    page.get_by_label("Which", exact=True).select_option("Queen")
     page.get_by_role("button", name="Tick these").click()
     expect(page.locator("#exportTotals")).to_have_text("6 chapters, 15 scenes, 10,187 words")
 

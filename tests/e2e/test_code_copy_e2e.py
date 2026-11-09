@@ -115,7 +115,10 @@ def test_user_message_copies_the_text_sent(page: Page, server: ProseviewServer):
     )
     bubble = page.locator("#discussLog .discuss-message.user")
     assert bubble.locator("> .md-copy-btn").count() == 1
-    assert page.locator("#discussLog .discuss-message.assistant .md-copy-btn").count() == 0
+    assistant_copy = page.locator("#discussLog .discuss-message.assistant > .md-copy-btn")
+    assert assistant_copy.count() == 1
     bubble.locator("> .md-copy-btn").evaluate("b => b.click()")
     page.wait_for_function("() => window.__copied !== null")
     assert page.evaluate("window.__copied") == sent
+    assistant_copy.evaluate("b => b.click()")
+    page.wait_for_function("() => window.__copied === 'Done.'")

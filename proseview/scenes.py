@@ -413,6 +413,11 @@ def collect_scene_stats(
             continue
         temp_scenes.append((p, fm, txt, prose, toks, txt_line_offset, frontmatter_text(raw)))
 
+    folder_chapters: dict[Path, str] = {}
+    for p, fm, *_ in temp_scenes:
+        if fm and fm.get("chapter") is not None and str(fm.get("chapter")).strip():
+            folder_chapters[p.parent] = str(fm["chapter"]).strip()
+
     for p, fm, txt, prose, toks, txt_line_offset, fm_text in temp_scenes:
         words = count_words(prose)
         lex = calculate_lexical_stats(prose) if lexical else _EMPTY_LEXICAL
@@ -428,8 +433,12 @@ def collect_scene_stats(
         if not loc:
             loc = p.parent.name
 
+        ch = str(fm.get("chapter", "")).strip() if (fm and fm.get("chapter") is not None) else ""
+        if not ch:
+            ch = folder_chapters.get(p.parent, scene_chapter(p, man_dir))
+
         scenes.append(SceneStats(
-            p.relative_to(root), str(fm.get("chapter", scene_chapter(p, man_dir))).strip(),
+            p.relative_to(root), ch,
             _unquote(str(fm.get("title", p.stem.replace("-", " ").title())).strip()),
             str(fm.get("status", "unknown")).strip() or "unknown",
             txt, words, len(paragraph_blocks(prose)),

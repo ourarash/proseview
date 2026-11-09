@@ -5915,7 +5915,7 @@ def test_each_measure_lives_in_its_checks_row(page: Page, server: ProseviewServe
     page.locator("#scenePassList .scene-pass-row").first.wait_for()
     assert page.locator("#sceneAnalysisPane .scene-stat-box").count() == 0, "no second set of tiles"
     summary = page.locator("#sceneSummary")
-    assert re.match(r"[\d,]+ words \u00b7 Variety ", summary.inner_text())
+    assert re.match(r"[\d,]+ (?:scene|words).*\u00b7 Variety ", summary.inner_text())
     assert "Typical" in (summary.locator(".scene-summary-part").nth(1).get_attribute("title") or "")
     # One ⓘ says what Variety and MTLD are.
     about = page.locator("#sceneSummaryInfo")

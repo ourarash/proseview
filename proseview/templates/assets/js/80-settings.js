@@ -143,7 +143,11 @@ function clearAllBackups() {
         .then(res => res.json())
         .then(data => {
             if (!data.ok) {
-                alert("Failed to clear backups: " + data.error);
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast("Failed to clear backups: " + data.error, true);
+                } else {
+                    alert("Failed to clear backups: " + data.error);
+                }
                 return;
             }
             updateBackupStats();

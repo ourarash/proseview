@@ -101,7 +101,11 @@ function _showDiffModal(options) {
         .then(res => res.json())
         .then(data => {
             if (!data.ok) {
-                alert("Could not load diff: " + data.error);
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast("Could not load diff: " + data.error, true);
+                } else {
+                    alert("Could not load diff: " + data.error);
+                }
                 return;
             }
             document.getElementById("diffModalContent").innerHTML = data.diff_html;
@@ -175,7 +179,11 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Check if dirty
     if (typeof _pmDirty !== 'undefined' && _pmDirty) {
-        alert("Please save your current changes before restoring an older version.");
+        if (typeof sidebarShowToast === 'function') {
+            sidebarShowToast("Please save your current changes before restoring an older version.", true);
+        } else {
+            alert("Please save your current changes before restoring an older version.");
+        }
         return;
     }
     
@@ -187,7 +195,11 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(res => res.json())
     .then(data => {
         if (!data.ok) {
-            alert("Failed to restore: " + data.error);
+            if (typeof sidebarShowToast === 'function') {
+                sidebarShowToast("Failed to restore: " + data.error, true);
+            } else {
+                alert("Failed to restore: " + data.error);
+            }
             return;
         }
         closeDiffModal();
@@ -217,7 +229,11 @@ function clearSceneHistory() {
     .then(res => res.json())
     .then(data => {
         if (!data.ok) {
-            alert("Failed to clear history: " + data.error);
+            if (typeof sidebarShowToast === 'function') {
+                sidebarShowToast("Failed to clear history: " + data.error, true);
+            } else {
+                alert("Failed to clear history: " + data.error);
+            }
             return;
         }
         loadSceneHistory(paths[curIdx]);

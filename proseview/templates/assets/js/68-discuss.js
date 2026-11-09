@@ -467,7 +467,9 @@
             closeDiscussModelPicker();
             var doc = discussDocument() || _discussDockDocument;
             if (!doc) {
-                alert('Open a scene or supported text file before starting a discussion.');
+                if (trigger && typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Open a scene or supported text file before starting a discussion.', true);
+                }
                 return;
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
@@ -861,8 +863,16 @@
                 var panel = document.getElementById('discussPanel');
                 if (shouldBeOpen && panel && panel.hidden) {
                     var tab = _readScenePanelTab();
-                    if (DISCUSS_AGENTS.indexOf(tab) >= 0) showDiscussAgentTab(tab);
-                    else showScenePanelTab(tab);
+                    if (DISCUSS_AGENTS.indexOf(tab) >= 0) {
+                        var doc = discussDocument() || _discussDockDocument;
+                        if (doc) {
+                            showDiscussAgentTab(tab);
+                        } else {
+                            _showScenePanelAway(tab);
+                        }
+                    } else {
+                        showScenePanelTab(tab);
+                    }
                 } else if (awayTab && panel && !panel.hidden) showScenePanelTab(awayTab);
             }
         }

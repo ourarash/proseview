@@ -958,6 +958,19 @@ def test_discuss_open_times_out_with_an_operable_retry(
     assert not page.locator("#discussSend").is_disabled()
 
 
+def test_mutation_restart_toast_keeps_a_reload_action_visible(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("sidebarShowToast('Proseview was restarted. Reload the page to continue.', true)")
+    banner = page.locator("#assetReloadBanner")
+    assert banner.is_visible()
+    assert banner.get_by_role("button", name="Reload", exact=True).is_visible()
+    page.evaluate("sidebarShowToast('Another notification')")
+    assert banner.is_visible()
+    assert page.locator("#sidebarFileToast").inner_text() == "Another notification"
+
+
 def test_discuss_detects_a_server_restart_and_recovers_by_reload(
     page: Page, server: ProseviewServer
 ):

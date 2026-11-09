@@ -830,7 +830,11 @@
                     setPmDirty(true);
                     var message = data.error || 'The scene could not be saved.';
                     if (!/frontmatter/i.test(message) || !showFrontmatterError(document.getElementById('sceneFrontmatter'), message)) {
-                        alert('Save failed: ' + message);
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast('Save failed: ' + message, true);
+                        } else {
+                            alert('Save failed: ' + message);
+                        }
                     }
                     return;
                 }
@@ -870,7 +874,12 @@
             }).catch(function(err) {
                 _pmSaveInFlight = false;
                 setPmDirty(true);
-                alert('Save failed: ' + (err && err.message || 'unknown error'));
+                var errMsg = (err && err.message) || 'unknown error';
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Save failed: ' + errMsg, true);
+                } else {
+                    alert('Save failed: ' + errMsg);
+                }
             });
         }
 

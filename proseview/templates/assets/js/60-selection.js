@@ -538,11 +538,20 @@
                         setTimeout(function() { location.reload(); }, 700);
                     } else {
                         btn.disabled = false;
-                        alert('Could not insert TODO: ' + (data.error || 'unknown error'));
+                        var err = data.error || 'unknown error';
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast('Could not insert TODO: ' + err, true);
+                        } else {
+                            alert('Could not insert TODO: ' + err);
+                        }
                     }
                 }).catch(function(err) {
                     btn.disabled = false;
-                    alert('Request failed: ' + err);
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast('Request failed: ' + (err.message || err), true);
+                    } else {
+                        alert('Request failed: ' + err);
+                    }
                 });
             });
 
@@ -597,11 +606,20 @@
                         setTimeout(function() { location.reload(); }, 700);
                     } else {
                         btn.disabled = false;
-                        alert('Could not insert note: ' + (data.error || 'unknown error'));
+                        var err = data.error || 'unknown error';
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast('Could not insert note: ' + err, true);
+                        } else {
+                            alert('Could not insert note: ' + err);
+                        }
                     }
                 }).catch(function(err) {
                     btn.disabled = false;
-                    alert('Request failed: ' + err);
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast('Request failed: ' + (err.message || err), true);
+                    } else {
+                        alert('Request failed: ' + err);
+                    }
                 });
             });
 
@@ -1417,25 +1435,32 @@
                 .catch(function() {});
         }
 
-        function showAssetReloadBanner() {
+        function showAssetReloadBanner(customMsg) {
             // The only thing a reload destroys is an in-progress unsaved
             // edit. So we only surface the banner when the user is in edit
-            // mode -- otherwise just refresh silently.
+            // mode (or when customMsg is passed) -- otherwise just refresh silently.
+            var msg = customMsg || 'Page assets updated';
             var editing = (typeof _pmEditMode !== 'undefined') && _pmEditMode;
-            if (!editing) {
+            if (!customMsg && !editing) {
                 location.reload();
                 return;
             }
-            if (document.getElementById('assetReloadBanner')) return;
+            var existing = document.getElementById('assetReloadBanner');
+            if (existing) {
+                var label = existing.querySelector('.asset-reload-banner-msg');
+                if (label) label.textContent = msg;
+                return;
+            }
             var banner = document.createElement('div');
             banner.id = 'assetReloadBanner';
             banner.className = 'asset-reload-banner';
             banner.innerHTML =
-                '<span class="asset-reload-banner-msg">Page assets updated</span>' +
+                '<span class="asset-reload-banner-msg">' + msg + '</span>' +
                 '<button type="button" class="asset-reload-banner-btn" onclick="location.reload()">Reload</button>' +
                 '<button type="button" class="asset-reload-banner-dismiss" title="Dismiss" onclick="this.parentElement.remove()">&times;</button>';
             document.body.appendChild(banner);
         }
+        window.showAssetReloadBanner = showAssetReloadBanner;
 
         (function connectSSE() {
             const es = new EventSource(pvEventSourceUrl('/events'));
@@ -1462,7 +1487,10 @@
                 }
             };
             es.onerror = function() {
-                if (es.readyState === EventSource.CLOSED) return;
+                if (es.readyState === EventSource.CLOSED) {
+                    showAssetReloadBanner('Proseview was restarted. Reload the page to continue.');
+                    return;
+                }
                 es.close();
                 setTimeout(connectSSE, 3000);
             };

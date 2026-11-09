@@ -613,7 +613,7 @@
             }
             fetch('/api/files/add-folder', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: (typeof pvHeaders === 'function') ? pvHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folder: folder })
             })
             .then(function(res) { return res.json(); })
@@ -623,12 +623,16 @@
                         btn.className = 'search-action-btn added';
                         btn.textContent = '✓ Added to Files';
                     }
+                    if (typeof sidebarShowToast === 'function') {
+                        sidebarShowToast('Added "' + folder + '" to Files.');
+                    }
                 } else {
                     if (btn) {
                         btn.disabled = false;
                         btn.textContent = '+ Add to Files';
                     }
-                    alert('Could not add folder: ' + ((data && data.error) || 'unknown error'));
+                    var err = (data && data.error) || 'unknown error';
+                    sidebarShowToast('Could not add folder: ' + err, true);
                 }
             })
             .catch(function(err) {
@@ -636,7 +640,7 @@
                     btn.disabled = false;
                     btn.textContent = '+ Add to Files';
                 }
-                alert('Could not add folder: ' + err.message);
+                sidebarShowToast('Could not add folder: ' + (err.message || err), true);
             });
         }
         window._addFolderToFiles = _addFolderToFiles;

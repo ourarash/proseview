@@ -22,6 +22,22 @@ let currentTab = 'overview';
             };
         }
 
+        // Global toast notification helper. Defined early so all modules
+        // can notify the user without falling back to modal alert() dialogs.
+        function sidebarShowToast(message, isError) {
+            var toast = document.getElementById('sidebarFileToast');
+            if (!toast || !message) return;
+            toast.setAttribute('role', isError ? 'alert' : 'status');
+            toast.textContent = message;
+            toast.hidden = false;
+            if (message.indexOf('Proseview was restarted') !== -1 && typeof showAssetReloadBanner === 'function') {
+                showAssetReloadBanner('Proseview was restarted. Reload the page to continue.');
+            }
+            clearTimeout(sidebarShowToast._timer);
+            sidebarShowToast._timer = setTimeout(function() { toast.hidden = true; }, 6000);
+        }
+        window.sidebarShowToast = sidebarShowToast;
+
         // EventSource cannot send the custom header used by mutations. Carry
         // the same per-run token in its URL so a replacement server can answer
         // stale tabs with 204 and make their automatic reconnects stop.

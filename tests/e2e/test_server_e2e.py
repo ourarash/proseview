@@ -1368,3 +1368,45 @@ def test_scene_history_refuses_a_path_outside_the_repository(server: ProseviewSe
 
     answer = server.get_json(f"/api/scene/history?path={quote(bad, safe='')}")
     assert answer["ok"] is False
+
+
+def test_beatmap_settings_endpoint_get_and_post(server: ProseviewServer):
+    headers = _discuss_headers(server)
+
+    # 1. GET settings
+    get_res = server.get_json("/api/discuss/beatmap-settings")
+    assert get_res["ok"] is True
+    assert "book" in get_res["settings"]
+    assert "defaults" in get_res["settings"]
+    assert get_res["settings"]["book"]["agent"] in {"claude", "codex"}
+
+    # 2. POST without save returns current settings
+    post_res = server.post_json("/api/discuss/beatmap-settings", {}, headers=headers)
+    assert post_res.status == 200
+    assert post_res.json()["ok"] is True
+
+    # 3. POST with save updates settings
+    save_res = server.post_json(
+        "/api/discuss/beatmap-settings",
+        {
+            "save": True,
+            "book": {
+                "agent": "codex",
+                "model": "gpt-5.6-luna",
+                "target_beats": "detailed",
+                "instructions": False,
+                "prompt": "Custom beatmap prompt",
+                "tension_rubric": "Custom tension rubric",
+            },
+        },
+        headers=headers,
+    )
+    assert save_res.status == 200
+    data = save_res.json()
+    assert data["ok"] is True
+    assert data["settings"]["book"]["agent"] == "codex"
+    assert data["settings"]["book"]["model"] == "gpt-5.6-luna"
+    assert data["settings"]["book"]["target_beats"] == "detailed"
+    assert data["settings"]["book"]["instructions"] is False
+    assert data["settings"]["book"]["prompt"] == "Custom beatmap prompt"
+    assert data["settings"]["book"]["tension_rubric"] == "Custom tension rubric"

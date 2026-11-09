@@ -98,6 +98,10 @@ class BeatMapConfig:
     agent: str = "claude"
     model: str = ""
     placement: str = "vertical"
+    target_beats: str = "auto"
+    instructions: bool = True
+    prompt: str = ""
+    tension_rubric: str = ""
 
 
 #: Agents Discuss can be pointed at.
@@ -453,6 +457,23 @@ class Config:
         elif "room" in data:
             del data["room"]
 
+        beatmap = {
+            key: value for key, value in (
+                ("agent", self.beatmap.agent),
+                ("model", self.beatmap.model),
+                ("placement", self.beatmap.placement),
+                ("target_beats", self.beatmap.target_beats),
+                ("instructions", self.beatmap.instructions),
+                ("prompt", self.beatmap.prompt),
+                ("tension_rubric", self.beatmap.tension_rubric),
+            )
+            if value != getattr(defaults.beatmap, key) and value != "" and value != {}
+        }
+        if beatmap:
+            data["beatmap"] = beatmap
+        elif "beatmap" in data:
+            del data["beatmap"]
+
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f)
 
@@ -593,7 +614,19 @@ def _coerce_beatmap(v: Any) -> BeatMapConfig:
     if placement not in {"vertical", "horizontal"}:
         placement = "vertical"
     model = str(v.get("model", "")).strip()
-    return BeatMapConfig(agent=agent, model=model, placement=placement)
+    target_beats = str(v.get("target_beats", "auto")).strip()
+    instructions = bool(v.get("instructions", True)) if "instructions" in v else True
+    prompt = str(v.get("prompt", "") or "").strip()
+    tension_rubric = str(v.get("tension_rubric", "") or "").strip()
+    return BeatMapConfig(
+        agent=agent,
+        model=model,
+        placement=placement,
+        target_beats=target_beats,
+        instructions=instructions,
+        prompt=prompt,
+        tension_rubric=tension_rubric,
+    )
 
 
 def _coerce_callouts(v: Any) -> CalloutColours:

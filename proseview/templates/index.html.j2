@@ -667,6 +667,7 @@
                 <button type="button" role="tab" id="settingsTabGeneral" class="settings-tab" aria-selected="true" aria-controls="settingsPanelGeneral" onclick="selectSettingsTab('general')">General</button>
                 <button type="button" role="tab" id="settingsTabSuggestions" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSuggestions" tabindex="-1" onclick="selectSettingsTab('suggestions')">Suggestions</button>
                 <button type="button" role="tab" id="settingsTabRoom" class="settings-tab" aria-selected="false" aria-controls="settingsPanelRoom" tabindex="-1" onclick="selectSettingsTab('room')">Writers’ Room</button>
+                <button type="button" role="tab" id="settingsTabBeatmap" class="settings-tab" aria-selected="false" aria-controls="settingsPanelBeatmap" tabindex="-1" onclick="selectSettingsTab('beatmap')">Beat Map</button>
             </div>
             <div id="settingsPanelGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
             {% if not config_exists %}
@@ -775,6 +776,10 @@
             <div id="settingsPanelRoom" role="tabpanel" aria-labelledby="settingsTabRoom" hidden>
                 <p class="settings-note">Choose agent profiles and discussion presets for the Writers’ Room. Each participant has their normal chat tools and project access. Use @mentions to address someone, or invite both with an untagged message.</p>
                 <div id="roomSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
+            </div>
+            <div id="settingsPanelBeatmap" role="tabpanel" aria-labelledby="settingsTabBeatmap" hidden>
+                <p class="settings-note">What Proseview asks Codex or Claude when extracting or updating a scene's narrative progression map. Model choices are kept on this computer; prompts, pacing guidelines, and tension rubrics are saved in your book's <code>.proseview.yaml</code>.</p>
+                <div id="beatmapSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
             </div>
         </section>
     </dialog>

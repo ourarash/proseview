@@ -133,6 +133,15 @@ def test_caching_roundtrip(tmp_path: Path):
     assert res4["has_map"] is True
     assert res4["stale"] is True
 
+    # Delete cached map
+    from proseview.beatmap import delete_cached_beatmap
+    assert delete_cached_beatmap(tmp_path, scene_rel) is True
+    assert load_cached_beatmap(tmp_path, scene_rel) is None
+    res5 = get_scene_beatmap(tmp_path, scene_rel)
+    assert res5["ok"] is True
+    assert res5["has_map"] is False
+    assert delete_cached_beatmap(tmp_path, scene_rel) is False
+
 
 def test_server_beatmap_endpoints(tmp_path: Path):
     from proseview.server import _Handler
@@ -149,6 +158,18 @@ def test_server_beatmap_endpoints(tmp_path: Path):
     handler._is_local_request = lambda: True
     handler._authorize_mutation = lambda: True
     handler._send_json = lambda payload, status=200: sent.append((payload, status))
+
+    handler.path = f"/api/scene/beatmap/status?path={scene_rel}"
+    handler.do_GET()
+    payload, status = sent.pop()
+    assert status == 200
+    assert payload == {"ok": True, "status": {"active": False, "scene_path": scene_rel}}
+
+    handler.path = "/api/scene/beatmap/status"
+    handler.do_GET()
+    payload, status = sent.pop()
+    assert status == 400
+    assert payload["error"] == "missing path"
 
     # 1. GET before generate
     handler.path = f"/api/scene/beatmap?path={scene_rel}"
@@ -190,6 +211,29 @@ def test_server_beatmap_endpoints(tmp_path: Path):
     assert payload["ok"] is True
     assert payload["beatmap"]["beats"][1]["estimated_tension"] == 85
     assert payload["beatmap"]["beats"][1]["title"] == "The Confrontation"
+
+    # 5. POST /api/scene/beatmap/delete
+    handler.path = "/api/scene/beatmap/delete"
+    handler._read_json_limited = lambda: {"path": scene_rel}
+    handler.do_POST()
+    payload, status = sent.pop()
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["deleted"] is True
+
+    # 6. DELETE /api/scene/beatmap?path=...
+    # Regenerate first
+    handler.path = "/api/scene/beatmap/generate"
+    handler._read_json_limited = lambda: {"path": scene_rel, "agent": "claude"}
+    handler.do_POST()
+    sent.pop()
+
+    handler.path = f"/api/scene/beatmap?path={scene_rel}"
+    handler.do_DELETE()
+    payload, status = sent.pop()
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["deleted"] is True
 
 
 def test_patch_scene_beatmap_operations(tmp_path: Path):
@@ -553,6 +597,62 @@ def test_validate_beatmap_anchors_sets_both_flags_and_sanitizes_numbers():
     assert m2["source_ref"]["valid_anchor"] is False
 
 
+def test_validate_beatmap_anchors_normalizes_curly_quotes_and_whitespace():
+    scene_text = """---
+title: Test
+---
+
+"I don't believe you," Alice said. "We have to leave now."
+
+---
+
+Babak’s heart was fine. Amelia had listened to it. He kept touching his chest
+anyway, like he was checking it was still there.
+"""
+    bm = {
+        "schema_version": BEATMAP_SCHEMA_VERSION,
+        "analyzed_revision_hash": compute_scene_hash(scene_text),
+        "beats": [
+            {
+                "order": 1,
+                "title": "Beat 1",
+                "start_paragraph": 0,
+                "end_paragraph": 2,
+                "moments": [
+                    {
+                        "order": 1,
+                        "type": "dialogue",
+                        "speaker": "Alice",
+                        "text": "Alice speaks",
+                        # Quote uses curly quotes in raw text but ASCII in quote
+                        "source_ref": {"paragraph": 0, "exact_quote": "I don't believe you"},
+                    },
+                    {
+                        "order": 2,
+                        "type": "action",
+                        "text": "Touching chest",
+                        # Quote spans softbreak newline
+                        "source_ref": {"paragraph": 2, "exact_quote": "He kept touching his chest\nanyway"},
+                    },
+                    {
+                        "order": 3,
+                        "type": "action",
+                        "text": "Heart fine",
+                        # Text has curly apostrophe Babak’s, quote has ASCII Babak's
+                        "source_ref": {"paragraph": 2, "exact_quote": "Babak's heart was fine"},
+                    },
+                ],
+            }
+        ],
+    }
+    validated = validate_beatmap_anchors(bm, scene_text)
+    m = validated["beats"][0]["moments"]
+    assert m[0]["valid_anchor"] is True
+    assert m[1]["valid_anchor"] is True
+    assert m[2]["valid_anchor"] is True
+
+
+
 def test_format_beatmap_for_context_includes_stale_warning_and_rubric():
     from proseview.beatmap import build_beatmap_prompt
 
@@ -591,3 +691,321 @@ def test_format_beatmap_for_context_includes_stale_warning_and_rubric():
     assert "Map Version: bm_test_123" in ctx
     assert "Status: OUTDATED (Manuscript edited since map was created)" in ctx
     assert "[UNVERIFIED: Anchor quote missing/changed in manuscript]" in ctx
+
+
+def test_get_beatmap_generation_status():
+    from proseview.beatmap import (
+        _active_beatmap_jobs,
+        _active_beatmap_lock,
+        get_beatmap_generation_status,
+    )
+
+    repo = Path("/tmp/fake_repo")
+    rel = "ch01/01.md"
+
+    # Inactive
+    status = get_beatmap_generation_status(repo, rel)
+    assert status["active"] is False
+
+    # Active
+    job_key = f"{repo.resolve()}:{rel}"
+    with _active_beatmap_lock:
+        _active_beatmap_jobs[job_key] = {
+            "scene_path": rel,
+            "agent": "codex",
+            "started_at": 100.0,
+            "holder": None,
+            "word_count": 500,
+            "total_paragraphs": 12,
+        }
+    try:
+        status = get_beatmap_generation_status(repo, rel)
+        assert status["active"] is True
+        assert status["agent"] == "codex"
+        assert status["word_count"] == 500
+        assert status["total_paragraphs"] == 12
+    finally:
+        with _active_beatmap_lock:
+            _active_beatmap_jobs.pop(job_key, None)
+
+
+def test_parse_agent_json_repairs_unescaped_quotes_and_trailing_commas():
+    from proseview.beatmap import parse_agent_json
+
+    # 1. Output wrapped in markdown with commentary, trailing commas, and unescaped quotes in dialogue
+    raw_llm_output = '''Here is the scene beat map you requested:
+
+```json
+{
+  "beats": [
+    {
+      "order": 1,
+      "title": "Startup Conversation",
+      "summary": "Amir and Nima discuss the startup idea.",
+      "start_paragraph": 0,
+      "end_paragraph": 4,
+      "tension_score": 35,
+      "turning_point": false,
+      "moments": [
+        {
+          "order": 1,
+          "type": "dialogue",
+          "speaker": "Amir",
+          "text": "Amir jokes about the idea",
+          "source_ref": {
+            "paragraph": 2,
+            "exact_quote": "Nima asked, "What? A startup idea?" with disbelief.",
+          },
+        },
+      ],
+    },
+  ],
+}
+```
+
+Let me know if you need any adjustments to these beats!
+'''
+
+    parsed = parse_agent_json(raw_llm_output, agent="codex")
+    assert "beats" in parsed
+    assert len(parsed["beats"]) == 1
+    beat = parsed["beats"][0]
+    assert beat["title"] == "Startup Conversation"
+    assert len(beat["moments"]) == 1
+    moment = beat["moments"][0]
+    assert "exact_quote" in moment["source_ref"]
+    assert "What? A startup idea?" in moment["source_ref"]["exact_quote"]
+
+    # 2. Wrapped in root alias {"beatmap": {"beats": [...]}} or {"narrative_beats": [...]}
+    wrapped_output = '{"beatmap": {"beats": [{"order": 1, "title": "B1"}]}}'
+    parsed_wrapped = parse_agent_json(wrapped_output, agent="claude")
+    assert parsed_wrapped["beats"][0]["title"] == "B1"
+
+    alt_key_output = '{"narrative_beats": [{"order": 1, "title": "Arc 1"}]}'
+    parsed_alt = parse_agent_json(alt_key_output, agent="claude")
+    assert parsed_alt["beats"][0]["title"] == "Arc 1"
+
+    # 3. Unclosed markdown fence with leading chatter
+    unclosed_fence = '''Sure, here is your beat map:
+```json
+{
+  "beats": [
+    {"order": 1, "title": "Unclosed Fence Beat"}
+  ]
+}'''
+    parsed_unclosed = parse_agent_json(unclosed_fence, agent="claude")
+    assert parsed_unclosed["beats"][0]["title"] == "Unclosed Fence Beat"
+
+    # 4. Completely invalid text raises descriptive ValueError with preview
+    import pytest
+    with pytest.raises(ValueError, match="Agent 'test-agent' output did not contain a valid beat map JSON object"):
+        parse_agent_json("I cannot fulfill this request as an AI.", agent="test-agent")
+
+
+def test_validate_beatmap_anchors_ensures_last_paragraph_coverage_and_cleans_truncations():
+    # Scene with 5 paragraphs (indices 0 to 4)
+    multi_scene = """# Multi Scene
+
+First paragraph of setup.
+
+Second paragraph of tension.
+
+Third paragraph of confrontation.
+
+Fourth paragraph of reflection.
+
+Fifth and final closing paragraph.
+"""
+    # Beat map that stopped early at paragraph 2
+    early_stopped_map = {
+        "schema_version": BEATMAP_SCHEMA_VERSION,
+        "beats": [
+            {
+                "order": 1,
+                "title": "Opening",
+                "start_paragraph": 0,
+                "end_paragraph": 1,
+                "moments": [
+                    {
+                        "order": 1,
+                        "type": "action",
+                        "text": "First action",
+                        "source_ref": {
+                            "paragraph": 0,
+                            "exact_quote": "First paragraph of setup.",
+                        },
+                    }
+                ],
+            },
+            {
+                "order": 2,
+                "title": "Midpoint",
+                "start_paragraph": 2,
+                "end_paragraph": 2,  # Stopped at paragraph 2, omitting 3 and 4!
+                "moments": [
+                    {
+                        "order": 2,
+                        "type": "dialogue",
+                        "text": "Confrontation dialogue",
+                        "source_ref": {
+                            "paragraph": 2,
+                            # Had truncation artifact in quote
+                            "exact_quote": "Third paragraph of\n… output truncated by Prosview …",
+                        },
+                    }
+                ],
+            },
+        ],
+    }
+
+    validated = validate_beatmap_anchors(early_stopped_map, multi_scene)
+    beats = validated["beats"]
+    assert len(beats) == 2
+    assert beats[0]["start_paragraph"] == 0
+    # Final beat MUST be extended to cover the last paragraph index (4)
+    assert beats[-1]["end_paragraph"] == 4
+    # Moment with truncation marker should be cleaned and verified
+    moment = beats[-1]["moments"][0]
+    assert moment["source_ref"]["exact_quote"] == "Third paragraph of"
+    assert moment["valid_anchor"] is True
+
+
+def test_patch_scene_beatmap_can_add_new_beats(tmp_path: Path):
+    from proseview.beatmap import patch_scene_beatmap, save_cached_beatmap
+
+    scene_text = "# Scene\n\nFirst paragraph.\n\nSecond paragraph."
+    scene_file = tmp_path / "manuscript" / "scene.md"
+    scene_file.parent.mkdir(parents=True, exist_ok=True)
+    scene_file.write_text(scene_text, encoding="utf-8")
+
+    initial_map = {
+        "schema_version": BEATMAP_SCHEMA_VERSION,
+        "scene_path": "scene.md",
+        "map_version": "bm_initial",
+        "beats": [
+            {
+                "order": 1,
+                "title": "Beat 1",
+                "estimated_tension": 30,
+                "start_paragraph": 0,
+                "end_paragraph": 0,
+                "moments": [],
+            }
+        ],
+    }
+    save_cached_beatmap(tmp_path, "scene.md", initial_map)
+
+    # Patch that adds Beat 2 which did not exist before
+    patch_payload = {
+        "beats": [
+            {
+                "order": 2,
+                "title": "Beat 2 Added",
+                "estimated_tension": 85,
+                "start_paragraph": 1,
+                "end_paragraph": 1,
+                "is_turning_point": True,
+            }
+        ]
+    }
+
+    res = patch_scene_beatmap(tmp_path, "scene.md", patch_payload)
+    assert res["ok"] is True
+    updated_beats = res["beatmap"]["beats"]
+    assert len(updated_beats) == 2
+    assert updated_beats[0]["title"] == "Beat 1"
+    assert updated_beats[1]["title"] == "Beat 2 Added"
+    assert updated_beats[1]["estimated_tension"] == 85
+    assert updated_beats[1]["is_turning_point"] is True
+
+
+def test_patch_scene_beatmap_normalizes_sha256_revisions_and_allows_long_summaries(tmp_path):
+    scene_text = "Opening paragraph.\n\nClosing paragraph."
+    manuscript = tmp_path / "manuscript"
+    manuscript.mkdir(parents=True, exist_ok=True)
+    (manuscript / "scene.md").write_text(scene_text, encoding="utf-8")
+
+    from proseview.beatmap import compute_scene_hash
+    rev_hash = compute_scene_hash(scene_text)  # "sha256:..."
+    clean_hex = rev_hash.removeprefix("sha256:")
+
+    initial_map = {
+        "schema_version": BEATMAP_SCHEMA_VERSION,
+        "analyzed_revision_hash": rev_hash,
+        "map_version": "bm_test123",
+        "beats": [
+            {"order": 1, "title": "B1", "start_paragraph": 0, "end_paragraph": 1, "moments": []}
+        ],
+    }
+    save_cached_beatmap(tmp_path, "scene.md", initial_map)
+
+    # Patch with bare hex revision (no "sha256:" prefix) and a 1200-character overall summary
+    long_summary = "A very thorough summary of the scene. " * 30
+    patch = {
+        "expected_revision": clean_hex,
+        "replace": True,
+        "overall_scene_summary": long_summary,
+        "beats": [
+            {"order": 1, "title": "B1 Updated", "start_paragraph": 0, "end_paragraph": 0, "moments": []},
+            {"order": 2, "title": "B2 Added", "start_paragraph": 1, "end_paragraph": 1, "moments": []},
+        ],
+    }
+    res = patch_scene_beatmap(tmp_path, "scene.md", patch)
+    assert res["ok"] is True
+    assert res["beatmap"]["overall_scene_summary"] == long_summary
+    assert len(res["beatmap"]["beats"]) == 2
+
+
+def test_beatmap_settings_load_and_save(tmp_path):
+    from proseview.discuss import DiscussManager
+    from proseview.beatmap import DEFAULT_BEATMAP_PROMPT, DEFAULT_BEATMAP_TENSION_RUBRIC
+
+    # Initialize discuss manager on temporary directory
+    dm = DiscussManager(tmp_path)
+    initial = dm.beatmap_settings()
+    assert initial["book"]["agent"] == "claude"
+    assert initial["book"]["prompt"] == DEFAULT_BEATMAP_PROMPT
+    assert initial["book"]["tension_rubric"] == DEFAULT_BEATMAP_TENSION_RUBRIC
+    assert initial["book"]["target_beats"] == "auto"
+    assert initial["book"]["instructions"] is True
+
+    # Save custom beat map settings
+    saved = dm.save_beatmap_settings({
+        "book": {
+            "agent": "codex",
+            "model": "gpt-5-preview",
+            "target_beats": "detailed",
+            "instructions": False,
+            "prompt": "Custom beat map prompt for {rel_path}.",
+            "tension_rubric": "Custom tension rubric 0-100.",
+        }
+    })
+
+    assert saved["book"]["agent"] == "codex"
+    assert saved["book"]["model"] == "gpt-5-preview"
+    assert saved["book"]["target_beats"] == "detailed"
+    assert saved["book"]["instructions"] is False
+    assert saved["book"]["prompt"] == "Custom beat map prompt for {rel_path}."
+    assert saved["book"]["tension_rubric"] == "Custom tension rubric 0-100."
+
+    # Verify that .proseview.yaml was written and reloads accurately
+    cfg = Config.load(tmp_path)
+    assert cfg.beatmap.agent == "codex"
+    assert cfg.beatmap.model == "gpt-5-preview"
+    assert cfg.beatmap.target_beats == "detailed"
+    assert cfg.beatmap.instructions is False
+    assert cfg.beatmap.prompt == "Custom beat map prompt for {rel_path}."
+    assert cfg.beatmap.tension_rubric == "Custom tension rubric 0-100."
+
+    # Test resetting to default clears yaml overrides
+    reset = dm.save_beatmap_settings({
+        "book": {
+            "prompt": DEFAULT_BEATMAP_PROMPT,
+            "tension_rubric": DEFAULT_BEATMAP_TENSION_RUBRIC,
+        }
+    })
+    cfg_reset = Config.load(tmp_path)
+    assert cfg_reset.beatmap.prompt == ""
+    assert cfg_reset.beatmap.tension_rubric == ""
+    assert reset["book"]["prompt"] == DEFAULT_BEATMAP_PROMPT
+    assert reset["book"]["tension_rubric"] == DEFAULT_BEATMAP_TENSION_RUBRIC

@@ -4906,6 +4906,67 @@ class DiscussManager:
             store.save(current)
         return self.room_settings(store)
 
+    def beatmap_settings(self) -> dict[str, Any]:
+        """Everything Settings -> Beat Map needs."""
+        from .beatmap import DEFAULT_BEATMAP_PROMPT, DEFAULT_BEATMAP_TENSION_RUBRIC
+        cfg = Config.load(self.root)
+        bm = cfg.beatmap
+        return {
+            "book": {
+                "agent": bm.agent,
+                "model": bm.model,
+                "target_beats": bm.target_beats,
+                "instructions": bm.instructions,
+                "prompt": bm.prompt or DEFAULT_BEATMAP_PROMPT,
+                "tension_rubric": bm.tension_rubric or DEFAULT_BEATMAP_TENSION_RUBRIC,
+            },
+            "defaults": {
+                "agent": "claude",
+                "model": "",
+                "target_beats": "auto",
+                "instructions": True,
+                "prompt": DEFAULT_BEATMAP_PROMPT,
+                "tension_rubric": DEFAULT_BEATMAP_TENSION_RUBRIC,
+            },
+            "placeholders": {
+                "rel_path": "scene file path",
+                "total_paragraphs": "total paragraph count",
+                "guidance": "scene-specific author guidance if provided",
+            },
+        }
+
+    def save_beatmap_settings(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Save beat map settings into .proseview.yaml."""
+        from .beatmap import DEFAULT_BEATMAP_PROMPT, DEFAULT_BEATMAP_TENSION_RUBRIC
+        from .config import BeatMapConfig
+        raw_book = body.get("book") if isinstance(body.get("book"), dict) else None
+        if raw_book is not None:
+            cfg = Config.load(self.root)
+            prompt = str(raw_book.get("prompt") or "").strip()
+            tension_rubric = str(raw_book.get("tension_rubric") or "").strip()
+            agent = str(raw_book.get("agent") or "claude").strip().lower()
+            if agent not in {"claude", "codex"}:
+                agent = "claude"
+            model = str(raw_book.get("model") or "").strip()
+            target_beats = str(raw_book.get("target_beats") or "auto").strip()
+            instructions = bool(raw_book.get("instructions", True))
+
+            if len(prompt) > SUGGESTION_PROMPT_MAX or len(tension_rubric) > SUGGESTION_PROMPT_MAX:
+                raise ContextError("a beat map prompt is too long")
+
+            cfg.with_overrides(
+                beatmap=BeatMapConfig(
+                    agent=agent,
+                    model=model,
+                    placement=cfg.beatmap.placement,
+                    target_beats=target_beats,
+                    instructions=instructions,
+                    prompt="" if prompt == DEFAULT_BEATMAP_PROMPT.strip() else prompt,
+                    tension_rubric="" if tension_rubric == DEFAULT_BEATMAP_TENSION_RUBRIC.strip() else tension_rubric,
+                )
+            ).save(self.root)
+        return self.beatmap_settings()
+
     def run_room_turn(
         self,
         *,

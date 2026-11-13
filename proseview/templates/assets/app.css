@@ -9458,7 +9458,7 @@
 
         .rhythm-bar {
             flex: 1 1 0;
-            min-width: 1px;
+            min-width: 0;
             max-width: 12px;
             border-radius: 1px 1px 0 0;
             background: color-mix(in srgb, var(--primary) 38%, transparent);

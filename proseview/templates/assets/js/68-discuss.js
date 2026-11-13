@@ -671,6 +671,9 @@
                     const on = tab === name;
                     el.classList.toggle('active', on);
                     el.setAttribute('aria-selected', on ? 'true' : 'false');
+                    if (on && typeof el.scrollIntoView === 'function') {
+                        try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch(e) {}
+                    }
                 });
             });
             try { localStorage.setItem(SCENE_PANEL_TAB_KEY, name); } catch (e) {}
@@ -7774,7 +7777,7 @@ function loadDiscussDiffMode(mode) {
             function currentWidth() {
                 var rendered = document.getElementById('discussPanel').getBoundingClientRect().width;
                 if (rendered > 0) return rendered / workspaceZoomFactor();
-                return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 504;
+                return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 420;
             }
             handle.addEventListener('mousedown', function(event) { dragging = true; startX = event.clientX; startWidth = currentWidth(); handle.classList.add('is-dragging'); document.body.style.userSelect = 'none'; event.preventDefault(); });
             document.addEventListener('mousemove', function(event) { if (!dragging) return; setWidth(startWidth + (startX - event.clientX) / workspaceZoomFactor()); });
@@ -7791,7 +7794,7 @@ function loadDiscussDiffMode(mode) {
                 event.preventDefault();
             });
             var initialBounds = workspaceDockWidthBounds(340);
-            var initialWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 504;
+            var initialWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 420;
             setWidth(Math.min(initialBounds.max, Math.max(initialBounds.min, initialWidth)));
             window.addEventListener('resize', function() { setWidth(currentWidth()); });
             window.addEventListener('proseview:workspace-metrics', function() { setWidth(currentWidth()); });

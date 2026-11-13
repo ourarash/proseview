@@ -309,7 +309,7 @@ ROOM_LENGTHS: dict[str, str] = {
     "detailed": "Detailed (more explanation and examples)",
 }
 
-ROOM_TURNS_DEFAULT = 4
+ROOM_TURNS_DEFAULT = 3
 ROOM_TURNS_MAX = 6
 
 #: A critic with nothing new to add says this, and the debate ends early.
@@ -326,21 +326,42 @@ DEFAULT_ROOM_METHOD: str = (
 )
 
 DEFAULT_ROOM_CRITIC1_PROMPT: str = (
-    "Narrative drive, stakes, scene structure, cause-and-effect, pacing, and continuity."
+    "Developmental and structural instinct: enter late, leave early, and cut any passage that repeats "
+    "information or stalls momentum. Question convenient turns, weak cause-and-effect, and beats where "
+    "nothing irreversible changes, while staying alert to lines whose phrasing undermines the scene."
 )
 
 DEFAULT_ROOM_CRITIC2_PROMPT: str = (
-    "Character voice, dialogue subtext, sensory grounding, emotional nuance, and prose rhythm."
+    "Line and character-voice instinct: protect the POV character's distinct ear, psychological truth, "
+    "sensory grounding, and unspoken subtext. Challenge cuts that strip emotional resonance, rewrite "
+    "on-the-nose dialogue or generic phrasing, and flag pacing or structural beats that ring false."
 )
+
+_LEGACY_ROOM_CRITIC_PROMPTS: dict[str, str] = {
+    "story-editor": "Narrative drive, stakes, scene structure, cause-and-effect, pacing, and continuity.",
+    "voice-editor": "Character voice, dialogue subtext, sensory grounding, emotional nuance, and prose rhythm.",
+}
 
 DEFAULT_ROOM_PRESET_PROMPTS: dict[str, str] = {
     "editorial_critique": (
-        "Find the 1–2 biggest friction points in this scene's pacing, stakes, or cause-and-effect. "
-        "Quote the lines, diagnose why they stall momentum, and propose a concrete cut or rewrite. Under 200 words."
+        "Lead from your editorial lens to find the 1–2 biggest friction points in this scene—whether in pacing, "
+        "stakes, and cause-and-effect or in character voice and subtext. For each, cite the line, quote the "
+        "complete passage in an italic blockquote (> *...*), diagnose the issue in 1–2 sentences, and provide "
+        "a concrete cut or drop-in replacement in a plain blockquote (> ...)."
     ),
     "tough_love": (
-        "A ruthless red-pen pass. Skip praise and pleasantries. Call out the 2 weakest spots in the text "
-        "(slow openings, clichés, filter verbs, sluggish dialogue). Quote each line and provide a sharp drop-in replacement."
+        "A ruthless red-pen pass for compression and sharpness. Skip praise and pleasantries. Call out the 2 "
+        "biggest spots where the text over-explains, repeats a beat, drags in opening or closing, or uses "
+        "on-the-nose dialogue. For each, cite the line, quote the complete original in an italic blockquote "
+        "(> *...*), state the flaw in one sentence, and give a tighter cut or drop-in replacement in a plain blockquote (> ...)."
+    ),
+    "deepen_and_layer": (
+        "Find 1–2 specific moments where what is already in this scene can do double duty: cash in an existing "
+        "prop, gesture, or line as a setup-and-payoff callback, create a contradiction between what a character "
+        "says and does, or make a beat cost the character more. Never add purple prose, decorative metaphors, or "
+        "paragraphs explaining feelings. For each move, cite the line(s) (for a Setup + Payoff pair, show both "
+        "`Setup — Line X` and `Payoff — Line Y`), quote the complete original in an italic blockquote (> *...*), "
+        "state in 1–2 sentences what layer it unlocks, and give the confident drop-in replacement in a plain blockquote (> ...)."
     ),
     "pitch_next_beat": (
         "Pitch 2 concrete next beats that escalate the conflict immediately after this scene, without writing prose. "
@@ -349,6 +370,37 @@ DEFAULT_ROOM_PRESET_PROMPTS: dict[str, str] = {
 }
 
 DEFAULT_ROOM_PRESET_STEPS: dict[str, list[dict[str, Any]]] = {
+    "editorial_critique": [
+        {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["editorial_critique"]},
+        {"seat": 2, "prompt": "Audit Editor 1's proposed edits from your own lens: push back if a cut or rewrite strips subtext, character voice, or narrative drive, and rewrite any fix that sounds flat or generic into a plain blockquote (> ...). Then flag at most 1 crucial issue Editor 1 missed, with its complete italic blockquote (> *...*) and replacement blockquote (> ...)."},
+        {"seat": 1, "prompt": "Resolve the trade-offs between both sets of notes. Adopt Editor 2's phrasing where it is sharper, defend any cut or beat the scene still requires, and provide the complete updated replacement blockquotes (> ...) for any revised lines."},
+        {"seat": 2, "prompt": "Pressure-test the scene's opening hook and closing turn alongside the edits so far. If either the entry or exit lands softly, quote the complete passage (> *...*) and offer a sharper cut or rewrite (> ...); otherwise refine any remaining contested line."},
+        {"seat": 1, "prompt": "Make the final call on any remaining contested lines or opening/closing trims so every surviving edit earns its place. State the complete original (> *...*) and final replacement blockquote (> ...) you back for each."},
+    ],
+    "tough_love": [
+        {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["tough_love"]},
+        {"seat": 2, "prompt": "Audit Editor 1's cuts and rewrites: rescue any cut detail that carries essential character voice or subtext by fusing it into a tighter plain blockquote (> ...), and challenge any rewrite that sounds sanitized or generic. Add 1 high-leverage line cut or dialogue sharpen of your own that Editor 1 missed, with complete original (> *...*) and replacement (> ...) blockquotes."},
+        {"seat": 1, "prompt": "Compare both sets of red-pen edits without mercy. Keep the sharpest version of each fix, drop any note that is mere nitpicking, and show the complete surviving replacement blockquotes (> ...)."},
+        {"seat": 2, "prompt": "Do a second-pass audit for telling-instead-of-showing, filter verbs, or dialogue lines where characters state their subtext out loud. Quote the complete original (> *...*) and give a tighter replacement (> ...)."},
+        {"seat": 1, "prompt": "Lock in the strongest cuts and replacements across both passes. Discard anything that over-edits the author's voice and confirm the complete final replacement blockquotes (> ...)."},
+    ],
+    "deepen_and_layer": [
+        {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["deepen_and_layer"]},
+        {"seat": 2, "prompt": "Kill or rewrite any proposal from Editor 1 that feels forced, writerly, or states subtext out loud—every added layer must sound effortless in the POV character's voice and trust the reader to connect the dots. Provide your sharper replacement blockquote (> ...), and add at most 1 missed setup-to-payoff echo or subtextual turn of your own using details already in the scene (with complete original `> *...*` and replacement `> ...` blockquotes)."},
+        {"seat": 1, "prompt": "Keep only the 1–2 layering or setup-and-payoff moves that genuinely elevate the scene without slowing its pace; drop anything merely clever. Fuse the strongest phrasing from both editors and provide the complete updated replacement blockquotes (> ...) for every surviving touchpoint."},
+        {"seat": 2, "prompt": "Check whether the scene's final beat can echo, twist, or pay off an image, prop, or line from earlier in the scene (or an adjacent scene). If a sharper callback or closing turn is earned, quote the complete original (> *...*) and give the exact replacement (> ...); otherwise refine the surviving layers so they read effortlessly."},
+        {"seat": 1, "prompt": "Do a final pass on the agreed layers to strip any excess words so the added depth lands with maximum economy. Confirm the complete original (> *...*) and final replacement blockquotes (> ...) you back."},
+    ],
+    "pitch_next_beat": [
+        {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["pitch_next_beat"]},
+        {"seat": 2, "prompt": "Pressure-test both beats against the character's core desires, psychology, and subtext. Call out anything that feels contrived, pick or remix the beat that feels genuinely earned, and name the unexpected complication that character would trigger."},
+        {"seat": 1, "prompt": "Synthesize Editor 2's pushback into a concrete scene-beat blueprint: the opening disruption, the mid-scene turn, and the exact cliffhanger or pivot that ends the sequence."},
+        {"seat": 2, "prompt": "Identify the specific character blind spot, lie, or unspoken tension that should drive the dialogue and subtext in that winning beat, and propose the concrete sensory detail or action it should turn on."},
+        {"seat": 1, "prompt": "Tighten the winning next-beat blueprint into a step-by-step sequence of 3–4 scene beats the writer can draft from immediately, incorporating Editor 2's subtext and turning-point detail."},
+    ],
+}
+
+_LEGACY_ROOM_PRESET_STEPS: dict[str, list[dict[str, Any]]] = {
     "editorial_critique": [
         {"seat": 1, "prompt": "Find the 1–2 biggest friction points in this scene's pacing, stakes, or cause-and-effect. Quote the lines, diagnose why they stall momentum, and propose a concrete cut or rewrite. Under 200 words."},
         {"seat": 2, "prompt": "React specifically to Editor 1's proposed changes. Defend any line whose voice or emotional nuance is worth protecting, or offer an alternative phrasing that preserves character truth. Under 200 words."},
@@ -383,11 +435,21 @@ ROOM_PRESET_CARDS: tuple[dict[str, str], ...] = (
     {
         "id": "tough_love",
         "group": "Critique this scene",
-        "label": "Tough-love critique",
-        "badge": "No praise · Red pen",
+        "label": "Trim & tighten",
+        "badge": "Ruthless cuts vs. What must stay",
         "copy": (
-            "Straight to what isn’t working: slow openings, clichés, convenient turns and flat "
-            "dialogue, debated without sugarcoating."
+            "Cut slow openings, redundant explanation, and on-the-nose dialogue while rescuing "
+            "the concrete details and subtext that make the scene feel alive."
+        ),
+    },
+    {
+        "id": "deepen_and_layer",
+        "group": "Critique this scene",
+        "label": "Deepen & layer",
+        "badge": "Setup & payoff · Subtext",
+        "copy": (
+            "Make existing beats do double duty: plant a setup and pay it off, layer unspoken "
+            "tension under the surface action, and deepen emotional resonance without adding bloat."
         ),
     },
     {
@@ -451,7 +513,35 @@ class RoomComputerSettings:
 
     def effective_library(self, book: RoomConfig) -> dict[str, Any]:
         if self.library is not None:
-            return clean_library(self.library)
+            cleaned = clean_library(self.library)
+            for profile in cleaned["profiles"]:
+                if profile["id"] == "story-editor" and profile["specialty"] == _LEGACY_ROOM_CRITIC_PROMPTS["story-editor"]:
+                    profile["specialty"] = DEFAULT_ROOM_CRITIC1_PROMPT
+                elif profile["id"] == "voice-editor" and profile["specialty"] == _LEGACY_ROOM_CRITIC_PROMPTS["voice-editor"]:
+                    profile["specialty"] = DEFAULT_ROOM_CRITIC2_PROMPT
+            cards_by_id = {c["id"]: c for c in ROOM_PRESET_CARDS}
+            for preset in cleaned["presets"]:
+                if preset["id"] == "tough_love" and preset["name"] == "Tough-love critique":
+                    preset["name"] = cards_by_id["tough_love"]["label"]
+                    if preset["description"].startswith("Straight to what isn"):
+                        preset["description"] = cards_by_id["tough_love"]["copy"]
+                legacy = _LEGACY_ROOM_PRESET_STEPS.get(preset["id"])
+                if legacy and preset["invitations"] == legacy:
+                    preset["invitations"] = [dict(s) for s in DEFAULT_ROOM_PRESET_STEPS[preset["id"]][:ROOM_TURNS_DEFAULT]]
+            preset_ids = [p["id"] for p in cleaned["presets"]]
+            if set(preset_ids) == {"editorial_critique", "tough_love", "pitch_next_beat"}:
+                card = cards_by_id["deepen_and_layer"]
+                deepen_preset = {
+                    "id": card["id"],
+                    "name": card["label"],
+                    "description": card["copy"],
+                    "profiles": list(cleaned["default_profiles"]),
+                    "invitations": [dict(s) for s in DEFAULT_ROOM_PRESET_STEPS["deepen_and_layer"][:ROOM_TURNS_DEFAULT]],
+                    "recap": 2,
+                }
+                insert_at = preset_ids.index("pitch_next_beat")
+                cleaned["presets"].insert(insert_at, deepen_preset)
+            return cleaned
         profiles = [
             {"id": "story-editor", "name": book.critic1_name, "specialty": book.critic1_prompt or DEFAULT_ROOM_CRITIC1_PROMPT,
              "style": "Direct, structural, and concise. Spots where momentum drags, quotes the line, and suggests a cut or beat.", **self.critic1.to_json()},

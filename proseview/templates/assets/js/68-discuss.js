@@ -1065,33 +1065,89 @@
             var library = (_roomSettings || {}).library;
             if (!library) return;
             var pair = _roomEnsureParticipants(session);
+            var locked = !!session.turns.length || session.busy || session.managed || !!(session.outbox && session.outbox.length);
             pair.forEach(function(profile, index) {
                 var label = document.createElement('label');
                 label.className = 'room-participant-choice';
                 label.appendChild(document.createTextNode('Participant ' + (index + 1)));
+                var row = elementWith('room-participant-selects');
                 var select = document.createElement('select');
                 select.className = 'room-target-select';
                 select.setAttribute('aria-label', 'Room participant ' + (index + 1));
                 library.profiles.forEach(function(option) {
                     var node = document.createElement('option');
                     node.value = option.id;
-                    node.textContent = option.name + ' · ' + _roomAgentDisplay(option.agent);
-                    node.disabled = pair[1 - index].id === option.id;
+                    var shownAgent = option.id === profile.id ? profile.agent : (option.id === pair[1 - index].id ? pair[1 - index].agent : option.agent);
+                    node.textContent = option.name + ' · ' + _roomAgentDisplay(shownAgent);
                     select.appendChild(node);
                 });
                 select.value = profile.id;
-                select.disabled = !!session.turns.length || session.busy || session.managed || !!(session.outbox && session.outbox.length);
+                select.disabled = locked;
                 select.onchange = function() {
-                    var ids = pair.map(function(p) { return p.id; });
-                    ids[index] = select.value;
-                    session.participants = _roomProfiles(ids);
+                    var nextPair;
+                    if (select.value === pair[1 - index].id) {
+                        nextPair = [pair[1], pair[0]];
+                    } else {
+                        var chosen = library.profiles.find(function(p) { return p.id === select.value; });
+                        if (!chosen) return;
+                        nextPair = pair.slice();
+                        nextPair[index] = JSON.parse(JSON.stringify(chosen));
+                    }
+                    session.participants = _roomSnapshotPair(nextPair);
                     session.participantsChosen = true;
+                    var ids = session.participants.map(function(p) { return p.id; });
                     if (onChange) onChange(ids);
+                    _roomSaveDraft(session.scene);
                     renderSceneRoomPane();
                 };
-                label.appendChild(select);
+                var provider = document.createElement('select');
+                provider.className = 'room-target-select room-provider-select';
+                provider.setAttribute('aria-label', 'Room participant ' + (index + 1) + ' provider');
+                ['codex', 'claude'].forEach(function(agentId) {
+                    var node = document.createElement('option');
+                    node.value = agentId;
+                    node.textContent = _roomAgentDisplay(agentId);
+                    provider.appendChild(node);
+                });
+                provider.value = profile.agent;
+                provider.disabled = locked;
+                provider.onchange = function() {
+                    var nextPair = JSON.parse(JSON.stringify(pair));
+                    nextPair[index].agent = provider.value;
+                    nextPair[index].model = '';
+                    nextPair[index].effort = '';
+                    session.participants = _roomSnapshotPair(nextPair);
+                    session.participantsChosen = true;
+                    session.providerChosen = true;
+                    if (onChange) onChange(session.participants.map(function(p) { return p.id; }));
+                    _roomSaveDraft(session.scene);
+                    renderSceneRoomPane();
+                };
+                row.append(select, provider);
+                label.appendChild(row);
                 container.appendChild(label);
             });
+            var swapBtn = document.createElement('button');
+            swapBtn.type = 'button';
+            swapBtn.id = 'roomSwapAgentsBtn';
+            swapBtn.className = 'room-header-btn room-swap-agents-btn';
+            swapBtn.textContent = '\u21c4 Swap agents';
+            swapBtn.setAttribute('aria-label', 'Swap participant agents');
+            swapBtn.setAttribute('data-tip', 'Swap which agent (Codex vs. Claude) plays each role');
+            swapBtn.disabled = locked;
+            swapBtn.onclick = function() {
+                var nextPair = JSON.parse(JSON.stringify(pair));
+                var a0 = nextPair[0].agent, m0 = nextPair[0].model, e0 = nextPair[0].effort;
+                nextPair[0].agent = nextPair[1].agent; nextPair[0].model = nextPair[1].model; nextPair[0].effort = nextPair[1].effort;
+                nextPair[1].agent = a0; nextPair[1].model = m0; nextPair[1].effort = e0;
+                session.participants = _roomSnapshotPair(nextPair);
+                session.participantsChosen = true;
+                session.providerChosen = true;
+                if (onChange) onChange(session.participants.map(function(p) { return p.id; }));
+                _roomSaveDraft(session.scene);
+                renderSceneRoomPane();
+            };
+            container.appendChild(swapBtn);
         }
 
         function _roomHasReview(session) {
@@ -1566,6 +1622,7 @@
                         var selected = session.participantsChosen && session.participants && session.participants.map(function(p) { return p.id; });
                         var available = selected && selected.every(function(id) { return settings.library.profiles.some(function(p) { return p.id === id; }); });
                         session.participants = _roomProfiles(available ? selected : settings.library.default_profiles);
+                        session.providerChosen = false;
                     }
                 });
             }
@@ -1895,7 +1952,12 @@
                 var preset = library.presets.find(function(p) { return p.id === options.presetId; });
                 if (!preset) return;
                 session.pendingPreset = JSON.parse(JSON.stringify(preset));
-                session.participants = _roomProfiles(preset.profiles);
+                var presetUsesDefaultPair = JSON.stringify(preset.profiles) === JSON.stringify(library.default_profiles);
+                if (!session.participantsChosen || !presetUsesDefaultPair || !session.participants || session.participants.length !== 2) {
+                    session.participants = _roomProfiles(preset.profiles);
+                } else {
+                    session.pendingPreset.profiles = session.participants.map(function(p) { return p.id; });
+                }
                 renderSceneRoomPane();
                 return;
             }
@@ -2402,6 +2464,20 @@
                         turnsWrap.appendChild(_buildRoomPlanCard(session, plan, pIdx === session.plans.length - 1, path));
                     }
                 });
+                var doneInvitations = typeof roomPresetDebateInvitationCount === 'function' ? roomPresetDebateInvitationCount(session) : 0;
+                if (!session.busy && !session.queuePaused && !(session.outbox || []).length && !(session.pendingMessages || []).length
+                    && session.presetId && doneInvitations >= 2 && doneInvitations < 5) {
+                    var contBar = elementWith('room-continue-bar');
+                    var contBtn = document.createElement('button');
+                    contBtn.type = 'button';
+                    contBtn.id = 'roomContinueToFiveBtn';
+                    contBtn.className = 'room-more-turn-btn';
+                    contBtn.textContent = 'Continue to 5 turns';
+                    contBtn.title = 'Run ' + (5 - doneInvitations) + ' more debate ' + (5 - doneInvitations === 1 ? 'turn' : 'turns') + ' to reach 5 turns';
+                    contBtn.onclick = function() { continueManagedRoomToFive(session); };
+                    contBar.appendChild(contBtn);
+                    turnsWrap.appendChild(contBar);
+                }
                 body.appendChild(turnsWrap);
 
                 // Live status spinner

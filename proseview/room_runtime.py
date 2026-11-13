@@ -335,10 +335,14 @@ class RoomRuntime:
         self._save(room)
 
     def _preset(self, room: dict[str, Any], body: dict[str, Any]) -> None:
-        if room["turns"] or room["steps"]:
+        append = bool(body.get("append"))
+        if not append and (room["turns"] or room["steps"]):
             raise RoomRuntimeError("Start a new Room before running a preset")
+        if append and (room["status"] != "idle" or any(s["state"] in ("queued", "running", "interrupting") for s in room["steps"])):
+            raise RoomRuntimeError("Wait for the current invitations to finish before continuing")
         invitations = body.get("invitations")
-        if not isinstance(invitations, list) or not 2 <= len(invitations) <= 13:
+        min_steps = 1 if append else 2
+        if not isinstance(invitations, list) or not min_steps <= len(invitations) <= 13:
             raise RoomRuntimeError("A preset needs 2–12 invitations plus its optional recap")
         for step in invitations:
             if not isinstance(step, dict) or type(step.get("seat")) is not int or step["seat"] not in (1, 2) or not isinstance(step.get("prompt"), str) or not step["prompt"].strip():
@@ -351,6 +355,10 @@ class RoomRuntime:
         for step in invitations:
             room["steps"].append({"id": uuid.uuid4().hex, "seat": step["seat"], "state": "queued",
                 "kind": "invitation", "prompt": step["prompt"], "recap": bool(step.get("recap")), "attachments": copy.deepcopy(step.get("attachments") or [])})
+        if append:
+            total_invitations = sum(1 for s in room["steps"] if s.get("kind") == "invitation" and not s.get("recap") and s.get("state") != "cancelled")
+            has_recap = any(s.get("recap") for s in invitations)
+            room["badge"] = f"{total_invitations} invitations" + (" + recap" if has_recap else "")
 
     def _active(self, room: dict[str, Any]) -> dict[str, Any] | None:
         return next((step for step in room["steps"] if step["id"] == room.get("active_step")), None)

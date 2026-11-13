@@ -116,6 +116,7 @@ function _roomSaveDraft(path) {
             selection: current ? _roomPendingSelection : previous.selection || '', target: current ? _roomTargetChoice : previous.target || 'auto',
             selectionScene: current ? _roomPendingSelectionScene : previous.selectionScene || '',
             roomId: session && session.id || '', participants: session && session.participants,
+            providerChosen: !!(session && session.providerChosen),
             pending: session && session.managed ? [] : session && session.pendingMessages || [], outbox: session && session.outbox || [], height: current && input ? input.style.height : previous.height || ''}));
     } catch (error) { /* An unavailable draft store must not prevent sending. */ }
 }
@@ -135,8 +136,16 @@ function _roomLoadDraft(path) {
     if (!session.turns.length && !session.participants && Array.isArray(saved.participants) && saved.participants.length === 2
             && saved.participants.every(function(p) { return _roomSettings.library.profiles.some(function(available) { return available.id === p.id; }); })) {
         session.participants = _roomProfiles(saved.participants.map(function(p) { return p.id; }));
-        session.participants.forEach(function(p, index) { p.model = saved.participants[index].model || ''; p.effort = saved.participants[index].effort || ''; });
+        session.participants.forEach(function(p, index) {
+            if (saved.providerChosen && (saved.participants[index].agent === 'codex' || saved.participants[index].agent === 'claude')) {
+                p.agent = saved.participants[index].agent;
+            }
+            p.model = saved.participants[index].model || '';
+            p.effort = saved.participants[index].effort || '';
+        });
+        if (saved.providerChosen) session.participants = _roomSnapshotPair(session.participants);
         session.participantsChosen = true;
+        session.providerChosen = !!saved.providerChosen;
     }
     if (!session.pendingMessages && Array.isArray(saved.pending)) { session.pendingMessages = saved.pending; session.queuePaused = !!saved.pending.length; }
     session.composerHeight = saved.height || '';

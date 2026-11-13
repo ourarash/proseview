@@ -4843,6 +4843,10 @@ class DiscussManager:
                 "critic1_prompt": suggestions_module.DEFAULT_ROOM_CRITIC1_PROMPT,
                 "critic2_prompt": suggestions_module.DEFAULT_ROOM_CRITIC2_PROMPT,
                 "preset_prompts": dict(suggestions_module.DEFAULT_ROOM_PRESET_PROMPTS),
+                "step_templates": {
+                    key: [dict(step) for step in steps]
+                    for key, steps in suggestions_module.DEFAULT_ROOM_PRESET_STEPS.items()
+                },
             },
             "library": library,
             "chat_models": {agent: self._room_chat_model(agent) for agent in ("codex", "claude")},
@@ -5026,6 +5030,7 @@ class DiscussManager:
         else:
             raise ContextError("Open a manuscript scene before running the Writers' Room.")
         fm, _body = split_frontmatter(raw)
+        scene_notes = _scene_frontmatter_notes(fm)
         scene_text = _numbered_scene_body(raw)
         if len(scene_text.encode("utf-8")) > suggestions_module.CONTEXT_MAX:
             scene_text = scene_text.encode("utf-8")[: suggestions_module.CONTEXT_MAX].decode("utf-8", "ignore")
@@ -5050,7 +5055,7 @@ class DiscussManager:
                 beatmap_text = format_beatmap_for_context(res["beatmap"])
         except Exception:
             pass
-        scene_hash = hashlib.sha256((scene_name + '\0' + scene_text + '\0' + reference_text + '\0' + beatmap_text).encode("utf-8")).hexdigest()
+        scene_hash = hashlib.sha256((scene_name + '\0' + scene_notes + '\0' + scene_text + '\0' + reference_text + '\0' + beatmap_text).encode("utf-8")).hexdigest()
         signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
         known = self._room_threads.get(key) if key else None
@@ -5074,6 +5079,7 @@ class DiscussManager:
                 followup = room_module.chat_prompt(
                     seat=seat_num, history=clean[known["seen"]:], scene_path=scene_name,
                     scene_text="" if known["scene"] == scene_hash else scene_text,
+                    scene_notes="" if known["scene"] == scene_hash else scene_notes,
                     reference_text="" if known["scene"] == scene_hash else reference_text,
                     beatmap_text="" if known["scene"] == scene_hash else beatmap_text,
                 )
@@ -5101,8 +5107,8 @@ class DiscussManager:
             if roster:
                 prompt = room_module.chat_prompt(
                     seat=seat_num, history=clean or [{"role": "user", "text": question}],
-                    scene_path=scene_name, scene_text=scene_text, reference_text=reference_text,
-                    beatmap_text=beatmap_text,
+                    scene_path=scene_name, scene_text=scene_text, scene_notes=scene_notes,
+                    reference_text=reference_text, beatmap_text=beatmap_text,
                 )
             else:
                 prompt = suggestions_module.render_room_prompt(
@@ -5116,7 +5122,7 @@ class DiscussManager:
                     history=clean,
                     scene_path=scene_name or "scene.md",
                     scene_text=scene_text,
-                    scene_notes=_scene_frontmatter_notes(fm),
+                    scene_notes=scene_notes,
                     method=action_instruction(self.root, "quick_critique"),
                     reference_text=reference_text,
                 )

@@ -407,17 +407,35 @@
             pair.forEach(function(id, index) {
                 var label = _sgEl('label', 'room-library-field');
                 label.appendChild(_sgEl('span', 'settings-label', prefix.replace(/^Preset \d+ /, '') + ' ' + (index + 1)));
-                var select = _rmSelect(_rmProfileOptions().filter(function(p) { return p.value !== pair[1 - index]; }), id,
-                    function(v) { pair[index] = v; renderRoomSettings(); }, prefix + ' ' + (index + 1));
+                var select = _rmSelect(_rmProfileOptions(), id,
+                    function(v) {
+                        if (v === pair[1 - index]) pair[1 - index] = pair[index];
+                        pair[index] = v;
+                        renderRoomSettings();
+                    }, prefix + ' ' + (index + 1));
                 label.appendChild(select);
                 container.appendChild(label);
             });
         }
 
+        function _rmPresetStepTemplate(presetId, index) {
+            var defaults = (_rm && _rm.defaults) || (typeof _roomSettings !== 'undefined' && _roomSettings && _roomSettings.defaults) || {};
+            var templates = (defaults.step_templates || {})[presetId] || [];
+            if (index < templates.length && templates[index]) {
+                return {seat: templates[index].seat, prompt: templates[index].prompt};
+            }
+            return {
+                seat: index % 2 + 1,
+                prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'
+            };
+        }
+        window._rmPresetStepTemplate = _rmPresetStepTemplate;
+
         function _rmResizeInvitations(preset, count) {
             preset.invitations = preset.invitations.slice(0, count);
-            while (preset.invitations.length < count) preset.invitations.push({seat: preset.invitations.length % 2 + 1,
-                prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'});
+            while (preset.invitations.length < count) {
+                preset.invitations.push(_rmPresetStepTemplate(preset.id, preset.invitations.length));
+            }
         }
 
         function renderRoomSettings() {

@@ -252,9 +252,9 @@
         var _discussLocalErrorReload = false;
         var _discussReconnectTimer = null;
 
-        // Drafts belong to the provider's project conversation. Their document
-        // is stored separately so navigation cannot silently change context
-        // underneath text the writer already composed.
+        // Drafts belong to the provider's project conversation and follow the
+        // currently open document; only an attached selection or action pins
+        // a separate document across navigation.
         function discussDraftKey(doc, agent) {
             return 'proseview-draft:' + (agent || _discussAgent);
         }
@@ -301,15 +301,14 @@
             var input = document.getElementById('discussInput');
             if (!input) return;
             var key = discussDraftKey(null, _discussAgent);
-            if (input.value && !_discussDraftDocument) _discussDraftDocument = discussDocument();
-            if (!input.value && !_discussSelection && !_discussPendingAction
+            if (!_discussSelection && !_discussPendingAction
                 && !_discussRepositoryAction && !_discussIncludeCurrentDocument) {
                 _discussDraftDocument = null;
             }
             try {
                 if (input.value) sessionStorage.setItem(key, input.value);
                 else sessionStorage.removeItem(key);
-                if (_discussDraftDocument && (input.value || _discussIncludeCurrentDocument)) {
+                if (_discussDraftDocument) {
                     sessionStorage.setItem(discussDraftDocumentKey(_discussAgent), JSON.stringify(_discussDraftDocument));
                 } else {
                     sessionStorage.removeItem(discussDraftDocumentKey(_discussAgent));
@@ -324,28 +323,25 @@
             try {
                 var key = discussDraftKey(doc, agent);
                 var draft = sessionStorage.getItem(key) || '';
-                var rawDocument = sessionStorage.getItem(discussDraftDocumentKey(agent));
-                var savedDocument = rawDocument ? JSON.parse(rawDocument) : null;
-                _discussIncludeCurrentDocument = sessionStorage.getItem(
-                    discussIncludeCurrentDocumentKey(agent)
-                ) === 'true';
+                // Selections, pending actions, and repository actions are not
+                // persisted across reloads, so plain restored drafts always
+                // follow the active document.
+                _discussIncludeCurrentDocument = false;
+                _discussDraftDocument = null;
+                sessionStorage.removeItem(discussIncludeCurrentDocumentKey(agent));
+                sessionStorage.removeItem(discussDraftDocumentKey(agent));
                 if (!draft && doc) {
                     var legacyKey = legacyDiscussDraftKey(doc, agent);
                     var legacyDraft = sessionStorage.getItem(legacyKey) || '';
                     if (legacyDraft) {
                         draft = legacyDraft;
-                        savedDocument = Object.assign({}, doc);
                         sessionStorage.setItem(key, draft);
-                        sessionStorage.setItem(discussDraftDocumentKey(agent), JSON.stringify(savedDocument));
                         sessionStorage.removeItem(legacyKey);
                     }
                 }
-                _discussDraftDocument = savedDocument && (savedDocument.kind === 'scene' || savedDocument.kind === 'file')
-                    && typeof savedDocument.path === 'string' ? savedDocument : null;
-                if (draft && !_discussDraftDocument && doc) _discussDraftDocument = Object.assign({}, doc);
                 return draft;
             }
-            catch(e) { _discussIncludeCurrentDocument = false; return ''; }
+            catch(e) { _discussIncludeCurrentDocument = false; _discussDraftDocument = null; return ''; }
         }
 
         function hasLegacyDiscussDraft(doc, agent) {
@@ -362,12 +358,9 @@
             try {
                 var draft = sessionStorage.getItem(legacyKey) || '';
                 if (!draft) return false;
-                var savedDocument = {kind: doc.kind, path: doc.path};
                 sessionStorage.setItem(discussDraftKey(doc, agent), draft);
-                sessionStorage.setItem(discussDraftDocumentKey(agent), JSON.stringify(savedDocument));
                 sessionStorage.removeItem(legacyKey);
                 input.value = draft;
-                _discussDraftDocument = savedDocument;
                 _discussPreservedDraft = draft;
                 _saveDiscussAgentLocal();
                 renderDiscussContext();
@@ -525,8 +518,6 @@
                 // A passage is judged in its scene: the whole file goes along
                 // with it unless the writer removes it.
                 _discussIncludeCurrentDocument = !!requestedSelection;
-            } else if (input.value && !_discussDraftDocument) {
-                _discussDraftDocument = Object.assign({}, doc);
             }
             renderDiscussContext();
             var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
@@ -3274,11 +3265,12 @@
             _discussDocumentKey = key;
             renderDiscussContext();
             renderDiscussTaskMode();
+            var hasDraft = !!((document.getElementById('discussInput') || {}).value);
             var waitingLegacyDraft = hasLegacyDiscussDraft(doc, _discussAgent);
-            if (!_discussDraftDocument && activateLegacyDiscussDraft(doc, _discussAgent)) {
+            if (!hasDraft && !_discussDraftDocument && activateLegacyDiscussDraft(doc, _discussAgent)) {
                 document.getElementById('discussAnnouncement').textContent =
                     'Conversation kept open. Restored the saved draft for ' + doc.path + '.';
-            } else if (_discussDraftDocument && waitingLegacyDraft) {
+            } else if ((hasDraft || _discussDraftDocument) && waitingLegacyDraft) {
                 document.getElementById('discussAnnouncement').textContent =
                     'Conversation kept open. Your current draft is still here. A saved draft for this file '
                     + 'is waiting and will appear after you send or clear this draft.';
@@ -3286,7 +3278,9 @@
                 document.getElementById('discussAnnouncement').textContent = _discussIncludeCurrentDocument
                     ? 'Conversation kept open. ' + discussTurnDocument().path + ' remains attached.'
                     : _discussDraftDocument
-                    ? 'Conversation kept open. Your draft is still here; no file is attached.'
+                    ? 'Conversation kept open. Your draft is still here; ' + discussTurnDocument().path + ' remains attached.'
+                    : hasDraft
+                    ? 'Conversation kept open. Your draft is still here; context follows ' + doc.path + '.'
                     : 'Conversation kept open. No file is attached.';
             }
         }
@@ -6086,7 +6080,8 @@ function loadDiscussDiffMode(mode) {
             if (!edited) return;
             _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
             _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
-            if (!document.getElementById('discussInput').value && !_discussIncludeCurrentDocument) _discussDraftDocument = null;
+            if (!_discussPendingAction) _discussIncludeCurrentDocument = false;
+            if (!_discussIncludeCurrentDocument && !_discussPendingAction && !_discussRepositoryAction) _discussDraftDocument = null;
             showDiscussSelectionInText(false);
             saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
         }
@@ -6389,7 +6384,8 @@ function loadDiscussDiffMode(mode) {
                     _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
                     _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
                     _discussPendingAction = null; _discussRetryOfTaskId = null;
-                    if (!document.getElementById('discussInput').value) _discussDraftDocument = null;
+                    _discussIncludeCurrentDocument = false;
+                    if (!_discussRepositoryAction) _discussDraftDocument = null;
                     saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
                     document.getElementById('discussAnnouncement').textContent = 'Selection removed from context';
                 };
@@ -6600,12 +6596,6 @@ function loadDiscussDiffMode(mode) {
 
         function chooseDiscussInstruction(value, details) {
             document.getElementById('discussInput').value = value;
-            var visibleDocument = discussDocument();
-            if (visibleDocument && !_discussSelection && !_discussPendingAction && !_discussRepositoryAction) {
-                _discussDraftDocument = Object.assign({}, visibleDocument);
-                _discussIncludeCurrentDocument = true;
-                renderDiscussContext();
-            }
             saveDiscussDraft();
             if (details) details.open = false;
             document.getElementById('discussInput').focus();
@@ -7433,7 +7423,7 @@ function loadDiscussDiffMode(mode) {
                     _discussAutoRun = false;
                     _discussAttachments = [];
                     _discussIncludeCurrentDocument = false;
-                    if (!document.getElementById('discussInput').value) _discussDraftDocument = null;
+                    if (!_discussRepositoryAction) _discussDraftDocument = null;
                     saveDiscussDraft();
                     closeDiscussContextPicker();
                     renderDiscussContext();
@@ -7506,7 +7496,10 @@ function loadDiscussDiffMode(mode) {
             }).then(function() {
                 _discussAttachments = [];
                 rememberDiscussInstruction(question); input.value = '';
-                if (!_discussSelection && !_discussIncludeCurrentDocument) _discussDraftDocument = null;
+                if (!_discussSelection) {
+                    _discussIncludeCurrentDocument = false;
+                    _discussDraftDocument = null;
+                }
                 saveDiscussDraft(); _discussSelectedSkill = null;
                 var restoredLegacyDraft = activateLegacyDiscussDraft(discussDocument(), _discussAgent);
                 closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
@@ -7541,7 +7534,7 @@ function loadDiscussDiffMode(mode) {
         function cancelDiscussRepositoryAction() {
             if (!_discussRepositoryAction) return;
             _discussRepositoryAction = null;
-            if (!document.getElementById('discussInput').value && !_discussSelection) _discussDraftDocument = null;
+            if (!_discussSelection && !_discussPendingAction) _discussDraftDocument = null;
             renderDiscussTaskMode();
             renderDiscussSnapshot();
             document.getElementById('discussInput').focus();
@@ -7653,6 +7646,7 @@ function loadDiscussDiffMode(mode) {
                 if (!discussIsReadingAction(actionId)) {
                     _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
                     _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+                    _discussIncludeCurrentDocument = false;
                     _discussDraftDocument = null;
                 }
                 saveDiscussDraft(); closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();

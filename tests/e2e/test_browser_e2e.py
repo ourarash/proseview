@@ -376,7 +376,7 @@ def test_an_expired_claude_login_says_how_to_log_in_again(page: Page, server: Pr
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
-def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
+def test_discuss_names_the_open_file_and_draft_follows_unless_pinned(
     page: Page, server: ProseviewServer, agent: str
 ):
     question_requests: list[dict] = []
@@ -406,22 +406,56 @@ def test_discuss_names_the_open_file_and_a_draft_keeps_its_own(
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
 
-    # A question started in one scene is about that scene, even after moving on.
+    # A plain typed draft follows navigation to the newly opened scene.
     page.fill("#discussInput", "Compare this opening with the next scene")
     page.locator("#sceneModal .nav-btn").nth(1).click()
-    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=SCENE_REL)
     next_path = page.evaluate("() => paths[curIdx]")
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
+    assert next_path in sees.inner_text()
+    page.click("#discussSend")
+    wait_for_discuss_idle(page)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
+
+    # Only an attached selection or action pins the draft's origin scene.
+    page.locator("#sceneModal .nav-btn").nth(0).click()
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=next_path)
+    page.wait_for_function(
+        "target => document.querySelector('#discussSees .discuss-sees').textContent.includes(target)",
+        arg=SCENE_REL,
+    )
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionCodexBtn")
+    page.wait_for_function(
+        "() => document.querySelector('#discussConnection').innerText.startsWith('Live')"
+    )
+    page.fill("#discussInput", "Tighten this pinned passage")
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=SCENE_REL)
     assert SCENE_REL in sees.inner_text()
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert question_requests[-1]["include_current_document"] is True
 
-    # The next one is about where the writer is now.
-    page.wait_for_function("next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)", arg=next_path)
+    # After sending a free-form selection question, the selection stays attached
+    # for follow-ups until dismissed; once dismissed (even with typed text), the
+    # composer immediately follows the open scene.
+    assert SCENE_REL in sees.inner_text()
     page.fill("#discussInput", "And this one?")
+    page.click('#discussSelectionChip button[aria-label^="Remove selected text"]')
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["include_current_document"] is False
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -447,19 +481,19 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
     page.evaluate("() => { window._discussEventSource.__navigationTest = true; }")
     original_messages = page.locator("#discussLog .discuss-message").count()
 
-    # A draft freezes its origin metadata while navigation leaves the project
-    # conversation and its live event stream untouched. The scene's contents
-    # are still omitted unless the writer explicitly attaches them.
+    # A plain typed draft preserves the project conversation, live event stream,
+    # and draft text across navigation while its target document follows the
+    # newly opened scene (still omitting contents unless explicitly attached).
     page.fill("#discussInput", "Compare the image I was reading")
     page.locator("#sceneModal .nav-btn").nth(1).click()
-    page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=SCENE_REL)
     next_path = page.evaluate("() => paths[curIdx]")
     assert page.evaluate("() => window._discussConversationId") == original_id
     assert page.evaluate("() => window._discussEventSource.__navigationTest") is True
     assert page.locator("#discussLog .discuss-message").count() == original_messages
     assert page.input_value("#discussInput") == "Compare the image I was reading"
-    # The draft is still about the scene it was started in, and says so.
-    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
+    page.wait_for_function("next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)", arg=next_path)
+    assert next_path in page.locator("#discussSees .discuss-sees").text_content()
 
     page.click("#discussSend")
     page.wait_for_function(
@@ -467,17 +501,96 @@ def test_discuss_project_conversation_and_draft_survive_scene_navigation(
         arg=original_messages,
     )
     wait_for_discuss_idle(page)
-    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
     assert question_requests[-1]["include_current_document"] is False
 
-    # Once the draft is sent, the next turn follows the scene now on screen.
-    page.wait_for_function("next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)", arg=next_path)
+    # Navigating again and sending another turn stays in the same conversation
+    # and targets the newly opened scene.
+    page.locator("#sceneModal .nav-btn").nth(0).click()
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=next_path)
+    page.wait_for_function("target => document.querySelector('#discussSees .discuss-sees').textContent.includes(target)", arg=SCENE_REL)
     page.fill("#discussInput", "What changes in this scene?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
-    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
     assert question_requests[-1]["include_current_document"] is False
     assert page.evaluate("() => window._discussConversationId") == original_id
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_discuss_scene_label_follows_navigation_after_preset_and_selection_clear(
+    page: Page, server: ProseviewServer, agent: str
+):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+
+    open_scene(page, server)
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    # Quick-send presets ("good, apply it") must not pin the old scene after sending.
+    preset = page.locator("#discussTaskMode .discuss-preset-inline", has_text="good, apply it")
+    preset.click()
+    wait_for_settled_answers(page, 1)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
+    assert page.evaluate(
+        "agent => sessionStorage.getItem('proseview-draft:' + agent + ':include-current-document')",
+        agent,
+    ) is None
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("previous => paths[curIdx] !== previous", arg=SCENE_REL)
+    next_path = page.evaluate("() => paths[curIdx]")
+    assert next_path != SCENE_REL
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
+    assert SCENE_REL not in page.locator("#discussSees .discuss-sees").text_content()
+
+    page.fill("#discussInput", "What happens in this new scene?")
+    page.click("#discussSend")
+    wait_for_settled_answers(page, 2)
+    assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
+
+    # Dismissing a selection chip must also release the pinned scene.
+    page.locator("#sceneModal .nav-btn").nth(0).click()
+    page.wait_for_function("target => paths[curIdx] === target", arg=SCENE_REL)
+    open_selection_menu(page, "the slow algebra of yesterday's receipts")
+    page.click("#selectionCodexBtn")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
+    page.locator("#discussSelectionChip button").click()
+    assert page.locator("#discussSelectionChip").is_hidden()
+
+    page.locator("#sceneModal .nav-btn").nth(1).click()
+    page.wait_for_function("next => paths[curIdx] === next", arg=next_path)
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
+
+    # Stale include-current-document without draft text is cleared on reload.
+    page.evaluate(
+        """([agent, stalePath]) => {
+            sessionStorage.removeItem('proseview-draft:' + agent);
+            sessionStorage.setItem('proseview-draft:' + agent + ':include-current-document', 'true');
+            sessionStorage.setItem('proseview-draft:' + agent + ':document', JSON.stringify({kind: 'scene', path: stalePath}));
+        }""",
+        [agent, SCENE_REL],
+    )
+    page.reload(wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.evaluate("agent => showDiscussAgentTab(agent)", agent)
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
+    assert SCENE_REL not in page.locator("#discussSees .discuss-sees").text_content()
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])

@@ -5103,7 +5103,7 @@
         }
 
         html {
-            --utility-dock-w: clamp(360px, 36vw, 620px);
+            --utility-dock-w: clamp(340px, 28vw, 540px);
         }
 
         /* ── Discuss / shared right utility dock ─────────────────────────── */
@@ -5173,20 +5173,32 @@
             min-height: 49px;
             max-height: 49px;
             box-sizing: border-box;
-            padding: 0 8px 0 10px;
+            padding: 0 6px 0 8px;
             border-bottom: 1px solid var(--border);
             background: var(--surface-card);
             display: flex;
             align-items: center;
             flex-wrap: nowrap;
-            gap: 4px;
+            gap: 2px;
             overflow: hidden;
+            container-type: inline-size;
         }
 
         .utility-tabs {
             display: flex;
-            gap: 3px;
+            align-items: center;
+            gap: 2px;
             margin-right: auto;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .utility-tabs::-webkit-scrollbar {
+            display: none;
         }
 
         .utility-tab {
@@ -5194,16 +5206,46 @@
             background: transparent;
             color: var(--text-muted);
             font: inherit;
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 5px;
+            font-size: 11px;
+            padding: 3px 5px;
+            border-radius: 4px;
             cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            line-height: 1.35;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .utility-tab:hover:not(:disabled):not(.active) {
+            color: var(--text-main);
+            background: var(--button-hover, rgba(125, 125, 125, 0.12));
+        }
+
+        .utility-tab:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
+        }
+
+        @container (max-width: 410px) {
+            .utility-tab {
+                padding: 3px 3.5px;
+                font-size: 10.5px;
+            }
+            .utility-tabs {
+                gap: 1px;
+            }
         }
 
         .utility-tab.active {
             background: var(--surface-muted);
             color: var(--primary);
             font-weight: 700;
+            box-shadow: inset 0 0 0 1px var(--border);
+        }
+
+        .utility-tab.active:hover {
+            background: var(--surface-muted);
+            color: var(--primary);
         }
 
         /* An agent tab you are not looking at still has work running. The dot
@@ -5219,8 +5261,8 @@
             position: absolute;
             top: 2px;
             right: 2px;
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             background: var(--primary);
         }
@@ -5234,6 +5276,10 @@
         .utility-tab-attention::after {
             background: #d29922;
             animation: none;
+        }
+
+        #utilityTabBeats::after {
+            display: none !important;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -5503,8 +5549,9 @@
             margin-left: auto;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 8px;
+            justify-content: flex-end;
+            gap: 4px;
+            flex-shrink: 0;
         }
 
         .discuss-heading-title {
@@ -5526,20 +5573,22 @@
         }
 
         .discuss-icon-button {
-            width: 24px;
-            height: 24px;
+            width: 22px;
+            height: 22px;
             display: inline-grid;
             place-items: center;
             border: 1px solid transparent;
-            border-radius: 6px;
+            border-radius: 5px;
             background: transparent;
             color: var(--text-muted);
             cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
         }
 
         .discuss-icon-button svg {
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             fill: none;
             stroke: currentColor;
             stroke-width: 1.8;
@@ -5600,8 +5649,8 @@
             position: absolute;
             top: 2px;
             right: 2px;
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             background: #22a06b;
         }
@@ -5610,11 +5659,12 @@
             border: 0;
             background: transparent;
             color: var(--text-muted);
-            font-size: 22px;
+            font-size: 20px;
             line-height: 1;
-            padding: 1px 5px 3px;
+            padding: 2px 4px;
             cursor: pointer;
-            border-radius: 5px;
+            border-radius: 4px;
+            flex-shrink: 0;
         }
 
         .discuss-close:hover {
@@ -14611,7 +14661,7 @@
             display: inline-block;
         }
         .status-dot.stale {
-            background: #d29922;
+            background: var(--text-muted, #94a3b8);
         }
 
         .strip-controls-right {

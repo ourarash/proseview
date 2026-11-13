@@ -178,7 +178,7 @@ let currentTab = 'overview';
             if (!document.body.classList.contains('discuss-open')) return false;
             const dock = Math.min(
                 parseFloat(getComputedStyle(document.documentElement)
-                    .getPropertyValue('--utility-dock-w')) || 504,
+                    .getPropertyValue('--utility-dock-w')) || 420,
                 logicalViewportWidth / 2
             );
             const measure = typeof storedReadingMeasure === 'function'

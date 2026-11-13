@@ -570,7 +570,7 @@
     function syncStaleIndicator() {
         var tab = document.getElementById('utilityTabBeats');
         if (tab) {
-            tab.classList.toggle('utility-tab-attention', _beatMapStale);
+            tab.classList.remove('utility-tab-attention');
         }
     }
 

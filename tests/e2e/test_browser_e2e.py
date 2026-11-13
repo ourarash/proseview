@@ -7191,6 +7191,86 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
     assert abs(edges["shellLeft"] - edges["panelLeft"]) <= 2.5, edges
 
 
+def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
+    page: Page, server: ProseviewServer
+):
+    """The utility tabs use compact padding and responsive spacing so that all 7
+    tabs, conversation actions, and the close button fit cleanly without pushing
+    controls off-screen even at narrower dock widths."""
+    open_scene(page, server)
+    page.evaluate("() => showDiscussAgentTab('claude')")
+    page.wait_for_selector("#discussPanel:not([hidden])")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    header_status = page.evaluate("""() => {
+        const header = document.querySelector('.discuss-header');
+        const headerBox = header.getBoundingClientRect();
+        const closeBtn = document.getElementById('discussClose');
+        const closeBox = closeBtn.getBoundingClientRect();
+        const newConv = document.getElementById('discussNewConversation');
+        const newConvBox = newConv.getBoundingClientRect();
+        const tabs = document.querySelector('.utility-tabs');
+        const tabsBox = tabs.getBoundingClientRect();
+        return {
+            headerWidth: headerBox.width,
+            closeInside: closeBox.right <= headerBox.right + 1 && closeBox.left >= headerBox.left,
+            newConvInside: newConvBox.right <= headerBox.right + 1 && newConvBox.left >= headerBox.left,
+            tabsInside: tabsBox.left >= headerBox.left && tabsBox.right <= headerBox.right,
+            tabsScrollWidth: tabs.scrollWidth,
+            tabsClientWidth: tabs.clientWidth,
+        };
+    }""")
+    assert header_status["closeInside"], f"Close button overflowed header: {header_status}"
+    assert header_status["newConvInside"], f"New conversation button overflowed header: {header_status}"
+
+    # Each tab has a clear, human-readable tooltip and calm highlight styling.
+    tab_tooltips = page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('.utility-tab')).map(el => ({
+            id: el.id,
+            text: el.textContent.trim(),
+            title: el.getAttribute('title') || '',
+            dataTip: el.getAttribute('data-tip') || '',
+        }));
+    }""")
+    assert len(tab_tooltips) == 7
+    for tab in tab_tooltips:
+        assert len(tab["title"]) > 10, f"Tab {tab['id']} missing descriptive title: {tab}"
+        assert tab["title"] == tab["dataTip"]
+
+    # Beats tab does not show an attention/stale dot when out of sync.
+    beats_dot = page.evaluate("""() => {
+        if (typeof _beatMapStale !== 'undefined') _beatMapStale = true;
+        if (typeof syncStaleIndicator === 'function') syncStaleIndicator();
+        const tab = document.getElementById('utilityTabBeats');
+        const afterDisplay = tab ? window.getComputedStyle(tab, '::after').display : '';
+        return {
+            hasAttentionClass: tab ? tab.classList.contains('utility-tab-attention') : false,
+            afterDisplay: afterDisplay,
+        };
+    }""")
+    assert beats_dot["hasAttentionClass"] is False
+    assert beats_dot["afterDisplay"] == "none"
+
+    # Even at narrow panel widths, the controls stay inside the header boundaries.
+    for test_width in ("380px", "340px"):
+        page.evaluate(f"w => document.documentElement.style.setProperty('--utility-dock-w', w)", test_width)
+        page.wait_for_timeout(60)
+        narrow_status = page.evaluate("""() => {
+            const header = document.querySelector('.discuss-header');
+            const headerBox = header.getBoundingClientRect();
+            const closeBtn = document.getElementById('discussClose');
+            const closeBox = closeBtn.getBoundingClientRect();
+            const newConv = document.getElementById('discussNewConversation');
+            const newConvBox = newConv.getBoundingClientRect();
+            return {
+                closeInside: closeBox.right <= headerBox.right + 1 && closeBox.left >= headerBox.left,
+                newConvInside: newConvBox.right <= headerBox.right + 1 && newConvBox.left >= headerBox.left,
+            };
+        }""")
+        assert narrow_status["closeInside"], f"Close button overflowed at {test_width}: {narrow_status}"
+        assert narrow_status["newConvInside"], f"New conv button overflowed at {test_width}: {narrow_status}"
+
+
 def test_the_dashboard_toolbar_never_overflows_its_container(
     page: Page, shared_server: ProseviewServer
 ):

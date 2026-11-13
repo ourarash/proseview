@@ -1059,3 +1059,52 @@ def test_an_ordinary_thread_keeps_its_tools_and_its_session():
         assert "tools" not in made[0].options and "extra_args" not in made[0].options
     finally:
         client.close()
+
+
+@pytest.mark.parametrize(
+    ("which", "installed", "bundled", "expected"),
+    [
+        ("/bin/claude", "2.1.321 (Claude Code)\n", "2.1.292", "/bin/claude"),
+        ("/bin/claude", "2.1.119 (Claude Code)\n", "2.1.292", None),
+        ("/bin/claude", "2.1.292 (Claude Code)\n", "2.1.292", None),
+        (None, "", "2.1.292", None),
+        ("/bin/claude", "not a version", "2.1.292", None),
+        ("/bin/claude", "2.1.321 (Claude Code)\n", "garbage", None),
+    ],
+    ids=["installed-newer", "installed-older", "same", "missing", "unparseable", "bundled-unreadable"],
+)
+def test_the_installed_cli_runs_only_when_it_is_newer_than_the_bundled_one(
+    monkeypatch, which, installed, bundled, expected
+):
+    import proseview.claude_agent_client as module
+
+    monkeypatch.setattr(module, "_CLI_PATH_PICKED", False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: which)
+    monkeypatch.setattr(module, "_installed_cli_version", lambda path: installed)
+    monkeypatch.setattr(module, "_bundled_cli_version", lambda: bundled)
+    assert module.pick_cli_path() == expected
+
+
+def test_the_cli_choice_is_made_once_per_process(monkeypatch):
+    import proseview.claude_agent_client as module
+
+    calls: list[str] = []
+    monkeypatch.setattr(module, "_CLI_PATH_PICKED", False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/bin/claude")
+    monkeypatch.setattr(module, "_installed_cli_version", lambda path: calls.append(path) or "9.0.0")
+    monkeypatch.setattr(module, "_bundled_cli_version", lambda: "2.1.292")
+    assert module.pick_cli_path() == "/bin/claude"
+    assert module.pick_cli_path() == "/bin/claude"
+    assert calls == ["/bin/claude"]
+
+
+def test_a_failing_version_check_falls_back_to_the_bundled_cli(monkeypatch):
+    import proseview.claude_agent_client as module
+
+    def boom(path):
+        raise OSError("cannot run")
+
+    monkeypatch.setattr(module, "_CLI_PATH_PICKED", False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/bin/claude")
+    monkeypatch.setattr(module, "_installed_cli_version", boom)
+    assert module.pick_cli_path() is None

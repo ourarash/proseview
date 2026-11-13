@@ -34,6 +34,7 @@ import os
 import queue
 import re
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -88,29 +89,74 @@ EFFORT_LADDER = ("low", "medium", "high", "xhigh", "max")
 MODEL_CATALOG = (
     {
         "id": "opus",
-        "displayName": "Opus 5",
+        "displayName": "Opus",
         "description": "Most capable. Long continuity sweeps and structural reads.",
         "defaultReasoningEffort": "high",
     },
     {
         "id": "sonnet",
-        "displayName": "Sonnet 5",
+        "displayName": "Sonnet",
         "description": "Balanced speed and depth. A good standing choice for line work.",
         "defaultReasoningEffort": "medium",
     },
     {
         "id": "fable",
-        "displayName": "Fable 5",
+        "displayName": "Fable",
         "description": "Tuned for prose and voice.",
         "defaultReasoningEffort": "medium",
     },
     {
         "id": "haiku",
-        "displayName": "Haiku 4.5",
+        "displayName": "Haiku",
         "description": "Fastest and cheapest. Quick lookups and small rewrites.",
         "defaultReasoningEffort": "low",
     },
 )
+
+_CLI_PATH_PICKED = False
+_CLI_PATH: str | None = None
+
+
+def _cli_version_tuple(text: str) -> tuple[int, ...] | None:
+    """``"2.1.321 (Claude Code)"`` -> ``(2, 1, 321)``; None when unreadable."""
+    match = re.match(r"\s*(\d+)\.(\d+)\.(\d+)", text or "")
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def _installed_cli_version(path: str) -> str:
+    return subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10).stdout
+
+
+def _bundled_cli_version() -> str:
+    from claude_agent_sdk._cli_version import __cli_version__
+
+    return __cli_version__
+
+
+def pick_cli_path() -> str | None:
+    """The writer's installed ``claude`` when it is newer than the SDK's own copy.
+
+    A newer CLI can reach models the bundled one cannot yet, so Prosview uses
+    it; otherwise (older, missing, or a version it cannot read) the SDK's
+    bundled CLI runs. Decided once per process.
+    """
+    global _CLI_PATH_PICKED, _CLI_PATH
+    if _CLI_PATH_PICKED:
+        return _CLI_PATH
+    _CLI_PATH_PICKED = True
+    _CLI_PATH = None
+    installed = shutil.which("claude")
+    if not installed:
+        return None
+    try:
+        installed_version = _cli_version_tuple(_installed_cli_version(installed))
+        bundled_version = _cli_version_tuple(_bundled_cli_version())
+    except Exception:
+        return None
+    if installed_version and bundled_version and installed_version > bundled_version:
+        _CLI_PATH = installed
+    return _CLI_PATH
+
 
 EFFORT_DESCRIPTIONS = {
     "low": "Fast answers with little deliberation",
@@ -794,6 +840,9 @@ class ClaudeAgentClient:
         options["can_use_tool"] = can_use_tool_sdk
 
         options["hooks"] = {"PreToolUse": [HookMatcher(matcher=None, hooks=[pre_tool_use])]}
+        cli_path = pick_cli_path()
+        if cli_path:
+            options["cli_path"] = cli_path
         return ClaudeAgentOptions(**options)
 
     async def _ensure_session_client(self, session: _Session, params: dict[str, Any]) -> Any:

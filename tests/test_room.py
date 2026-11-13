@@ -156,6 +156,7 @@ def test_native_room_threads_resume_with_new_entries_and_recover_full_history(tm
         original = "Start here. " + "Keep the complete proposal. " * 500
         history = [{"role": "user", "text": original}]
         first = manager.run_room_turn(scene="one.md", participants=participants, history=history, debate_id="resume")
+        assert "SCENE FRONTMATTER (background context — may be outdated after revisions; if you base a proposal on these frontmatter notes, still make it and briefly mention to the writer that it is based on the frontmatter, which might be outdated)" in clients[0].prompts[0]
         history.append({"role": "critic", "label": "Story Editor · Codex", "text": first["reply"]})
         history.append({"role": "user", "text": "Now consider another angle."})
         manager.run_room_turn(scene="one.md", participants=participants, history=history, debate_id="resume")

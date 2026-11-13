@@ -450,9 +450,11 @@ def test_room_settings_round_trip_splits_book_prompts_and_computer_seats(tmp_pat
         initial = manager.room_settings()
         assert initial["app"]["critic1"]["agent"] == "codex"
         assert initial["app"]["critic2"]["agent"] == "claude"
-        assert initial["app"]["turns"] == 4
+        assert initial["app"]["turns"] == 3
         assert initial["app"]["moderator"] == {"agent": "claude", "model": "", "effort": "low"}
-        assert len(initial["presets"]) == 3
+        assert len(initial["presets"]) == 4
+        assert [p["id"] for p in initial["presets"]] == ["editorial_critique", "tough_love", "deepen_and_layer", "pitch_next_beat"]
+        assert all(len(steps) == 5 for steps in initial["defaults"]["step_templates"].values())
 
         saved = manager.save_room_settings({
             "book": {
@@ -494,7 +496,7 @@ def test_writers_room_debate_passes_transcript_between_critics_and_the_moderator
     try:
         t1 = manager.run_room_turn(scene="one.md", seat=1, turn_index=1, preset_id="editorial_critique")
         assert t1["seat"] == 1 and t1["agent"] == "codex" and t1["done"] is False
-        assert t1["total_turns"] == 4, "four turns unless Settings say otherwise"
+        assert t1["total_turns"] == 3, "three turns unless Settings say otherwise"
         codex = next(c for c in clients if isinstance(c, CodexFakeClient))
         opening = codex.prompts[-1]
         assert "Critic 1 of two" in opening and "SESSION BRIEF:" in opening

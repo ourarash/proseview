@@ -233,6 +233,30 @@ function startManagedRoomPreset(session) {
     }).catch(function(error) { if (session.pendingPreset === preset) session.presetError = error.message; })
         .finally(function() { session.startingPreset = false; if (_roomSessionsByScene[session.scene] === session) renderSceneRoomPane(); });
 }
+function roomRecapPrompt(presetId) {
+    if (presetId === 'pitch_next_beat') {
+        return (
+            'Deliver a self-contained, actionable recap of where we landed so the writer does not need to piece it together from earlier turns: ' +
+            '1) The winning next-beat blueprint (opening disruption, mid-scene turn, and closing cliffhanger or pivot), ' +
+            '2) Any strong alternative beat worth keeping as Option B, and ' +
+            '3) The key character or pacing trap to avoid while drafting.'
+        );
+    }
+    return (
+        'Deliver a self-contained, actionable revision summary so the writer can apply the changes directly from this card without reading earlier turns. ' +
+        'Do not include meta-disclaimers about writer approval. ' +
+        'For every agreed or recommended edit:\n' +
+        '1. Give a short bold heading and cite `Line N` (or `Setup — Line X` and `Payoff — Line Y` for a linked setup-and-payoff move).\n' +
+        '2. Quote the complete, verbatim original passage from the scene as an italic blockquote (`> *...*`) — never abbreviate with `...`.\n' +
+        '3. Provide the complete, ready-to-paste replacement as a plain blockquote (`> ...`), or `> [Cut this passage]` for a pure deletion (for a linked setup/payoff pair touching two lines, include the complete `> *...*` and `> ...` blockquotes for both lines; if two competing versions remain open, show Option A and Option B as separate plain blockquotes).\n' +
+        '4. Add one sentence explaining why this edit improves the scene.'
+    );
+}
+function roomPresetDebateInvitationCount(session) {
+    return ((session && session.turns) || []).filter(function(turn) {
+        return turn.role === 'invitation' && !turn.recap && turn.label !== 'Recovery';
+    }).length;
+}
 function queueManagedRoomPreset(session) {
     var preset = session.pendingPreset;
     if (!preset) return;
@@ -240,10 +264,37 @@ function queueManagedRoomPreset(session) {
     session.topicLabel = preset.name; session.presetId = preset.id;
     session.topicBadge = preset.invitations.length + ' invitations' + (preset.recap ? ' + recap' : '');
     var invitations = preset.invitations.map(function(step) { return {seat: step.seat, prompt: step.prompt, attachments: discussMentionsIn(step.prompt)}; });
-    if (preset.recap) invitations.push({seat: preset.recap, recap: true, prompt: 'Summarize where we landed: 3–5 bullets on agreed edits, what to keep, and any open choices for the writer.'});
+    if (preset.recap) invitations.push({seat: preset.recap, recap: true, prompt: roomRecapPrompt(preset.id)});
     var body = roomRuntimeEnvelope(session, 'preset', {invitations: invitations});
     session.pendingPreset = null; session.outbox = [body];
     session.busy = true; session.statusText = 'Starting discussion…';
+    if (typeof _roomScrollByScene !== 'undefined') _roomScrollByScene[session.scene] = {top: 0, atBottom: true};
+    _roomSaveDraft(session.scene); renderSceneRoomPane(); drainRoomOutbox(session);
+}
+function continueManagedRoomToFive(session) {
+    if (!session || session.busy || !session.presetId) return;
+    var doneCount = roomPresetDebateInvitationCount(session);
+    if (doneCount < 2 || doneCount >= 5) return;
+    var extra = [];
+    for (var idx = doneCount; idx < 5; idx++) {
+        var step = typeof window._rmPresetStepTemplate === 'function'
+            ? window._rmPresetStepTemplate(session.presetId, idx)
+            : {seat: idx % 2 + 1, prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'};
+        extra.push({seat: step.seat, prompt: step.prompt, attachments: discussMentionsIn(step.prompt)});
+    }
+    var lastRecap = (session.turns || []).slice().reverse().find(function(turn) {
+        return turn.role === 'invitation' && turn.recap;
+    });
+    var presetDef = (((_roomSettings || {}).library || {}).presets || []).find(function(p) { return p.id === session.presetId; });
+    var recapSeat = lastRecap ? lastRecap.seat : (presetDef && presetDef.recap ? presetDef.recap : 0);
+    if (recapSeat) {
+        extra.push({seat: recapSeat, recap: true, prompt: roomRecapPrompt(session.presetId)});
+    }
+    var body = roomRuntimeEnvelope(session, 'preset', {append: true, invitations: extra});
+    if (!session.outbox) session.outbox = [];
+    session.outbox.push(body);
+    session.busy = true;
+    session.statusText = 'Continuing discussion to 5 turns…';
     if (typeof _roomScrollByScene !== 'undefined') _roomScrollByScene[session.scene] = {top: 0, atBottom: true};
     _roomSaveDraft(session.scene); renderSceneRoomPane(); drainRoomOutbox(session);
 }

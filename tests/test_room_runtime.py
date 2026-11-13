@@ -470,3 +470,34 @@ def test_room_submit_auto_targets_both_initially_and_last_critic_afterwards_unle
         assert calls == [1, 2]
     finally:
         manager.close()
+
+
+def test_preset_can_continue_from_three_debate_runs_to_five_with_recap(tmp_path, monkeypatch):
+    manager = _manager(_repo(tmp_path), [])
+    calls = []
+    def run(**kw):
+        calls.append(kw["seat"])
+        return reply(kw, f"Reply {len(calls)} from seat {kw['seat']}.")
+    monkeypatch.setattr(manager, "run_room_turn", run)
+    try:
+        initial_steps = [
+            {"seat": 1, "prompt": "Step 1"},
+            {"seat": 2, "prompt": "Step 2"},
+            {"seat": 1, "prompt": "Step 3"},
+            {"seat": 2, "prompt": "Recap after 3", "recap": True},
+        ]
+        command(manager, "preset", initial=initial(manager), invitations=initial_steps)
+        wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 4 and s)
+        assert calls == [1, 2, 1, 2]
+
+        extra_steps = [
+            {"seat": 2, "prompt": "Step 4"},
+            {"seat": 1, "prompt": "Step 5"},
+            {"seat": 2, "prompt": "Recap after 5", "recap": True},
+        ]
+        command(manager, "preset", append=True, invitations=extra_steps)
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 7 and s)
+        assert calls == [1, 2, 1, 2, 2, 1, 2]
+        assert state["badge"] == "5 invitations + recap"
+    finally:
+        manager.close()

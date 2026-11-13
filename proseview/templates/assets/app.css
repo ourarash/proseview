@@ -14401,6 +14401,15 @@
             font-weight: 500;
             cursor: pointer;
         }
+        .room-more-turn-btn:hover:not(:disabled) {
+            border-color: var(--text-muted);
+            background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+        }
+        .room-continue-bar {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 6px;
+        }
         .room-composer {
             position: relative;
             padding: 8px 12px;
@@ -14522,6 +14531,8 @@
             min-width: 0;
         }
         .room-participant-choice { margin: 0; font-size: 12px; color: var(--text-muted); }
+        .room-participant-selects { display: flex; align-items: center; gap: 6px; }
+        .room-swap-agents-btn { align-self: flex-end; height: 28px; }
         .room-library-card {
             padding: 14px;
             margin: 10px 0;

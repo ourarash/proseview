@@ -483,8 +483,14 @@
         function _flashAndScrollTo(el) {
             if (!el || typeof el.scrollIntoView !== 'function') return false;
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (el._paraFlashTimer) clearTimeout(el._paraFlashTimer);
+            el.classList.remove('para-flash');
+            void el.offsetWidth;
             el.classList.add('para-flash');
-            setTimeout(function() { el.classList.remove('para-flash'); }, 1600);
+            el._paraFlashTimer = setTimeout(function() {
+                el.classList.remove('para-flash');
+                el._paraFlashTimer = null;
+            }, 1600);
             return true;
         }
 

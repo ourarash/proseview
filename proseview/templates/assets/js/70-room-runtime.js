@@ -8,7 +8,7 @@ function roomRuntimeInitial(session) {
         created_at: session.createdAt || 0, question: session.question || '',
         turns: session.turns.map(function(turn) {
             var row = Object.assign({}, turn);
-            if (row.role === 'user' || row.role === 'invitation') row.attachments = discussMentionsIn(row.text.split('\n\nSelected passage:\n')[0]);
+            if (row.role === 'user' || row.role === 'invitation') row.attachments = discussMentionsIn(String(row.text || '').split(/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/)[0]);
             return row;
         }), plans: roomRuntimePlans(session)};
 }

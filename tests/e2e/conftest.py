@@ -635,6 +635,29 @@ for line in sys.stdin:
                 '[external](https://example.test/reference) '
                 '[unsafe](javascript:alert(1))'
             )
+        if 'SHOW_RANGE_LINKS' in prompt:
+            current_scene = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            answer = (
+                f'[lines 18–20]({current_scene}:18-20) '
+                f'[hash range](manuscript/ch01/01-opening.md#L20-L22) '
+                f'[lines 18–20 single hash](manuscript/ch01/01-opening.md#L18) '
+                'and also plain text lines 24–26 here.'
+            )
+        if 'SHOW_QUOTE_LINKS' in prompt:
+            current_scene = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            answer = (
+                f'Option B is at [lines 20–22]({current_scene}:20-22):\\n\\n'
+                '> "It is sticking again," Lowe said from the doorway.\\n\\n'
+                'And here is an unlinked quote from line 26:\\n\\n'
+                '> "Yesterday was also not today." She took a mug and did not drink from it.'
+            )
+        if 'SHOW_CROSS_FILE_QUOTES' in prompt:
+            answer = (
+                'Compare with [ch01/02-walk.md](manuscript/ch01/02-walk.md#L19):\\n\\n'
+                '> She had thought a walk would give her a quiet ten minutes.\\n\\n'
+                'And in `plans/structure-notes.md`:\\n\\n'
+                '> Prose after the rule.'
+            )
         if "in a Writers' Room on the manuscript scene" in prompt:
             answer = '### 1. Weather opening\\n\\n> *The weather was grey.*\\n\\nCut it and open on the safe combination.\\n\\n> She had used the same four digits since spring.'
         schema = params.get('outputSchema') or {}

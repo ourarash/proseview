@@ -46,7 +46,7 @@
         // Reading passes are ordinary questions: no schema, no card, and the
         // thing they read stays attached so a follow-up can refer to it.
         const DISCUSS_READING_ACTIONS = [
-            'quick_critique', 'style_consistency', 'voice_character',
+            'quick_critique', 'deepen_and_layer', 'style_consistency', 'voice_character',
             'pacing_tension', 'clarity_flow', 'continuity', 'next_beats'
         ];
         function discussIsReadingAction(actionId) {
@@ -66,6 +66,11 @@
                 id: 'quick_critique',
                 label: 'Quick critique',
                 copy: 'What is working against this scene, each note quoting the line and suggesting a fix.'
+            },
+            {
+                id: 'deepen_and_layer',
+                label: 'Deepen & layer',
+                copy: 'Add unspoken tension, physical micro-business, and emotional resonance in 2–3 key beats.'
             },
             {
                 id: 'style_consistency',
@@ -1566,12 +1571,55 @@
             if (input) input.focus();
         }
 
+        function getSelectionLineRange(text) {
+            try {
+                if (typeof window !== 'undefined' && window.getSelection) {
+                    var sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+                        var range = sel.getRangeAt(0);
+                        var sNode = range.startContainer;
+                        var eNode = range.endContainer;
+                        var startEl = (sNode.nodeType === 1 ? sNode : sNode.parentElement);
+                        var endEl = (eNode.nodeType === 1 ? eNode : eNode.parentElement);
+                        startEl = startEl ? startEl.closest('#sceneProseHost [data-line]') : null;
+                        endEl = endEl ? endEl.closest('#sceneProseHost [data-line]') : null;
+                        if (startEl && endEl) {
+                            var s = parseInt(startEl.getAttribute('data-line'), 10);
+                            var e = parseInt(endEl.getAttribute('data-line'), 10);
+                            if (s && e) {
+                                return s === e ? 'line ' + s : 'lines ' + Math.min(s, e) + '–' + Math.max(s, e);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {}
+            if (text && typeof document !== 'undefined') {
+                var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+                if (blocks.length && typeof findBlocksByQuoteText === 'function') {
+                    var matched = findBlocksByQuoteText(blocks, text);
+                    if (matched.length) {
+                        var sLine = parseInt(matched[0].getAttribute('data-line'), 10);
+                        var eLine = parseInt(matched[matched.length - 1].getAttribute('data-line'), 10);
+                        if (sLine && eLine) {
+                            return sLine === eLine ? 'line ' + sLine : 'lines ' + sLine + '–' + eLine;
+                        }
+                    }
+                }
+            }
+            return '';
+        }
+
         function _roomWithSelection(text) {
             if (!_roomPendingSelection) return text;
-            var quoted = _roomPendingSelection.split('\n').map(function(line) { return '> ' + line; }).join('\n');
+            if (/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/.test(text)) return text;
+            var clean = _roomPendingSelection.trim();
+            if (!clean) return text;
+            var quoted = clean.split('\n').map(function(line) { return '> ' + line; }).join('\n');
             var source = _roomPendingSelectionScene && _roomPendingSelectionScene !== _roomCurrentScenePath()
                 ? '> From scene: ' + _roomPendingSelectionScene + '\n' : '';
-            return text + '\n\nSelected passage:\n' + source + quoted;
+            var rangeDesc = getSelectionLineRange(clean);
+            var header = rangeDesc ? 'Selected passage (' + rangeDesc + '):' : 'Selected passage:';
+            return text + '\n\n' + header + '\n' + source + quoted;
         }
 
         function _roomCurrentScenePath() {
@@ -2003,15 +2051,28 @@
             };
         }
 
+        function _discussCurrentScenePath() {
+            if (typeof _discussSnapshot !== 'undefined' && _discussSnapshot && _discussSnapshot.document && _discussSnapshot.document.kind === 'scene' && _discussSnapshot.document.path) {
+                return _discussSnapshot.document.path;
+            }
+            if (typeof paths !== 'undefined' && typeof curIdx !== 'undefined' && curIdx >= 0 && paths[curIdx]) {
+                return paths[curIdx];
+            }
+            return '';
+        }
+
         // Critics cite "line 54" as plain text; this links it to the scene, the
         // way a Codex answer links its own citations, whichever agent wrote it.
         function _roomLinkLines(text, scenePath) {
+            scenePath = scenePath || _discussCurrentScenePath();
             var abs = String(((typeof meta !== 'undefined' && meta[scenePath]) || {}).abs_path || '');
-            if (!abs) return String(text || '');
+            var docRef = abs ? ('<' + abs + ':') : (scenePath ? ('<' + scenePath + '#L') : '');
+            if (!docRef) return String(text || '');
             return String(text || '').split(/(\[[^\]]*\]\([^)]*\)|`[^`]*`)/).map(function(part, idx) {
                 if (idx % 2 === 1) return part;
-                return part.replace(/\b(lines?)\s+(\d+)(\s*[\u2013-]\s*\d+)?/gi, function(all, word, start) {
-                    return '[' + all + '](<' + abs + ':' + start + '>)';
+                return part.replace(/\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, word, start, end) {
+                    var rangeSuffix = end ? ('-' + end) : '';
+                    return '[' + all + '](' + docRef + start + rangeSuffix + '>)';
                 });
             }).join('');
         }
@@ -3572,17 +3633,17 @@
             return _prosviewRepositoryRootCache;
         }
 
-        function prosviewTargetForRepositoryPath(path, line) {
+        function prosviewTargetForRepositoryPath(path, line, endLine) {
             var clean = normalizeProsviewRepositoryPath(path);
             if (!clean) return null;
-            if (paths.indexOf(clean) >= 0) return {kind: 'scene', path: clean, line: line};
+            if (paths.indexOf(clean) >= 0) return {kind: 'scene', path: clean, line: line, endLine: endLine};
             var node = (typeof repositoryFileByPath !== 'undefined' && repositoryFileByPath[clean])
                 || (typeof repoFileByPath !== 'undefined' && repoFileByPath[clean]);
             if (!node) return null;
             if (node.is_scene && node.scene_path && paths.indexOf(node.scene_path) >= 0) {
-                return {kind: 'scene', path: node.scene_path, line: line};
+                return {kind: 'scene', path: node.scene_path, line: line, endLine: endLine};
             }
-            return {kind: 'file', path: node.path, line: line};
+            return {kind: 'file', path: node.path, line: line, endLine: endLine};
         }
 
         function currentProsviewRepositoryPath() {
@@ -3601,7 +3662,7 @@
         }
 
         function resolveProsviewFileReference(value) {
-            var raw = String(value || '').trim();
+            var raw = String(value || '').trim().replace(/^<|>$/g, '');
             if (!raw) return null;
             try { raw = decodeURIComponent(raw); } catch(e) {}
             if (/^file:\/\//i.test(raw)) {
@@ -3610,67 +3671,918 @@
                     if (fileUrl.protocol !== 'file:' || (fileUrl.host && fileUrl.host !== 'localhost')) return null;
                     raw = fileUrl.pathname;
                 } catch(e) { return null; }
-            } else if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
-                return null;
             }
 
             var line = null;
-            var hashLine = raw.match(/#L(\d+)(?:C\d+)?$/i);
+            var endLine = null;
+            var hashLine = raw.match(/#(?:L|lines?[-_]?)?(\d+)(?:C\d+)?(?:[-–—](?:L)?(\d+)(?:C\d+)?)?$/i);
             if (hashLine) {
                 line = parseInt(hashLine[1], 10);
+                if (hashLine[2]) endLine = parseInt(hashLine[2], 10);
                 raw = raw.slice(0, hashLine.index);
             } else {
-                var suffixLine = raw.match(/:(\d+)(?::\d+)?$/);
+                var suffixLine = raw.match(/:(\d+)(?::\d+)?(?:[-–—](?:L)?(\d+)(?::\d+)?)?$/i);
                 if (suffixLine) {
                     line = parseInt(suffixLine[1], 10);
+                    if (suffixLine[2]) endLine = parseInt(suffixLine[2], 10);
                     raw = raw.slice(0, suffixLine.index);
+                } else {
+                    var bareLine = raw.match(/^#?(?:lines?[\s_]*)?(\d+)(?:\s*(?:[-–—]|to)\s*(\d+))?$/i);
+                    if (bareLine) {
+                        line = parseInt(bareLine[1], 10);
+                        if (bareLine[2]) endLine = parseInt(bareLine[2], 10);
+                        raw = '';
+                    }
                 }
             }
             if (!Number.isInteger(line) || line < 1) line = null;
+            if (!Number.isInteger(endLine) || endLine < 1) endLine = null;
+            if (line && endLine && endLine < line) {
+                var tmp = line; line = endLine; endLine = tmp;
+            }
             raw = raw.replace(/\\/g, '/');
+
+            if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+                return null;
+            }
+
+            if (!raw && (line || endLine)) {
+                var currentPath = currentProsviewRepositoryPath() || (typeof _discussCurrentScenePath === 'function' ? _discussCurrentScenePath() : '');
+                if (currentPath) return prosviewTargetForRepositoryPath(currentPath, line, endLine);
+            }
 
             if (raw.charAt(0) === '/') {
                 var sceneKeys = Object.keys(meta || {});
                 for (var i = 0; i < sceneKeys.length; i++) {
                     var scenePath = sceneKeys[i];
                     if (String((meta[scenePath] || {}).abs_path || '').replace(/\\/g, '/') === raw) {
-                        return {kind: 'scene', path: scenePath, line: line};
+                        return {kind: 'scene', path: scenePath, line: line, endLine: endLine};
                     }
                 }
                 var fileKeys = Object.keys(typeof repoFileByPath === 'undefined' ? {} : repoFileByPath);
                 for (var j = 0; j < fileKeys.length; j++) {
                     var fileNode = repoFileByPath[fileKeys[j]];
                     if (String((fileNode || {}).abs_path || '').replace(/\\/g, '/') === raw) {
-                        return prosviewTargetForRepositoryPath(fileNode.path, line);
+                        return prosviewTargetForRepositoryPath(fileNode.path, line, endLine);
                     }
                 }
                 var root = prosviewRepositoryRoot();
                 if (!root || (raw !== root && !raw.startsWith(root + '/'))) return null;
-                return prosviewTargetForRepositoryPath(raw.slice(root.length + 1), line);
+                return prosviewTargetForRepositoryPath(raw.slice(root.length + 1), line, endLine);
             }
 
-            var direct = prosviewTargetForRepositoryPath(raw, line);
+            var direct = prosviewTargetForRepositoryPath(raw, line, endLine);
             if (direct) return direct;
             var current = currentProsviewRepositoryPath();
             if (!current) return null;
             var slash = current.lastIndexOf('/');
             var relative = (slash >= 0 ? current.slice(0, slash + 1) : '') + raw;
-            return prosviewTargetForRepositoryPath(relative, line);
+            return prosviewTargetForRepositoryPath(relative, line, endLine);
         }
 
-        function focusProsviewSourceLine(line) {
-            if (!Number.isInteger(line) || line < 1) return;
-            var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
-            if (!blocks.length) return;
-            var target = null;
-            for (var i = 0; i < blocks.length; i++) {
-                var blockLine = parseInt(blocks[i].getAttribute('data-line') || '', 10);
-                if (!Number.isInteger(blockLine)) continue;
-                if (blockLine === line) { target = blocks[i]; break; }
-                if (blockLine < line) target = blocks[i];
-                else if (!target) { target = blocks[i]; break; }
+        function flashElements(elements) {
+            if (!elements) return;
+            var prev = document.querySelectorAll('.para-flash');
+            for (var k = 0; k < prev.length; k++) {
+                if (prev[k]._paraFlashTimer) clearTimeout(prev[k]._paraFlashTimer);
+                prev[k]._paraFlashTimer = null;
+                prev[k].classList.remove('para-flash');
             }
-            if (target && typeof _flashAndScrollTo === 'function') _flashAndScrollTo(target);
+            var list = Array.isArray(elements) ? elements : [elements];
+            list.forEach(function(el) {
+                if (!el || !el.classList) return;
+                void el.offsetWidth;
+                el.classList.add('para-flash');
+                el._paraFlashTimer = setTimeout(function() {
+                    el.classList.remove('para-flash');
+                    el._paraFlashTimer = null;
+                }, 2000);
+            });
+        }
+
+        function focusProsviewSourceLine(line, endLine, attempt) {
+            line = parseInt(line, 10);
+            if (!Number.isInteger(line) || line < 1) return;
+            endLine = (endLine !== undefined && endLine !== null && endLine !== '') ? parseInt(endLine, 10) : line;
+            attempt = attempt || 0;
+            var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+            if (!blocks.length) {
+                if (attempt < 8) {
+                    setTimeout(function() { focusProsviewSourceLine(line, endLine, attempt + 1); }, 60);
+                }
+                return;
+            }
+
+            var startLine = line;
+            var stopLine = (Number.isInteger(endLine) && endLine >= line) ? endLine : line;
+
+            var matchedBlocks = [];
+            for (var i = 0; i < blocks.length; i++) {
+                var bStart = parseInt(blocks[i].getAttribute('data-line') || '', 10);
+                if (!Number.isInteger(bStart)) continue;
+                var nextBlockLine = (i + 1 < blocks.length)
+                    ? parseInt(blocks[i + 1].getAttribute('data-line') || '', 10)
+                    : Infinity;
+                var bEnd = (Number.isInteger(nextBlockLine) && nextBlockLine > bStart)
+                    ? nextBlockLine - 1
+                    : bStart;
+
+                if (bStart <= stopLine && bEnd >= startLine) {
+                    matchedBlocks.push(blocks[i]);
+                }
+            }
+
+            if (!matchedBlocks.length) {
+                var target = null;
+                for (var j = 0; j < blocks.length; j++) {
+                    var bl = parseInt(blocks[j].getAttribute('data-line') || '', 10);
+                    if (!Number.isInteger(bl)) continue;
+                    if (bl === line) { target = blocks[j]; break; }
+                    if (bl < line) target = blocks[j];
+                    else if (!target) { target = blocks[j]; break; }
+                }
+                if (target) matchedBlocks = [target];
+            }
+
+            if (!matchedBlocks.length) return;
+
+            if (typeof matchedBlocks[0].scrollIntoView === 'function') {
+                matchedBlocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            flashElements(matchedBlocks);
+            try {
+                var range = document.createRange();
+                range.setStartBefore(matchedBlocks[0]);
+                range.setEndAfter(matchedBlocks[matchedBlocks.length - 1]);
+                highlightQuoteRange(range);
+            } catch (e) {}
+        }
+
+        var _discussQuoteHighlightTimer = null;
+        var _discussQuoteSelectionFallback = false;
+
+        function clearDiscussQuoteHighlight() {
+            if (_discussQuoteHighlightTimer) {
+                clearTimeout(_discussQuoteHighlightTimer);
+                _discussQuoteHighlightTimer = null;
+            }
+            if (typeof CSS !== 'undefined' && CSS.highlights) {
+                try {
+                    CSS.highlights.delete('proseview-quote-jump');
+                } catch (e) {}
+            }
+            if (_discussQuoteSelectionFallback) {
+                _discussQuoteSelectionFallback = false;
+                try {
+                    var sel = window.getSelection ? window.getSelection() : null;
+                    if (sel && sel.rangeCount) sel.removeAllRanges();
+                } catch (e) {}
+            }
+        }
+
+        function highlightQuoteRange(range) {
+            if (!range) return;
+            clearDiscussQuoteHighlight();
+
+            if (typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined') {
+                try {
+                    var hl = new Highlight(range);
+                    CSS.highlights.set('proseview-quote-jump', hl);
+                } catch (e) {}
+            } else {
+                try {
+                    var sel = window.getSelection ? window.getSelection() : null;
+                    if (sel) {
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        _discussQuoteSelectionFallback = true;
+                    }
+                } catch (e) {}
+            }
+
+            _discussQuoteHighlightTimer = setTimeout(function() {
+                clearDiscussQuoteHighlight();
+            }, 2500);
+        }
+
+        function normalizeDiscussSearchText(str) {
+            return String(str || '')
+                .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+                .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+                .replace(/[\u2013\u2014]/g, '-')
+                .replace(/[*_`~]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function getBlockCleanText(el) {
+            if (!el) return '';
+            var clone = el.cloneNode(true);
+            var jumps = clone.querySelectorAll('.pm-line-jump, .pm-decoration');
+            for (var i = 0; i < jumps.length; i++) jumps[i].remove();
+            return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function findBlocksByQuoteText(blocks, quoteText) {
+            if (!blocks || !blocks.length || !quoteText) return [];
+            var rawParas = String(quoteText).split(/\n[ \t]*\n+/).map(function(p) {
+                return normalizeDiscussSearchText(p).replace(/^["'“”«»]+|["'“”«»]+$/g, '').trim();
+            }).filter(Boolean);
+            var normQuote = normalizeDiscussSearchText(quoteText);
+            var trimmed = normQuote.replace(/^["'“”«»]+|["'“”«»]+$/g, '').trim();
+            if (!trimmed || trimmed.length < 3) return [];
+
+            for (var i = 0; i < blocks.length; i++) {
+                var bText = normalizeDiscussSearchText(getBlockCleanText(blocks[i]));
+                if (bText.indexOf(trimmed) >= 0) {
+                    return [blocks[i]];
+                }
+            }
+
+            if (rawParas.length > 1 && rawParas[0].length >= 3) {
+                for (var p = 0; p < blocks.length; p++) {
+                    var firstBlock = normalizeDiscussSearchText(getBlockCleanText(blocks[p]));
+                    if (firstBlock.indexOf(rawParas[0]) >= 0 || (rawParas[0].length > 40 && firstBlock.indexOf(rawParas[0].slice(0, 40)) >= 0)) {
+                        var seq = [blocks[p]];
+                        var lastPara = rawParas[rawParas.length - 1];
+                        var lastNeedle = lastPara.length > 35 ? lastPara.slice(-35).trim() : lastPara;
+                        for (var q = p + 1; q < blocks.length && q < p + Math.max(8, rawParas.length + 2); q++) {
+                            seq.push(blocks[q]);
+                            var qText = normalizeDiscussSearchText(getBlockCleanText(blocks[q]));
+                            if (lastNeedle && qText.indexOf(lastNeedle) >= 0) return seq;
+                        }
+                        if (seq.length > 1) return seq;
+                    }
+                }
+            }
+
+            var prefix = trimmed.length > 40 ? trimmed.slice(0, 40).trim() : trimmed;
+            for (var j = 0; j < blocks.length; j++) {
+                var blockText = normalizeDiscussSearchText(getBlockCleanText(blocks[j]));
+                if (blockText.indexOf(prefix) >= 0) {
+                    var matched = [blocks[j]];
+                    if (trimmed.length <= 40) return matched;
+                    var suffix = trimmed.slice(-35).trim();
+                    if (suffix && blockText.indexOf(suffix) >= 0) return matched;
+                    for (var k = j + 1; k < blocks.length && k < j + 8; k++) {
+                        matched.push(blocks[k]);
+                        var kText = normalizeDiscussSearchText(getBlockCleanText(blocks[k]));
+                        if (kText.indexOf(suffix) >= 0) return matched;
+                    }
+                    return [blocks[j]];
+                }
+            }
+
+            return [];
+        }
+
+        function mapNormIndexToRaw(rawText, targetNormIdx) {
+            if (targetNormIdx <= 0) return 0;
+            var currentNormIdx = 0;
+            var inWhitespace = false;
+            for (var r = 0; r < rawText.length; r++) {
+                var ch = rawText[r];
+                if (/[*_`~]/.test(ch)) continue;
+                if (/\s/.test(ch)) {
+                    if (!inWhitespace) {
+                        inWhitespace = true;
+                        currentNormIdx++;
+                    }
+                } else {
+                    inWhitespace = false;
+                    currentNormIdx++;
+                }
+                if (currentNormIdx >= targetNormIdx) {
+                    return r + 1;
+                }
+            }
+            return rawText.length;
+        }
+
+        function findDomRangeInBlocks(blocks, searchText) {
+            if (!blocks || !blocks.length || !searchText) return null;
+            var normSearch = normalizeDiscussSearchText(searchText);
+            var trimmed = normSearch.replace(/^["'“”«»]+|["'“”«»]+$/g, '').trim();
+            if (!trimmed || trimmed.length < 3) return null;
+
+            var textNodes = [];
+            var fullText = '';
+            var nodeOffsets = [];
+
+            for (var b = 0; b < blocks.length; b++) {
+                var walker = document.createTreeWalker(blocks[b], NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+                    acceptNode: function(node) {
+                        if (node.nodeType === 1) {
+                            if (node.classList && node.classList.contains('pm-line-jump')) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            if (node.tagName === 'BR') return NodeFilter.FILTER_ACCEPT;
+                            return NodeFilter.FILTER_SKIP;
+                        }
+                        if (node.parentElement && node.parentElement.closest('.pm-line-jump')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                });
+                var curr;
+                while ((curr = walker.nextNode())) {
+                    if (curr.nodeType === 1) {
+                        fullText += ' ';
+                        continue;
+                    }
+                    textNodes.push(curr);
+                    nodeOffsets.push(fullText.length);
+                    fullText += curr.nodeValue;
+                }
+                if (b < blocks.length - 1) {
+                    fullText += ' ';
+                }
+            }
+
+            if (!textNodes.length) return null;
+
+            var normFull = fullText
+                .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+                .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+                .replace(/[\u2013\u2014]/g, '-')
+                .replace(/[*_`~]/g, '')
+                .replace(/\s+/g, ' ');
+
+            var foundIdx = normFull.indexOf(trimmed);
+            var matchLen = trimmed.length;
+
+            if (foundIdx === -1 && trimmed.length > 30) {
+                var prefix = trimmed.slice(0, 30);
+                foundIdx = normFull.indexOf(prefix);
+                if (foundIdx !== -1) {
+                    var suffix = trimmed.slice(-25);
+                    var sIdx = normFull.indexOf(suffix, foundIdx);
+                    if (sIdx !== -1) {
+                        matchLen = (sIdx + suffix.length) - foundIdx;
+                    } else {
+                        matchLen = prefix.length;
+                    }
+                }
+            }
+
+            if (foundIdx === -1) return null;
+
+            var rawStart = mapNormIndexToRaw(fullText, foundIdx);
+            if (foundIdx > 0 && normFull.charAt(foundIdx) !== ' ') {
+                while (rawStart < fullText.length && /[\s*_`~]/.test(fullText.charAt(rawStart))) {
+                    rawStart++;
+                }
+            }
+            var rawEnd = mapNormIndexToRaw(fullText, foundIdx + matchLen);
+
+            var startNode = null, startOff = 0;
+            var endNode = null, endOff = 0;
+
+            for (var i = 0; i < textNodes.length; i++) {
+                var nStart = nodeOffsets[i];
+                var nLen = textNodes[i].nodeValue.length;
+                var nEnd = nStart + nLen;
+
+                if (!startNode && rawStart >= nStart && rawStart <= nEnd) {
+                    startNode = textNodes[i];
+                    startOff = Math.min(nLen, Math.max(0, rawStart - nStart));
+                }
+                if (rawEnd >= nStart && rawEnd <= nEnd) {
+                    endNode = textNodes[i];
+                    endOff = Math.min(nLen, Math.max(0, rawEnd - nStart));
+                }
+            }
+
+            if (!startNode) { startNode = textNodes[0]; startOff = 0; }
+            if (!endNode) {
+                endNode = textNodes[textNodes.length - 1];
+                endOff = endNode.nodeValue.length;
+            }
+
+            try {
+                var range = document.createRange();
+                range.setStart(startNode, startOff);
+                range.setEnd(endNode, endOff);
+                return range;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function detectProsviewTargetInPrevEl(el, baseScenePath) {
+            if (!el) return null;
+            var linkEls = el.querySelectorAll ? el.querySelectorAll('a[data-prosview-path]') : [];
+            var explicitTarget = null;
+            var fallbackTarget = null;
+            for (var i = 0; i < linkEls.length; i++) {
+                var a = linkEls[i];
+                var cand = {
+                    kind: a.dataset.prosviewKind || 'scene',
+                    path: a.dataset.prosviewPath,
+                    line: parseInt(a.dataset.prosviewLine || '', 10) || null,
+                    endLine: parseInt(a.dataset.prosviewEndLine || '', 10) || null
+                };
+                var isLineOnlyText = /^\s*(?:lines?|l)\s+\d+/i.test((a.textContent || '').trim());
+                if (!isLineOnlyText || cand.kind === 'file' || (baseScenePath && cand.path !== baseScenePath)) {
+                    if (!explicitTarget || (explicitTarget.kind === 'scene' && cand.kind === 'file') || (!explicitTarget.line && cand.line && cand.path === explicitTarget.path)) {
+                        explicitTarget = cand;
+                    }
+                }
+                fallbackTarget = cand;
+            }
+            var target = explicitTarget;
+            if (!target) {
+                var candidates = [];
+                var codes = el.querySelectorAll ? el.querySelectorAll('code') : [];
+                for (var c = 0; c < codes.length; c++) {
+                    candidates.push((codes[c].textContent || '').trim());
+                }
+                var rawText = (el.textContent || '');
+                var tokenRe = /(?:^|[\s(`"'\[])((?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.(?:md|markdown|txt|ya?ml|json|py|js|ts|css|html))\b/gi;
+                var tm;
+                while ((tm = tokenRe.exec(rawText)) !== null) {
+                    candidates.push(tm[1]);
+                }
+                for (var t = 0; t < candidates.length; t++) {
+                    var token = String(candidates[t] || '').replace(/[.,:;!?)'"`\]]+$/, '');
+                    if (!token) continue;
+                    var resolved = resolveProsviewFileReference(token);
+                    if (resolved) { target = resolved; break; }
+                }
+            }
+            if (!target) target = fallbackTarget;
+            if (target && !target.line && el.textContent) {
+                var m = el.textContent.match(/\b(?:lines?|l)\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
+                if (m) {
+                    target.line = parseInt(m[1], 10) || null;
+                    target.endLine = parseInt(m[2], 10) || null;
+                } else {
+                    var single = el.textContent.match(/\b(?:lines?|l)\s*(\d+)\b/i);
+                    if (single) {
+                        target.line = parseInt(single[1], 10) || null;
+                        target.endLine = target.line;
+                    }
+                }
+            }
+            return target;
+        }
+
+        function findPreLineRange(pre, line, endLine) {
+            if (!pre || !Number.isInteger(line) || line < 1) return null;
+            var stopLine = (Number.isInteger(endLine) && endLine >= line) ? endLine : line;
+            var curLine = 1;
+            var startNode = null, startOff = 0;
+            var endNode = null, endOff = 0;
+            var lastTextNode = null;
+            var walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+                acceptNode: function(node) {
+                    if (node.nodeType === 1) {
+                        return node.tagName === 'BR' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            });
+            var node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeType === 1) {
+                    curLine++;
+                    if (curLine > stopLine && endNode) break;
+                    continue;
+                }
+                lastTextNode = node;
+                var val = node.nodeValue || '';
+                var idx = 0;
+                while (idx <= val.length) {
+                    var nl = val.indexOf('\n', idx);
+                    var segEnd = nl >= 0 ? nl : val.length;
+                    if (!startNode && curLine >= line) {
+                        startNode = node;
+                        startOff = idx;
+                    }
+                    if (curLine >= line && curLine <= stopLine) {
+                        endNode = node;
+                        endOff = segEnd;
+                    }
+                    if (nl < 0) break;
+                    curLine++;
+                    idx = nl + 1;
+                    if (curLine > stopLine && endNode) break;
+                }
+                if (curLine > stopLine && endNode) break;
+            }
+            if (!startNode && lastTextNode) {
+                startNode = lastTextNode;
+                startOff = 0;
+                endNode = lastTextNode;
+                endOff = (lastTextNode.nodeValue || '').length;
+            }
+            if (!startNode) return null;
+            if (!endNode) {
+                endNode = startNode;
+                endOff = (startNode.nodeValue || '').length;
+            }
+            try {
+                var r = document.createRange();
+                r.setStart(startNode, startOff);
+                r.setEnd(endNode, endOff);
+                return r;
+            } catch (e) { return null; }
+        }
+
+        function focusRepoFilePreviewMatch(line, endLine, quoteText, sourceText) {
+            var body = document.getElementById('filePreviewBody');
+            if (!body) return false;
+            var normText = normalizeDiscussSearchText(quoteText || '');
+            var pre = body.querySelector('pre');
+            var blocks = pre
+                ? [pre]
+                : Array.prototype.slice.call(body.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, tr'));
+
+            if (!normText && !pre && Number.isInteger(line) && line >= 1 && sourceText) {
+                var srcLines = String(sourceText).split(/\r?\n/);
+                var sIdx = Math.max(0, Math.min(line - 1, srcLines.length - 1));
+                var eIdx = Math.max(sIdx, Math.min(((Number.isInteger(endLine) && endLine >= line) ? endLine : line) - 1, srcLines.length - 1));
+                var snippet = '';
+                for (var si = sIdx; si <= eIdx; si++) {
+                    var stripped = srcLines[si].replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)/, '').trim();
+                    if (stripped && !/^[-*_]{3,}$/.test(stripped)) {
+                        snippet += (snippet ? ' ' : '') + stripped;
+                    }
+                }
+                normText = normalizeDiscussSearchText(snippet);
+            }
+
+            var matchedBlocks = [];
+            if (normText.length >= 3 && blocks.length) {
+                matchedBlocks = pre ? [pre] : findBlocksByQuoteText(blocks, normText);
+            }
+
+            var matchedRange = null;
+            if (normText.length >= 3 && matchedBlocks.length) {
+                matchedRange = findDomRangeInBlocks(matchedBlocks, normText);
+            }
+
+            if (!matchedRange && pre && Number.isInteger(line) && line >= 1) {
+                matchedRange = findPreLineRange(pre, line, endLine);
+            }
+
+            if (matchedRange) {
+                var targetEl = matchedBlocks[0] || pre;
+                var rect = matchedRange.getBoundingClientRect ? matchedRange.getBoundingClientRect() : null;
+                if (rect && (rect.height || rect.width) && typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                    window.scrollTo({
+                        top: Math.max(0, (window.scrollY || window.pageYOffset || 0) + rect.top - ((window.innerHeight || 600) / 2) + (rect.height / 2)),
+                        behavior: 'smooth'
+                    });
+                } else if (targetEl && typeof targetEl.scrollIntoView === 'function' && !pre) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                if (!pre && matchedBlocks.length) flashElements(matchedBlocks);
+                highlightQuoteRange(matchedRange);
+                return true;
+            }
+            if (!pre && matchedBlocks.length) {
+                if (typeof matchedBlocks[0].scrollIntoView === 'function') {
+                    matchedBlocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                flashElements(matchedBlocks);
+                return true;
+            }
+            return false;
+        }
+
+        function jumpAndHighlightDiscussQuote(targetPath, line, endLine, quoteText, targetKind, attempt) {
+            var currentScene = document.documentElement.dataset.view === 'scene' && curIdx >= 0 ? paths[curIdx] : '';
+            var resolved = targetPath ? (prosviewTargetForRepositoryPath(targetPath, line, endLine) || resolveProsviewFileReference(targetPath)) : null;
+            if (!resolved && targetPath) {
+                resolved = {kind: targetKind || 'scene', path: targetPath, line: line, endLine: endLine};
+            }
+            if (!resolved && currentScene) {
+                resolved = {kind: 'scene', path: currentScene, line: line, endLine: endLine};
+            }
+            if (!resolved) return;
+
+            var destKind = resolved.kind || targetKind || 'scene';
+            var destPath = resolved.path;
+
+            if (destKind === 'file') {
+                if (document.documentElement.dataset.view === 'scene' && typeof closeSceneModal === 'function') {
+                    if (!closeSceneModal({route: false})) return;
+                }
+                if (typeof previewRepoFile === 'function') {
+                    var currentFile = document.documentElement.dataset.view === 'file'
+                        ? String((document.getElementById('filePreviewTitle') || {}).textContent || '').trim()
+                        : '';
+                    var runHighlight = function(node) {
+                        var bodyText = node && node.body ? node.body : '';
+                        if (!bodyText && typeof repoFileByPath !== 'undefined' && repoFileByPath[destPath]) {
+                            bodyText = repoFileByPath[destPath].body || '';
+                        }
+                        focusRepoFilePreviewMatch(line, endLine, quoteText, bodyText);
+                        document.getElementById('discussAnnouncement').textContent = 'Opened ' + destPath + (line ? ' at line ' + line : '') + ' in Prosview';
+                    };
+                    if (currentFile === destPath) {
+                        runHighlight(null);
+                    } else {
+                        previewRepoFile(destPath, {focus: false}).then(function(node) {
+                            if (!node) return;
+                            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(function() { runHighlight(node); });
+                            else setTimeout(function() { runHighlight(node); }, 0);
+                        });
+                    }
+                }
+                return;
+            }
+
+            var targetScene = destPath || currentScene;
+            var sameScene = document.documentElement.dataset.view === 'scene' && targetScene === currentScene;
+
+            if (_pmEditMode && _pmDirty && !sameScene) {
+                var warning = 'Save or cancel your scene edits before opening another file.';
+                document.getElementById('discussAnnouncement').textContent = warning;
+                renderDiscussError(warning);
+                return;
+            }
+
+            if (!sameScene && targetScene && typeof openSceneModal === 'function') {
+                var opened = openSceneModal(targetScene);
+                if (opened === false) return;
+            }
+
+            attempt = attempt || 0;
+            var activeScene = (typeof curIdx !== 'undefined' && curIdx >= 0) ? paths[curIdx] : '';
+            var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+            if (!blocks.length || (targetScene && activeScene !== targetScene)) {
+                if (attempt < 10) {
+                    setTimeout(function() {
+                        jumpAndHighlightDiscussQuote(targetScene, line, endLine, quoteText, 'scene', attempt + 1);
+                    }, 60);
+                }
+                return;
+            }
+
+            var matchedBlocks = [];
+            var normText = normalizeDiscussSearchText(quoteText);
+
+            if (normText.length >= 3) {
+                matchedBlocks = findBlocksByQuoteText(blocks, normText);
+            }
+
+            if (!matchedBlocks.length && Number.isInteger(line) && line >= 1) {
+                var startLine = line;
+                var stopLine = (Number.isInteger(endLine) && endLine >= line) ? endLine : line;
+                for (var i = 0; i < blocks.length; i++) {
+                    var bStart = parseInt(blocks[i].getAttribute('data-line') || '', 10);
+                    if (!Number.isInteger(bStart)) continue;
+                    var nextBlockLine = (i + 1 < blocks.length)
+                        ? parseInt(blocks[i + 1].getAttribute('data-line') || '', 10)
+                        : Infinity;
+                    var bEnd = (Number.isInteger(nextBlockLine) && nextBlockLine > bStart)
+                        ? nextBlockLine - 1
+                        : bStart;
+                    if (bStart <= stopLine && bEnd >= startLine) {
+                        matchedBlocks.push(blocks[i]);
+                    }
+                }
+                if (!matchedBlocks.length) {
+                    var targetBlock = null;
+                    for (var j = 0; j < blocks.length; j++) {
+                        var bl = parseInt(blocks[j].getAttribute('data-line') || '', 10);
+                        if (!Number.isInteger(bl)) continue;
+                        if (bl === line) { targetBlock = blocks[j]; break; }
+                        if (bl < line) targetBlock = blocks[j];
+                        else if (!targetBlock) { targetBlock = blocks[j]; break; }
+                    }
+                    if (targetBlock) matchedBlocks = [targetBlock];
+                }
+            }
+
+            if (!matchedBlocks.length) return;
+
+            if (typeof matchedBlocks[0].scrollIntoView === 'function') {
+                matchedBlocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            flashElements(matchedBlocks);
+
+            var matchedRange = null;
+            if (normText.length >= 3) {
+                matchedRange = findDomRangeInBlocks(matchedBlocks, normText);
+            }
+            if (!matchedRange) {
+                try {
+                    var r = document.createRange();
+                    r.setStartBefore(matchedBlocks[0]);
+                    r.setEndAfter(matchedBlocks[matchedBlocks.length - 1]);
+                    matchedRange = r;
+                } catch (e) {}
+            }
+
+            if (matchedRange) {
+                highlightQuoteRange(matchedRange);
+            }
+
+            var firstLine = matchedBlocks[0].getAttribute('data-line') || line;
+            var lastLine = matchedBlocks[matchedBlocks.length - 1].getAttribute('data-line') || endLine || firstLine;
+            var rangeDesc = firstLine ? (firstLine === lastLine ? ' at line ' + firstLine : ' at lines ' + firstLine + '–' + lastLine) : '';
+            document.getElementById('discussAnnouncement').textContent = 'Jumped to quote' + rangeDesc + (targetScene ? ' in ' + targetScene : '');
+        }
+
+        function extractDiscussQuoteText(quoteEl) {
+            if (!quoteEl) return '';
+            var clone = quoteEl.cloneNode(true);
+            var copyBtn = clone.querySelector('.md-copy-btn');
+            if (copyBtn) copyBtn.remove();
+            var header = clone.querySelector('.discuss-quote-header');
+            if (header) header.remove();
+            var brs = clone.querySelectorAll('br');
+            for (var b = 0; b < brs.length; b++) {
+                brs[b].replaceWith('\n');
+            }
+            var parts = [];
+            var blockSel = 'p, li, pre, h1, h2, h3, h4, h5, h6, tr';
+            var blocks = clone.querySelectorAll(blockSel);
+            for (var i = 0; i < blocks.length; i++) {
+                if (blocks[i].querySelector(blockSel)) continue;
+                var t = (blocks[i].textContent || '').trim();
+                if (t) parts.push(t);
+            }
+            var text = parts.length ? parts.join('\n\n') : (clone.textContent || '');
+            return text.replace(/^From (?:scene|file):[^\r\n]*\r?\n?/m, '').trim();
+        }
+
+        function handleDiscussQuoteClick(event, quoteEl, ctx) {
+            if (event) {
+                if (event.button !== 0 && event.type === 'click') return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                if (event.target && (event.target.closest('a') || event.target.closest('.md-copy-btn'))) return;
+                if (window.getSelection && !window.getSelection().isCollapsed) {
+                    var sel = window.getSelection();
+                    var selStr = (sel.toString() || '').trim();
+                    if (selStr.length > 0 && ((sel.anchorNode && quoteEl.contains(sel.anchorNode)) || (sel.focusNode && quoteEl.contains(sel.focusNode)))) {
+                        return;
+                    }
+                }
+                event.preventDefault();
+            }
+
+            var cleanText = extractDiscussQuoteText(quoteEl);
+            var targetKind = quoteEl.dataset.targetKind || '';
+            var targetPath = quoteEl.dataset.targetPath || (ctx && ctx.scenePath) || _discussCurrentScenePath();
+            var targetLine = parseInt(quoteEl.dataset.targetLine || '', 10) || null;
+            var targetEndLine = parseInt(quoteEl.dataset.targetEndLine || '', 10) || null;
+
+            var rawText = (quoteEl.innerText || quoteEl.textContent || '').trim();
+            var sourceMatch = rawText.match(/^From (?:scene|file):\s*([^\r\n]+)/m);
+            if (sourceMatch) {
+                targetPath = sourceMatch[1].trim();
+                var resolvedSource = prosviewTargetForRepositoryPath(targetPath) || resolveProsviewFileReference(targetPath);
+                if (resolvedSource) {
+                    targetKind = resolvedSource.kind;
+                    targetPath = resolvedSource.path;
+                }
+            }
+
+            jumpAndHighlightDiscussQuote(targetPath, targetLine, targetEndLine, cleanText, targetKind);
+        }
+
+        function decorateDiscussBlockquote(quoteEl, ctx, prevEl) {
+            if (!quoteEl) return;
+            var baseScenePath = (ctx && ctx.scenePath) || _discussCurrentScenePath();
+            quoteEl.classList.add('discuss-clickable-quote');
+            quoteEl.title = 'Click to jump to this passage in the scene';
+            quoteEl.setAttribute('tabindex', '0');
+            quoteEl.setAttribute('role', 'button');
+            quoteEl.setAttribute('aria-label', 'Jump to quoted passage in Prosview');
+
+            var rawInner = (quoteEl.innerText || quoteEl.textContent || '').trim();
+            var sourceMatch = rawInner.match(/^From (?:scene|file):\s*([^\r\n]+)/m);
+            if (sourceMatch) {
+                var srcResolved = prosviewTargetForRepositoryPath(sourceMatch[1].trim()) || resolveProsviewFileReference(sourceMatch[1].trim());
+                if (srcResolved) {
+                    quoteEl.dataset.targetKind = srcResolved.kind;
+                    quoteEl.dataset.targetPath = srcResolved.path;
+                } else {
+                    quoteEl.dataset.targetPath = sourceMatch[1].trim();
+                }
+            }
+
+            var innerLink = quoteEl.querySelector('a[data-prosview-line], a[data-prosview-path]');
+            if (innerLink) {
+                if (innerLink.dataset.prosviewKind) quoteEl.dataset.targetKind = innerLink.dataset.prosviewKind;
+                if (innerLink.dataset.prosviewPath) quoteEl.dataset.targetPath = innerLink.dataset.prosviewPath;
+                if (innerLink.dataset.prosviewLine) quoteEl.dataset.targetLine = innerLink.dataset.prosviewLine;
+                if (innerLink.dataset.prosviewEndLine) quoteEl.dataset.targetEndLine = innerLink.dataset.prosviewEndLine;
+            }
+
+            if (!prevEl) {
+                prevEl = quoteEl.previousElementSibling || (quoteEl.parentElement ? quoteEl.parentElement.previousElementSibling : null);
+            }
+            if (prevEl) {
+                var prevTarget = detectProsviewTargetInPrevEl(prevEl, baseScenePath);
+                if (prevTarget) {
+                    if (!quoteEl.dataset.targetPath && prevTarget.path) {
+                        quoteEl.dataset.targetKind = prevTarget.kind || 'scene';
+                        quoteEl.dataset.targetPath = prevTarget.path;
+                    }
+                    if (!quoteEl.dataset.targetLine && prevTarget.line) {
+                        quoteEl.dataset.targetLine = String(prevTarget.line);
+                        quoteEl.dataset.targetEndLine = String(prevTarget.endLine || prevTarget.line);
+                    }
+                } else if (!quoteEl.dataset.targetLine && prevEl.textContent) {
+                    var m = prevEl.textContent.match(/\b(?:lines?|l)\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
+                    if (m) {
+                        quoteEl.dataset.targetLine = m[1];
+                        quoteEl.dataset.targetEndLine = m[2];
+                    } else {
+                        var single = prevEl.textContent.match(/\b(?:lines?|l)\s*(\d+)\b/i);
+                        if (single) {
+                            quoteEl.dataset.targetLine = single[1];
+                            quoteEl.dataset.targetEndLine = single[1];
+                        }
+                    }
+                }
+            }
+
+            var resolvedForMatch = quoteEl.dataset.targetPath
+                ? (prosviewTargetForRepositoryPath(quoteEl.dataset.targetPath) || {kind: quoteEl.dataset.targetKind || 'scene', path: quoteEl.dataset.targetPath})
+                : {kind: 'scene', path: baseScenePath};
+            var targetsCurrentScene = !resolvedForMatch.path || (resolvedForMatch.kind === 'scene' && resolvedForMatch.path === ((typeof curIdx !== 'undefined' && curIdx >= 0) ? paths[curIdx] : baseScenePath));
+
+            if (!quoteEl.dataset.targetLine && targetsCurrentScene && typeof document !== 'undefined') {
+                var clean = extractDiscussQuoteText(quoteEl);
+                if (clean && clean.length >= 6) {
+                    var sceneBlocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+                    if (sceneBlocks.length && typeof findBlocksByQuoteText === 'function') {
+                        var found = findBlocksByQuoteText(sceneBlocks, clean);
+                        if (found.length) {
+                            var s = found[0].getAttribute('data-line');
+                            var e = found[found.length - 1].getAttribute('data-line') || s;
+                            if (s) {
+                                quoteEl.dataset.targetKind = 'scene';
+                                quoteEl.dataset.targetPath = baseScenePath || ((typeof curIdx !== 'undefined' && curIdx >= 0) ? paths[curIdx] : '');
+                                quoteEl.dataset.targetLine = s;
+                                quoteEl.dataset.targetEndLine = e;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!quoteEl.dataset.targetLine && ctx && ctx.lastLocalTarget) {
+                if (!quoteEl.dataset.targetPath && ctx.lastLocalTarget.path) {
+                    quoteEl.dataset.targetKind = ctx.lastLocalTarget.kind || 'scene';
+                    quoteEl.dataset.targetPath = ctx.lastLocalTarget.path;
+                }
+                if (ctx.lastLocalTarget.line) quoteEl.dataset.targetLine = String(ctx.lastLocalTarget.line);
+                if (ctx.lastLocalTarget.endLine) quoteEl.dataset.targetEndLine = String(ctx.lastLocalTarget.endLine);
+            }
+
+            if (!quoteEl.dataset.targetPath) {
+                quoteEl.dataset.targetPath = baseScenePath;
+            }
+            if (!quoteEl.dataset.targetKind && quoteEl.dataset.targetPath) {
+                var kTarget = prosviewTargetForRepositoryPath(quoteEl.dataset.targetPath);
+                quoteEl.dataset.targetKind = (kTarget && kTarget.kind) ? kTarget.kind : 'scene';
+            }
+
+            var tLine = parseInt(quoteEl.dataset.targetLine || '', 10);
+            var tEndLine = parseInt(quoteEl.dataset.targetEndLine || '', 10) || tLine;
+            var tPath = quoteEl.dataset.targetPath || '';
+            var tKind = quoteEl.dataset.targetKind || 'scene';
+            var isOtherFile = !!(tPath && (tKind === 'file' || (baseScenePath && tPath !== baseScenePath)));
+            var lineLabel = tLine ? ((tEndLine && tEndLine !== tLine) ? ('lines ' + tLine + '–' + tEndLine) : ('line ' + tLine)) : '';
+            var tagParts = [];
+            if (isOtherFile) tagParts.push(tPath);
+            if (lineLabel) tagParts.push(lineLabel);
+
+            if (tagParts.length && !quoteEl.querySelector('.discuss-quote-header')) {
+                var header = document.createElement('div');
+                header.className = 'discuss-quote-header';
+                var tag = document.createElement('span');
+                tag.className = 'discuss-quote-line-tag';
+                tag.textContent = tagParts.join(' · ');
+                header.appendChild(tag);
+                quoteEl.insertBefore(header, quoteEl.firstChild);
+                quoteEl.title = isOtherFile
+                    ? ('Click to open ' + tPath + (lineLabel ? ' at ' + lineLabel : ''))
+                    : ('Click to jump to ' + lineLabel + ' in the scene');
+            }
+
+            quoteEl.onclick = function(event) {
+                if (event.target && event.target.closest && event.target.closest('.md-copy-btn')) return;
+                try { quoteEl.blur(); } catch(e) {}
+                handleDiscussQuoteClick(event, quoteEl, ctx);
+            };
+            quoteEl.onmouseup = function() {
+                try { quoteEl.blur(); } catch(e) {}
+            };
+            quoteEl.onkeydown = function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleDiscussQuoteClick(event, quoteEl, ctx);
+                }
+            };
         }
 
         function openProsviewFileReference(target) {
@@ -3685,12 +4597,22 @@
             }
             if (target.kind === 'scene') {
                 if (!sameScene && typeof openSceneModal === 'function') openSceneModal(target.path);
-                window.setTimeout(function() { focusProsviewSourceLine(target.line); }, 0);
-                document.getElementById('discussAnnouncement').textContent = 'Opened ' + target.path + (target.line ? ' at line ' + target.line : '');
+                focusProsviewSourceLine(target.line, target.endLine);
+                var rangeLabel = target.line ? (target.line + (target.endLine && target.endLine !== target.line ? '–' + target.endLine : '')) : '';
+                document.getElementById('discussAnnouncement').textContent = 'Opened ' + target.path + (rangeLabel ? ' at line ' + rangeLabel : '');
                 return;
             }
-            if (typeof closeSceneModal === 'function' && document.documentElement.dataset.view === 'scene') closeSceneModal();
-            if (typeof previewRepoFile === 'function') previewRepoFile(target.path, {focus: true});
+            if (document.documentElement.dataset.view === 'scene' && typeof closeSceneModal === 'function') {
+                if (!closeSceneModal({route: false})) return;
+            }
+            if (typeof previewRepoFile === 'function') {
+                previewRepoFile(target.path, {focus: true, line: target.line, endLine: target.endLine}).then(function(node) {
+                    if (!node || !target.line) return;
+                    var focusFn = function() { focusRepoFilePreviewMatch(target.line, target.endLine, '', node.body || ''); };
+                    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusFn);
+                    else setTimeout(focusFn, 0);
+                });
+            }
             document.getElementById('discussAnnouncement').textContent = 'Opened ' + target.path + ' in Prosview';
         }
 
@@ -4250,7 +5172,10 @@
                     return;
                 }
                 if (token.type === 'paragraph') node = document.createElement('p');
-                else if (token.type === 'heading') node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
+                else if (token.type === 'heading') {
+                    if (ctx) ctx.lastLocalTarget = null;
+                    node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
+                }
                 else if (token.type === 'strong') node = document.createElement('strong');
                 else if (token.type === 'em') node = document.createElement('em');
                 else if (token.type === 'codespan') { node = document.createElement('code'); node.textContent = decodeMarkdownText(token.text || ''); }
@@ -4271,19 +5196,55 @@
                 else if (token.type === 'list_item') node = document.createElement('li');
                 else if (token.type === 'link') {
                     let localTarget = resolveProsviewFileReference(token.href || '');
+                    if (localTarget) {
+                        var textClean = String(token.text || '').replace(/[*_`~]/g, '');
+                        if (!localTarget.endLine) {
+                            var labelRange = textClean.match(/\b(?:lines?|l)?\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
+                            if (labelRange) {
+                                var rStart = parseInt(labelRange[1], 10);
+                                var rEnd = parseInt(labelRange[2], 10);
+                                if (Number.isInteger(rStart) && Number.isInteger(rEnd) && rEnd >= rStart) {
+                                    if (!localTarget.line || localTarget.line === rStart) {
+                                        localTarget.line = rStart;
+                                        localTarget.endLine = rEnd;
+                                    }
+                                }
+                            }
+                        }
+                        if (!localTarget.line) {
+                            var singleMatch = textClean.match(/\b(?:lines?|l)\s*(\d+)\b/i);
+                            if (singleMatch) {
+                                var sLine = parseInt(singleMatch[1], 10);
+                                if (Number.isInteger(sLine) && sLine >= 1) {
+                                    localTarget.line = sLine;
+                                }
+                            }
+                        }
+                        if (ctx) ctx.lastLocalTarget = Object.assign({}, localTarget);
+                    }
                     var href = localTarget ? null : safeDiscussUrl(token.href || '');
                     node = (localTarget || href) ? document.createElement('a') : document.createElement('span');
                     if (localTarget) {
                         node.href = '#/' + localTarget.kind + '/' + encodeURIComponent(localTarget.path);
                         node.dataset.prosviewKind = localTarget.kind;
                         node.dataset.prosviewPath = localTarget.path;
-                        if (localTarget.line) node.dataset.prosviewLine = String(localTarget.line);
-                        var titleLine = localTarget.kind === 'scene' ? localTarget.line : null;
-                        node.title = 'Open in Prosview' + (titleLine ? ' at line ' + titleLine : '');
+                        if (localTarget.line) {
+                            node.dataset.prosviewLine = String(localTarget.line);
+                            node.classList.add('discuss-line-ref');
+                        }
+                        if (localTarget.endLine) node.dataset.prosviewEndLine = String(localTarget.endLine);
+                        var titleRange = localTarget.kind === 'scene' && localTarget.line
+                            ? (localTarget.line + (localTarget.endLine && localTarget.endLine !== localTarget.line ? '–' + localTarget.endLine : ''))
+                            : null;
+                        node.title = 'Open in Prosview' + (titleRange ? (localTarget.endLine && localTarget.endLine !== localTarget.line ? ' at lines ' : ' at line ') + titleRange : '');
                         node.onclick = function(event) {
                             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                             event.preventDefault();
+                            try { node.blur(); } catch(e) {}
                             openProsviewFileReference(localTarget);
+                        };
+                        node.onmouseup = function() {
+                            try { node.blur(); } catch(e) {}
                         };
                     } else if (href) {
                         node.href = href;
@@ -4291,7 +5252,10 @@
                         if (node.protocol !== 'mailto:') node.target = '_blank';
                     }
                 } else if (token.type === 'br') node = document.createElement('br');
-                else if (token.type === 'hr') node = document.createElement('hr');
+                else if (token.type === 'hr') {
+                    if (ctx) ctx.lastLocalTarget = null;
+                    node = document.createElement('hr');
+                }
                 else if (token.type === 'image') {
                     parent.appendChild(imageNode(token.href, token.text, token.title, ctx));
                     return;
@@ -4340,10 +5304,14 @@
                     if (token.tokens) appendMarkdownTokens(node, token.tokens, ctx);
                     else if (token.text) node.textContent = decodeMarkdownText(token.text);
                 }
-                if (token.type === 'blockquote' && ctx.agentOutput) {
-                    var quote = node;
-                    parent.appendChild(withCopyButton(quote, function() { return quote.innerText.trim(); }));
-                    return;
+                if (token.type === 'blockquote') {
+                    var prevSibling = parent.lastElementChild;
+                    decorateDiscussBlockquote(node, ctx, prevSibling);
+                    if (ctx.agentOutput) {
+                        var quote = node;
+                        parent.appendChild(withCopyButton(quote, function() { return extractDiscussQuoteText(quote); }));
+                        return;
+                    }
                 }
                 parent.appendChild(node);
             });
@@ -4372,7 +5340,8 @@
             button.title = 'Copy';
             button.setAttribute('aria-label', label);
             button.innerHTML = CODE_COPY_ICON;
-            button.onclick = function() {
+            button.onclick = function(event) {
+                if (event && event.stopPropagation) event.stopPropagation();
                 sidebarWriteClipboard(getText()).then(function() {
                     button.innerHTML = CODE_COPIED_ICON;
                     button.title = 'Copied';
@@ -4384,6 +5353,9 @@
                     }, 1500);
                 }, function() { button.title = 'Could not copy'; });
             };
+            button.onmousedown = function(event) {
+                if (event && event.stopPropagation) event.stopPropagation();
+            };
             container.appendChild(button);
         }
 
@@ -4392,10 +5364,12 @@
             catch(e) { parent.textContent = String(text || ''); }
         }
 
-        function renderDiscussMarkdown(parent, text) {
+        function renderDiscussMarkdown(parent, text, scenePath) {
             // Agent output: relative paths have no document to resolve against,
             // and remote ones obey images.remote_in_agent_output.
-            renderSafeMarkdown(parent, text, {agentOutput: true});
+            scenePath = scenePath || _discussCurrentScenePath();
+            var linked = typeof _roomLinkLines === 'function' ? _roomLinkLines(text, scenePath) : text;
+            renderSafeMarkdown(parent, linked, {agentOutput: true, scenePath: scenePath});
         }
 
         function elementWith(className, text) {
@@ -4473,7 +5447,7 @@
                 again.onclick = function() {
                     again.disabled = true;
                     _discussClaudeLogin = '';
-                    document.getElementById('discussInput').value = String(asked.text);
+                    document.getElementById('discussInput').value = String(asked.text || '').split(/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/)[0];
                     discussApi(
                         '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
                         + '/notices/' + encodeURIComponent(notice.id) + '/dismiss',
@@ -6550,10 +7524,10 @@ function loadDiscussDiffMode(mode) {
 
         function selectionActionLabel(actionId) {
             return ({
-                rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', sensory_detail: 'Add sensory detail',
-                show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', voice_character: 'Voice and character',
-                pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check',
-                canon_refactor: 'Trace a canon change', scene_continuity: "Check this scene's continuity",
+                rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', layer_subtext: 'Layer subtext', sensory_detail: 'Add sensory detail',
+                show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', deepen_and_layer: 'Deepen & layer',
+                voice_character: 'Voice and character', pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check',
+                next_beats: 'Next beats', canon_refactor: 'Trace a canon change', scene_continuity: "Check this scene's continuity",
                 verify_refactor: 'Verify a canon change'
             })[actionId] || 'Selection action';
         }
@@ -6599,6 +7573,7 @@ function loadDiscussDiffMode(mode) {
         var DEFAULT_DISCUSS_INSTRUCTIONS = [
             'good, apply it',
             'Make this more direct.',
+            'Deepen the subtext.',
             'Is the grammar correct?',
             'Check the point of view.'
         ];
@@ -7540,6 +8515,22 @@ function loadDiscussDiffMode(mode) {
             if (this.returnValue !== 'opened') document.getElementById('discussHistory').focus();
         });
 
+        function _discussWithSelection(text) {
+            if (!_discussSelection) return text;
+            if (/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/.test(text)) return text;
+            var clean = _discussSelection.trim();
+            if (!clean) return text;
+            var quoted = clean.split('\n').map(function(line) { return '> ' + line; }).join('\n');
+            var doc = discussTurnDocument();
+            var docPath = doc && doc.kind === 'scene' ? doc.path : '';
+            var curScene = _discussCurrentScenePath();
+            var source = docPath && curScene && docPath !== curScene
+                ? '> From scene: ' + docPath + '\n' : '';
+            var rangeDesc = typeof getSelectionLineRange === 'function' ? getSelectionLineRange(clean) : '';
+            var header = rangeDesc ? 'Selected passage (' + rangeDesc + '):' : 'Selected passage:';
+            return text + '\n\n' + header + '\n' + source + quoted;
+        }
+
         function sendDiscussQuestion() {
             var input = document.getElementById('discussInput');
             var question = input.value.trim();
@@ -7555,26 +8546,28 @@ function loadDiscussDiffMode(mode) {
             button.disabled = true;
             button.textContent = 'Sending…';
             document.getElementById('discussAnnouncement').textContent = 'Sending question…';
+            var authored = question;
+            var fullQuestion = _discussWithSelection(authored);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
-                question: question,
+                question: fullQuestion,
                 document: turnDocument,
                 selection: _discussSelection,
                 selection_range: _discussSelectionRange,
                 // Unsaved edits are not on disk for the agent to read.
                 live_document: _discussLiveDocument || discussLiveDocumentFor(turnDocument),
-                attachments: discussMentionsIn(question).concat(_discussAttachments.filter(function(item) {
-                    return question.indexOf('@' + item.path) < 0;
+                attachments: discussMentionsIn(authored).concat(_discussAttachments.filter(function(item) {
+                    return authored.indexOf('@' + item.path) < 0;
                 })),
                 include_current_document: _discussIncludeCurrentDocument,
                 // A $skill typed in the question is the skill the turn runs.
                 skill: _discussSelectedSkill || (function() {
-                    var named = discussSkillsIn(question)[0];
+                    var named = discussSkillsIn(authored)[0];
                     return named ? {name: named.name, path: named.path} : null;
                 })()
             }).then(function() {
                 _discussAttachments = [];
-                rememberDiscussInstruction(question); input.value = '';
+                rememberDiscussInstruction(authored); input.value = '';
                 if (!_discussSelection) {
                     _discussIncludeCurrentDocument = false;
                     _discussDraftDocument = null;

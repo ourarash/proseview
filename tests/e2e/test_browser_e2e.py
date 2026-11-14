@@ -1289,6 +1289,232 @@ def test_discuss_repository_links_open_inside_prosview_and_target_source_line(
     assert page.evaluate("decodeURIComponent(location.hash)") == "#/file/scripts/check_continuity.py"
 
 
+def test_discuss_line_range_links_and_plain_citations_highlight_all_blocks_in_range(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SHOW_RANGE_LINKS")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "lines 18–20")
+
+    assistant = page.locator(".discuss-message.assistant").last
+
+    range_link = assistant.get_by_role("link", name="lines 18–20", exact=True)
+    assert range_link.get_attribute("title") == "Open in Prosview at lines 18–20"
+    assert range_link.get_attribute("data-prosview-line") == "18"
+    assert range_link.get_attribute("data-prosview-end-line") == "20"
+    assert "discuss-line-ref" in (range_link.get_attribute("class") or "")
+
+    # Calm styling: no aggressive text decoration, and clicking does not leave active outline
+    text_decoration = page.evaluate(
+        "el => window.getComputedStyle(el).textDecorationLine",
+        range_link.element_handle(),
+    )
+    assert text_decoration == "none"
+
+    range_link.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length === 2 && document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert flashed == ["18", "20"]
+
+    hash_link = assistant.get_by_role("link", name="hash range")
+    assert hash_link.get_attribute("title") == "Open in Prosview at lines 20–22"
+    hash_link.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length === 2 && document.querySelector('#sceneProseHost [data-line=\"22\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert flashed == ["20", "22"]
+
+    single_hash_link = assistant.get_by_role("link", name="lines 18–20 single hash")
+    assert single_hash_link.get_attribute("title") == "Open in Prosview at lines 18–20"
+    assert single_hash_link.get_attribute("data-prosview-line") == "18"
+    assert single_hash_link.get_attribute("data-prosview-end-line") == "20"
+    single_hash_link.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length === 2 && document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert flashed == ["18", "20"]
+
+    plain_link = assistant.get_by_role("link", name="lines 24–26")
+    assert plain_link.get_attribute("data-prosview-line") == "24"
+    assert plain_link.get_attribute("data-prosview-end-line") == "26"
+    plain_link.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length === 2 && document.querySelector('#sceneProseHost [data-line=\"24\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert flashed == ["24", "26"]
+
+    # Clicking again re-triggers the flash immediately without getting stuck
+    plain_link.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length === 2 && document.querySelector('#sceneProseHost [data-line=\"24\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert flashed == ["24", "26"]
+
+    # Toggle gutter line numbers and verify flash highlights gutter
+    page.evaluate("toggleLineNumbers()")
+    assert page.evaluate("() => document.querySelector('.modal-content').classList.contains('line-numbers')")
+    plain_link.click()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost [data-line=\"24\"].para-flash')"
+    )
+    weight = page.evaluate(
+        "() => window.getComputedStyle(document.querySelector('#sceneProseHost [data-line=\"24\"].para-flash'), '::before').fontWeight"
+    )
+    assert weight in ("600", "bold")
+
+
+def test_discuss_click_quote_scrolls_and_highlights_scene_text(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SHOW_QUOTE_LINKS")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "Option B is at")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.assistant blockquote.discuss-clickable-quote').length >= 2"
+    )
+
+    assistant = page.locator(".discuss-message.assistant").last
+    quotes = assistant.locator("blockquote.discuss-clickable-quote")
+    assert quotes.count() == 2
+
+    # First quote is linked to lines 20-22
+    first_quote = quotes.first
+    assert "Click to jump to" in (first_quote.get_attribute("title") or "")
+    assert first_quote.get_attribute("data-target-line") == "20"
+    assert first_quote.get_attribute("data-target-end-line") == "22"
+    assert first_quote.locator(".discuss-quote-line-tag").inner_text() == "lines 20–22"
+
+    first_quote.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneProseHost .para-flash').length >= 1 && document.querySelector('#sceneProseHost [data-line=\"20\"].para-flash')"
+    )
+    flashed = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert "20" in flashed
+
+    # Check that text highlight was created (either CSS highlight or selection)
+    has_highlight = page.evaluate(
+        """() => {
+            const hasCssHl = typeof CSS !== 'undefined' && CSS.highlights && (
+                CSS.highlights.has('proseview-pinned-selection') || CSS.highlights.has('proseview-quote-jump')
+            );
+            const sel = window.getSelection ? window.getSelection().toString().trim() : '';
+            return hasCssHl || sel.length > 0;
+        }"""
+    )
+    assert has_highlight
+
+    # Copy button click should copy and stop propagation without error
+    copy_btn = assistant.locator(".md-copy-btn").first
+    copy_btn.click()
+    page.wait_for_function(
+        "() => document.querySelector('.md-copy-btn.is-copied')"
+    )
+
+    # Second quote is unlinked; content matching should find line 26 in the scene
+    second_quote = quotes.nth(1)
+    assert second_quote.locator(".discuss-quote-line-tag").inner_text() == "line 26"
+    second_quote.click()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost [data-line=\"26\"].para-flash')"
+    )
+    flashed_second = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert "26" in flashed_second
+
+    # User message quoting line 22
+    page.fill("#discussInput", "Consider this line\n\nSelected passage:\n> \"It is not the safe,\" Rena said.")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector(".discuss-message.user blockquote.discuss-clickable-quote")
+
+    user_quote = page.locator(".discuss-message.user blockquote.discuss-clickable-quote").last
+    assert user_quote.locator(".discuss-quote-line-tag").inner_text() == "line 22"
+    user_quote.click()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost [data-line=\"22\"].para-flash')"
+    )
+    flashed_user = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#sceneProseHost .para-flash')).map(el => el.getAttribute('data-line'))"
+    )
+    assert "22" in flashed_user
+
+
+def test_discuss_click_quote_navigates_to_other_files_and_highlights(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "SHOW_CROSS_FILE_QUOTES")
+    page.press("#discussInput", "Enter")
+    wait_for_discuss_answer(page, "Compare with")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.assistant blockquote.discuss-clickable-quote').length >= 2"
+    )
+
+    assistant = page.locator(".discuss-message.assistant").last
+    quotes = assistant.locator("blockquote.discuss-clickable-quote")
+    assert quotes.count() == 2
+
+    # Active selection outside the blockquote (in scene prose) must not block quote navigation
+    page.evaluate("""() => {
+        const p = document.querySelector('#sceneProseHost .ProseMirror [data-line="22"]');
+        if (p && p.firstChild) {
+            const r = document.createRange();
+            r.selectNodeContents(p);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
+    }""")
+    assert page.evaluate("() => !window.getSelection().isCollapsed")
+
+    # First quote points to another scene (ch01/02-walk.md line 19)
+    walk_quote = quotes.first
+    assert walk_quote.get_attribute("data-target-kind") == "scene"
+    assert walk_quote.get_attribute("data-target-path") == "ch01/02-walk.md"
+    assert "ch01/02-walk.md" in walk_quote.locator(".discuss-quote-line-tag").inner_text()
+    walk_quote.click()
+    page.wait_for_function(
+        "() => decodeURIComponent(location.hash) === '#/scene/ch01/02-walk.md' && document.querySelector('#sceneProseHost [data-line=\"19\"].para-flash')"
+    )
+
+    # Second quote points to a non-scene repository file (plans/structure-notes.md)
+    notes_quote = quotes.nth(1)
+    assert notes_quote.get_attribute("data-target-kind") == "file"
+    assert notes_quote.get_attribute("data-target-path") == "plans/structure-notes.md"
+    assert "plans/structure-notes.md" in notes_quote.locator(".discuss-quote-line-tag").inner_text()
+    notes_quote.click()
+    page.wait_for_function(
+        "() => document.documentElement.dataset.view === 'file' && document.getElementById('filePreviewTitle').innerText === 'plans/structure-notes.md' && document.querySelector('#filePreviewBody .para-flash')"
+    )
+    assert "Prose after the rule." in page.locator("#filePreviewBody .para-flash").inner_text()
+
+
 def test_discuss_repository_link_preserves_unsaved_scene_edits(
     page: Page, server: ProseviewServer
 ):
@@ -1528,7 +1754,7 @@ def test_the_dock_offers_the_scene_before_the_repository(page: Page, server: Pro
     page.wait_for_selector(".discuss-story-action")
 
     labels = page.locator(".discuss-story-action-title").all_inner_texts()
-    assert labels[:2] == ["Quick critique", "Style and consistency"]
+    assert labels[:3] == ["Quick critique", "Deepen & layer", "Style and consistency"]
     assert "Trace a canon change" in labels
     # The explanation under each card is the skill's own description. Pinning
     # it to the file keeps the bundled fallback from drifting away from the
@@ -6508,9 +6734,9 @@ def test_default_canned_responses_available_out_of_the_box(page: Page, server: P
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
-    # Without selection: Quick send is visible with general reply preset 'good, apply it'
+    # Without selection: Quick send is visible with general reply preset 'good, apply it' and 'Deepen the subtext.'
     presets = page.locator("#discussTaskMode .discuss-preset-inline")
-    assert presets.all_inner_texts() == ["good, apply it"]
+    assert presets.all_inner_texts() == ["good, apply it", "Deepen the subtext."]
     more = page.get_by_role("button", name="More presets and recent instructions")
     assert more.is_visible()
 
@@ -6519,6 +6745,7 @@ def test_default_canned_responses_available_out_of_the_box(page: Page, server: P
     popover = page.locator("#discussPresetsPopover")
     assert popover.is_visible()
     assert "Make this more direct." in popover.inner_text()
+    assert "Deepen the subtext." in popover.inner_text()
     assert "Is the grammar correct?" in popover.inner_text()
     assert "Check the point of view." in popover.inner_text()
     page.keyboard.press("Escape")
@@ -6528,7 +6755,7 @@ def test_default_canned_responses_available_out_of_the_box(page: Page, server: P
     page.click("#selectionCodexBtn")
     page.wait_for_function("() => document.querySelectorAll('#discussTaskMode .discuss-preset-inline').length >= 3")
     inline_presets = page.locator("#discussTaskMode .discuss-preset-inline").all_inner_texts()
-    assert inline_presets == ["good, apply it", "Make this more direct.", "Is the grammar correct?"]
+    assert inline_presets == ["good, apply it", "Make this more direct.", "Deepen the subtext."]
 
 
 def test_selection_dock_close_returns_focus_to_visible_selection_trigger(
@@ -6669,6 +6896,64 @@ def test_a_critique_of_a_selection_reads_the_whole_scene(page: Page, server: Pro
     assert sent["action_id"] == "quick_critique"
     assert sent["include_current_document"] is True
     assert sent["document"] == {"kind": "scene", "path": SCENE_REL}
+
+
+def test_deepen_and_layer_across_scene_and_selection_surfaces(page: Page, server: ProseviewServer):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.wait_for_selector(".discuss-story-action")
+
+    # 1. Deepen & layer scene pass card exists with correct description
+    card = page.locator(".discuss-story-action", has_text="Deepen & layer")
+    assert card.is_visible()
+    assert "Add unspoken tension" in card.inner_text()
+
+    # 2. Click Deepen & layer scene pass card
+    card.click()
+    wait_for_discuss_answer(page, "Fake answer")
+    assert len(question_requests) >= 1
+    sent_card = question_requests[-1]
+    assert sent_card["action_id"] == "deepen_and_layer"
+    assert sent_card["action_scope"] == "scene"
+    asked = page.locator(".discuss-message.user").last.inner_text()
+    assert "Subtext & Friction" in asked
+    assert "Physical Anchoring & Micro-Business" in asked
+    assert "Cost & Callback" in asked
+
+    # 3. Selection menus: Layer subtext under Rewrite, Deepen & layer under Critique
+    open_selection_menu(page, "the slow algebra")
+    rewrite_btn = page.locator("[data-selection-action='layer_subtext']")
+    assert "Layer subtext" in rewrite_btn.inner_text()
+    assert "2 options" in rewrite_btn.inner_text()
+
+    critique_btn = page.locator("[data-selection-action='deepen_and_layer']")
+    assert "Deepen & layer" in critique_btn.inner_text()
+
+    # 4. Trigger selection rewrite with Layer subtext
+    page.click("#selectionRewriteBtn")
+    rewrite_btn.click()
+    wait_for_discuss_answer(page, "Fake answer")
+    sent_rewrite = question_requests[-1]
+    assert sent_rewrite["action_id"] == "layer_subtext"
+    assert sent_rewrite["selection"] == "the slow algebra"
+
+    # 5. Trigger selection critique with Deepen & layer
+    open_selection_menu(page, "yesterday's receipts")
+    page.click("#selectionCritiqueBtn")
+    page.locator("[data-selection-action='deepen_and_layer']").click()
+    wait_for_discuss_answer(page, "Fake answer")
+    sent_critique = question_requests[-1]
+    assert sent_critique["action_id"] == "deepen_and_layer"
+    assert sent_critique["selection"] == "yesterday's receipts"
+
 
 
 def test_quick_critique_queues_while_another_tab_restores_history(
@@ -7614,6 +7899,51 @@ def test_discuss_panel_state_preserved_on_reload(page: Page, server: ProseviewSe
     page.wait_for_timeout(500) # Give it some time to ensure it doesn't pop open
     assert page.locator("#discussPanel").is_hidden(), "Discuss panel should remain closed after reload"
 
+
+def test_discuss_selection_shortcuts_p_and_a_include_selected_passage_in_prompt(
+    page: Page, server: ProseviewServer
+):
+    open_scene(page, server)
+
+    # Select text in the scene and press 'p' for Polish
+    select_prose(page, "She had used the same four digits since spring.")
+    page.keyboard.press("p")
+
+    # Verify discuss opens and user message includes 'Polish this' and quoted passage once with line range
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_selector(".discuss-message.user")
+    page.wait_for_function(
+        "() => document.querySelector('.discuss-message.user') && /Selected passage/.test(document.querySelector('.discuss-message.user').innerText)"
+    )
+    first_msg = page.locator(".discuss-message.user").first
+    msg_text = first_msg.inner_text()
+    assert "Polish this" in msg_text
+    assert msg_text.count("Selected passage") == 1
+    assert re.search(r"Selected passage \(lines? \d+(?:–\d+)?\):", msg_text)
+    assert "She had used the same four digits since spring." in msg_text
+
+    # Select another passage in the scene and press 'a' for Ask
+    page.locator("#sceneProseHost").click()
+    select_prose(page, "The loft smelled of cold coffee")
+    page.keyboard.press("a")
+
+    # Verify input has focus and type question
+    page.wait_for_function("() => document.activeElement && document.activeElement.id === 'discussInput'")
+    page.fill("#discussInput", "Explain the subtext here")
+    page.press("#discussInput", "Enter")
+
+    # Verify second user message in Discuss includes typed question and quoted passage once with line range
+    page.wait_for_function(
+        "() => document.querySelectorAll('.discuss-message.user').length >= 2 && /Selected passage/.test(document.querySelectorAll('.discuss-message.user')[1].innerText)"
+    )
+    second_msg = page.locator(".discuss-message.user").nth(1)
+    second_text = second_msg.inner_text()
+    assert "Explain the subtext here" in second_text
+    assert second_text.count("Selected passage") == 1
+    assert re.search(r"Selected passage \(lines? \d+(?:–\d+)?\):", second_text)
+    assert "The loft smelled of cold coffee" in second_text
+
+
 OPENED_SENTENCE = "She had used the same four digits since spring."
 CHANGED_SENTENCE = "She had changed the four digits at the start of spring."
 OPENED_SECOND = "Yesterday was also not today."
@@ -8540,7 +8870,9 @@ def test_p_polishes_the_selection(page: Page, server: ProseviewServer):
     page.keyboard.press("p")
     page.wait_for_selector("#discussPanel", state="visible")
     wait_for_discuss_answer(page)
-    assert question_requests[-1]["question"] == "Polish this"
+    q = question_requests[-1]["question"]
+    assert q.startswith("Polish this\n\nSelected passage (line 18):\n> ")
+    assert quote in q
     assert quote in question_requests[-1]["selection"]
     assert page.locator("#exportDialog").is_hidden()
 

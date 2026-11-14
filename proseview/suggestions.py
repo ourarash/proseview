@@ -356,12 +356,18 @@ DEFAULT_ROOM_PRESET_PROMPTS: dict[str, str] = {
         "(> *...*), state the flaw in one sentence, and give a tighter cut or drop-in replacement in a plain blockquote (> ...)."
     ),
     "deepen_and_layer": (
-        "Find 1–2 specific moments where what is already in this scene can do double duty: cash in an existing "
-        "prop, gesture, or line as a setup-and-payoff callback, create a contradiction between what a character "
-        "says and does, or make a beat cost the character more. Never add purple prose, decorative metaphors, or "
-        "paragraphs explaining feelings. For each move, cite the line(s) (for a Setup + Payoff pair, show both "
-        "`Setup — Line X` and `Payoff — Line Y`), quote the complete original in an italic blockquote (> *...*), "
-        "state in 1–2 sentences what layer it unlocks, and give the confident drop-in replacement in a plain blockquote (> ...)."
+        "Identify 2–3 moments in this scene that feel thin, rushed, or purely surface-level, and deepen their emotional "
+        "and narrative resonance:\n"
+        "1. Subtext & Friction: Where dialogue or interaction is too straightforward—add unspoken tension, avoidance, "
+        "deflection, or a gap between what a character says and what they do.\n"
+        "2. Physical Anchoring & Micro-Business: Ground an emotional beat in tangible action (props, sensory details, physical "
+        "reactions, loaded pauses) that shows internal state without explaining feelings.\n"
+        "3. Cost & Callback: Make an existing beat cost the character something visible, or plant/pay off an echo with another "
+        "part of the scene.\n"
+        "For each move, cite the line(s) (for a Setup + Payoff pair, show both `Setup — Line X` and `Payoff — Line Y`), quote "
+        "the complete original passage in an italic blockquote (> *...*), explain in 1–2 sentences the psychological layer "
+        "being unlocked, and provide a full, confident rewrite or expansion in a plain blockquote (> ...). Feel free to expand "
+        "a thin 1-line beat into 2–3 rich, grounded sentences."
     ),
     "pitch_next_beat": (
         "Pitch 2 concrete next beats that escalate the conflict immediately after this scene, without writing prose. "
@@ -386,10 +392,10 @@ DEFAULT_ROOM_PRESET_STEPS: dict[str, list[dict[str, Any]]] = {
     ],
     "deepen_and_layer": [
         {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["deepen_and_layer"]},
-        {"seat": 2, "prompt": "Kill or rewrite any proposal from Editor 1 that feels forced, writerly, or states subtext out loud—every added layer must sound effortless in the POV character's voice and trust the reader to connect the dots. Provide your sharper replacement blockquote (> ...), and add at most 1 missed setup-to-payoff echo or subtextual turn of your own using details already in the scene (with complete original `> *...*` and replacement `> ...` blockquotes)."},
-        {"seat": 1, "prompt": "Keep only the 1–2 layering or setup-and-payoff moves that genuinely elevate the scene without slowing its pace; drop anything merely clever. Fuse the strongest phrasing from both editors and provide the complete updated replacement blockquotes (> ...) for every surviving touchpoint."},
-        {"seat": 2, "prompt": "Check whether the scene's final beat can echo, twist, or pay off an image, prop, or line from earlier in the scene (or an adjacent scene). If a sharper callback or closing turn is earned, quote the complete original (> *...*) and give the exact replacement (> ...); otherwise refine the surviving layers so they read effortlessly."},
-        {"seat": 1, "prompt": "Do a final pass on the agreed layers to strip any excess words so the added depth lands with maximum economy. Confirm the complete original (> *...*) and final replacement blockquotes (> ...) you back."},
+        {"seat": 2, "prompt": "Audit Editor 1's proposed layers: ensure the added subtext and physical action feel organic to the character's voice rather than forced or writerly. Refine and enrich Editor 1's rewrites into stronger plain blockquotes (> ...), and offer 1 additional subtextual turn, unspoken friction, or physical callback of your own (with complete original `> *...*` and replacement `> ...` blockquotes)."},
+        {"seat": 1, "prompt": "Synthesize the 2–3 strongest layering and expansion moves across the scene. Adopt Editor 2's phrasing where it deepens character truth, protect beats that give the scene necessary emotional breathing room, and provide the complete updated replacement blockquotes (> ...) for every surviving touchpoint."},
+        {"seat": 2, "prompt": "Examine the scene's climax, turning point, or closing beat alongside the layered moments so far. Ensure the emotional shift is earned and felt. If the scene's exit or turning beat needs a sharper callback or deeper resonance, quote the complete original (> *...*) and give the exact replacement (> ...); otherwise refine the agreed expansions so every added sentence hits with emotional precision."},
+        {"seat": 1, "prompt": "Lock in the final 2–3 layered expansions so the writer gets real depth, subtext, and grounded emotional weight across the scene. Confirm the complete original passage (> *...*) and final replacement blockquote (> ...) you back for each."},
     ],
     "pitch_next_beat": [
         {"seat": 1, "prompt": DEFAULT_ROOM_PRESET_PROMPTS["pitch_next_beat"]},
@@ -653,7 +659,7 @@ def room_title(raw: dict[str, Any]) -> str:
     if title and title not in {"Conversation", "Writers' Room", "Writers’ Room", "New Room"}:
         return title[:200]
     first = next((str(turn.get("text") or "") for turn in raw.get("turns", []) if turn.get("role") == "user"), "")
-    first = " ".join(first.split("\n\nSelected passage:\n")[0].split())
+    first = " ".join(re.split(r"\n\nSelected passage(?:\s*\([^)\n]*\))?:\n", first, maxsplit=1)[0].split())
     return (first[:79].rstrip() + "…" if len(first) > 80 else first) or "New Room"
 
 

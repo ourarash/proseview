@@ -430,6 +430,7 @@
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="rephrase">Rephrase <small>3 options</small></button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="tighten">Tighten <small>2 options</small></button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="clarify">Clarify <small>2 options</small></button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="layer_subtext">Layer subtext <small>2 options</small></button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="sensory_detail">Add sensory detail</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="show_moment">Show the moment</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="custom_rewrite" data-selection-configure="true">Custom rewrite…</button>' +
@@ -437,6 +438,7 @@
                     '<div id="selectionCritiqueMenu" role="none" hidden>' +
                         '<button class="selection-pill-action selection-menu-back" type="button" role="menuitem" tabindex="-1" data-selection-back>← Critique</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="quick_critique">Quick critique</button>' +
+                        '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="deepen_and_layer">Deepen & layer</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="voice_character">Voice and character</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="pacing_tension">Pacing and tension</button>' +
                         '<button class="selection-pill-action" type="button" role="menuitem" tabindex="-1" data-selection-action="clarity_flow">Clarity and flow</button>' +

@@ -97,6 +97,7 @@ DEFAULT_AGENT = "codex"
 _USE_CONVERSATION_DOCUMENT = object()
 _SELECTION_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _SELECTION_BLOCK_RE = re.compile(r"\n[ \t]*\n+")
+_SELECTED_PASSAGE_SPLIT_RE = re.compile(r"\n\nSelected passage(?:\s*\([^)\n]*\))?:\n")
 _EVIDENCE_QUOTE_TRANSLATION = str.maketrans({
     "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'", "\u02bc": "'",
     "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"', "\u2033": '"',
@@ -450,6 +451,9 @@ ACTION_DEFINITIONS: dict[str, dict[str, Any]] = {
     "clarify": {
         "label": "Clarify", "kind": "alternatives", "count": 2,
     },
+    "layer_subtext": {
+        "label": "Layer subtext", "kind": "alternatives", "count": 2,
+    },
     "sensory_detail": {
         "label": "Add sensory detail", "kind": "alternatives", "count": 2,
     },
@@ -461,6 +465,9 @@ ACTION_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "quick_critique": {
         "label": "Quick critique", "kind": "critique", "count": 5,
+    },
+    "deepen_and_layer": {
+        "label": "Deepen & layer", "kind": "critique", "count": 3,
     },
     "voice_character": {
         "label": "Voice and character", "kind": "critique", "count": 5,
@@ -3862,9 +3869,15 @@ class DiscussManager:
             if task:
                 conversation.tasks[task["id"]] = task
             else:
+                user_text = bundle.question
+                if not action_id and selection and not _SELECTED_PASSAGE_SPLIT_RE.search(user_text):
+                    clean = selection.strip()
+                    if clean:
+                        quoted = "\n".join(f"> {line}" for line in clean.splitlines())
+                        user_text = f"{user_text}\n\nSelected passage:\n{quoted}"
                 conversation.messages.append({
                     "role": "user",
-                    "text": bundle.question,
+                    "text": user_text,
                     "client_request_id": request_id,
                     "created_at": time.time(),
                 })
@@ -4244,7 +4257,7 @@ class DiscussManager:
                             task.get("change_request") or task.get("target", {}).get("selection"), 500
                         )
                     else:
-                        title = queued.bundle.question
+                        title = _SELECTED_PASSAGE_SPLIT_RE.split(queued.bundle.question, maxsplit=1)[0].strip() or queued.bundle.question
                         preview = queued.bundle.question
                     self.state.touch(
                         queued.document["kind"], queued.document["path"], thread_id,

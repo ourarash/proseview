@@ -293,7 +293,7 @@ class RoomRuntime:
         choices = self._review_choices(body)
         for index, seat in enumerate(seats):
             room["steps"].append({"id": uuid.uuid4().hex, "message_id": mid, "seat": seat,
-                "state": "queued", "scene": scene, "text": text, "authored": str(body.get("authored") or text.split("\n\nSelected passage:\n")[0]),
+                "state": "queued", "scene": scene, "text": text, "authored": str(body.get("authored") or re.split(r"\n\nSelected passage(?:\s*\([^)\n]*\))?:\n", text, maxsplit=1)[0]),
                 "settle_reviews": index == 0, "review_choices": copy.deepcopy(choices) if index == 0 else [],
                 "live_document": copy.deepcopy(live_document), "attachments": copy.deepcopy(body.get("attachments") or []), "kind": "message"})
         if room["status"] == "idle":

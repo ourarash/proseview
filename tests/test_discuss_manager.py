@@ -2804,3 +2804,85 @@ def test_next_beats_skill_is_offered_and_runs_with_previous_scene_tail_and_front
     assert "How does Patel get past the watchman?" in prompt
     manager.close()
 
+
+def test_deepen_and_layer_and_layer_subtext_actions(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "ch1.md").write_text(
+        "---\ntitle: Opening\n---\nHe handed her the envelope without looking at her.\n",
+        encoding="utf-8",
+    )
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    by_id = {row["id"]: row for row in manager.list_actions()}
+    assert "deepen_and_layer" in by_id
+    assert by_id["deepen_and_layer"]["label"] == "Deepen & layer"
+    assert by_id["deepen_and_layer"]["kind"] == "critique"
+    assert by_id["deepen_and_layer"]["count"] == 3
+    assert by_id["deepen_and_layer"]["scene_pass"] is True
+    assert "unspoken tension" in by_id["deepen_and_layer"]["description"]
+
+    assert "layer_subtext" in by_id
+    assert by_id["layer_subtext"]["label"] == "Layer subtext"
+    assert by_id["layer_subtext"]["kind"] == "alternatives"
+    assert by_id["layer_subtext"]["count"] == 2
+    assert by_id["layer_subtext"]["scene_pass"] is False
+    assert "unspoken friction" in by_id["layer_subtext"]["description"]
+
+    cid = manager.open({"kind": "scene", "path": "ch1.md"})["conversation_id"]
+    manager.submit(cid, client_request_id="deepen-1", question="", action_id="deepen_and_layer", action_scope="scene")
+    _wait_for(lambda: bool(clients[0].prompts))
+    prompt = clients[0].prompts[0]
+    assert "Subtext & Friction" in prompt
+    assert "Physical Anchoring & Micro-Business" in prompt
+    assert "Cost & Callback" in prompt
+
+    conversation = manager._get(cid)
+    task, question, schema, _skill = manager._action_task(
+        conversation,
+        request_id="subtext-1",
+        action_id="layer_subtext",
+        selection="He handed her the envelope without looking at her.",
+    )
+    assert task["kind"] == "alternatives"
+    assert task["max_results"] == 2
+    assert "Subtext & Friction" in question
+    assert "Physical Anchoring & Micro-Business" in question
+    assert "Cost & Callback" in question
+    assert schema["properties"]["alternatives"]["minItems"] == 2
+    manager.close()
+
+
+def test_submit_with_lined_selected_passage_does_not_duplicate_quote(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "ch1.md").write_text(
+        "---\ntitle: Opening\n---\nLine one.\n",
+        encoding="utf-8",
+    )
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    cid = manager.open({"kind": "scene", "path": "ch1.md"})["conversation_id"]
+    manager.submit(
+        cid,
+        client_request_id="req-lined-quote",
+        question="Polish this\n\nSelected passage (line 4):\n> Line one.",
+        selection="Line one.",
+    )
+    _wait_for(lambda: bool(clients[0].prompts))
+    snapshot = manager.get_snapshot(cid)
+    user_messages = [m for m in snapshot["messages"] if m["role"] == "user"]
+    assert len(user_messages) == 1
+    assert user_messages[0]["text"].count("Selected passage") == 1
+    assert "Selected passage (line 4):" in user_messages[0]["text"]
+    entries = manager.state.list("scene", "ch1.md")
+    assert entries and entries[0]["title"] == "Polish this"
+    manager.close()
+
+

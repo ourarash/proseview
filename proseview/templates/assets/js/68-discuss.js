@@ -6956,6 +6956,68 @@ var _currentDiscussDiffString = null;
 var _currentDiscussDiffMode = 'side-by-side';
 var _currentDiscussReviewContext = null;
 var _discussDiffLoadToken = 0;
+var _discussHideWrapOnly = false;
+
+function applyDiscussDiffWrapVisibility() {
+    var contentDiv = document.getElementById('discussDiffModalContent');
+    var btn = document.getElementById('discussDiffHideWrapBtn');
+    if (btn) btn.setAttribute('aria-pressed', _discussHideWrapOnly ? 'true' : 'false');
+    if (!contentDiv) return;
+    var rows = contentDiv.querySelectorAll('.discuss-review-block');
+    var wrapRows = 0;
+    var visibleRows = 0;
+    for (var i = 0; i < rows.length; i++) {
+        var isWrap = rows[i].dataset.whitespaceOnly === 'true';
+        if (isWrap) {
+            wrapRows++;
+            rows[i].hidden = _discussHideWrapOnly;
+        } else {
+            rows[i].hidden = false;
+        }
+        if (!rows[i].hidden) visibleRows++;
+    }
+    var emptyNote = document.getElementById('discussDiffAllWrapHiddenNote');
+    if (_discussHideWrapOnly && wrapRows > 0 && visibleRows === 0) {
+        if (!emptyNote) {
+            emptyNote = document.createElement('div');
+            emptyNote.id = 'discussDiffAllWrapHiddenNote';
+            emptyNote.className = 'discuss-diff-wrap-empty';
+            var msg = document.createElement('span');
+            msg.textContent = 'All ' + wrapRows + (wrapRows === 1 ? ' change is' : ' changes are') + ' line wrapping or spacing only — words are unchanged.';
+            var showBtn = document.createElement('button');
+            showBtn.type = 'button';
+            showBtn.className = 'discuss-wrap-show-btn';
+            showBtn.textContent = 'Show wrapping';
+            showBtn.onclick = function() {
+                if (_discussHideWrapOnly) toggleDiscussDiffHideWrapping();
+            };
+            emptyNote.appendChild(msg);
+            emptyNote.appendChild(showBtn);
+            contentDiv.appendChild(emptyNote);
+        }
+        emptyNote.hidden = false;
+    } else if (emptyNote) {
+        emptyNote.hidden = true;
+    }
+}
+
+function syncDiscussDiffWrapToggle(blocks) {
+    var btn = document.getElementById('discussDiffHideWrapBtn');
+    if (!btn) return;
+    var wrapCount = (blocks || []).filter(function(b) { return !!b.whitespace_only; }).length;
+    if (wrapCount > 0) {
+        btn.hidden = false;
+        btn.textContent = 'Hide wrapping (' + wrapCount + ')';
+        btn.setAttribute('aria-pressed', _discussHideWrapOnly ? 'true' : 'false');
+    } else {
+        btn.hidden = true;
+    }
+}
+
+function toggleDiscussDiffHideWrapping() {
+    _discussHideWrapOnly = !_discussHideWrapOnly;
+    applyDiscussDiffWrapVisibility();
+}
 
 function openDiscussReviewModal(path, review) {
     _currentDiscussReviewContext = review || null;
@@ -6978,6 +7040,7 @@ function openDiscussDiffModal(diffString) {
     document.getElementById('discussDiffModalTitle').textContent = 'Review Changes';
     _currentDiscussReviewPath = null;
     _currentDiscussDiffString = diffString;
+    syncDiscussDiffWrapToggle([]);
     document.getElementById('discussDiffModalNote').textContent = 'Review the changes the agent made.';
         document.getElementById("discussDiffModalOverlay").hidden = false;
     
@@ -7062,12 +7125,15 @@ function loadDiscussDiffMode(mode) {
                 var fresh = files.find(function(row) { return row.path === path; });
                 contentDiv.replaceChildren();
                 if (!fresh) {
+                    syncDiscussDiffWrapToggle([]);
                     contentDiv.appendChild(elementWith('discuss-diff-status', 'This file has no changes left to review.'));
                     return;
                 }
+                syncDiscussDiffWrapToggle(fresh.blocks || []);
                 (fresh.blocks || []).forEach(function(block) {
                     contentDiv.appendChild(renderDiscussReviewBlock(fresh, block, null, review).row);
                 });
+                applyDiscussDiffWrapVisibility();
             }).catch(function(error) {
                 if (token !== _discussDiffLoadToken) return;
                 contentDiv.replaceChildren(elementWith('discuss-diff-status', 'Could not render this diff: ' + error.message));
@@ -7154,11 +7220,50 @@ function loadDiscussDiffMode(mode) {
             var state = elementWith('discuss-review-state', '');
             label.appendChild(box);
             label.appendChild(where);
+            if (block.note) {
+                var badge = elementWith('diff-block-badge' + (block.whitespace_only ? '' : ' is-reflow'), block.note);
+                label.appendChild(badge);
+            }
             label.appendChild(state);
             row.appendChild(label);
 
             var table = elementWith('discuss-review-table');
             table.innerHTML = block.html;
+
+            if (block.whitespace_only) {
+                row.dataset.whitespaceOnly = 'true';
+                row.classList.add('discuss-review-block-wrap-only');
+                table.hidden = true;
+
+                var wrapBar = elementWith('discuss-review-wrap-bar');
+                var wrapSummary = elementWith(
+                    'discuss-review-wrap-detail',
+                    block.wrap_detail || 'Only line breaks shifted — words are unchanged.'
+                );
+                var wrapRight = elementWith('discuss-review-wrap-right');
+                if (block.line_summary) {
+                    wrapRight.appendChild(elementWith('discuss-review-wrap-lines', block.line_summary));
+                }
+                var toggleLinesBtn = document.createElement('button');
+                toggleLinesBtn.type = 'button';
+                toggleLinesBtn.className = 'discuss-wrap-show-btn';
+                toggleLinesBtn.textContent = 'Show lines';
+                toggleLinesBtn.setAttribute('aria-expanded', 'false');
+                toggleLinesBtn.onclick = function(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    var expanding = table.hidden;
+                    table.hidden = !expanding;
+                    row.classList.toggle('is-wrap-expanded', expanding);
+                    toggleLinesBtn.setAttribute('aria-expanded', String(expanding));
+                    toggleLinesBtn.textContent = expanding ? 'Hide lines' : 'Show lines';
+                };
+                wrapRight.appendChild(toggleLinesBtn);
+                wrapBar.appendChild(wrapSummary);
+                wrapBar.appendChild(wrapRight);
+                row.appendChild(wrapBar);
+            }
+
             row.appendChild(table);
 
             function paint() {
@@ -7190,6 +7295,15 @@ function loadDiscussDiffMode(mode) {
             name.className = 'discuss-review-path';
             name.textContent = file.path;
             head.appendChild(name);
+            var blocks = file.blocks || [];
+            var wrapBlocks = blocks.filter(function(block) { return !!block.whitespace_only; });
+            if (wrapBlocks.length) {
+                var allSpacesOnly = wrapBlocks.every(function(block) { return block.whitespace_kind === 'spaces'; });
+                var wrapPillText = wrapBlocks.length === blocks.length
+                    ? (allSpacesOnly ? 'Spaces only' : 'Wrapping only')
+                    : (wrapBlocks.length + ' wrapping only');
+                head.appendChild(elementWith('discuss-review-wrap-pill', wrapPillText));
+            }
             var count = elementWith('discuss-review-count');
             head.appendChild(count);
             card.appendChild(head);
@@ -7198,7 +7312,6 @@ function loadDiscussDiffMode(mode) {
             // one decision is what, if anything, to undo. Ticks are made in
             // Expand view; the card reads them back.
             var keep = discussReviewKeep(file.path, review);
-            var blocks = file.blocks || [];
             var kept = blocks.filter(function(block) { return keep[block.id] !== false; });
             var off = blocks.length - kept.length;
             var plural = function(n) { return n + (n === 1 ? ' change' : ' changes'); };

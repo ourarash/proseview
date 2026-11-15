@@ -24,6 +24,41 @@ def split_lines(text: str) -> list[str]:
     return text.splitlines(keepends=True)
 
 
+def _structure_signature(lines: tuple[str, ...] | list[str]) -> tuple[tuple[str, ...], ...]:
+    """Normalize intra-paragraph line breaks and horizontal whitespace while preserving blank-line breaks."""
+    sig: list[tuple[str, ...]] = []
+    run: list[str] = []
+    for line in lines:
+        words = line.split()
+        if words:
+            run.extend(words)
+            continue
+        if run:
+            sig.append(("P", " ".join(run)))
+            run = []
+        sig.append(("B",))
+    if run:
+        sig.append(("P", " ".join(run)))
+    return tuple(sig)
+
+
+def classify_whitespace_change(
+    before_lines: tuple[str, ...] | list[str],
+    after_lines: tuple[str, ...] | list[str],
+) -> str | None:
+    """Return 'spaces', 'wrap', or None when prose words or paragraph breaks differ."""
+    if not before_lines or not after_lines:
+        return None
+    if _structure_signature(before_lines) != _structure_signature(after_lines):
+        return None
+    if len(before_lines) == len(after_lines) and all(
+        " ".join(b.split()) == " ".join(a.split())
+        for b, a in zip(before_lines, after_lines)
+    ):
+        return "spaces"
+    return "wrap"
+
+
 @dataclass(frozen=True)
 class Block:
     """One changed region, as it reads in each version."""
@@ -42,6 +77,10 @@ class Block:
         if not self.after:
             return "removed"
         return "changed"
+
+    @property
+    def whitespace_kind(self) -> str | None:
+        return classify_whitespace_change(self.before, self.after)
 
 
 def _opcodes(before: str, after: str):

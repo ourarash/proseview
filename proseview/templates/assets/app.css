@@ -6855,6 +6855,107 @@
             font-size: 12px;
         }
 
+        .discuss-review-wrap-pill,
+        .diff-block-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 7px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--text-muted) 28%, transparent);
+            background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+            color: var(--text-soft);
+            font-size: 11px;
+            font-weight: 500;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+
+        .diff-block-badge.is-reflow {
+            color: var(--text-muted);
+            border-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+            background: color-mix(in srgb, var(--text-muted) 5%, transparent);
+        }
+
+        .discuss-review-wrap-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 11px;
+            border-top: 1px solid var(--border);
+            background: var(--editor-bg, var(--surface-card));
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .discuss-review-wrap-detail {
+            min-width: 0;
+        }
+
+        .discuss-review-wrap-right {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: none;
+        }
+
+        .discuss-review-wrap-lines {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .discuss-wrap-show-btn,
+        .diff-wrap-toggle-btn {
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color, var(--border));
+            border-radius: 6px;
+            padding: 4px 10px;
+            color: var(--text-soft);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .discuss-wrap-show-btn {
+            padding: 2px 8px;
+            font-size: 11px;
+            border-radius: 5px;
+        }
+
+        .discuss-wrap-show-btn:hover,
+        .diff-wrap-toggle-btn:hover {
+            background: var(--surface-hover);
+            color: var(--text-primary, var(--text-main));
+        }
+
+        .diff-wrap-toggle-btn[aria-pressed="true"] {
+            background: color-mix(in srgb, var(--text-muted) 14%, var(--surface-bg));
+            border-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+            color: var(--text-primary, var(--text-main));
+        }
+
+        .diff-wrap-toggle-btn[hidden],
+        .discuss-review-block[hidden],
+        .discuss-review-table[hidden],
+        .discuss-diff-wrap-empty[hidden] {
+            display: none;
+        }
+
+        .discuss-diff-wrap-empty {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            color: var(--text-muted);
+            font-size: 12.5px;
+        }
+
         /* No inner scroller. A block clipped at a fixed height cut the new
            wording off mid-sentence, which is the one thing the writer is here
            to read; the log scrolls instead. Only a very long block gets its
@@ -10853,6 +10954,11 @@
 
         table.diff .diff_chg {
             background-color: rgba(var(--warning-rgb, 210, 153, 34), 0.15);
+        }
+
+        table.diff .diff_wrap_line {
+            background-color: color-mix(in srgb, var(--text-muted) 6%, transparent);
+            color: var(--text-muted);
         }
 
         table.diff td:nth-child(3) {

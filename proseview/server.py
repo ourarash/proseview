@@ -39,7 +39,7 @@ from .export_dashboard import (
     save_cover, save_reading_layout, selection_from_request,
 )
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
-from .hunks import changed_blocks, split_lines
+from .hunks import Block, changed_blocks, classify_whitespace_change, split_lines
 from .patches import Hunk, parse_hunks
 from .privacy import PrivacyLock
 from .generator import (
@@ -509,6 +509,9 @@ def _diff_note_row(text: str, mode: str) -> str:
     )
 
 
+_BLANK_LINE_TOKEN = "\x00BLANK"
+
+
 def _word_level_html(old_text: str, new_text: str) -> tuple[str, str]:
     """Mark the words that actually differ between two paired lines."""
     import difflib
@@ -532,6 +535,120 @@ def _word_level_html(old_text: str, new_text: str) -> tuple[str, str]:
     return "".join(old_html), "".join(new_html)
 
 
+def _tokenize_lines_for_block_diff(lines: list[str]) -> tuple[list[str], list[tuple[int, int, int]]]:
+    """Tokenize *lines* into words plus blank-line sentinels, keeping (line_idx, start, end)."""
+    keys: list[str] = []
+    spans: list[tuple[int, int, int]] = []
+    for line_idx, line in enumerate(lines):
+        if not line.strip():
+            keys.append(_BLANK_LINE_TOKEN)
+            spans.append((line_idx, -1, -1))
+            continue
+        for match in re.finditer(r"\S+", line):
+            keys.append(match.group(0))
+            spans.append((line_idx, match.start(), match.end()))
+    return keys, spans
+
+
+def _coalesce_line_spans(line: str, spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Merge changed word spans separated only by horizontal whitespace on the same line."""
+    if not spans:
+        return []
+    merged = [spans[0]]
+    for start, end in spans[1:]:
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end or line[prev_end:start].isspace():
+            merged[-1] = (prev_start, max(prev_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _render_line_changed_html(line: str, spans: list[tuple[int, int]], tag: str, css_class: str) -> str:
+    """Wrap changed spans of *line* in `<del>`/`<ins>`, escaping untouched text."""
+    merged = _coalesce_line_spans(line, spans)
+    if not merged:
+        return html_escape(line)
+    parts: list[str] = []
+    cursor = 0
+    for start, end in merged:
+        if start > cursor:
+            parts.append(html_escape(line[cursor:start]))
+        parts.append(f'<{tag} class="{css_class}">{html_escape(line[start:end])}</{tag}>')
+        cursor = end
+    if cursor < len(line):
+        parts.append(html_escape(line[cursor:]))
+    return "".join(parts)
+
+
+def _block_diff_lines_html(
+    removed: list[str],
+    added: list[str],
+) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]], str | None, bool]:
+    """Render reflow-aware word highlights across *removed* and *added* lines.
+
+    Returns ``(removed_rendered, added_rendered, whitespace_kind, has_reflow)`` where each
+    rendered entry is ``(html, has_word_change)``.
+    """
+    import difflib
+
+    ws_kind = classify_whitespace_change(removed, added)
+    if ws_kind is not None:
+        return (
+            [(html_escape(line), False) for line in removed],
+            [(html_escape(line), False) for line in added],
+            ws_kind,
+            False,
+        )
+
+    old_keys, old_spans = _tokenize_lines_for_block_diff(removed)
+    new_keys, new_spans = _tokenize_lines_for_block_diff(added)
+    old_line_spans: list[list[tuple[int, int]]] = [[] for _ in removed]
+    new_line_spans: list[list[tuple[int, int]]] = [[] for _ in added]
+    old_blank_changed = [False] * len(removed)
+    new_blank_changed = [False] * len(added)
+
+    matcher = difflib.SequenceMatcher(None, old_keys, new_keys, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if tag in ("delete", "replace"):
+            for idx in range(i1, i2):
+                li, start, end = old_spans[idx]
+                if start < 0:
+                    old_blank_changed[li] = True
+                else:
+                    old_line_spans[li].append((start, end))
+        if tag in ("insert", "replace"):
+            for idx in range(j1, j2):
+                li, start, end = new_spans[idx]
+                if start < 0:
+                    new_blank_changed[li] = True
+                else:
+                    new_line_spans[li].append((start, end))
+
+    removed_out = [
+        (
+            _render_line_changed_html(removed[i], old_line_spans[i], "del", "diff-delete"),
+            bool(old_line_spans[i]) or old_blank_changed[i],
+        )
+        for i in range(len(removed))
+    ]
+    added_out = [
+        (
+            _render_line_changed_html(added[i], new_line_spans[i], "ins", "diff-insert"),
+            bool(new_line_spans[i]) or new_blank_changed[i],
+        )
+        for i in range(len(added))
+    ]
+    has_reflow = bool(
+        removed
+        and added
+        and (any(not changed for _h, changed in removed_out) or any(not changed for _h, changed in added_out))
+    )
+    return removed_out, added_out, None, has_reflow
+
+
 def _diff_cell(kind: str, content: str) -> str:
     css = f' class="{kind}"' if kind else ""
     return f'<td{css} style="white-space:pre-wrap">{content}</td>'
@@ -549,19 +666,15 @@ def _hunk_label(hunk: Hunk) -> str:
     return f"Lines {hunk.new_start}\u2013{hunk.new_start + span - 1}"
 
 
-def _hunk_rows(hunk: Hunk, mode: str, header: bool = True) -> list[str]:
-    """Render one hunk's lines, trusting the patch's own -/+ markers.
-
-    Deletions and the insertions that follow them are paired positionally so a
-    reworded sentence shows its old and new form together with the changed
-    words picked out. Leftovers on either side render as a plain removal or
-    addition rather than being forced into a pair.
-    """
+def _hunk_rows_with_meta(hunk: Hunk, mode: str, header: bool = True) -> tuple[list[str], str | None, bool]:
+    """Render one hunk's lines with reflow-aware word highlights and metadata."""
     rows = [_diff_note_row(_hunk_label(hunk), mode)] if header else []
     old_ln = hunk.old_start
     new_ln = hunk.new_start
     index = 0
     lines = hunk.lines
+    group_ws_kinds: list[str | None] = []
+    any_reflow = False
     while index < len(lines):
         op, text = lines[index]
         if op == " ":
@@ -581,47 +694,61 @@ def _hunk_rows(hunk: Hunk, mode: str, header: bool = True) -> list[str]:
             index += 1
             continue
 
-        removed = []
+        removed: list[str] = []
         while index < len(lines) and lines[index][0] == "-":
             removed.append(lines[index][1])
             index += 1
-        added = []
+        added: list[str] = []
         while index < len(lines) and lines[index][0] == "+":
             added.append(lines[index][1])
             index += 1
 
+        removed_rendered, added_rendered, ws_kind, has_reflow = _block_diff_lines_html(removed, added)
+        group_ws_kinds.append(ws_kind)
+        if has_reflow:
+            any_reflow = True
+
         for offset in range(max(len(removed), len(added))):
-            old_text = removed[offset] if offset < len(removed) else None
-            new_text = added[offset] if offset < len(added) else None
-            if old_text is not None and new_text is not None:
-                old_html, new_html = _word_level_html(old_text, new_text)
-            else:
-                old_html = html_escape(old_text) if old_text is not None else ""
-                new_html = html_escape(new_text) if new_text is not None else ""
-            old_cell_no = old_ln if old_text is not None else ""
-            new_cell_no = new_ln if new_text is not None else ""
+            old_entry = removed_rendered[offset] if offset < len(removed_rendered) else None
+            new_entry = added_rendered[offset] if offset < len(added_rendered) else None
+            old_html, old_changed = old_entry if old_entry is not None else ("", False)
+            new_html, new_changed = new_entry if new_entry is not None else ("", False)
+            old_cell_cls = "diff_sub" if old_changed else ("diff_wrap_line" if old_entry is not None else "")
+            new_cell_cls = "diff_add" if new_changed else ("diff_wrap_line" if new_entry is not None else "")
+            old_cell_no = old_ln if old_entry is not None else ""
+            new_cell_no = new_ln if new_entry is not None else ""
             if mode == "inline":
-                if old_text is not None:
+                if old_entry is not None:
                     rows.append(
                         f'<tr><td class="diff_header">{old_cell_no}</td>'
-                        f'<td class="diff_header"></td>{_diff_cell("diff_sub", old_html)}</tr>'
+                        f'<td class="diff_header"></td>{_diff_cell(old_cell_cls, old_html)}</tr>'
                     )
-                if new_text is not None:
+                if new_entry is not None:
                     rows.append(
                         f'<tr><td class="diff_header"></td>'
-                        f'<td class="diff_header">{new_cell_no}</td>{_diff_cell("diff_add", new_html)}</tr>'
+                        f'<td class="diff_header">{new_cell_no}</td>{_diff_cell(new_cell_cls, new_html)}</tr>'
                     )
             else:
-                left = _diff_cell("diff_sub", old_html) if old_text is not None else _diff_cell("", "")
-                right = _diff_cell("diff_add", new_html) if new_text is not None else _diff_cell("", "")
+                left = _diff_cell(old_cell_cls, old_html) if old_entry is not None else _diff_cell("", "")
+                right = _diff_cell(new_cell_cls, new_html) if new_entry is not None else _diff_cell("", "")
                 rows.append(
                     f'<tr><td class="diff_header">{old_cell_no}</td>{left}'
                     f'<td class="diff_header">{new_cell_no}</td>{right}</tr>'
                 )
-            if old_text is not None:
+            if old_entry is not None:
                 old_ln += 1
-            if new_text is not None:
+            if new_entry is not None:
                 new_ln += 1
+
+    hunk_ws: str | None = None
+    if group_ws_kinds and all(k is not None for k in group_ws_kinds):
+        hunk_ws = "wrap" if "wrap" in group_ws_kinds else "spaces"
+    return rows, hunk_ws, any_reflow
+
+
+def _hunk_rows(hunk: Hunk, mode: str, header: bool = True) -> list[str]:
+    """Render one hunk's lines with reflow-aware word highlights."""
+    rows, _ws_kind, _has_reflow = _hunk_rows_with_meta(hunk, mode, header=header)
     return rows
 
 
@@ -692,15 +819,41 @@ def _block_label(block) -> str:
 def format_review_blocks(before: str, after: str, mode: str = "inline") -> list[dict[str, Any]]:
     """One rendered table per changed block, for the review picker."""
     hunks = {hunk.index: hunk for hunk in _blocks_as_hunks(before, after)}
-    return [
-        {
+    out: list[dict[str, Any]] = []
+    for block in changed_blocks(before, after):
+        rows, hunk_ws, has_reflow = _hunk_rows_with_meta(hunks[block.index], mode, header=False)
+        ws_kind = block.whitespace_kind or hunk_ws
+        whitespace_only = ws_kind in ("wrap", "spaces")
+        note = ""
+        wrap_detail = ""
+        line_summary = ""
+        if ws_kind == "spaces":
+            note = "Spaces only \u00b7 same text"
+            line_count = len(block.after)
+            wrap_detail = (
+                f"Only spacing changed across {line_count} {'line' if line_count == 1 else 'lines'}"
+                " \u2014 words and line breaks are unchanged."
+            )
+            line_summary = f"{line_count} {'line' if line_count == 1 else 'lines'}"
+        elif ws_kind == "wrap":
+            note = "Line wrapping & spaces only \u00b7 same text"
+            b_cnt, a_cnt = len(block.before), len(block.after)
+            wrap_detail = "Only line breaks shifted \u2014 words and paragraph breaks are unchanged."
+            line_summary = f"{b_cnt} \u2192 {a_cnt} lines reflowed" if b_cnt != a_cnt else f"{a_cnt} lines reflowed"
+        elif has_reflow:
+            note = "Rest re-wrapped"
+        out.append({
             "id": block.index,
             "header": _block_label(block),
             "kind": block.kind,
-            "html": _diff_table(_hunk_rows(hunks[block.index], mode, header=False), mode),
-        }
-        for block in changed_blocks(before, after)
-    ]
+            "whitespace_only": whitespace_only,
+            "whitespace_kind": ws_kind,
+            "note": note,
+            "wrap_detail": wrap_detail,
+            "line_summary": line_summary,
+            "html": _diff_table(rows, mode),
+        })
+    return out
 
 
 def resolve_history_target(root: Path, cfg: Config, rel: str) -> Path:

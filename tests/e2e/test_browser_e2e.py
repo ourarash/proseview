@@ -8296,6 +8296,51 @@ def test_ticks_in_the_expanded_view_are_what_the_card_applies(
     assert card.get_by_role("button", name="Undo 1 change").is_visible()
 
 
+def test_wrapping_only_changes_are_badged_collapsed_and_toggleable(
+    page: Page, server: ProseviewServer
+) -> None:
+    """Formatting-only hunks are labeled calmly, collapsed until expanded, and reflow edits avoid noisy word diffs."""
+    open_scene(page, server)
+    page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "WRAP_FILE_CHANGE")
+    page.locator("#discussSend").click()
+    card = page.locator(".discuss-review")
+    card.wait_for(state="visible")
+
+    assert "1 wrapping only" in card.locator(".discuss-review-wrap-pill").inner_text()
+
+    boxes = _expand(page, card)
+    assert boxes.count() == 2
+
+    blocks = page.locator("#discussDiffModalContent .discuss-review-block")
+    edited_block = blocks.nth(0)
+    wrap_block = blocks.nth(1)
+
+    assert "Rest re-wrapped" in edited_block.locator(".diff-block-badge").inner_text()
+    assert [t.strip() for t in edited_block.locator("del.diff-delete").all_inner_texts()] == ["used", "same"]
+    assert [t.strip() for t in edited_block.locator("ins.diff-insert").all_inner_texts()] == ["changed"]
+    assert "four" not in edited_block.locator("ins.diff-insert, del.diff-delete").all_inner_texts()
+
+    assert "Line wrapping & spaces only" in wrap_block.locator(".diff-block-badge").inner_text()
+    assert wrap_block.locator(".discuss-review-table").is_hidden()
+    assert wrap_block.locator(".discuss-review-wrap-bar").is_visible()
+
+    wrap_block.locator(".discuss-wrap-show-btn").click()
+    assert wrap_block.locator(".discuss-review-table").is_visible()
+    assert wrap_block.locator("del.diff-delete, ins.diff-insert").count() == 0
+
+    hide_btn = page.locator("#discussDiffHideWrapBtn")
+    assert hide_btn.is_visible()
+    assert "Hide wrapping (1)" in hide_btn.inner_text()
+    hide_btn.click()
+    assert wrap_block.is_hidden()
+    assert edited_block.is_visible()
+    hide_btn.click()
+    assert wrap_block.is_visible()
+
+
 # ── static snapshot ─────────────────────────────────────────────────────────
 
 

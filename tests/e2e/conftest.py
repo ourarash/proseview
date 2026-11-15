@@ -581,6 +581,29 @@ for line in sys.stdin:
             emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': item_id, 'type': 'fileChange', 'status': 'inProgress', 'changes': [{'path': str(target), 'kind': {'update': {}}, 'diff': diff}]}}})
             emit({'id': approval_id, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': item_id, 'reason': 'A second edit', 'availableDecisions': ['accept', 'decline', 'cancel']}})
             continue
+        if 'WRAP_FILE_CHANGE' in prompt:
+            import difflib
+            approval_id = 9100 + next_turn
+            target = pathlib.Path.cwd() / 'manuscript' / 'ch01' / '01-opening.md'
+            original = target.read_text(encoding='utf-8')
+            updated = original.replace(
+                'She had used the same four digits since spring.',
+                'She had\\nchanged the\\nfour digits since spring.',
+                1,
+            ).replace(
+                'Yesterday was also not today.',
+                'Yesterday was also\\nnot today.',
+                1,
+            )
+            diff = ''.join(difflib.unified_diff(original.splitlines(True), updated.splitlines(True), n=1))
+            item_id = 'file-wrap-' + turn_id
+            pending[approval_id] = (thread_id, turn_id, turn, {
+                'item_id': item_id, 'path': str(target), 'updated': updated,
+                'rel': 'manuscript/ch01/01-opening.md', 'diff': diff, 'then': False,
+            })
+            emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': item_id, 'type': 'fileChange', 'status': 'inProgress', 'changes': [{'path': str(target), 'kind': {'update': {}}, 'diff': diff}]}}})
+            emit({'id': approval_id, 'method': 'item/fileChange/requestApproval', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': item_id, 'reason': 'One edit with reflow and one wrapping-only hunk', 'availableDecisions': ['accept', 'decline', 'cancel']}})
+            continue
         if 'SELECT_FILE_CHANGE' in prompt:
             # Asks first, and only writes once approved -- so a partial accept
             # has a real write to undo part of.

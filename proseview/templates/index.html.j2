@@ -1642,6 +1642,7 @@
                         <span style="font-size:13px; color:var(--text-muted);">Aa</span>
                         <input id="discussDiffFontSize" type="range" min="12" max="36" value="18" oninput="updateDiscussDiffFontSize(this.value)" style="width: 80px;">
                     </label>
+                    <button type="button" class="diff-wrap-toggle-btn" id="discussDiffHideWrapBtn" aria-pressed="false" onclick="toggleDiscussDiffHideWrapping()" hidden>Hide wrapping</button>
                     <div class="diff-toggle-group">
                         <button type="button" class="diff-toggle-btn" id="discussDiffToggleInline" onclick="setDiscussDiffMode('inline')">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>

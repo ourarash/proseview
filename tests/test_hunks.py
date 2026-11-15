@@ -12,7 +12,8 @@ import random
 
 import pytest
 
-from proseview.hunks import Block, changed_blocks, compose, split_lines
+from proseview.hunks import Block, changed_blocks, classify_whitespace_change, compose, split_lines
+from proseview.server import format_review_blocks
 
 
 def _random_text(rng: random.Random, *, lines: int, alphabet: str = "abcdefg") -> str:
@@ -156,3 +157,49 @@ def test_the_shapes_that_broke_the_old_reverter(before: str, after: str):
 def test_blocks_report_what_kind_of_edit_they_are():
     blocks = changed_blocks("keep\nold\ngone\n", "keep\nnew\ngone\nadded\n")
     assert [block.kind for block in blocks] == ["changed", "added"]
+
+
+def test_classify_whitespace_change_distinguishes_spaces_wrap_and_real_edits():
+    assert classify_whitespace_change(["hello  world\n"], ["hello world\n"]) == "spaces"
+    assert classify_whitespace_change(
+        ["And I was not going\n", "to do what Amir did.\n"],
+        ["And I was not going to do\n", "what Amir did.\n"],
+    ) == "wrap"
+    assert classify_whitespace_change(["first\n", "second\n"], ["first\n", "\n", "second\n"]) is None
+    assert classify_whitespace_change(["one word\n"], ["another word\n"]) is None
+    assert classify_whitespace_change([], ["added\n"]) is None
+
+
+def test_format_review_blocks_marks_wrap_only_and_avoids_reflow_word_noise():
+    before = (
+        "Title\n\n"
+        "her cheek against mine, and then I was on the\n"
+        "dance floor again with everyone moving.\n\n"
+        "Break.\n\n"
+        "Shadi. And I was not going\n"
+        "to do what Amir did. Would she trust me?\n"
+    )
+    after = (
+        "Title\n\n"
+        "and then I was on the dance floor\n"
+        "again with everyone moving.\n\n"
+        "Break.\n\n"
+        "Shadi. And I was not going to do what\n"
+        "Amir did. Would she trust me?\n"
+    )
+    blocks = format_review_blocks(before, after, mode="side-by-side")
+    assert len(blocks) == 2
+
+    edited, wrap_only = blocks
+    assert edited["whitespace_only"] is False
+    assert edited["note"] == "Rest re-wrapped"
+    assert '<del class="diff-delete">her cheek against mine,</del>' in edited["html"]
+    assert '<ins class="diff-insert">' not in edited["html"]
+    assert "diff_wrap_line" in edited["html"]
+
+    assert wrap_only["whitespace_only"] is True
+    assert wrap_only["whitespace_kind"] == "wrap"
+    assert "wrapping" in wrap_only["note"].lower()
+    assert '<del class="diff-delete">' not in wrap_only["html"]
+    assert '<ins class="diff-insert">' not in wrap_only["html"]
+    assert "diff_wrap_line" in wrap_only["html"]

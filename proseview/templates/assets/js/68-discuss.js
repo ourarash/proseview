@@ -24,6 +24,20 @@
         var _discussLastApproval = '';
         var _discussPendingAction = null;
         var _discussRepositoryAction = null;
+        var _discussCraftState = {
+            active: false,
+            lensId: _readCraftLensPref(),
+            scopeMode: 'this_scene',
+            customScenes: [],
+            openInfoId: null
+        };
+        function _readCraftLensPref() {
+            try {
+                var saved = localStorage.getItem('proseview-craft-lens');
+                if (saved) return saved;
+            } catch (e) {}
+            return 'craft_mckee';
+        }
         var _discussRetryOfTaskId = null;
         var _discussSelectedSkill = null;
         var _discussSkills = [];
@@ -47,7 +61,8 @@
         // thing they read stays attached so a follow-up can refer to it.
         const DISCUSS_READING_ACTIONS = [
             'quick_critique', 'deepen_and_layer', 'style_consistency', 'voice_character',
-            'pacing_tension', 'clarity_flow', 'continuity', 'next_beats'
+            'pacing_tension', 'clarity_flow', 'continuity', 'next_beats',
+            'craft_mckee', 'craft_cron', 'craft_coyne', 'craft_snyder', 'craft_king', 'craft_lamott'
         ];
         function discussIsReadingAction(actionId) {
             return DISCUSS_READING_ACTIONS.indexOf(String(actionId || '')) >= 0;
@@ -81,6 +96,386 @@
                 id: 'next_beats',
                 label: 'Next beats',
                 copy: 'Concrete possibilities for what happens next in this scene, without writing the prose for you.'
+            },
+            {
+                id: 'craft_review',
+                label: 'Craft review',
+                copy: 'Analyze one or more scenes through a craft book lens (McKee, Story Grid, Save the Cat!, Story Genius, King, Lamott).',
+                configure: true
+            }
+        ];
+        const DISCUSS_CRAFT_LENSES = [
+            {
+                id: 'craft_mckee',
+                label: 'McKee · Story',
+                author: 'Robert McKee',
+                book: 'Story',
+                subtitle: 'Active desire, pushback & something meaningful changing',
+                tagline: 'Goal, resistance, shifted tactics & real change by scene end',
+                defaultScope: 'this_scene',
+                thesis: 'McKee says a scene is not a mood piece or an info handoff—it is a unit of change. A character walks in wanting something, hits real resistance that surprises them, pivots tactics, and leaves in a noticeably different state.',
+                lanes: [
+                    {
+                        id: 'want',
+                        tab: '1. Clear Want',
+                        title: 'Clear Want (Objective)',
+                        brief: 'Viewpoint character enters trying to get or protect something specific right now.',
+                        summary: 'Does the viewpoint character enter the scene trying to get or protect something concrete right now? Wants hidden only inside backstory or private thoughts do not create friction in the room.',
+                        flat: 'Devon sits at the café table thinking about how lonely he has felt since the trial.',
+                        working: 'Devon slides his phone across the table before Claire can order: "Tell me who gave you that address."',
+                        why: 'A visible goal forces the other person to react immediately.',
+                        spot: 'Marks [ ] if the character mostly drifts, observes, or vents privately without pursuing a goal.',
+                        fix: 'Suggests one concrete opening demand or aim for the start of the scene.'
+                    },
+                    {
+                        id: 'pushback',
+                        tab: '2. Pushback',
+                        title: 'Real Pushback (Antagonism)',
+                        brief: 'People, deadlines, or inner conflict block an easy win.',
+                        summary: 'Something must push back hard enough to block an easy win—another person’s competing goal, a ticking clock, or the character’s own conflicting loyalty.',
+                        flat: '"Can I borrow your badge?" "Sure, just put it back before five."',
+                        working: '"Can I borrow your badge?" "Last time I covered for you, I nearly lost my pension. Give me one reason."',
+                        why: 'Even allies push back when a favor puts them at real risk.',
+                        spot: 'Marks [ ] if favors come too easily or nobody truly stands in the way.',
+                        fix: 'Gives the opposing character or situation a sharper stake to say no.'
+                    },
+                    {
+                        id: 'tactics',
+                        tab: '3. Surprise & Pivot',
+                        title: 'Surprise & New Tactics',
+                        brief: 'Plan A surprises them, forcing a genuine tactical switch.',
+                        summary: 'When Plan A collides with unexpected resistance (what McKee calls "the Gap" between expectation and reality), the character has to adapt and try a new move rather than repeating the same argument.',
+                        flat: 'Maren asks for the key three times in slightly different polite ways until Tomas gives in.',
+                        working: 'Flattery fails—Tomas already changed the lock. Maren drops her smile and slides the unpaid invoice across the desk.',
+                        why: 'Switching from charm to leverage shows who she really is under pressure.',
+                        spot: 'Marks [ ] if beats loop on the same tactic at the same intensity.',
+                        fix: 'Proposes a fresh mid-scene pivot when the first attempt hits a wall.'
+                    },
+                    {
+                        id: 'shift',
+                        tab: '4. Scene Shift',
+                        title: 'Meaningful Shift & Hook',
+                        brief: 'Opening and ending states clearly differ, propelling what comes next.',
+                        summary: 'Something real in the character’s situation—trust vs. suspicion, safety vs. trap, hope vs. dread—must flip by the closing beat so the scene changes the trajectory of the story.',
+                        flat: 'They argue for three pages, stay annoyed with each other, and agree to talk tomorrow.',
+                        working: 'They arrive as uneasy partners; she leaves pocketing the spare key without telling him.',
+                        why: 'A real shift makes the scene load-bearing rather than removable.',
+                        spot: 'Marks [ ] if the closing state matches the opening state.',
+                        fix: 'Rewrites the final beat so something irreversible flips or locks in.'
+                    }
+                ],
+                bestFor: 'Talky or "and then" scenes where characters exchange lines without anything actually changing.',
+                skipWhen: 'You are sketching an early rough draft just to get words flowing (use Lamott instead).'
+            },
+            {
+                id: 'craft_cron',
+                label: 'Cron · Story Genius',
+                author: 'Lisa Cron',
+                book: 'Story Genius',
+                subtitle: 'How the character’s blind spot drives the scene',
+                tagline: 'Flawed belief, emotional sore spot & internal cost in the scene',
+                defaultScope: 'this_scene',
+                thesis: 'External plot trouble only hooks readers when it collides with a character’s specific blind spot—the false lesson they built from past hurt (like "never trust favors"). Without that inner lens, any generic hero could swap into the scene.',
+                lanes: [
+                    {
+                        id: 'blind_spot',
+                        tab: '1. Blind Spot',
+                        title: 'Flawed Belief Shown in Action',
+                        brief: 'Their false assumption visibly skews what they notice or misread in this scene.',
+                        summary: 'We must actually see the character’s false survival rule shape what they assume, suspect, or misread inside this scene’s draft text—not just know about it in your character notes.',
+                        flat: 'Elena reads the anonymous note, weighs the facts calmly, and drives to the warehouse.',
+                        working: 'Living by "everyone wants leverage," Elena checks the return envelope for blackmail before she even reads the warning.',
+                        why: 'Her emotional filter turns a routine action into character insight.',
+                        spot: 'Marks [ ] if the character acts like a neutral plot reporter.',
+                        fix: 'Adds a brief reaction beat showing their bias skewing a line or clue.'
+                    },
+                    {
+                        id: 'sore_spot',
+                        tab: '2. Sore Spot',
+                        title: 'Hits Their Sore Spot',
+                        brief: 'Trouble presses this protagonist’s specific old nerve, not generic bad luck.',
+                        summary: 'Obstacles land harder when they poke the exact old wound this character is trying to protect—making external trouble feel personal rather than random.',
+                        flat: 'The courier arrives two hours late because traffic is backed up.',
+                        working: 'The courier hands the urgent file to Elena’s junior partner instead of her—pressing her fear of being pushed aside.',
+                        why: 'Now the delay threatens who she thinks she is, not just her schedule.',
+                        spot: 'Marks [ ] if the obstacle could bother anyone equally and carries no personal sting.',
+                        fix: 'Adjusts the setback or another character’s remark so it hits their tender spot.'
+                    },
+                    {
+                        id: 'only_them',
+                        tab: '3. Personal Logic',
+                        title: 'Only-They-Would Choices',
+                        brief: 'Choices follow their protective armor, not tidy plot convenience.',
+                        summary: 'Under pressure, the character should choose what makes emotional sense for someone with their flaw—even if it complicates things—rather than acting smart simply because the plot needs it.',
+                        flat: 'To keep things safe, Jonah sensibly reports the broken lock to his captain.',
+                        working: 'Refusing to look incompetent in front of his crew, Jonah pockets the snapped pick and lies that the door was jammed.',
+                        why: 'Flaw-driven mistakes create natural trouble we instantly believe.',
+                        spot: 'Marks [ ] if choices feel engineered only to reach the next plot point.',
+                        fix: 'Replaces a generic smart move with one driven by protecting their flaw.'
+                    },
+                    {
+                        id: 'cost',
+                        tab: '4. Inner Cost',
+                        title: 'Visible Personal Cost',
+                        brief: 'Clinging to that blind spot visibly costs them—or begins to crack.',
+                        summary: 'By the closing beat, defending their flawed rule should cost them something real in the room—an ally, trust, peace of mind—or reality should start cracking the armor.',
+                        flat: 'Nadia brushes off the argument and walks out convinced she was right all along.',
+                        working: 'Nadia wins the argument on points—and sees her one loyal witness quietly close his notebook and step out.',
+                        why: 'Winning externally while paying internally deepens the scene.',
+                        spot: 'Marks [ ] if the character walks out emotionally untouched.',
+                        fix: 'Sharpens the ending beat to show the human price of holding on.'
+                    }
+                ],
+                bestFor: 'Scenes with plenty of external action where the protagonist still feels flat, generic, or emotionally distant.',
+                skipWhen: 'You mostly want line-by-line prose tightening or cutting filler words (use King instead).'
+            },
+            {
+                id: 'craft_coyne',
+                label: 'Coyne · The Story Grid',
+                author: 'Shawn Coyne',
+                book: 'The Story Grid',
+                subtitle: 'Scene structure, tough dilemmas & up/down beats',
+                tagline: 'Escalating trouble, hard choice, decisive act & + / - shifts',
+                defaultScope: 'this_chapter',
+                thesis: 'Built for developmental editing, Coyne tests each scene (and sequence of scenes) against five structural beats: something upsets normal balance, trouble escalates, the hero faces a hard dilemma, acts decisively, and ends at a changed positive (+) or negative (-) position.',
+                lanes: [
+                    {
+                        id: 'complications',
+                        tab: '1. Escalation',
+                        title: 'Inciting Trouble & Escalation',
+                        brief: 'Disruption lands clearly, and each complication raises pressure.',
+                        summary: 'An unexpected disruption upsets the opening situation early, and every obstacle afterward narrows the character’s options instead of lingering on small talk or repeating at one volume.',
+                        flat: 'Three pages of arrival, hanging coats, and catching up before the bad news is mentioned.',
+                        working: 'Coat still damp, Maya spots the shredded passport—and then hears sirens turning onto their street.',
+                        why: 'Stacking pressure removes padding and squeezes toward a choice.',
+                        spot: 'Marks [ ] if tension stalls or resets between beats.',
+                        fix: 'Cuts slow warm-up or tightens the sequence of complications.'
+                    },
+                    {
+                        id: 'crisis',
+                        tab: '2. Hard Dilemma',
+                        title: 'Crisis Choice (Two Tough Paths)',
+                        brief: 'Corners the hero between two bad options or two clashing goods.',
+                        summary: 'Complications must build to a genuine dilemma where no easy exit exists: choosing the lesser of two evils (both hurt) or sacrificing one real good to save another.',
+                        flat: 'Guards stop the wagon, ask nervous questions, check the papers, and wave them through.',
+                        working: 'Guard spots the banned stamp: hand over their winter medicine to bribe him (slow starvation) or attack now (blow cover for the city).',
+                        why: 'Forced sacrifice reveals what matters most to the character.',
+                        spot: 'Marks [ ] if the scene avoids an agonizing choice.',
+                        fix: 'Sharpens the decision point so both options carry a price.'
+                    },
+                    {
+                        id: 'climax',
+                        tab: '3. Decisive Act',
+                        title: 'Point-of-No-Return Action',
+                        brief: 'The hero acts or chooses directly in the scene rather than stalling.',
+                        summary: 'Once cornered by the dilemma, the character must make a visible, irreversible choice right there—never rescued by luck off-screen or letting the conversation trail off undecided.',
+                        flat: '"Let’s sleep on it and see what happens tomorrow," she sighed, closing the folder.',
+                        working: 'Without looking back at Tomas, Maya drops their last medicine vial into the guard’s palm.',
+                        why: 'An irreversible deed launches concrete consequences into the next beat.',
+                        spot: 'Marks [ ] if the character dodges, faints, or gets bailed out effortlessly.',
+                        fix: 'Turns a soft fade-out into one decisive choice or action.'
+                    },
+                    {
+                        id: 'polarity',
+                        tab: '4. + / - Shifts',
+                        title: 'Up / Down Polarity Audit',
+                        brief: 'Checks whether scenes swing between (+) hope and (-) danger.',
+                        summary: 'Tracks each scene’s opening-to-closing emotional/plot polarity across a chapter so consecutive scenes don’t flatline by ending on the exact same (+) or (-) note.',
+                        flat: 'Scene 1 goes uneasy (-) → bleak (-). Scene 2 also goes bleak (-) → still bleak (-).',
+                        working: 'Scene 1 flips false safety (+) → betrayal (-). Scene 2 scrapes from trapped (-) → costly escape (+).',
+                        why: 'Alternating positive and negative turns makes even quiet chapters feel propulsive.',
+                        spot: 'Flags consecutive scenes that land flat on the same charge.',
+                        fix: 'Maps + / - turns per scene and shows where to invert a flat ending.'
+                    }
+                ],
+                bestFor: 'Auditing a whole chapter to spot sagging middle scenes or moments where no hard choice was forced.',
+                skipWhen: 'You want warm, low-pressure help unlocking an early unfinished draft.'
+            },
+            {
+                id: 'craft_snyder',
+                label: 'Snyder · Save the Cat!',
+                author: 'Blake Snyder',
+                book: 'Save the Cat!',
+                subtitle: 'Keeping momentum fast, clear & hooked forward',
+                tagline: 'Backstory inside action, emotional turn & page-turn hooks',
+                defaultScope: 'this_chapter',
+                thesis: 'Snyder keeps reader energy high on every page: hide needed backstory inside live physical action instead of pausing to explain, flip the emotional direction from start to finish, and close with a hook into the next scene.',
+                lanes: [
+                    {
+                        id: 'exposition',
+                        tab: '1. Hide Setup',
+                        title: 'Backstory Inside Live Action',
+                        brief: 'Buries rules and history inside urgency instead of talking-head lectures.',
+                        summary: 'Never freeze a scene so someone can explain history or rules. Tuck necessary facts inside a physical task, ticking timer, humor, or argument so readers absorb setup while tension stays alive.',
+                        flat: 'Over coffee, Raj spends four paragraphs calmly explaining how the vault’s 90-second timer works.',
+                        working: 'Hands shaking on the lockpick, Raj hisses at Nia not to touch the brass handle during the 90-second reset.',
+                        why: 'We learn the exact same rule while sweating over footsteps in the hall.',
+                        spot: 'Flags static "talking heads" or calm info-dump paragraphs.',
+                        fix: 'Rewrites an explanation block inside urgent business or conflict.'
+                    },
+                    {
+                        id: 'emotion',
+                        tab: '2. Mood Flip',
+                        title: 'Emotional Flip (+ / -)',
+                        brief: 'Mood turns cleanly between opening line and closing line.',
+                        summary: 'Checks that the emotional charge visibly shifts from start to finish (confidence → panic, coldness → warmth, dread → dark resolve) rather than humming at one steady temperature.',
+                        flat: 'Two partners spend the scene trading mild sarcasm and walk out feeling mildly annoyed.',
+                        working: 'Sam walks in teasing his rival—and walks out quietly checking the deadbolt behind him.',
+                        why: 'Clear emotional contrast shows readers the scene mattered.',
+                        spot: 'Marks [ ] if emotional tone ends right where it began.',
+                        fix: 'Highlights where the feeling should pivot and sharpens the turn.'
+                    },
+                    {
+                        id: 'empathy',
+                        tab: '3. Active Hero',
+                        title: 'Active Trying Under Pressure',
+                        brief: 'Viewpoint character keeps probing, adapting, or taking risks.',
+                        summary: 'Readers connect to protagonists who actively try things under pressure—investigating, improvising, risking embarrassment—rather than standing by passively watching others talk.',
+                        flat: 'Leo leans by the door listening while two senior officers debate the whole raid plan.',
+                        working: 'While the officers argue, Leo quietly palms the spare radio key and checks the back stairwell.',
+                        why: 'An active lead holds curiosity even when someone else owns the room.',
+                        spot: 'Marks [ ] if the viewpoint character mostly watches without intervening.',
+                        fix: 'Gives the protagonist an active tactic or hidden goal in the room.'
+                    },
+                    {
+                        id: 'hook',
+                        tab: '4. Page Hook',
+                        title: 'Forward Page-Turn Hook',
+                        brief: 'Cuts sleepy wind-downs and ends on a sharp pull forward.',
+                        summary: 'Trims polite farewells or chore wrap-up after a scene has already made its point, landing instead on an unanswered question, new threat, or sudden decision.',
+                        flat: 'After the raid fails, they wash their mugs, lock up, and walk home in silence.',
+                        working: 'After the raid fails, Leo’s dead radio crackles with a voice that shouldn’t know this frequency.',
+                        why: 'Stopping on a forward question pulls the reader straight into the next scene.',
+                        spot: 'Marks [ ] if the last paragraphs coast after the main turn.',
+                        fix: 'Shows where to trim trailing beats and sharpens the closing hook.'
+                    }
+                ],
+                bestFor: 'Setup-heavy chapters, info-dumps, or dutiful transition scenes that sag.',
+                skipWhen: 'You are fine-tuning quiet literary voice nuances where punchy pacing beats feel forced.'
+            },
+            {
+                id: 'craft_king',
+                label: 'King · On Writing',
+                author: 'Stephen King',
+                book: 'On Writing',
+                subtitle: 'Honest human behavior & stripping prose clutter',
+                tagline: 'Unforced reactions, fewer adverbs/tags & leaner sentences',
+                defaultScope: 'this_scene',
+                thesis: 'King’s rule is simple: put believable people inside a tense spot and refuse to fake how they act or dress sentences up to sound impressive. Strip telling adverbs, clunky tags, and untimely backstory so action and speech speak directly.',
+                lanes: [
+                    {
+                        id: 'honesty',
+                        tab: '1. Honest Acts',
+                        title: 'Unforced Human Behavior',
+                        brief: 'Catches characters caving fast or speaking stiff plot exposition.',
+                        summary: 'Check whether people in the room actually act like human beings under stress—do they stall, deflect, get petty, or hold back instead of suddenly confessing just because the plot needs it?',
+                        flat: '"You’re right, Inspector, I hid the ledger under the pine floorboards," he confessed calmly.',
+                        working: 'He stared at the pine floorboards, then offered the Inspector tea so his hands had somewhere to stay busy.',
+                        why: 'Real people dodge and buy time before giving anything away.',
+                        spot: 'Flags convenient caving, wooden speeches, or plot-servant lines.',
+                        fix: 'Rewrites unnatural compliance into honest pushback or evasion.'
+                    },
+                    {
+                        id: 'adverbs',
+                        tab: '2. Adverbs/Tags',
+                        title: 'Adverb & Dialogue-Tag Trim',
+                        brief: 'Cuts "-ly" crutches and stage directions over-explaining emotion.',
+                        summary: 'Spot adverbs ("angrily", "nervously") and busy action tags that explain an emotion the line of dialogue or a single crisp physical gesture can carry twice as cleanly.',
+                        flat: '"Put the knife down," he said angrily, glaring furiously at her hand.',
+                        working: '"Put the knife down." His thumb whitened against the doorframe.',
+                        why: 'Trusting concrete action instead of labels makes emotion hit harder.',
+                        spot: 'Highlights redundant adverbs and heavy speaker tags.',
+                        fix: 'Offers tight drop-in line trims without losing tone or rhythm.'
+                    },
+                    {
+                        id: 'backstory',
+                        tab: '3. Backstory',
+                        title: 'Backstory Restraint',
+                        brief: 'Keeps long past history out of live tense rooms.',
+                        summary: 'Catch paragraphs that pause an active scene to explain how characters grew up together or why a place matters—keeping only a fast flash if it actually changes the present beat.',
+                        flat: 'Mid-argument, two paragraphs pause to recap their freshman dorm years and failed startup.',
+                        working: '"Same stunt you pulled in sophomore year." One sharp barb carries the history in seven words.',
+                        why: 'Live tension collapses as soon as the prose switches into a history lecture.',
+                        spot: 'Flags backstory detours that break scene momentum.',
+                        fix: 'Shows what to trim out or condense into one loaded detail.'
+                    },
+                    {
+                        id: 'clean_prose',
+                        tab: '4. Clean Prose',
+                        title: 'Concrete Verbs & Nouns',
+                        brief: 'Swaps purple metaphors and filler words for sharp clarity.',
+                        summary: 'Spot show-off metaphors, abstract mood labels, and filler phrases ("started to", "seemed to") and tighten them into direct, visual prose.',
+                        flat: 'A heavy tapestry of unspoken dread seemed to slowly descend across the somber kitchen.',
+                        working: 'Grease cooled grey in the skillet. Neither of them reached for the kettle.',
+                        why: 'Specific nouns and active verbs put the reader inside the kitchen immediately.',
+                        spot: 'Catches filter words, clichés, and overwritten imagery.',
+                        fix: 'Gives lean line-level alternatives in your scene’s natural voice.'
+                    }
+                ],
+                bestFor: 'Wordy scenes, forced dialogue, or places where stage directions do work the dialogue should do.',
+                skipWhen: 'You need big-picture structural surgery across a whole multi-scene chapter.'
+            },
+            {
+                id: 'craft_lamott',
+                label: 'Lamott · Bird by Bird',
+                author: 'Anne Lamott',
+                book: 'Bird by Bird',
+                subtitle: 'Small sensory truth & getting unstuck without harshness',
+                tagline: 'One vivid detail, staying in the moment & gentle next step',
+                defaultScope: 'this_scene',
+                thesis: 'Trying to make every sentence solve the entire book freezes drafts. Lamott’s approach zooms into one manageable piece at a time—anchoring emotion in small physical truth and finding an encouraging, doable step forward.',
+                lanes: [
+                    {
+                        id: 'detail',
+                        tab: '1. Vivid Detail',
+                        title: 'One Small Vivid Detail',
+                        brief: 'Grounds big feelings in one concrete sight, sound, or object.',
+                        summary: 'Instead of naming sweeping feelings ("crushing sorrow", "deep regret"), trust one small, truthful detail right in front of the character to carry the emotional weight.',
+                        flat: 'The kitchen felt heavy with profound grief over the end of their marriage.',
+                        working: 'Jonas stood at the sink scraping dried oatmeal off the rim of her mug with his thumbnail.',
+                        why: 'One specific human gesture says more than five emotional adjectives.',
+                        spot: 'Notices abstract emotion summaries that stay blurry.',
+                        fix: 'Suggests grounding the beat in one ordinary physical detail.'
+                    },
+                    {
+                        id: 'moment',
+                        tab: '2. Stay Present',
+                        title: 'Stay in the Live Moment',
+                        brief: 'Notices where sweeping summary pulls away from one real exchange.',
+                        summary: 'Gently spots paragraphs that pull out into summarizing whole weeks or explaining themes, and brings the focus back into one quiet, specific moment in the room.',
+                        flat: 'Whenever they argued that winter, both slid back into old defenses neither could name.',
+                        working: 'She laid his folded sweater on the chair between them. "Don’t leave it on the radiator again."',
+                        why: 'One small real exchange lets the reader feel the whole pattern.',
+                        spot: 'Marks passages where summary blurs over live human contact.',
+                        fix: 'Points to the closest moment worth letting breathe for two extra lines.'
+                    },
+                    {
+                        id: 'voice',
+                        tab: '3. True Voice',
+                        title: 'Unforced Human Voice',
+                        brief: 'Separates stiff "trying to impress" prose from lines that sound true.',
+                        summary: 'Highlights sentences where the prose tightens up trying to sound grand or polished, alongside honest quirky beats where your real voice already comes through cleanly.',
+                        flat: 'With measured composure, she articulated the fragile ambiguity of their shared existence.',
+                        working: '"You bought the wrong tape again," she said, though half her mouth twitched upward.',
+                        why: 'Natural human contradictions read as warmer and far more alive.',
+                        spot: 'Distinguishes forced literary stiffness from natural phrasing.',
+                        fix: 'Offers gentle, breathable rewrites that keep your warmth intact.'
+                    },
+                    {
+                        id: 'next_step',
+                        tab: '4. Next Step',
+                        title: 'One Manageable Next Step',
+                        brief: 'Gives a clear, encouraging single beat to try next without perfectionism.',
+                        summary: 'Ends with low-pressure clarity: identifies what already works so you keep it, and offers one small concrete assignment you can fix in five minutes without tearing up the whole chapter.',
+                        flat: '"Needs major structural overhaul across Acts 1 and 2 before line edits will hold."',
+                        working: '"Leave the middle messy for now—just add two lines after the mug detail showing what Jonas hides."',
+                        why: 'Small, concrete steps get blocked scenes moving again right away.',
+                        spot: 'Protects working passages before suggesting one small nudge.',
+                        fix: 'Gives one approachable beat addition or adjustment to try first.'
+                    }
+                ],
+                bestFor: 'Rough, stalled, or overly abstract drafts when you want grounding and momentum without a harsh teardown.',
+                skipWhen: 'You are in late-stage polishing looking for strict beat-sheet compliance or ruthless line cuts.'
             }
         ];
         // The rarer, heavier work. Same cards, same skill files behind them.
@@ -163,7 +558,13 @@
                 _saveDiscussAgentLocal();
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
-            if (_discussAgent !== agent) { _discussSkillsLoaded = false; _discussSkillsLoading = null; _discussSkills = []; }
+            if (_discussAgent !== agent) {
+                _discussSkillsLoaded = false;
+                _discussSkillsLoading = null;
+                _discussSkills = [];
+                _discussCraftState.active = false;
+                _discussCraftState.openInfoId = null;
+            }
             _discussAgent = agent;
             try { localStorage.setItem(DISCUSS_AGENT_KEY, agent); } catch (e) {}
             _applyDiscussAgentLabels();
@@ -486,6 +887,8 @@
             _discussIncludeCurrentDocument = false;
             _discussPendingAction = options.actionId || null;
             _discussRepositoryAction = null;
+            _discussCraftState.active = false;
+            _discussCraftState.openInfoId = null;
             _discussRetryOfTaskId = null;
             _discussSelectedSkill = null;
             _discussAutoRun = !!options.runImmediately;
@@ -594,6 +997,8 @@
                 _discussLiveDocument = options.liveDocument || null;
                 _discussPendingAction = options.actionId || null;
                 _discussRepositoryAction = null;
+                _discussCraftState.active = false;
+                _discussCraftState.openInfoId = null;
                 _discussRetryOfTaskId = null;
                 _discussSelectedSkill = null;
                 _discussAutoRun = !!options.runImmediately;
@@ -6137,6 +6542,10 @@
             }
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
             var log = document.getElementById('discussLog');
+            var craftCustomEl = log.querySelector('.discuss-craft-custom-list');
+            var craftCustomScroll = craftCustomEl ? craftCustomEl.scrollTop : 0;
+            var craftFocusValue = (craftCustomEl && document.activeElement && craftCustomEl.contains(document.activeElement) && document.activeElement.type === 'checkbox')
+                ? document.activeElement.value : '';
             var scrollState = captureDiscussScroll(log);
             log.replaceChildren();
             var notices = snapshot.notices || [];
@@ -6192,6 +6601,8 @@
                         empty.appendChild(title);
                         empty.appendChild(document.createTextNode('Describe the old and new fact below, then scan for consequences.'));
                     }
+                } else if (_discussCraftState.active) {
+                    renderDiscussCraftSetup(empty);
                 } else {
                     title.textContent = 'What do you want to examine?';
                     empty.appendChild(title);
@@ -6207,6 +6618,19 @@
                     empty.appendChild(discussPassGroup(DISCUSS_REPOSITORY_PASSES, startDiscussRepositoryAction));
                 }
                 log.appendChild(empty);
+                if (craftCustomScroll || craftFocusValue) {
+                    var nextCustomEl = log.querySelector('.discuss-craft-custom-list');
+                    if (nextCustomEl) {
+                        nextCustomEl.scrollTop = craftCustomScroll;
+                        if (craftFocusValue) {
+                            Array.prototype.some.call(nextCustomEl.querySelectorAll('input[type="checkbox"]'), function(cb) {
+                                if (cb.value !== craftFocusValue) return false;
+                                cb.focus({preventScroll: true});
+                                return true;
+                            });
+                        }
+                    }
+                }
             }
             appendUnassociatedNotices();
             groupDiscussTasks(snapshot.tasks || []).forEach(function(group) {
@@ -7617,7 +8041,10 @@ function loadDiscussDiffMode(mode) {
                 rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', layer_subtext: 'Layer subtext', sensory_detail: 'Add sensory detail',
                 show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', deepen_and_layer: 'Deepen & layer',
                 voice_character: 'Voice and character', pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check',
-                next_beats: 'Next beats', canon_refactor: 'Trace a canon change', scene_continuity: "Check this scene's continuity",
+                next_beats: 'Next beats', craft_mckee: 'McKee · Story', craft_cron: 'Cron · Story Genius',
+                craft_coyne: 'Coyne · The Story Grid', craft_snyder: 'Snyder · Save the Cat!',
+                craft_king: 'King · On Writing', craft_lamott: 'Lamott · Bird by Bird',
+                canon_refactor: 'Trace a canon change', scene_continuity: "Check this scene's continuity",
                 verify_refactor: 'Verify a canon change'
             })[actionId] || 'Selection action';
         }
@@ -7824,7 +8251,9 @@ function loadDiscussDiffMode(mode) {
             var button = document.getElementById('discussSend');
             var input = document.getElementById('discussInput');
             if (!button || !input) return;
-            var empty = !input.value.trim() && !_discussPendingAction && !_discussRepositoryAction && !_discussOpenFailed;
+            var ordinary = !_discussPendingAction && !_discussRepositoryAction && !_discussCraftState.active && !_discussOpenFailed;
+            var craftNoScenes = _discussCraftState.active && !discussCraftSelectedScenes().length;
+            var empty = craftNoScenes ? true : (!input.value.trim() && ordinary);
             button.dataset.empty = empty ? 'true' : 'false';
             button.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
             // A preset sends itself; with a draft in the box it would replace
@@ -7880,6 +8309,24 @@ function loadDiscussDiffMode(mode) {
                     ? 'Describe the canon change, including the old and new fact…'
                     : 'Optional: name the continuity concern to focus on…';
                 document.getElementById('discussSend').textContent = 'Scan';
+                return;
+            }
+            if (_discussCraftState.active) {
+                node.hidden = false;
+                var craftLens = discussCraftLens();
+                var craftScenes = discussCraftSelectedScenes();
+                var craftTitle = document.createElement('strong');
+                craftTitle.textContent = 'Craft review · ' + craftLens.label;
+                node.appendChild(craftTitle);
+                var craftHelp = document.createElement('span');
+                craftHelp.textContent = craftScenes.length + (craftScenes.length === 1 ? ' scene' : ' scenes') + ' · Full prose · Read-only';
+                node.appendChild(craftHelp);
+                var changeCraft = document.createElement('button');
+                changeCraft.type = 'button'; changeCraft.className = 'discuss-secondary'; changeCraft.textContent = 'Change action';
+                changeCraft.onclick = cancelDiscussCraftReview;
+                node.appendChild(changeCraft);
+                document.getElementById('discussInput').placeholder = 'Optional: add a specific focus before running…';
+                document.getElementById('discussSend').textContent = 'Run craft review';
                 return;
             }
             if (_discussPendingAction) {
@@ -8562,6 +9009,8 @@ function loadDiscussDiffMode(mode) {
                     _discussLiveDocument = null;
                     _discussPendingAction = null;
                     _discussRepositoryAction = null;
+                    _discussCraftState.active = false;
+                    _discussCraftState.openInfoId = null;
                     _discussRetryOfTaskId = null;
                     _discussSelectedSkill = null;
                     _discussAutoRun = false;
@@ -8628,6 +9077,7 @@ function loadDiscussDiffMode(mode) {
             if (_discussOpenFailed) { openDiscuss(_discussReturnFocus); return; }
             if (_discussPendingAction) { runDiscussSelectionAction(); return; }
             if (_discussRepositoryAction) { runDiscussRepositoryAction(); return; }
+            if (_discussCraftState.active) { runDiscussCraftReview(); return; }
             if (!question || !_discussConversationId || button.disabled) return;
             var turnDocument = discussTurnDocument();
             if (!turnDocument) return;
@@ -8682,6 +9132,8 @@ function loadDiscussDiffMode(mode) {
         }
 
         function startDiscussRepositoryAction(actionId) {
+            _discussCraftState.active = false;
+            _discussCraftState.openInfoId = null;
             _discussRepositoryAction = actionId;
             if (!_discussDraftDocument) _discussDraftDocument = discussDocument();
             _discussPendingAction = null;
@@ -8824,11 +9276,505 @@ function loadDiscussDiffMode(mode) {
             });
         }
 
+        function discussCraftLens(id) {
+            var targetId = id || _discussCraftState.lensId;
+            return DISCUSS_CRAFT_LENSES.find(function(l) { return l.id === targetId; }) || DISCUSS_CRAFT_LENSES[0];
+        }
+
+        function discussCraftActivePath() {
+            var doc = discussTurnDocument();
+            return (doc && doc.kind === 'scene' && doc.path) ? doc.path : '';
+        }
+
+        function discussCraftAllPaths() {
+            return Array.isArray(paths) ? paths.slice() : [];
+        }
+
+        function discussCraftSelectedScenes() {
+            var activePath = discussCraftActivePath();
+            var all = discussCraftAllPaths();
+            var mode = _discussCraftState.scopeMode;
+            if (mode === 'this_scene') return activePath ? [activePath] : [];
+            if (mode === 'adjacent') {
+                var idx = all.indexOf(activePath);
+                if (idx < 0) return activePath ? [activePath] : [];
+                return [all[idx - 1], all[idx], all[idx + 1]].filter(Boolean);
+            }
+            if (mode === 'this_chapter') {
+                var ch = activePath && typeof meta !== 'undefined' && meta[activePath] ? meta[activePath].chapter : '';
+                if (!ch) return activePath ? [activePath] : [];
+                var inChapter = all.filter(function(p) { return meta[p] && meta[p].chapter === ch; });
+                return inChapter.length ? inChapter : (activePath ? [activePath] : []);
+            }
+            var chosen = (_discussCraftState.customScenes || []).filter(function(p) { return all.indexOf(p) >= 0; });
+            chosen.sort(function(a, b) { return all.indexOf(a) - all.indexOf(b); });
+            return chosen;
+        }
+
+        function startDiscussCraftReview() {
+            var activePath = discussCraftActivePath();
+            var lens = discussCraftLens();
+            _discussRepositoryAction = null;
+            _discussPendingAction = null;
+            _discussSelectedSkill = null;
+            _discussCraftState.active = true;
+            _discussCraftState.openInfoId = null;
+            _discussCraftState.scopeMode = lens.defaultScope || 'this_scene';
+            _discussCraftState.customScenes = activePath ? [activePath] : [];
+            renderDiscussTaskMode();
+            renderDiscussSnapshot();
+            document.getElementById('discussInput').focus();
+            document.getElementById('discussAnnouncement').textContent = 'Craft review selected';
+        }
+
+        function cancelDiscussCraftReview() {
+            if (!_discussCraftState.active) return;
+            closeDiscussCraftInfoDialog();
+            _discussCraftState.active = false;
+            _discussCraftState.openInfoId = null;
+            renderDiscussTaskMode();
+            renderDiscussSnapshot();
+            document.getElementById('discussInput').focus();
+            document.getElementById('discussAnnouncement').textContent = 'Choose a story-aware action';
+        }
+
+        function _syncDiscussCraftInfoButtons() {
+            document.querySelectorAll('.discuss-craft-lens').forEach(function(card) {
+                var btn = card.querySelector('.discuss-craft-info-btn');
+                if (!btn) return;
+                var open = _discussCraftState.openInfoId === card.dataset.lens;
+                btn.classList.toggle('is-open', open);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+        }
+
+        function _selectDiscussCraftLensAndScope(infoLens) {
+            var changed = _discussCraftState.lensId !== infoLens.id;
+            _discussCraftState.lensId = infoLens.id;
+            // Preserve custom scene selections (and any existing scope on the same lens).
+            if (_discussCraftState.scopeMode !== 'custom' && changed) {
+                _discussCraftState.scopeMode = infoLens.defaultScope || 'this_scene';
+            }
+            try { localStorage.setItem('proseview-craft-lens', infoLens.id); } catch (e) {}
+        }
+
+        function renderDiscussCraftInfoDialog(lensId, tabId) {
+            var infoLens = discussCraftLens(lensId);
+            var lanes = Array.isArray(infoLens.lanes) ? infoLens.lanes : [];
+            var activeTabId = tabId && lanes.some(function(item) { return item.id === tabId; }) ? tabId : 'overview';
+            _discussCraftState.openInfoId = infoLens.id;
+            _syncDiscussCraftInfoButtons();
+
+            var dialog = document.getElementById('discussCraftInfoDialog');
+            var titleEl = document.getElementById('discussCraftInfoTitle');
+            var subEl = document.getElementById('discussCraftInfoSubtitle');
+            var tabsEl = document.getElementById('discussCraftInfoTabs');
+            var bodyEl = document.getElementById('discussCraftInfoBody');
+            var useBtn = document.getElementById('discussCraftInfoUseBtn');
+            if (!dialog || !titleEl || !subEl || !tabsEl || !bodyEl || !useBtn) return;
+
+            dialog.dataset.lens = infoLens.id;
+            dialog.dataset.tab = activeTabId;
+            titleEl.textContent = infoLens.book;
+            subEl.textContent = infoLens.author + ' · ' + (infoLens.subtitle || infoLens.tagline);
+
+            tabsEl.replaceChildren();
+            var tabItems = [{ id: 'overview', tab: 'Overview' }].concat(lanes);
+            tabItems.forEach(function(item, index) {
+                var isActive = item.id === activeTabId;
+                var tab = document.createElement('button');
+                tab.type = 'button';
+                tab.role = 'tab';
+                tab.dataset.tab = item.id;
+                tab.tabIndex = isActive ? 0 : -1;
+                tab.className = 'discuss-craft-dialog-tab' + (isActive ? ' is-active' : '');
+                tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                tab.textContent = item.tab;
+                tab.onclick = function() { renderDiscussCraftInfoDialog(infoLens.id, item.id); };
+                tab.addEventListener('keydown', function(event) {
+                    var targetIdx = null;
+                    if (event.key === 'ArrowRight') targetIdx = (index + 1) % tabItems.length;
+                    else if (event.key === 'ArrowLeft') targetIdx = (index - 1 + tabItems.length) % tabItems.length;
+                    else if (event.key === 'Home') targetIdx = 0;
+                    else if (event.key === 'End') targetIdx = tabItems.length - 1;
+                    if (targetIdx === null) return;
+                    event.preventDefault();
+                    var nextId = tabItems[targetIdx].id;
+                    renderDiscussCraftInfoDialog(infoLens.id, nextId);
+                    var nextTab = tabsEl.querySelector('[data-tab="' + nextId + '"]');
+                    if (nextTab) nextTab.focus();
+                });
+                tabsEl.appendChild(tab);
+            });
+
+            bodyEl.replaceChildren();
+            if (activeTabId === 'overview') {
+                var thesis = document.createElement('p');
+                thesis.className = 'discuss-craft-info-thesis';
+                thesis.textContent = infoLens.thesis;
+                bodyEl.appendChild(thesis);
+
+                var lanesLabel = elementWith('discuss-craft-dialog-section-label', 'Four lanes in this review (click a lane for examples)');
+                bodyEl.appendChild(lanesLabel);
+
+                var laneGrid = elementWith('discuss-craft-lane-grid');
+                lanes.forEach(function(lane) {
+                    var card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = 'discuss-craft-lane-card';
+                    card.dataset.lane = lane.id;
+                    var cTop = elementWith('discuss-craft-lane-top');
+                    var cTitle = elementWith('discuss-craft-lane-name', lane.tab);
+                    var cLink = elementWith('discuss-craft-lane-more', 'Example →');
+                    cTop.append(cTitle, cLink);
+                    card.append(cTop, elementWith('discuss-craft-check-desc', lane.brief));
+                    card.onclick = function() { renderDiscussCraftInfoDialog(infoLens.id, lane.id); };
+                    laneGrid.appendChild(card);
+                });
+                bodyEl.appendChild(laneGrid);
+
+                var guidance = elementWith('discuss-craft-info-guidance');
+                var best = elementWith('discuss-craft-info-best');
+                var bestStrong = document.createElement('strong');
+                bestStrong.textContent = 'Best when: ';
+                best.append(bestStrong, document.createTextNode(infoLens.bestFor));
+                guidance.appendChild(best);
+                if (infoLens.skipWhen) {
+                    var skipLine = elementWith('discuss-craft-info-skip');
+                    var skipStrong = document.createElement('strong');
+                    skipStrong.textContent = 'Skip when: ';
+                    skipLine.append(skipStrong, document.createTextNode(infoLens.skipWhen));
+                    guidance.appendChild(skipLine);
+                }
+                bodyEl.appendChild(guidance);
+            } else {
+                var lane = lanes.find(function(item) { return item.id === activeTabId; }) || lanes[0];
+                if (lane) {
+                    var laneHead = elementWith('discuss-craft-lane-detail-head');
+                    var lTitle = document.createElement('h3');
+                    lTitle.textContent = lane.title;
+                    var focusBtn = document.createElement('button');
+                    focusBtn.type = 'button';
+                    focusBtn.className = 'discuss-craft-lane-focus-btn';
+                    focusBtn.textContent = 'Focus review on this lane →';
+                    focusBtn.onclick = function() {
+                        _selectDiscussCraftLensAndScope(infoLens);
+                        var input = document.getElementById('discussInput');
+                        if (input) {
+                            input.value = 'Focus only on "' + lane.title + '": ' + lane.summary;
+                            saveDiscussDraft();
+                        }
+                        closeDiscussCraftInfoDialog();
+                        renderDiscussTaskMode();
+                        renderDiscussSnapshot();
+                        if (input) input.focus();
+                    };
+                    laneHead.append(lTitle, focusBtn);
+                    bodyEl.appendChild(laneHead);
+
+                    var summaryEl = elementWith('discuss-craft-info-thesis', lane.summary);
+                    bodyEl.appendChild(summaryEl);
+
+                    var exWrap = elementWith('discuss-craft-example');
+                    var exHead = elementWith('discuss-craft-example-head');
+                    var exKicker = document.createElement('strong');
+                    exKicker.textContent = 'Example in a scene';
+                    exHead.appendChild(exKicker);
+
+                    var exGrid = elementWith('discuss-craft-example-grid');
+                    var flatCard = elementWith('discuss-craft-example-card is-flat');
+                    flatCard.appendChild(elementWith('discuss-craft-example-tag', 'Weak / flat'));
+                    flatCard.appendChild(elementWith('discuss-craft-example-copy', lane.flat));
+
+                    var winCard = elementWith('discuss-craft-example-card is-working');
+                    winCard.appendChild(elementWith('discuss-craft-example-tag', 'Works cleanly'));
+                    winCard.appendChild(elementWith('discuss-craft-example-copy', lane.working));
+                    exGrid.append(flatCard, winCard);
+
+                    var whyEl = elementWith('discuss-craft-example-why');
+                    var whyStrong = document.createElement('strong');
+                    whyStrong.textContent = 'Why it works: ';
+                    whyEl.append(whyStrong, document.createTextNode(lane.why));
+
+                    exWrap.append(exHead, exGrid, whyEl);
+                    bodyEl.appendChild(exWrap);
+
+                    var aiGrid = elementWith('discuss-craft-ai-grid');
+                    var spotBox = elementWith('discuss-craft-ai-box');
+                    var spotStrong = document.createElement('strong');
+                    spotStrong.textContent = 'What the AI catches';
+                    spotBox.append(spotStrong, elementWith('discuss-craft-check-desc', lane.spot));
+                    var fixBox = elementWith('discuss-craft-ai-box');
+                    var fixStrong = document.createElement('strong');
+                    fixStrong.textContent = 'Fix it gives you';
+                    fixBox.append(fixStrong, elementWith('discuss-craft-check-desc', lane.fix));
+                    aiGrid.append(spotBox, fixBox);
+                    bodyEl.appendChild(aiGrid);
+                }
+            }
+
+            var alreadyActive = _discussCraftState.lensId === infoLens.id;
+            useBtn.textContent = alreadyActive ? 'Selected ✓' : 'Use ' + infoLens.book;
+            useBtn.disabled = alreadyActive;
+            useBtn.onclick = function() {
+                _selectDiscussCraftLensAndScope(infoLens);
+                closeDiscussCraftInfoDialog();
+                renderDiscussTaskMode();
+                renderDiscussSnapshot();
+            };
+        }
+
+        function openDiscussCraftInfoDialog(lensId, tabId) {
+            var dialog = document.getElementById('discussCraftInfoDialog');
+            if (!dialog) return;
+            renderDiscussCraftInfoDialog(lensId, tabId || 'overview');
+            if (!dialog.open) dialog.showModal();
+            var closeBtn = document.getElementById('discussCraftInfoClose');
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function closeDiscussCraftInfoDialog() {
+            var dialog = document.getElementById('discussCraftInfoDialog');
+            var prevLensId = _discussCraftState.openInfoId;
+            _discussCraftState.openInfoId = null;
+            _syncDiscussCraftInfoButtons();
+            if (dialog && dialog.open) dialog.close();
+            if (prevLensId) {
+                var btn = document.querySelector('.discuss-craft-lens[data-lens="' + prevLensId + '"] .discuss-craft-info-btn');
+                if (btn) btn.focus({preventScroll: true});
+            }
+        }
+
+        (function initDiscussCraftInfoDialog() {
+            var dialog = document.getElementById('discussCraftInfoDialog');
+            if (!dialog) return;
+            dialog.addEventListener('click', function(event) {
+                if (event.target === dialog) closeDiscussCraftInfoDialog();
+            });
+            dialog.addEventListener('close', function() {
+                var prevLensId = _discussCraftState.openInfoId;
+                _discussCraftState.openInfoId = null;
+                _syncDiscussCraftInfoButtons();
+                if (prevLensId) {
+                    var btn = document.querySelector('.discuss-craft-lens[data-lens="' + prevLensId + '"] .discuss-craft-info-btn');
+                    if (btn) btn.focus({preventScroll: true});
+                }
+            });
+        })();
+
+        function renderDiscussCraftSetup(container) {
+            var activePath = discussCraftActivePath();
+            var allPaths = discussCraftAllPaths();
+            var selectedScenes = discussCraftSelectedScenes();
+            var totalWords = selectedScenes.reduce(function(sum, p) {
+                return sum + ((typeof meta !== 'undefined' && meta[p] && meta[p].words) ? meta[p].words : 0);
+            }, 0);
+
+            var wrap = elementWith('discuss-craft-setup');
+
+            var head = elementWith('discuss-craft-head');
+            var headText = elementWith('discuss-craft-head-text');
+            var hStrong = document.createElement('strong');
+            hStrong.textContent = 'Customize craft review';
+            headText.appendChild(hStrong);
+            headText.appendChild(elementWith('discuss-craft-sub', 'Read-only · Full prose · Checklist + drop-in replacements'));
+            var backBtn = document.createElement('button');
+            backBtn.type = 'button';
+            backBtn.className = 'discuss-secondary discuss-craft-back';
+            backBtn.textContent = '← Cards';
+            backBtn.onclick = cancelDiscussCraftReview;
+            head.append(headText, backBtn);
+            wrap.appendChild(head);
+
+            // 1. Choose a book lens
+            var lensHead = elementWith('discuss-craft-section-head');
+            lensHead.appendChild(elementWith('discuss-story-group', '1. Choose a book lens'));
+            lensHead.appendChild(elementWith('discuss-craft-hint', 'Click ⓘ for guide & examples'));
+            wrap.appendChild(lensHead);
+
+            var lensGrid = elementWith('discuss-craft-lens-grid');
+            DISCUSS_CRAFT_LENSES.forEach(function(lens) {
+                var isSelected = _discussCraftState.lensId === lens.id;
+                var infoOpen = _discussCraftState.openInfoId === lens.id;
+                var live = _discussActionCopy[lens.id] || {};
+                var card = elementWith('discuss-craft-lens' + (isSelected ? ' is-selected' : ''));
+                card.dataset.lens = lens.id;
+
+                var pickBtn = document.createElement('button');
+                pickBtn.type = 'button';
+                pickBtn.className = 'discuss-craft-lens-pick';
+                pickBtn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+                var titleRow = elementWith('discuss-craft-lens-title', live.label || lens.label);
+                var copyRow = elementWith('discuss-craft-lens-copy', live.description || lens.tagline);
+                pickBtn.append(titleRow, copyRow);
+                pickBtn.onclick = function() {
+                    _selectDiscussCraftLensAndScope(lens);
+                    _discussCraftState.openInfoId = null;
+                    renderDiscussTaskMode();
+                    renderDiscussSnapshot();
+                };
+
+                var infoBtn = document.createElement('button');
+                infoBtn.type = 'button';
+                infoBtn.className = 'discuss-craft-info-btn' + (infoOpen ? ' is-open' : '');
+                infoBtn.textContent = '\u24d8';
+                infoBtn.title = 'About ' + lens.book + ' by ' + lens.author;
+                infoBtn.setAttribute('aria-label', 'About ' + lens.book + ' by ' + lens.author);
+                infoBtn.setAttribute('aria-haspopup', 'dialog');
+                infoBtn.setAttribute('aria-expanded', infoOpen ? 'true' : 'false');
+                infoBtn.onclick = function(event) {
+                    event.stopPropagation();
+                    openDiscussCraftInfoDialog(lens.id);
+                };
+
+                card.append(pickBtn, infoBtn);
+                lensGrid.appendChild(card);
+            });
+            wrap.appendChild(lensGrid);
+
+            // 2. Scenes to analyze
+            var scopeHead = elementWith('discuss-craft-section-head');
+            scopeHead.appendChild(elementWith('discuss-story-group', '2. Scenes to analyze'));
+            scopeHead.appendChild(elementWith('discuss-craft-hint',
+                selectedScenes.length + (selectedScenes.length === 1 ? ' scene' : ' scenes')
+                + (totalWords ? ' · ~' + totalWords.toLocaleString() + ' words' : '')));
+            wrap.appendChild(scopeHead);
+
+            var scopes = [
+                { id: 'this_scene', label: 'This scene', hint: '1 scene' },
+                { id: 'adjacent', label: '±1 adjacent', hint: discussCraftScenesCountHint('adjacent', activePath, allPaths) },
+                { id: 'this_chapter', label: 'This chapter', hint: discussCraftScenesCountHint('this_chapter', activePath, allPaths) },
+                { id: 'custom', label: 'Pick scenes…', hint: (_discussCraftState.customScenes || []).length + ' picked' }
+            ];
+            var scopeGrid = elementWith('discuss-craft-scope-grid');
+            scopes.forEach(function(s) {
+                var active = _discussCraftState.scopeMode === s.id;
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'discuss-craft-scope-btn' + (active ? ' is-selected' : '');
+                btn.dataset.scope = s.id;
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.append(elementWith('discuss-craft-scope-label', s.label), elementWith('discuss-craft-scope-hint', s.hint));
+                btn.onclick = function() {
+                    _discussCraftState.scopeMode = s.id;
+                    if (s.id === 'custom' && !(_discussCraftState.customScenes || []).length && activePath) {
+                        _discussCraftState.customScenes = [activePath];
+                    }
+                    renderDiscussTaskMode();
+                    renderDiscussSnapshot();
+                };
+                scopeGrid.appendChild(btn);
+            });
+            wrap.appendChild(scopeGrid);
+
+            if (_discussCraftState.scopeMode === 'custom') {
+                var customBox = elementWith('discuss-craft-custom-list');
+                allPaths.forEach(function(scenePath) {
+                    var row = document.createElement('label');
+                    row.className = 'discuss-craft-custom-item';
+                    var cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = scenePath;
+                    cb.checked = (_discussCraftState.customScenes || []).indexOf(scenePath) >= 0;
+                    cb.onchange = function() {
+                        var list = (_discussCraftState.customScenes || []).slice();
+                        var idx = list.indexOf(scenePath);
+                        if (cb.checked && idx < 0) list.push(scenePath);
+                        if (!cb.checked && idx >= 0) list.splice(idx, 1);
+                        _discussCraftState.customScenes = list;
+                        renderDiscussTaskMode();
+                        renderDiscussSnapshot();
+                    };
+                    var nameSpan = document.createElement('span');
+                    nameSpan.className = 'discuss-craft-custom-name';
+                    nameSpan.textContent = scenePath;
+                    var wordsSpan = document.createElement('span');
+                    wordsSpan.className = 'discuss-craft-custom-words';
+                    var w = (typeof meta !== 'undefined' && meta[scenePath] && meta[scenePath].words) ? meta[scenePath].words : 0;
+                    wordsSpan.textContent = w ? (w + ' w') : '';
+                    row.append(cb, nameSpan, wordsSpan);
+                    customBox.appendChild(row);
+                });
+                wrap.appendChild(customBox);
+            }
+
+            container.appendChild(wrap);
+        }
+
+        function discussCraftScenesCountHint(mode, activePath, allPaths) {
+            if (mode === 'adjacent') {
+                var idx = allPaths.indexOf(activePath);
+                if (idx < 0) return '1 scene';
+                var n = [allPaths[idx - 1], allPaths[idx], allPaths[idx + 1]].filter(Boolean).length;
+                return n + (n === 1 ? ' scene' : ' scenes');
+            }
+            if (mode === 'this_chapter') {
+                var ch = activePath && typeof meta !== 'undefined' && meta[activePath] ? meta[activePath].chapter : '';
+                if (!ch) return '1 scene';
+                var count = allPaths.filter(function(p) { return meta[p] && meta[p].chapter === ch; }).length || 1;
+                return count + (count === 1 ? ' scene' : ' scenes');
+            }
+            return '';
+        }
+
+        function runDiscussCraftReview() {
+            var button = document.getElementById('discussSend');
+            var input = document.getElementById('discussInput');
+            var turnDocument = discussTurnDocument();
+            if (!_discussConversationId || button.disabled) return;
+            if (!turnDocument || turnDocument.kind !== 'scene') {
+                renderDiscussError('Craft review reads manuscript scenes. Open a scene first.');
+                return;
+            }
+            var selectedScenes = discussCraftSelectedScenes();
+            if (!selectedScenes.length) {
+                renderDiscussError('Select at least one scene to review.');
+                return;
+            }
+            var lens = discussCraftLens();
+            var custom = input ? input.value.trim() : '';
+            var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+            clearDiscussError();
+            button.disabled = true;
+            button.textContent = 'Starting…';
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
+                client_request_id: requestId,
+                question: '',
+                document: turnDocument,
+                action_id: lens.id,
+                action_scope: selectedScenes.length > 1 ? 'scenes' : 'scene',
+                scenes: selectedScenes,
+                custom_instruction: custom,
+                live_document: discussLiveDocumentFor(turnDocument),
+                attachments: [],
+                include_current_document: false
+            }).then(function() {
+                if (custom) rememberDiscussInstruction(custom);
+                if (input) input.value = '';
+                _discussCraftState.active = false;
+                _discussCraftState.openInfoId = null;
+                saveDiscussDraft();
+                renderDiscussTaskMode();
+                document.getElementById('discussAnnouncement').textContent =
+                    lens.label + ' running across ' + selectedScenes.length + (selectedScenes.length === 1 ? ' scene' : ' scenes') + '. The manuscript will not change.';
+                scheduleDiscussSnapshot();
+            }).catch(function(error) {
+                renderDiscussError(error.message);
+            }).finally(function() {
+                button.disabled = false;
+                renderDiscussTaskMode();
+            });
+        }
+
         // A scene pass takes no selection: the server reads the scene this
         // conversation is looking at. Nothing to highlight, nothing to type --
         // an action that needs a paragraph of setup first is not one anybody
         // reaches for.
         function runDiscussScenePass(actionId) {
+            if (actionId === 'craft_review') {
+                startDiscussCraftReview();
+                return;
+            }
             var button = document.getElementById('discussSend');
             var turnDocument = discussTurnDocument();
             if (!actionId || !_discussConversationId || button.disabled) return;

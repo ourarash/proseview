@@ -3053,6 +3053,7 @@ class _Handler(BaseHTTPRequestHandler):
                         include_current_document=body.get("include_current_document", False),
                         action_id=str(body.get("action_id") or ""),
                         action_scope=str(body.get("action_scope") or "selection"),
+                        scenes=body.get("scenes"),
                         custom_instruction=str(body.get("custom_instruction") or ""),
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),

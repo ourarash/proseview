@@ -2886,3 +2886,121 @@ def test_submit_with_lined_selected_passage_does_not_duplicate_quote(tmp_path: P
     manager.close()
 
 
+def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "01-one.md").write_text(
+        "---\ntitle: Opening\n---\n# Opening\n\n"
+        "First paragraph of scene one.\n\n"
+        "Patel locked the brass drawer and pocketed the key.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "02-two.md").write_text(
+        "---\ntitle: Confrontation\npov: Patel\n"
+        "goal: Force the archivist to hand over the ledger\n"
+        "conflict: The archivist stalls until dawn\n---\n"
+        "# Confrontation\n\n"
+        "Patel set his palm on the counter. \"I need the eastern ledger.\"\n\n"
+        "<!-- TODO: Sharpen the archivist's refusal -->\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "03-three.md").write_text(
+        "---\ntitle: Aftermath\n---\n# Aftermath\n\n"
+        "Rain hammered the archive roof as Patel slipped out the side door.\n\n"
+        "Second paragraph of scene three.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "README.md").write_text(
+        "# Manuscript notes\n\nThis README should never be treated as an adjacent scene.\n",
+        encoding="utf-8",
+    )
+    (root / ".proseview" / "beatmaps").mkdir(parents=True, exist_ok=True)
+    (root / ".proseview" / "beatmaps" / "02-two.md.json").write_text(
+        json.dumps({
+            "version": 1,
+            "scene_path": "02-two.md",
+            "beats": [{"order": 1, "title": "LEAKED_BEAT_MAP_MARKER", "summary": "Should not appear when 02-two is omitted", "tension": 5}],
+        }),
+        encoding="utf-8",
+    )
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    by_id = {row["id"]: row for row in manager.list_actions()}
+    assert "mckee_scene" not in by_id
+    for craft_id in ("craft_mckee", "craft_cron", "craft_coyne", "craft_snyder", "craft_king", "craft_lamott"):
+        assert craft_id in by_id
+        assert by_id[craft_id]["kind"] == "critique"
+        assert by_id[craft_id]["scene_pass"] is True
+        assert (root / ".proseview" / "skills" / craft_id / "SKILL.md").exists()
+
+    # 1. Single-scene McKee pass includes frontmatter, TODO, prev tail, next opening, read-only.
+    cid = manager.open({"kind": "scene", "path": "02-two.md"})["conversation_id"]
+    manager.submit(
+        cid,
+        client_request_id="craft-single-1",
+        question="",
+        action_id="craft_mckee",
+        action_scope="scene",
+        scenes=["02-two.md"],
+    )
+    _wait_for(lambda: bool(clients[0].prompts))
+
+    single_prompt = clients[0].prompts[0]
+    assert "Scene revision checklist" in single_prompt
+    assert "two-level bullet list" in single_prompt
+    assert "drop-in replacement" in single_prompt
+    assert "Force the archivist to hand over the ledger" in single_prompt
+    assert "Sharpen the archivist's refusal" in single_prompt
+    assert "Patel locked the brass drawer and pocketed the key." in single_prompt
+    assert "Rain hammered the archive roof as Patel slipped out the side door." in single_prompt
+    assert "This README should never be treated as an adjacent scene." not in single_prompt
+    assert "outputSchema" not in clients[0].turn_params[0]
+    assert clients[0].turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+
+    # 2. Multi-scene Story Grid pass attaches only selected scenes, lists them in the question, and omits unchecked scene beat maps.
+    manager.submit(
+        cid,
+        client_request_id="craft-multi-1",
+        question="",
+        action_id="craft_coyne",
+        action_scope="scenes",
+        scenes=["01-one.md", "03-three.md"],
+        custom_instruction="Focus only on the Crisis choice in Scene 1.",
+    )
+    _wait_for(lambda: len(clients[0].prompts) >= 2)
+
+    multi_prompt = clients[0].prompts[1]
+    assert "Story Grid checklist" in multi_prompt
+    assert "Focus only on the Crisis choice in Scene 1." in multi_prompt
+    assert "Scenes analyzed (2): manuscript/01-one.md, manuscript/03-three.md" in multi_prompt
+    assert "Selected scenes in order:" in multi_prompt
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/01-one.md"' in multi_prompt
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/03-three.md"' in multi_prompt
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/02-two.md"' not in multi_prompt
+    assert "LEAKED_BEAT_MAP_MARKER" not in multi_prompt
+    assert "Patel locked the brass drawer and pocketed the key." in multi_prompt
+    assert "Rain hammered the archive roof as Patel slipped out the side door." in multi_prompt
+    assert "outputSchema" not in clients[0].turn_params[1]
+    assert clients[0].turn_params[1]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+
+    # 3. Shared multi-scene backend also works for existing reading passes like quick_critique.
+    manager.submit(
+        cid,
+        client_request_id="quick-multi-1",
+        question="",
+        action_id="quick_critique",
+        action_scope="scenes",
+        scenes=["01-one.md", "02-two.md"],
+    )
+    _wait_for(lambda: len(clients[0].prompts) >= 3)
+    quick_multi = clients[0].prompts[2]
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/01-one.md"' in quick_multi
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/02-two.md"' in quick_multi
+    manager.close()
+
+

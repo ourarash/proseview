@@ -6955,6 +6955,81 @@ def test_deepen_and_layer_across_scene_and_selection_surfaces(page: Page, server
     assert sent_critique["selection"] == "yesterday's receipts"
 
 
+def test_craft_review_card_customizes_book_lens_and_multi_scene_scope(page: Page, server: ProseviewServer):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.wait_for_selector(".discuss-story-action")
+
+    assert page.locator(".discuss-story-action", has_text="McKee scene check").count() == 0
+    card = page.locator(".discuss-story-action", has_text="Craft review")
+    assert card.is_visible()
+    card.click()
+
+    page.wait_for_selector(".discuss-craft-setup")
+    assert page.locator("#discussSend").inner_text() == "Run craft review"
+
+    # Info button opens a dedicated modal for that book, with tabs diving into each lane + examples.
+    cron_card = page.locator(".discuss-craft-lens[data-lens='craft_cron']")
+    cron_card.locator(".discuss-craft-info-btn").click()
+    info_dialog = page.locator("#discussCraftInfoDialog")
+    assert info_dialog.is_visible()
+    assert info_dialog.evaluate("el => el.open && el.matches(':modal') && el.dataset.lens === 'craft_cron'")
+    assert info_dialog.bounding_box()["width"] >= 500
+    assert "Story Genius" in info_dialog.inner_text()
+    assert "Lisa Cron" in info_dialog.inner_text()
+    # Tabs belong to Story Genius's lanes, not other books.
+    assert info_dialog.locator(".discuss-craft-dialog-tab", has_text="On Writing").count() == 0
+    assert info_dialog.locator(".discuss-craft-dialog-tab").count() == 5
+    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Blind Spot").click()
+    lane_text = info_dialog.inner_text()
+    assert "Flawed Belief Shown in Action" in lane_text
+    assert "Example in a scene" in lane_text
+    assert "Misbelief on the Page" not in lane_text
+    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Blind Spot").press("ArrowRight")
+    assert "Hits Their Sore Spot" in info_dialog.inner_text()
+    info_dialog.locator(".discuss-craft-info-close").click()
+    assert not info_dialog.is_visible()
+    assert page.locator(".discuss-craft-lens[data-lens='craft_mckee'] .discuss-craft-lens-pick").get_attribute("aria-pressed") == "true"
+
+    # Selecting Coyne defaults to This chapter; switching to Pick scenes… lets user customize scenes.
+    page.locator(".discuss-craft-lens[data-lens='craft_coyne'] .discuss-craft-lens-pick").click()
+    assert page.locator(".discuss-craft-scope-btn[data-scope='this_chapter']").get_attribute("aria-pressed") == "true"
+
+    page.locator(".discuss-craft-scope-btn[data-scope='custom']").click()
+    checkboxes = page.locator(".discuss-craft-custom-item input[type='checkbox']")
+    assert checkboxes.count() >= 2
+    if not checkboxes.nth(1).is_checked():
+        checkboxes.nth(1).check()
+
+    # Switching lens after picking custom scenes keeps the custom scene selection intact.
+    page.locator(".discuss-craft-lens[data-lens='craft_king'] .discuss-craft-lens-pick").click()
+    assert page.locator(".discuss-craft-scope-btn[data-scope='custom']").get_attribute("aria-pressed") == "true"
+    page.locator(".discuss-craft-lens[data-lens='craft_coyne'] .discuss-craft-lens-pick").click()
+    assert page.locator(".discuss-craft-scope-btn[data-scope='custom']").get_attribute("aria-pressed") == "true"
+
+    page.fill("#discussInput", "Focus only on value shifts.")
+    page.click("#discussSend")
+
+    wait_for_discuss_answer(page, "Fake answer")
+    sent = question_requests[-1]
+    assert sent["action_id"] == "craft_coyne"
+    assert sent["action_scope"] == "scenes"
+    assert len(sent["scenes"]) >= 2
+    assert sent["custom_instruction"] == "Focus only on value shifts."
+    asked = page.locator(".discuss-message.user").last.inner_text()
+    assert "Story Grid checklist" in asked
+    assert "Focus only on value shifts." in asked
+    assert page.locator(".discuss-task").count() == 0
+
+
 
 def test_quick_critique_queues_while_another_tab_restores_history(
     page: Page, server: ProseviewServer

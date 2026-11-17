@@ -922,6 +922,24 @@
             <div id="discussHistoryList" class="discuss-history-list"></div>
         </form>
     </dialog>
+    <dialog id="discussCraftInfoDialog" class="discuss-craft-info-dialog" aria-labelledby="discussCraftInfoTitle" aria-describedby="discussCraftInfoSubtitle">
+        <div class="discuss-craft-dialog-head">
+            <div class="discuss-craft-dialog-titlewrap">
+                <h2 id="discussCraftInfoTitle"></h2>
+                <p id="discussCraftInfoSubtitle" class="discuss-craft-dialog-subtitle"></p>
+            </div>
+            <button type="button" id="discussCraftInfoClose" class="ledger-close discuss-craft-info-close" onclick="closeDiscussCraftInfoDialog()" aria-label="Close craft guide">&times;</button>
+        </div>
+        <div id="discussCraftInfoTabs" class="discuss-craft-dialog-tabs" role="tablist" aria-label="Book lanes"></div>
+        <div id="discussCraftInfoBody" class="discuss-craft-dialog-body" role="tabpanel"></div>
+        <div class="discuss-craft-dialog-foot">
+            <span class="discuss-craft-dialog-note">Read-only · Analyzes full prose of selected scenes</span>
+            <div class="discuss-craft-dialog-actions">
+                <button type="button" id="discussCraftInfoUseBtn" class="discuss-primary"></button>
+                <button type="button" class="discuss-secondary" onclick="closeDiscussCraftInfoDialog()">Done</button>
+            </div>
+        </div>
+    </dialog>
 
     <datalist id="calloutTypeOptions">{% for kind in callout_types %}<option value="{{ kind }}"></option>{% endfor %}</datalist>
     <script id="proseview-data">

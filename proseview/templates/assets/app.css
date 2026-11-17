@@ -5866,6 +5866,517 @@
             line-height: 1.4;
         }
 
+        .discuss-craft-setup {
+            text-align: left;
+            display: grid;
+            gap: 10px;
+        }
+
+        .discuss-craft-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .discuss-craft-head-text strong {
+            margin-bottom: 2px;
+        }
+
+        .discuss-craft-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-back {
+            padding: 4px 8px;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .discuss-craft-section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .discuss-craft-section-head .discuss-story-group {
+            margin: 0;
+        }
+
+        .discuss-craft-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-lens-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        @media (max-width: 520px) {
+            .discuss-craft-lens-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .discuss-craft-lens {
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--surface-card);
+            padding: 8px 9px;
+        }
+
+        .discuss-craft-lens:hover {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 4%, var(--surface-card));
+        }
+
+        .discuss-craft-lens.is-selected {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 9%, var(--surface-card));
+        }
+
+        .discuss-craft-lens-pick {
+            flex: 1 1 auto;
+            min-width: 0;
+            background: none;
+            border: 0;
+            padding: 0;
+            text-align: left;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .discuss-craft-lens-title {
+            font-size: 11.5px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .discuss-craft-lens-copy {
+            margin-top: 2px;
+            font-size: 10.5px;
+            line-height: 1.35;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-info-btn {
+            flex-shrink: 0;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface-muted);
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .discuss-craft-info-btn:hover,
+        .discuss-craft-info-btn.is-open {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .discuss-craft-info-dialog {
+            width: min(740px, calc(100vw - 32px));
+            max-height: calc(100vh - 40px);
+            padding: 20px 24px 18px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            box-shadow: 0 22px 70px rgba(15, 23, 42, .32);
+            font-size: 13px;
+            overflow-y: auto;
+        }
+
+        .discuss-craft-info-dialog::backdrop {
+            background: rgba(15, 23, 42, .48);
+            backdrop-filter: blur(2px);
+        }
+
+        .discuss-craft-dialog-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .discuss-craft-dialog-titlewrap h2 {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.25;
+        }
+
+        .discuss-craft-dialog-subtitle {
+            margin: 3px 0 0;
+            font-size: 12.5px;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-dialog-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 6px;
+            margin-top: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .discuss-craft-dialog-tab {
+            padding: 7px 10px;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            background: none;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .discuss-craft-dialog-tab:hover {
+            color: var(--text-main);
+        }
+
+        .discuss-craft-dialog-tab.is-active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .discuss-craft-dialog-body {
+            display: grid;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .discuss-craft-info-thesis {
+            margin: 0;
+            font-size: 13.5px;
+            line-height: 1.55;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-lane-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (max-width: 620px) {
+            .discuss-craft-lane-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .discuss-craft-lane-card {
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 10px 12px;
+            background: var(--surface-card);
+            text-align: left;
+            font: inherit;
+            color: var(--text-main);
+            cursor: pointer;
+            display: grid;
+            gap: 4px;
+            align-content: start;
+        }
+
+        .discuss-craft-lane-card:hover {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 5%, var(--surface-card));
+        }
+
+        .discuss-craft-lane-top {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .discuss-craft-lane-name {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-lane-more {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--primary);
+            white-space: nowrap;
+        }
+
+        .discuss-craft-lane-detail-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .discuss-craft-lane-detail-head h3 {
+            margin: 0;
+            font-size: 15px;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-lane-focus-btn {
+            border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--primary) 9%, var(--surface-card));
+            color: var(--primary);
+            font: inherit;
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+
+        .discuss-craft-lane-focus-btn:hover {
+            background: color-mix(in srgb, var(--primary) 16%, var(--surface-card));
+        }
+
+        .discuss-craft-example {
+            display: grid;
+            gap: 7px;
+        }
+
+        .discuss-craft-example-head {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 4px 10px;
+            font-size: 12px;
+        }
+
+        .discuss-craft-example-head strong {
+            display: inline;
+            margin: 0;
+        }
+
+        .discuss-craft-example-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (max-width: 620px) {
+            .discuss-craft-example-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .discuss-craft-example-card {
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 10px 12px;
+            background: var(--surface-muted);
+            display: grid;
+            gap: 5px;
+            align-content: start;
+        }
+
+        .discuss-craft-example-card.is-working {
+            border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+            background: color-mix(in srgb, var(--primary) 7%, var(--surface-card));
+        }
+
+        .discuss-craft-example-tag {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-example-card.is-working .discuss-craft-example-tag {
+            color: var(--primary);
+        }
+
+        .discuss-craft-example-copy {
+            font-size: 12.5px;
+            line-height: 1.5;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-example-why {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+
+        .discuss-craft-example-why strong {
+            display: inline;
+            margin: 0;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-dialog-section-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-ai-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (max-width: 620px) {
+            .discuss-craft-ai-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .discuss-craft-ai-box {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 9px 11px;
+            background: var(--surface-card);
+            display: grid;
+            gap: 3px;
+            align-content: start;
+        }
+
+        .discuss-craft-ai-box strong {
+            display: inline;
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-check-desc {
+            font-size: 12px;
+            line-height: 1.44;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-info-guidance {
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            display: grid;
+            gap: 4px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .discuss-craft-info-best strong,
+        .discuss-craft-info-skip strong {
+            display: inline;
+            margin: 0;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-dialog-foot {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .discuss-craft-dialog-note {
+            font-size: 11.5px;
+            color: var(--text-muted);
+        }
+
+        .discuss-craft-dialog-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .discuss-craft-dialog-actions button {
+            padding: 6px 12px;
+        }
+
+        .discuss-craft-scope-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .discuss-craft-scope-btn {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            padding: 7px 9px;
+            text-align: left;
+            cursor: pointer;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-scope-btn.is-selected {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 9%, var(--surface-card));
+        }
+
+        .discuss-craft-scope-label {
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
+        .discuss-craft-scope-hint {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+
+        .discuss-craft-custom-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            padding: 6px 8px;
+            display: grid;
+            gap: 4px;
+        }
+
+        .discuss-craft-custom-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 2px 0;
+        }
+
+        .discuss-craft-custom-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-custom-words {
+            flex-shrink: 0;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
         .discuss-message {
             margin: 0 0 16px;
         }

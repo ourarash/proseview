@@ -51,7 +51,7 @@ from .repo import (
 )
 from .highlights import compute_scene_highlights, strip_markdown_for_offsets
 from .lexical import build_content_stopwords, glue_share_pct, prose_only, top_repeated_content_words
-from .scenes import extract_scene_text, resolve_manuscript_dir, split_frontmatter
+from .scenes import extract_scene_text, iter_scene_paths, resolve_manuscript_dir, split_frontmatter
 from . import suggestions as suggestions_module
 from .suggestions import RoomAppSettings, RoomHistoryStore, SuggestionAppSettings
 
@@ -487,6 +487,24 @@ ACTION_DEFINITIONS: dict[str, dict[str, Any]] = {
     "next_beats": {
         "label": "Next beats", "kind": "critique", "count": 4,
     },
+    "craft_mckee": {
+        "label": "McKee · Story", "kind": "critique", "count": 6,
+    },
+    "craft_cron": {
+        "label": "Cron · Story Genius", "kind": "critique", "count": 4,
+    },
+    "craft_coyne": {
+        "label": "Coyne · The Story Grid", "kind": "critique", "count": 5,
+    },
+    "craft_snyder": {
+        "label": "Snyder · Save the Cat!", "kind": "critique", "count": 4,
+    },
+    "craft_king": {
+        "label": "King · On Writing", "kind": "critique", "count": 4,
+    },
+    "craft_lamott": {
+        "label": "Lamott · Bird by Bird", "kind": "critique", "count": 4,
+    },
 }
 
 
@@ -864,6 +882,7 @@ class ContextBuilder:
         attachments: list[dict[str, Any]] | None = None,
         include_current_document: bool = True,
         current_document_content: str | None = None,
+        beatmap_paths: list[str] | None = None,
     ) -> ContextBundle:
         question = str(question or "").strip()
         if not question:
@@ -920,17 +939,26 @@ class ContextBuilder:
             "optionally followed by #L<number>; never use an absolute filesystem path.",
             " Answer in prose unless this turn supplies an output schema.",
         ]
-        beatmap_text = ""
-        if document.get("kind") == "scene":
+        beatmap_chunks: list[str] = []
+        bm_targets = (
+            list(beatmap_paths)
+            if beatmap_paths is not None
+            else ([str(document.get("path") or "")] if document.get("kind") == "scene" else [])
+        )
+        for bm_path in bm_targets:
+            if not bm_path:
+                continue
             try:
                 from .beatmap import format_beatmap_for_context, get_scene_beatmap
-                res = get_scene_beatmap(self.root, str(document.get("path") or ""))
+                res = get_scene_beatmap(self.root, str(bm_path))
                 if res.get("has_map") and res.get("beatmap"):
-                    beatmap_text = format_beatmap_for_context(res["beatmap"])
+                    formatted = format_beatmap_for_context(res["beatmap"])
+                    if formatted:
+                        beatmap_chunks.append(formatted)
             except Exception:
                 pass
-        if beatmap_text:
-            prefix_parts.extend(["\n\n", beatmap_text])
+        if beatmap_chunks:
+            prefix_parts.extend(["\n\n", "\n\n".join(beatmap_chunks)])
         if selection:
             prefix_parts.extend(["\n\nBEGIN USER SELECTION\n", selection, "\nEND USER SELECTION"])
         if notes:
@@ -2930,6 +2958,62 @@ class DiscussManager:
         snapshot["root"] = str(self.root)
         return snapshot
 
+    def _resolve_scene_paths(self, scenes: Any) -> list[Path]:
+        """Validate and deduplicate a list of manuscript scene paths in order."""
+        if not isinstance(scenes, list) or not scenes:
+            raise ContextError("scenes must be a non-empty list of scene paths")
+        resolved: list[Path] = []
+        seen: set[str] = set()
+        for raw_path in scenes:
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                raise ContextError("each scene path must be a non-empty string")
+            target = self.context._document_target({"kind": "scene", "path": raw_path.strip()}).resolve()
+            if not target.is_file():
+                raise ContextError(f"scene not found: {raw_path.strip()}")
+            key = target.as_posix()
+            if key not in seen:
+                seen.add(key)
+                resolved.append(target)
+        if len(resolved) > self.context.max_files:
+            raise ContextError(f"context includes more than {self.context.max_files} files")
+        return resolved
+
+    def _multi_scene_notes(
+        self,
+        scene_paths: list[Path],
+        *,
+        action_id: str,
+        live_target: Path | None = None,
+        live_content: str | None = None,
+    ) -> str:
+        """Assemble ordered scene manifest, frontmatter, and style hits for multi-scene passes."""
+        lines = ["Selected scenes in order:"]
+        style_rows: list[str] = []
+        for idx, path in enumerate(scene_paths, 1):
+            rel = path.relative_to(self.root).as_posix()
+            raw = (
+                live_content
+                if live_content is not None and live_target is not None and path == live_target
+                else read_repo_text(path)
+            )
+            fm, body = split_frontmatter(raw)
+            title = str((fm or {}).get("title") or "").strip() if isinstance(fm, dict) else ""
+            lines.append(f"{idx}. {rel}" + (f" — {title}" if title else ""))
+            if action_id == "style_consistency":
+                prose, _note = _scene_pass_body(raw)
+                for row in style_observations(prose, repeat_terms=self._repeat_terms(prose)):
+                    style_rows.append(f"- {rel} ({row['label']}): {row['quote']}")
+        if action_id == "style_consistency":
+            if not style_rows:
+                raise ContextError(
+                    "Prosview found nothing mechanical to flag across these scenes -- no passive constructions, "
+                    "filter verbs, repeated words, or point-of-view slips."
+                )
+            lines.append("")
+            lines.append("Mechanical style observations:")
+            lines.extend(style_rows)
+        return "\n".join(lines)
+
     def _action_turn(
         self,
         *,
@@ -2937,12 +3021,13 @@ class DiscussManager:
         action_id: str,
         selection: str,
         scope: str,
+        scenes: Any = None,
         selection_range: dict[str, Any] | None,
         selection_snapshot: dict[str, Any] | None,
         selection_source: dict[str, Any] | None,
         live_content: str | None,
         custom_instruction: str,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, list[dict[str, str]], list[str] | None]:
         """An action as an ordinary question: no schema, no card, no target.
 
         A critique writes nothing, so it never needed pinning. A rewrite does
@@ -2953,23 +3038,15 @@ class DiscussManager:
         spec = ACTION_DEFINITIONS[action_id]
         if document.get("kind") != "scene":
             raise ContextError("reading passes are available only for manuscript scenes")
-        if scope == "scene":
+        extra_attachments: list[dict[str, str]] = []
+        multi_paths: list[Path] | None = None
+        if scenes is not None:
             if spec["kind"] != "critique":
-                raise ContextError("only a reading pass can run on a whole scene")
+                raise ContextError("only a reading pass can run across scenes")
             if selection or selection_range or selection_snapshot or selection_source:
-                raise ContextError("a scene pass reads the whole scene and takes no selection")
-        else:
-            selection = _nonempty_string(selection, field="selection", limit=SELECTION_MAX)
-        selection, note, _range, _stat, _revision, raw = self._resolve_action_target(
-            document=document,
-            selection=selection,
-            scope=scope,
-            selection_range=selection_range,
-            selection_snapshot=selection_snapshot,
-            selection_source=selection_source,
-            live_content=live_content,
-            allow_empty_scene=(action_id == "next_beats"),
-        )
+                raise ContextError("a scene pass reads full scenes and takes no selection")
+            multi_paths = self._resolve_scene_paths(scenes)
+
         question = action_instruction(self.root, action_id)
         if not question:
             raise ContextError(f"The skill for {action_id} is missing or empty.")
@@ -2978,6 +3055,64 @@ class DiscussManager:
             if len(custom.encode("utf-8")) > QUESTION_MAX:
                 raise ContextError("custom instruction is too long")
             question += "\n\n" + custom
+
+        if multi_paths is not None and len(multi_paths) > 1:
+            live_target = self.context._document_target(document).resolve()
+            man_dir = resolve_manuscript_dir(self.root, self.context.cfg.manuscript_subdir).resolve()
+            extra_attachments = [
+                {"kind": "file", "path": path.relative_to(self.root).as_posix()}
+                for path in multi_paths
+            ]
+            notes = self._multi_scene_notes(
+                multi_paths,
+                action_id=action_id,
+                live_target=live_target,
+                live_content=live_content,
+            )
+            rel_list = ", ".join(item["path"] for item in extra_attachments)
+            question += (
+                f"\n\n(Scenes analyzed ({len(extra_attachments)}): {rel_list}. "
+                "Analyze the attached scenes in order. When citing lines or suggesting "
+                "replacements, include each scene's repository-relative path and line number, "
+                "such as `manuscript/scene.md · Line 12`.)"
+            )
+            beatmap_paths = [
+                path.relative_to(man_dir).as_posix()
+                for path in multi_paths
+                if path.is_relative_to(man_dir)
+            ]
+            return question, "", notes, extra_attachments, beatmap_paths
+
+        target_doc = dict(document)
+        target_live = live_content
+        beatmap_paths: list[str] | None = None
+        if multi_paths is not None and len(multi_paths) == 1:
+            man_dir = resolve_manuscript_dir(self.root, self.context.cfg.manuscript_subdir).resolve()
+            only_rel = multi_paths[0].relative_to(man_dir).as_posix()
+            if only_rel != document.get("path"):
+                target_doc = {"kind": "scene", "path": only_rel}
+                target_live = None
+                question += f"\n\n(Scene analyzed: {multi_paths[0].relative_to(self.root).as_posix()}.)"
+            beatmap_paths = [only_rel]
+            scope = "scene"
+
+        if scope == "scene":
+            if spec["kind"] != "critique":
+                raise ContextError("only a reading pass can run on a whole scene")
+            if selection or selection_range or selection_snapshot or selection_source:
+                raise ContextError("a scene pass reads the whole scene and takes no selection")
+        else:
+            selection = _nonempty_string(selection, field="selection", limit=SELECTION_MAX)
+        selection, note, _range, _stat, _revision, raw = self._resolve_action_target(
+            document=target_doc,
+            selection=selection,
+            scope=scope,
+            selection_range=selection_range,
+            selection_snapshot=selection_snapshot,
+            selection_source=selection_source,
+            live_content=target_live,
+            allow_empty_scene=(action_id == "next_beats"),
+        )
         if note:
             question += "\n\n(" + note + ")"
         notes = ""
@@ -2991,11 +3126,28 @@ class DiscussManager:
                 )
             notes = "\n".join(f"- {row['label']}: {row['quote']}" for row in observations)
         elif action_id == "next_beats":
-            notes = self._next_beats_notes(self.context._document_target(document), raw)
-        return question, selection, notes
+            notes = self._adjacent_scene_notes(self.context._document_target(target_doc), raw)
+        elif action_id in ("craft_mckee", "craft_coyne", "craft_snyder", "craft_cron"):
+            notes = self._adjacent_scene_notes(
+                self.context._document_target(target_doc), raw, include_next=True
+            )
+        elif action_id.startswith("craft_"):
+            notes = self._adjacent_scene_notes(self.context._document_target(target_doc), raw)
+        return question, selection, notes, extra_attachments, beatmap_paths
 
-    def _next_beats_notes(self, target_path: Path, raw: str) -> str:
-        """Assemble frontmatter, inline TODOs, and preceding scene tail for next_beats."""
+    @staticmethod
+    def _scene_edge_excerpt(scene_path: Path, *, head: bool = False) -> str:
+        """First or last two prose paragraphs of an adjacent manuscript scene."""
+        _fm, body = split_frontmatter(read_repo_text(scene_path))
+        prose = _SELECTION_HTML_COMMENT_RE.sub("", extract_scene_text(body)).strip()
+        paras = [p.strip() for p in re.split(r"\n\s*\n", prose) if p.strip()]
+        if not paras:
+            return ""
+        excerpt = "\n\n".join(paras[:2] if head else paras[-2:])
+        return _bounded_text(excerpt, 2000)
+
+    def _adjacent_scene_notes(self, target_path: Path, raw: str, *, include_next: bool = False) -> str:
+        """Assemble frontmatter, inline TODOs, and adjacent scene excerpts."""
         sections: list[str] = []
         fm, body = split_frontmatter(raw)
         fm_notes = _scene_frontmatter_notes(fm)
@@ -3012,22 +3164,21 @@ class DiscussManager:
             man_dir = resolve_manuscript_dir(self.root, self.context.cfg.manuscript_subdir).resolve()
             resolved_target = target_path.resolve()
             if resolved_target.is_relative_to(man_dir):
-                scene_files = [
-                    p.resolve()
-                    for p in sorted(man_dir.rglob("*.md"), key=lambda p: p.relative_to(man_dir).as_posix().lower())
-                    if p.is_file() and not any(part.startswith(".") for part in p.relative_to(man_dir).parts)
-                ]
+                scene_files = [p.resolve() for p in iter_scene_paths(man_dir)]
                 if resolved_target in scene_files:
                     idx = scene_files.index(resolved_target)
                     if idx > 0:
                         prev_path = scene_files[idx - 1]
-                        _prev_fm, prev_body = split_frontmatter(read_repo_text(prev_path))
-                        prev_prose = _SELECTION_HTML_COMMENT_RE.sub("", extract_scene_text(prev_body)).strip()
-                        prev_paras = [p.strip() for p in re.split(r"\n\s*\n", prev_prose) if p.strip()]
-                        if prev_paras:
-                            tail = "\n\n".join(prev_paras[-2:])
+                        tail = self._scene_edge_excerpt(prev_path, head=False)
+                        if tail:
                             rel_prev = prev_path.relative_to(man_dir).as_posix()
-                            sections.append(f"End of preceding scene ({rel_prev}):\n{_bounded_text(tail, 2000)}")
+                            sections.append(f"End of preceding scene ({rel_prev}):\n{tail}")
+                    if include_next and idx + 1 < len(scene_files):
+                        next_path = scene_files[idx + 1]
+                        opening = self._scene_edge_excerpt(next_path, head=True)
+                        if opening:
+                            rel_next = next_path.relative_to(man_dir).as_posix()
+                            sections.append(f"Opening of next scene ({rel_next}):\n{opening}")
         except OSError:
             pass
         return "\n\n".join(sections)
@@ -3676,6 +3827,7 @@ class DiscussManager:
         include_current_document: bool = True,
         action_id: str = "",
         action_scope: str = "selection",
+        scenes: list[str] | None = None,
         custom_instruction: str = "",
         skill: dict[str, Any] | None = None,
         retry_of_task_id: str = "",
@@ -3753,9 +3905,13 @@ class DiscussManager:
         output_schema = None
         skill_item = None
         action_notes = ""
+        action_attachments: list[dict[str, str]] = []
+        action_beatmap_paths: list[str] | None = None
         visible_question = question
         live_content = self._validated_live_document(turn_document, live_document)
         bundle: ContextBundle | None = None
+        if scenes is not None and (action_id not in ACTION_DEFINITIONS or ACTION_DEFINITIONS[action_id]["kind"] != "critique"):
+            raise ContextError("multi-scene selection is available only for reading passes")
         if action_id in REPOSITORY_ACTION_DEFINITIONS:
             if selection or selection_range or live_document or attachments or skill:
                 raise ContextError("repository continuity actions use their configured read-only story scope")
@@ -3773,11 +3929,12 @@ class DiscussManager:
             # and stopping at an approval the writer can see.
             if verify_of_task_id or retry_parent:
                 raise ContextError("an action is an ordinary question and has nothing to retry")
-            visible_question, selection, action_notes = self._action_turn(
+            visible_question, selection, action_notes, action_attachments, action_beatmap_paths = self._action_turn(
                 document=turn_document,
                 action_id=action_id,
                 selection=selection,
                 scope=action_scope,
+                scenes=scenes,
                 selection_range=selection_range,
                 selection_snapshot=selection_snapshot,
                 selection_source=selection_source,
@@ -3824,14 +3981,20 @@ class DiscussManager:
                 unsaved_content=live_content,
             )
         if bundle is None:
+            merged_attachments = [*action_attachments, *(attachments or [])]
             bundle = self.context.build(
                 turn_document,
                 visible_question,
                 selection=selection,
                 notes=action_notes,
-                attachments=attachments,
-                include_current_document=include_current_document,
+                attachments=merged_attachments,
+                include_current_document=(
+                    False
+                    if (action_id in ACTION_DEFINITIONS and scenes is not None)
+                    else include_current_document
+                ),
                 current_document_content=live_content,
+                beatmap_paths=action_beatmap_paths,
             )
         # A pass that exists to report stays sandboxed read-only. Everything
         # else may write, because the writer asked for something to be done and

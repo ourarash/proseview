@@ -51,15 +51,18 @@ Three places where AI shows up, all opt-in:
    needs a decision, and the browser tab title says which agent is working or
    waiting whenever the dock is closed or the window is in the background.
 
-   Every button is a shortcut to a skill. Proseview copies its defaults into
-   `.proseview/skills/` the first time it runs in a repository, and from then on the file
-   is yours: edit `.proseview/skills/quick_critique/SKILL.md` and Quick critique says what
-   you wrote. Delete one and it stays deleted. That file also owns the sentence
-   the button shows about itself — the `description:` line in its frontmatter,
-   which is what the cards below explain themselves with; reopen the dock and
-   the card reads back what you wrote. The wording that ships lives in the same
-   format under `proseview/skills/` in the Proseview repository, so there is one
-   place to read and one place to change.
+   Every button is a shortcut to a skill supplied by Proseview. Built-in prompts
+   stay with the app and receive its updates. Settings → Discuss lets you change
+   a prompt for this book; only your override is saved in `.proseview.yaml`.
+   You can also deliberately take over a skill by creating
+   `.proseview/skills/quick_critique/SKILL.md` (or using your configured skills
+   directory). Prompt precedence is YAML override, writer-owned skill file,
+   then Proseview's built-in prompt. A writer-owned file can also customize the
+   card's `description:` in its frontmatter.
+
+   On the first run after this change, Proseview removes recognized untouched
+   copies installed by older versions. Body-only edits are preserved as YAML
+   overrides. Skills with custom metadata or supporting files remain writer-owned.
 
    Reading passes — critiques from the selection pill, and the scene passes
    below — are ordinary questions with ordinary answers. Nothing they return is
@@ -69,17 +72,47 @@ Three places where AI shows up, all opt-in:
    Rewrites are different, because their answer is prose that gets applied to
    your draft; those keep their card and their exact target.
 
-   Opening the dock on a scene offers passes over that scene, one click and no
-   typing. **Quick critique** returns evidence-linked findings, each quoting
-   the line it came from and suggesting a fix. **Style and consistency** works
-   differently: Proseview's own analysis finds the passive constructions, filter verbs,
-   repeated words and point-of-view slips first, and the agent only decides
-   which of them weaken the scene and which are the narrator's voice. It can
-   neither miss what the analysis found nor report anything the analysis did
-   not, and on prose with nothing mechanical to flag it says so without
-   starting a turn at all.
+   Opening the dock on a scene offers four review types. Click a card to run
+   with defaults, or choose Customize to select this scene, its neighbors, the chapter, or a custom selection;
+   then choose one or several feedback lanes. **Quick critique** returns evidence-linked findings, each quoting
+   the line it came from and suggesting a fix. **Deepen & layer** explores places
+   where a scene could carry more tension or emotional detail. **Craft review**
+   lets you choose a writing book and the principles to examine. **Comedy review**
+   examines the comic idea, character, delivery, and timing. Every lane has
+   a short description and an information button with explanations and before/after
+   examples. Lane labels in the feedback open the matching guide.
 
-   Discuss also has evidence-first continuity actions. **Trace a canon
+   Scene selection, context toggles, and one-time instructions carry across review
+   types. Lane choices are remembered separately for each review type and book.
+   Story facts and purpose are saved per scene and reused across review types and
+   providers. All selected scenes are supplied in full, with source line numbers;
+   neighboring excerpts are optional background for a single-scene review.
+   **Check my notes for planned beats** is off by default: notes provide background.
+   Turn it on to compare the draft with beats planned in frontmatter, beat maps,
+   or TODO notes. The request receipt and context inspector show that choice.
+
+   Comedy review has ten lanes: truth and pain; comic premise and perspective;
+   character and status; deadpan and subtext; setup and surprise; escalation and
+   callbacks; specificity and detail; timing and wording; tone and target; and
+   violation and distance. The guides explain the techniques with original
+   before/after examples, another example, a short exercise, and context for
+   deciding when the technique helps. Book references are available in the
+   guide; benign violation is credited separately to McGraw and Warren.
+
+   Combine **Dark comedy**, **Sarcasm**, and **Dry / deadpan**, or leave the styles
+   clear to follow the draft. Styles guide how the selected lanes are read;
+   they do not add extra lanes. Both goals are selected by default:
+   **Strengthen existing humor** preserves passages that need to stay serious,
+   while **Find comic opportunities** asks for optional additions that serve the
+   scene. Select either goal or both.
+   Combined reviews label each finding as strengthening existing humor or proposing
+   a comic opportunity, with one shared priority limit across both goals and the selection.
+   Findings include source quotes, lane labels,
+   explanations, and concrete optional revisions. Comic options remain selected
+   when switching review types and are sent only with Comedy review.
+
+   The collapsed **Continuity tools** section contains two occasional revision
+   actions. **Trace a canon
    change** scans the configured manuscript and repository-tab folders,
    separates direct contradictions from ambiguous and likely intentional
    references, and cites the exact file, line, and passage for every finding.

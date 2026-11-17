@@ -26,11 +26,75 @@
         var _discussRepositoryAction = null;
         var _discussCraftState = {
             active: false,
+            cardsOpen: false,
+            modeId: 'craft_review',
             lensId: _readCraftLensPref(),
             scopeMode: 'this_scene',
             customScenes: [],
-            openInfoId: null
+            openInfoId: null,
+            focusMenuOpen: false,
+            selectedLanes: Object.create(null),
+            comedyStyles: [],
+            comedyGoals: ['strengthen', 'explore'],
+            instructions: '',
+            chatDraft: '',
+            contextScenePath: '',
+            scenePath: '',
+            includeFrontmatter: null,
+            includeAdjacent: null,
+            // Off unless the writer asks: notes go stale quietly, and a planned
+            // beat they dropped should not lead every review.
+            checkPlan: false,
+            // How many revision priorities a custom review may give. The cards'
+            // Run now always uses the default.
+            maxFindings: DISCUSS_DEFAULT_MAX_FINDINGS,
+            storyContexts: Object.create(null),
+            storyContextLoaded: Object.create(null),
+            storyContextVersions: Object.create(null),
+            storyContextTimers: Object.create(null),
+            storyContextSaves: Object.create(null),
+            storyContextStatuses: Object.create(null),
+            storyContextOpen: null
         };
+        var _discussContextDefaultsLoading = null;
+        function _discussDefaultFlag(key) {
+            var bag = window._discussContextDefaults;
+            return bag && typeof bag[key] === 'boolean' ? bag[key] : true;
+        }
+        function effectiveDiscussFrontmatter() {
+            return _discussCraftState.includeFrontmatter === null
+                ? _discussDefaultFlag('includeFrontmatter')
+                : !!_discussCraftState.includeFrontmatter;
+        }
+        function effectiveDiscussAdjacent() {
+            return _discussCraftState.includeAdjacent === null
+                ? _discussDefaultFlag('includeAdjacent')
+                : !!_discussCraftState.includeAdjacent;
+        }
+        function _ensureDiscussContextDefaults() {
+            if (window._discussContextDefaults) return Promise.resolve();
+            if (_discussContextDefaultsLoading) return _discussContextDefaultsLoading;
+            _discussContextDefaultsLoading = discussApi('/api/discuss/discuss-settings').then(function(data) {
+                var book = (data && data.settings && data.settings.book) || {};
+                window._discussContextDefaults = {
+                    includeFrontmatter: book.include_frontmatter !== false,
+                    includeAdjacent: book.include_adjacent_scenes !== false
+                };
+                if (_discussCraftState.active) {
+                    renderDiscussTaskMode();
+                    renderDiscussSnapshot();
+                }
+            }).finally(function() { _discussContextDefaultsLoading = null; });
+            return _discussContextDefaultsLoading;
+        }
+        function openDiscussSettings() {
+            var dlg = document.getElementById('settingsDialog');
+            if (dlg && dlg.parentElement !== document.body) document.body.appendChild(dlg);
+            if (typeof openSettings === 'function') openSettings();
+            if (typeof selectSettingsTab === 'function') selectSettingsTab('discuss');
+            var tab = document.getElementById('settingsTabDiscuss');
+            if (tab) tab.focus({preventScroll: true});
+        }
         function _readCraftLensPref() {
             try {
                 var saved = localStorage.getItem('proseview-craft-lens');
@@ -60,7 +124,7 @@
         // Reading passes are ordinary questions: no schema, no card, and the
         // thing they read stays attached so a follow-up can refer to it.
         const DISCUSS_READING_ACTIONS = [
-            'quick_critique', 'deepen_and_layer', 'style_consistency', 'voice_character',
+            'quick_critique', 'deepen_and_layer', 'comedy_review', 'style_consistency', 'voice_character',
             'pacing_tension', 'clarity_flow', 'continuity', 'next_beats',
             'craft_mckee', 'craft_cron', 'craft_coyne', 'craft_snyder', 'craft_king', 'craft_lamott'
         ];
@@ -71,11 +135,9 @@
         // list is repetition: these get run on the same scene in draft two and
         // again in draft five.
         //
-        // What each card *says* belongs to its skill file, which the writer
-        // owns and can rewrite -- `description:` in the SKILL.md frontmatter,
-        // served by /api/discuss/actions. The wording here is the last resort:
-        // it stands in until that answer lands, and for a skill file whose
-        // frontmatter has no description line at all.
+        // Card descriptions come from the effective skill, served by
+        // /api/discuss/actions. Bundled copy stands in while that answer loads
+        // or when a writer-owned skill has no description.
         const DISCUSS_SCENE_PASSES = [
             {
                 id: 'quick_critique',
@@ -88,394 +150,14 @@
                 copy: 'Add unspoken tension, physical micro-business, and emotional resonance in 2–3 key beats.'
             },
             {
-                id: 'style_consistency',
-                label: 'Style and consistency',
-                copy: 'Proseview finds the passives, filter verbs and echoes. The agent says which ones hurt.'
-            },
-            {
-                id: 'next_beats',
-                label: 'Next beats',
-                copy: 'Concrete possibilities for what happens next in this scene, without writing the prose for you.'
-            },
-            {
                 id: 'craft_review',
                 label: 'Craft review',
-                copy: 'Analyze one or more scenes through a craft book lens (McKee, Story Grid, Save the Cat!, Story Genius, King, Lamott).',
-                configure: true
-            }
-        ];
-        const DISCUSS_CRAFT_LENSES = [
-            {
-                id: 'craft_mckee',
-                label: 'McKee · Story',
-                author: 'Robert McKee',
-                book: 'Story',
-                subtitle: 'Active desire, pushback & something meaningful changing',
-                tagline: 'Goal, resistance, shifted tactics & real change by scene end',
-                defaultScope: 'this_scene',
-                thesis: 'McKee says a scene is not a mood piece or an info handoff—it is a unit of change. A character walks in wanting something, hits real resistance that surprises them, pivots tactics, and leaves in a noticeably different state.',
-                lanes: [
-                    {
-                        id: 'want',
-                        tab: '1. Clear Want',
-                        title: 'Clear Want (Objective)',
-                        brief: 'Viewpoint character enters trying to get or protect something specific right now.',
-                        summary: 'Does the viewpoint character enter the scene trying to get or protect something concrete right now? Wants hidden only inside backstory or private thoughts do not create friction in the group.',
-                        flat: 'Devon sits at the café table thinking about how lonely he has felt since the trial.',
-                        working: 'Devon slides his phone across the table before Claire can order: "Tell me who gave you that address."',
-                        why: 'A visible goal forces the other person to react immediately.',
-                        spot: 'Marks [ ] if the character mostly drifts, observes, or vents privately without pursuing a goal.',
-                        fix: 'Suggests one concrete opening demand or aim for the start of the scene.'
-                    },
-                    {
-                        id: 'pushback',
-                        tab: '2. Pushback',
-                        title: 'Real Pushback (Antagonism)',
-                        brief: 'People, deadlines, or inner conflict block an easy win.',
-                        summary: 'Something must push back hard enough to block an easy win—another person’s competing goal, a ticking clock, or the character’s own conflicting loyalty.',
-                        flat: '"Can I borrow your badge?" "Sure, just put it back before five."',
-                        working: '"Can I borrow your badge?" "Last time I covered for you, I nearly lost my pension. Give me one reason."',
-                        why: 'Even allies push back when a favor puts them at real risk.',
-                        spot: 'Marks [ ] if favors come too easily or nobody truly stands in the way.',
-                        fix: 'Gives the opposing character or situation a sharper stake to say no.'
-                    },
-                    {
-                        id: 'tactics',
-                        tab: '3. Surprise & Pivot',
-                        title: 'Surprise & New Tactics',
-                        brief: 'Plan A surprises them, forcing a genuine tactical switch.',
-                        summary: 'When Plan A collides with unexpected resistance (what McKee calls "the Gap" between expectation and reality), the character has to adapt and try a new move rather than repeating the same argument.',
-                        flat: 'Maren asks for the key three times in slightly different polite ways until Tomas gives in.',
-                        working: 'Flattery fails—Tomas already changed the lock. Maren drops her smile and slides the unpaid invoice across the desk.',
-                        why: 'Switching from charm to leverage shows who she really is under pressure.',
-                        spot: 'Marks [ ] if beats loop on the same tactic at the same intensity.',
-                        fix: 'Proposes a fresh mid-scene pivot when the first attempt hits a wall.'
-                    },
-                    {
-                        id: 'shift',
-                        tab: '4. Scene Shift',
-                        title: 'Meaningful Shift & Hook',
-                        brief: 'Opening and ending states clearly differ, propelling what comes next.',
-                        summary: 'Something real in the character’s situation—trust vs. suspicion, safety vs. trap, hope vs. dread—must flip by the closing beat so the scene changes the trajectory of the story.',
-                        flat: 'They argue for three pages, stay annoyed with each other, and agree to talk tomorrow.',
-                        working: 'They arrive as uneasy partners; she leaves pocketing the spare key without telling him.',
-                        why: 'A real shift makes the scene load-bearing rather than removable.',
-                        spot: 'Marks [ ] if the closing state matches the opening state.',
-                        fix: 'Rewrites the final beat so something irreversible flips or locks in.'
-                    }
-                ],
-                bestFor: 'Talky or "and then" scenes where characters exchange lines without anything actually changing.',
-                skipWhen: 'You are sketching an early rough draft just to get words flowing (use Lamott instead).'
+                copy: 'Apply a writing book’s principles, with specific feedback and small next steps.'
             },
             {
-                id: 'craft_cron',
-                label: 'Cron · Story Genius',
-                author: 'Lisa Cron',
-                book: 'Story Genius',
-                subtitle: 'How the character’s blind spot drives the scene',
-                tagline: 'Flawed belief, emotional sore spot & internal cost in the scene',
-                defaultScope: 'this_scene',
-                thesis: 'External plot trouble only hooks readers when it collides with a character’s specific blind spot—the false lesson they built from past hurt (like "never trust favors"). Without that inner lens, any generic hero could swap into the scene.',
-                lanes: [
-                    {
-                        id: 'blind_spot',
-                        tab: '1. Blind Spot',
-                        title: 'Flawed Belief Shown in Action',
-                        brief: 'Their false assumption visibly skews what they notice or misread in this scene.',
-                        summary: 'We must actually see the character’s false survival rule shape what they assume, suspect, or misread inside this scene’s draft text—not just know about it in your character notes.',
-                        flat: 'Elena reads the anonymous note, weighs the facts calmly, and drives to the warehouse.',
-                        working: 'Living by "everyone wants leverage," Elena checks the return envelope for blackmail before she even reads the warning.',
-                        why: 'Her emotional filter turns a routine action into character insight.',
-                        spot: 'Marks [ ] if the character acts like a neutral plot reporter.',
-                        fix: 'Adds a brief reaction beat showing their bias skewing a line or clue.'
-                    },
-                    {
-                        id: 'sore_spot',
-                        tab: '2. Sore Spot',
-                        title: 'Hits Their Sore Spot',
-                        brief: 'Trouble presses this protagonist’s specific old nerve, not generic bad luck.',
-                        summary: 'Obstacles land harder when they poke the exact old wound this character is trying to protect—making external trouble feel personal rather than random.',
-                        flat: 'The courier arrives two hours late because traffic is backed up.',
-                        working: 'The courier hands the urgent file to Elena’s junior partner instead of her—pressing her fear of being pushed aside.',
-                        why: 'Now the delay threatens who she thinks she is, not just her schedule.',
-                        spot: 'Marks [ ] if the obstacle could bother anyone equally and carries no personal sting.',
-                        fix: 'Adjusts the setback or another character’s remark so it hits their tender spot.'
-                    },
-                    {
-                        id: 'only_them',
-                        tab: '3. Personal Logic',
-                        title: 'Only-They-Would Choices',
-                        brief: 'Choices follow their protective armor, not tidy plot convenience.',
-                        summary: 'Under pressure, the character should choose what makes emotional sense for someone with their flaw—even if it complicates things—rather than acting smart simply because the plot needs it.',
-                        flat: 'To keep things safe, Jonah sensibly reports the broken lock to his captain.',
-                        working: 'Refusing to look incompetent in front of his crew, Jonah pockets the snapped pick and lies that the door was jammed.',
-                        why: 'Flaw-driven mistakes create natural trouble we instantly believe.',
-                        spot: 'Marks [ ] if choices feel engineered only to reach the next plot point.',
-                        fix: 'Replaces a generic smart move with one driven by protecting their flaw.'
-                    },
-                    {
-                        id: 'cost',
-                        tab: '4. Inner Cost',
-                        title: 'Visible Personal Cost',
-                        brief: 'Clinging to that blind spot visibly costs them—or begins to crack.',
-                        summary: 'By the closing beat, defending their flawed rule should cost them something real in the room—an ally, trust, peace of mind—or reality should start cracking the armor.',
-                        flat: 'Nadia brushes off the argument and walks out convinced she was right all along.',
-                        working: 'Nadia wins the argument on points—and sees her one loyal witness quietly close his notebook and step out.',
-                        why: 'Winning externally while paying internally deepens the scene.',
-                        spot: 'Marks [ ] if the character walks out emotionally untouched.',
-                        fix: 'Sharpens the ending beat to show the human price of holding on.'
-                    }
-                ],
-                bestFor: 'Scenes with plenty of external action where the protagonist still feels flat, generic, or emotionally distant.',
-                skipWhen: 'You mostly want line-by-line prose tightening or cutting filler words (use King instead).'
-            },
-            {
-                id: 'craft_coyne',
-                label: 'Coyne · The Story Grid',
-                author: 'Shawn Coyne',
-                book: 'The Story Grid',
-                subtitle: 'Scene structure, tough dilemmas & up/down beats',
-                tagline: 'Escalating trouble, hard choice, decisive act & + / - shifts',
-                defaultScope: 'this_chapter',
-                thesis: 'Built for developmental editing, Coyne tests each scene (and sequence of scenes) against five structural beats: something upsets normal balance, trouble escalates, the hero faces a hard dilemma, acts decisively, and ends at a changed positive (+) or negative (-) position.',
-                lanes: [
-                    {
-                        id: 'complications',
-                        tab: '1. Escalation',
-                        title: 'Inciting Trouble & Escalation',
-                        brief: 'Disruption lands clearly, and each complication raises pressure.',
-                        summary: 'An unexpected disruption upsets the opening situation early, and every obstacle afterward narrows the character’s options instead of lingering on small talk or repeating at one volume.',
-                        flat: 'Three pages of arrival, hanging coats, and catching up before the bad news is mentioned.',
-                        working: 'Coat still damp, Maya spots the shredded passport—and then hears sirens turning onto their street.',
-                        why: 'Stacking pressure removes padding and squeezes toward a choice.',
-                        spot: 'Marks [ ] if tension stalls or resets between beats.',
-                        fix: 'Cuts slow warm-up or tightens the sequence of complications.'
-                    },
-                    {
-                        id: 'crisis',
-                        tab: '2. Hard Dilemma',
-                        title: 'Crisis Choice (Two Tough Paths)',
-                        brief: 'Corners the hero between two bad options or two clashing goods.',
-                        summary: 'Complications must build to a genuine dilemma where no easy exit exists: choosing the lesser of two evils (both hurt) or sacrificing one real good to save another.',
-                        flat: 'Guards stop the wagon, ask nervous questions, check the papers, and wave them through.',
-                        working: 'Guard spots the banned stamp: hand over their winter medicine to bribe him (slow starvation) or attack now (blow cover for the city).',
-                        why: 'Forced sacrifice reveals what matters most to the character.',
-                        spot: 'Marks [ ] if the scene avoids an agonizing choice.',
-                        fix: 'Sharpens the decision point so both options carry a price.'
-                    },
-                    {
-                        id: 'climax',
-                        tab: '3. Decisive Act',
-                        title: 'Point-of-No-Return Action',
-                        brief: 'The hero acts or chooses directly in the scene rather than stalling.',
-                        summary: 'Once cornered by the dilemma, the character must make a visible, irreversible choice right there—never rescued by luck off-screen or letting the conversation trail off undecided.',
-                        flat: '"Let’s sleep on it and see what happens tomorrow," she sighed, closing the folder.',
-                        working: 'Without looking back at Tomas, Maya drops their last medicine vial into the guard’s palm.',
-                        why: 'An irreversible deed launches concrete consequences into the next beat.',
-                        spot: 'Marks [ ] if the character dodges, faints, or gets bailed out effortlessly.',
-                        fix: 'Turns a soft fade-out into one decisive choice or action.'
-                    },
-                    {
-                        id: 'polarity',
-                        tab: '4. + / - Shifts',
-                        title: 'Up / Down Polarity Audit',
-                        brief: 'Checks whether scenes swing between (+) hope and (-) danger.',
-                        summary: 'Tracks each scene’s opening-to-closing emotional/plot polarity across a chapter so consecutive scenes don’t flatline by ending on the exact same (+) or (-) note.',
-                        flat: 'Scene 1 goes uneasy (-) → bleak (-). Scene 2 also goes bleak (-) → still bleak (-).',
-                        working: 'Scene 1 flips false safety (+) → betrayal (-). Scene 2 scrapes from trapped (-) → costly escape (+).',
-                        why: 'Alternating positive and negative turns makes even quiet chapters feel propulsive.',
-                        spot: 'Flags consecutive scenes that land flat on the same charge.',
-                        fix: 'Maps + / - turns per scene and shows where to invert a flat ending.'
-                    }
-                ],
-                bestFor: 'Auditing a whole chapter to spot sagging middle scenes or moments where no hard choice was forced.',
-                skipWhen: 'You want warm, low-pressure help unlocking an early unfinished draft.'
-            },
-            {
-                id: 'craft_snyder',
-                label: 'Snyder · Save the Cat!',
-                author: 'Blake Snyder',
-                book: 'Save the Cat!',
-                subtitle: 'Keeping momentum fast, clear & hooked forward',
-                tagline: 'Backstory inside action, emotional turn & page-turn hooks',
-                defaultScope: 'this_chapter',
-                thesis: 'Snyder keeps reader energy high on every page: hide needed backstory inside live physical action instead of pausing to explain, flip the emotional direction from start to finish, and close with a hook into the next scene.',
-                lanes: [
-                    {
-                        id: 'exposition',
-                        tab: '1. Hide Setup',
-                        title: 'Backstory Inside Live Action',
-                        brief: 'Buries rules and history inside urgency instead of talking-head lectures.',
-                        summary: 'Never freeze a scene so someone can explain history or rules. Tuck necessary facts inside a physical task, ticking timer, humor, or argument so readers absorb setup while tension stays alive.',
-                        flat: 'Over coffee, Raj spends four paragraphs calmly explaining how the vault’s 90-second timer works.',
-                        working: 'Hands shaking on the lockpick, Raj hisses at Nia not to touch the brass handle during the 90-second reset.',
-                        why: 'We learn the exact same rule while sweating over footsteps in the hall.',
-                        spot: 'Flags static "talking heads" or calm info-dump paragraphs.',
-                        fix: 'Rewrites an explanation block inside urgent business or conflict.'
-                    },
-                    {
-                        id: 'emotion',
-                        tab: '2. Mood Flip',
-                        title: 'Emotional Flip (+ / -)',
-                        brief: 'Mood turns cleanly between opening line and closing line.',
-                        summary: 'Checks that the emotional charge visibly shifts from start to finish (confidence → panic, coldness → warmth, dread → dark resolve) rather than humming at one steady temperature.',
-                        flat: 'Two partners spend the scene trading mild sarcasm and walk out feeling mildly annoyed.',
-                        working: 'Sam walks in teasing his rival—and walks out quietly checking the deadbolt behind him.',
-                        why: 'Clear emotional contrast shows readers the scene mattered.',
-                        spot: 'Marks [ ] if emotional tone ends right where it began.',
-                        fix: 'Highlights where the feeling should pivot and sharpens the turn.'
-                    },
-                    {
-                        id: 'empathy',
-                        tab: '3. Active Hero',
-                        title: 'Active Trying Under Pressure',
-                        brief: 'Viewpoint character keeps probing, adapting, or taking risks.',
-                        summary: 'Readers connect to protagonists who actively try things under pressure—investigating, improvising, risking embarrassment—rather than standing by passively watching others talk.',
-                        flat: 'Leo leans by the door listening while two senior officers debate the whole raid plan.',
-                        working: 'While the officers argue, Leo quietly palms the spare radio key and checks the back stairwell.',
-                        why: 'An active lead holds curiosity even when someone else owns the group.',
-                        spot: 'Marks [ ] if the viewpoint character mostly watches without intervening.',
-                        fix: 'Gives the protagonist an active tactic or hidden goal in the group.'
-                    },
-                    {
-                        id: 'hook',
-                        tab: '4. Page Hook',
-                        title: 'Forward Page-Turn Hook',
-                        brief: 'Cuts sleepy wind-downs and ends on a sharp pull forward.',
-                        summary: 'Trims polite farewells or chore wrap-up after a scene has already made its point, landing instead on an unanswered question, new threat, or sudden decision.',
-                        flat: 'After the raid fails, they wash their mugs, lock up, and walk home in silence.',
-                        working: 'After the raid fails, Leo’s dead radio crackles with a voice that shouldn’t know this frequency.',
-                        why: 'Stopping on a forward question pulls the reader straight into the next scene.',
-                        spot: 'Marks [ ] if the last paragraphs coast after the main turn.',
-                        fix: 'Shows where to trim trailing beats and sharpens the closing hook.'
-                    }
-                ],
-                bestFor: 'Setup-heavy chapters, info-dumps, or dutiful transition scenes that sag.',
-                skipWhen: 'You are fine-tuning quiet literary voice nuances where punchy pacing beats feel forced.'
-            },
-            {
-                id: 'craft_king',
-                label: 'King · On Writing',
-                author: 'Stephen King',
-                book: 'On Writing',
-                subtitle: 'Honest human behavior & stripping prose clutter',
-                tagline: 'Unforced reactions, fewer adverbs/tags & leaner sentences',
-                defaultScope: 'this_scene',
-                thesis: 'King’s rule is simple: put believable people inside a tense spot and refuse to fake how they act or dress sentences up to sound impressive. Strip telling adverbs, clunky tags, and untimely backstory so action and speech speak directly.',
-                lanes: [
-                    {
-                        id: 'honesty',
-                        tab: '1. Honest Acts',
-                        title: 'Unforced Human Behavior',
-                        brief: 'Catches characters caving fast or speaking stiff plot exposition.',
-                        summary: 'Check whether people in the room actually act like human beings under stress—do they stall, deflect, get petty, or hold back instead of suddenly confessing just because the plot needs it?',
-                        flat: '"You’re right, Inspector, I hid the ledger under the pine floorboards," he confessed calmly.',
-                        working: 'He stared at the pine floorboards, then offered the Inspector tea so his hands had somewhere to stay busy.',
-                        why: 'Real people dodge and buy time before giving anything away.',
-                        spot: 'Flags convenient caving, wooden speeches, or plot-servant lines.',
-                        fix: 'Rewrites unnatural compliance into honest pushback or evasion.'
-                    },
-                    {
-                        id: 'adverbs',
-                        tab: '2. Adverbs/Tags',
-                        title: 'Adverb & Dialogue-Tag Trim',
-                        brief: 'Cuts "-ly" crutches and stage directions over-explaining emotion.',
-                        summary: 'Spot adverbs ("angrily", "nervously") and busy action tags that explain an emotion the line of dialogue or a single crisp physical gesture can carry twice as cleanly.',
-                        flat: '"Put the knife down," he said angrily, glaring furiously at her hand.',
-                        working: '"Put the knife down." His thumb whitened against the doorframe.',
-                        why: 'Trusting concrete action instead of labels makes emotion hit harder.',
-                        spot: 'Highlights redundant adverbs and heavy speaker tags.',
-                        fix: 'Offers tight drop-in line trims without losing tone or rhythm.'
-                    },
-                    {
-                        id: 'backstory',
-                        tab: '3. Backstory',
-                        title: 'Backstory Restraint',
-                        brief: 'Keeps long past history out of live tense rooms.',
-                        summary: 'Catch paragraphs that pause an active scene to explain how characters grew up together or why a place matters—keeping only a fast flash if it actually changes the present beat.',
-                        flat: 'Mid-argument, two paragraphs pause to recap their freshman dorm years and failed startup.',
-                        working: '"Same stunt you pulled in sophomore year." One sharp barb carries the history in seven words.',
-                        why: 'Live tension collapses as soon as the prose switches into a history lecture.',
-                        spot: 'Flags backstory detours that break scene momentum.',
-                        fix: 'Shows what to trim out or condense into one loaded detail.'
-                    },
-                    {
-                        id: 'clean_prose',
-                        tab: '4. Clean Prose',
-                        title: 'Concrete Verbs & Nouns',
-                        brief: 'Swaps purple metaphors and filler words for sharp clarity.',
-                        summary: 'Spot show-off metaphors, abstract mood labels, and filler phrases ("started to", "seemed to") and tighten them into direct, visual prose.',
-                        flat: 'A heavy tapestry of unspoken dread seemed to slowly descend across the somber kitchen.',
-                        working: 'Grease cooled grey in the skillet. Neither of them reached for the kettle.',
-                        why: 'Specific nouns and active verbs put the reader inside the kitchen immediately.',
-                        spot: 'Catches filter words, clichés, and overwritten imagery.',
-                        fix: 'Gives lean line-level alternatives in your scene’s natural voice.'
-                    }
-                ],
-                bestFor: 'Wordy scenes, forced dialogue, or places where stage directions do work the dialogue should do.',
-                skipWhen: 'You need big-picture structural surgery across a whole multi-scene chapter.'
-            },
-            {
-                id: 'craft_lamott',
-                label: 'Lamott · Bird by Bird',
-                author: 'Anne Lamott',
-                book: 'Bird by Bird',
-                subtitle: 'Small sensory truth & getting unstuck without harshness',
-                tagline: 'One vivid detail, staying in the moment & gentle next step',
-                defaultScope: 'this_scene',
-                thesis: 'Trying to make every sentence solve the entire book freezes drafts. Lamott’s approach zooms into one manageable piece at a time—anchoring emotion in small physical truth and finding an encouraging, doable step forward.',
-                lanes: [
-                    {
-                        id: 'detail',
-                        tab: '1. Vivid Detail',
-                        title: 'One Small Vivid Detail',
-                        brief: 'Grounds big feelings in one concrete sight, sound, or object.',
-                        summary: 'Instead of naming sweeping feelings ("crushing sorrow", "deep regret"), trust one small, truthful detail right in front of the character to carry the emotional weight.',
-                        flat: 'The kitchen felt heavy with profound grief over the end of their marriage.',
-                        working: 'Jonas stood at the sink scraping dried oatmeal off the rim of her mug with his thumbnail.',
-                        why: 'One specific human gesture says more than five emotional adjectives.',
-                        spot: 'Notices abstract emotion summaries that stay blurry.',
-                        fix: 'Suggests grounding the beat in one ordinary physical detail.'
-                    },
-                    {
-                        id: 'moment',
-                        tab: '2. Stay Present',
-                        title: 'Stay in the Live Moment',
-                        brief: 'Notices where sweeping summary pulls away from one real exchange.',
-                        summary: 'Gently spots paragraphs that pull out into summarizing whole weeks or explaining themes, and brings the focus back into one quiet, specific moment in the group.',
-                        flat: 'Whenever they argued that winter, both slid back into old defenses neither could name.',
-                        working: 'She laid his folded sweater on the chair between them. "Don’t leave it on the radiator again."',
-                        why: 'One small real exchange lets the reader feel the whole pattern.',
-                        spot: 'Marks passages where summary blurs over live human contact.',
-                        fix: 'Points to the closest moment worth letting breathe for two extra lines.'
-                    },
-                    {
-                        id: 'voice',
-                        tab: '3. True Voice',
-                        title: 'Unforced Human Voice',
-                        brief: 'Separates stiff "trying to impress" prose from lines that sound true.',
-                        summary: 'Highlights sentences where the prose tightens up trying to sound grand or polished, alongside honest quirky beats where your real voice already comes through cleanly.',
-                        flat: 'With measured composure, she articulated the fragile ambiguity of their shared existence.',
-                        working: '"You bought the wrong tape again," she said, though half her mouth twitched upward.',
-                        why: 'Natural human contradictions read as warmer and far more alive.',
-                        spot: 'Distinguishes forced literary stiffness from natural phrasing.',
-                        fix: 'Offers gentle, breathable rewrites that keep your warmth intact.'
-                    },
-                    {
-                        id: 'next_step',
-                        tab: '4. Next Step',
-                        title: 'One Manageable Next Step',
-                        brief: 'Gives a clear, encouraging single beat to try next without perfectionism.',
-                        summary: 'Ends with low-pressure clarity: identifies what already works so you keep it, and offers one small concrete assignment you can fix in five minutes without tearing up the whole chapter.',
-                        flat: '"Needs major structural overhaul across Acts 1 and 2 before line edits will hold."',
-                        working: '"Leave the middle messy for now—just add two lines after the mug detail showing what Jonas hides."',
-                        why: 'Small, concrete steps get blocked scenes moving again right away.',
-                        spot: 'Protects working passages before suggesting one small nudge.',
-                        fix: 'Gives one approachable beat addition or adjustment to try first.'
-                    }
-                ],
-                bestFor: 'Rough, stalled, or overly abstract drafts when you want grounding and momentum without a harsh teardown.',
-                skipWhen: 'You are in late-stage polishing looking for strict beat-sheet compliance or ruthless line cuts.'
+                id: 'comedy_review',
+                label: 'Comedy review',
+                copy: 'Review the comic idea, character, and timing.'
             }
         ];
         // The rarer, heavier work. Same cards, same skill files behind them.
@@ -483,12 +165,12 @@
             {
                 id: 'canon_refactor',
                 label: 'Trace a canon change',
-                copy: 'Find consequences across the configured story folders.'
+                copy: 'After a story fact changes, find passages and consequences that may need updating.'
             },
             {
                 id: 'scene_continuity',
                 label: "Check this scene's continuity",
-                copy: 'Compare this document with the rest of the story evidence.'
+                copy: 'Check this scene’s dates, facts, and character knowledge against supplied story evidence.'
             }
         ];
         // id -> {label, description} as the skill files currently read.
@@ -497,6 +179,47 @@
         // strip stands down.
         const DISCUSS_TURN_DONE_MS = 6000;
         var _discussStreamText = '';
+        var _discussSyncingFrontmatter = null;
+
+        function isDiscussFrontmatterSyncRunning(scenePath) {
+            return !!(_discussSyncingFrontmatter && _discussSyncingFrontmatter.path === scenePath);
+        }
+
+        function _clearDiscussFrontmatterSync() {
+            if (!_discussSyncingFrontmatter) return;
+            var syncedPath = _discussSyncingFrontmatter.path;
+            _discussSyncingFrontmatter = null;
+            if (typeof renderSceneFrontmatter === 'function' && document.documentElement.dataset.view === 'scene'
+                && typeof curIdx === 'number' && paths[curIdx] === syncedPath) {
+                renderSceneFrontmatter(syncedPath);
+            }
+        }
+
+        function syncSceneFrontmatterFromDiscuss(trigger, scenePath) {
+            if (typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT) return;
+            if (typeof _pmDirty !== 'undefined' && _pmDirty) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Save or cancel unsaved scene edits before updating frontmatter.', true);
+                }
+                return;
+            }
+            var prevTurnId = (_discussSnapshot && _discussSnapshot.last_turn && _discussSnapshot.last_turn.turn_id) || '';
+            _discussSyncingFrontmatter = {path: scenePath, prevTurnId: String(prevTurnId), seenActive: false};
+            if (typeof renderSceneFrontmatter === 'function') renderSceneFrontmatter(scenePath);
+            var panel = document.getElementById('discussPanel');
+            var doc = typeof discussDocument === 'function' ? discussDocument() : null;
+            if (panel && !panel.hidden && doc && _discussConversationId && _discussDocumentKey === discussDocumentKey(doc)) {
+                _showDiscussBody();
+                _discussRepositoryAction = null;
+                leaveDiscussReviewSetup();
+                renderDiscussTaskMode();
+                runDiscussScenePass('update_frontmatter');
+                var input = document.getElementById('discussInput');
+                if (input) input.focus();
+                return;
+            }
+            openDiscuss(trigger, {scenePassActionId: 'update_frontmatter'});
+        }
         const DISCUSS_AGENT_KEY = 'proseview-discuss-agent';
         var _discussAgent = _readDiscussAgent();
         var _discussAgentAvailability = {};
@@ -565,8 +288,7 @@
                 _discussSkillsLoaded = false;
                 _discussSkillsLoading = null;
                 _discussSkills = [];
-                _discussCraftState.active = false;
-                _discussCraftState.openInfoId = null;
+                leaveDiscussReviewSetup();
             }
             _discussAgent = agent;
             try { localStorage.setItem(DISCUSS_AGENT_KEY, agent); } catch (e) {}
@@ -709,13 +431,17 @@
         function saveDiscussDraft() {
             var input = document.getElementById('discussInput');
             if (!input) return;
+            // Review instructions have their own draft. Opening Customize must
+            // not turn an unsent chat question into review instructions.
+            if (_discussCraftState.active) _discussCraftState.instructions = input.value;
+            var draft = _discussCraftState.active ? _discussCraftState.chatDraft : input.value;
             var key = discussDraftKey(null, _discussAgent);
             if (!_discussSelection && !_discussPendingAction
                 && !_discussRepositoryAction && !_discussIncludeCurrentDocument) {
                 _discussDraftDocument = null;
             }
             try {
-                if (input.value) sessionStorage.setItem(key, input.value);
+                if (draft) sessionStorage.setItem(key, draft);
                 else sessionStorage.removeItem(key);
                 if (_discussDraftDocument) {
                     sessionStorage.setItem(discussDraftDocumentKey(_discussAgent), JSON.stringify(_discussDraftDocument));
@@ -890,11 +616,12 @@
             _discussIncludeCurrentDocument = false;
             _discussPendingAction = options.actionId || null;
             _discussRepositoryAction = null;
-            _discussCraftState.active = false;
-            _discussCraftState.openInfoId = null;
+            leaveDiscussReviewSetup();
+            _discussCraftState.cardsOpen = false;
             _discussRetryOfTaskId = null;
             _discussSelectedSkill = null;
             _discussAutoRun = !!options.runImmediately;
+            var requestedScenePass = String(options.scenePassActionId || '');
             var requestedAutoRun = _discussAutoRun;
             var requestedAction = _discussPendingAction;
             var requestedSelection = _discussSelection;
@@ -913,6 +640,7 @@
             document.getElementById('discussSend').disabled = true;
             _discussOpenFailed = false;
             _discussConversationId = null;
+            _discussLastLogSignature = '';
             document.body.classList.add('discuss-open');
             try { sessionStorage.setItem('proseview-panel-open', 'true'); } catch(e) {}
             renderDiscussContext();
@@ -944,6 +672,7 @@
                 // restored above. Rebuilding it here detaches an open presets
                 // popover while the conversation request finishes.
                 document.getElementById('discussSend').disabled = false;
+                syncDiscussSendEmpty();
                 _markDiscussAgentTab(_discussAgent, false);
                 loadDiscussModelCatalog(_discussAgent);
                 loadDiscussAgentAvailability();
@@ -956,6 +685,10 @@
                         requestedAction, requestedSelection, requestedSelectionRange, requestedLiveDocument,
                         0, null, requestedSelectionSnapshot, requestedSelectionSourceTaskId
                     );
+                }
+                else if (requestedScenePass) {
+                    runDiscussScenePass(requestedScenePass);
+                    input.focus();
                 }
                 else if (options.sendInstruction) chooseDiscussInstruction(options.sendInstruction);
                 else input.focus();
@@ -1002,8 +735,7 @@
                 _discussLiveDocument = options.liveDocument || null;
                 _discussPendingAction = options.actionId || null;
                 _discussRepositoryAction = null;
-                _discussCraftState.active = false;
-                _discussCraftState.openInfoId = null;
+                leaveDiscussReviewSetup();
                 _discussRetryOfTaskId = null;
                 _discussSelectedSkill = null;
                 _discussAutoRun = !!options.runImmediately;
@@ -1050,35 +782,33 @@
 
         // ── Scene panel tabs ────────────────────────────────────────────
         //
-        // Five tabs in one dock, ordered by how much they can surprise you.
-        // Scene, Analysis and History are deterministic -- frontmatter, counts,
-        // the highlight passes and the version log, all derived from the file
-        // on disk. Codex and Claude are the surfaces that call a model. Keeping
-        // that boundary legible is the point of the split.
-        const SCENE_PANEL_TABS = ['scene', 'beats', 'analysis', 'history', 'codex', 'claude', 'group'];
+        // Six tabs in one dock: deterministic inspection (Analysis, History)
+        // first, then AI collaborators (Codex, Claude, Group), with the less
+        // frequent Beat Map tucked at the end.
+        const SCENE_PANEL_TABS = ['analysis', 'history', 'codex', 'claude', 'group', 'beats'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
             var saved = null;
             try { saved = localStorage.getItem(SCENE_PANEL_TAB_KEY); } catch (e) {}
-            // "details" was this tab's name before it split into Scene and
-            // Analysis; a stored value from then must not leave the dock blank.
-            if (saved === 'details') saved = 'scene';
+            // "details" and "scene" were retired when frontmatter became interactive
+            // directly on the scene; send stored values to Analysis.
+            if (saved === 'details' || saved === 'scene') saved = 'analysis';
+            if (saved === 'room') saved = 'group';
             // "discuss" was the single agent tab before Codex and Claude got
             // one each. Send those readers to whichever agent they last used
-            // rather than dropping them on Scene.
+            // rather than dropping them on Analysis.
             if (saved === 'discuss') saved = _discussAgent;
-            return SCENE_PANEL_TABS.indexOf(saved) >= 0 ? saved : 'scene';
+            return SCENE_PANEL_TABS.indexOf(saved) >= 0 ? saved : 'analysis';
         }
 
         const UTILITY_TAB_IDS = {
-            scene: ['utilityTabScene'],
-            beats: ['utilityTabBeats'],
             analysis: ['utilityTabAnalysis'],
             history: ['utilityTabHistory'],
             codex: ['utilityTabCodex'],
             claude: ['utilityTabClaude'],
-            group: ['utilityTabGroup']
+            group: ['utilityTabGroup'],
+            beats: ['utilityTabBeats']
         };
 
         function _setUtilityTab(name) {
@@ -1130,26 +860,24 @@
         }
 
         const SCENE_PANEL_PANES = {
-            scene: {id: 'sceneDetailsPane', heading: 'Scene', render: renderSceneDetailsPane},
-            beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }},
             analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }},
-            group: {id: 'sceneGroupPane', heading: 'Writers\u2019 Group', render: renderSceneGroupPane}
+            group: {id: 'sceneGroupPane', heading: 'Writers\u2019 Group', render: renderSceneGroupPane},
+            beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }}
         };
 
         // What a scene tab says over the dashboard, where there is no scene.
         const SCENE_PANEL_AWAY = {
-            scene: 'Open a scene to see its details.',
-            beats: 'Open a scene to see its beat map.',
             analysis: 'Open a scene to see its analysis.',
             history: 'Open a scene to see its history.',
-            group: 'Open a scene to run the Writers\u2019 Group.'
+            group: 'Open a scene to run the Writers\u2019 Group.',
+            beats: 'Open a scene to see its beat map.'
         };
 
         function _scenePanelAwayEl() {
             let away = document.getElementById('scenePanelAway');
             if (away) return away;
-            const first = document.getElementById(SCENE_PANEL_PANES.scene.id);
+            const first = document.querySelector('#discussPanel .scene-details-pane');
             if (!first) return null;
             away = document.createElement('div');
             away.id = 'scenePanelAway';
@@ -1222,9 +950,6 @@
             spec.render();
         }
 
-        // Kept as a named seam: it is the entry point the scene modal and the
-        // tests reach for, and it now means "the deterministic scene tab".
-        function showSceneDetailsTab() { showScenePanelTab('scene'); }
         function showSceneBeatMapTab() { showScenePanelTab('beats'); }
         function showSceneAnalysisTab() { showScenePanelTab('analysis'); }
 
@@ -1323,18 +1048,6 @@
             if (wasOpen) {
                 try { sessionStorage.setItem('proseview-panel-open', 'false'); } catch(e) {}
             }
-        }
-
-        function renderSceneDetailsPane() {
-            const pane = document.getElementById('sceneDetailsPane');
-            if (!pane) return;
-            pane.replaceChildren();
-            // The context body starts life detached, built by the scene
-            // renderer. It carries frontmatter, story fields, characters,
-            // related documents and tasks.
-            const body = window._sceneContextBody;
-            if (body) { body.hidden = false; pane.appendChild(body); }
-            else pane.appendChild(_scenePanelEmpty('Open a scene to see its frontmatter, links and tasks.'));
         }
 
         function _scenePanelEmpty(text) {
@@ -1729,9 +1442,9 @@
         };
         var _chatCaretMirror = null;
 
-        function chatHistoryStorageKey(room) {
+        function chatHistoryStorageKey(group) {
             var root = typeof repoRoot !== 'undefined' ? String(repoRoot || '') : '';
-            return 'proseview-chat-history:' + root + ':' + room;
+            return 'proseview-chat-history:' + root + ':' + group;
         }
 
         function normalizedChatHistory(rows, limit) {
@@ -1753,15 +1466,15 @@
             return String(text || '').split(/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/)[0].trim();
         }
 
-        function chatConversationUserMessages(room) {
-            if (room === 'codex' || room === 'claude') {
-                if (room !== _discussAgent || !_discussSnapshot || !Array.isArray(_discussSnapshot.messages)) return [];
+        function chatConversationUserMessages(group) {
+            if (group === 'codex' || group === 'claude') {
+                if (group !== _discussAgent || !_discussSnapshot || !Array.isArray(_discussSnapshot.messages)) return [];
                 return _discussSnapshot.messages
                     .filter(function(m) { return m && m.role === 'user'; })
                     .map(function(m) { return _extractAuthoredChatText(m.text); })
                     .filter(Boolean);
             }
-            if (room === 'group') {
+            if (group === 'group') {
                 var path = typeof _groupCurrentScenePath === 'function' ? _groupCurrentScenePath() : null;
                 var session = path && typeof _groupSessionsByScene !== 'undefined' ? (_groupSessionsByScene[path] || _groupActiveSession) : _groupActiveSession;
                 if (!session || !Array.isArray(session.turns)) return [];
@@ -1773,31 +1486,31 @@
             return [];
         }
 
-        function getChatMessageHistory(room) {
+        function getChatMessageHistory(group) {
             var stored = [];
             try {
-                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(room)) || '[]'), CHAT_HISTORY_LIMIT);
+                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(group)) || '[]'), CHAT_HISTORY_LIMIT);
             } catch (e) {}
-            var conv = chatConversationUserMessages(room);
+            var conv = chatConversationUserMessages(group);
             if (!conv.length) return stored;
             var unseen = conv.filter(function(msg) { return stored.indexOf(msg) < 0; });
             return normalizedChatHistory(unseen.concat(stored), CHAT_HISTORY_LIMIT);
         }
 
-        function resetChatHistoryCursor(room) {
-            _chatHistoryState[room] = {index: -1, draft: '', justRecalled: false};
+        function resetChatHistoryCursor(group) {
+            _chatHistoryState[group] = {index: -1, draft: '', justRecalled: false};
         }
 
-        function recordChatMessageHistory(room, value) {
+        function recordChatMessageHistory(group, value) {
             value = String(value || '').trim();
             if (!value || value.length > 32768) return;
             var stored = [];
             try {
-                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(room)) || '[]'), CHAT_HISTORY_LIMIT);
+                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(group)) || '[]'), CHAT_HISTORY_LIMIT);
             } catch (e) {}
             var next = normalizedChatHistory(stored.concat([value]), CHAT_HISTORY_LIMIT);
-            try { localStorage.setItem(chatHistoryStorageKey(room), JSON.stringify(next)); } catch (e) {}
-            resetChatHistoryCursor(room);
+            try { localStorage.setItem(chatHistoryStorageKey(group), JSON.stringify(next)); } catch (e) {}
+            resetChatHistoryCursor(group);
         }
 
         function _ensureChatCaretMirror() {
@@ -1895,8 +1608,8 @@
         }
 
         function handleChatHistoryKeydown(event, input, config) {
-            var room = typeof config.group === 'function' ? config.group() : config.group;
-            var state = _chatHistoryState[room] || (_chatHistoryState[room] = {index: -1, draft: '', justRecalled: false});
+            var group = typeof config.group === 'function' ? config.group() : config.group;
+            var state = _chatHistoryState[group] || (_chatHistoryState[group] = {index: -1, draft: '', justRecalled: false});
             if (config.isMenuOpen && config.isMenuOpen()) return false;
             if (event.isComposing) return false;
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
@@ -1907,7 +1620,7 @@
                 state.justRecalled = false;
                 return false;
             }
-            var history = getChatMessageHistory(room);
+            var history = getChatMessageHistory(group);
             if (event.key === 'ArrowUp') {
                 if (!history.length) return false;
                 if (!state.justRecalled && !_isCaretOnTextareaEdgeLine(input, 'first')) return false;
@@ -1948,14 +1661,14 @@
             return true;
         }
 
-        function wireChatHistoryInput(input, room) {
+        function wireChatHistoryInput(input, group) {
             if (!input) return;
             input.addEventListener('mousedown', function() {
-                var key = typeof room === 'function' ? room() : room;
+                var key = typeof group === 'function' ? group() : group;
                 if (_chatHistoryState[key]) _chatHistoryState[key].justRecalled = false;
             });
             input.addEventListener('input', function() {
-                var key = typeof room === 'function' ? room() : room;
+                var key = typeof group === 'function' ? group() : group;
                 var state = _chatHistoryState[key];
                 if (!state) return;
                 state.justRecalled = false;
@@ -2748,12 +2461,26 @@
             scenePath = scenePath || _discussCurrentScenePath();
             var abs = String(((typeof meta !== 'undefined' && meta[scenePath]) || {}).abs_path || '');
             var docRef = abs ? ('<' + abs + ':') : (scenePath ? ('<' + scenePath + '#L') : '');
-            if (!docRef) return String(text || '');
-            return String(text || '').split(/(\[[^\]]*\]\([^)]*\)|`[^`]*`)/).map(function(part, idx) {
-                if (idx % 2 === 1) return part;
-                return part.replace(/\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, word, start, end) {
-                    var rangeSuffix = end ? ('-' + end) : '';
-                    return '[' + all + '](' + docRef + start + rangeSuffix + '>)';
+            function link(all, source, start, end) {
+                var rangeSuffix = end ? ('-' + end) : '';
+                if (source) {
+                    // A named source must never fall back to the open scene.
+                    var target = resolveProsviewFileReference(source);
+                    if (!target) return all;
+                    return '[' + all + '](<' + source + '#L' + start + rangeSuffix + '>)';
+                }
+                return docRef ? '[' + all + '](' + docRef + start + rangeSuffix + '>)' : all;
+            }
+            var parts = String(text || '').split(/(```[\s\S]*?```|~~~[\s\S]*?~~~|\[[^\]]*\]\([^)]*\)|`[^`]*`)/);
+            return parts.map(function(part, idx) {
+                if (idx % 2 === 1) {
+                    var citation = part.match(/^`([^`\n]+\.md)\s*[·,:]\s*lines?\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?`$/i);
+                    return citation ? link(part.slice(1, -1), citation[1], citation[2], citation[3]) : part;
+                }
+                var precedingPath = idx > 0 && parts[idx - 1].match(/^`([^`\n]+\.md)`$/);
+                return part.replace(/(?:([^\s`<>\[\]()]+\.md)\s*[·,:]\s*)?\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, source, word, start, end, offset) {
+                    if (!source && precedingPath && /^\s*[·,:]\s*$/.test(part.slice(0, offset))) source = precedingPath[1];
+                    return link(all, source, start, end);
                 });
             }).join('');
         }
@@ -3036,7 +2763,7 @@
                 resetBtn.id = 'groupResetBtn';
                 resetBtn.className = 'group-header-btn';
                 resetBtn.textContent = '\u21ba New';
-                resetBtn.setAttribute('data-tip', 'Clear this room session and return to the starter cards');
+                resetBtn.setAttribute('data-tip', 'Clear this group session and return to the starter cards');
                 resetBtn.onclick = resetGroupSession;
                 resetBtn.disabled = session.busy;
                 actions.appendChild(resetBtn);
@@ -3189,6 +2916,17 @@
                     var cMeta = _buildMessageMeta(cTime, turn.duration_ms);
                     if (cMeta) head.appendChild(cMeta);
                     if (turn.model) head.appendChild(elementWith('group-turn-model', turn.model));
+                    if (turn.context_sent) {
+                        var rCtxBtn = document.createElement('button');
+                        rCtxBtn.type = 'button';
+                        rCtxBtn.className = 'discuss-context-inspect-btn';
+                        rCtxBtn.textContent = 'Context';
+                        rCtxBtn.title = 'Inspect exact prompt, instructions, and frontmatter sent on this turn';
+                        rCtxBtn.onclick = function() {
+                            openDiscussContextSentDialog(turn.context_sent, _groupSpeakerName(turn.seat, turn.agent));
+                        };
+                        head.appendChild(rCtxBtn);
+                    }
                     card.appendChild(head);
                     var textWrap = elementWith('group-turn-body discuss-message assistant');
                     renderDiscussMarkdown(textWrap, _groupLinkLines(turn.text, turn.scene || session.originScene || path));
@@ -4154,6 +3892,9 @@
                     // Asked rather than cleared here, since this event can arrive after
                     // a quick turn has finished and put up its own card.
                     if (type === 'turn.preparing') refreshDiscussReview();
+                    if (type === 'turn.completed' || type === 'turn.failed' || type === 'turn.cancelled') {
+                        _clearDiscussFrontmatterSync();
+                    }
                     if (type === 'approval.requested') {
                         var request = JSON.parse(event.data);
                         _discussLastApproval = request.request_id || '';
@@ -5137,7 +4878,7 @@
             jumpAndHighlightDiscussQuote(targetPath, targetLine, targetEndLine, cleanText, targetKind);
         }
 
-        function decorateDiscussBlockquote(quoteEl, ctx, prevEl) {
+        function decorateDiscussBlockquote(quoteEl, ctx, prevEl, followingCitation) {
             if (!quoteEl) return;
             var baseScenePath = (ctx && ctx.scenePath) || _discussCurrentScenePath();
             quoteEl.classList.add('discuss-clickable-quote');
@@ -5165,13 +4906,35 @@
                 if (innerLink.dataset.prosviewLine) quoteEl.dataset.targetLine = innerLink.dataset.prosviewLine;
                 if (innerLink.dataset.prosviewEndLine) quoteEl.dataset.targetEndLine = innerLink.dataset.prosviewEndLine;
             }
+            if (!innerLink && !sourceMatch && followingCitation) {
+                quoteEl.dataset.targetKind = followingCitation.kind;
+                quoteEl.dataset.targetPath = followingCitation.path;
+                if (followingCitation.line) {
+                    quoteEl.dataset.targetLine = String(followingCitation.line);
+                    quoteEl.dataset.targetEndLine = String(followingCitation.endLine || followingCitation.line);
+                }
+            }
 
             if (!prevEl) {
                 prevEl = quoteEl.previousElementSibling || (quoteEl.parentElement ? quoteEl.parentElement.previousElementSibling : null);
             }
+            // The paragraph above names the quote's source only when it
+            // introduces it ("In ch08/02, line 149:") or is just the citation.
+            // A line it merely mentions in passing ("the lie at line 88") is a
+            // hint, weaker than the quote's own text and than the passage a
+            // rewrite replaces; it is applied below if nothing better turns up.
+            var prevHint = null;
             if (prevEl) {
+                var prevText = (prevEl.textContent || '').trim();
+                var introduces = /:$/.test(prevText) || /^[\s(\[]*(?:[^\s]+\.md\s*[·,:]\s*)?lines?\s+\d+(?:\s*[-–—]\s*\d+)?[\s)\].]*$/i.test(prevText);
                 var prevTarget = detectProsviewTargetInPrevEl(prevEl, baseScenePath);
-                if (prevTarget) {
+                if (!prevTarget && !quoteEl.dataset.targetLine && prevText) {
+                    var m = prevText.match(/\b(?:lines?|l)\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
+                    var single = m ? null : prevText.match(/\b(?:lines?|l)\s*(\d+)\b/i);
+                    if (m) prevTarget = {line: parseInt(m[1], 10), endLine: parseInt(m[2], 10)};
+                    else if (single) prevTarget = {line: parseInt(single[1], 10)};
+                }
+                if (prevTarget && introduces) {
                     if (!quoteEl.dataset.targetPath && prevTarget.path) {
                         quoteEl.dataset.targetKind = prevTarget.kind || 'scene';
                         quoteEl.dataset.targetPath = prevTarget.path;
@@ -5180,18 +4943,8 @@
                         quoteEl.dataset.targetLine = String(prevTarget.line);
                         quoteEl.dataset.targetEndLine = String(prevTarget.endLine || prevTarget.line);
                     }
-                } else if (!quoteEl.dataset.targetLine && prevEl.textContent) {
-                    var m = prevEl.textContent.match(/\b(?:lines?|l)\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
-                    if (m) {
-                        quoteEl.dataset.targetLine = m[1];
-                        quoteEl.dataset.targetEndLine = m[2];
-                    } else {
-                        var single = prevEl.textContent.match(/\b(?:lines?|l)\s*(\d+)\b/i);
-                        if (single) {
-                            quoteEl.dataset.targetLine = single[1];
-                            quoteEl.dataset.targetEndLine = single[1];
-                        }
-                    }
+                } else if (prevTarget) {
+                    prevHint = prevTarget;
                 }
             }
 
@@ -5220,13 +4973,36 @@
                 }
             }
 
-            if (!quoteEl.dataset.targetLine && ctx && ctx.lastLocalTarget) {
-                if (!quoteEl.dataset.targetPath && ctx.lastLocalTarget.path) {
-                    quoteEl.dataset.targetKind = ctx.lastLocalTarget.kind || 'scene';
-                    quoteEl.dataset.targetPath = ctx.lastLocalTarget.path;
+            if (!quoteEl.dataset.targetLine && prevHint && !(ctx && ctx.lastQuoteTarget)) {
+                if (!quoteEl.dataset.targetPath && prevHint.path) {
+                    quoteEl.dataset.targetKind = prevHint.kind || 'scene';
+                    quoteEl.dataset.targetPath = prevHint.path;
                 }
-                if (ctx.lastLocalTarget.line) quoteEl.dataset.targetLine = String(ctx.lastLocalTarget.line);
-                if (ctx.lastLocalTarget.endLine) quoteEl.dataset.targetEndLine = String(ctx.lastLocalTarget.endLine);
+                if (prevHint.line) {
+                    quoteEl.dataset.targetLine = String(prevHint.line);
+                    quoteEl.dataset.targetEndLine = String(prevHint.endLine || prevHint.line);
+                }
+            }
+            var cited = !!quoteEl.dataset.targetLine;
+            if (cited && ctx && quoteEl.dataset.targetPath) {
+                ctx.lastQuoteTarget = {
+                    kind: quoteEl.dataset.targetKind || 'scene',
+                    path: quoteEl.dataset.targetPath,
+                    line: parseInt(quoteEl.dataset.targetLine || '', 10) || null,
+                    endLine: parseInt(quoteEl.dataset.targetEndLine || '', 10) || null
+                };
+            }
+            // A quote without a citation of its own is usually a suggested
+            // rewrite of the passage quoted just before it. Point it there, not
+            // at a scene the explanation in between happened to link.
+            var inherited = ctx && (ctx.lastQuoteTarget || ctx.lastLocalTarget);
+            if (!cited && inherited) {
+                if (!quoteEl.dataset.targetPath && inherited.path) {
+                    quoteEl.dataset.targetKind = inherited.kind || 'scene';
+                    quoteEl.dataset.targetPath = inherited.path;
+                }
+                if (inherited.line) quoteEl.dataset.targetLine = String(inherited.line);
+                if (inherited.endLine) quoteEl.dataset.targetEndLine = String(inherited.endLine);
             }
 
             if (!quoteEl.dataset.targetPath) {
@@ -5848,7 +5624,7 @@
         }
 
         function appendMarkdownTokens(parent, tokens, ctx) {
-            (tokens || []).forEach(function(token) {
+            (tokens || []).forEach(function(token, tokenIndex) {
                 var node;
                 if (token.type === 'space') return;
                 if (token.type === 'text' || token.type === 'escape') {
@@ -5864,7 +5640,7 @@
                 }
                 if (token.type === 'paragraph') node = document.createElement('p');
                 else if (token.type === 'heading') {
-                    if (ctx) ctx.lastLocalTarget = null;
+                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = null;
                     node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
                 }
                 else if (token.type === 'strong') node = document.createElement('strong');
@@ -5944,7 +5720,7 @@
                     }
                 } else if (token.type === 'br') node = document.createElement('br');
                 else if (token.type === 'hr') {
-                    if (ctx) ctx.lastLocalTarget = null;
+                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = null;
                     node = document.createElement('hr');
                 }
                 else if (token.type === 'image') {
@@ -5997,7 +5773,19 @@
                 }
                 if (token.type === 'blockquote') {
                     var prevSibling = parent.lastElementChild;
-                    decorateDiscussBlockquote(node, ctx, prevSibling);
+                    var next = (tokens || []).slice(tokenIndex + 1).find(function(item) { return item.type !== 'space'; });
+                    var citationParts = next && next.type === 'paragraph' ? (next.tokens || []) : [];
+                    var citationLinks = citationParts.filter(function(item) { return item.type === 'link'; });
+                    var citationOnly = citationLinks.length === 1 && citationParts.every(function(item) {
+                        return item.type === 'link' || (item.type === 'text' && /^[\s—–().-]*$/.test(item.text || ''));
+                    });
+                    var followingCitation = null;
+                    if (citationOnly) {
+                        var citationNode = document.createElement('p');
+                        appendMarkdownTokens(citationNode, citationParts, Object.assign({}, ctx));
+                        followingCitation = detectProsviewTargetInPrevEl(citationNode, ctx.scenePath);
+                    }
+                    decorateDiscussBlockquote(node, ctx, prevSibling, followingCitation);
                     if (ctx.agentOutput) {
                         var quote = node;
                         parent.appendChild(withCopyButton(quote, function() { return extractDiscussQuoteText(quote); }));
@@ -6060,7 +5848,79 @@
             // and remote ones obey images.remote_in_agent_output.
             scenePath = scenePath || _discussCurrentScenePath();
             var linked = typeof _groupLinkLines === 'function' ? _groupLinkLines(text, scenePath) : text;
+            // Review labels such as **Type:** and **Lane:** come on consecutive
+            // lines; Markdown would join them into one run-on line.
+            linked = String(linked || '').replace(/([^\n])\n(?=[ \t]*\*\*[A-Z][^*\n]{0,40}:)/g, '$1  \n');
             renderSafeMarkdown(parent, linked, {agentOutput: true, scenePath: scenePath});
+        }
+
+        function linkDiscussCraftLanes(parent, lens) {
+            if (!lens) return;
+            var names = lens.lanes.map(discussCraftLaneName);
+            var pattern = new RegExp('\\b(' + names.map(function(name) {
+                return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }).sort(function(a, b) { return b.length - a.length; }).join('|') + ')\\b', 'g');
+            parent.querySelectorAll('p, li').forEach(function(paragraph) {
+                if (!/^Lanes?:\s/.test(paragraph.textContent.trim())) return;
+                var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+                var nodes = [];
+                while (walker.nextNode()) {
+                    if (!walker.currentNode.parentElement.closest('a, button, code, pre')) nodes.push(walker.currentNode);
+                }
+                nodes.forEach(function(node) {
+                    var text = node.textContent;
+                    pattern.lastIndex = 0;
+                    var matches = Array.from(text.matchAll(pattern));
+                    if (!matches.length) return;
+                    var fragment = document.createDocumentFragment();
+                    var start = 0;
+                    matches.forEach(function(match) {
+                        fragment.appendChild(document.createTextNode(text.slice(start, match.index)));
+                        var name = match[0];
+                        var lane = lens.lanes[names.indexOf(name)];
+                        var button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'discuss-craft-lane-link';
+                        button.textContent = name;
+                        button.setAttribute('aria-label', 'Read about ' + name + ' in ' + lens.book);
+                        button.onclick = function() { openDiscussCraftInfoDialog(lens.id, lane.id); };
+                        fragment.appendChild(button);
+                        start = match.index + name.length;
+                    });
+                    fragment.appendChild(document.createTextNode(text.slice(start)));
+                    node.replaceWith(fragment);
+                });
+            });
+        }
+
+        function renderDiscussCraftRequest(parent, text, key, expanded) {
+            var raw = String(text || '');
+            var divider = '\n\nCraft review instructions:\n';
+            var summaryLabel = 'Review instructions';
+            if (raw.startsWith('Update frontmatter · ')) {
+                divider = '\n\nUpdate instructions:\n';
+                summaryLabel = 'Update instructions';
+            } else if (raw.startsWith('Quick critique · ') || raw.startsWith('Deepen & layer · ') || raw.startsWith('Comedy review · ')) {
+                divider = '\n\nScene review instructions:\n';
+            } else if (!raw.startsWith('Craft review · ')) {
+                return false;
+            }
+            var split = raw.lastIndexOf(divider);
+            if (split < 0) return false;
+            parent.classList.add('discuss-craft-request');
+            var receipt = elementWith('discuss-craft-request-summary');
+            renderDiscussMarkdown(receipt, raw.slice(0, split));
+            var details = document.createElement('details');
+            details.className = 'discuss-craft-prompt';
+            details.dataset.messageKey = key;
+            details.open = expanded;
+            var summary = document.createElement('summary');
+            summary.textContent = summaryLabel;
+            var body = elementWith('discuss-craft-prompt-body');
+            renderDiscussMarkdown(body, raw.slice(split + divider.length));
+            details.append(summary, body);
+            parent.append(receipt, details);
+            return true;
         }
 
         function elementWith(className, text) {
@@ -6077,6 +5937,10 @@
             var group = elementWith('discuss-story-actions');
             rows.forEach(function(row) {
                 var live = _discussActionCopy[row.id] || {};
+                if (DISCUSS_REVIEW_MODES.some(function(mode) { return mode.id === row.id; })) {
+                    group.appendChild(discussReviewCard(row, live));
+                    return;
+                }
                 var card = document.createElement('button');
                 card.type = 'button'; card.className = 'discuss-story-action';
                 card.appendChild(elementWith('discuss-story-action-title', live.label || row.label));
@@ -6087,12 +5951,31 @@
             return group;
         }
 
+        var _discussLastLogSignature = '';
+
+        function _discussLogActivitySignature(snapshot) {
+            if (!snapshot) return '';
+            var msgs = snapshot.messages || [];
+            var last = msgs.length ? msgs[msgs.length - 1] : null;
+            return [
+                msgs.length,
+                last ? (String(last.text || '').length) : 0,
+                Object.keys(snapshot.activities || {}).length,
+                (snapshot.tasks || []).length,
+                snapshot.active_turn_id || ''
+            ].join(':');
+        }
+
         function discussIsAtBottom(log) {
             return log.scrollHeight - log.scrollTop - log.clientHeight <= 1;
         }
 
         function captureDiscussScroll(log) {
-            return {atBottom: discussIsAtBottom(log), scrollTop: log.scrollTop};
+            return {
+                atBottom: discussIsAtBottom(log),
+                scrollTop: log.scrollTop,
+                signature: _discussLogActivitySignature(_discussSnapshot)
+            };
         }
 
         function restoreDiscussScroll(log, state) {
@@ -6100,7 +5983,18 @@
             log.style.scrollBehavior = 'auto';
             log.scrollTop = state.atBottom ? log.scrollHeight : state.scrollTop;
             requestAnimationFrame(function() { log.style.scrollBehavior = previousBehavior; });
-            document.getElementById('discussNewActivity').hidden = state.atBottom;
+            var btn = document.getElementById('discussNewActivity');
+            var currentSig = _discussLogActivitySignature(_discussSnapshot);
+            var hasNewActivity = !!_discussLastLogSignature && currentSig !== _discussLastLogSignature;
+            _discussLastLogSignature = currentSig;
+            // Setting up Craft review or clicking UI chips/tabs while scrolled up
+            // is not "New activity" — only reveal the pill when content grew
+            // off-screen outside setup.
+            if (state.atBottom || _discussCraftState.active) {
+                btn.hidden = true;
+            } else if (hasNewActivity) {
+                btn.hidden = false;
+            }
         }
 
         // Ask Claude Code whether the login has gone through, until it has or
@@ -6822,17 +6716,33 @@
             // moment there is something settled to review. Keyed on the turn
             // that finished so it is asked exactly once per turn.
             var finished = (snapshot.last_turn || {}).turn_id || '';
+            if (snapshot.active_turn_id && _discussSyncingFrontmatter) {
+                _discussSyncingFrontmatter.seenActive = true;
+            }
             if (!snapshot.active_turn_id && finished && finished !== _discussReviewedTurn) {
                 _discussReviewedTurn = finished;
                 refreshDiscussReview({dropEditedSelection: true});
             }
+            if (!snapshot.active_turn_id && _discussSyncingFrontmatter
+                && (_discussSyncingFrontmatter.seenActive || (finished && finished !== _discussSyncingFrontmatter.prevTurnId))) {
+                _clearDiscussFrontmatterSync();
+            }
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
             var log = document.getElementById('discussLog');
+            var continuityTools = log.querySelector('.discuss-continuity-tools');
+            var continuityToolsOpen = !!(continuityTools && continuityTools.open);
             var craftCustomEl = log.querySelector('.discuss-craft-custom-list');
             var craftCustomScroll = craftCustomEl ? craftCustomEl.scrollTop : 0;
+            var craftContextEl = document.getElementById('discussCraftContext');
+            var craftContextSelection = craftContextEl && document.activeElement === craftContextEl
+                ? [craftContextEl.selectionStart, craftContextEl.selectionEnd, craftContextEl.scrollTop] : null;
             var craftFocusValue = (craftCustomEl && document.activeElement && craftCustomEl.contains(document.activeElement) && document.activeElement.type === 'checkbox')
                 ? document.activeElement.value : '';
+            var reviewFocusId = document.activeElement && document.activeElement.closest('.discuss-craft-setup, .discuss-review-card, .discuss-review-heading') ? document.activeElement.id : '';
             var scrollState = captureDiscussScroll(log);
+            var expandedCraftPrompts = new Set(Array.from(log.querySelectorAll('.discuss-craft-prompt[open]')).map(function(el) {
+                return el.dataset.messageKey;
+            }));
             log.replaceChildren();
             var notices = snapshot.notices || [];
             var renderedNotices = Object.create(null);
@@ -6863,7 +6773,7 @@
             document.getElementById('discussComposerArea').hidden = notInstalled && hasNoDiscussActivity;
             if (notInstalled && hasNoDiscussActivity) {
                 log.appendChild(discussNotInstalledState(discussAgentLabel(), snapshot.unavailable_reason));
-            } else if (hasNoDiscussActivity) {
+            } else if (hasNoDiscussActivity && !_discussCraftState.active) {
                 var empty = elementWith('discuss-empty');
                 var title = document.createElement('strong');
                 if (_discussRepositoryAction) {
@@ -6887,36 +6797,29 @@
                         empty.appendChild(title);
                         empty.appendChild(document.createTextNode('Describe the old and new fact below, then scan for consequences.'));
                     }
-                } else if (_discussCraftState.active) {
-                    renderDiscussCraftSetup(empty);
                 } else {
-                    title.textContent = 'What do you want to examine?';
-                    empty.appendChild(title);
-                    empty.appendChild(document.createTextNode('Ask about what you are reading, or run a pass over it.'));
                     // The scene on screen comes first. The repository scans are
                     // the rarer, heavier work and no longer lead.
                     var emptyDocument = discussTurnDocument();
                     if (emptyDocument && emptyDocument.kind === 'scene') {
-                        empty.appendChild(elementWith('discuss-story-group', 'Read this scene'));
-                        empty.appendChild(discussPassGroup(DISCUSS_SCENE_PASSES, runDiscussScenePass));
+                        empty.classList.add('discuss-review-landing');
+                        appendDiscussReviewCards(empty);
+                    } else {
+                        title.textContent = 'What do you want to examine?';
+                        empty.append(title, document.createTextNode('Ask about what you are reading, or run a pass over it.'));
                     }
-                    empty.appendChild(elementWith('discuss-story-group', 'Across the story'));
-                    empty.appendChild(discussPassGroup(DISCUSS_REPOSITORY_PASSES, startDiscussRepositoryAction));
+                    var continuity = document.createElement('details');
+                    continuity.className = 'discuss-continuity-tools';
+                    continuity.open = continuityToolsOpen;
+                    var continuitySummary = document.createElement('summary');
+                    continuitySummary.textContent = 'Continuity tools';
+                    continuity.appendChild(continuitySummary);
+                    continuity.appendChild(elementWith('discuss-continuity-help',
+                        'Check story facts, or find passages affected by a change.'));
+                    continuity.appendChild(discussPassGroup(DISCUSS_REPOSITORY_PASSES, startDiscussRepositoryAction));
+                    empty.appendChild(continuity);
                 }
                 log.appendChild(empty);
-                if (craftCustomScroll || craftFocusValue) {
-                    var nextCustomEl = log.querySelector('.discuss-craft-custom-list');
-                    if (nextCustomEl) {
-                        nextCustomEl.scrollTop = craftCustomScroll;
-                        if (craftFocusValue) {
-                            Array.prototype.some.call(nextCustomEl.querySelectorAll('input[type="checkbox"]'), function(cb) {
-                                if (cb.value !== craftFocusValue) return false;
-                                cb.focus({preventScroll: true});
-                                return true;
-                            });
-                        }
-                    }
-                }
             }
             appendUnassociatedNotices();
             groupDiscussTasks(snapshot.tasks || []).forEach(function(group) {
@@ -6930,8 +6833,15 @@
                     lastAssistantIndexByTurn[m.turn_id] = idx;
                 }
             });
+            var resultCraftLens = null;
             messages.forEach(function(message, mIdx) {
                 var isUser = message.role === 'user';
+                if (isUser) {
+                    var skillName = (message.context_sent || {}).skill_name;
+                    resultCraftLens = DISCUSS_CRAFT_LENSES.concat(DISCUSS_REVIEW_GUIDES).find(function(lens) {
+                        return lens.id === skillName || String(message.text || '').startsWith((lens.id.indexOf('craft_') === 0 ? 'Craft review · ' : '') + lens.label + ' ·');
+                    }) || null;
+                }
                 var isThought = false;
                 // A reply the agent's safeguards cut short is part of the answer,
                 // even though a continuation follows it in the same turn.
@@ -6958,8 +6868,22 @@
                 var mTime = message.created_at || (snapshot.conversation && snapshot.conversation.created_at ? (snapshot.conversation.created_at + mIdx * 60) : 0);
                 var meta = _buildMessageMeta(mTime, message.duration_ms);
                 if (meta) head.appendChild(meta);
+                if (isUser && message.context_sent) {
+                    var ctxBtn = document.createElement('button');
+                    ctxBtn.type = 'button';
+                    ctxBtn.className = 'discuss-context-inspect-btn';
+                    ctxBtn.textContent = 'Context';
+                    ctxBtn.title = 'Inspect exact prompt, instructions, and frontmatter sent on this turn';
+                    ctxBtn.onclick = function() {
+                        openDiscussContextSentDialog(message.context_sent, 'Discuss · ' + discussAgentLabel());
+                    };
+                    head.appendChild(ctxBtn);
+                }
                 wrap.appendChild(head);
-                renderDiscussMarkdown(wrap, message.text);
+                var messageKey = String(message.client_request_id || message.id || mIdx);
+                if (!isUser || !renderDiscussCraftRequest(wrap, message.text, messageKey, expandedCraftPrompts.has(messageKey))) {
+                    renderDiscussMarkdown(wrap, message.text);
+                }
                 if (wasStopped) {
                     wrap.classList.add('is-stopped');
                     var stoppedNote = elementWith('discuss-stopped-note',
@@ -6968,6 +6892,7 @@
                     stoppedNote.setAttribute('role', 'note');
                     wrap.appendChild(stoppedNote);
                 }
+                if (!isUser && !isThought) linkDiscussCraftLanes(wrap, resultCraftLens);
                 highlightChatMentions(wrap, []);
                 var sent = String(message.text || '');
                 addCopyButton(wrap, function() { return sent; }, 'Copy message');
@@ -7029,6 +6954,30 @@
                     + ' without saying so first, so there is no earlier version to compare against here. '
                     + 'Scene history still holds what was there before your last save.';
                 log.appendChild(note);
+            }
+            if (_discussCraftState.active) {
+                var craftSetup = elementWith('discuss-empty discuss-review-container');
+                renderDiscussCraftSetup(craftSetup);
+                log.appendChild(craftSetup);
+                if (craftContextSelection) {
+                    var restoredContext = document.getElementById('discussCraftContext');
+                    restoredContext.focus({preventScroll: true});
+                    restoredContext.setSelectionRange(craftContextSelection[0], craftContextSelection[1]);
+                    restoredContext.scrollTop = craftContextSelection[2];
+                }
+                var nextCustomEl = log.querySelector('.discuss-craft-custom-list');
+                if (nextCustomEl) {
+                    nextCustomEl.scrollTop = craftCustomScroll;
+                    if (craftFocusValue) {
+                        Array.prototype.some.call(nextCustomEl.querySelectorAll('input[type="checkbox"]'), function(cb) {
+                            if (cb.value !== craftFocusValue) return false;
+                            cb.focus({preventScroll: true});
+                            return true;
+                        });
+                    }
+                }
+            } else if (_discussCraftState.cardsOpen && !hasNoDiscussActivity) {
+                renderDiscussReviewCardPicker(log);
             }
             appendDiscussLocalError(log);
             if ((snapshot.queue || []).length) {
@@ -7092,6 +7041,12 @@
             syncDiscussSendEmpty();
             renderBtwSplit();
             restoreDiscussScroll(log, scrollState);
+            if (reviewFocusId) {
+                var reviewControl = document.getElementById(reviewFocusId);
+                if (reviewControl) reviewControl.focus({preventScroll: true});
+            }
+            renderDiscussReviewFocusPopover();
+            positionDiscussReviewInfo();
             if (_discussLastApproval) {
                 var target = discussApprovalDecisionButton(
                     log.querySelector('[data-approval-id="' + CSS.escape(_discussLastApproval) + '"]'));
@@ -7911,6 +7866,16 @@ function loadDiscussDiffMode(mode) {
                     });
                     if (options && options.dropEditedSelection) dropDiscussSelectionIfEdited(_discussReview);
                     renderDiscussSnapshot();
+                    if (document.documentElement.dataset.view === 'scene'
+                        && typeof curIdx === 'number' && paths[curIdx]
+                        && typeof refreshContent === 'function'
+                        && !(_pmEditMode && _pmDirty)
+                        && _discussReview.some(function(file) {
+                            var target = prosviewTargetForRepositoryPath(file.path);
+                            return target && target.kind === 'scene' && target.path === paths[curIdx];
+                        })) {
+                        refreshContent([paths[curIdx]]);
+                    }
                 })
                 .catch(function() { /* Nothing to review is not an error worth showing. */ });
         }
@@ -8070,6 +8035,14 @@ function loadDiscussDiffMode(mode) {
                         : 'Kept every change in ' + file.path;
                     delete _discussReviewKeep[file.path];
                     refreshDiscussReview();
+                    var activeTarget = prosviewTargetForRepositoryPath(file.path);
+                    if (activeTarget && activeTarget.kind === 'scene'
+                        && document.documentElement.dataset.view === 'scene'
+                        && typeof curIdx === 'number' && paths[curIdx] === activeTarget.path
+                        && typeof refreshContent === 'function'
+                        && !(_pmEditMode && _pmDirty)) {
+                        refreshContent([activeTarget.path]);
+                    }
                     scheduleDiscussSnapshot();
                 })
                 .catch(function(error) {
@@ -8339,7 +8312,8 @@ function loadDiscussDiffMode(mode) {
         function selectionActionLabel(actionId) {
             return ({
                 rephrase: 'Rephrase', tighten: 'Tighten', clarify: 'Clarify', layer_subtext: 'Layer subtext', sensory_detail: 'Add sensory detail',
-                show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', quick_critique: 'Quick critique', deepen_and_layer: 'Deepen & layer',
+                show_moment: 'Show the moment', custom_rewrite: 'Custom rewrite', update_frontmatter: 'Update frontmatter',
+                quick_critique: 'Quick critique', deepen_and_layer: 'Deepen & layer',
                 voice_character: 'Voice and character', pacing_tension: 'Pacing and tension', clarity_flow: 'Clarity and flow', continuity: 'Continuity check',
                 next_beats: 'Next beats', craft_mckee: 'McKee · Story', craft_cron: 'Cron · Story Genius',
                 craft_coyne: 'Coyne · The Story Grid', craft_snyder: 'Snyder · Save the Cat!',
@@ -8560,12 +8534,20 @@ function loadDiscussDiffMode(mode) {
             var btwHint = document.getElementById('discussBtwHint');
             var input = document.getElementById('discussInput');
             if (!button || !input) return;
+            var craftButton = document.getElementById('discussCraftButton');
+            var doc = discussTurnDocument();
+            if (craftButton) {
+                craftButton.hidden = !doc || doc.kind !== 'scene' || _discussCraftState.active || _discussCraftState.cardsOpen
+                    || !(_discussSnapshot && (_discussSnapshot.messages || []).length);
+            }
             var ordinary = !_discussPendingAction && !_discussRepositoryAction && !_discussCraftState.active && !_discussOpenFailed;
             var busy = !!(_discussSnapshot && (_discussSnapshot.active_turn_id || _discussSnapshot.active_request_id));
             var btwDraft = ordinary ? parseDiscussBtwDraft(input.value) : null;
             if (btwHint) btwHint.hidden = !btwDraft;
             var craftNoScenes = _discussCraftState.active && !discussCraftSelectedScenes().length;
-            var empty = btwDraft ? false : (craftNoScenes ? true : (!input.value.trim() && ordinary));
+            var reviewNoLanes = _discussCraftState.active && !discussReviewSelectedLanes().length;
+            var comedyNoGoals = _discussCraftState.active && _discussCraftState.modeId === 'comedy_review' && !_discussCraftState.comedyGoals.length;
+            var empty = btwDraft ? false : ((craftNoScenes || reviewNoLanes || comedyNoGoals) ? true : (!input.value.trim() && ordinary));
             button.dataset.empty = empty ? 'true' : 'false';
             button.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
             if (ordinary && !button.disabled) {
@@ -8580,6 +8562,9 @@ function loadDiscussDiffMode(mode) {
             // A preset sends itself; with a draft in the box it would replace
             // the draft, so it waits until the box is empty again.
             var draft = !!input.value.trim();
+            document.querySelectorAll('#discussLog .discuss-review-run, #discussLog .discuss-review-customize').forEach(function(control) {
+                control.disabled = button.disabled;
+            });
             document.querySelectorAll('#discussTaskMode .discuss-preset-inline, #discussTaskMode .discuss-preset-menu-choice').forEach(function(preset) {
                 preset.disabled = draft;
                 preset.title = draft ? 'Clear the question box to send this' : 'Send: ' + preset.textContent;
@@ -8616,6 +8601,12 @@ function loadDiscussDiffMode(mode) {
 
         function buildDiscussTaskMode(node) {
             node.replaceChildren();
+            document.getElementById('discussInput').removeAttribute('aria-labelledby');
+            var baseInputLabel = document.getElementById('discussInputLabel');
+            if (baseInputLabel) {
+                baseInputLabel.setAttribute('for', 'discussInput');
+                baseInputLabel.hidden = false;
+            }
             delete node.dataset.mode;
             if (_discussRepositoryAction) {
                 node.hidden = false;
@@ -8637,17 +8628,50 @@ function loadDiscussDiffMode(mode) {
                 var craftLens = discussCraftLens();
                 var craftScenes = discussCraftSelectedScenes();
                 var craftTitle = document.createElement('strong');
-                craftTitle.textContent = 'Craft review · ' + craftLens.label;
+                craftTitle.textContent = _discussCraftState.modeId === 'craft_review' ? 'Craft review · ' + craftLens.label : craftLens.label;
                 node.appendChild(craftTitle);
+                var fmOn = effectiveDiscussFrontmatter();
+                var adjOn = craftScenes.length === 1 && effectiveDiscussAdjacent();
                 var craftHelp = document.createElement('span');
-                craftHelp.textContent = craftScenes.length + (craftScenes.length === 1 ? ' scene' : ' scenes') + ' · Full prose · Read-only';
+                craftHelp.textContent = craftScenes.length + (craftScenes.length === 1 ? ' scene' : ' scenes')
+                    + ' · Full prose · Frontmatter ' + (fmOn ? 'on' : 'off')
+                    + (adjOn ? ' · ±1 excerpts' : '')
+                    + (_discussCraftState.checkPlan ? ' · Plan check' : '')
+                    + (craftLens.id === 'craft_lamott' ? '' : ' · Up to ' + _discussCraftState.maxFindings
+                        + (craftLens.id === 'deepen_and_layer' ? ' opportunities' : ' priorities'));
                 node.appendChild(craftHelp);
-                var changeCraft = document.createElement('button');
-                changeCraft.type = 'button'; changeCraft.className = 'discuss-secondary'; changeCraft.textContent = 'Change action';
-                changeCraft.onclick = cancelDiscussCraftReview;
-                node.appendChild(changeCraft);
-                document.getElementById('discussInput').placeholder = 'Optional: add a specific focus before running…';
-                document.getElementById('discussSend').textContent = 'Run craft review';
+                if (_discussCraftState.modeId === 'comedy_review') {
+                    node.appendChild(elementWith('discuss-comedy-summary', discussComedySummary()));
+                }
+                var chosenLanes = discussReviewSelectedLanes();
+                if (chosenLanes.length !== craftLens.lanes.length) {
+                    var focusName = discussReviewLaneSummary();
+                    var focusChip = document.createElement('button');
+                    focusChip.type = 'button';
+                    focusChip.className = 'discuss-secondary discuss-craft-focus';
+                    focusChip.textContent = 'Focus: ' + focusName + ' ×';
+                    focusChip.setAttribute('aria-label', 'Remove review focus: ' + focusName);
+                    focusChip.title = focusName + ' — reset to all lanes';
+                    focusChip.onclick = function() {
+                        setDiscussReviewLanes(craftLens.lanes.map(function(lane) { return lane.id; }));
+                        renderDiscussTaskMode();
+                        renderDiscussSnapshot();
+                    };
+                    node.appendChild(focusChip);
+                }
+                if (baseInputLabel) {
+                    baseInputLabel.removeAttribute('for');
+                    baseInputLabel.hidden = true;
+                }
+                var instructionLabel = document.createElement('label');
+                instructionLabel.htmlFor = 'discussInput';
+                instructionLabel.id = 'discussCraftInstructionsLabel';
+                instructionLabel.className = 'discuss-craft-instruction-label';
+                instructionLabel.textContent = 'Instructions for this review (optional)';
+                node.appendChild(instructionLabel);
+                document.getElementById('discussInput').setAttribute('aria-labelledby', instructionLabel.id);
+                document.getElementById('discussInput').placeholder = 'For example: preserve the quiet tone, or focus on the ending…';
+                document.getElementById('discussSend').textContent = discussReviewMode().run;
                 return;
             }
             if (_discussPendingAction) {
@@ -9331,8 +9355,8 @@ function loadDiscussDiffMode(mode) {
                     _discussLiveDocument = null;
                     _discussPendingAction = null;
                     _discussRepositoryAction = null;
-                    _discussCraftState.active = false;
-                    _discussCraftState.openInfoId = null;
+                    leaveDiscussReviewSetup();
+                    _discussCraftState.cardsOpen = false;
                     _discussRetryOfTaskId = null;
                     _discussSelectedSkill = null;
                     _discussAutoRun = false;
@@ -9477,8 +9501,7 @@ function loadDiscussDiffMode(mode) {
 
 
         function startDiscussRepositoryAction(actionId) {
-            _discussCraftState.active = false;
-            _discussCraftState.openInfoId = null;
+            leaveDiscussReviewSetup();
             _discussRepositoryAction = actionId;
             if (!_discussDraftDocument) _discussDraftDocument = discussDocument();
             _discussPendingAction = null;
@@ -9622,8 +9645,113 @@ function loadDiscussDiffMode(mode) {
         }
 
         function discussCraftLens(id) {
-            var targetId = id || _discussCraftState.lensId;
-            return DISCUSS_CRAFT_LENSES.find(function(l) { return l.id === targetId; }) || DISCUSS_CRAFT_LENSES[0];
+            var targetId = id || (_discussCraftState.modeId === 'craft_review' ? _discussCraftState.lensId : _discussCraftState.modeId);
+            return DISCUSS_CRAFT_LENSES.concat(DISCUSS_REVIEW_GUIDES).find(function(l) { return l.id === targetId; }) || DISCUSS_CRAFT_LENSES[0];
+        }
+
+        function discussCraftLaneName(lane) {
+            return lane ? String(lane.tab || '').replace(/^\d+\.\s*/, '') : '';
+        }
+
+        function discussCraftFocus() {
+            var lanes = discussReviewSelectedLanes();
+            return lanes.length === 1 ? lanes[0] : null;
+        }
+
+        function discussCraftContextKey(scenePath) {
+            scenePath = scenePath || _discussCraftState.contextScenePath || discussCraftActivePath();
+            var sourcePath = (typeof meta !== 'undefined' && meta[scenePath] && meta[scenePath].abs_path) || scenePath;
+            return 'proseview-craft-context:' + sourcePath;
+        }
+
+        function discussCraftContext(scenePath) {
+            var key = discussCraftContextKey(scenePath);
+            if (Object.prototype.hasOwnProperty.call(_discussCraftState.storyContexts, key)) {
+                return _discussCraftState.storyContexts[key];
+            }
+            try { return sessionStorage.getItem(key) || ''; } catch (e) { return ''; }
+        }
+
+        function saveDiscussCraftContext(value, scenePath) {
+            var path = scenePath || _discussCraftState.contextScenePath || discussCraftActivePath();
+            var key = discussCraftContextKey(path);
+            _discussCraftState.storyContexts[key] = value;
+            _discussCraftState.storyContextVersions[key] = (_discussCraftState.storyContextVersions[key] || 0) + 1;
+            try {
+                sessionStorage.setItem(key, value);
+                sessionStorage.setItem(key + ':pending', 'true');
+            } catch (e) {}
+            clearTimeout(_discussCraftState.storyContextTimers[key]);
+            setDiscussCraftContextStatus(key, 'Saving with this scene…');
+            _discussCraftState.storyContextTimers[key] = setTimeout(function() {
+                persistDiscussCraftContext(key, path);
+            }, 400);
+        }
+
+        function setDiscussCraftContextStatus(key, text) {
+            _discussCraftState.storyContextStatuses[key] = text;
+            var status = document.getElementById('discussCraftContextStatus');
+            if (status && key === discussCraftContextKey()) status.textContent = text;
+        }
+
+        function persistDiscussCraftContext(key, path) {
+            if (_discussCraftState.storyContextSaves[key]) return;
+            var value = _discussCraftState.storyContexts[key] || '';
+            _discussCraftState.storyContextSaves[key] = true;
+            discussApi('/api/discuss/craft-context', {scene_path: path, context: value}).then(function() {
+                _discussCraftState.storyContextSaves[key] = false;
+                if ((_discussCraftState.storyContexts[key] || '') !== value) {
+                    persistDiscussCraftContext(key, path);
+                    return;
+                }
+                try { sessionStorage.removeItem(key + ':pending'); } catch (e) {}
+                setDiscussCraftContextStatus(key, 'Saved with this scene · shared by Codex and Claude');
+            }).catch(function() {
+                _discussCraftState.storyContextSaves[key] = false;
+                setDiscussCraftContextStatus(key, 'Could not save yet. These notes are still included in this review.');
+            });
+        }
+
+        function loadDiscussCraftContext(scenePath) {
+            var path = scenePath || _discussCraftState.contextScenePath || discussCraftActivePath();
+            var key = discussCraftContextKey(path);
+            if (_discussCraftState.storyContextLoaded[key]) return;
+            _discussCraftState.storyContextLoaded[key] = true;
+            var version = _discussCraftState.storyContextVersions[key] || 0;
+            // Carry notes from the earlier provider-specific session cache forward.
+            try {
+                if (sessionStorage.getItem(key) === null) {
+                    var previousKey = 'proseview-craft-context:' + _discussAgent + ':' + key.slice('proseview-craft-context:'.length);
+                    var previous = sessionStorage.getItem(previousKey);
+                    if (previous) {
+                        sessionStorage.setItem(key, previous);
+                        sessionStorage.setItem(key + ':pending', 'true');
+                    }
+                }
+            } catch (e) {}
+            discussApi('/api/discuss/craft-context', {scene_path: path}).then(function(data) {
+                if ((_discussCraftState.storyContextVersions[key] || 0) !== version) return;
+                var pending = false;
+                var cached = '';
+                try {
+                    pending = sessionStorage.getItem(key + ':pending') === 'true';
+                    cached = sessionStorage.getItem(key) || '';
+                } catch (e) {}
+                var value = pending ? cached : (data.context || '');
+                var changed = (_discussCraftState.storyContexts[key] || '') !== value;
+                _discussCraftState.storyContexts[key] = value;
+                try { sessionStorage.setItem(key, value); } catch (e) {}
+                if (pending) {
+                    setDiscussCraftContextStatus(key, 'Saving with this scene…');
+                    persistDiscussCraftContext(key, path);
+                } else {
+                    setDiscussCraftContextStatus(key, 'Saved with this scene · shared by Codex and Claude');
+                }
+                if (changed && key === discussCraftContextKey() && _discussCraftState.active) renderDiscussSnapshot();
+            }).catch(function() {
+                _discussCraftState.storyContextLoaded[key] = false;
+                setDiscussCraftContextStatus(key, 'Could not load saved notes. You can still add context for this review.');
+            });
         }
 
         function discussCraftActivePath() {
@@ -9656,31 +9784,57 @@ function loadDiscussDiffMode(mode) {
             return chosen;
         }
 
-        function startDiscussCraftReview() {
+        function startDiscussCraftReview(modeId) {
             var activePath = discussCraftActivePath();
-            var lens = discussCraftLens();
+            var input = document.getElementById('discussInput');
+            if (!_discussCraftState.active) {
+                _discussCraftState.chatDraft = input.value;
+                input.value = _discussCraftState.instructions;
+            }
+            _discussCraftState.modeId = DISCUSS_REVIEW_MODES.some(function(mode) { return mode.id === modeId; }) ? modeId : 'craft_review';
+            _ensureDiscussContextDefaults().catch(function() {});
             _discussRepositoryAction = null;
             _discussPendingAction = null;
             _discussSelectedSkill = null;
             _discussCraftState.active = true;
+            _discussCraftState.cardsOpen = true;
             _discussCraftState.openInfoId = null;
-            _discussCraftState.scopeMode = lens.defaultScope || 'this_scene';
-            _discussCraftState.customScenes = activePath ? [activePath] : [];
+            _discussCraftState.focusMenuOpen = false;
+            if (_discussCraftState.scenePath !== activePath) {
+                _discussCraftState.storyContextOpen = null;
+                _discussCraftState.scopeMode = 'this_scene';
+                _discussCraftState.customScenes = activePath ? [activePath] : [];
+                _discussCraftState.contextScenePath = activePath;
+                _discussCraftState.scenePath = activePath;
+            }
             renderDiscussTaskMode();
             renderDiscussSnapshot();
+            var setup = document.querySelector('.discuss-craft-setup');
+            if (setup) setup.scrollIntoView({block: 'start'});
             document.getElementById('discussInput').focus();
-            document.getElementById('discussAnnouncement').textContent = 'Craft review selected';
+            document.getElementById('discussAnnouncement').textContent = discussReviewMode().label + ' selected';
         }
 
         function cancelDiscussCraftReview() {
             if (!_discussCraftState.active) return;
             closeDiscussCraftInfoDialog();
-            _discussCraftState.active = false;
-            _discussCraftState.openInfoId = null;
+            leaveDiscussReviewSetup();
+            saveDiscussDraft();
             renderDiscussTaskMode();
             renderDiscussSnapshot();
             document.getElementById('discussInput').focus();
             document.getElementById('discussAnnouncement').textContent = 'Choose a story-aware action';
+        }
+
+        function leaveDiscussReviewSetup() {
+            var input = document.getElementById('discussInput');
+            if (_discussCraftState.active && input) {
+                _discussCraftState.instructions = input.value;
+                input.value = _discussCraftState.chatDraft;
+            }
+            _discussCraftState.active = false;
+            _discussCraftState.openInfoId = null;
+            _discussCraftState.focusMenuOpen = false;
         }
 
         function _syncDiscussCraftInfoButtons() {
@@ -9694,13 +9848,14 @@ function loadDiscussDiffMode(mode) {
         }
 
         function _selectDiscussCraftLensAndScope(infoLens) {
-            var changed = _discussCraftState.lensId !== infoLens.id;
-            _discussCraftState.lensId = infoLens.id;
-            // Preserve custom scene selections (and any existing scope on the same lens).
-            if (_discussCraftState.scopeMode !== 'custom' && changed) {
-                _discussCraftState.scopeMode = infoLens.defaultScope || 'this_scene';
+            var isBook = infoLens.id.indexOf('craft_') === 0;
+            _discussCraftState.modeId = isBook ? 'craft_review' : infoLens.id;
+            if (isBook) _discussCraftState.lensId = infoLens.id;
+            _discussCraftState.focusMenuOpen = false;
+            // Scope and background settings belong to this review, not the book.
+            if (isBook) {
+                try { localStorage.setItem('proseview-craft-lens', infoLens.id); } catch (e) {}
             }
-            try { localStorage.setItem('proseview-craft-lens', infoLens.id); } catch (e) {}
         }
 
         function renderDiscussCraftInfoDialog(lensId, tabId) {
@@ -9721,7 +9876,10 @@ function loadDiscussDiffMode(mode) {
             dialog.dataset.lens = infoLens.id;
             dialog.dataset.tab = activeTabId;
             titleEl.textContent = infoLens.book;
-            subEl.textContent = infoLens.author + ' · ' + (infoLens.subtitle || infoLens.tagline);
+            subEl.textContent = (infoLens.author ? infoLens.author + ' · ' : '') + (infoLens.subtitle || infoLens.tagline);
+            document.getElementById('discussCraftInfoNote').textContent = infoLens.author
+                ? 'Selected book principles · Original examples · No file changes'
+                : 'Selected feedback lanes · Original examples · No file changes';
 
             tabsEl.replaceChildren();
             var tabItems = [{ id: 'overview', tab: 'Overview' }].concat(lanes);
@@ -9730,12 +9888,17 @@ function loadDiscussDiffMode(mode) {
                 var tab = document.createElement('button');
                 tab.type = 'button';
                 tab.role = 'tab';
+                tab.id = 'discussCraftTab-' + infoLens.id + '-' + item.id;
+                tab.setAttribute('aria-controls', bodyEl.id);
                 tab.dataset.tab = item.id;
                 tab.tabIndex = isActive ? 0 : -1;
                 tab.className = 'discuss-craft-dialog-tab' + (isActive ? ' is-active' : '');
                 tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 tab.textContent = item.tab;
-                tab.onclick = function() { renderDiscussCraftInfoDialog(infoLens.id, item.id); };
+                tab.onclick = function() {
+                    renderDiscussCraftInfoDialog(infoLens.id, item.id);
+                    document.getElementById(tab.id).focus({preventScroll: true});
+                };
                 tab.addEventListener('keydown', function(event) {
                     var targetIdx = null;
                     if (event.key === 'ArrowRight') targetIdx = (index + 1) % tabItems.length;
@@ -9753,13 +9916,23 @@ function loadDiscussDiffMode(mode) {
             });
 
             bodyEl.replaceChildren();
+            bodyEl.scrollTop = 0;
+            bodyEl.setAttribute('aria-labelledby', 'discussCraftTab-' + infoLens.id + '-' + activeTabId);
             if (activeTabId === 'overview') {
-                var thesis = document.createElement('p');
-                thesis.className = 'discuss-craft-info-thesis';
-                thesis.textContent = infoLens.thesis;
-                bodyEl.appendChild(thesis);
+                infoLens.thesis.split(/\n\s*\n/).forEach(function(paragraph) {
+                    var thesis = document.createElement('p');
+                    thesis.className = 'discuss-craft-info-thesis';
+                    thesis.textContent = paragraph;
+                    bodyEl.appendChild(thesis);
+                });
 
-                var lanesLabel = elementWith('discuss-craft-dialog-section-label', 'Four lanes in this review (click a lane for examples)');
+                var reviewNote = elementWith('discuss-craft-guide-note');
+                var reviewLabel = document.createElement('strong');
+                reviewLabel.textContent = 'What the review will do';
+                reviewNote.append(reviewLabel, elementWith('discuss-craft-check-desc', infoLens.reviewNote));
+                bodyEl.appendChild(reviewNote);
+
+                var lanesLabel = elementWith('discuss-craft-dialog-section-label', 'Principles in this review (choose one for examples)');
                 bodyEl.appendChild(lanesLabel);
 
                 var laneGrid = elementWith('discuss-craft-lane-grid');
@@ -9770,10 +9943,13 @@ function loadDiscussDiffMode(mode) {
                     card.dataset.lane = lane.id;
                     var cTop = elementWith('discuss-craft-lane-top');
                     var cTitle = elementWith('discuss-craft-lane-name', lane.tab);
-                    var cLink = elementWith('discuss-craft-lane-more', 'Example →');
+                    var cLink = elementWith('discuss-craft-lane-more', 'Examples →');
                     cTop.append(cTitle, cLink);
                     card.append(cTop, elementWith('discuss-craft-check-desc', lane.brief));
-                    card.onclick = function() { renderDiscussCraftInfoDialog(infoLens.id, lane.id); };
+                    card.onclick = function() {
+                        renderDiscussCraftInfoDialog(infoLens.id, lane.id);
+                        document.getElementById('discussCraftTab-' + infoLens.id + '-' + lane.id).focus({preventScroll: true});
+                    };
                     laneGrid.appendChild(card);
                 });
                 bodyEl.appendChild(laneGrid);
@@ -9787,11 +9963,31 @@ function loadDiscussDiffMode(mode) {
                 if (infoLens.skipWhen) {
                     var skipLine = elementWith('discuss-craft-info-skip');
                     var skipStrong = document.createElement('strong');
-                    skipStrong.textContent = 'Skip when: ';
+                    skipStrong.textContent = 'Try another lens when: ';
                     skipLine.append(skipStrong, document.createTextNode(infoLens.skipWhen));
                     guidance.appendChild(skipLine);
                 }
                 bodyEl.appendChild(guidance);
+                if (infoLens.goals) {
+                    var approach = elementWith('discuss-craft-guide-note');
+                    var approachLabel = document.createElement('strong'); approachLabel.textContent = 'Choose what you want the review to do';
+                    approach.appendChild(approachLabel);
+                    infoLens.goals.forEach(function(goal) {
+                        approach.appendChild(elementWith('discuss-craft-check-desc', goal.label + ': ' + goal.brief));
+                    });
+                    approach.appendChild(elementWith('discuss-craft-check-desc', 'Dark comedy, sarcasm, and dry delivery can be combined in setup. They change how selected lanes are read, and leave your scene selection and notes in place.'));
+                    bodyEl.appendChild(approach);
+                }
+                appendDiscussReviewSources(bodyEl, infoLens);
+                if (infoLens.sourceUrl) {
+                    var source = document.createElement('a');
+                    source.className = 'discuss-craft-source';
+                    source.href = infoLens.sourceUrl;
+                    source.target = '_blank';
+                    source.rel = 'noopener noreferrer';
+                    source.textContent = infoLens.sourceLabel + ' ↗';
+                    bodyEl.appendChild(source);
+                }
             } else {
                 var lane = lanes.find(function(item) { return item.id === activeTabId; }) || lanes[0];
                 if (lane) {
@@ -9801,15 +9997,13 @@ function loadDiscussDiffMode(mode) {
                     var focusBtn = document.createElement('button');
                     focusBtn.type = 'button';
                     focusBtn.className = 'discuss-craft-lane-focus-btn';
-                    focusBtn.textContent = 'Focus review on this lane →';
+                    focusBtn.textContent = 'Focus review on this topic →';
                     focusBtn.onclick = function() {
                         _selectDiscussCraftLensAndScope(infoLens);
                         var input = document.getElementById('discussInput');
-                        if (input) {
-                            input.value = 'Focus only on "' + lane.title + '": ' + lane.summary;
-                            saveDiscussDraft();
-                        }
+                        setDiscussReviewLanes([lane.id], infoLens);
                         closeDiscussCraftInfoDialog();
+                        if (!_discussCraftState.active) startDiscussCraftReview(_discussCraftState.modeId);
                         renderDiscussTaskMode();
                         renderDiscussSnapshot();
                         if (input) input.focus();
@@ -9823,16 +10017,16 @@ function loadDiscussDiffMode(mode) {
                     var exWrap = elementWith('discuss-craft-example');
                     var exHead = elementWith('discuss-craft-example-head');
                     var exKicker = document.createElement('strong');
-                    exKicker.textContent = 'Example in a scene';
+                    exKicker.textContent = 'One possible revision';
                     exHead.appendChild(exKicker);
 
                     var exGrid = elementWith('discuss-craft-example-grid');
                     var flatCard = elementWith('discuss-craft-example-card is-flat');
-                    flatCard.appendChild(elementWith('discuss-craft-example-tag', 'Weak / flat'));
+                    flatCard.appendChild(elementWith('discuss-craft-example-tag', 'Before'));
                     flatCard.appendChild(elementWith('discuss-craft-example-copy', lane.flat));
 
                     var winCard = elementWith('discuss-craft-example-card is-working');
-                    winCard.appendChild(elementWith('discuss-craft-example-tag', 'Works cleanly'));
+                    winCard.appendChild(elementWith('discuss-craft-example-tag', 'A possible next version'));
                     winCard.appendChild(elementWith('discuss-craft-example-copy', lane.working));
                     exGrid.append(flatCard, winCard);
 
@@ -9844,34 +10038,61 @@ function loadDiscussDiffMode(mode) {
                     exWrap.append(exHead, exGrid, whyEl);
                     bodyEl.appendChild(exWrap);
 
+                    if (lane.anotherExample) {
+                        var another = document.createElement('details');
+                        another.className = 'discuss-craft-guide-note discuss-craft-another-example';
+                        var anotherTitle = document.createElement('summary');
+                        anotherTitle.textContent = 'Another example: ' + lane.anotherExample.title;
+                        var anotherText = document.createElement('blockquote');
+                        anotherText.textContent = lane.anotherExample.text;
+                        another.append(anotherTitle, anotherText, elementWith('discuss-craft-check-desc', lane.anotherExample.why));
+                        bodyEl.appendChild(another);
+                    }
                     var aiGrid = elementWith('discuss-craft-ai-grid');
                     var spotBox = elementWith('discuss-craft-ai-box');
                     var spotStrong = document.createElement('strong');
-                    spotStrong.textContent = 'What the AI catches';
+                    spotStrong.textContent = 'What to look for';
                     spotBox.append(spotStrong, elementWith('discuss-craft-check-desc', lane.spot));
-                    var fixBox = elementWith('discuss-craft-ai-box');
-                    var fixStrong = document.createElement('strong');
-                    fixStrong.textContent = 'Fix it gives you';
-                    fixBox.append(fixStrong, elementWith('discuss-craft-check-desc', lane.fix));
-                    aiGrid.append(spotBox, fixBox);
+                    if (lane.fix) {
+                        var fixBox = elementWith('discuss-craft-ai-box');
+                        var fixStrong = document.createElement('strong');
+                        fixStrong.textContent = 'Possible next step';
+                        fixBox.append(fixStrong, elementWith('discuss-craft-check-desc', lane.fix));
+                        aiGrid.appendChild(fixBox);
+                    }
+                    aiGrid.prepend(spotBox);
                     bodyEl.appendChild(aiGrid);
+
+                    var practice = elementWith('discuss-craft-guide-note');
+                    var practiceTitle = document.createElement('strong');
+                    practiceTitle.textContent = 'Try it in your scene';
+                    practice.append(practiceTitle, elementWith('discuss-craft-check-desc', lane.tryIt));
+                    var judgment = elementWith('discuss-craft-guide-note');
+                    var judgmentTitle = document.createElement('strong');
+                    judgmentTitle.textContent = 'Use your judgment';
+                    judgment.append(judgmentTitle, elementWith('discuss-craft-check-desc', lane.caution));
+                    bodyEl.append(practice, judgment);
+                    if (lane.sources) appendDiscussReviewSources(bodyEl, infoLens, lane.sources);
                 }
             }
 
-            var alreadyActive = _discussCraftState.lensId === infoLens.id;
+            var alreadyActive = _discussCraftState.active && discussCraftLens().id === infoLens.id;
             useBtn.textContent = alreadyActive ? 'Selected ✓' : 'Use ' + infoLens.book;
             useBtn.disabled = alreadyActive;
             useBtn.onclick = function() {
                 _selectDiscussCraftLensAndScope(infoLens);
                 closeDiscussCraftInfoDialog();
+                if (!_discussCraftState.active) startDiscussCraftReview(_discussCraftState.modeId);
                 renderDiscussTaskMode();
                 renderDiscussSnapshot();
             };
         }
 
+        var _discussCraftInfoOpener = null;
         function openDiscussCraftInfoDialog(lensId, tabId) {
             var dialog = document.getElementById('discussCraftInfoDialog');
             if (!dialog) return;
+            if (!dialog.open) _discussCraftInfoOpener = document.activeElement;
             renderDiscussCraftInfoDialog(lensId, tabId || 'overview');
             if (!dialog.open) dialog.showModal();
             var closeBtn = document.getElementById('discussCraftInfoClose');
@@ -9884,6 +10105,16 @@ function loadDiscussDiffMode(mode) {
             _discussCraftState.openInfoId = null;
             _syncDiscussCraftInfoButtons();
             if (dialog && dialog.open) dialog.close();
+            if (_discussCraftInfoOpener && _discussCraftInfoOpener.isConnected) {
+                _discussCraftInfoOpener.focus({preventScroll: true});
+                _discussCraftInfoOpener = null;
+                return;
+            }
+            var trigger = document.getElementById('discussReviewFocusTrigger');
+            if (trigger) {
+                trigger.focus({preventScroll: true});
+                return;
+            }
             if (prevLensId) {
                 var btn = document.querySelector('.discuss-craft-lens[data-lens="' + prevLensId + '"] .discuss-craft-info-btn');
                 if (btn) btn.focus({preventScroll: true});
@@ -9900,6 +10131,15 @@ function loadDiscussDiffMode(mode) {
                 var prevLensId = _discussCraftState.openInfoId;
                 _discussCraftState.openInfoId = null;
                 _syncDiscussCraftInfoButtons();
+                // Explicit closes already restored focus synchronously.
+                if (!prevLensId) return;
+                if (_discussCraftInfoOpener && _discussCraftInfoOpener.isConnected) {
+                    _discussCraftInfoOpener.focus({preventScroll: true});
+                    _discussCraftInfoOpener = null;
+                    return;
+                }
+                var trigger = document.getElementById('discussReviewFocusTrigger');
+                if (trigger) { trigger.focus({preventScroll: true}); return; }
                 if (prevLensId) {
                     var btn = document.querySelector('.discuss-craft-lens[data-lens="' + prevLensId + '"] .discuss-craft-info-btn');
                     if (btn) btn.focus({preventScroll: true});
@@ -9907,143 +10147,90 @@ function loadDiscussDiffMode(mode) {
             });
         })();
 
-        function renderDiscussCraftSetup(container) {
-            var activePath = discussCraftActivePath();
-            var allPaths = discussCraftAllPaths();
-            var selectedScenes = discussCraftSelectedScenes();
-            var totalWords = selectedScenes.reduce(function(sum, p) {
-                return sum + ((typeof meta !== 'undefined' && meta[p] && meta[p].words) ? meta[p].words : 0);
-            }, 0);
+        function openDiscussContextSentDialog(ctx, titleLabel) {
+            var dialog = document.getElementById('discussContextSentDialog');
+            var subEl = document.getElementById('discussContextSentSubtitle');
+            var bodyEl = document.getElementById('discussContextSentBody');
+            if (!dialog || !subEl || !bodyEl || !ctx) return;
 
-            var wrap = elementWith('discuss-craft-setup');
+            var parts = [];
+            if (titleLabel) parts.push(titleLabel);
+            if (ctx.skill_name) parts.push('Skill: ' + ctx.skill_name);
+            subEl.textContent = parts.join(' · ') || 'Turn context details';
 
-            var head = elementWith('discuss-craft-head');
-            var headText = elementWith('discuss-craft-head-text');
-            var hStrong = document.createElement('strong');
-            hStrong.textContent = 'Customize craft review';
-            headText.appendChild(hStrong);
-            headText.appendChild(elementWith('discuss-craft-sub', 'Read-only · Full prose · Checklist + drop-in replacements'));
-            var backBtn = document.createElement('button');
-            backBtn.type = 'button';
-            backBtn.className = 'discuss-secondary discuss-craft-back';
-            backBtn.textContent = '← Cards';
-            backBtn.onclick = cancelDiscussCraftReview;
-            head.append(headText, backBtn);
-            wrap.appendChild(head);
+            bodyEl.replaceChildren();
 
-            // 1. Choose a book lens
-            var lensHead = elementWith('discuss-craft-section-head');
-            lensHead.appendChild(elementWith('discuss-story-group', '1. Choose a book lens'));
-            lensHead.appendChild(elementWith('discuss-craft-hint', 'Click ⓘ for guide & examples'));
-            wrap.appendChild(lensHead);
+            var pills = elementWith('discuss-context-sent-pills');
+            function addPill(label, on) {
+                var pill = elementWith('discuss-context-sent-pill' + (on ? ' is-on' : ''), label);
+                pills.appendChild(pill);
+            }
+            addPill('Frontmatter: ' + (ctx.include_frontmatter ? 'On' : 'Off'), !!ctx.include_frontmatter);
+            addPill('±1 Excerpts: ' + (ctx.include_adjacent ? 'On' : 'Off'), !!ctx.include_adjacent);
+            addPill('Beat Map: ' + (ctx.beatmap_included ? 'Included' : 'None'), !!ctx.beatmap_included);
+            if (ctx.check_plan === true || ctx.check_plan === false) {
+                addPill('Plan check: ' + (ctx.check_plan ? 'On' : 'Off'), ctx.check_plan);
+            }
+            if (typeof ctx.max_findings === 'number') {
+                addPill('Priorities: up to ' + ctx.max_findings, ctx.max_findings !== DISCUSS_DEFAULT_MAX_FINDINGS);
+            }
+            var instrList = Array.isArray(ctx.project_instructions) ? ctx.project_instructions : [];
+            addPill('Repo rules: ' + (instrList.length ? instrList.join(', ') : 'none'), instrList.length > 0);
+            bodyEl.appendChild(pills);
 
-            var lensGrid = elementWith('discuss-craft-lens-grid');
-            DISCUSS_CRAFT_LENSES.forEach(function(lens) {
-                var isSelected = _discussCraftState.lensId === lens.id;
-                var infoOpen = _discussCraftState.openInfoId === lens.id;
-                var live = _discussActionCopy[lens.id] || {};
-                var card = elementWith('discuss-craft-lens' + (isSelected ? ' is-selected' : ''));
-                card.dataset.lens = lens.id;
-
-                var pickBtn = document.createElement('button');
-                pickBtn.type = 'button';
-                pickBtn.className = 'discuss-craft-lens-pick';
-                pickBtn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-                var titleRow = elementWith('discuss-craft-lens-title', live.label || lens.label);
-                var copyRow = elementWith('discuss-craft-lens-copy', live.description || lens.tagline);
-                pickBtn.append(titleRow, copyRow);
-                pickBtn.onclick = function() {
-                    _selectDiscussCraftLensAndScope(lens);
-                    _discussCraftState.openInfoId = null;
-                    renderDiscussTaskMode();
-                    renderDiscussSnapshot();
-                };
-
-                var infoBtn = document.createElement('button');
-                infoBtn.type = 'button';
-                infoBtn.className = 'discuss-craft-info-btn' + (infoOpen ? ' is-open' : '');
-                infoBtn.textContent = '\u24d8';
-                infoBtn.title = 'About ' + lens.book + ' by ' + lens.author;
-                infoBtn.setAttribute('aria-label', 'About ' + lens.book + ' by ' + lens.author);
-                infoBtn.setAttribute('aria-haspopup', 'dialog');
-                infoBtn.setAttribute('aria-expanded', infoOpen ? 'true' : 'false');
-                infoBtn.onclick = function(event) {
-                    event.stopPropagation();
-                    openDiscussCraftInfoDialog(lens.id);
-                };
-
-                card.append(pickBtn, infoBtn);
-                lensGrid.appendChild(card);
-            });
-            wrap.appendChild(lensGrid);
-
-            // 2. Scenes to analyze
-            var scopeHead = elementWith('discuss-craft-section-head');
-            scopeHead.appendChild(elementWith('discuss-story-group', '2. Scenes to analyze'));
-            scopeHead.appendChild(elementWith('discuss-craft-hint',
-                selectedScenes.length + (selectedScenes.length === 1 ? ' scene' : ' scenes')
-                + (totalWords ? ' · ~' + totalWords.toLocaleString() + ' words' : '')));
-            wrap.appendChild(scopeHead);
-
-            var scopes = [
-                { id: 'this_scene', label: 'This scene', hint: '1 scene' },
-                { id: 'adjacent', label: '±1 adjacent', hint: discussCraftScenesCountHint('adjacent', activePath, allPaths) },
-                { id: 'this_chapter', label: 'This chapter', hint: discussCraftScenesCountHint('this_chapter', activePath, allPaths) },
-                { id: 'custom', label: 'Pick scenes…', hint: (_discussCraftState.customScenes || []).length + ' picked' }
-            ];
-            var scopeGrid = elementWith('discuss-craft-scope-grid');
-            scopes.forEach(function(s) {
-                var active = _discussCraftState.scopeMode === s.id;
-                var btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'discuss-craft-scope-btn' + (active ? ' is-selected' : '');
-                btn.dataset.scope = s.id;
-                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-                btn.append(elementWith('discuss-craft-scope-label', s.label), elementWith('discuss-craft-scope-hint', s.hint));
-                btn.onclick = function() {
-                    _discussCraftState.scopeMode = s.id;
-                    if (s.id === 'custom' && !(_discussCraftState.customScenes || []).length && activePath) {
-                        _discussCraftState.customScenes = [activePath];
-                    }
-                    renderDiscussTaskMode();
-                    renderDiscussSnapshot();
-                };
-                scopeGrid.appendChild(btn);
-            });
-            wrap.appendChild(scopeGrid);
-
-            if (_discussCraftState.scopeMode === 'custom') {
-                var customBox = elementWith('discuss-craft-custom-list');
-                allPaths.forEach(function(scenePath) {
-                    var row = document.createElement('label');
-                    row.className = 'discuss-craft-custom-item';
-                    var cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.value = scenePath;
-                    cb.checked = (_discussCraftState.customScenes || []).indexOf(scenePath) >= 0;
-                    cb.onchange = function() {
-                        var list = (_discussCraftState.customScenes || []).slice();
-                        var idx = list.indexOf(scenePath);
-                        if (cb.checked && idx < 0) list.push(scenePath);
-                        if (!cb.checked && idx >= 0) list.splice(idx, 1);
-                        _discussCraftState.customScenes = list;
-                        renderDiscussTaskMode();
-                        renderDiscussSnapshot();
-                    };
-                    var nameSpan = document.createElement('span');
-                    nameSpan.className = 'discuss-craft-custom-name';
-                    nameSpan.textContent = scenePath;
-                    var wordsSpan = document.createElement('span');
-                    wordsSpan.className = 'discuss-craft-custom-words';
-                    var w = (typeof meta !== 'undefined' && meta[scenePath] && meta[scenePath].words) ? meta[scenePath].words : 0;
-                    wordsSpan.textContent = w ? (w + ' w') : '';
-                    row.append(cb, nameSpan, wordsSpan);
-                    customBox.appendChild(row);
-                });
-                wrap.appendChild(customBox);
+            if (Array.isArray(ctx.documents) && ctx.documents.length) {
+                var docsSec = elementWith('discuss-context-sent-section');
+                docsSec.appendChild(elementWith('discuss-craft-dialog-section-label', 'Attached documents'));
+                docsSec.appendChild(elementWith('discuss-context-sent-docs', ctx.documents.join(', ')));
+                bodyEl.appendChild(docsSec);
             }
 
-            container.appendChild(wrap);
+            function addCollapsible(title, text, openByDefault) {
+                if (!text) return;
+                var det = document.createElement('details');
+                det.className = 'discuss-context-sent-details';
+                if (openByDefault) det.open = true;
+                var sum = document.createElement('summary');
+                sum.textContent = title;
+                var pre = document.createElement('pre');
+                pre.className = 'discuss-context-sent-pre';
+                pre.textContent = text;
+                det.append(sum, pre);
+                bodyEl.appendChild(det);
+            }
+
+            var noteParts = [];
+            if (ctx.include_frontmatter) noteParts.push('frontmatter');
+            if (ctx.include_adjacent) noteParts.push('adjacent excerpts');
+            var notesTitle = noteParts.length
+                ? 'Background notes sent (' + noteParts.join(' & ') + ')'
+                : 'Background notes sent';
+            addCollapsible(notesTitle, ctx.notes, true);
+            addCollapsible('Selected passage', ctx.selection, false);
+            addCollapsible('Skill / action prompt', ctx.skill_prompt, false);
+            addCollapsible('Developer instructions', ctx.developer_instructions, false);
+            addCollapsible('Full raw prompt sent', ctx.full_prompt, false);
+
+            if (!dialog.open) dialog.showModal();
+            var closeBtn = document.getElementById('discussContextSentClose');
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function closeDiscussContextSentDialog() {
+            var dialog = document.getElementById('discussContextSentDialog');
+            if (dialog && dialog.open) dialog.close();
+        }
+
+        (function initDiscussContextSentDialog() {
+            var dialog = document.getElementById('discussContextSentDialog');
+            if (!dialog) return;
+            dialog.addEventListener('click', function(event) {
+                if (event.target === dialog) closeDiscussContextSentDialog();
+            });
+        })();
+
+        function renderDiscussCraftSetup(container) {
+            renderDiscussReviewSetup(container);
         }
 
         function discussCraftScenesCountHint(mode, activePath, allPaths) {
@@ -10062,27 +10249,52 @@ function loadDiscussDiffMode(mode) {
             return '';
         }
 
-        function runDiscussCraftReview() {
+        function runDiscussCraftReview(options) {
+            var defaults = !!(options && options.defaults);
+            var modeId = defaults ? options.modeId : _discussCraftState.modeId;
             var button = document.getElementById('discussSend');
             var input = document.getElementById('discussInput');
-            var turnDocument = discussTurnDocument();
+            var turnDocument = defaults ? (discussDocument() || discussTurnDocument()) : discussTurnDocument();
             if (!_discussConversationId || button.disabled) return;
             if (!turnDocument || turnDocument.kind !== 'scene') {
-                renderDiscussError('Craft review reads manuscript scenes. Open a scene first.');
+                renderDiscussError('A review reads manuscript scenes. Open a scene first.');
                 return;
             }
-            var selectedScenes = discussCraftSelectedScenes();
+            var selectedScenes = defaults ? [turnDocument.path] : discussCraftSelectedScenes();
             if (!selectedScenes.length) {
                 renderDiscussError('Select at least one scene to review.');
                 return;
             }
-            var lens = discussCraftLens();
-            var custom = input ? input.value.trim() : '';
+            var lens = defaults ? discussReviewDefaultLens(modeId) : discussCraftLens();
+            var lanes = defaults ? lens.lanes : discussReviewSelectedLanes(lens);
+            if (!lanes.length) {
+                renderDiscussError('Choose at least one lane to review.');
+                return;
+            }
+            if (modeId === 'comedy_review' && !defaults && !_discussCraftState.comedyGoals.length) {
+                renderDiscussError('Choose at least one comedy review goal.');
+                return;
+            }
+            var contexts = {};
+            selectedScenes.forEach(function(path) {
+                var key = discussCraftContextKey(path);
+                // Let the server read saved notes that have not loaded yet.
+                // Include local edits immediately, even before their save finishes.
+                if (Object.prototype.hasOwnProperty.call(_discussCraftState.storyContexts, key)) contexts[path] = discussCraftContext(path).trim();
+                else {
+                    try {
+                        if (sessionStorage.getItem(key + ':pending') === 'true') contexts[path] = discussCraftContext(path).trim();
+                    } catch (e) {}
+                }
+            });
+            var custom = !defaults && input ? input.value.trim() : '';
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             clearDiscussError();
             button.disabled = true;
             button.textContent = 'Starting…';
-            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
+            var endpoint = '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions';
+            // Capture a request without changing Customize's saved choices.
+            var payload = {
                 client_request_id: requestId,
                 question: '',
                 document: turnDocument,
@@ -10090,15 +10302,40 @@ function loadDiscussDiffMode(mode) {
                 action_scope: selectedScenes.length > 1 ? 'scenes' : 'scene',
                 scenes: selectedScenes,
                 custom_instruction: custom,
+                craft_focus: defaults ? '' : (discussCraftFocus() || {}).id || '',
+                craft_context: '',
+                craft_check_plan: !defaults && !!_discussCraftState.checkPlan,
+                review_max_findings: defaults ? DISCUSS_DEFAULT_MAX_FINDINGS : _discussCraftState.maxFindings,
+                craft_lanes: lanes.map(discussCraftLaneName),
+                review_lanes: lanes.map(function(lane) { return lane.id; }),
+                review_contexts: contexts,
+                ...(modeId === 'comedy_review' ? {
+                    comedy_styles: defaults ? [] : _discussCraftState.comedyStyles.slice(),
+                    comedy_goals: defaults ? ['strengthen', 'explore'] : _discussCraftState.comedyGoals.slice()
+                } : {}),
                 live_document: discussLiveDocumentFor(turnDocument),
                 attachments: [],
-                include_current_document: false
+                include_current_document: false,
+                include_frontmatter: effectiveDiscussFrontmatter(),
+                include_adjacent: selectedScenes.length === 1 && effectiveDiscussAdjacent()
+            };
+            syncDiscussSendEmpty();
+            // The first quick run may happen before Settings has been opened.
+            // Read the book defaults before sending rather than borrowing any
+            // temporary frontmatter/neighbor choices from Customize.
+            (defaults ? _ensureDiscussContextDefaults() : Promise.resolve()).then(function() {
+                if (defaults) {
+                    payload.include_frontmatter = _discussDefaultFlag('includeFrontmatter');
+                    payload.include_adjacent = _discussDefaultFlag('includeAdjacent');
+                }
+                return discussApi(endpoint, payload);
             }).then(function() {
-                if (custom) rememberDiscussInstruction(custom);
-                if (input) input.value = '';
-                _discussCraftState.active = false;
-                _discussCraftState.openInfoId = null;
-                saveDiscussDraft();
+                if (!defaults) {
+                    if (custom) rememberDiscussInstruction(custom);
+                    leaveDiscussReviewSetup();
+                    saveDiscussDraft();
+                }
+                _discussCraftState.cardsOpen = false;
                 renderDiscussTaskMode();
                 document.getElementById('discussAnnouncement').textContent =
                     lens.label + ' running across ' + selectedScenes.length + (selectedScenes.length === 1 ? ' scene' : ' scenes') + '. The manuscript will not change.';
@@ -10111,13 +10348,11 @@ function loadDiscussDiffMode(mode) {
             });
         }
 
-        // A scene pass takes no selection: the server reads the scene this
-        // conversation is looking at. Nothing to highlight, nothing to type --
-        // an action that needs a paragraph of setup first is not one anybody
-        // reaches for.
+        // The main card runs this scene with defaults. Customize is a separate
+        // control; its scope, lanes, and instructions never enter a quick run.
         function runDiscussScenePass(actionId) {
-            if (actionId === 'craft_review') {
-                startDiscussCraftReview();
+            if (DISCUSS_REVIEW_MODES.some(function(mode) { return mode.id === actionId; })) {
+                runDiscussCraftReview({defaults: true, modeId: actionId});
                 return;
             }
             var button = document.getElementById('discussSend');
@@ -10130,6 +10365,7 @@ function loadDiscussDiffMode(mode) {
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             clearDiscussError();
             button.disabled = true;
+            var isFrontmatterUpdate = actionId === 'update_frontmatter';
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: '',
@@ -10137,12 +10373,16 @@ function loadDiscussDiffMode(mode) {
                 action_id: actionId,
                 action_scope: 'scene',
                 attachments: [],
-                include_current_document: false
+                include_current_document: false,
+                include_frontmatter: isFrontmatterUpdate ? false : effectiveDiscussFrontmatter(),
+                include_adjacent: isFrontmatterUpdate ? false : effectiveDiscussAdjacent()
             }).then(function() {
-                document.getElementById('discussAnnouncement').textContent =
-                    selectionActionLabel(actionId) + ' running on this scene. The manuscript will not change.';
+                document.getElementById('discussAnnouncement').textContent = isFrontmatterUpdate
+                    ? 'Updating frontmatter from drafted prose. You can adjust any field or undo all afterwards.'
+                    : selectionActionLabel(actionId) + ' running on this scene. The manuscript will not change.';
                 scheduleDiscussSnapshot();
             }).catch(function(error) {
+                if (isFrontmatterUpdate) _clearDiscussFrontmatterSync();
                 renderDiscussError(error.message);
             }).finally(function() {
                 button.disabled = false;

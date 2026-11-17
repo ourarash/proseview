@@ -67,6 +67,7 @@ GENRE_LABELS: dict[str, str] = {
 DEFAULT_GENRE = "contemporary"
 DISCUSS_SELECTION_PRESET_MAX = 12
 DISCUSS_SELECTION_PRESET_LENGTH_MAX = 32_768
+DISCUSS_PROMPT_MAX = 16_000
 
 
 @dataclass(frozen=True)
@@ -83,12 +84,23 @@ class RepoTabConfig:
 
 @dataclass(frozen=True)
 class DiscussConfig:
-    """Stable, repository-level shortcuts for selection questions."""
+    """Discuss & craft review behavior and prompt defaults per book."""
 
     selection_presets: tuple[str, ...] = ()
     #: Which agent tab the dock opens on. Both tabs always exist and run
     #: independently; this only decides which one is in front to begin with.
     agent: str = "codex"
+    #: Whether scene passes / craft reviews attach scene YAML frontmatter in notes.
+    include_frontmatter: bool = True
+    #: Whether scene passes / craft reviews attach +/-1 adjacent scene excerpts.
+    include_adjacent_scenes: bool = True
+    #: Custom override for Discuss DEVELOPER_INSTRUCTIONS; empty uses Proseview's default.
+    developer_instructions: str = ""
+    #: Per-skill prompt overrides for built-in Discuss/Craft skills, as (action_id, text).
+    skill_prompts: tuple[tuple[str, str], ...] = ()
+
+    def skill_prompt(self, key: str) -> str | None:
+        return dict(self.skill_prompts).get(key)
 
 
 @dataclass(frozen=True)
@@ -145,6 +157,10 @@ class GroupConfig:
     critic1_name: str = "Story Editor"
     critic2_name: str = "Voice Editor"
     moderator_name: str = "Moderator"
+    #: Whether Group turns include scene YAML frontmatter notes.
+    include_frontmatter: bool = True
+    #: Optional override for shared Group editorial guidance; empty uses Proseview's default.
+    instructions: str = ""
 
     def preset_prompt(self, key: str) -> str | None:
         return dict(self.preset_prompts).get(key)
@@ -413,12 +429,26 @@ class Config:
         default_mtld = GENRE_MTLD_BANDS.get(self.genre, defaults.mtld_band)
         if (self.mtld_band != default_mtld or "mtld_band" in data) and "mtld_band" not in unset:
             data["mtld_band"] = list(self.mtld_band)
-        if self.discuss != defaults.discuss or "discuss" in data:
-            discuss = data.get("discuss")
-            if not isinstance(discuss, dict):
-                discuss = {}
-                data["discuss"] = discuss
+        discuss = data.get("discuss")
+        if not isinstance(discuss, dict):
+            discuss = {}
+        if self.discuss.selection_presets or "selection_presets" in discuss:
             discuss["selection_presets"] = list(self.discuss.selection_presets)
+        for key, value in (
+            ("agent", self.discuss.agent),
+            ("include_frontmatter", self.discuss.include_frontmatter),
+            ("include_adjacent_scenes", self.discuss.include_adjacent_scenes),
+            ("developer_instructions", self.discuss.developer_instructions),
+            ("skill_prompts", dict(self.discuss.skill_prompts)),
+        ):
+            if value != getattr(defaults.discuss, key) and value != {}:
+                discuss[key] = value
+            else:
+                discuss.pop(key, None)
+        if discuss:
+            data["discuss"] = discuss
+        elif "discuss" in data:
+            del data["discuss"]
         # Only what differs from the defaults is written, so a book that
         # changes nothing keeps no suggestions block at all.
         suggestions = {
@@ -436,7 +466,7 @@ class Config:
             del data["suggestions"]
 
         # Update owned fields in place so names/roles do not discard other
-        # tools' room metadata or YAML comments.
+        # tools' group metadata or YAML comments.
         group = data.get("group")
         if not isinstance(group, dict):
             group = {}
@@ -447,6 +477,8 @@ class Config:
             ("critic1_name", self.group.critic1_name),
             ("critic2_name", self.group.critic2_name),
             ("moderator_name", self.group.moderator_name),
+            ("include_frontmatter", self.group.include_frontmatter),
+            ("instructions", self.group.instructions),
         ):
             if value != getattr(defaults.group, key) and value != {}:
                 group[key] = value
@@ -774,12 +806,34 @@ def _coerce_discuss(v: Any) -> DiscussConfig:
         raise ConfigError(
             f"'discuss.selection_presets' supports at most {DISCUSS_SELECTION_PRESET_MAX} entries"
         )
-    agent = v.get("agent", DiscussConfig().agent)
+    defaults = DiscussConfig()
+    agent = v.get("agent", defaults.agent)
     if not isinstance(agent, str) or agent.strip().lower() not in DISCUSS_AGENTS:
         raise ConfigError(
             "'discuss.agent' must be one of " + ", ".join(DISCUSS_AGENTS) + f", got {agent!r}"
         )
-    return DiscussConfig(selection_presets=tuple(presets), agent=agent.strip().lower())
+    for key in ("include_frontmatter", "include_adjacent_scenes"):
+        if key in v and not isinstance(v[key], bool):
+            raise ConfigError(f"'discuss.{key}' must be true or false")
+    developer_instructions = v.get("developer_instructions", "") or ""
+    if not isinstance(developer_instructions, str) or len(developer_instructions) > DISCUSS_PROMPT_MAX:
+        raise ConfigError(f"'discuss.developer_instructions' must be text of at most {DISCUSS_PROMPT_MAX} characters")
+    raw_skills = v.get("skill_prompts") or {}
+    if not isinstance(raw_skills, dict):
+        raise ConfigError("'discuss.skill_prompts' must be a mapping of action id to text")
+    skill_prompts: list[tuple[str, str]] = []
+    for key, text in raw_skills.items():
+        if not isinstance(key, str) or not isinstance(text, str) or len(text) > DISCUSS_PROMPT_MAX:
+            raise ConfigError("'discuss.skill_prompts' entries must be text")
+        skill_prompts.append((key, text))
+    return DiscussConfig(
+        selection_presets=tuple(presets),
+        agent=agent.strip().lower(),
+        include_frontmatter=v.get("include_frontmatter", defaults.include_frontmatter),
+        include_adjacent_scenes=v.get("include_adjacent_scenes", defaults.include_adjacent_scenes),
+        developer_instructions=developer_instructions,
+        skill_prompts=tuple(sorted(skill_prompts)),
+    )
 
 
 def _coerce_suggestions(v: Any) -> SuggestionsConfig:
@@ -839,10 +893,17 @@ def _coerce_group(v: Any) -> GroupConfig:
         if not isinstance(key, str) or not isinstance(text, str) or len(text) > SUGGESTION_PROMPT_MAX:
             raise ConfigError("'group.preset_prompts' entries must be text")
         presets.append((key, text))
+    if "include_frontmatter" in v and not isinstance(v["include_frontmatter"], bool):
+        raise ConfigError("'group.include_frontmatter' must be true or false")
+    instructions = v.get("instructions", "") or ""
+    if not isinstance(instructions, str) or len(instructions) > DISCUSS_PROMPT_MAX:
+        raise ConfigError(f"'group.instructions' must be text of at most {DISCUSS_PROMPT_MAX} characters")
     return GroupConfig(
         critic1_prompt=critic1_prompt,
         critic2_prompt=critic2_prompt,
         preset_prompts=tuple(sorted(presets)),
+        include_frontmatter=v.get("include_frontmatter", defaults.include_frontmatter),
+        instructions=instructions,
         **names,
     )
 

@@ -1,0 +1,397 @@
+{
+  "canon_refactor": {
+    "SKILL.md": [
+      "df9621b2e292f17a4955994a88f711bcefb0f9b9973f46a212b87d41d750cadf",
+      "f2ea8e065395be5cec257f9487af723b4155248a2fc1da0662ee9448807de186"
+    ],
+    "frontmatter": [
+      {
+        "description": "Find consequences across the configured story folders.",
+        "name": "canon_refactor"
+      },
+      {
+        "name": "canon_refactor"
+      }
+    ],
+    "agents/openai.yaml": [
+      "eb1875e548dfe913fc5f6b1b780b3f4497a8b3ded0b7026a6dce10f228b9b678"
+    ]
+  },
+  "clarify": {
+    "SKILL.md": [
+      "5c735c04df83031f2aa3a3cae514b4334152b457646b605e524a45c04d329467"
+    ],
+    "frontmatter": [
+      {
+        "name": "clarify"
+      }
+    ],
+    "agents/openai.yaml": [
+      "ab7d898cb67c14872a47ae815248d034a521e987f242555c8e855418eabbe2ab"
+    ]
+  },
+  "clarity_flow": {
+    "SKILL.md": [
+      "6790258534ae440bbe90a7e28b6c38c1e24910e1a9de9182a3c9472e1beb04a3"
+    ],
+    "frontmatter": [
+      {
+        "name": "clarity_flow"
+      }
+    ],
+    "agents/openai.yaml": [
+      "ff3b7524550c6eaade8b67c67fae58edd4710dce499f329cdfa0217621e5c78e"
+    ]
+  },
+  "continuity": {
+    "SKILL.md": [
+      "14657e1a3b108d6f11e60aa043a3d920ab2a78caf961cd728c49c53c1de1557c"
+    ],
+    "frontmatter": [
+      {
+        "name": "continuity"
+      }
+    ],
+    "agents/openai.yaml": [
+      "9335a18b6fe4b3e8341b032432808e68081197725d19a60fb15c29aa13dba331"
+    ]
+  },
+  "craft_coyne": {
+    "SKILL.md": [
+      "1715df96dfdb0a764ba3f6c7044f0aa1dab426708f59123767a4c34187a33dd2",
+      "171e98c6c9439265cb30f897fc5ef0ae33629937cdf88450018b22768c7fdbe8",
+      "9d16c3ff1d038b8fa5c0b3c3198d1c7d51a33b929710f2eab7ed79200c96d916"
+    ],
+    "frontmatter": [
+      {
+        "description": "Audit the Five Commandments (Inciting Incident, Complications, Crisis, Climax, Resolution) and +/- value shifts.",
+        "name": "craft_coyne"
+      },
+      {
+        "description": "Find weak links between a scene’s disruption, rising trouble, choice, and consequences.",
+        "name": "craft_coyne"
+      }
+    ],
+    "agents/openai.yaml": [
+      "3bf89bfc70993d896f03a21f617c7a1ff024fb1e5a31e2531789abc9ce7dd2f2"
+    ]
+  },
+  "craft_cron": {
+    "SKILL.md": [
+      "847da73855101a4f2960668ee3666ad665bb1743859b1c84f2fcd5e0272b685e",
+      "8e6ee053aaad5c66588cb2e931c73f87c286ec6aaf969c8d5de71903cac0ddb2",
+      "b39e71b547dcd884a9771b78836057d8af6bfc2c88b00e34a3b790543cfafbdf"
+    ],
+    "frontmatter": [
+      {
+        "description": "Check whether external events force the POV character to confront their core misbelief and internal stakes.",
+        "name": "craft_cron"
+      },
+      {
+        "description": "Make the connection between events, personal meaning, and character choices clearer.",
+        "name": "craft_cron"
+      }
+    ],
+    "agents/openai.yaml": [
+      "59e4c9e252cca9bca44317c7357878b6660d83d8f45df2b9efffb508bc2cebdd"
+    ]
+  },
+  "craft_king": {
+    "SKILL.md": [
+      "004b0cd3aa4f96cfc5372815434914cda0fcb8c671fe80c1ed736b5717cd986a",
+      "1fc8f34e7f821afdd11503a9f566c46489f4398d109969a22aacb83be255b85e",
+      "c9bddc2c1e73d260b21e553644bb6e169568dc9cf6d15e3b9115b1190900c187"
+    ],
+    "frontmatter": [
+      {
+        "description": "Check behavioral honesty under pressure, cut adverbs and telling tags, and trim backstory clutter.",
+        "name": "craft_king"
+      },
+      {
+        "description": "Tighten redundant prose and make dialogue and reactions feel believable.",
+        "name": "craft_king"
+      }
+    ],
+    "agents/openai.yaml": [
+      "280c76d46967a70f2e317f0dbd51c9177ea250455d22f07c2e892cea0be2e8cd"
+    ]
+  },
+  "craft_lamott": {
+    "SKILL.md": [
+      "098a1c0b1a698311bc24afb1bd01899886bc58554c79d0ec94ee28adba0aee02",
+      "18c2286160b1f3082a2c7fc63083f92e72402481d99f88e87d27c4e17b3b543d",
+      "bd8ce7ce223b587f079dad98c8ab6cb987994c1cd3f9ec125077ea3b7f101533"
+    ],
+    "frontmatter": [
+      {
+        "description": "Get unstuck with one small, manageable drafting step.",
+        "name": "craft_lamott"
+      },
+      {
+        "description": "Ground the scene in a \"one-inch picture frame\", spot stiff perfectionism, and find small concrete momentum.",
+        "name": "craft_lamott"
+      }
+    ],
+    "agents/openai.yaml": [
+      "810b671ce184ead7786de1313d68df40b75d424c0157de0647b8949bc41d145e"
+    ]
+  },
+  "craft_mckee": {
+    "SKILL.md": [
+      "850ce949261256ff44d1c9e6b5632d9acee0ad388c4f08474389d414dc6da9a6",
+      "acc31a97217037d7a5a2eae20ba8a5b468540d084294d80d6465cc7375a86f90",
+      "daa4b91cab24a919e342e73658fc72166dc7930bbc91e6006f5f121d0786976d"
+    ],
+    "frontmatter": [
+      {
+        "description": "Check desire, antagonism, the Gap, value turn, and propulsion—with line-cited fixes and replacements.",
+        "name": "craft_mckee"
+      },
+      {
+        "description": "Find where a scene needs clearer desire, resistance, or meaningful change.",
+        "name": "craft_mckee"
+      }
+    ],
+    "agents/openai.yaml": [
+      "bbb026553bcd01d6ab5b8382737d42a27192cc2644bc40df91e863a7adbccf62"
+    ]
+  },
+  "craft_snyder": {
+    "SKILL.md": [
+      "0bf7ab43c06d16e6ed643b0e4cddee4d5c2223f0cfb483869fcf9725e06babfc",
+      "14641438e8cc7bad62e1cbd01c103a505007b0d8d6e46f5d49701b42e9ef2ae8",
+      "855d902809e2d1da2c81a588dea5485e67436d56dcc10f658176d26d00d27522"
+    ],
+    "frontmatter": [
+      {
+        "description": "Check exposition-in-action (\"Pope in the Pool\"), emotional polarity turns, active empathy, and forward hooks.",
+        "name": "craft_snyder"
+      },
+      {
+        "description": "Keep readers moving through clear stakes, engaging exposition, and purposeful scene endings.",
+        "name": "craft_snyder"
+      }
+    ],
+    "agents/openai.yaml": [
+      "c2fd1682c8e16c10a783a8f95ff1b7543e1294ba68d114efcb7785874084de9d"
+    ]
+  },
+  "custom_rewrite": {
+    "SKILL.md": [
+      "6bf1b500e6db84ef5689232a3adba0c8d3c0e0e57de6b1aa38c43a6f633a023d"
+    ],
+    "frontmatter": [
+      {
+        "name": "custom_rewrite"
+      }
+    ],
+    "agents/openai.yaml": [
+      "5b58bfac6a1042785dcbe9fed9deb2641db6c3f288d5795bdfb0aaaed39c76c9"
+    ]
+  },
+  "deepen_and_layer": {
+    "SKILL.md": [
+      "af0e05c6c62c3b5576fc75011693121fc6ad0be46df2093807adebde9d284b5c",
+      "fe010adba3f3e8c0503fd3c7ad387c5e2ce299abce5af5f4a51e59f1fde54915"
+    ],
+    "frontmatter": [
+      {
+        "description": "Add unspoken tension, physical micro-business, and emotional resonance in 2–3 key beats.",
+        "name": "deepen_and_layer"
+      }
+    ],
+    "agents/openai.yaml": [
+      "89b1ebabd88bd8dcf58fa13868451bc129a041b27dabb44faf5d2ab9ef1f7556"
+    ]
+  },
+  "layer_subtext": {
+    "SKILL.md": [
+      "67eae176f17671e7400340804a64cb711e85bd0db19ff0237e08bbb2c6b7470c"
+    ],
+    "frontmatter": [
+      {
+        "description": "Rewrite this passage with unspoken friction, physical micro-business, and layered subtext.",
+        "name": "layer_subtext"
+      }
+    ],
+    "agents/openai.yaml": [
+      "46f4728cc10633236a3446b38b36c25dc825e29e909878980db2fce366dc97d6"
+    ]
+  },
+  "next_beats": {
+    "SKILL.md": [
+      "237d6cda1b2f731cd3c0010ff337e70de30c5ac3afb1b9fda174cc21afa08af4"
+    ],
+    "frontmatter": [
+      {
+        "description": "\"Concrete possibilities for what happens next in this scene, without writing the prose for you.\"",
+        "name": "next_beats"
+      }
+    ],
+    "agents/openai.yaml": [
+      "ca0203a202254f2b9a142d6465e63aa2ff96486a63a8077e5f3e5e4137542802"
+    ]
+  },
+  "pacing_tension": {
+    "SKILL.md": [
+      "e6e0cc296f1eb5bec1f63350284201b9337212e09c0670ab047f9129e666c1c8"
+    ],
+    "frontmatter": [
+      {
+        "name": "pacing_tension"
+      }
+    ],
+    "agents/openai.yaml": [
+      "80382900c2bf51800d20b133c631e132355fa3020189421aa88a60a643757754"
+    ]
+  },
+  "quick_critique": {
+    "SKILL.md": [
+      "7a0dd8ab3f7b93e11788261c8d7074aa88a93d149909e6af678bc60a692c451e",
+      "80e5fd7790e124f2bc55885cdc8b7c76057346a8fcd73b900b9d8b0f34e3c882",
+      "a3d3c39f73d7ef14cef5817e5ba21633d46e27e758547a67ed16451a2dde1d20",
+      "daa0ba4280b1d3efba2e03ba7292b339d78b47435d7cc922bafd98451fcec41f",
+      "deb586f7beaf91f4addf0c6a562107b6e1359c35dae3ea47e0342785dbfbb628"
+    ],
+    "frontmatter": [
+      {
+        "description": "What is working against this scene, each note quoting the line and suggesting a fix.",
+        "name": "quick_critique"
+      },
+      {
+        "name": "quick_critique"
+      }
+    ],
+    "agents/openai.yaml": [
+      "e76d45388e7aa1e15cc058e78cf0d525e0136dd06b204dab501d7b39b19c7f2e"
+    ]
+  },
+  "rephrase": {
+    "SKILL.md": [
+      "e0bc9246d36427cf0de06843bfd5ebad9d6171639d8d8578899509f4ea8a225f"
+    ],
+    "frontmatter": [
+      {
+        "name": "rephrase"
+      }
+    ],
+    "agents/openai.yaml": [
+      "8a98fd2b9640ef2c57e5b6cfd41a34fe25e00390ec06aaf2940934bebcf8665a"
+    ]
+  },
+  "scene_continuity": {
+    "SKILL.md": [
+      "5e4b97505effbbf1231b5487aff021bdcd34fef19c978ebb3cb8765692530bd9",
+      "9d9c458774c1dc8533af55018ce8421f3b1308395067e57bfd61080b0e9d7462"
+    ],
+    "frontmatter": [
+      {
+        "description": "Compare this document with the rest of the story evidence.",
+        "name": "scene_continuity"
+      },
+      {
+        "name": "scene_continuity"
+      }
+    ],
+    "agents/openai.yaml": [
+      "782be897576ae45a5fe999fe362f31894f5896a78a600fbebabaaadee40fb917"
+    ]
+  },
+  "sensory_detail": {
+    "SKILL.md": [
+      "d3ce9a383f33114c0ed9568e56554d51b6efe73b391db64af13bdb5a739cc3c6"
+    ],
+    "frontmatter": [
+      {
+        "name": "sensory_detail"
+      }
+    ],
+    "agents/openai.yaml": [
+      "28b8de6c193936e3ef9d5d4500531441f670c7bbdfcd8207b4f9019ec3cc99e0"
+    ]
+  },
+  "show_moment": {
+    "SKILL.md": [
+      "277e599074cdcad994a863a6469845c205ef8492b1bf4c164d7154c14834b8f5"
+    ],
+    "frontmatter": [
+      {
+        "name": "show_moment"
+      }
+    ],
+    "agents/openai.yaml": [
+      "6430c889fb670230e5a7b033c749267fb546616a71fe38b732f1fc22fc9947b3"
+    ]
+  },
+  "style_consistency": {
+    "SKILL.md": [
+      "36de603cdb36c29ef7a7a07e2742f2e36d668ede0ad4bce2ec1438e45cec20be",
+      "60168d19fc35efb3ba9d4dd529ca718c86ce17588681f3f04193abf53e2cca4f"
+    ],
+    "frontmatter": [
+      {
+        "description": "Proseview finds the passives, filter verbs and echoes. The agent says which ones hurt.",
+        "name": "style_consistency"
+      },
+      {
+        "name": "style_consistency"
+      }
+    ],
+    "agents/openai.yaml": [
+      "91b926a9d0857aeef358fade322c58a7d33caa48c44fb46ba04bc4b08cd31ca3"
+    ]
+  },
+  "tighten": {
+    "SKILL.md": [
+      "35596b423e90d8cf266a8ad282466b12b5bc1ca7cb2a840f64c8f9ab69a86056"
+    ],
+    "frontmatter": [
+      {
+        "name": "tighten"
+      }
+    ],
+    "agents/openai.yaml": [
+      "99b84552a1c08c1ed738710c97e9024a606df30507070a1aa2017f10fb019cab"
+    ]
+  },
+  "update_frontmatter": {
+    "SKILL.md": [
+      "86a2bd2e80a00212611af2d2de0e30b9f74c710a7d373c5228089ea385a95aba"
+    ],
+    "frontmatter": [
+      {
+        "description": "Rewrite YAML frontmatter from the current drafted scene prose.",
+        "name": "update_frontmatter"
+      }
+    ],
+    "agents/openai.yaml": [
+      "353f54272e6b763dbd446f53e766893cb287a3590ae0aa3b20186611ffb8917d"
+    ]
+  },
+  "verify_refactor": {
+    "SKILL.md": [
+      "fc6e28bb91c178feefff37180614c588a2fa4403ce30feae4e902229be6c8a15"
+    ],
+    "frontmatter": [
+      {
+        "name": "verify_refactor"
+      }
+    ],
+    "agents/openai.yaml": [
+      "81f1ff63892ced0b2cfdcaaac5286cfd5d74032838a95a7b53ab4fd22c8c3ba4"
+    ]
+  },
+  "voice_character": {
+    "SKILL.md": [
+      "26328ef784f3255243f7488e9d99c8d514a9451f1599cad1f8ff25f2ca30cc32"
+    ],
+    "frontmatter": [
+      {
+        "name": "voice_character"
+      }
+    ],
+    "agents/openai.yaml": [
+      "5efc65302a02a6292818b28538a0bfb8c28174ff33b52e79cd34d94dfa42c149"
+    ]
+  }
+}

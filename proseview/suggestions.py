@@ -954,7 +954,7 @@ def render_group_prompt(
         if lines:
             parts.append("GROUP TRANSCRIPT SO FAR\n<<<\n" + "\n\n".join(lines) + "\n>>>")
     if scene_notes.strip():
-        parts.append(f"SCENE NOTES (frontmatter)\n{scene_notes.strip()}")
+        parts.append(f"SCENE NOTES (frontmatter — background context; may be outdated after revisions)\n{scene_notes.strip()}")
     if reference_text:
         parts.append("EXPLICITLY MENTIONED PROJECT CONTEXT\n" + reference_text)
     if scene_text.strip():

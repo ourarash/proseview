@@ -71,6 +71,7 @@ exclude = ["tests*", "fixtures*"]
 
 [tool.setuptools.package-data]
 proseview = [
+    "skills/*.json",
     "skills/*/SKILL.md",
     "skills/*/agents/*.yaml",
     "book_styles/*/*.css",

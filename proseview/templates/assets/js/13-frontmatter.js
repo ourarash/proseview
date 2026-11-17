@@ -23,9 +23,91 @@
             return _fmSpan('fm-string', text);
         }
 
+        function _fmUnquote(raw) {
+            var m = /^(\s*)(["'])(.*)\2(\s*)$/.exec(raw);
+            if (m) return { before: m[1] + m[2], name: m[3].trim(), after: m[2] + m[4] };
+            var trimmed = raw.trim();
+            var idx = raw.indexOf(trimmed);
+            return {
+                before: idx > 0 ? raw.slice(0, idx) : '',
+                name: trimmed,
+                after: idx >= 0 ? raw.slice(idx + trimmed.length) : ''
+            };
+        }
+
+        function _fmCharButton(name, options) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'fm-char-link';
+            btn.dataset.charName = name;
+            btn.textContent = name;
+            var metrics = options.charMentions && options.charMentions[name];
+            btn.title = metrics
+                ? 'Mentions: ' + metrics.dialogue + ' dialogue, ' + metrics.prose + ' prose \u00b7 Click to read bio'
+                : 'Read bio';
+            btn.addEventListener('click', function() { options.onCharacter(name); });
+            return btn;
+        }
+
+        function _fmAppendCharToken(target, raw, options) {
+            var parts = _fmUnquote(raw);
+            if (!parts.name) {
+                if (raw) target.appendChild(_fmSpan('fm-string', raw));
+                return;
+            }
+            if (parts.before) target.appendChild(_fmSpan('fm-string', parts.before));
+            target.appendChild(_fmCharButton(parts.name, options));
+            if (parts.after) target.appendChild(_fmSpan('fm-string', parts.after));
+        }
+
+        function _fmAppendCharValue(target, text, options) {
+            var comment = /^([^"'#]*?)(\s+#.*)$/.exec(text);
+            if (comment) {
+                if (comment[1]) _fmAppendCharValue(target, comment[1], options);
+                target.appendChild(_fmSpan('fm-comment', comment[2]));
+                return;
+            }
+            var bracketed = /^(\s*\[)([\s\S]*?)(\]\s*)$/.exec(text);
+            if (bracketed) {
+                target.appendChild(_fmSpan('fm-colon', bracketed[1]));
+                bracketed[2].split(',').forEach(function(part, idx) {
+                    if (idx) target.appendChild(_fmSpan('fm-colon', ','));
+                    _fmAppendCharToken(target, part, options);
+                });
+                target.appendChild(_fmSpan('fm-colon', bracketed[3]));
+                return;
+            }
+            if (text.indexOf(',') >= 0 && !/^\s*["']/.test(text)) {
+                text.split(',').forEach(function(part, idx) {
+                    if (idx) target.appendChild(_fmSpan('fm-colon', ','));
+                    _fmAppendCharToken(target, part, options);
+                });
+                return;
+            }
+            _fmAppendCharToken(target, text, options);
+        }
+
+        function _fmAppendPovValue(target, text, options) {
+            var comment = /^([^"'#]*?)(\s+#.*)$/.exec(text);
+            var body = comment ? comment[1] : text;
+            var parts = _fmUnquote(body);
+            if (parts.name && (!options.canLinkCharacter || options.canLinkCharacter(parts.name))) {
+                if (parts.before) target.appendChild(_fmSpan('fm-string', parts.before));
+                target.appendChild(_fmCharButton(parts.name, options));
+                if (parts.after) target.appendChild(_fmSpan('fm-string', parts.after));
+                if (comment) target.appendChild(_fmSpan('fm-comment', comment[2]));
+                return;
+            }
+            target.appendChild(_fmValue(text));
+        }
+
         // Fill *pre* with *text* (the lines between the --- fences), coloured.
-        function fillFrontmatterHighlight(pre, text) {
+        // When *options* is given (scene reading mode), character names become
+        // clickable bio links and frontmatter TODO list items get checkboxes.
+        function fillFrontmatterHighlight(pre, text, options) {
             pre.replaceChildren();
+            var activeKey = '';
+            var activeIndent = -1;
             String(text || '').split('\n').forEach(function(line, index) {
                 if (index) pre.appendChild(document.createTextNode('\n'));
                 var comment = /^(\s*)(#.*)$/.exec(line);
@@ -34,23 +116,69 @@
                     pre.appendChild(_fmSpan('fm-comment', comment[2]));
                     return;
                 }
+                if (!line.trim()) return;
                 var field = /^(\s*)(-\s+)?([^\s:#][^:]*?)(:)(\s+(.*))?$/.exec(line);
                 if (field && !/^\s*-\s+["']/.test(line)) {
+                    if (!field[2]) {
+                        activeKey = field[3].trim().toLowerCase();
+                        activeIndent = field[1].length;
+                    }
                     pre.appendChild(document.createTextNode(field[1] + (field[2] || '')));
                     pre.appendChild(_fmSpan('fm-key', field[3]));
                     pre.appendChild(_fmSpan('fm-colon', field[4]));
                     if (field[5] !== undefined) {
                         pre.appendChild(document.createTextNode(field[5].slice(0, field[5].length - field[6].length)));
-                        pre.appendChild(_fmValue(field[6]));
+                        if (!field[2] && options && options.onCharacter && activeKey === 'characters') {
+                            _fmAppendCharValue(pre, field[6], options);
+                        } else if (!field[2] && options && options.onCharacter && activeKey === 'pov') {
+                            _fmAppendPovValue(pre, field[6], options);
+                        } else {
+                            pre.appendChild(_fmValue(field[6]));
+                        }
                     }
                     return;
                 }
                 var item = /^(\s*)(-\s+)(.*)$/.exec(line);
                 if (item) {
+                    if (item[1].length < activeIndent) {
+                        activeKey = '';
+                        activeIndent = -1;
+                    }
+                    if (options && options.onTodoComplete && activeKey === 'todos') {
+                        var todoParts = _fmUnquote(item[3]);
+                        if (todoParts.name) {
+                            var itemWrap = document.createElement('span');
+                            itemWrap.className = 'fm-todo-item';
+                            itemWrap.appendChild(document.createTextNode(item[1]));
+                            var cb = document.createElement('input');
+                            cb.type = 'checkbox';
+                            cb.className = 'fm-todo-cb';
+                            cb.setAttribute('aria-label', 'Complete TODO: ' + todoParts.name);
+                            cb.title = 'Mark TODO complete and remove from frontmatter';
+                            var textSpan = document.createElement('span');
+                            textSpan.appendChild(_fmSpan('fm-dash', item[2]));
+                            textSpan.appendChild(_fmValue(item[3]));
+                            cb.addEventListener('change', function() {
+                                options.onTodoComplete(cb, todoParts.name, itemWrap);
+                            });
+                            itemWrap.append(cb, textSpan);
+                            pre.appendChild(itemWrap);
+                            return;
+                        }
+                    }
                     pre.appendChild(document.createTextNode(item[1]));
                     pre.appendChild(_fmSpan('fm-dash', item[2]));
-                    pre.appendChild(_fmValue(item[3]));
+                    if (options && options.onCharacter && activeKey === 'characters') {
+                        _fmAppendCharValue(pre, item[3], options);
+                    } else {
+                        pre.appendChild(_fmValue(item[3]));
+                    }
                     return;
+                }
+                var indentMatch = /^(\s*)/.exec(line);
+                if (indentMatch && indentMatch[1].length <= activeIndent) {
+                    activeKey = '';
+                    activeIndent = -1;
                 }
                 // A folded continuation line, or anything else, as written.
                 pre.appendChild(_fmValue(line));
@@ -73,7 +201,7 @@
 
         // A quiet line above the frontmatter that folds it away and back.
         // One choice for every file, remembered in this browser.
-        function _fmFrame(text, content) {
+        function _fmFrame(text, content, actions, footer) {
             var frame = document.createElement('div');
             frame.className = 'fm';
             var toggle = document.createElement('button');
@@ -94,17 +222,25 @@
                 label();
             });
             label();
-            frame.append(toggle, content);
+            if (actions) {
+                var head = document.createElement('div');
+                head.className = 'fm-head';
+                head.append(toggle, actions);
+                frame.append(head, content);
+            } else {
+                frame.append(toggle, content);
+            }
+            if (footer) frame.appendChild(footer);
             return frame;
         }
 
         // The highlighted, foldable block for *text*.
-        function renderFrontmatterBlock(text) {
+        function renderFrontmatterBlock(text, actions, options) {
             var pre = document.createElement('pre');
             pre.className = 'fm-block';
             pre.setAttribute('aria-label', 'Frontmatter');
-            fillFrontmatterHighlight(pre, text);
-            return _fmFrame(text, pre);
+            fillFrontmatterHighlight(pre, text, options);
+            return _fmFrame(text, pre, actions, options && options.footer);
         }
 
         // The edit box for *text*; *onInput* runs on every change. A text box

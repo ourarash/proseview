@@ -544,10 +544,10 @@
         }
 
         document.addEventListener('click', function(e) {
-            // "Add this block": write an empty frontmatter scaffold into a
+            // "+ Add frontmatter": write an empty frontmatter scaffold into a
             // scene that has none. Every key lands blank on purpose -- a
             // guessed value would read like something the writer typed.
-            const fmAddBtn = e.target.closest('.scene-card-fm-add');
+            const fmAddBtn = e.target.closest('.fm-add-scaffold');
             if (fmAddBtn) {
                 const absPath = fmAddBtn.dataset.absPath;
                 if (!absPath) return;

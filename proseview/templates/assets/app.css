@@ -5441,7 +5441,9 @@
         /* Folds the frontmatter away: a quiet label, not a control that
            competes with the prose. */
         .fm-toggle {
-            display: block;
+            display: flex;
+            align-items: center;
+            min-height: 26px;
             margin: 0 0 6px;
             padding: 0;
             border: 0;
@@ -5459,7 +5461,78 @@
             opacity: 1;
         }
 
-        .fm.is-collapsed> :not(.fm-toggle) {
+        .fm-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 0 0 6px;
+        }
+
+        .fm-head .fm-toggle {
+            margin: 0;
+        }
+
+        .fm-head-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .fm-age {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--text-muted);
+            opacity: .8;
+        }
+
+        .fm-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--text-muted);
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .fm-dot.is-fresh {
+            background: var(--success);
+        }
+
+        .fm-dot.is-stale {
+            background: var(--warning);
+        }
+
+        .fm-sync-btn {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 9px;
+            cursor: pointer;
+            transition: border-color .15s, color .15s, background .15s;
+        }
+
+        .fm-sync-btn:hover,
+        .fm-sync-btn:focus-visible {
+            border-color: var(--primary);
+            color: var(--text-main);
+            background: var(--surface-muted);
+        }
+
+        .fm-sync-btn:disabled {
+            opacity: .6;
+            cursor: default;
+        }
+
+        .fm.is-collapsed> :not(.fm-toggle):not(.fm-head) {
             display: none;
         }
 
@@ -5545,6 +5618,106 @@
             padding: 4px 10px;
             font-size: 12px;
             cursor: pointer;
+        }
+
+        .fm-add:hover:not(:disabled),
+        .fm-add:focus-visible {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .fm-add:disabled {
+            opacity: .6;
+            cursor: default;
+        }
+
+        .fm-bare {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 0 0 18px;
+        }
+
+        .fm-bare .fm-add {
+            margin: 0;
+        }
+
+        .fm-char-link {
+            display: inline;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: none;
+            font: inherit;
+            line-height: inherit;
+            letter-spacing: inherit;
+            color: var(--chart-success, var(--success));
+            text-decoration: underline dotted currentColor;
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
+        .fm-char-link:hover,
+        .fm-char-link:focus-visible {
+            color: var(--primary);
+            text-decoration-style: solid;
+        }
+
+        .fm-char-link:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+            border-radius: 3px;
+        }
+
+        .fm-todo-item {
+            display: inline;
+        }
+
+        .fm-block .fm-todo-cb {
+            margin: 0 6px 0 0;
+            vertical-align: middle;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .fm-related {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 6px 12px;
+            margin-top: 8px;
+            padding: 0 2px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .fm-bare .fm-related {
+            margin-top: 0;
+        }
+
+        .fm-related-label {
+            font-size: 11px;
+            letter-spacing: .04em;
+            opacity: .75;
+            flex-shrink: 0;
+        }
+
+        .fm-related-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .fm-related-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 11.5px;
         }
 
         #sceneFrontmatter,
@@ -5833,6 +6006,30 @@
             margin-top: 0;
         }
 
+        .discuss-continuity-tools {
+            align-self: stretch;
+            margin-top: 16px;
+            text-align: left;
+        }
+
+        .discuss-continuity-tools > summary {
+            padding: 6px 0;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .discuss-continuity-help {
+            margin: 4px 0 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .discuss-continuity-tools .discuss-story-actions {
+            margin-top: 0;
+        }
+
         .discuss-story-action {
             width: 100%;
             padding: 11px 12px;
@@ -5867,10 +6064,549 @@
             line-height: 1.4;
         }
 
+        .discuss-review-cards-help {
+            margin: 0 0 8px;
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .discuss-empty.discuss-review-landing { max-width: none; margin: 8px 4px 0; }
+        .discuss-review-cards-help + .discuss-story-actions { margin-top: 0; }
+
+        .discuss-review-card {
+            position: relative;
+            min-width: 0;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--surface-card);
+        }
+
+        .discuss-review-card:has(.discuss-review-run:hover) {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 5%, var(--surface-card));
+        }
+
+        .discuss-review-card .discuss-review-run {
+            display: block;
+            border: 0;
+            background: transparent;
+        }
+
+        .discuss-review-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+        }
+
+        .discuss-review-card-run {
+            flex-shrink: 0;
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 550;
+            white-space: nowrap;
+        }
+
+        .discuss-review-card-defaults {
+            display: flex;
+            align-items: center;
+            min-height: 28px;
+            margin-top: 8px;
+            padding-right: 94px;
+            color: var(--text-muted);
+            font-size: 10px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-review-customize {
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 32px;
+            padding: 7px 8px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 400;
+            cursor: pointer;
+        }
+
+        .discuss-review-customize:hover, .discuss-review-customize:focus-visible { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+        .discuss-review-customize:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
+        .discuss-review-customize:disabled, .discuss-review-run:disabled { opacity: .6; cursor: wait; }
+
+        .discuss-review-heading { display: flex; align-items: center; gap: 5px; margin: 14px 0 6px; }
+        .discuss-review-heading .discuss-story-group { margin: 0; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--text-main); }
+        .discuss-craft-head > .discuss-review-heading { margin: 0; }
+        .discuss-review-info-trigger {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .discuss-review-info-trigger:hover, .discuss-review-info-trigger[aria-expanded="true"] { color: var(--primary); }
+        .discuss-review-info-trigger:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+        .discuss-review-info-popover {
+            position: fixed;
+            box-sizing: border-box;
+            z-index: 2300;
+            overflow: auto;
+            padding: 13px;
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            background: var(--surface-card);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, .25);
+            color: var(--text-main);
+            text-align: left;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .discuss-review-info-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .discuss-review-info-head > button {
+            flex-shrink: 0;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .discuss-review-info-head > button:hover { color: var(--primary); }
+        .discuss-review-info-head > button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+        .discuss-review-info-body dl { margin: 9px 0; }
+        .discuss-review-info-row { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .discuss-review-info-row:last-child { border-bottom: 0; }
+        .discuss-review-info-row dt { font-weight: 600; }
+        .discuss-review-info-row dd { margin: 0; }
+        .discuss-review-info-note {
+            margin-top: 3px;
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        @media (max-width: 600px) { .discuss-review-customize { min-height: 36px; bottom: 6px; } }
+
         .discuss-craft-setup {
             text-align: left;
             display: grid;
             gap: 10px;
+        }
+        .discuss-empty.discuss-review-container {
+            max-width: none;
+            margin: 8px 4px 0;
+        }
+        .discuss-craft-setup > .discuss-craft-context-help { margin: 0 0 6px; font-size: 12px; }
+        .discuss-craft-ai-grid:has(> :only-child) { grid-template-columns: 1fr; }
+
+        .discuss-review-limit { margin: 8px 0 4px; }
+        .discuss-review-limit .discuss-craft-context-help { margin: 4px 0 0; font-size: 12px; }
+        .discuss-review-limit-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main, inherit); }
+        .discuss-review-limit-row input {
+            width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+            background: var(--surface-card); color: inherit; font: inherit; text-align: center;
+        }
+        .discuss-review-limit-row input:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 1px; }
+        .discuss-craft-focus-box {
+            position: relative;
+        }
+
+        .discuss-craft-focus-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 30px;
+        }
+
+        .discuss-craft-focus-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .discuss-craft-focus-trigger {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            height: 30px;
+            padding: 0 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .discuss-craft-focus-trigger:hover,
+        .discuss-craft-focus-trigger.is-focused {
+            border-color: var(--primary);
+        }
+
+        .discuss-craft-focus-trigger.is-focused .discuss-craft-focus-trigger-text {
+            color: var(--primary);
+        }
+
+        .discuss-craft-focus-trigger-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .discuss-craft-focus-caret {
+            color: var(--text-muted);
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .discuss-craft-focus-clear,
+        .discuss-craft-focus-info-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface-card);
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 12.5px;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .discuss-craft-focus-clear:hover,
+        .discuss-craft-focus-info-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .discuss-craft-focus-brief {
+            margin: 5px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .discuss-craft-focus-popover {
+            position: fixed;
+            box-sizing: border-box;
+            z-index: 2300;
+            color: var(--text-main);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            background: var(--surface-tooltip, var(--surface-card));
+            box-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+            padding: 6px;
+            display: grid;
+            gap: 4px;
+            max-height: 290px;
+            overflow-y: auto;
+        }
+
+        .discuss-craft-focus-option {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: start;
+            gap: 6px;
+            padding: 7px 8px;
+            border-radius: 7px;
+            border: 1px solid transparent;
+        }
+
+        .discuss-craft-focus-option:hover {
+            background: var(--surface-muted);
+        }
+
+        .discuss-craft-focus-option.is-selected {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
+        }
+
+        .discuss-craft-focus-option-pick {
+            background: none;
+            border: 0;
+            padding: 0;
+            text-align: left;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .discuss-craft-focus-option-pick:focus {
+            outline: none;
+        }
+
+        .discuss-craft-focus-option:has(.discuss-craft-focus-option-pick:focus-visible) {
+            outline: 2px solid var(--primary);
+            outline-offset: -2px;
+        }
+
+        .discuss-craft-focus-option-title {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-focus-option.is-selected .discuss-craft-focus-option-title {
+            color: var(--primary);
+        }
+
+        .discuss-craft-focus-option-brief {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            line-height: 1.35;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .discuss-craft-focus-option-info {
+            border: 1px solid var(--border);
+            background: var(--surface-card);
+            color: var(--text-muted);
+            border-radius: 999px;
+            font: inherit;
+            font-size: 11px;
+            padding: 1px 7px;
+            cursor: pointer;
+        }
+
+        .discuss-craft-focus-option-info:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .discuss-craft-lane-link {
+            display: inline;
+            border: 0;
+            padding: 0;
+            background: none;
+            color: var(--primary);
+            font: inherit;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
+        .discuss-craft-instruction-label {
+            flex-basis: 100%;
+            font-weight: 600;
+        }
+
+        .discuss-craft-another-example > summary {
+            cursor: pointer;
+            font-weight: 600;
+            line-height: 1.5;
+        }
+
+        .discuss-craft-story-context {
+            min-width: 0;
+            font-size: 12px;
+        }
+
+        .discuss-craft-story-context summary {
+            cursor: pointer;
+            padding: 4px 0;
+            color: var(--primary);
+        }
+
+        .discuss-craft-story-context label {
+            display: block;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
+        .discuss-craft-context-help {
+            margin: 5px 0 7px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .discuss-craft-story-context textarea {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .discuss-comedy-options { display: grid; gap: 8px; min-width: 0; }
+        .discuss-comedy-options > strong { font-size: 12px; }
+        .discuss-comedy-options .discuss-craft-context-help { margin: 0 0 4px; font-size: 12px; }
+        .discuss-comedy-styles { display: flex; flex-wrap: wrap; gap: 6px; }
+        .discuss-comedy-style {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 5px 7px;
+        }
+        .discuss-comedy-style:has(input:checked) {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
+        }
+        .discuss-comedy-style label { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
+        .discuss-comedy-style input { margin: 0; accent-color: var(--primary); }
+        .discuss-comedy-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+        .discuss-comedy-goal { display: flex; min-width: 0; font-size: 12px; line-height: 1.4; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
+        .discuss-comedy-goal input { margin: 0; flex-shrink: 0; accent-color: var(--primary); }
+        .discuss-comedy-summary { flex-basis: 100%; font-size: 11px; color: var(--text-muted); }
+        .discuss-review-sources > summary { cursor: pointer; font-weight: 600; }
+        .discuss-review-source { margin-top: 12px; }
+        .discuss-review-source a { font-size: 12px; color: var(--primary); }
+        .discuss-review-selected-scenes { display: flex; flex-wrap: wrap; gap: 5px; }
+        .discuss-review-selected-scene {
+            max-width: 100%;
+            padding: 3px 6px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 11px;
+            overflow-wrap: anywhere;
+        }
+        .discuss-review-lane-copy { flex: 1; min-width: 0; }
+        .discuss-review-lane-check {
+            box-sizing: border-box;
+            width: 13px;
+            height: 13px;
+            margin-top: 2px;
+            border: 1px solid var(--text-muted);
+            border-radius: 3px;
+            font-size: 10px;
+            line-height: 11px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .is-selected > .discuss-craft-focus-option-pick .discuss-review-lane-check {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: var(--surface-card);
+        }
+        .discuss-review-focus-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border-top: 1px solid var(--border);
+            padding: 7px 2px 2px;
+        }
+        .discuss-review-focus-footer .discuss-secondary { padding: 4px 7px; font-size: 11px; }
+        .discuss-review-focus-footer .discuss-craft-hint { font-size: 11px; }
+        .discuss-craft-notes-row:has(.discuss-review-note-copy) {
+            display: grid;
+            gap: 0;
+            padding: 0 10px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+        }
+        .discuss-craft-note-toggle:has(.discuss-review-note-copy) {
+            align-items: flex-start;
+            padding: 10px 0;
+            white-space: normal;
+        }
+        .discuss-craft-note-toggle:has(.discuss-review-note-copy) + .discuss-craft-note-toggle { border-top: 1px solid var(--border); }
+        .discuss-craft-note-toggle.is-disabled { opacity: .55; cursor: default; }
+        .discuss-review-note-copy { flex: 1; min-width: 0; }
+        .discuss-review-note-copy strong { font-size: 12px; margin: 0; }
+        .discuss-review-note-copy .discuss-craft-context-help { margin: 4px 0 0; font-size: 11px; }
+        .discuss-craft-story-context select {
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
+            padding: 7px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+        }
+        .discuss-review-scene-dialog { max-width: calc(100vw - 24px); }
+        .discuss-review-scene-dialog .discuss-craft-dialog-head h2 { margin: 0; }
+        #discussReviewSceneSearch {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            font: inherit;
+        }
+        .discuss-review-scene-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+        .discuss-review-picker-chapter { margin: 18px 0 8px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+        .discuss-review-picker-copy { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+        .discuss-review-scene-choices .discuss-craft-custom-item { align-items: center; padding: 10px 3px; }
+        .discuss-review-scene-choices .discuss-craft-custom-words { white-space: nowrap; }
+
+        .discuss-craft-launch {
+            margin-bottom: 7px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .discuss-craft-request-summary p {
+            margin: 6px 0;
+        }
+
+        .discuss-craft-prompt {
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        .discuss-craft-prompt summary {
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 4px 0;
+        }
+
+        .discuss-craft-prompt-body {
+            margin-top: 8px;
+            border-top: 1px solid var(--border);
+            padding-top: 8px;
+        }
+
+        .discuss-craft-focus {
+            max-width: 100%;
+            text-align: left;
+            overflow-wrap: anywhere;
         }
 
         .discuss-craft-head {
@@ -5956,22 +6692,22 @@
         }
 
         .discuss-craft-lens-title {
-            font-size: 11.5px;
+            font-size: 12px;
             font-weight: 800;
             color: var(--primary);
         }
 
         .discuss-craft-lens-copy {
             margin-top: 2px;
-            font-size: 10.5px;
+            font-size: 11.5px;
             line-height: 1.35;
             color: var(--text-muted);
         }
 
         .discuss-craft-info-btn {
             flex-shrink: 0;
-            width: 18px;
-            height: 18px;
+            width: 24px;
+            height: 24px;
             border-radius: 999px;
             border: 1px solid var(--border);
             background: var(--surface-muted);
@@ -5991,7 +6727,7 @@
         }
 
         .discuss-craft-info-dialog {
-            width: min(740px, calc(100vw - 32px));
+            width: min(780px, calc(100vw - 32px));
             max-height: calc(100vh - 40px);
             padding: 20px 24px 18px;
             border: 1px solid var(--border);
@@ -6001,6 +6737,18 @@
             box-shadow: 0 22px 70px rgba(15, 23, 42, .32);
             font-size: 13px;
             overflow-y: auto;
+        }
+
+        .discuss-craft-info-dialog[open] {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .discuss-craft-dialog-head,
+        .discuss-craft-dialog-tabs,
+        .discuss-craft-dialog-foot {
+            flex-shrink: 0;
         }
 
         .discuss-craft-info-dialog::backdrop {
@@ -6062,6 +6810,33 @@
             display: grid;
             gap: 14px;
             margin-top: 16px;
+            min-height: 0;
+            overflow-y: auto;
+            align-content: start;
+            padding-right: 5px;
+        }
+
+        .discuss-craft-guide-note {
+            display: grid;
+            gap: 7px;
+        }
+
+        .discuss-craft-guide-note strong {
+            font-size: 13px;
+        }
+
+        .discuss-craft-guide-note blockquote {
+            margin: 0;
+            padding: 9px 12px;
+            border-left: 3px solid var(--border);
+            background: var(--surface-muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .discuss-craft-source {
+            font-size: 12px;
+            color: var(--primary);
         }
 
         .discuss-craft-info-thesis {
@@ -6309,6 +7084,120 @@
 
         .discuss-craft-dialog-actions button {
             padding: 6px 12px;
+        }
+
+        .discuss-craft-settings-link {
+            border: 0;
+            background: none;
+            color: var(--primary);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .discuss-craft-settings-link:hover {
+            text-decoration: underline;
+        }
+
+        .discuss-craft-notes-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--surface-card);
+            padding: 8px 10px;
+        }
+
+        .discuss-craft-note-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11.5px;
+            color: var(--text-main);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .discuss-context-inspect-btn {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface-muted);
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 10.5px;
+            font-weight: 600;
+            padding: 1px 8px;
+            cursor: pointer;
+        }
+
+        .discuss-context-inspect-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .discuss-context-sent-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .discuss-context-sent-pill {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface-muted);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 9px;
+        }
+
+        .discuss-context-sent-pill.is-on {
+            border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+            color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 8%, var(--surface-card));
+        }
+
+        .discuss-context-sent-section {
+            display: grid;
+            gap: 4px;
+        }
+
+        .discuss-context-sent-docs {
+            font-size: 12px;
+            color: var(--text-muted);
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-context-sent-details {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            padding: 8px 10px;
+        }
+
+        .discuss-context-sent-details summary {
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .discuss-context-sent-pre {
+            margin: 8px 0 0;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: var(--surface-muted);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            max-height: 260px;
+            overflow-y: auto;
         }
 
         .discuss-craft-scope-grid {
@@ -13271,7 +14160,8 @@
         html[data-static-snapshot] .ledger-open-btn,
         html[data-static-snapshot] #selectionPill,
         html[data-static-snapshot] .note-entry-actions,
-        html[data-static-snapshot] .scene-card-fm-add,
+        html[data-static-snapshot] .fm-add-scaffold,
+        html[data-static-snapshot] .fm-head-actions,
         html[data-static-snapshot] .fm-todo-cb,
         html[data-static-snapshot="read-only"] #exportOpenBtn,
         html[data-static-snapshot] #modalPrintLayoutBtn,

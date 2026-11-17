@@ -1,0 +1,441 @@
+[
+  {
+    "id": "quick_critique",
+    "label": "Quick critique",
+    "book": "Quick critique",
+    "subtitle": "Prioritized feedback, with exact passages and concrete revision steps.",
+    "tagline": "What is working against the scene, with evidence and a useful fix.",
+    "defaultScope": "this_scene",
+    "thesis": "A quick critique finds the few things most likely to interrupt the reader’s experience. It follows the scene’s logic, the characters’ choices, the pace of the exchange, and the words on the page.\n\nChoose all lanes for a general reading, or select the ones you are revising. A quiet scene can work well: the review should explain a specific reader problem and show a practical fix that preserves the scene’s purpose and voice.",
+    "reviewNote": "Prioritize concrete issues in your selected lanes. Each note quotes a passage, explains its effect on the reader, and offers a specific revision. For several scenes, a short coverage table comes before the priorities.",
+    "bestFor": "Finding the most useful revisions before another draft.",
+    "skipWhen": "You want to explore additions rather than diagnose reader problems; try Deepen & layer.",
+    "lanes": [
+      {
+        "id": "logic",
+        "title": "What holds the scene together",
+        "summary": "Follow what someone wants, what gets in the way, and what changes. A useful critique points to a specific break in that movement, rather than asking every scene to become louder.",
+        "spot": "Look for an unmotivated decision, an obstacle that disappears, or a consequence the reader cannot follow.",
+        "flat": "He hesitates. She repeats the same request. He agrees.",
+        "working": "He hesitates because he needs the key back by six. She promises five. He agrees on that condition.",
+        "why": "One concrete concern makes the decision understandable without inventing a confrontation.",
+        "caution": "A quiet concession can be enough when the relationship and its cost are already clear.",
+        "tab": "Scene logic & stakes",
+        "brief": "Can the reader follow cause and effect?",
+        "tryIt": "Pick one important decision. Read the action immediately before it and the consequence after it. If the connection is missing, try one concrete cause or condition before adding an explanation."
+      },
+      {
+        "id": "motivation",
+        "title": "Why this person makes this choice",
+        "summary": "Check whether a response follows from what the person knows, wants, fears, or values. Keep observations separate from possible interpretations; an unexplained history is not automatically a flaw.",
+        "spot": "Look for a decision whose cause is hard to infer, or a stated feeling that never affects behavior.",
+        "flat": "She agrees to a visit, although she does not want to see him.",
+        "working": "She agrees to ten minutes on the porch and leaves her coat on.",
+        "why": "Her limit lets the reader see both her reluctance and her willingness to try.",
+        "caution": "Some motives are deliberately withheld. The reader may need pressure or behavior, rather than a complete explanation.",
+        "tab": "Character motivation",
+        "brief": "Does this choice fit this person?",
+        "tryIt": "Choose the response you find hardest to believe. Name privately what the character wants and what holds them back, then try a small limit or action that lets the reader infer both."
+      },
+      {
+        "id": "pacing",
+        "title": "Where the reader slows down for a useful reason",
+        "summary": "Look at the order and weight of information. A slow moment may be exactly right; the question is whether repetition, missing transitions, or unclear physical action interrupt the intended experience.",
+        "spot": "Notice repeated beats that do the same job, confusing transitions, and a key reaction that goes by too quickly.",
+        "flat": "She asks about the letter three times, with the same answer each time.",
+        "working": "After the second refusal, she stops asking and leaves the letter on his plate.",
+        "why": "The exchange develops through a changed action rather than another version of the same question.",
+        "caution": "Do not speed through a pause whose discomfort or uncertainty matters.",
+        "tab": "Pacing & clarity",
+        "brief": "Where does the scene stall or rush?",
+        "tryIt": "Underline the moment that changes the exchange. Compare the space it gets with repeated questions, explanations, or transitions. Try cutting one repeated beat or giving the key response another sentence."
+      },
+      {
+        "id": "prose",
+        "title": "Let the words carry their own weight",
+        "summary": "Find a concrete language issue: repetition that adds little, confusing phrasing, an explanatory tag, or dialogue that no longer sounds like a particular person. Preserve useful rhythm and voice.",
+        "spot": "Look for an emotion explained again after an action or spoken line already makes it legible.",
+        "flat": "“Why do you need it?” he asked questioningly.",
+        "working": "“Why do you need it?” he asked.",
+        "why": "The question already supplies the information repeated by the modifier.",
+        "caution": "A modifier can change meaning. Judge the effect in this passage rather than applying an automatic ban.",
+        "tab": "Prose & dialogue",
+        "brief": "Which words weaken the intended effect?",
+        "tryIt": "Read a suspect line aloud with the line before and after it. Try removing the repeated explanation or replacing an abstract phrase with one precise word. Keep the original if it carries useful rhythm or meaning."
+      }
+    ]
+  },
+  {
+    "id": "deepen_and_layer",
+    "label": "Deepen & layer",
+    "book": "Deepen & layer",
+    "subtitle": "A few useful before-and-after suggestions, preserving the scene’s voice.",
+    "tagline": "Explore a few places where subtext, emotion, or a physical detail could carry more meaning.",
+    "defaultScope": "this_scene",
+    "thesis": "Deepen & layer looks for a few moments that could carry more meaning through an exchange, a response, an object, or the consequence of a choice. It starts with what is already in the draft.\n\nChoose the kinds of development you want to explore. Each suggestion pairs an exact original passage with a possible revision, so you can judge whether the added detail earns its place. You decide what belongs in the story.",
+    "reviewNote": "Offer the most useful opportunities across the selected scenes, up to the limit you set (5 by default). Each has an exact source passage and an optional replacement or expansion. Preserve restraint where it already carries the feeling.",
+    "bestFor": "Developing a scene whose basic action works but whose important moments pass too lightly.",
+    "skipWhen": "You need to resolve a major logic or motivation problem first; try Quick critique.",
+    "lanes": [
+      {
+        "id": "subtext",
+        "title": "What the exchange carries beneath its words",
+        "summary": "Look for a place where a change of subject, an evasion, or the handling of an object could carry meaning that the draft currently explains outright. The aim is a more particular exchange, not more secrecy everywhere.",
+        "spot": "Notice where both dialogue and narration name the same feeling, or where a harmless subject could carry a disagreement.",
+        "flat": "“I’m glad you came,” she said, though she was afraid he would leave.",
+        "working": "“There’s another mug in the cupboard,” she said. She had already put it on the counter.",
+        "why": "The ordinary invitation gives the feeling a concrete shape without making Mara explain it.",
+        "caution": "An honest, direct statement may be the right turning point. Do not turn a needed confession into an evasion.",
+        "tab": "Subtext",
+        "brief": "Let behavior carry unspoken meaning.",
+        "tryIt": "Find an exchange where both dialogue and narration explain the same feeling. Try letting an ordinary offer, a change of subject, or the use of an existing object carry one part of that feeling."
+      },
+      {
+        "id": "emotion",
+        "title": "Give a change a moment to register",
+        "summary": "Let an important event affect what the viewpoint character notices or does next. A small response can be more useful than a paragraph naming the feeling.",
+        "spot": "Look for an important agreement, refusal, or discovery followed immediately by a new topic.",
+        "flat": "He took the key. She felt things were different.",
+        "working": "He took the key. She turned her cup until its chipped edge faced the wall.",
+        "why": "A small action offers one possible way to hold the moment. It should fit the character, rather than stand in for a generic emotion.",
+        "caution": "Keep existing restraint. A response does not always need a physical gesture or a named feeling.",
+        "tab": "Emotional response",
+        "brief": "Let an important change register.",
+        "tryIt": "Pause after an important agreement, refusal, or discovery. Try one response that changes what the viewpoint character notices or does next. Read onward to check that the addition helps the moment land."
+      },
+      {
+        "id": "grounding",
+        "title": "Choose a detail that belongs to this exchange",
+        "summary": "Use objects, movement, or a sensory detail when it helps the reader picture the scene or feel its pressure. More description is useful only when it changes the experience.",
+        "spot": "Find a moment that floats free of a place, or an object already present that could become part of a choice.",
+        "flat": "She was anxious about the visit.",
+        "working": "She moved the spare key from beside his cup to the far edge of the table.",
+        "why": "The key is already part of the scene’s practical and emotional business. Its position can make hesitation visible.",
+        "caution": "Avoid adding a new prop or repeated nervous gesture simply to make the prose busier.",
+        "tab": "Physical grounding",
+        "brief": "Ground the beat in a useful detail.",
+        "tryIt": "List the objects and physical actions already in the scene. Try using one to make a hesitation, boundary, or decision visible. Choose a detail that affects the exchange instead of decorating it."
+      },
+      {
+        "id": "cost",
+        "title": "What this small choice now asks of them",
+        "summary": "Develop a consequence already implied by the scene. The useful addition may be a condition, an obligation, or an altered expectation. It should grow from the draft’s purpose.",
+        "spot": "Look for a meaningful choice that leaves no trace in the next response or scene.",
+        "flat": "She gave him the key, and the conversation moved on.",
+        "working": "She gave him the key. “Tuesday,” she said, before he could offer another day.",
+        "why": "The invitation acquires a specific next step while keeping its emotional meaning understated.",
+        "caution": "Do not invent a larger danger or irreversible loss when a modest consequence is enough.",
+        "tab": "Cost & consequence",
+        "brief": "Show what this choice changes.",
+        "tryIt": "After a meaningful choice, ask what either person now owes, expects, or has agreed to do. Try letting the next response establish one specific consequence without making the scene more dramatic than it needs to be."
+      }
+    ]
+  },
+  {
+    "id": "comedy_review",
+    "label": "Comedy review",
+    "book": "Comedy review",
+    "subtitle": "Find the comic idea, make it land, and keep the scene believable.",
+    "tagline": "Strengthen humor through character, surprise, timing, and a clear comic point of view.",
+    "defaultScope": "this_scene",
+    "thesis": "Comedy often begins with something a person takes seriously: wanting approval, avoiding embarrassment, keeping control, or getting through a bad day. The comic move changes how we see that pressure. This review looks for that move in your scenes and shows where it could become clearer, more particular, or better timed.\n\nChoose the lanes you want to work on. Dark comedy, sarcasm, and dry delivery can be combined; they change how the review reads your selected lanes. Strengthen existing humor is selected by default. Select Find comic opportunities for suggestions about adding it, or select both goals to do both in one review. Feedback labels revisions to existing humor and optional additions separately. Serious passages can keep their purpose throughout.",
+    "reviewNote": "First, describe the comic idea and the pressure beneath it, using the lanes you selected. Then preserve one effective moment and give the most useful revisions, up to the limit you set (5 by default), across the selected scenes. Each finding names its lane and technique, quotes the source, explains the likely reader effect, and offers a concrete optional revision. For several scenes, a short table shows what was read before the main suggestions.",
+    "bestFor": "A scene with attempted humor, a comic character or situation, or a few moments you want to explore for humor.",
+    "skipWhen": "You want a general diagnosis of plot, motivation, or prose before deciding where comedy belongs; Quick critique covers that work.",
+    "sourceNote": "These lanes combine selected comedy-writing ideas with practical checks for fiction. The explanations and examples are original Proseview material. The books offer different approaches; Poking a Dead Frog is a collection of writers’ perspectives. Benign violation is credited separately to researchers Peter McGraw and Caleb Warren.",
+    "sources": [
+      {
+        "id": "vorhaus",
+        "label": "John Vorhaus · The Comic Toolbox",
+        "url": "https://johnvorhaus.com/product/the-comic-toolbox/",
+        "detail": "Comic premise, opposing perspectives, and the truth and pain behind a situation. The author’s page includes an excerpt."
+      },
+      {
+        "id": "dikkers",
+        "label": "Scott Dikkers · How to Write Funny",
+        "url": "https://go.howtowritefunny.com/how-to-write-funny-course",
+        "detail": "Developing a comic concept and exploring ways to express it. The linked course is based on the book."
+      },
+      {
+        "id": "helitzer",
+        "label": "Mel Helitzer & Mark Shatz · Comedy Writing Secrets",
+        "url": "https://www.penguinrandomhouse.com/books/628949/comedy-writing-secrets-by-mark-shatz/",
+        "detail": "Joke construction and techniques such as exaggeration, reversals, and wordplay. This link describes the third edition."
+      },
+      {
+        "id": "oshannon",
+        "label": "Dan O’Shannon · What Are You Laughing At?",
+        "url": "https://www.bloomsbury.com/us/what-are-you-laughing-at-9781441162939/",
+        "detail": "The reader’s context, reception, and interpretation of a comic event. The publisher provides the contents."
+      },
+      {
+        "id": "sacks",
+        "label": "Mike Sacks · Poking a Dead Frog",
+        "url": "https://www.penguinrandomhouse.com/books/313460/poking-a-dead-frog-by-mike-sacks/",
+        "detail": "Interviews with comedy writers, offering distinct approaches to craft and working practice."
+      },
+      {
+        "id": "violation",
+        "label": "Peter McGraw & Caleb Warren · Benign violation theory",
+        "url": "https://leeds-faculty.colorado.edu/mcgrawp/benign_violation_theory.html",
+        "detail": "A theory of humor involving a perceived violation that also feels acceptable or safe to the observer. Reader context matters."
+      }
+    ],
+    "styles": [
+      {
+        "id": "dark",
+        "label": "Dark comedy",
+        "laneId": "violation_distance",
+        "brief": "Find the comic contradiction within bleak material while keeping its emotional stakes.",
+        "prompt": "Read the selected lanes as dark comedy. Identify the recognizable pain, the comic contradiction, the target, and any distance that makes amusement possible alongside discomfort. Preserve the intended darkness and emotional consequences. Increasing cruelty or shock alone is not a stronger comic move; do not sanitize the passage simply because its subject is disturbing."
+      },
+      {
+        "id": "sarcastic",
+        "label": "Sarcasm",
+        "laneId": "deadpan_subtext",
+        "brief": "Check that the words, intended meaning, and target of the remark are legible in context.",
+        "prompt": "Read the selected lanes with attention to sarcasm: distinguish the literal statement from the speaker’s intended criticism or mock praise, name its target, and show what context lets the reader understand it. Preserve differences between speakers and distinguish a character’s attitude from the narration’s stance. Do not make every character equally snide or explain a clear ironic line twice."
+      },
+      {
+        "id": "deadpan",
+        "label": "Dry / deadpan",
+        "laneId": "deadpan_subtext",
+        "brief": "Let an absurd situation be treated as ordinary, urgent, or completely reasonable.",
+        "prompt": "Read the selected lanes for dry or deadpan delivery. Let characters pursue their purposes earnestly while the reader notices the absurdity. Look for an unnecessary wink, exaggerated reaction, or explanatory tail that weakens the contrast. A character may deliberately make a joke; do not erase established wit or require a flat voice everywhere."
+      }
+    ],
+    "goals": [
+      {
+        "id": "strengthen",
+        "label": "Strengthen existing humor",
+        "brief": "Work on comic moments already in the draft. Preserve passages that need to stay serious.",
+        "prompt": "For findings labeled Strengthen existing humor, examine humor already attempted or clearly carried by the scene’s situation, character, or voice. Do not treat the absence of jokes as a defect. Preserve serious passages and effective comic moments. If only this goal is selected, concentrate on existing humor rather than proposing new comic beats."
+      },
+      {
+        "id": "explore",
+        "label": "Find comic opportunities",
+        "brief": "Suggest a few places where humor could serve this scene’s characters and purpose.",
+        "prompt": "For findings labeled Comic opportunity, propose optional additions that serve the supplied scene’s purpose, rather than faults in the original. Start with its existing pressure, objects, relationships, or contradictions. Preserve beats that carry necessary emotion and label new story material as a possibility. When both goals are selected, share the priority limit with revisions to existing humor."
+      }
+    ],
+    "lanes": [
+      {
+        "id": "truth_pain",
+        "tab": "Truth & pain",
+        "title": "Start with something this person cannot comfortably admit",
+        "brief": "Find the recognizable pressure beneath the joke.",
+        "summary": "A comic line has more to work with when it grows from a recognizable difficulty. Vorhaus describes this starting point as comedy = truth + pain. The truth might be needing approval; the pain might be resenting the person whose approval you need. Pain can be ordinary frustration, vanity, fear, or embarrassment. Give that pressure a specific action or contradiction, so the reader recognizes a person beneath the joke.",
+        "flat": "At the reunion, Leena said she had stopped caring what her sister thought. “I’m free of all that now.” She felt awkward.",
+        "working": "At the reunion, Leena said she had stopped caring what her sister thought. Then she waited for her sister to agree.",
+        "why": "The claim of independence is contradicted by the need for approval. The behavior makes the discomfort recognizable without adding a separate wisecrack about reunions.",
+        "anotherExample": {
+          "title": "A dark version of an ordinary need",
+          "text": "The funeral director asked how many people to expect. “Put down fifty,” he said. “She’d hate to think we’d downsized.”",
+          "why": "The line grows from a family’s concern with appearances at an event where that concern cannot help the person who died. Whether the voice feels affectionate or cruel depends on the surrounding relationship."
+        },
+        "spot": "Find an attempted joke that could be spoken by anyone. What embarrassment, fear, loss, or desire is already present in this scene, and does the line express it? Separate the character’s predicament from a joke pasted onto the topic.",
+        "fix": "Connect the comic moment to an existing want or discomfort. Show the contradiction in a choice, response, or concrete detail instead of adding an unrelated insult.",
+        "tryIt": "Complete this sentence privately: “They want ___, but admitting it would mean ___.” Try one action that reveals both halves. Read it with the surrounding scene to see whether it belongs.",
+        "caution": "Greater suffering does not guarantee a bigger laugh. Keep grief or danger real when it matters. A mild, precise embarrassment may carry more humor than a newly invented disaster.",
+        "sources": [
+          "vorhaus"
+        ]
+      },
+      {
+        "id": "premise",
+        "tab": "Comic premise & perspective",
+        "title": "Find the mismatch that can keep producing comic moments",
+        "brief": "Name the contradiction or skewed view of events.",
+        "summary": "A comic premise is the underlying mismatch that makes an exchange or situation productive for comedy. A person may treat a small inconvenience as a constitutional crisis, or an institution may apply efficient procedures to the wrong human problem. State the ordinary reality and the comic way of seeing it. A clear premise gives later details a common direction, so the scene can develop rather than collect unrelated jokes.",
+        "flat": "The building manager took the missing office spoon very seriously. He sent a long email and asked everyone to be sensible.",
+        "working": "The building manager sent the missing-spoon email under “Continuity of Essential Services.” Until the investigation concluded, staff were asked to stir anticlockwise with a fork.",
+        "why": "An ordinary loss is treated as an operational emergency. The subject line and temporary procedure follow the same mistaken scale, giving the scene a comic point of view.",
+        "anotherExample": {
+          "title": "One situation, two interpretations",
+          "text": "“It’s a first date,” Ravi said. Mina checked her list. “Then why wouldn’t I ask for references?”",
+          "why": "The exchange treats dating as recruitment. Further jokes could grow from that mismatch, provided Mina’s behavior fits the person and the scene’s purpose."
+        },
+        "spot": "Look for a comic situation whose later lines drift into unrelated observations. Can the review name the ordinary reality and the skewed interpretation using evidence from the passage?",
+        "fix": "Keep the strongest mismatch and let a later action follow its logic. Replace an unrelated gag with a consequence of that same misunderstanding, scale error, or incompatible expectation.",
+        "tryIt": "Describe the situation twice: once as an ordinary observer would, and once as the comic character or institution sees it. Try a detail that makes the gap visible without explaining the premise aloud.",
+        "caution": "A scene can contain more than one kind of humor. Use the premise to find coherence where the comedy feels scattered; do not force every sentence into one device or import an absurd world the draft has not established.",
+        "sources": [
+          "vorhaus",
+          "dikkers"
+        ]
+      },
+      {
+        "id": "character_status",
+        "tab": "Character & status",
+        "title": "Let a flawed perspective drive a real attempt to get something",
+        "brief": "Use obsession, self-image, and petty motives.",
+        "summary": "A comic perspective is a person’s habitual, skewed way of reading events. Pride, cowardice, optimism, or a need for control can make the person choose an inadequate response again, even as it becomes harder to defend. Status is the position they claim or try to protect in an exchange. High stakes and small motives can clash productively: someone may be handling a crisis while chiefly worrying about who gets the credit. Keep both the practical stakes and the private motive visible through behavior.",
+        "flat": "The committee chair was vain. When the alarm sounded, he tried to look important and told everyone to leave.",
+        "working": "When the alarm sounded, the chair held the door and counted members into the corridor. “Please make clear in the minutes that I initiated the evacuation.”",
+        "why": "He performs a useful action while protecting his claim to leadership. The request for credit exposes the small motive without making him announce that he is vain.",
+        "anotherExample": {
+          "title": "A self-inflicted problem",
+          "text": "Nora had called the broken printer “a minor configuration issue.” When the replacement arrived, she labelled the crate “Configuration Support” and asked for help carrying it upstairs.",
+          "why": "Her need to preserve a competent image survives evidence that her explanation no longer fits. The language is an action she takes to avoid admitting the mistake."
+        },
+        "spot": "Does a funny line belong to this character’s want, blind spot, or self-image? Look for a chance where a petty concern could complicate an existing serious task. Check that a proposed consequence follows from the person’s choice.",
+        "fix": "Replace a general quip with an action or line the character uses to gain approval, avoid blame, keep control, or protect status. Let the response expose the weakness in that attempt.",
+        "tryIt": "Write down what the person says they are protecting, then what they privately need to protect. Try a request or condition that serves both badly. Give the other person a distinct way to respond.",
+        "caution": "A comic perspective need not make someone stupid or permanently incapable of learning. Characters can be competent, kind, or self-aware. Preserve their range and the differences between speakers.",
+        "sources": [
+          "vorhaus"
+        ]
+      },
+      {
+        "id": "deadpan_subtext",
+        "tab": "Deadpan & subtext",
+        "title": "Let the reader notice what the speaker treats as perfectly reasonable",
+        "brief": "Play the situation straight; let implication work.",
+        "summary": "Deadpan delivery treats an absurd or disproportionate situation as ordinary business. The character is still trying to achieve something; the reader can notice the mismatch without being told to laugh. Subtext is the meaning carried beneath the literal words. Sarcasm often uses praise or apparent agreement to express criticism. It needs enough context for the reader to understand the target, especially on the page where a performer’s tone is unavailable.",
+        "flat": "“A voluntary compulsory briefing,” Bea said sarcastically. “How wonderfully voluntary.” She rolled her eyes at the absurd wording.",
+        "working": "Bea read the invitation again. “Where do I sign to confirm I volunteered?”",
+        "why": "The question uses the invitation’s own logic to expose the contradiction. It leaves the reader to connect “voluntary” with the demand for confirmation, while giving Bea a line she could say for a reason.",
+        "anotherExample": {
+          "title": "A person can mean the ridiculous thing",
+          "text": "“We understand this is a difficult time,” the administrator said. “That’s why the appeal form now has rounded corners.”",
+          "why": "The administrator can sincerely believe a tiny presentation change is a humane response. The gap between the institution’s response and the actual problem does the comic work."
+        },
+        "spot": "Find an ironic line followed by an explanation, a conspicuous wink, or several signals saying how to read it. For sarcasm, name the literal claim, the intended criticism, and the context that connects them.",
+        "fix": "Keep enough context to make the implied meaning legible. Try removing the duplicate explanation, or have the speaker earnestly pursue the faulty logic instead of announcing that it is absurd.",
+        "tryIt": "Read the line once as sincere and once as sarcastic. Identify what on the page supports the intended reading. Then remove one delivery cue and check whether the meaning still comes through.",
+        "caution": "Playing it straight is a useful approach, not a ban on knowingly funny characters or expressive narration. Keep an intentional joke or reaction when it serves the relationship. Sarcasm need not turn every speaker into the same voice.",
+        "sources": []
+      },
+      {
+        "id": "setup_surprise",
+        "tab": "Setup & surprise",
+        "title": "Make the turn unexpected and understandable in hindsight",
+        "brief": "Build an expectation the payoff can change.",
+        "summary": "A setup gives the reader information and an expectation. The comic turn changes the meaning or direction of that information. Misdirection works when the first interpretation is reasonable and the second interpretation also fits what was supplied. A random oddity may surprise the reader without paying off the setup. In fiction, the setup can be an earlier action, a character’s promise, or a detail planted several paragraphs before the line that changes it.",
+        "flat": "“I have a foolproof way to avoid disagreements,” Tom said. “I never disagree with anyone. It keeps things peaceful.”",
+        "working": "“I have a foolproof way to avoid disagreements,” Tom said.\n“Does it work?”\n“If you think so.”",
+        "why": "The reply demonstrates the method instead of describing it. It changes an ordinary question about success into another occasion for Tom to avoid disagreeing.",
+        "anotherExample": {
+          "title": "A reveal can be a physical detail",
+          "text": "She brought the emergency kit to the stalled lift: water, a torch, and a printed copy of her complaint.",
+          "why": "The first two items establish a practical category. The final item changes our understanding of what she has prepared for, while still belonging to this inconvenience and her response to it."
+        },
+        "spot": "What does the reader reasonably expect immediately before the comic turn? Does an earlier sentence give the turn away? If the turn feels arbitrary, what necessary information or shared assumption is missing?",
+        "fix": "Move essential context before the turn, remove an advance explanation, or replace a random twist with one that changes the meaning of an established detail. Preserve the reader’s ability to reconstruct the connection.",
+        "tryIt": "Write “The reader expects ___; instead they discover ___.” Check that the passage supplies the bridge between those readings. Try one revision that changes information order before inventing a new joke.",
+        "caution": "Not all humor needs a concealed punchline. Recognition, anticipation, and a character repeating a doomed choice can be funny even when the reader sees it coming. Preserve that effect when it is doing the work.",
+        "sources": [
+          "helitzer",
+          "oshannon"
+        ]
+      },
+      {
+        "id": "escalation_callbacks",
+        "tab": "Escalation & callbacks",
+        "title": "Let a repeated idea develop instead of doing the same work twice",
+        "brief": "Heighten the pattern or give its return a new job.",
+        "summary": "Heightening makes a comic pattern more revealing, costly, committed, or difficult to escape. It can happen through a small new consequence rather than a louder joke. The rule of three is one useful pattern: establish an idea, reinforce it, then change or extend it on the third beat. A callback brings earlier material back with a new use or meaning. The review should show what changes between beats and what the reader needs to remember for the return to work.",
+        "flat": "The notices said KEEP OFF THE GRASS, DO NOT TOUCH THE HEDGE, and PLEASE STAY AWAY FROM THE FLOWERS.",
+        "working": "The notices said KEEP OFF THE GRASS, DO NOT TOUCH THE HEDGE, and THE APPLE TREE WILL REMEMBER YOUR FACE.",
+        "why": "The first two signs establish strict garden rules. The third keeps the policing attitude but gives the tree an impossible enforcement role. It changes the pattern instead of restating the same restriction.",
+        "anotherExample": {
+          "title": "A callback earns a different meaning",
+          "text": "Earlier, his mother calls the unopened guest soap “for an emergency.” After the inspection disaster, she places a fresh bar in his hand. “We’re there.”",
+          "why": "The return turns an earlier household rule into her verdict on the situation. The callback needs that earlier setup to be in the supplied scenes or identified as unverified background."
+        },
+        "spot": "Identify the starting pattern and what each recurrence adds. Look for repeated quips at the same level, an escalation without a causal bridge, or a callback whose setup is absent from the supplied selection.",
+        "fix": "Change the next beat’s consequence, commitment, or interpretation. For a callback, show the exact earlier seed and the new job its return performs. If the seed is outside the selection, state what has not been checked.",
+        "tryIt": "List the repeated beats in order and finish “This time, ___ changes” for each. Merge a repeat that changes nothing, or try one consequence that follows from the character doubling down.",
+        "caution": "Three beats are an option, not a required count. Two, four, or one well-placed return may suit the scene. Escalating every joke can exhaust the reader or erase the quiet pause that makes the next turn work.",
+        "sources": []
+      },
+      {
+        "id": "specificity",
+        "tab": "Specificity & detail",
+        "title": "Choose the detail that reveals the peculiar shape of the problem",
+        "brief": "Use a telling detail instead of extra decoration.",
+        "summary": "A concrete detail lets the reader picture what a general label leaves vague. For comedy, the useful detail often reveals an odd priority, a failed aspiration, or a mismatch of scale. Calling an object “bad” tells us little; showing what its owner must do to keep using it can reveal a whole relationship. Specificity earns its space when it helps the reader see the comic idea through this viewpoint.",
+        "flat": "His car was unreliable, but he was proud of it. He explained that it needed a special way of being started.",
+        "working": "“It has a security feature,” he said. He held the glove compartment shut with his knee and turned the key.",
+        "why": "The starting procedure gives the reader an image, and his proud description exposes the gap between the car he owns and the one he wants to believe he owns. The detail also belongs to the action.",
+        "anotherExample": {
+          "title": "Specific can be small and quiet",
+          "text": "She had prepared a modest lunch for the visit. The butter portions were arranged by expiry date.",
+          "why": "One fussy arrangement can reveal a need for control. Its usefulness depends on whether that trait matters in this encounter; an inventory of equally elaborate details would compete with it."
+        },
+        "spot": "Find a general label where one visible action, object, phrase, or precise discrepancy could carry the comic meaning. Check whether a proposed detail fits the viewpoint and whether the reader needs its reference explained.",
+        "fix": "Replace one general explanation with a telling detail already supported by the scene. Prefer a detail that reveals a priority or changes the exchange, rather than stacking adjectives or brand names.",
+        "tryIt": "Circle one word such as “awkward,” “fancy,” or “broken.” Describe what makes it so in this particular scene. Choose the shortest detail that also tells us something about the observer or owner.",
+        "caution": "A rarer noun or a longer description is not automatically funnier. Keep a plain word when it gives the turn room to land. Label an invented object or fact as an optional addition rather than something already in the story.",
+        "sources": []
+      },
+      {
+        "id": "timing_wording",
+        "tab": "Timing & wording",
+        "title": "Put the reader’s realization where the sentence can support it",
+        "brief": "Move the reveal and trim the explanation after it.",
+        "summary": "On the page, timing comes from the order of information, sentence length, paragraph breaks, and what a reader must hold in mind. The punch word is the word or phrase that completes the comic realization. Placing it near the end of a sentence or beat can keep later explanation from weakening the effect. First find what triggers the realization; then decide where it belongs in the surrounding prose.",
+        "flat": "The flat had what the agent called original ventilation, a hole in the wall that she seemed quite proud of.",
+        "working": "The flat had what the agent called original ventilation: a hole in the wall.",
+        "why": "The euphemism prepares an expectation, and “a hole in the wall” supplies the reveal. Removing the final explanation lets that image finish the beat. The agent’s pride could be shown elsewhere if it matters.",
+        "anotherExample": {
+          "title": "A beat can end on a response",
+          "text": "“We’ve made the complaints process simpler,” he said.\n“How?”\n“There’s no longer a complaints process.”",
+          "why": "The first line creates a promise of improvement. The final response exposes the institution’s definition of improvement without a further sentence explaining the irony."
+        },
+        "spot": "Quote the words that complete the comic turn. Look for an early giveaway, a clause after that turn that explains it again, or a rhythm that makes the reader untangle syntax before understanding the joke.",
+        "fix": "Try moving the revealing phrase later, supplying necessary context earlier, or cutting the explanatory tail. Read the complete revised exchange aloud and keep speaker identity and natural rhythm clear.",
+        "tryIt": "Mark the exact point where you understand the joke. Read a version ending there, then read it with the following line. Decide whether that line weakens the turn or adds a useful consequence of its own.",
+        "caution": "Do not put every sentence into setup–punchline form. A tag, aftermath, or deliberately delayed response can be the next comic beat. Trim for the intended effect, not for the fewest syllables at any cost.",
+        "sources": [
+          "helitzer"
+        ]
+      },
+      {
+        "id": "tone_target",
+        "tab": "Tone & target",
+        "title": "Make clear what the joke reveals, and about whom",
+        "brief": "Check the target and the scene’s emotional weight.",
+        "summary": "The target is the person, habit, institution, belief, or situation the humor exposes. A speaker’s target and the story’s apparent target can differ. A cruel remark may reveal the speaker’s vanity, while the scene keeps the person being mocked fully human. Read the response and surrounding action before deciding what the passage seems to invite the reader to enjoy. For sarcasm and dark comedy, that distinction often carries the difference between an intentional effect and an accidental one.",
+        "flat": "“Efficiency,” the supervisor said, watching the queue of bereaved families. The narration agreed that the families were making a fuss over a routine delay.",
+        "working": "“Efficiency,” the supervisor said. She moved the tissue box off the counter to make room for the queue-time trophy.",
+        "why": "The action directs attention to an institution’s priorities. It can expose the supervisor’s callousness while allowing the families’ situation to retain its weight. The new action is one possible story choice.",
+        "anotherExample": {
+          "title": "Sarcasm changes a relationship",
+          "text": "“You remembered,” Inez said when he arrived with the cake. He had the date right and her name wrong.",
+          "why": "The apparent praise is undercut by the visible mistake. Whether Inez is teasing, protecting herself, or ending the evening depends on what she does next and the relationship already established."
+        },
+        "spot": "Who makes the joke, who or what is exposed, and whose response frames it? If the intended target is uncertain, show the competing readings using the supplied words instead of assuming the author’s beliefs.",
+        "fix": "Adjust an action, response, or point-of-view detail so the intended target becomes clearer. Preserve the chosen level of bitterness, discomfort, or affection and the consequence the scene needs.",
+        "tryIt": "Complete “The speaker mocks ___; the scene reveals ___.” Check the next response and the narrator’s word choices. Try changing one of those cues before adding an explanation of the joke’s moral.",
+        "caution": "A disturbing or abrasive target can be intentional. This is a craft check of likely readings, not a requirement to make the speaker likable, make the joke polite, or remove the story’s darkness.",
+        "sources": [
+          "oshannon"
+        ]
+      },
+      {
+        "id": "violation_distance",
+        "tab": "Violation & distance",
+        "title": "Let discomfort and a reason to laugh exist at the same time",
+        "brief": "Examine the unease and the frame around it.",
+        "summary": "A violation is something that seems wrong, threatening, inappropriate, or out of place. Benign violation theory, developed by Peter McGraw and Caleb Warren, proposes that amusement can arise when an observer also experiences that violation as acceptable or safe in some way. Distance can come from perspective, time, exaggeration, shared knowledge, or an obviously artificial situation. In dark comedy the characters can remain in real danger. The question is what lets this reader notice a comic contradiction alongside the discomfort, and whether the scene supplies that frame.",
+        "flat": "Dreading his scan results, he read the hospital’s notice about delays. He made a joke about putting off bad news, trying to feel less frightened.",
+        "working": "He had spent the morning trying not to think about the scan results. The notice said DELAYS MAY OCCUR. He checked his watch. “Good. I was hoping for one.”",
+        "why": "The same word can describe an unwelcome administrative delay and a welcome postponement of feared news. That change in meaning offers a comic thought rooted in his fear. Its effect still depends on the situation and what the reader knows about him.",
+        "anotherExample": {
+          "title": "The distance can be bureaucratic",
+          "text": "The apocalypse drill was moved to Thursday. Attendance at the end of the world remained mandatory.",
+          "why": "An impossible scale is handled through familiar scheduling language. That artificial frame can create distance while preserving the recognizable pressure of being ordered to attend something."
+        },
+        "spot": "Name both the source of discomfort and the context that could make it comic. Is the reader shown a contradiction, shared understanding, or perspective, or only an increase in injury or shock? Identify any missing audience knowledge rather than declaring a universal response.",
+        "fix": "Strengthen the comic frame using the scene’s existing perspective, scale, language, or double meaning. Keep the intended threat and consequences. If a note is about audience distance, explain the mechanism and offer a concrete change instead of simply asking to soften the material.",
+        "tryIt": "Read the moment once as the person experiencing it and once as the intended reader. Identify what the reader can see that the person cannot, or what the person uses to cope. Try making that difference clearer without pretending the underlying event is harmless.",
+        "caution": "This is a theory and a useful question to ask, not a guaranteed formula or a rule that dark comedy must feel comfortable. Readers differ. Preserve deliberate unease and do not equate psychological distance with removing the characters’ suffering.",
+        "sources": [
+          "violation",
+          "oshannon"
+        ]
+      }
+    ]
+  }
+]

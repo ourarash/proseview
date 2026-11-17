@@ -259,8 +259,8 @@
             });
         }
 
-        // Settings has four tabs: General, Suggestions, Group, and Beat Map.
-        var SETTINGS_TABS = ['general', 'suggestions', 'group', 'beatmap'];
+        // Settings has five tabs: General, Suggestions, Group, Beat Map, and Discuss.
+        var SETTINGS_TABS = ['general', 'suggestions', 'group', 'beatmap', 'discuss'];
 
         function selectSettingsTab(name) {
             SETTINGS_TABS.forEach(function(tab) {
@@ -277,6 +277,7 @@
             if (name === 'suggestions' && !_sg) loadSuggestionSettings();
             if (name === 'group' && !_rm) loadGroupSettings();
             if (name === 'beatmap' && typeof loadBeatMapSettings === 'function' && !_bmSettings) loadBeatMapSettings();
+            if (name === 'discuss' && !_ds) loadDiscussSettings();
         }
 
         // The card's gear: Settings, opened on the Suggestions tab.
@@ -336,7 +337,7 @@
 
         function saveGroupSettings() {
             if (!_rm || !_rmDirty) return Promise.resolve();
-            return _sgPost('/api/discuss/group-settings', {save: true, library: _rm.library})
+            return _sgPost('/api/discuss/group-settings', {save: true, library: _rm.library, book: _rm.book})
                 .then(function(data) {
                     var catalogs = _rm.catalogs;
                     _rm = data.settings;
@@ -532,7 +533,188 @@
                 var cards = body.querySelectorAll('.group-library-card'); cards[cards.length - 1].open = true;
             };
             body.appendChild(addPreset);
+
+            if (_rm.book) {
+                body.appendChild(_sgEl('p', 'suggestion-subhead', 'In this book (.proseview.yaml)'));
+                var fmRow = _sgEl('div', 'settings-row');
+                var fmLabel = _sgEl('span', 'settings-label', 'Scene frontmatter');
+                fmLabel.title = 'Attach YAML scene frontmatter (title, pov, goal, conflict, outcome, frontmatter_updated) in Group prompts.';
+                var fmField = _sgEl('span', 'settings-field');
+                var fmWrap = _sgEl('label', 'suggestion-check');
+                var fmBox = _sgEl('input');
+                fmBox.type = 'checkbox';
+                fmBox.checked = _rm.book.include_frontmatter !== false;
+                fmBox.onchange = function() { _rm.book.include_frontmatter = fmBox.checked; _rmChanged(); };
+                fmWrap.append(fmBox, document.createTextNode(' Include scene frontmatter in Group notes'));
+                fmField.appendChild(fmWrap);
+                fmRow.append(fmLabel, fmField);
+                body.appendChild(fmRow);
+
+                var rmPrompts = _sgEl('details', 'suggestion-prompts');
+                rmPrompts.appendChild(_sgEl('summary', '', 'Group editorial instructions'));
+                rmPrompts.appendChild(_sgEl('p', 'settings-unit', 'Shared editorial guidance sent to Group participants. Leave as default to receive Proseview updates automatically.'));
+                var fallbackInstr = (_rm.defaults && _rm.defaults.instructions) || '';
+                rmPrompts.appendChild(_rmPromptField('Shared Group instructions', _rm.book.instructions || fallbackInstr, fallbackInstr, function(v) {
+                    _rm.book.instructions = v;
+                }));
+                body.appendChild(rmPrompts);
+            }
+
             body.querySelectorAll('.group-library-card').forEach(function(card, i) { card.open = !!opened[i]; });
+        }
+
+        // ── Settings › Discuss ─────────────────────────────────────────
+        var _ds = null;
+        var _dsDirty = false;
+        function _dsChanged() {
+            _dsDirty = true;
+            if (typeof markSettingsDirty === 'function') markSettingsDirty();
+        }
+        function _publishDiscussContextDefaults() {
+            if (!_ds || !_ds.book) return;
+            window._discussContextDefaults = {
+                includeFrontmatter: _ds.book.include_frontmatter !== false,
+                includeAdjacent: _ds.book.include_adjacent_scenes !== false
+            };
+            if (typeof renderDiscussSnapshot === 'function') renderDiscussSnapshot();
+        }
+
+        function loadDiscussSettings() {
+            var body = document.getElementById('discussSettingsBody');
+            return _sgPost('/api/discuss/discuss-settings', {}).then(function(data) {
+                _ds = data.settings;
+                _dsDirty = false;
+                _publishDiscussContextDefaults();
+                renderDiscussSettings();
+                return _ds;
+            }).catch(function(error) {
+                if (body) body.replaceChildren(_sgEl('p', 'settings-unit', 'Could not load: ' + error.message));
+            });
+        }
+
+        function saveDiscussSettings() {
+            if (!_ds || !_dsDirty) return Promise.resolve();
+            return _sgPost('/api/discuss/discuss-settings', {save: true, book: _ds.book}).then(function(data) {
+                _ds = data.settings;
+                _dsDirty = false;
+                _publishDiscussContextDefaults();
+                renderDiscussSettings();
+            });
+        }
+
+        function _dsCheckbox(checked, label, onChange) {
+            var wrap = _sgEl('label', 'suggestion-check');
+            var box = _sgEl('input');
+            box.type = 'checkbox';
+            box.checked = !!checked;
+            box.onchange = function() { onChange(box.checked); _dsChanged(); };
+            wrap.append(box, document.createTextNode(' ' + label));
+            return wrap;
+        }
+
+        function _dsPromptField(label, value, fallback, onChange, noteText, source) {
+            var wrap = _sgEl('div', 'suggestion-prompt');
+            var head = _sgEl('div', 'suggestion-prompt-head');
+            var titleWrap = _sgEl('div', '');
+            titleWrap.appendChild(_sgEl('span', 'settings-label', label));
+            if (noteText) titleWrap.appendChild(_sgEl('p', 'settings-unit', noteText));
+            var customization = _sgEl('span', 'settings-unit');
+            function updateCustomization(text) {
+                customization.textContent = text !== fallback ? 'Customized for this book'
+                    : (source === 'skill' ? 'Writer-owned skill file' : 'Proseview default');
+                wrap.dataset.customized = text !== fallback || source === 'skill' ? 'true' : 'false';
+            }
+            updateCustomization(value);
+            titleWrap.appendChild(customization);
+            var reset = _sgEl('button', 'settings-plain-btn', 'Reset to default');
+            reset.type = 'button';
+            reset.disabled = value === fallback;
+            var area = _sgEl('textarea', 'suggestion-prompt-text');
+            area.value = value;
+            area.rows = Math.min(10, Math.max(3, Math.ceil(value.length / 75)));
+            area.setAttribute('aria-label', label + ' prompt');
+            area.oninput = function() { onChange(area.value); updateCustomization(area.value); reset.disabled = area.value === fallback; _dsChanged(); };
+            reset.onclick = function() { area.value = fallback; onChange(fallback); updateCustomization(fallback); reset.disabled = true; _dsChanged(); };
+            head.append(titleWrap, reset);
+            wrap.append(head, area);
+            return wrap;
+        }
+
+        function renderDiscussSettings() {
+            var body = document.getElementById('discussSettingsBody');
+            if (!body || !_ds || !_ds.book) return;
+            var openStates = Array.from(body.querySelectorAll('details')).map(function(d) { return d.open; });
+            body.replaceChildren();
+            var book = _ds.book;
+            var defaults = _ds.defaults || {};
+
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'In this book (.proseview.yaml)'));
+            var agentSel = _sgSelect(
+                [{value: 'codex', label: 'Codex'}, {value: 'claude', label: 'Claude'}],
+                book.agent || 'codex',
+                function(v) { book.agent = v; },
+                'Default Discuss agent'
+            );
+            agentSel.onchange = function() { book.agent = agentSel.value; _dsChanged(); };
+
+            var codexFiles = ((_ds.instruction_files || {}).codex || []).join(', ') || 'none';
+            var claudeFiles = ((_ds.instruction_files || {}).claude || []).join(', ') || 'none';
+            var instrSummary = _sgEl('span', 'settings-unit',
+                'Codex reads: ' + codexFiles + ' · Claude reads: ' + claudeFiles);
+
+            var rows = [
+                ['Default agent', 'Which tab opens first in the Discuss dock.', agentSel],
+                ['Project instructions', 'Instruction files loaded directly by the underlying agent.', instrSummary],
+                ['Scene frontmatter', 'Attach YAML scene metadata in scene passes & Craft reviews.',
+                    _dsCheckbox(book.include_frontmatter, 'Include scene frontmatter (title, pov, goal, conflict, outcome, frontmatter_updated)', function(v) {
+                        book.include_frontmatter = v;
+                    })],
+                ['Adjacent scenes', 'Attach closing/opening excerpts from ±1 neighboring scenes.',
+                    _dsCheckbox(book.include_adjacent_scenes, 'Include ±1 adjacent scene excerpts in scene & Craft passes', function(v) {
+                        book.include_adjacent_scenes = v;
+                    })]
+            ];
+            rows.forEach(function(r) {
+                var row = _sgEl('div', 'settings-row');
+                var label = _sgEl('span', 'settings-label', r[0]);
+                label.title = r[1];
+                var field = _sgEl('span', 'settings-field');
+                field.appendChild(r[2]);
+                row.append(label, field);
+                body.appendChild(row);
+            });
+
+            var devDetails = _sgEl('details', 'suggestion-prompts');
+            devDetails.appendChild(_sgEl('summary', '', 'Developer instructions (Discuss & Group base rules)'));
+            devDetails.appendChild(_sgEl('p', 'settings-unit',
+                'System-level tool, safety, and Beat Map rules sent when starting or resuming Discuss threads. Resetting returns to Proseview defaults.'));
+            devDetails.appendChild(_dsPromptField(
+                'Developer instructions',
+                book.developer_instructions || defaults.developer_instructions || '',
+                defaults.developer_instructions || '',
+                function(v) { book.developer_instructions = v; }
+            ));
+            body.appendChild(devDetails);
+
+            var skillDetails = _sgEl('details', 'suggestion-prompts');
+            skillDetails.appendChild(_sgEl('summary', '', 'Built-in Discuss & Craft skill prompts'));
+            skillDetails.appendChild(_sgEl('p', 'settings-unit',
+                'Proseview supplies the built-in prompts and keeps them up to date. Your edits are saved as overrides in .proseview.yaml; no built-in skill files are installed in the book.'));
+            (_ds.skills || []).forEach(function(skill) {
+                var fallback = (defaults.skill_prompts || {})[skill.id] || '';
+                var current = (book.skill_prompts || {})[skill.id];
+                skillDetails.appendChild(_dsPromptField(
+                    skill.label + ' (' + skill.id + ')',
+                    current !== undefined ? current : fallback,
+                    fallback,
+                    function(v) { book.skill_prompts[skill.id] = v; },
+                    skill.description || '',
+                    skill.source
+                ));
+            });
+            body.appendChild(skillDetails);
+
+            body.querySelectorAll('details').forEach(function(d, i) { if (openStates[i] !== undefined) d.open = openStates[i]; });
         }
 
         document.addEventListener('DOMContentLoaded', function() {

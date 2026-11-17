@@ -10,7 +10,7 @@ import pytest
 pytest.importorskip("playwright.sync_api")
 
 from .conftest import SCENE_REL
-from .test_browser_e2e import open_scene
+from .test_browser_e2e import open_scene, wait_for_settled_answers
 
 pytestmark = pytest.mark.e2e_browser
 
@@ -20,6 +20,9 @@ def _open_discuss_agent(page, agent: str) -> None:
     page.wait_for_function(
         "agent => window._discussAgent === agent"
         " && !!window._discussConversationId"
+        " && window._discussSnapshot?.agent === agent"
+        " && window._discussSnapshot?.conversation_id === window._discussConversationId"
+        " && document.querySelector('#discussConnection').innerText.startsWith('Live')"
         " && !document.querySelector('#discussSend').disabled",
         arg=agent,
     )
@@ -184,7 +187,7 @@ def test_btw_fallback_when_no_parent_thread_and_claude_fork_plus_group_exclusion
     _open_discuss_agent(page, "claude")
     page.fill("#discussInput", "Claude warmup turn")
     page.press("#discussInput", "Enter")
-    page.wait_for_function("() => document.querySelector('#discussStop').hidden && document.body.innerText.includes('Claude warmup turn')")
+    wait_for_settled_answers(page, 1)
 
     page.fill("#discussInput", "/btw Check Claude side answer")
     page.press("#discussInput", "Enter")

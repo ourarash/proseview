@@ -625,7 +625,8 @@ class GroupRuntime:
                 "tool_conversation_id": result.get("tool_conversation_id", ""),
                 "review_pending": bool(result.get("changed_files") or result.get("unreviewable")),
                 "created_at": result.get("created_at") or time.time(),
-                "duration_ms": result.get("duration_ms")})
+                "duration_ms": result.get("duration_ms"),
+                **({"context_sent": result["context_sent"]} if result.get("context_sent") else {})})
         if step.get("native_cache"):
             group["native_threads"][str(step["seat"])] = step["native_cache"]
         group["active_step"] = ""

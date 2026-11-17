@@ -95,6 +95,8 @@ def test_canon_refactor_scans_configured_story_scope_and_creates_reviewable_find
     assert "manuscript/one.md" in clients[0].prompts[0]
     assert "story-bible/characters/mira.md" in clients[0].prompts[0]
     assert "continuity/known-lies.md" in clients[0].prompts[0]
+    assert "   3| Mira learned winter in Boston." in clients[0].prompts[0]
+    assert "   3| Mira grew up in Chicago." in clients[0].prompts[0]
     assert clients[0].turn_params[0]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
 
     proposal = manager.proposal_for_refactor_finding(cid, task["id"], task["result"]["findings"][0]["id"])
@@ -388,16 +390,13 @@ def test_verification_does_not_carry_intentional_decision_to_changed_evidence(tm
 
 # --- skills own the wording -------------------------------------------------
 
-def test_first_run_offers_the_default_skills_to_the_repository(tmp_path: Path, monkeypatch):
-    """The buttons are convenience; the skill files are the thing."""
+def test_first_run_uses_packaged_skills_without_installing_files(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     manager = DiscussManager(root, client_factory=fake_factory)
-
-    shipped = {path.parent.name for path in (Path(discuss_module.__file__).parent / "skills").glob("*/SKILL.md")}
-    installed = {path.parent.name for path in (root / ".proseview/skills").glob("*/SKILL.md")}
-    assert shipped and shipped == installed
-    assert "Quick critique" not in (root / ".proseview/skills" / "quick_critique" / "SKILL.md").read_text(encoding="utf-8")
+    assert not (root / ".proseview/skills").exists()
+    assert discuss_module.action_instruction(root, "quick_critique") == default_skill_body("quick_critique")
+    assert {row["id"] for row in manager.list_actions()} >= {"quick_critique", "craft_king"}
     manager.close()
 
 
@@ -406,6 +405,7 @@ def test_a_writers_own_skill_is_what_the_button_sends(tmp_path: Path, monkeypatc
     clients: list[_FakeClient] = []
     root = _repo(tmp_path)
     manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    (root / ".proseview/skills" / "quick_critique").mkdir(parents=True, exist_ok=True)
     (root / ".proseview/skills" / "quick_critique" / "SKILL.md").write_text(
         "---\nname: quick_critique\n---\n\nRead this like a hostile reviewer.\n", encoding="utf-8"
     )
@@ -435,6 +435,7 @@ def test_a_button_explains_itself_from_the_skill_the_writer_can_edit(tmp_path: P
     assert shipped["quick_critique"]["description"] == discuss_module.default_skill_description("quick_critique")
     assert shipped["quick_critique"]["description"]
 
+    (root / ".proseview/skills" / "quick_critique").mkdir(parents=True, exist_ok=True)
     (root / ".proseview/skills" / "quick_critique" / "SKILL.md").write_text(
         '---\nname: quick_critique\ndescription: "Read it like a hostile reviewer."\n---\n\nBody.\n',
         encoding="utf-8",
@@ -455,6 +456,7 @@ def test_a_skill_installed_before_descriptions_existed_still_explains_its_button
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
     manager = DiscussManager(root, client_factory=fake_factory)
+    (root / ".proseview/skills" / "style_consistency").mkdir(parents=True, exist_ok=True)
     (root / ".proseview/skills" / "style_consistency" / "SKILL.md").write_text(
         "---\nname: style_consistency\n---\n\nOnly the findings that hurt.\n", encoding="utf-8"
     )
@@ -465,98 +467,14 @@ def test_a_skill_installed_before_descriptions_existed_still_explains_its_button
     manager.close()
 
 
-def test_a_deleted_skill_is_not_reinstalled_on_the_next_run(tmp_path: Path, monkeypatch):
-    """Deleting one is a decision, and starting Prosview again must not undo it."""
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    root = _repo(tmp_path)
-    DiscussManager(root, client_factory=fake_factory).close()
-
-    removed = root / ".proseview/skills" / "pacing_tension"
-    for path in sorted(removed.rglob("*"), reverse=True):
-        path.unlink() if path.is_file() else path.rmdir()
-    removed.rmdir()
-
-    DiscussManager(root, client_factory=fake_factory).close()
-    assert not removed.exists()
 
 
-def _seed_legacy_skill_offers(tmp_path: Path, root: Path, names: list[str]) -> Path:
-    """Write the bookkeeping a repository carried before the directory moved.
-
-    Names, and no record of where they were put -- which is exactly what a
-    repository that last ran Prosview with skills in the manuscript root has.
-    """
-    store = DiscussStateStore(root)
-    state = tmp_path / "state" / "proseview" / "discuss.json"
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(
-        json.dumps({"version": 1, "repositories": {store.root_key: {"offered_skills": names}}}),
-        encoding="utf-8",
-    )
-    return state
 
 
-def test_moving_the_skills_directory_offers_them_again_where_skills_now_live(
-    tmp_path: Path, monkeypatch
-):
-    """A remembered offer is only meaningful for the directory it was made in.
-
-    Repositories that ran Prosview before the skills directory moved had every
-    name on record, so the new location was never populated and the writer was
-    left with buttons whose wording no file of theirs controlled.
-    """
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    root = _repo(tmp_path)
-    shipped = sorted(
-        path.parent.name for path in (Path(discuss_module.__file__).parent / "skills").glob("*/SKILL.md")
-    )
-    _seed_legacy_skill_offers(tmp_path, root, shipped)
-    assert not (root / ".proseview/skills").exists()
-
-    DiscussManager(root, client_factory=fake_factory).close()
-
-    installed = sorted(path.parent.name for path in (root / ".proseview/skills").glob("*/SKILL.md"))
-    assert installed == shipped
 
 
-def test_an_unrecorded_offer_is_read_off_the_directory_it_left_behind(tmp_path: Path):
-    """The one case with nothing on record: let the files answer.
-
-    Skills sitting in the current directory were offered there, so the names
-    still hold and a deletion among them stays deleted. An empty directory is
-    the pre-move repository, and it gets the whole set.
-    """
-    root = _repo(tmp_path)
-    names = ["quick_critique", "style_consistency"]
-
-    assert discuss_module.offers_to_honor(root, names, "") == []
-
-    skill = root / ".proseview/skills" / "quick_critique"
-    skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text("---\nname: quick_critique\n---\n\nMine.\n", encoding="utf-8")
-    assert discuss_module.offers_to_honor(root, names, "") == names
-    # Recorded elsewhere is recorded for elsewhere, however full this is.
-    assert discuss_module.offers_to_honor(root, names, "skills") == []
-    assert discuss_module.offers_to_honor(root, names, ".proseview/skills") == names
 
 
-def test_a_skill_deleted_after_the_move_is_still_not_reinstalled(tmp_path: Path, monkeypatch):
-    """Re-offering happens once, on the move -- not every time the panel opens.
-
-    Recording the directory alongside the names is what draws that line, so it
-    is recorded even on a run that installs nothing.
-    """
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    root = _repo(tmp_path)
-    DiscussManager(root, client_factory=fake_factory).close()
-
-    skills = root / ".proseview/skills"
-    for path in sorted(skills.rglob("*"), reverse=True):
-        path.unlink() if path.is_file() else path.rmdir()
-    skills.rmdir()
-
-    DiscussManager(root, client_factory=fake_factory).close()
-    assert not skills.exists()
 
 
 def test_a_reading_pass_is_a_message_and_never_becomes_a_proposal(tmp_path: Path, monkeypatch):
@@ -749,6 +667,35 @@ def test_a_reply_stopped_by_safeguards_is_kept_and_marked(tmp_path: Path, monkey
         ("Preserve the lie", "final_answer", "safeguards"),
         ("The rest", "final_answer", None),
     ]
+    manager.stop(cid, turn_id)
+    manager.close()
+
+
+def test_a_craft_review_link_to_the_wrong_scene_is_corrected(tmp_path: Path, monkeypatch):
+    """Across several scenes the agent kept the right line and named the wrong file."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"}, "claude")["conversation_id"]
+    client = manager._client_for("claude")
+    client.hold_next_turn = True
+    manager.submit(cid, client_request_id="cite-1", question="Review")
+    _wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] is not None)
+    conversation = manager._conversations[cid]
+    with conversation.lock:
+        conversation.messages[-1]["text"] = (
+            "Craft review · Coyne · The Story Grid · 2 scenes\n\n"
+            "(Scenes analyzed (2): manuscript/one.md, manuscript/two.md. Analyze the attached scenes in order.)"
+        )
+    turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    thread_id = next(iter(client.threads))
+    client.callback({"method": "assistant/message", "params": {
+        "threadId": thread_id, "turnId": turn_id, "itemId": "m1", "phase": "final_answer",
+        "text": '*"Second document."* ([L3](manuscript/one.md#L3))',
+    }})
+
+    answer = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "assistant"][-1]
+    assert "[L3](manuscript/two.md#L3)" in answer["text"]
+    assert "Citation check" in answer["text"]
     manager.stop(cid, turn_id)
     manager.close()
 
@@ -2010,7 +1957,7 @@ def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: P
     """An ambiguous quote is how an edit lands on the wrong paragraph."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     root = _repo(tmp_path)
-    (root / "manuscript" / "one.md").write_text("# One\n\nA *quiet* room was quiet.\n", encoding="utf-8")
+    (root / "manuscript" / "one.md").write_text("# One\n\nA *quiet* group was quiet.\n", encoding="utf-8")
     manager = DiscussManager(root, client_factory=lambda callback, _agent=None: _FakeClient(callback))
     cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
 
@@ -2021,7 +1968,7 @@ def test_explicit_selection_range_disambiguates_repeated_marked_text(tmp_path: P
         selection="quiet",
         selection_range={"start": 2, "end": 7},
         selection_snapshot={
-            "editor_text": "A quiet room was quiet.",
+            "editor_text": "A quiet group was quiet.",
             "source_revision": _scene_revision(root / "manuscript" / "one.md"),
         },
         action_id="tighten",
@@ -2887,7 +2834,7 @@ def test_deepen_and_layer_and_layer_subtext_actions(tmp_path: Path, monkeypatch)
     prompt = clients[0].prompts[0]
     assert "Subtext & Friction" in prompt
     assert "Physical Anchoring & Micro-Business" in prompt
-    assert "Cost & Callback" in prompt
+    assert "Cost & Consequence" in prompt
 
     conversation = manager._get(cid)
     task, question, schema, _skill = manager._action_task(
@@ -2935,7 +2882,7 @@ def test_submit_with_lined_selected_passage_does_not_duplicate_quote(tmp_path: P
     manager.close()
 
 
-def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
+def test_packaged_craft_skills_run_read_only_single_and_multi_scene(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -2985,7 +2932,7 @@ def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
         assert craft_id in by_id
         assert by_id[craft_id]["kind"] == "critique"
         assert by_id[craft_id]["scene_pass"] is True
-        assert (root / ".proseview" / "skills" / craft_id / "SKILL.md").exists()
+        assert not (root / ".proseview" / "skills" / craft_id / "SKILL.md").exists()
 
     # 1. Single-scene McKee pass includes frontmatter, TODO, prev tail, next opening, read-only.
     cid = manager.open({"kind": "scene", "path": "02-two.md"})["conversation_id"]
@@ -3000,9 +2947,10 @@ def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
     _wait_for(lambda: bool(clients[0].prompts))
 
     single_prompt = clients[0].prompts[0]
-    assert "Scene revision checklist" in single_prompt
-    assert "two-level bullet list" in single_prompt
-    assert "drop-in replacement" in single_prompt
+    assert "Revision priorities" in single_prompt
+    assert "Zero necessary revisions is acceptable" in single_prompt
+    assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/02-two.md"' in single_prompt
+    assert '   9| Patel set his palm on the counter.' in single_prompt
     assert "Force the archivist to hand over the ledger" in single_prompt
     assert "Sharpen the archivist's refusal" in single_prompt
     assert "Patel locked the brass drawer and pocketed the key." in single_prompt
@@ -3020,11 +2968,14 @@ def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
         action_scope="scenes",
         scenes=["01-one.md", "03-three.md"],
         custom_instruction="Focus only on the Crisis choice in Scene 1.",
+        craft_focus="A choice with competing costs",
     )
     _wait_for(lambda: len(clients[0].prompts) >= 2)
 
     multi_prompt = clients[0].prompts[1]
-    assert "Story Grid checklist" in multi_prompt
+    assert "negative → more negative" in multi_prompt
+    assert "Focus: The choice" in multi_prompt
+    assert "Writer instructions:\nFocus only on the Crisis choice in Scene 1." in multi_prompt
     assert "Focus only on the Crisis choice in Scene 1." in multi_prompt
     assert "Scenes analyzed (2): manuscript/01-one.md, manuscript/03-three.md" in multi_prompt
     assert "Selected scenes in order:" in multi_prompt
@@ -3053,3 +3004,228 @@ def test_craft_skills_installed_and_run_read_only_single_and_multi_scene(
     manager.close()
 
 
+@pytest.mark.parametrize("selected", [["one.md"], ["two.md"]])
+def test_craft_review_numbers_full_selected_snapshot_without_leaking_open_draft(
+    tmp_path: Path, monkeypatch, selected: list[str]
+):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    clients: list[_FakeClient] = []
+    scene = root / "manuscript" / "one.md"
+    live = "---\nmisbelief: Asking for help makes me a burden\n---\n# Draft\n\n"
+    live += "A long draft paragraph with enough room for a quiet observation.\n\n" * 1200
+    live += "The unsaved ending changes what she chooses.\n"
+    assert len(live.encode("utf-8")) > discuss_module.SELECTION_MAX
+    manager = DiscussManager(root, client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1])
+    try:
+        cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+        manager.submit(
+            cid, client_request_id="craft-numbered", question="", action_id="craft_cron",
+            action_scope="scene", scenes=selected,
+            live_document={"content": live, "base_mtime": scene.stat().st_mtime},
+            custom_instruction="Preserve the quiet tone. Do not invent facts.",
+            craft_focus="The belief behind a reaction",
+        )
+        _wait_for(lambda: bool(clients[0].prompts))
+        prompt = clients[0].prompts[0]
+        assert "Writer instructions:\nPreserve the quiet tone. Do not invent facts." in prompt
+        assert "Focus: Beliefs" in prompt
+        if selected == ["one.md"]:
+            assert "   2| misbelief: Asking for help makes me a burden" in prompt
+            assert f"{len(live.splitlines()):>4}| The unsaved ending changes what she chooses." in prompt
+        else:
+            assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/two.md"' in prompt
+            assert "   3| Second document." in prompt
+            assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/one.md"' not in prompt
+            assert "The unsaved ending changes what she chooses." not in prompt
+        assert scene.read_text() == "# One\n\nFirst document.\n"
+        assert clients[0].turn_params[0]["sandboxPolicy"]["type"] == "readOnly"
+    finally:
+        manager.close()
+
+
+
+
+def test_transparency_settings_frontmatter_toggles_and_context_sent(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    root = _repo(tmp_path)
+    (root / "AGENTS.md").write_text("# Book rules\n", encoding="utf-8")
+    (root / "manuscript" / "one.md").write_text(
+        "---\ntitle: One\ngoal: Keep secret\nfrontmatter_updated: 2026-08-01\n---\n\n# One\n\nFirst line.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "two.md").write_text(
+        "---\ntitle: Two\ngoal: Confront\n---\n\n# Two\n\nSecond line.\n",
+        encoding="utf-8",
+    )
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    try:
+        # 1. deepen_and_layer does not push forced echo/callback phrasing.
+        deepen_skill = (discuss_module.DEFAULT_SKILLS_DIR / "deepen_and_layer" / "SKILL.md").read_text(encoding="utf-8")
+        assert "plant/pay off an echo" not in deepen_skill
+
+        # 2. Discuss settings expose developer instructions + built-in skill prompts & save cleanly.
+        ds = manager.discuss_settings()
+        assert ds["book"]["include_frontmatter"] is True
+        assert ds["book"]["include_adjacent_scenes"] is True
+        assert ds["instruction_files"]["codex"] == ["AGENTS.md"]
+        assert "craft_mckee" in ds["defaults"]["skill_prompts"]
+
+        saved = manager.save_discuss_settings({
+            "book": {
+                "agent": "codex",
+                "include_frontmatter": False,
+                "include_adjacent_scenes": False,
+                "developer_instructions": "Custom discuss rules.",
+                "skill_prompts": {"craft_mckee": "Custom McKee instructions."},
+            }
+        })
+        assert saved["book"]["include_frontmatter"] is False
+        assert saved["book"]["include_adjacent_scenes"] is False
+        assert saved["book"]["developer_instructions"] == "Custom discuss rules."
+        assert saved["book"]["skill_prompts"]["craft_mckee"] == "Custom McKee instructions."
+
+        # 3. Default off omits frontmatter & adjacent excerpts and surfaces context_sent on message.
+        cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+        manager.submit(
+            cid,
+            client_request_id="t-off",
+            question="",
+            document={"kind": "scene", "path": "one.md"},
+            action_id="craft_mckee",
+            action_scope="scene",
+            scenes=["one.md"],
+        )
+        _wait_for(lambda: bool(clients) and len(clients[0].prompts) >= 1 and not manager.get_snapshot(cid)["active_turn_id"])
+        assert clients[0].thread_start_params[-1]["developerInstructions"] == "Custom discuss rules."
+        prompt_off = clients[0].prompts[-1]
+        assert "Custom McKee instructions." in prompt_off
+        assert "Keep secret" not in prompt_off
+        assert "Opening of next scene" not in prompt_off
+        user_msg_off = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"][-1]
+        ctx_off = user_msg_off["context_sent"]
+        assert ctx_off["include_frontmatter"] is False
+        assert ctx_off["include_adjacent"] is False
+        assert ctx_off["project_instructions"] == ["AGENTS.md"]
+        assert ctx_off["skill_name"] == "craft_mckee"
+        assert ctx_off["skill_prompt"] == "Custom McKee instructions."
+
+        # 4. Per-turn override can opt frontmatter & adjacent back in, with honest stale warning framing.
+        manager.submit(
+            cid,
+            client_request_id="t-on",
+            question="",
+            document={"kind": "scene", "path": "one.md"},
+            action_id="craft_mckee",
+            action_scope="scene",
+            scenes=["one.md"],
+            include_frontmatter=True,
+            include_adjacent=True,
+        )
+        _wait_for(lambda: len(clients[0].prompts) >= 2 and not manager.get_snapshot(cid)["active_turn_id"])
+        prompt_on = clients[0].prompts[-1]
+        assert "Scene frontmatter (optional author metadata — may be outdated after revisions" in prompt_on
+        assert "frontmatter_updated: 2026-08-01" in prompt_on
+        assert "Opening of next scene" in prompt_on
+        user_msg_on = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"][-1]
+        assert user_msg_on["context_sent"]["include_frontmatter"] is True
+        assert user_msg_on["context_sent"]["include_adjacent"] is True
+
+        # 5. Group settings allow toggling scene frontmatter & custom editorial instructions cleanly.
+        rm = manager.save_group_settings({
+            "book": {
+                "critic1_name": "Story Editor",
+                "critic2_name": "Voice Editor",
+                "moderator_name": "Moderator",
+                "include_frontmatter": False,
+                "instructions": "Custom Group editorial rules.",
+            }
+        })
+        assert rm["book"]["include_frontmatter"] is False
+        assert rm["book"]["instructions"] == "Custom Group editorial rules."
+        participants = rm["participants"]
+        participants[0]["agent"] = "codex"
+        group_res = manager.run_group_turn(scene="one.md", participants=participants, debate_id="rm-trans")
+        assert "Custom discuss rules." in clients[0].thread_start_params[-1]["developerInstructions"]
+        assert "Custom Group editorial rules." in clients[0].thread_start_params[-1]["developerInstructions"]
+        assert "Keep secret" not in clients[0].prompts[-1]
+        assert group_res["context_sent"]["include_frontmatter"] is False
+    finally:
+        manager.close()
+
+
+def test_update_frontmatter_action_uses_prose_as_source_of_truth_and_preserves_structure(tmp_path: Path, monkeypatch):
+    import datetime
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    clients: list[_FakeClient] = []
+    root = _repo(tmp_path)
+    (root / "manuscript" / "one.md").write_text(
+        "---\n"
+        "chapter: 2\n"
+        "scene: 3\n"
+        "title: Old Forgotten Plan\n"
+        "timeline: past\n"
+        "characters: [Nima, GhostCharacter]\n"
+        "goal: Old stale goal from outline\n"
+        "status: draft\n"
+        "frontmatter_updated: 2026-08-01\n"
+        "source: source/2.md lines 1-40\n"
+        "---\n\n"
+        "# Basement Bar\n\n"
+        "Amir slides onto the booth across from Nima while Waiter drops the check.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "two.md").write_text(
+        "# Next Scene\n\nAdjacent spoiler paragraph.\n",
+        encoding="utf-8",
+    )
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    try:
+        by_id = {row["id"]: row for row in manager.list_actions()}
+        assert "update_frontmatter" in by_id
+        assert by_id["update_frontmatter"]["scene_pass"] is True
+        assert by_id["update_frontmatter"]["kind"] == "rewrite"
+
+        cid = manager.open({"kind": "scene", "path": "one.md"})["conversation_id"]
+        manager.submit(
+            cid,
+            client_request_id="fm-sync-1",
+            question="",
+            document={"kind": "scene", "path": "one.md"},
+            action_id="update_frontmatter",
+            action_scope="scene",
+            include_frontmatter=True,
+            include_adjacent=True,
+        )
+        _wait_for(lambda: bool(clients) and bool(clients[0].prompts) and not manager.get_snapshot(cid)["active_turn_id"])
+
+        prompt = clients[0].prompts[-1]
+        today_str = datetime.date.today().isoformat()
+        assert clients[0].turn_params[-1]["mayWrite"] is True
+        assert "Amir slides onto the booth across from Nima while Waiter drops the check." in prompt
+        assert "chapter: 2" in prompt
+        assert "scene: 3" in prompt
+        assert "timeline: past" in prompt
+        assert "status: draft" in prompt
+        assert "source: source/2.md lines 1-40" in prompt
+        assert today_str in prompt
+        # Stale semantic YAML and neighboring scenes must not leak into the source of truth.
+        assert "Old stale goal from outline" not in prompt
+        assert "GhostCharacter" not in prompt
+        assert "Adjacent spoiler paragraph." not in prompt
+
+        user_msg = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"][-1]
+        assert user_msg["text"].startswith("Update frontmatter · manuscript/one.md")
+        assert user_msg["context_sent"]["action_id"] == "update_frontmatter"
+        assert user_msg["context_sent"]["include_frontmatter"] is False
+        assert user_msg["context_sent"]["include_adjacent"] is False
+    finally:
+        manager.close()

@@ -369,3 +369,22 @@ def test_reasoning_summary_parts_are_separated_so_their_headings_do_not_run_toge
     text = "".join(e["text"] for e in events if e["type"] == "progress.delta")
     assert "****" not in text
     assert text == "**Reading the scene**\n\n**Weighing the hook**"
+
+
+def test_scene_frontmatter_notes_includes_frontmatter_updated():
+    from proseview.discuss import _scene_frontmatter_notes
+
+    notes = _scene_frontmatter_notes(
+        {
+            "title": "Opening at the Bar",
+            "pov": "Nima",
+            "goal": "Buy a quiet hour",
+            "frontmatter_updated": "2026-08-10",
+            "ignored": "skip",
+        }
+    )
+    assert "- title: Opening at the Bar" in notes
+    assert "- pov: Nima" in notes
+    assert "- goal: Buy a quiet hour" in notes
+    assert "- frontmatter_updated: 2026-08-10" in notes
+    assert "ignored" not in notes

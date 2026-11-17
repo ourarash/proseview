@@ -100,10 +100,11 @@ async function saveSettings() {
         const data = await res.json();
         if (!res.ok || data.ok === false) throw new Error(data.error || "Failed to save settings");
         _showBands(data.lexical_bands);
-        // Suggestions, Group, and Beat Map keep their own store; they save with the same button.
+        // Suggestions, Group, Beat Map, and Discuss keep their own stores; they save with the same button.
         if (typeof saveSuggestionSettings === "function") await saveSuggestionSettings();
         if (typeof saveGroupSettings === "function") await saveGroupSettings();
         if (typeof saveBeatMapSettings === "function") await saveBeatMapSettings();
+        if (typeof saveDiscussSettings === "function") await saveDiscussSettings();
 
         btn.innerText = "Saved";
         const banner = document.getElementById("settingsEmptyBanner");

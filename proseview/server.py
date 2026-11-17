@@ -2394,6 +2394,13 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_discuss_error(exc)
             return
+        if discuss_path == "/api/discuss/discuss-settings":
+            try:
+                settings = self.discuss_manager.discuss_settings()
+                self._send_json({"ok": True, "settings": settings})
+            except Exception as exc:
+                self._send_discuss_error(exc)
+            return
         if discuss_path == "/events":
             if not self._authorize_event_stream_generation():
                 return
@@ -2949,6 +2956,13 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.beatmap_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
+                if path == "/api/discuss/discuss-settings":
+                    if body.get("save"):
+                        settings = self.discuss_manager.save_discuss_settings(body)
+                    else:
+                        settings = self.discuss_manager.discuss_settings()
+                    self._send_json({"ok": True, "settings": settings})
+                    return
                 if path == "/api/discuss/group-run":
                     self._send_json({"ok": True, "group": self.discuss_manager.group_command(body)})
                     return
@@ -2998,6 +3012,12 @@ class _Handler(BaseHTTPRequestHandler):
                         agent=body.get("agent") or "codex",
                     )
                     self._send_json({"ok": True, "skills": skills})
+                    return
+                if path == "/api/discuss/craft-context":
+                    context = self.discuss_manager.craft_story_context(
+                        str(body.get("scene_path") or ""), body.get("context")
+                    )
+                    self._send_json({"ok": True, "context": context})
                     return
                 question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)
                 proposal_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/proposal", path)
@@ -3059,10 +3079,22 @@ class _Handler(BaseHTTPRequestHandler):
                         action_scope=str(body.get("action_scope") or "selection"),
                         scenes=body.get("scenes"),
                         custom_instruction=str(body.get("custom_instruction") or ""),
+                        craft_focus=str(body.get("craft_focus") or ""),
+                        craft_context=str(body.get("craft_context") or ""),
+                        craft_check_plan=body.get("craft_check_plan") is True,
+                        craft_lanes=body.get("craft_lanes"),
+                        review_lanes=body.get("review_lanes"),
+                        review_contexts=body.get("review_contexts"),
+                        comedy_styles=body.get("comedy_styles"),
+                        comedy_goal=body.get("comedy_goal"),
+                        comedy_goals=body.get("comedy_goals"),
+                        review_max_findings=body.get("review_max_findings"),
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),
                         verify_of_task_id=str(body.get("verify_of_task_id") or ""),
                         immediate=bool(body.get("immediate")) or body.get("mode") == "now",
+                        include_frontmatter=body.get("include_frontmatter") if isinstance(body.get("include_frontmatter"), bool) else None,
+                        include_adjacent=body.get("include_adjacent") if isinstance(body.get("include_adjacent"), bool) else None,
                     )
                     self._send_json({"ok": True, **result}, 202)
                     return

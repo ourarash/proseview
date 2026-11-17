@@ -48,10 +48,12 @@ def test_dashboard_contains_structural_markers():
         "Word variety by scene",
         'id="settingsTitle"',
         'id="sceneModal"',
-        'id="utilityTabScene"',
         'id="utilityTabAnalysis"',
+        'id="utilityTabHistory"',
         'id="utilityTabCodex"',
         'id="utilityTabClaude"',
+        'id="utilityTabGroup"',
+        'id="utilityTabBeats"',
         'id="presenceChart"',
         'id="locationChart"',
         'id="coOccurChart"',
@@ -531,10 +533,9 @@ def test_dashboard_scene_meta_embeds_related_docs_and_modal_sidebar(tmp_path: Pa
     assert "related_docs" in opening
     assert opening["related_docs"][0]["path"] == "plans/opening-ledger-notes.md"
     assert opening["related_docs"][0]["score"] == 3
-    assert 'class="scene-card-related"' in html
-    assert 'class="related-doc-link"' in html
+    assert "fm-related" in html
+    assert "related-doc-link" in html
     assert "function openRelatedDoc(path)" in html
-    assert "No related planning or continuity docs matched this scene." in html
 
 
 def test_dashboard_embeds_non_manuscript_folders_in_tree():

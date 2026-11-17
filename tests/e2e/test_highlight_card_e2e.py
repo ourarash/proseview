@@ -1058,7 +1058,10 @@ def test_group_file_mentions_supply_reference_text_without_changing_editor_routi
     assert [req["seat"] for req in requests] == [1]
     assert requests[0]["attachments"] == [{"kind": "file", "path": "manuscript/ch01/02-walk.md"}]
     records = [json.loads(line) for line in (server.home / "fake-codex-received.jsonl").read_text().splitlines()]
-    assert any("Mentioned: manuscript/ch01/02-walk.md" in record["params"]["input"][0]["text"] for record in records)
+    assert any(
+        "Mentioned: manuscript/ch01/02-walk.md" in record["params"]["input"][0]["text"]
+        for record in records if record.get("params", {}).get("input")
+    )
     collision = page.evaluate('''() => {
         const original = _discussContextCandidateCache;
         _discussContextCandidateCache = discussContextCandidates().concat([{kind:'file',path:'StoryEditor.md',name:'StoryEditor.md'}]);

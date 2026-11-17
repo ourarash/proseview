@@ -44,6 +44,7 @@ from .conftest import (
     HTML_LEAD_SCENE_REL,
     LARGE_SCENE_REL,
     NESTED_MANUSCRIPT_NOTE,
+    REPO_ROOT,
     SCENE_REL,
     STORY_SCENES,
     ProseviewServer,
@@ -157,7 +158,7 @@ def wait_for_settled_answers(page: Page, count: int) -> None:
             const s = window._discussSnapshot;
             return !!s && !s.active_turn_id && !s.active_request_id && !(s.queue || []).length
                 && s.messages.filter(m => m.role === 'assistant').length === count
-                && document.querySelectorAll('.discuss-message.assistant').length === count;
+                && document.querySelectorAll('#discussLog .discuss-message.assistant').length === count;
         }""",
         arg=count,
     )
@@ -779,6 +780,7 @@ def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silen
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
+    open_continuity_tools(page)
     trace = page.get_by_role("button", name=re.compile("Trace a canon change"))
     assert trace.is_visible()
     assert page.locator("#discussHistoryClear").is_hidden()
@@ -790,9 +792,10 @@ def test_discuss_canon_refactor_audits_then_hands_off_and_verifies_without_silen
     assert page.locator("#discussInput").input_value() == "Mira grew up in Chicago, not Boston."
 
     page.get_by_role("button", name="Change action").click()
-    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_visible()
+    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_hidden()
     assert page.locator("#discussSend").inner_text() == "Send"
     assert page.locator("#discussInput").input_value() == "Mira grew up in Chicago, not Boston."
+    open_continuity_tools(page)
     page.get_by_role("button", name=re.compile("Trace a canon change")).click()
     assert page.locator(".discuss-story-action").count() == 0
     page.fill("#discussInput", "Rena changed the safe code this spring.")
@@ -854,6 +857,7 @@ def test_discuss_canon_refactor_marks_a_proposal_resolved_only_after_scene_save(
     open_scene(page, server)
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    open_continuity_tools(page)
     page.get_by_role("button", name=re.compile("Trace a canon change")).click()
     page.fill("#discussInput", "Rena changed the safe code this spring.")
     page.locator("#discussSend").click()
@@ -881,6 +885,7 @@ def test_discuss_scene_continuity_starts_without_an_optional_focus(
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
+    open_continuity_tools(page)
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
 
     assert page.get_by_text("Ready to scan this scene", exact=True).is_visible()
@@ -912,6 +917,7 @@ def test_discuss_scene_continuity_bounds_large_repository_context(
     open_scene(page, server)
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    open_continuity_tools(page)
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
     page.locator("#discussSend").click()
 
@@ -934,6 +940,7 @@ def test_discuss_scene_continuity_reports_that_a_scan_is_starting_and_recovers_o
     open_scene(page, server)
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    open_continuity_tools(page)
     page.get_by_role("button", name=re.compile("Check this scene's continuity")).click()
     page.evaluate(
         """
@@ -1204,6 +1211,7 @@ def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zo
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.evaluate("document.body.style.zoom = '2'")
 
+    open_continuity_tools(page)
     trace = page.get_by_role("button", name=re.compile("Trace a canon change"))
     trace.click()
 
@@ -1218,7 +1226,7 @@ def test_discuss_repository_action_selected_state_reflows_at_dark_200_percent_zo
     change_action.focus()
     assert change_action.evaluate("button => document.activeElement === button")
     change_action.press("Enter")
-    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_visible()
+    assert page.get_by_role("button", name=re.compile("Trace a canon change")).is_hidden()
     assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
 
 
@@ -1754,12 +1762,18 @@ def test_the_dock_offers_the_scene_before_the_repository(page: Page, server: Pro
     page.wait_for_selector(".discuss-story-action")
 
     labels = page.locator(".discuss-story-action-title").all_inner_texts()
-    assert labels[:3] == ["Quick critique", "Deepen & layer", "Style and consistency"]
-    assert "Trace a canon change" in labels
-    # The explanation under each card is the skill's own description. Pinning
-    # it to the file keeps the bundled fallback from drifting away from the
-    # prompt the way "five findings" did once the prompt stopped asking for five.
-    skill = server.root / ".proseview" / "skills" / "quick_critique" / "SKILL.md"
+    assert labels[:4] == ["Quick critique", "Deepen & layer", "Craft review", "Comedy review"]
+    tools = page.locator('.discuss-continuity-tools')
+    assert tools.get_attribute('open') is None
+    assert page.get_by_role('button', name=re.compile('Trace a canon change')).is_hidden()
+    open_continuity_tools(page)
+    page.evaluate('renderDiscussSnapshot()')
+    assert tools.get_attribute('open') is not None
+    assert "Trace a canon change" in page.locator(".discuss-story-action-title").all_inner_texts()
+    assert page.get_by_role('button', name=re.compile('Trace a canon change')).is_visible()
+    # The explanation comes from the packaged skill unless the writer owns
+    # a customization; built-in skill files are not installed in the book.
+    skill = REPO_ROOT / "proseview" / "skills" / "quick_critique" / "SKILL.md"
     described = [
         line.split(":", 1)[1].strip()
         for line in skill.read_text(encoding="utf-8").splitlines()
@@ -1770,7 +1784,7 @@ def test_the_dock_offers_the_scene_before_the_repository(page: Page, server: Pro
 
     page.locator(".discuss-story-action", has_text="Quick critique").click()
     page.wait_for_selector(".discuss-message.user")
-    # One click: nothing selected, nothing typed.
+    # The defaults need no text selection or extra instructions.
     assert page.locator("#discussInput").input_value() == ""
     wait_for_discuss_answer(page, "Fake answer")
     assert page.locator(".discuss-task").count() == 0
@@ -1787,6 +1801,7 @@ def test_rewriting_a_skills_description_rewrites_its_card(page: Page, server: Pr
     page.wait_for_selector(".discuss-story-action")
 
     skill = server.root / ".proseview" / "skills" / "quick_critique" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text(
         "---\nname: quick_critique\ndescription: Only the notes that cost the scene something.\n"
         "---\n\nRead this like a hostile reviewer.\n",
@@ -2014,7 +2029,7 @@ def test_discuss_refresh_recovers_missing_thread_and_new_conversation_is_explici
     # than pretend the window does not exist.
     confirm_new_discuss_conversation(page)
     page.wait_for_function("() => document.querySelectorAll('#discussLog .discuss-message').length === 0")
-    assert "Ask about what you are reading" in page.locator("#discussLog").inner_text()
+    page.get_by_role('button', name='What gets sent with a quick review?', exact=True).wait_for(state='visible')
     assert page.evaluate("document.activeElement === document.getElementById('discussInput')")
 
     page.fill("#discussInput", "A fresh browser conversation")
@@ -2282,15 +2297,10 @@ def test_new_conversation_dialog_remains_operable_at_dark_200_percent_zoom(
     page.wait_for_selector("#discussNewConversationDialog", state="hidden")
 
 
-def open_scene_details(page: Page) -> None:
-    """Open the scene panel on its Scene tab.
-
-    Replaces the two ``<details>`` disclosures that used to sit above the prose.
-    Frontmatter, story fields, links and tasks now live in the dock, so a test
-    that wants the scene card opens the panel rather than expanding a summary.
-    """
-    page.evaluate("() => showScenePanelTab('scene')")
-    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
+def open_scene_history(page: Page) -> None:
+    """Open the scene panel on its History tab."""
+    page.evaluate("() => showScenePanelTab('history')")
+    page.wait_for_selector("#sceneHistoryPane:not([hidden])")
 
 
 def open_scene_analysis(page: Page) -> None:
@@ -2314,6 +2324,12 @@ def open_discuss(page: Page) -> None:
     page.wait_for_selector("#discussPanel:not([hidden])")
     page.wait_for_selector("#discussLog:not([hidden])")
     page.wait_for_function("() => _discussAgent === 'codex'")
+
+
+def open_continuity_tools(page: Page) -> None:
+    tools = page.locator('.discuss-continuity-tools')
+    if tools.get_attribute('open') is None:
+        tools.locator('summary').click()
 
 
 def wait_for_discuss_idle(page: Page) -> None:
@@ -2610,10 +2626,9 @@ def test_repository_metadata_and_bios_render_as_content_not_executable_html(
     assert payload in page.locator("#sceneTable").inner_text()
 
     open_scene(page, server)
-    open_scene_details(page)
-    assert payload in page.locator(".scene-card").inner_text()
-    assert page.locator(".scene-card img[data-pv-xss]").count() == 0
-    page.locator(".sc-char-tag", has_text="Rena").click()
+    assert payload in page.locator("#sceneFrontmatter .fm-block").inner_text()
+    assert page.locator("#sceneFrontmatter img[data-pv-xss]").count() == 0
+    page.locator("#sceneFrontmatter .fm-char-link", has_text="Rena").first.click()
     assert page.locator("img[data-pv-xss]").count() == 0
     assert page.evaluate("window.__pvXss !== true")
     assert payload in page.locator(".bio-card").inner_text()
@@ -3105,14 +3120,14 @@ def test_one_dock_shows_one_thing_at_a_time(
     """
     page.set_viewport_size({"width": 1400, "height": 1000})
     open_scene(page, server)
-    open_scene_details(page)
+    open_scene_history(page)
     open_discuss(page)
     page.wait_for_selector("#discussPanel", state="visible")
-    assert page.locator("#sceneDetailsPane").is_hidden()
+    assert page.locator("#sceneHistoryPane").is_hidden()
     assert page.locator("#sceneAnalysisPane").is_hidden()
 
     open_scene_analysis(page)
-    assert page.locator("#sceneDetailsPane").is_hidden()
+    assert page.locator("#sceneHistoryPane").is_hidden()
     assert page.locator("#discussLog").is_hidden()
 
     prose = scene_content_box(page)
@@ -3129,23 +3144,11 @@ def test_compact_scene_leads_with_prose_and_context_reflows_beside_the_dock(
     prose = scene_content_box(page)
     assert prose and prose["y"] < 400, "secondary UI still pushes prose out of the opening viewport"
 
-    open_scene_details(page)
+    open_scene_analysis(page)
     page.wait_for_selector("#discussPanel", state="visible")
-    # The card's three columns stack in a dock this narrow: same left edge,
-    # descending down the pane rather than squeezed side by side.
-    columns = page.evaluate(
-        "() => ['.scene-card-meta', '.scene-card-arc', '.scene-card-related']"
-        ".map(sel => document.querySelector(sel))"
-        ".filter(Boolean)"
-        ".map(el => el.getBoundingClientRect())"
-        ".map(r => ({left: Math.round(r.left), top: Math.round(r.top)}))"
-    )
-    assert len(columns) >= 2
-    assert len({c["left"] for c in columns}) == 1, "the card is still laid out in columns"
-    assert [c["top"] for c in columns] == sorted(c["top"] for c in columns)
     assert page.evaluate(
-        "() => Array.from(document.querySelectorAll('.scene-card .sc-value')).every(el => "
-        "el.getBoundingClientRect().width > 120 && el.scrollWidth <= el.clientWidth + 1)"
+        "() => document.querySelector('#sceneFrontmatter .fm-block').scrollWidth "
+        "<= document.querySelector('#sceneFrontmatter .fm-block').clientWidth + 1"
     )
 
 
@@ -3161,7 +3164,7 @@ def test_the_dock_overlays_rather_than_squeezing_the_prose_to_a_ribbon(
     """
     page.set_viewport_size({"width": 1600, "height": 1000})
     open_scene(page, server)
-    open_scene_details(page)
+    open_scene_analysis(page)
     page.wait_for_selector("#discussPanel", state="visible")
 
     assert page.evaluate("() => document.documentElement.dataset.utilityOverlay") != "true"
@@ -3598,7 +3601,7 @@ def test_repo_tree_auto_reveal_keeps_expansion_semantics_in_sync(
     ))
 
 
-def test_file_explorer_uses_groupy_targets_and_coherent_vector_icons(
+def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
     page: Page,
     server: ProseviewServer,
 ):
@@ -3722,7 +3725,7 @@ def test_file_explorer_icons_distinguish_file_types(page: Page, server: Prosevie
 
 
 def test_discuss_and_group_cards_real_estate_and_user_bubble(page: Page, server: ProseviewServer):
-    """Verify discuss & room cards eliminate wasted real estate, use full width, tight 6px margins, and calm meta."""
+    """Verify discuss & group cards eliminate wasted real estate, use full width, tight 6px margins, and calm meta."""
     open_dashboard(page, server)
 
     styles = page.evaluate(
@@ -4329,9 +4332,7 @@ def test_scene_analysis_and_character_controls_are_keyboard_operable(
     page.keyboard.press("Enter")
     page.wait_for_function("() => document.documentElement.dataset.view === 'scene'")
 
-    open_scene_details(page)
-    context = page.locator("#sceneDetailsPane")
-    character = context.locator(".sc-char-tag").first
+    character = page.locator("#sceneFrontmatter .fm-char-link").first
     assert character.count() == 1
     character.focus()
     page.keyboard.press("Enter")
@@ -6309,9 +6310,9 @@ def test_the_scene_tabs_do_not_wear_the_discuss_heading(
 ):
     """"Codex / Live" names the agent connection, not a pane of counts."""
     open_scene(page, server)
-    open_scene_details(page)
+    open_scene_history(page)
 
-    assert page.locator("#discussTitle").inner_text().strip() == "Scene"
+    assert page.locator("#discussTitle").inner_text().strip() == "History"
     assert page.locator("#discussConnection").is_hidden()
 
     open_scene_analysis(page)
@@ -6320,7 +6321,7 @@ def test_the_scene_tabs_do_not_wear_the_discuss_heading(
 
     page.evaluate("() => showDiscussTab()")
     page.wait_for_function(
-        "() => !['Scene', 'Analysis'].includes("
+        "() => !['History', 'Analysis'].includes("
         "document.getElementById('discussTitle').innerText.trim())"
     )
     assert page.locator("#discussConnection").is_visible()
@@ -6531,7 +6532,7 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     prompts = [
         record["params"]["input"][0]["text"]
         for record in records
-        if record["params"].get("input")
+        if record.get("params", {}).get("input")
         and any(question in record["params"]["input"][0]["text"] for question in questions)
     ]
     assert len(prompts) == 2
@@ -6924,9 +6925,12 @@ def test_deepen_and_layer_across_scene_and_selection_surfaces(page: Page, server
     assert sent_card["action_id"] == "deepen_and_layer"
     assert sent_card["action_scope"] == "scene"
     asked = page.locator(".discuss-message.user").last.inner_text()
-    assert "Subtext & Friction" in asked
-    assert "Physical Anchoring & Micro-Business" in asked
-    assert "Cost & Callback" in asked
+    assert 'Lanes: Subtext, Emotional response, Physical grounding, Cost & consequence' in asked
+    page.locator('.discuss-craft-prompt summary').click()
+    prompt = page.locator('.discuss-craft-prompt-body').inner_text()
+    assert "Subtext & Friction" in prompt
+    assert "Physical Anchoring & Micro-Business" in prompt
+    assert "Cost & Consequence" in prompt
 
     # 3. Selection menus: Layer subtext under Rewrite, Deepen & layer under Critique
     open_selection_menu(page, "the slow algebra")
@@ -6971,7 +6975,7 @@ def test_craft_review_card_customizes_book_lens_and_multi_scene_scope(page: Page
     assert page.locator(".discuss-story-action", has_text="McKee scene check").count() == 0
     card = page.locator(".discuss-story-action", has_text="Craft review")
     assert card.is_visible()
-    card.click()
+    page.get_by_role('button', name='Customize Craft review', exact=True).click()
 
     page.wait_for_selector(".discuss-craft-setup")
     assert page.locator("#discussSend").inner_text() == "Run craft review"
@@ -6987,27 +6991,31 @@ def test_craft_review_card_customizes_book_lens_and_multi_scene_scope(page: Page
     assert "Lisa Cron" in info_dialog.inner_text()
     # Tabs belong to Story Genius's lanes, not other books.
     assert info_dialog.locator(".discuss-craft-dialog-tab", has_text="On Writing").count() == 0
-    assert info_dialog.locator(".discuss-craft-dialog-tab").count() == 5
-    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Blind Spot").click()
+    assert info_dialog.locator(".discuss-craft-dialog-tab").count() == 6
+    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Beliefs").click()
     lane_text = info_dialog.inner_text()
-    assert "Flawed Belief Shown in Action" in lane_text
-    assert "Example in a scene" in lane_text
+    assert "The belief behind a reaction" in lane_text
+    assert "One possible revision" in lane_text
+    assert "A belief can be partly reasonable" in lane_text
+    assert "Use your judgment" in lane_text
     assert "Misbelief on the Page" not in lane_text
-    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Blind Spot").press("ArrowRight")
-    assert "Hits Their Sore Spot" in info_dialog.inner_text()
+    info_dialog.locator(".discuss-craft-dialog-tab", has_text="1. Beliefs").press("ArrowRight")
+    assert "Why this trouble matters to them" in info_dialog.inner_text()
     info_dialog.locator(".discuss-craft-info-close").click()
     assert not info_dialog.is_visible()
     assert page.locator(".discuss-craft-lens[data-lens='craft_mckee'] .discuss-craft-lens-pick").get_attribute("aria-pressed") == "true"
 
-    # Selecting Coyne defaults to This chapter; switching to Pick scenes… lets user customize scenes.
+    # Switching books retains scope; the chapter and custom picker are shared controls.
     page.locator(".discuss-craft-lens[data-lens='craft_coyne'] .discuss-craft-lens-pick").click()
+    page.locator(".discuss-craft-scope-btn[data-scope='this_chapter']").click()
     assert page.locator(".discuss-craft-scope-btn[data-scope='this_chapter']").get_attribute("aria-pressed") == "true"
 
     page.locator(".discuss-craft-scope-btn[data-scope='custom']").click()
-    checkboxes = page.locator(".discuss-craft-custom-item input[type='checkbox']")
+    checkboxes = page.locator("#discussReviewSceneDialog .discuss-craft-custom-item input[type='checkbox']")
     assert checkboxes.count() >= 2
     if not checkboxes.nth(1).is_checked():
         checkboxes.nth(1).check()
+    page.locator('#discussReviewSceneApply').click()
 
     # Switching lens after picking custom scenes keeps the custom scene selection intact.
     page.locator(".discuss-craft-lens[data-lens='craft_king'] .discuss-craft-lens-pick").click()
@@ -7025,9 +7033,169 @@ def test_craft_review_card_customizes_book_lens_and_multi_scene_scope(page: Page
     assert len(sent["scenes"]) >= 2
     assert sent["custom_instruction"] == "Focus only on value shifts."
     asked = page.locator(".discuss-message.user").last.inner_text()
-    assert "Story Grid checklist" in asked
+    assert "Craft review · Coyne · The Story Grid" in asked
     assert "Focus only on value shifts." in asked
+    assert "Five Commandments at the appropriate dramatic scale" not in asked
+    receipt = page.locator(".discuss-message.user").last
+    receipt.locator(".discuss-craft-prompt summary").click()
+    assert "Five Commandments at the appropriate dramatic scale" in receipt.inner_text()
+    page.evaluate("renderDiscussSnapshot()")
+    assert page.locator(".discuss-craft-prompt").last.get_attribute("open") is not None
     assert page.locator(".discuss-task").count() == 0
+
+    # A second review is available in this conversation and retains the chosen scope.
+    page.locator("#discussCraftButton").click()
+    page.get_by_role("button", name="Customize Craft review", exact=True).click()
+    assert page.locator(".discuss-craft-setup").is_visible()
+    assert page.locator(".discuss-craft-scope-btn[data-scope='custom']").get_attribute("aria-pressed") == "true"
+
+
+def test_discuss_transparency_toggles_context_inspector_and_settings(page: Page, server: ProseviewServer):
+    question_requests: list[dict] = []
+    page.on(
+        "request",
+        lambda request: question_requests.append(request.post_data_json)
+        if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions")
+        else None,
+    )
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role('button', name='Customize Craft review', exact=True).click()
+    page.wait_for_selector(".discuss-craft-setup")
+
+    # Background notes toggles are visible and can disable frontmatter per run.
+    fm_box = page.locator(".discuss-craft-note-toggle", has_text="Scene frontmatter").locator("input")
+    adj_box = page.locator(".discuss-craft-note-toggle", has_text="±1 scene excerpts").locator("input")
+    assert fm_box.is_checked()
+    assert adj_box.is_checked()
+    fm_box.uncheck()
+    assert "Frontmatter off" in page.locator("#discussTaskMode").inner_text()
+
+    page.click("#discussSend")
+    wait_for_discuss_answer(page, "Fake answer")
+    sent = question_requests[-1]
+    assert sent["include_frontmatter"] is False
+    assert sent["include_adjacent"] is True
+
+    # Context inspector button on the sent message shows exact turn context details.
+    user_card = page.locator(".discuss-message.user").last
+    user_card.locator(".discuss-context-inspect-btn").click()
+    ctx_dialog = page.locator("#discussContextSentDialog")
+    assert ctx_dialog.is_visible()
+    ctx_text = ctx_dialog.inner_text()
+    assert "Frontmatter: Off" in ctx_text
+    assert "±1 Excerpts: On" in ctx_text
+    ctx_dialog.locator(".discuss-craft-info-close").click()
+    assert not ctx_dialog.is_visible()
+
+    # Settings -> Discuss exposes defaults, toggles, Developer instructions, and built-in skills.
+    page.locator("#discussCraftButton").click()
+    page.get_by_role("button", name="Customize Craft review", exact=True).click()
+    page.locator(".discuss-craft-settings-link").click()
+    assert page.locator("#settingsTabDiscuss").get_attribute("aria-selected") == "true"
+    page.wait_for_selector("#discussSettingsBody details")
+    assert "Developer instructions" in page.locator("#discussSettingsBody").inner_text()
+    assert "Built-in Discuss & Craft skill prompts" in page.locator("#discussSettingsBody").inner_text()
+
+
+
+def test_craft_focus_preserves_writer_instructions_and_clears_for_another_book(page: Page, server: ProseviewServer):
+    requests: list[dict] = []
+    page.on("request", lambda request: requests.append(request.post_data_json)
+            if "/api/discuss/conversations/" in request.url and request.url.endswith("/questions") else None)
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role('button', name='Customize Craft review', exact=True).click()
+    instruction = "Preserve the quiet tone. Do not invent new facts."
+    page.fill('#discussInput', instruction)
+    page.locator('.discuss-craft-lens[data-lens="craft_cron"] .discuss-craft-info-btn').click()
+    dialog = page.locator('#discussCraftInfoDialog')
+    dialog.get_by_role('tab', name='1. Beliefs').click()
+    dialog.get_by_role('button', name='Focus review on this topic').click()
+    assert page.locator('#discussInput').input_value() == instruction
+    assert page.locator('.discuss-craft-focus').is_visible()
+    page.locator('.discuss-craft-lens[data-lens="craft_king"] .discuss-craft-lens-pick').click()
+    assert page.locator('.discuss-craft-focus').count() == 0
+    assert page.locator('#discussInput').input_value() == instruction
+
+    page.locator('.discuss-craft-lens[data-lens="craft_cron"] .discuss-craft-info-btn').click()
+    dialog.get_by_role('tab', name='1. Beliefs').click()
+    dialog.get_by_role('button', name='Focus review on this topic').click()
+    page.locator('.discuss-craft-focus').click()
+    assert page.locator('.discuss-craft-focus').count() == 0
+    assert page.locator('#discussInput').input_value() == instruction
+    page.locator('.discuss-craft-lens[data-lens="craft_cron"] .discuss-craft-info-btn').click()
+    dialog.get_by_role('tab', name='1. Beliefs').click()
+    dialog.get_by_role('button', name='Focus review on this topic').click()
+    assert page.locator('.discuss-craft-focus').inner_text() == 'Focus: Beliefs ×'
+    page.locator('#discussSend').click()
+    wait_for_discuss_answer(page, 'Fake answer')
+    assert requests[-1]['custom_instruction'] == instruction
+    assert requests[-1]['craft_focus'] == 'blind_spot'
+    assert 'Focus: Beliefs' in page.locator('.discuss-message.user').last.inner_text()
+
+    page.reload(wait_until='load')
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.wait_for_selector('.discuss-craft-request')
+    assert page.locator('.discuss-craft-prompt').last.get_attribute('open') is None
+    assert instruction in page.locator('.discuss-craft-request').last.inner_text()
+    assert page.locator('#discussCraftButton').is_visible()
+
+
+@pytest.mark.parametrize('viewport', [{'width': 1280, 'height': 800}, {'width': 390, 'height': 844}])
+def test_craft_guides_explain_each_topic_and_keep_controls_reachable(page: Page, server: ProseviewServer, viewport: dict):
+    page.set_viewport_size(viewport)
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.get_by_role('button', name='Customize Craft review', exact=True).click()
+    lens_ids = ['craft_mckee', 'craft_cron', 'craft_coyne', 'craft_snyder', 'craft_king', 'craft_lamott']
+    for lens_id in lens_ids:
+        page.locator(f'.discuss-craft-lens[data-lens="{lens_id}"] .discuss-craft-info-btn').click()
+        dialog = page.locator('#discussCraftInfoDialog')
+        assert 'What the review will do' in dialog.inner_text()
+        assert dialog.locator('.discuss-craft-source').get_attribute('href').startswith('https://')
+        tabs = dialog.get_by_role('tab')
+        for index in range(1, tabs.count()):
+            tabs.nth(index).click()
+            assert 'Try it in your scene' in dialog.inner_text()
+            assert 'Use your judgment' in dialog.inner_text()
+            assert dialog.locator('.discuss-craft-example-card').count() == 2
+            assert dialog.locator('.discuss-craft-guide-note blockquote').count() == 1
+            assert dialog.locator('#discussCraftInfoBody').get_attribute('aria-labelledby') == tabs.nth(index).get_attribute('id')
+            assert dialog.evaluate("el => el.scrollWidth <= el.clientWidth")
+        close = dialog.locator('#discussCraftInfoClose').bounding_box()
+        footer = dialog.locator('.discuss-craft-dialog-foot').bounding_box()
+        assert close['y'] >= 0 and close['y'] + close['height'] <= viewport['height']
+        assert footer['y'] >= 0 and footer['y'] + footer['height'] <= viewport['height']
+        dialog.locator('#discussCraftInfoClose').click()
+
+
+def test_craft_citations_link_the_named_scene_in_plain_text_and_inline_code(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.evaluate('''() => {
+        const host = document.createElement('div');
+        host.id = 'craftCitationProbe';
+        document.querySelector('#discussComposerArea').append(host);
+        renderDiscussMarkdown(host, [
+            'manuscript/ch01/02-walk.md · Line 18',
+            '`manuscript/ch01/02-walk.md · Line 20`',
+            '`manuscript/ch01/02-walk.md` · Lines 18–20',
+            '[Line 22](manuscript/ch01/02-walk.md#L22)',
+            '```text\\nLine 99\\n```'
+        ].join('\\n\\n'), 'ch01/01-opening.md');
+    }''')
+    links = page.locator('#craftCitationProbe a')
+    assert links.count() == 4
+    for link in links.all():
+        assert '02-walk.md' in link.get_attribute('href')
+    assert page.locator('#craftCitationProbe pre a').count() == 0
+    links.first.click()
+    page.wait_for_function("() => decodeURIComponent(location.hash).includes('ch01/02-walk.md')")
 
 
 
@@ -7452,7 +7620,7 @@ def test_leaving_a_scene_keeps_the_dock_open(page: Page, shared_server: Prosevie
     assert page.locator(".utility-tabs").bounding_box() == tabs_box
     assert page.get_attribute("#utilityTabAnalysis", "aria-selected") == "true"
     # The scene tabs grey out; the agent tabs still work.
-    for tab in ("#utilityTabScene", "#utilityTabAnalysis", "#utilityTabHistory"):
+    for tab in ("#utilityTabAnalysis", "#utilityTabHistory", "#utilityTabGroup", "#utilityTabBeats"):
         assert page.locator(tab).is_disabled(), tab
         assert page.get_attribute(tab, "aria-disabled") == "true", tab
     for tab in ("#utilityTabCodex", "#utilityTabClaude"):
@@ -7509,20 +7677,20 @@ def test_leaving_a_scene_does_not_forget_the_preferred_dock_tab(
     """Leaving is not a tab choice, so the stored tab is untouched and the pane
     comes straight back on the next scene."""
     open_scene(page, shared_server)
-    open_scene_details(page)
-    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
+    open_scene_history(page)
+    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "history"
 
     page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
     page.click("#discussClose")
     page.wait_for_selector("#discussPanel", state="hidden")
-    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "scene"
+    assert page.evaluate("() => localStorage.getItem('proseview-scene-panel-tab')") == "history"
 
     # Reopening a scene and the dock brings the remembered tab back.
     open_scene(page, shared_server)
     page.evaluate("() => toggleScenePanel(null)")
-    page.wait_for_selector("#sceneDetailsPane:not([hidden])")
-    assert page.locator("#utilityTabScene").is_visible()
+    page.wait_for_selector("#sceneHistoryPane:not([hidden])")
+    assert page.locator("#utilityTabHistory").is_visible()
 
 
 def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
@@ -7530,7 +7698,7 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
 ):
     """The handle overlays the seam without reserving space inside the dock."""
     open_scene(page, shared_server)
-    open_scene_details(page)
+    open_scene_analysis(page)
 
     edges = page.evaluate("""() => {
         const panel = document.getElementById('discussPanel');
@@ -7554,7 +7722,7 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
 def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
     page: Page, server: ProseviewServer
 ):
-    """The utility tabs use compact padding and responsive spacing so that all 7
+    """The utility tabs use compact padding and responsive spacing so that all 6
     tabs, conversation actions, and the close button fit cleanly without pushing
     controls off-screen even at narrower dock widths."""
     open_scene(page, server)
@@ -7592,7 +7760,8 @@ def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
             dataTip: el.getAttribute('data-tip') || '',
         }));
     }""")
-    assert len(tab_tooltips) == 7
+    assert len(tab_tooltips) == 6
+    assert [t["text"] for t in tab_tooltips] == ["Analysis", "History", "Codex", "Claude", "Group", "Beats"]
     for tab in tab_tooltips:
         assert len(tab["title"]) > 10, f"Tab {tab['id']} missing descriptive title: {tab}"
         assert tab["title"] == tab["dataTip"]
@@ -7658,80 +7827,103 @@ def test_the_dashboard_toolbar_never_overflows_its_container(
         assert overflow["pageScroll"] <= 1, f"page scrolls sideways at {width}px: {overflow}"
 
 
-def test_scene_card_shows_the_story_fields_when_present(page: Page, shared_server: ProseviewServer):
-    """A scene's storyline and day belong on the scene card, not only in the
-    Timeline, and are labelled with the keys this repo actually uses."""
+def test_frontmatter_shows_the_story_fields_when_present(page: Page, shared_server: ProseviewServer):
+    """A scene's storyline and day show directly in its frontmatter block."""
     rel, thread, day = STORY_SCENES[0]
     open_scene(page, shared_server, rel.split("manuscript/")[-1] if "manuscript/" in rel else rel)
-    open_scene_details(page)
 
-    card = page.locator(".scene-card").inner_text().lower()
-    assert thread in card
-    assert str(day) in card
-    assert page.evaluate("() => storyModel.thread_field") in card
-    assert page.evaluate("() => storyModel.day_field") in card
-
-
-def test_scene_card_omits_story_rows_when_the_scene_has_none(page: Page, shared_server: ProseviewServer):
-    """A manuscript that does not use these fields sees no row at all, rather
-    than a line of 'Unknown' for something it never opted into."""
-    open_scene(page, shared_server, SCENE_REL)
-    open_scene_details(page)
-
-    card = page.locator(".scene-card").inner_text().lower()
-    thread_field = page.evaluate("() => storyModel.thread_field")
-    assert thread_field not in card
-    # The fields this scene *does* set are untouched.
-    assert "pov" in card and "when" in card and "goal" in card
+    fm_text = page.locator("#sceneFrontmatter .fm-block").inner_text().lower()
+    assert thread in fm_text
+    assert str(day) in fm_text
+    assert page.evaluate("() => storyModel.thread_field") in fm_text
+    assert page.evaluate("() => storyModel.day_field") in fm_text
 
 
-def test_scene_card_with_no_frontmatter_explains_instead_of_showing_unknowns(
-    page: Page, shared_server: ProseviewServer
-):
-    """Plain Markdown -- an Obsidian vault, an imported draft -- is the case
-    the panel used to handle worst.
-
-    Every story row fell back to "Unknown" or "Not defined", so a writer who
-    had simply never opted into frontmatter saw seven rows of nothing and read
-    the panel as broken. Now the rows are dropped and one hint takes their
-    place.
-    """
-    open_scene(page, shared_server, BARE_SCENE_REL)
-    open_scene_details(page)
-
-    card = page.locator(".scene-card").inner_text().lower()
-    assert "unknown" not in card
-    assert "not defined" not in card
-
-    # The empty-state hint replaces them, and names the fields to add.
-    hint = page.locator(".scene-card-fm-empty")
-    assert hint.count() == 1
-    hint_text = hint.inner_text().lower()
-    assert "no scene details yet" in hint_text
-    for field in ("characters", "where", "goal", "conflict", "outcome"):
-        assert field in hint_text
-    # The arc column is gone entirely rather than rendered empty.
-    assert page.locator(".scene-card-arc").count() == 0
-
-
-def test_add_frontmatter_button_writes_the_block_and_the_panel_fills_in(
+def test_frontmatter_character_links_and_todo_checkboxes_work_in_place(
     page: Page, server: ProseviewServer
 ):
-    """The offer has to actually land on disk, and the panel has to change.
+    """Character names in frontmatter open their bio with mention tooltips, and
+    frontmatter TODO list items can be checked off directly from the YAML block."""
+    scene = server.scene_path()
+    scene.write_text(
+        scene.read_text(encoding="utf-8").replace(
+            "---\n\n",
+            "todos:\n  - Tighten the ledger count\n---\n\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    server.restart()
 
-    Uses the per-test ``server`` fixture rather than the shared one, because it
-    writes into the manuscript.
-    """
+    open_scene(page, server, SCENE_REL)
+
+    # Character names in frontmatter are clickable and carry mention counts.
+    char_btn = page.locator("#sceneFrontmatter .fm-char-link", has_text="Rena").first
+    assert char_btn.is_visible()
+    assert "Mentions:" in (char_btn.get_attribute("title") or "")
+    char_btn.click()
+    page.locator(".bio-card").wait_for(state="visible")
+    page.get_by_role("button", name="Back to scene").click()
+    page.locator("#sceneFrontmatter .fm-block").wait_for(state="visible")
+
+    # Checking a frontmatter TODO deletes it from disk and the block.
+    todo_cb = page.locator("#sceneFrontmatter .fm-todo-cb").first
+    assert todo_cb.is_visible()
+    todo_cb.check()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#sceneFrontmatter .fm-todo-cb').length === 0",
+        timeout=10_000,
+    )
+    assert "Tighten the ledger count" not in scene.read_text(encoding="utf-8")
+
+
+def test_frontmatter_related_docs_open_from_footer_and_collapse_with_it(
+    page: Page, server: ProseviewServer
+):
+    """Related docs live in the collapsible frontmatter footer so they stay
+    clickable on the scene without needing a separate Scene tab."""
+    (server.root / "plans" / "opening-ledger-notes.md").write_text(
+        "# Opening Ledger Notes\n\nOpening Ledger notes for the first scene.\n",
+        encoding="utf-8",
+    )
+    server.restart()
+
+    open_scene(page, server, SCENE_REL)
+    fm_related = page.locator("#sceneFrontmatter .fm-related")
+    toggle = page.locator("#sceneFrontmatter .fm-toggle")
+    if toggle.get_attribute("aria-expanded") == "false":
+        toggle.click()
+    assert fm_related.is_visible()
+
+    related_link = fm_related.locator(".related-doc-link", has_text="opening-ledger-notes.md")
+    assert related_link.count() == 1
+
+    # Collapsing Frontmatter hides the related docs footer along with the YAML.
+    toggle.click()
+    assert fm_related.is_hidden()
+    toggle.click()
+    assert fm_related.is_visible()
+
+    related_link.click()
+    page.wait_for_selector("#file-preview-panel", state="visible")
+    assert "Opening Ledger notes for the first scene." in page.locator("#filePreviewBody").inner_text()
+
+
+def test_add_frontmatter_button_writes_the_block_and_fills_in(
+    page: Page, server: ProseviewServer
+):
+    """A scene without frontmatter offers '+ Add frontmatter' in place, writes
+    the starter block to disk, and renders the highlighted frontmatter."""
     scene = server.root / "manuscript" / BARE_SCENE_REL
     assert not scene.read_text(encoding="utf-8").startswith("---")
 
     open_scene(page, server, BARE_SCENE_REL)
-    open_scene_details(page)
-    page.click(".scene-card-fm-add")
+    page.click("#sceneFrontmatter .fm-add-scaffold")
 
-    # The button reloads the page once the write lands.
     page.wait_for_function(
-        "() => !document.querySelector('.scene-card-fm-add')", timeout=10_000
+        "() => !document.querySelector('#sceneFrontmatter .fm-add-scaffold') "
+        "&& !!document.querySelector('#sceneFrontmatter .fm-block')",
+        timeout=10_000,
     )
 
     written = scene.read_text(encoding="utf-8")
@@ -7746,22 +7938,18 @@ def test_add_frontmatter_button_is_absent_when_a_scene_already_has_one(
 ):
     """Nothing to offer, so nothing is offered."""
     open_scene(page, shared_server, SCENE_REL)
-    open_scene_details(page)
-    assert page.locator(".scene-card-fm-add").count() == 0
+    assert page.locator("#sceneFrontmatter .fm-add-scaffold").count() == 0
 
 
-def test_scene_card_with_no_frontmatter_keeps_what_does_not_need_it(
+def test_legacy_scene_dock_tab_preference_falls_back_to_analysis(
     page: Page, shared_server: ProseviewServer
 ):
-    """The file path and the related-docs column come from the file itself, so
-    they survive when the frontmatter does not."""
-    open_scene(page, shared_server, BARE_SCENE_REL)
-    open_scene_details(page)
-
-    card = page.locator(".scene-card")
-    assert card.count() == 1
-    assert "04-bare.md" in card.inner_text()
-    assert page.locator(".scene-card-related").count() == 1
+    """Stored 'scene' or 'details' dock preferences land on Analysis."""
+    open_scene(page, shared_server)
+    page.evaluate("() => localStorage.setItem('proseview-scene-panel-tab', 'scene')")
+    page.evaluate("() => toggleScenePanel(null)")
+    page.wait_for_selector("#sceneAnalysisPane:not([hidden])")
+    assert page.get_attribute("#utilityTabAnalysis", "aria-selected") == "true"
 
 
 def test_timeline_names_a_bare_chapter_number(page: Page, shared_server: ProseviewServer):
@@ -8100,9 +8288,15 @@ def test_the_card_wraps_instead_of_squeezing_in_a_narrow_panel(page: Page, serve
     card = _review_card(page)
     page.evaluate("document.documentElement.style.setProperty('--utility-dock-w', '340px')")
 
-    width = lambda selector: card.locator(selector).evaluate("el => el.getBoundingClientRect().width")
-    assert width(".discuss-review-path") > 150
-    assert width(".discuss-review-hint") > 150
+    # Closing turn events can redraw the card after it first becomes visible.
+    # Measure the current card atomically and wait for that layout to settle.
+    page.wait_for_function("""() => {
+        const card = document.querySelector('.discuss-review');
+        return card && ['.discuss-review-path', '.discuss-review-hint'].every(selector => {
+            const node = card.querySelector(selector);
+            return node && node.getBoundingClientRect().width > 150;
+        });
+    }""")
 
 
 def test_unticking_one_change_puts_that_line_back_and_leaves_the_other(
@@ -8690,7 +8884,7 @@ def test_the_file_browser_reveals_the_scene_being_read(page: Page, server: Prose
     assert all(revealed["open"]) and revealed["visible"]
     # Let the new scene's lexical request finish before the fixture closes the
     # browser; closing immediately can abort it and report a fetch error.
-    page.wait_for_function("() => typeof meta[paths[curIdx]].mattr === 'number'")
+    page.wait_for_function("() => meta[paths[curIdx]].mattr > 0")
 
 
 def _reading_position(page: Page) -> tuple[str, int]:
@@ -8946,6 +9140,7 @@ def test_a_dollar_sign_picks_a_skill_that_stays_in_the_question(page: Page, serv
 
     page.locator("#discussInput").press_sequentially("$tight")
     page.wait_for_selector("#discussContextPicker", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussContextOptions').textContent.includes('tighten-prose')")
     assert "tighten-prose" in page.locator("#discussContextOptions").inner_text()
     assert "Remove filler" in page.locator("#discussContextOptions").inner_text()
     page.locator("#discussInput").press("Enter")

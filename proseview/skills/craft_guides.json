@@ -1,0 +1,730 @@
+[
+  {
+    "id": "craft_mckee",
+    "purpose": "Make the scene turn",
+    "label": "McKee · Story",
+    "author": "Robert McKee",
+    "book": "Story",
+    "subtitle": "What a character wants, what resists them, and what changes",
+    "tagline": "Goal, resistance, shifted tactics & real change by scene end",
+    "defaultScope": "this_scene",
+    "thesis": "A scene becomes easier to follow when we understand what someone wants and see what happens when they pursue it. McKee’s approach follows that movement: a character acts, meets a response, and leaves in a meaningfully different position.\n\nThat movement can be quiet. Someone may decide to stop asking for reassurance, notice a betrayal, or accept help they had refused. The useful question is what the scene changes for this story, rather than how much confrontation it contains.",
+    "lanes": [
+      {
+        "id": "want",
+        "tab": "1. Desire",
+        "title": "What the character wants",
+        "brief": "A desire gives the reader a reason to follow what happens next.",
+        "summary": "A scene objective is something a character hopes to gain, protect, avoid, or understand in this situation. It gives their actions a direction. The reader need not hear the objective stated aloud, but should usually have enough evidence to understand why an exchange or decision matters.",
+        "flat": "Devon sits at the café table thinking about how lonely he has felt since the trial.",
+        "working": "Devon slides his phone across the table before Claire can order: \"Tell me who gave you that address.\"",
+        "why": "Asking about the address gives Devon a reason to stay in the conversation and Claire a question to answer or avoid. Thinking about loneliness can also work when it changes what he notices or chooses.",
+        "spot": "Look for actions whose purpose is hard to understand, or a desire the prose names but never lets shape what the character does.",
+        "fix": "Clarify one action, thought, or line of dialogue that gives the character’s behavior a direction.",
+        "tryIt": "Finish this sentence for yourself: “Before this scene ends, they hope to…” Then check whether the reader can infer that hope from the draft.",
+        "caution": "A reflective scene can have a strong internal desire. Keep the reflection if following it changes the character’s understanding or makes a later choice believable.",
+        "anotherExample": {
+          "title": "A quiet objective",
+          "text": "At her father’s door, June rehearses the apology she came to make. When he opens it, she asks about his tomatoes instead.",
+          "why": "Her wish to apologize still shapes the scene. Avoiding the subject creates tension because we understand what she cannot yet bring herself to do."
+        }
+      },
+      {
+        "id": "pushback",
+        "tab": "2. Resistance",
+        "title": "What makes the desire difficult",
+        "brief": "Resistance gives a choice or an exchange something to work against.",
+        "summary": "Resistance is whatever prevents a desire from being satisfied easily. Another person may want something else; a deadline may close an option; or the character may be torn between two loyalties. The resistance matters when it changes what the character is willing or able to try.",
+        "flat": "\"Can I borrow your badge?\" \"Sure, just put it back before five.\"",
+        "working": "\"Can I borrow your badge?\" \"Last time I covered for you, I nearly lost my pension. Give me one reason.\"",
+        "why": "The pension gives the badge owner a reason to hesitate. The request now puts two understandable needs into conflict, so the next reply can reveal something about both people.",
+        "spot": "Consider whether easy agreements leave an important request without enough weight.",
+        "fix": "Make the existing reason for hesitation clearer before adding a new obstacle.",
+        "tryIt": "Ask what saying yes would cost the other person. If the cost is already established, one reminder may be enough.",
+        "caution": "An ally can help willingly. Adding an argument to every favor can make a generous character feel inconsistent.",
+        "anotherExample": {
+          "title": "Resistance within one person",
+          "text": "Imani wants to read the letter, but opening it would break the last promise she made to her sister. She carries it unopened through the afternoon.",
+          "why": "No one needs to block her physically. Her competing loyalties make an ordinary action difficult."
+        }
+      },
+      {
+        "id": "tactics",
+        "tab": "3. Actions & reactions",
+        "title": "When the first approach stops working",
+        "brief": "A response can change what the character tries next.",
+        "summary": "McKee calls the difference between an expected result and the actual response the Gap. A character tries something, the world answers differently, and the character has to respond. A change of approach is useful when it develops the exchange instead of repeating the same request in new words.",
+        "flat": "Maren asks for the key three times in slightly different polite ways until Tomas gives in.",
+        "working": "Flattery fails—Tomas already changed the lock. Maren drops her smile and slides the unpaid invoice across the desk.",
+        "why": "The changed lock makes flattery useless. Maren’s move to the invoice is a response to new information, and it shows what she is prepared to use as leverage.",
+        "spot": "Look for several beats that repeat the same approach without revealing anything new.",
+        "fix": "Change a response or a piece of information so the next action follows from what just happened.",
+        "tryIt": "Name the action behind each exchange: reassure, evade, bargain, confess. Repeated actions may be purposeful, but check whether their meaning develops.",
+        "caution": "A character may stubbornly repeat a tactic. Keep that repetition when its growing cost or changing effect is the point.",
+        "anotherExample": {
+          "title": "A softer change of approach",
+          "text": "Nora corrects her mother’s memory of the trip twice. On the third attempt, she stops correcting and asks what her mother misses about the house.",
+          "why": "The change from proving a fact to asking a question moves the conversation without raising its volume."
+        }
+      },
+      {
+        "id": "subtext",
+        "tab": "4. Subtext",
+        "title": "What is said and what is meant",
+        "brief": "Look beneath the words for an unspoken want, feeling, or attempt to influence someone.",
+        "summary": "Subtext is the meaning carried beneath the literal words and visible actions. Someone may offer permission while hoping to be asked to stay, or discuss a broken lamp while avoiding a more painful subject. McKee’s scene analysis pays attention to both levels because their relationship can make a familiar exchange feel particular and alive.",
+        "flat": "“I am hurt that you are leaving, but I do not want to admit that I need you,” she said.",
+        "working": "“Of course you should go.” She folded his scarf again, lining up the ends. “The last train is at ten.”",
+        "why": "The words give permission while her attention stays on his departure. In a context that establishes the relationship, the reader can sense a competing wish without having every feeling explained.",
+        "spot": "Notice dialogue that spells out a feeling the surrounding behavior already communicates, or an exchange whose unspoken stakes never become readable.",
+        "fix": "Choose one place where a gesture, evasion, or choice of subject can carry meaning now explained twice.",
+        "tryIt": "For one exchange, write two private notes: what each person says, and what they hope the other person will do. Check what evidence the reader actually receives.",
+        "caution": "Direct speech can be powerful and necessary. Do not make an honest confession coy, or assume that every gesture hides a different intention.",
+        "anotherExample": {
+          "title": "Shared knowledge can carry the meaning",
+          "text": "At the hearing, Daniel says, “Your father would have understood.” Eva closes the folder. “My father is not signing this.”",
+          "why": "Her reply answers more than the literal claim. A reference to the father has become an attempt to influence her, and she refuses it without explaining the whole relationship."
+        }
+      },
+      {
+        "id": "shift",
+        "tab": "5. Change",
+        "title": "What is different by the end",
+        "brief": "A scene can change knowledge, trust, safety, or a future choice.",
+        "summary": "A value is something that matters to the people in the scene, such as trust, safety, belonging, or control. Compare their situation at the opening and the ending. A meaningful change gives the scene a consequence, even when that consequence is a small loss of confidence or a newly understood possibility. Then ask what that difference sets in motion: a next action, obligation, risk, or changed choice. When later scenes are supplied, use them to check a specific connection.",
+        "flat": "They argue for three pages, stay annoyed with each other, and agree to talk tomorrow.",
+        "working": "They arrive as uneasy partners; she leaves pocketing the spare key without telling him.",
+        "why": "Taking the key changes how these partners will relate to each other. The reader now has a consequence to follow beyond the argument itself.",
+        "spot": "Consider whether the ending develops the opening situation or simply returns to it, and what that change enables or prevents next. Check any setup that supplied later scenes show this scene needs to establish.",
+        "fix": "Make the consequence of an existing beat easier to recognize before inventing a larger reversal.",
+        "tryIt": "Write two short descriptions: “At the start…” and “By the end…” Name what changed and why that difference matters next.",
+        "caution": "The consequence can remain understated. Explaining it twice or adding a dramatic hook may weaken an ending that already lands.",
+        "anotherExample": {
+          "title": "A change the characters do not announce",
+          "text": "At breakfast, Amir hides the hospital envelope beneath his plate. By the end, he slides it across to his daughter and lets her read.",
+          "why": "The conversation can stay calm. Moving from concealment to shared knowledge changes their relationship and what they can do together."
+        }
+      }
+    ],
+    "bestFor": "A conversation circles the same subject, a character seems to drift, or the scene feels removable even though the prose is good.",
+    "skipWhen": "You mainly want sentence-level editing. King’s lens is a better starting point for that.",
+    "reviewNote": "The review follows desire, resistance, actions, subtext, and consequences. It names the principle behind each useful suggestion and checks what the scene actually develops, including when that development is quiet.",
+    "sourceUrl": "https://mckeestory.com/books/story/",
+    "sourceLabel": "About Story on Robert McKee’s website",
+    "analysisFields": [
+      "Desire",
+      "Resistance",
+      "Action and response",
+      "Subtext",
+      "Value change",
+      "What this scene sets in motion"
+    ],
+    "sceneFields": [
+      "Desire & resistance",
+      "Response",
+      "Change & consequence"
+    ]
+  },
+  {
+    "id": "craft_cron",
+    "purpose": "Make choices believable",
+    "label": "Cron · Story Genius",
+    "author": "Lisa Cron",
+    "book": "Story Genius",
+    "subtitle": "Why an event matters to this particular character",
+    "tagline": "Flawed belief, emotional sore spot & internal cost in the scene",
+    "defaultScope": "this_scene",
+    "thesis": "Two characters can face the same event and make different choices because they give it different meanings. Story Genius helps you connect what happens outside a character to what they fear, want, expect, or believe inside.\n\nA misbelief is a mistaken assumption the character relies on, such as “asking for help makes me a burden.” It is one possible source of personal meaning. The review needs evidence before naming one; it should not invent childhood trauma to explain an ambiguous reaction.",
+    "lanes": [
+      {
+        "id": "blind_spot",
+        "tab": "1. Beliefs",
+        "title": "The belief behind a reaction",
+        "brief": "What assumption shapes the character’s reading of the moment?",
+        "summary": "A belief becomes useful to the reader when it affects what a character notices, expects, or does. A misbelief may make them interpret kindness as pity or a delay as rejection. The prose can show that interpretation through interior thought, behavior, or subtext without spelling out the entire backstory.",
+        "flat": "Elena reads the anonymous warning and drives to the warehouse. The draft gives no sense of how she interprets the risk.",
+        "working": "Elena checks the envelope for a demand for money before she reads the warning. A favor without a price always made her suspicious.",
+        "why": "The revision links her caution to a particular expectation. The reader can follow her reasoning even if that expectation turns out to be wrong.",
+        "spot": "Look for a reaction whose personal meaning is difficult to infer from the supplied prose.",
+        "fix": "Clarify a perception or interpretation using evidence already established about this character.",
+        "tryIt": "Ask what the character thinks this event means about themselves, another person, or what will happen next.",
+        "caution": "One suspicious gesture does not establish a lifelong misbelief. The review should label a tentative reading and leave room for other explanations.",
+        "anotherExample": {
+          "title": "A belief can be partly reasonable",
+          "text": "Theo keeps a second copy of the application because the office lost his first one. Later, he treats a friend’s harmless mistake as proof that nobody can be trusted.",
+          "why": "The first action has a sound practical reason. The second may show a belief spreading beyond the evidence; that distinction makes the character more specific."
+        }
+      },
+      {
+        "id": "sore_spot",
+        "tab": "2. Personal stakes",
+        "title": "Why this trouble matters to them",
+        "brief": "Connect the event to something the character values or fears losing.",
+        "summary": "Personal stakes explain why this obstacle matters beyond its practical inconvenience. Being left off a meeting invitation might threaten someone’s job, confirm their fear of exclusion, or bring welcome relief. The event becomes more engaging when the reader understands which meaning this character gives it.",
+        "flat": "The courier arrives two hours late because traffic is backed up.",
+        "working": "The courier hands the urgent file to Elena’s junior partner instead of her—pressing her fear of being pushed aside.",
+        "why": "Giving the file to Elena’s junior partner turns a routine delivery into a question about her place in the team. That meaning should fit what the draft has established about her.",
+        "spot": "Check whether the scene establishes the character’s specific concern rather than relying on a generic label such as “upset.”",
+        "fix": "Bring the relevant concern into a thought, a noticed detail, or a choice already present in the scene.",
+        "tryIt": "Ask what the character fears this event will lead to. Look for a way to make that expectation understandable without a long explanation.",
+        "caution": "Not every inconvenience must reopen an old wound. Immediate practical stakes can carry a scene when they are clear and consequential.",
+        "anotherExample": {
+          "title": "The same event, different meaning",
+          "text": "A canceled visit gives one sister time to rest. The other has already set a third place at the table and cannot bring herself to clear it.",
+          "why": "The cancellation is the same. Their different responses reveal what each had been hoping for."
+        }
+      },
+      {
+        "id": "only_them",
+        "tab": "3. Choices",
+        "title": "How interpretation leads to a choice",
+        "brief": "A choice should follow the character’s understanding of the situation.",
+        "summary": "A believable choice follows what the character knows, assumes, wants, and fears at that moment. They may make a mistake, act generously, or reach a sensible conclusion. The useful test is whether we can follow their reasoning, rather than whether their choice creates the most trouble for the plot.",
+        "flat": "To keep things safe, Jonah sensibly reports the broken lock to his captain.",
+        "working": "Refusing to look incompetent in front of his crew, Jonah pockets the snapped pick and lies that the door was jammed.",
+        "why": "Jonah’s lie connects a practical problem to his fear of appearing incompetent. Reporting the lock could work just as well for a different character or a later stage of his development.",
+        "spot": "Look for a missing link between what the character perceives and what they decide to do.",
+        "fix": "Supply that link with a small reaction or adjust the choice to fit the established character.",
+        "tryIt": "Complete this chain: “They notice… They take it to mean… So they decide…” The draft may only need help with one link.",
+        "caution": "Do not make a competent character act foolishly just to demonstrate a flaw. Growth and sound judgment can be believable choices too.",
+        "anotherExample": {
+          "title": "A careful choice can reveal character",
+          "text": "After years of covering her brother’s debts, Liv refuses a new loan but offers to sit with him while he calls the landlord.",
+          "why": "Her choice protects a boundary while preserving the relationship. It can show change without turning her into a different person."
+        }
+      },
+      {
+        "id": "cost",
+        "tab": "4. Consequences",
+        "title": "What the choice costs or changes",
+        "brief": "Follow what happens when the character acts on their interpretation.",
+        "summary": "A consequence lets the reader see what a belief or choice does in practice. A character might get what they want and damage a relationship, lose an argument but gain understanding, or reinforce an existing belief. The scene need not produce a fresh revelation every time.",
+        "flat": "Nadia brushes off the argument and walks out convinced she was right all along.",
+        "working": "Nadia wins the argument on points—and sees her one loyal witness quietly close his notebook and step out.",
+        "why": "Nadia wins the argument, but the witness leaving gives that victory a personal cost. The draft can let the gesture carry the consequence without explaining the lesson.",
+        "spot": "Consider whether a significant choice has an understandable personal consequence in the supplied material.",
+        "fix": "Make an existing consequence more visible before adding a new punishment or revelation.",
+        "tryIt": "Ask what the character can do, believe, or expect afterward that differs from before the choice.",
+        "caution": "A cost can emerge in a later scene. If that scene is not supplied, the review should identify the limit instead of declaring the arc incomplete.",
+        "anotherExample": {
+          "title": "A small opening toward change",
+          "text": "Ben nearly deletes the offer of help. Instead, he asks whether Tuesday would work, then leaves the message on his screen.",
+          "why": "He has not solved his difficulty accepting help. One modest action gives the reader evidence that another response is becoming possible."
+        }
+      },
+      {
+        "id": "handoff",
+        "tab": "5. What follows",
+        "title": "What this scene sets in motion",
+        "brief": "Connect the experience to a changed agenda, choice, or problem.",
+        "summary": "Scenes participate in a continuing chain of cause and effect. An experience can change what a character believes they must do next, make an old plan impossible, or deepen their commitment to a mistaken approach. Cron’s approach asks how the internal and external story develop together, so a realization matters through what it causes rather than through a label such as “she understood.”",
+        "flat": "Mira realizes that she has misjudged her father. In the next scene, she follows the same plan for reasons the draft does not explain.",
+        "working": "Mira finds the letters her father kept. Before she leaves, she takes her unfinished reply out of the wastebasket and puts her return address on the envelope.",
+        "why": "The discovery changes a choice we can follow. We do not need a complete reconciliation to see that her understanding has begun to affect what she does.",
+        "spot": "Look for a realization or setback that is announced but has no understandable effect on the character’s next agenda.",
+        "fix": "Clarify the connection between the new understanding and an existing choice before adding another revelation.",
+        "tryIt": "Complete this sentence: “Because of this scene, they now decide to…” If a neighboring scene is supplied, check whether it follows that decision or explains why it changes.",
+        "caution": "A realization may take time to affect behavior. When the necessary later scene is not supplied, the review should identify that limit rather than invent a broken arc.",
+        "anotherExample": {
+          "title": "A setback can reinforce the old approach",
+          "text": "After an honest request for help is mocked, Nikhil decides to hide the problem from his partner. The next scene begins with the lie he has chosen to tell.",
+          "why": "The experience has not taught him a healthy lesson. It still drives the next action through his particular interpretation of what happened."
+        }
+      }
+    ],
+    "bestFor": "The plot is moving, but a reaction feels generic, emotionally distant, or arranged mainly to reach the next event.",
+    "skipWhen": "You already understand the character’s choices and mainly want to shorten or smooth the prose.",
+    "reviewNote": "The review follows events, interpretations, choices, and consequences, including what they cause next. Optional story context can establish a known belief or larger agenda; the review still distinguishes those notes from what the prose lets a reader understand.",
+    "sourceUrl": "https://www.penguinrandomhouse.com/books/252747/story-genius-by-lisa-cron/",
+    "sourceLabel": "About Story Genius at Penguin Random House",
+    "analysisFields": [
+      "Personal stakes or belief",
+      "Interpretation",
+      "Choice",
+      "Consequence",
+      "What follows"
+    ],
+    "sceneFields": [
+      "Interpretation & stakes",
+      "Choice",
+      "Consequence"
+    ]
+  },
+  {
+    "id": "craft_coyne",
+    "purpose": "Strengthen scene structure",
+    "label": "Coyne · The Story Grid",
+    "author": "Shawn Coyne",
+    "book": "The Story Grid",
+    "subtitle": "How disruption develops into a choice and a consequence",
+    "tagline": "Escalating trouble, hard choice, decisive act & + / - shifts",
+    "defaultScope": "this_chapter",
+    "thesis": "The Story Grid follows how a scene develops through five connected parts: an event upsets the balance, complications develop, a difficult choice emerges, someone acts on it, and consequences follow. Coyne calls these the Five Commandments.\n\nThis lens helps locate a weak connection in that chain. It also tracks a value: something at stake, such as safety, trust, or status. A value can change direction or deepen in the same direction. Danger becoming much worse is a real change, even though both states are negative.",
+    "lanes": [
+      {
+        "id": "complications",
+        "tab": "1. Rising trouble",
+        "title": "Disruption and developing complications",
+        "brief": "What upsets the situation, and how does the trouble develop?",
+        "summary": "An inciting incident is the event that disturbs the relevant balance. Progressive complications are the difficulties that follow. Useful complications change the problem or narrow an option, so the character cannot keep solving the same obstacle in the same way. They need not all be louder or more dangerous. The turning point can be an action or a revelation: new information, or a new understanding of something already known, can change the character’s options as decisively as an external event.",
+        "flat": "Three pages of arrival, hanging coats, and catching up before the bad news is mentioned.",
+        "working": "Coat still damp, Maya spots the shredded passport—and then hears sirens turning onto their street.",
+        "why": "The damaged passport creates one problem; the approaching sirens limit the time available to solve it. The second event changes what Maya can reasonably try next.",
+        "spot": "Look for obstacles that repeat without changing the character’s options or understanding.",
+        "fix": "Strengthen the connection between an existing event and the problem it creates next.",
+        "tryIt": "List what the character can still do after each complication. If the options never change, check whether the repetition serves a clear purpose.",
+        "caution": "Arrival, routine, and conversation can establish what is about to be disrupted. Cut them only when their contribution does not earn the space.",
+        "anotherExample": {
+          "title": "Complications in a quiet scene",
+          "text": "A daughter asks her father to move closer. He agrees, provided his brother can come too. She has been avoiding that brother for ten years.",
+          "why": "The agreement introduces a new condition. The conversation has developed into a harder problem without an argument or a new physical threat."
+        }
+      },
+      {
+        "id": "crisis",
+        "tab": "2. The choice",
+        "title": "A choice with competing costs",
+        "brief": "Why can’t the character simply take an obvious, painless option?",
+        "summary": "The Crisis is the choice raised by the developing trouble. Coyne describes choices between competing goods or between costly alternatives. The options matter because they expose what the character is prepared to protect, give up, or risk. The costs should be understandable in this story’s terms.",
+        "flat": "Guards stop the wagon, ask nervous questions, check the papers, and wave them through.",
+        "working": "The guard offers to take their medicine as a bribe. Maya can surrender what the village needs or refuse and risk arrest.",
+        "why": "Both options endanger something Maya values. The reader can understand the decision without the narrator labeling it agonizing.",
+        "spot": "Consider whether the decisive choice has understandable alternatives and consequences.",
+        "fix": "Clarify a cost the scene already implies, rather than adding an unrelated disaster.",
+        "tryIt": "Write “If they choose A…” and “If they choose B…” Check whether the draft gives the reader enough to understand why the choice matters.",
+        "caution": "The cost should fit the scale of the scene. An intimate disagreement does not need life-or-death stakes to reveal a meaningful priority.",
+        "anotherExample": {
+          "title": "Two things worth protecting",
+          "text": "A teacher can correct a student’s false accusation in front of the class, or wait and protect the student from public embarrassment while the rumor spreads.",
+          "why": "The choice puts fairness and care under pressure. Its significance comes from the teacher’s responsibilities, not from physical danger."
+        }
+      },
+      {
+        "id": "climax",
+        "tab": "3. The action",
+        "title": "What the character chooses to do",
+        "brief": "The decision becomes an action or a deliberate refusal with consequences.",
+        "summary": "The Climax is the action that answers the Crisis. What matters is that the character’s response has consequences. Taking an object, telling the truth, leaving a room, refusing a demand, or deliberately doing nothing can all answer a choice when the situation gives that response weight.",
+        "flat": "The folder closes and the scene ends before we can tell whether Maya has made a decision.",
+        "working": "Without looking back at Tomas, Maya drops their last medicine vial into the guard’s palm.",
+        "why": "Handing over the medicine makes Maya’s choice visible and starts its consequences. A refusal could also work if the draft follows what refusing sets in motion.",
+        "spot": "Look for an important decision that remains unclear when the scene needs its consequence.",
+        "fix": "Make the chosen response readable, including a deliberate retreat or refusal when that fits the character.",
+        "tryIt": "Point to the moment when the character answers the choice. Then ask what becomes possible or impossible because of that answer.",
+        "caution": "Postponing a decision can itself be consequential. Do not automatically replace hesitation with a bold act if the cost of waiting is the scene’s point.",
+        "anotherExample": {
+          "title": "Refusal can be decisive",
+          "text": "Offered a promotion if she signs the false report, Ada leaves the signature line blank and places her office key beside it.",
+          "why": "She refuses the demand and accepts a consequence. The action resolves the immediate choice even though her larger problem remains."
+        }
+      },
+      {
+        "id": "polarity",
+        "tab": "4. Value change",
+        "title": "What changes, and by how much",
+        "brief": "Track a specific value through improvement, reversal, or worsening.",
+        "summary": "A value is something that can be gained, lost, strengthened, or threatened: trust, safety, status, or another concern established by the story. Positive and negative signs are shorthand for its condition. Track what the signs refer to and how far the situation moves; identical signs do not necessarily mean identical conditions.",
+        "flat": "Maya begins lost in the storm. At the end she is still lost, with the same information and the same options. No new consequence develops.",
+        "working": "Maya begins lost in the storm. By the end, the guide has abandoned her and the river has cut off the only marked trail: danger has become much worse.",
+        "why": "The ending changes Maya’s options and increases the threat. That movement works as negative to more negative; a switch to a positive ending is unnecessary.",
+        "spot": "Distinguish a meaningful improvement or worsening from a scene that repeats the same condition.",
+        "fix": "Name the value and show which existing consequence changes its condition.",
+        "tryIt": "Use words before symbols: “uncertain welcome -> public rejection” is more useful than a row of unexplained minus signs.",
+        "caution": "Consecutive scenes can move in the same direction. Judge their development and cumulative effect rather than enforcing mechanical alternation.",
+        "anotherExample": {
+          "title": "Good becoming better",
+          "text": "A musician gets the audition she hoped for. At the end of the call, she learns that her former teacher will accompany her.",
+          "why": "The news deepens an already positive development by changing what support she can expect. The particular value and its importance still need to be clear."
+        }
+      },
+      {
+        "id": "genre",
+        "tab": "5. Genre expectations",
+        "title": "Which promise this scene serves",
+        "brief": "When the genre is known, connect the scene to the experience readers came for.",
+        "summary": "Story Grid uses genre to identify the central concerns and experiences a story promises its readers. A mystery develops questions about the crime and its solution; a love story develops the relationship. Conventions establish those expectations, while obligatory moments are important events that fulfill them across the story. A single scene may prepare, complicate, or pay off one part of that promise.",
+        "flat": "In a mystery, the detective repeats that the suspect seems dishonest. The scene gives her no new evidence, changed question, or consequential choice.",
+        "working": "The suspect’s receipt confirms his alibi, but its delivery address puts him inside the victim’s building. The detective must reconsider which part of his account was a lie.",
+        "why": "The scene develops the reader’s question about the crime. Its contribution can be named in terms of the mystery rather than a generic requirement to add tension.",
+        "spot": "With a confirmed genre, consider which relevant value, question, or expectation the scene develops.",
+        "fix": "Make the scene’s existing contribution to that promise clearer. Mention a broader obligation only when enough surrounding story is available to judge it.",
+        "tryIt": "Write what readers should gain from this scene: a clue, a change in the relationship, a sharper threat, or another experience appropriate to the stated genre.",
+        "caution": "Do not guess the genre from one passage, or require every scene to fulfill every convention. Without enough story context, the review can discuss a local effect but cannot audit the whole novel’s promises.",
+        "anotherExample": {
+          "title": "A quiet scene can serve a love story",
+          "text": "While packing, two former partners discover that each has kept the other’s unreadable shopping lists. For the first time that evening, they laugh at the same thing.",
+          "why": "The scene can briefly change the possibility of connection. Its value comes from the developing relationship, without needing a clue, a chase, or a threat."
+        }
+      }
+    ],
+    "bestFor": "A chapter has several incidents but little development, obstacles feel repetitive, or an important choice seems to happen without enough preparation.",
+    "skipWhen": "You want low-pressure help getting an unfinished passage onto the page. Lamott’s lens starts smaller.",
+    "reviewNote": "The review checks developing trouble, choices, consequences, and value changes. Turning points may happen through action or revelation. If you provide genre or story context, it can also consider the relevant reader expectations without treating one excerpt as a complete novel.",
+    "sourceUrl": "https://storygrid.com/podcast/5-commandments-storytelling-revisited",
+    "sourceLabel": "Shawn Coyne explains the Five Commandments",
+    "analysisFields": [
+      "Inciting incident",
+      "Complications and turning point",
+      "Crisis",
+      "Climax",
+      "Resolution and value change"
+    ],
+    "sceneFields": [
+      "Incident & turning point",
+      "Crisis → action",
+      "Resolution & value"
+    ]
+  },
+  {
+    "id": "craft_snyder",
+    "purpose": "Keep readers moving",
+    "label": "Snyder · Save the Cat!",
+    "author": "Blake Snyder",
+    "book": "Save the Cat!",
+    "subtitle": "Exposition, emotional movement, reader investment, and endings",
+    "tagline": "Backstory inside action, emotional turn & page-turn hooks",
+    "defaultScope": "this_chapter",
+    "thesis": "Save the Cat! offers tools for holding an audience’s attention: make the situation understandable, give us a reason to care, and let scenes develop. This review borrows selected scene-level techniques from that approach and adapts them for prose.\n\nIt pays attention to how information is delivered, how the feeling of a scene changes, and what makes us want to continue. It concentrates on the scenes you select, rather than placing events on a whole-novel plot outline. Interior thought and quiet recognition can hold attention alongside visible action.",
+    "lanes": [
+      {
+        "id": "conflict",
+        "tab": "1. Goal & obstacle",
+        "title": "What someone wants and what blocks it",
+        "brief": "Give the scene a clear pursuit to develop, even when the action is quiet.",
+        "summary": "Snyder’s scene board tracks both conflict and emotional change. Conflict begins with a person trying to get, protect, or avoid something and an obstacle that makes it difficult. The obstacle may be another person’s competing aim, a practical condition, or an inner conflict. Naming the pursuit helps distinguish purposeful movement from characters merely keeping busy.",
+        "flat": "Two coworkers sort files and discuss how late it is. The draft never gives either of them a reason to care which files go where.",
+        "working": "Leah needs the audit folder before the courier arrives. Owen keeps sorting it into the cabinet he has just locked.",
+        "why": "The same filing task now carries a readable conflict. We can follow what Leah is trying to do and why Owen’s actions matter to it.",
+        "spot": "Identify the scene goal and the resistance before deciding whether its pace is too slow.",
+        "fix": "Clarify an existing pursuit or competing aim before adding physical activity to make the scene appear faster.",
+        "tryIt": "Name who wants what by the end of this exchange, then identify the response or condition that prevents an easy result.",
+        "caution": "The desire can be private and the obstacle subtle. Do not turn every conversation into an argument or give a character control they plausibly lack.",
+        "anotherExample": {
+          "title": "A calm pursuit can still meet resistance",
+          "text": "At dinner, Tess tries to ask whether her mother plans to sell the house. Each time she mentions the garden, her mother offers her more food and asks about work.",
+          "why": "The conversation can remain polite. Tess’s attempt and her mother’s redirection give the reader a developing exchange to follow."
+        }
+      },
+      {
+        "id": "exposition",
+        "tab": "2. Information",
+        "title": "Make information worth following",
+        "brief": "Give the reader a reason to care about a fact when it arrives.",
+        "summary": "Exposition is information the reader needs about the setting, history, or situation. Snyder’s “Pope in the Pool” technique gives the audience something engaging to follow while information is delivered. In prose, that might be a task, a disagreement, humor, or a question the reader already wants answered.",
+        "flat": "Over coffee, Raj spends four paragraphs calmly explaining how the vault’s 90-second timer works.",
+        "working": "Hands shaking on the lockpick, Raj hisses at Nia not to touch the brass handle during the 90-second reset.",
+        "why": "The warning about the handle matters immediately because Nia might touch it. The fact helps us follow the action instead of asking us to pause and memorize a rule.",
+        "spot": "Consider whether an explanation arrives before the reader has a reason to want it.",
+        "fix": "Connect the needed fact to an existing action or question, or shorten the explanation to what matters now.",
+        "tryIt": "Identify what the reader should be curious about before each explanation. If no question is active, consider a better place for the information.",
+        "caution": "Clear summary can be efficient and pleasurable. Adding frantic business around every fact can make a straightforward passage harder to read.",
+        "anotherExample": {
+          "title": "Curiosity can do the work",
+          "text": "At the museum, a visitor notices that one face has been scratched out of the family portrait. The guide’s account of the family feud now answers a question the reader shares.",
+          "why": "The scene can remain still. The damaged portrait gives the history a purpose at the moment it is told."
+        }
+      },
+      {
+        "id": "emotion",
+        "tab": "3. Emotional movement",
+        "title": "Let the feeling develop",
+        "brief": "What emotional difference does the scene create for the reader?",
+        "summary": "Emotional movement describes a change in how a situation feels: confidence becomes doubt, estrangement softens into warmth, or unease grows more definite. On Snyder’s scene board, positive and negative signs help track this movement. In prose, name the feeling and its cause so the signs remain useful.",
+        "flat": "Two partners spend the scene trading mild sarcasm and walk out feeling mildly annoyed.",
+        "working": "Sam walks in teasing his rival—and walks out quietly checking the deadbolt behind him.",
+        "why": "Checking the deadbolt suggests that the encounter has changed Sam’s sense of safety. The action makes the emotional consequence readable without labeling his mood.",
+        "spot": "Look for emotional beats that repeat without changing the reader’s understanding.",
+        "fix": "Clarify the moment that changes the feeling, using the degree of movement appropriate to the scene.",
+        "tryIt": "Describe the opening and ending feelings in ordinary words. Then locate the event or realization that connects them.",
+        "caution": "A scene can sustain a mood on purpose. Avoid forcing a cheerful turn into grief, or a crisis into a gentle scene, just to create contrast.",
+        "anotherExample": {
+          "title": "A modest change can be enough",
+          "text": "Two estranged friends begin by discussing the weather. Before leaving, one asks whether the other still takes her tea without milk.",
+          "why": "The remembered preference creates a small opening toward care. It can change the scene without a confession or reconciliation."
+        }
+      },
+      {
+        "id": "empathy",
+        "tab": "4. Reader investment",
+        "title": "Give the reader a reason to care",
+        "brief": "Make a desire, vulnerability, or meaningful choice understandable.",
+        "summary": "Reader investment grows when we can understand what someone cares about and follow how they respond. A character need not be admirable or constantly active. A risk, a generous act, an embarrassing hope, or a carefully chosen silence can make the person’s situation matter to us.",
+        "flat": "Leo leans by the door listening while two senior officers debate the whole raid plan.",
+        "working": "While the officers argue, Leo quietly palms the spare radio key and checks the back stairwell.",
+        "why": "Taking the radio key gives Leo a purpose of his own within the meeting. Whether that is the right revision depends on the character and the scene’s intended focus.",
+        "spot": "Check whether the focal character’s stakes are readable, even when someone else drives the action.",
+        "fix": "Reveal an existing desire or vulnerability before inventing a new action to keep the character busy.",
+        "tryIt": "Ask what the reader can hope for or fear on the character’s behalf by the middle of the scene.",
+        "caution": "A character may be unable to act. Showing what they notice, endure, or choose to withhold can sustain investment without giving them implausible control.",
+        "anotherExample": {
+          "title": "Stillness with a clear stake",
+          "text": "During the hearing, Mara keeps her hand off the empty chair beside her. Each time the door opens, she looks up before she can stop herself.",
+          "why": "We can understand her hope that someone will come. She does not need to interrupt the hearing to become worth following."
+        }
+      },
+      {
+        "id": "hook",
+        "tab": "5. The ending",
+        "title": "End where the scene has its effect",
+        "brief": "Carry a consequence forward, or give a completed moment room to land.",
+        "summary": "A forward hook is a reason to keep reading: an unanswered question, a changed plan, a consequence, or an emotional need. Sometimes the draft reaches that point and then dilutes it with routine wrap-up. Sometimes a quiet closing image is the right ending because it gives an earlier change its weight.",
+        "flat": "After the raid fails, they wash their mugs, lock up, and walk home in silence.",
+        "working": "After the raid fails, Leo’s dead radio crackles with a voice that shouldn’t know this frequency.",
+        "why": "The radio creates a specific question at the moment the scene closes. That is one possible ending, rather than a requirement to add mystery to every scene.",
+        "spot": "Look for paragraphs that repeat a completed ending or for a consequence that becomes hard to see.",
+        "fix": "Try ending on an existing consequential beat before adding a new surprise.",
+        "tryIt": "Read the last three paragraphs separately. Find the point where the scene’s main change lands, then decide what the later lines contribute.",
+        "caution": "Rest and resolution are part of pacing. An ending can satisfy a question rather than open a new one.",
+        "anotherExample": {
+          "title": "Quiet closure can carry us onward",
+          "text": "After the funeral, Mina washes the two cups and puts only one back on the shelf.",
+          "why": "The image completes an emotional movement and leaves us with its consequence. A threatening phone call would change the kind of ending this scene needs."
+        }
+      }
+    ],
+    "bestFor": "A scene contains necessary information but feels dutiful, its stakes are hard to grasp, or its ending continues after the important moment has passed.",
+    "skipWhen": "You mainly want to understand the character’s deeper interpretation of events. Cron’s lens concentrates on that connection.",
+    "reviewNote": "The review identifies the scene goal and obstacle before considering exposition, emotional movement, reader investment, and the ending. It suggests changes that serve the intended pace instead of treating visible activity as the solution to every slow passage.",
+    "sourceUrl": "https://savethecat.com/tips-and-tactics/working-out-da-kinks",
+    "sourceLabel": "Blake Snyder on conflict and emotional movement in scenes",
+    "analysisFields": [
+      "Goal and obstacle",
+      "Information in motion",
+      "Emotional movement",
+      "Reader investment",
+      "Ending"
+    ],
+    "sceneFields": [
+      "Goal & obstacle",
+      "Emotional movement",
+      "Ending"
+    ]
+  },
+  {
+    "id": "craft_king",
+    "purpose": "Tighten prose",
+    "label": "King · On Writing",
+    "author": "Stephen King",
+    "book": "On Writing",
+    "subtitle": "Believable behavior and prose that earns its place",
+    "tagline": "Unforced reactions, fewer adverbs/tags & leaner sentences",
+    "defaultScope": "this_scene",
+    "thesis": "This lens draws on On Writing to ask whether people behave believably and whether the language helps us experience the scene. It looks for explanation that repeats what the reader already understands, dialogue arranged mainly to deliver information, and phrasing that gets in the way of the moment.\n\nThe aim is to preserve the writer’s voice while removing unnecessary work for the reader. An adverb, metaphor, long sentence, or simple “said” can be exactly right when it contributes meaning, clarity, or rhythm.",
+    "lanes": [
+      {
+        "id": "honesty",
+        "tab": "1. Believable behavior",
+        "title": "Let people respond as themselves",
+        "brief": "Check whether a reaction follows the situation and the established character.",
+        "summary": "Behavior feels forced when a person supplies exactly the information the plot needs, ignores a pressing concern, or agrees without a believable reason. Compare the action to what the character knows and values. Honesty can mean confession, evasion, kindness, irritation, or a practical compromise.",
+        "flat": "\"You’re right, Inspector, I hid the ledger under the pine floorboards,\" he confessed calmly.",
+        "working": "He stared at the pine floorboards, then offered the Inspector tea so his hands had somewhere to stay busy.",
+        "why": "The offer of tea may reveal evasion because it gives the suspect something to do while he avoids answering. A direct confession could also work if the scene gives him a reason to make it.",
+        "spot": "Look for a missing motive behind convenient agreement, disclosure, or delay.",
+        "fix": "Clarify an existing reason for the response or adjust it to fit the character’s priorities.",
+        "tryIt": "Ask what the character wants from this exchange before checking whether each response helps or complicates that aim.",
+        "caution": "People can be candid and cooperative. Replacing every answer with evasive gestures would become another kind of forced behavior.",
+        "anotherExample": {
+          "title": "A direct answer can be the honest one",
+          "text": "Asked about the missing money, the exhausted treasurer names the amount before anyone accuses her. She has spent the night waiting for someone to ask.",
+          "why": "The confession follows an established state of mind. Adding three pages of denial could make the scene less believable."
+        }
+      },
+      {
+        "id": "adverbs",
+        "tab": "2. Dialogue",
+        "title": "Let each person sound like themselves",
+        "brief": "Listen for character in the words, and keep attribution clear without repeating the emotion.",
+        "summary": "Dialogue can reveal what a character notices, values, avoids, or assumes. Two people may answer the same question with different details, levels of directness, or rhythms. King also asks writers to examine explanatory tags and adverbs: they may repeat an effect the line already carries. The aim is speech that feels particular and stays easy to follow.",
+        "flat": "\"Put the knife down,\" he said angrily, glaring furiously at her hand.",
+        "working": "“Put the knife down,” he said.",
+        "why": "In this context, the command and the knife may supply enough tension. Keeping the simple tag identifies the speaker without adding a second explanation or an unrelated action.",
+        "spot": "Notice interchangeable speech, unclear speakers, and modifiers that explain an emotion already evident in the exchange.",
+        "fix": "Give a reply the detail or phrasing this person would choose, while removing only redundant explanation and preserving useful tags.",
+        "tryIt": "Read a short exchange aloud without the names. Ask what makes each reply belong to its speaker. Then restore the tags and check that the reader can follow who is speaking.",
+        "caution": "Distinct voices do not require catchphrases, exaggerated accents, or an unusual verb for every tag. People can share a register while differing in what they choose to say.",
+        "anotherExample": {
+          "title": "Different answers reveal different concerns",
+          "text": "Asked whether the move went well, one sister says, “The piano fits.” The other says, “The neighbors have already complained.”",
+          "why": "The replies distinguish the sisters by what each considers important. Neither needs a conspicuous verbal quirk to have a voice of her own."
+        }
+      },
+      {
+        "id": "description",
+        "tab": "3. Description",
+        "title": "Enough detail to see and imagine",
+        "brief": "Choose details that orient the reader and give the imagination something useful to work with.",
+        "summary": "Description helps readers experience a place, person, or action. King emphasizes selecting details that create a sensory reality while leaving room for the reader’s imagination. Look at both ends of the problem: a scene may be difficult to picture because it gives too little orientation, or difficult to follow because it inventories details without giving them a purpose.",
+        "flat": "The office was shabby and uncomfortable. She sat down, and the conversation began.",
+        "working": "The chair’s stuffing pushed through a split beside her knee. She kept her coat on and waited for the manager to move the boxes off his desk.",
+        "why": "The selected details establish a condition and influence how she occupies the room. They give the reader a place to imagine without cataloging every object.",
+        "spot": "Notice missing physical grounding, generic labels, or description whose detail overwhelms the viewpoint and the action.",
+        "fix": "Add or retain a few telling details that matter to this observer. Remove inventory only when it contributes no useful effect.",
+        "tryIt": "Ask what this character would notice first and why. Choose one detail that helps readers understand how the person inhabits the space.",
+        "caution": "A deliberately sparse or lavish description can suit the voice. Do not apply a sensory quota, or fill every gap that a reader can comfortably imagine.",
+        "anotherExample": {
+          "title": "Less description can give the reader more",
+          "text": "The guest bedroom has a made bed and a suitcase still on its stand. The daughter notices that her father’s slippers are missing.",
+          "why": "The missing familiar object matters to this viewpoint. Describing the wallpaper, curtains, and every drawer might bury the detail that carries the scene."
+        }
+      },
+      {
+        "id": "backstory",
+        "tab": "4. Background",
+        "title": "Let background serve the present moment",
+        "brief": "Keep the history that changes how we understand what is happening now.",
+        "summary": "Backstory can explain a loaded remark, make a place matter, or reveal why an ordinary request is difficult. It becomes a pacing problem when an active question disappears beneath history the reader does not yet need. Consider what the background contributes at this particular point in the scene.",
+        "flat": "Mid-argument, two paragraphs pause to recap their freshman dorm years and failed startup.",
+        "working": "\"Same stunt you pulled in sophomore year.\" One sharp barb carries the history in seven words.",
+        "why": "The reference to sophomore year can carry shared history if the reader has enough context to understand the accusation. A longer memory may be needed when its details change the present choice.",
+        "spot": "Look for background that interrupts an active question without deepening its meaning.",
+        "fix": "Keep the detail that matters now, and consider moving information that becomes useful later.",
+        "tryIt": "After a background paragraph, name what the reader understands differently about the present action. If the answer is unclear, test a shorter version.",
+        "caution": "Reflection and memory can be the main movement of a scene. Do not remove them solely because they pause physical action.",
+        "anotherExample": {
+          "title": "A memory can move the scene",
+          "text": "Before signing the sale papers, a woman remembers her mother teaching her to measure height against the kitchen door. She asks for one more day.",
+          "why": "The memory changes her decision. Cutting it for speed would remove part of the scene’s cause and effect."
+        }
+      },
+      {
+        "id": "clean_prose",
+        "tab": "5. Language",
+        "title": "Keep language that contributes something",
+        "brief": "Tighten repetition without losing image, voice, or rhythm.",
+        "summary": "A sentence may explain an image after the reader has understood it, repeat an idea in several qualifiers, or use an elaborate phrase where the scene needs clarity. Useful tightening removes that extra work. It can also preserve a long or unusual sentence when its sound, perspective, or image is doing something specific. Sentence and paragraph breaks also shape pace and emphasis. Read for the rhythm a passage creates before shortening it; a long sentence may carry the precise movement the scene needs.",
+        "flat": "A heavy tapestry of unspoken dread seemed to slowly descend across the somber kitchen.",
+        "working": "Grease cooled grey in the skillet. Neither of them reached for the kettle.",
+        "why": "The skillet and untouched kettle give the silence a physical setting. Whether that image suits the passage depends on the surrounding voice; it is an alternative, not a universal model of good prose.",
+        "spot": "Identify the effect a phrase adds before deciding that it is excess.",
+        "fix": "Remove the smallest redundant phrase and read the sentence again in context.",
+        "tryIt": "Read the passage aloud. Try removing one redundant phrase or moving one paragraph break, then compare what happens to clarity, emphasis, and rhythm.",
+        "caution": "Lyrical prose and long sentences can be deliberate strengths. A uniformly clipped rhythm can flatten a voice as readily as over-explanation can.",
+        "anotherExample": {
+          "title": "Keep the image; cut its explanation",
+          "text": "“Her spare key still hung beside his, a small silver accusation.” Adding “It reminded him that he felt guilty” may explain what the image already gives us.",
+          "why": "The useful cut is the repeated explanation. The metaphor can stay if it belongs to this narrator."
+        }
+      }
+    ],
+    "bestFor": "Dialogue feels forced, explanations repeat what the scene already shows, or you want to tighten a passage without flattening its voice.",
+    "skipWhen": "You need to trace a chapter’s developing choices and consequences. Coyne or McKee offers a more structural starting point.",
+    "reviewNote": "Expect a few closely explained notes on believable behavior, distinct dialogue, description, and language. The review considers what a detail or rhythm contributes before suggesting cuts, so useful tightening preserves the reader’s experience and the writer’s voice.",
+    "sourceUrl": "https://parents.simonandschuster.com/9781439193631",
+    "sourceLabel": "About On Writing at Simon & Schuster",
+    "analysisFields": [
+      "Believable behavior",
+      "Distinct dialogue",
+      "Selective description",
+      "Background",
+      "Language and rhythm"
+    ],
+    "sceneFields": [
+      "Behavior & dialogue",
+      "Description & background",
+      "Language"
+    ]
+  },
+  {
+    "id": "craft_lamott",
+    "purpose": "Get unstuck",
+    "label": "Lamott · Bird by Bird",
+    "author": "Anne Lamott",
+    "book": "Bird by Bird",
+    "subtitle": "One manageable assignment, with room for an imperfect draft",
+    "tagline": "One vivid detail, staying in the moment & gentle next step",
+    "defaultScope": "this_scene",
+    "thesis": "Bird by Bird offers a way to keep writing when the whole project feels too large. Lamott’s one-inch picture frame is a reminder to choose a small enough assignment: one exchange, one memory, one moment you can begin now.\n\nThis lens gives drafting help rather than a score. It looks for something worth keeping and one approachable next step. The result can be rough, incomplete, and useful; you do not need to solve the chapter before writing the next paragraph.",
+    "lanes": [
+      {
+        "id": "detail",
+        "tab": "1. A small task",
+        "title": "Choose a task small enough to begin",
+        "brief": "Limit the assignment to one piece you can work on now.",
+        "summary": "The picture frame limits the writing task, not the kinds of prose you are allowed to write. A scene, a memory, a short exchange, or a few lines of summary can fit inside it. Choose a piece with a clear starting point so you can begin without making decisions about the entire book. Before stopping, leave yourself a short note naming where to begin next time, so a small assignment also makes returning easier.",
+        "flat": "“Fix the marriage subplot and make the kitchen scene emotionally convincing.”",
+        "working": "“For ten minutes, write what Jonas does with the mug after she leaves. Stop before he leaves the kitchen.”",
+        "why": "The smaller assignment names an action and a stopping point. It gives the writer a way to discover material before deciding how the whole subplot should work.",
+        "spot": "Find a useful piece of the scene that can become a manageable assignment.",
+        "fix": "Offer one place to start, using a detail, exchange, or question already in the draft.",
+        "tryIt": "Name the smallest piece you could write for ten minutes without resolving a larger plot question.",
+        "caution": "A sensory detail is one possible starting point. Adding more smells, textures, or gestures is not a requirement.",
+        "anotherExample": {
+          "title": "Summary can be a small assignment too",
+          "text": "Write five rough sentences about the week the sisters stopped calling each other. Choose one sentence afterward that you want to explore.",
+          "why": "You can begin with summary and discover a moment worth developing. The method does not require every first attempt to unfold in real time."
+        }
+      },
+      {
+        "id": "moment",
+        "tab": "2. An imperfect draft",
+        "title": "Let the first attempt be rough",
+        "brief": "Write enough to discover the material before demanding polish.",
+        "summary": "A first attempt can help you find out what the scene contains. If polishing every sentence prevents you from reaching the difficult exchange, try writing through it with plain wording, gaps, or temporary notes. You can make better revision decisions once something exists on the page.",
+        "flat": "Rewriting the arrival paragraph again because the argument that follows is not clear yet.",
+        "working": "Write “[they arrive]” and draft the first three things each person refuses to say directly.",
+        "why": "The placeholder lets you reach the part you need to discover. The exercise produces material to work with rather than another polished approach to the same gap.",
+        "spot": "Identify one way to continue without solving every detail first.",
+        "fix": "Suggest a rough pass, a temporary placeholder, or a small question to explore.",
+        "tryIt": "Give yourself permission to leave one bracketed gap and write the next part you do understand.",
+        "caution": "A rough draft does not mean careless revision forever. It gives you material for a later pass, when choosing and shaping it becomes useful.",
+        "anotherExample": {
+          "title": "Write the ordinary version first",
+          "text": "Put down “She did not want him to go” if that is what you know. In a later pass, decide whether the thought, a gesture, or dialogue carries it best.",
+          "why": "Naming the feeling plainly can be a discovery step. You do not have to find its final expression before moving forward."
+        }
+      },
+      {
+        "id": "voice",
+        "tab": "3. Your voice",
+        "title": "Listen for the part that sounds alive",
+        "brief": "Start with a particular observation or phrase that feels true to this piece.",
+        "summary": "A useful drafting question is where the writing sounds most particular: a remark someone would really make, an observation that surprises you, or a contradiction you have not resolved. Follow that material for a short stretch. You can decide later how much of it belongs in the finished scene.",
+        "flat": "With measured composure, she articulated the fragile ambiguity of their shared existence.",
+        "working": "\"You bought the wrong tape again,\" she said, though half her mouth twitched upward.",
+        "why": "The remark about the tape gives these people a specific, ordinary thing to say. The larger emotional meaning can develop through the exchange rather than needing to be settled first.",
+        "spot": "Find a line, gesture, or observation in the draft that offers a promising place to continue.",
+        "fix": "Build a small assignment around that existing material while preserving the writer’s voice.",
+        "tryIt": "Choose one line you want to hear more from and write the next reply without editing it as you go.",
+        "caution": "Formal or polished prose is not proof that a writer is trying too hard. Keep the degree of formality that belongs to the narrator and the work.",
+        "anotherExample": {
+          "title": "A contradiction can start a scene",
+          "text": "“I’m glad you came,” she says, while moving the second chair away from the table. Write what happens when the visitor notices.",
+          "why": "You have a concrete interaction to explore. You can discover the reason for the contradiction while drafting."
+        }
+      },
+      {
+        "id": "character",
+        "tab": "4. Discover the person",
+        "title": "Get curious about the character",
+        "brief": "Use a small question or exchange to discover what this person cares about.",
+        "summary": "When a scene stalls because you do not yet know the person in it, curiosity can be a more useful starting point than a demand to fix their arc. Lamott describes getting to know characters gradually: asking what they care about, what they fear losing, and how they might respond in a particular situation. A rough exchange can help you discover an answer worth exploring.",
+        "flat": "“Decide her deepest wound, complete the character arc, and make every reaction consistent before drafting the scene.”",
+        "working": "“For ten minutes, let her answer this question badly: Why did you keep the spare room ready? Write the reply she gives, then the one she almost gives.”",
+        "why": "The assignment gives you a person and an exchange to explore. It can produce a detail or contradiction without requiring a complete psychological explanation first.",
+        "spot": "Find a question grounded in the draft that could help the writer discover a more particular response.",
+        "fix": "Offer one exploratory question or short exchange, while treating any new answer as a possibility rather than an established fact.",
+        "tryIt": "Choose something this character might not want to lose. Draft one ordinary interaction in which it matters, and see what they say or avoid saying.",
+        "caution": "An exercise can suggest a possibility; it cannot prove a hidden wound, motive, or life history. Keep the details already established and let the writer decide what new material belongs.",
+        "anotherExample": {
+          "title": "An ordinary question can open a person up",
+          "text": "Ask the character why they arrived an hour early. Write three possible answers without choosing the correct one yet.",
+          "why": "One answer may reveal a practical habit, another an anxious hope, and another a secret. Exploring them gives the writer material to choose from without a premature diagnosis."
+        }
+      }
+    ],
+    "bestFor": "You feel stuck, keep revising the opening, or cannot decide how to approach an unfinished passage.",
+    "skipWhen": "You want a detailed structural diagnosis or a close prose edit. Choose McKee, Coyne, or King for those tasks.",
+    "reviewNote": "When the prose offers something specific to preserve, the review names it. Then it gives one small assignment, perhaps using a character question to help you begin. An empty draft needs a starting point rather than invented praise; a finished scene may be ready to leave alone.",
+    "sourceUrl": "https://tim.blog/2021/07/15/anne-lamott-transcript/",
+    "sourceLabel": "Anne Lamott explains short assignments and the picture frame",
+    "analysisFields": [
+      "Material to keep",
+      "Small starting point"
+    ],
+    "sceneFields": [
+      "Material to keep",
+      "Small starting point"
+    ]
+  }
+]

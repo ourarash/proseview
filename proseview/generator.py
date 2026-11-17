@@ -116,7 +116,14 @@ def _load_app_js() -> str:
     if not js_dir.is_dir():
         return _load_asset("assets/app.js")
     rel_paths = sorted(p.relative_to(TEMPLATE_DIR).as_posix() for p in js_dir.glob("*.js"))
-    return "\n".join(_load_asset(rel) for rel in rel_paths)
+    from .craft import craft_guides
+    from .reviews import review_guides
+    return "\n".join(
+        _load_asset(rel).replace("__PROSEVIEW_CRAFT_GUIDES__", _js_json(craft_guides()), 1)
+        .replace("__PROSEVIEW_REVIEW_GUIDES__", _js_json(review_guides()), 1)
+        if rel.endswith("/67-craft-guides.js") else _load_asset(rel)
+        for rel in rel_paths
+    )
 
 
 def _render_template(name: str, **context: object) -> str:

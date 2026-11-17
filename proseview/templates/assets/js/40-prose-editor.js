@@ -733,13 +733,139 @@
             _holdSceneReadingAnchor(anchor);
         }
 
+        function _localIsoDate(dateObj) {
+            var d = dateObj || new Date();
+            var m = String(d.getMonth() + 1).padStart(2, '0');
+            var day = String(d.getDate()).padStart(2, '0');
+            return d.getFullYear() + '-' + m + '-' + day;
+        }
+
+        function _shortMonthDay(iso) {
+            var match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+            if (!match) return String(iso || '');
+            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            var month = months[Number(match[2]) - 1] || match[2];
+            var day = Number(match[3]);
+            var currentYear = String(new Date().getFullYear());
+            return match[1] === currentYear ? (month + ' ' + day) : (month + ' ' + day + ', ' + match[1]);
+        }
+
+        function _buildSceneFrontmatterActions(p) {
+            if (typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT) return null;
+            var wrap = document.createElement('div');
+            wrap.className = 'fm-head-actions';
+
+            var fm = (meta[p] && meta[p].fm) || {};
+            var rawUpdated = fm.frontmatter_updated ? String(fm.frontmatter_updated).trim() : '';
+            var match = /^(\d{4}-\d{2}-\d{2})/.exec(rawUpdated);
+            var updatedIso = match ? match[1] : '';
+            var todayIso = _localIsoDate(new Date());
+            var mtimeSec = meta[p] && typeof meta[p].mtime === 'number' ? meta[p].mtime : 0;
+            var mtimeIso = mtimeSec ? _localIsoDate(new Date(mtimeSec * 1000)) : '';
+            var syncing = typeof isDiscussFrontmatterSyncRunning === 'function' && isDiscussFrontmatterSyncRunning(p);
+
+            var age = document.createElement('span');
+            age.className = 'fm-age';
+            var dot = document.createElement('span');
+            dot.className = 'fm-dot';
+            var ageText = document.createElement('span');
+
+            if (syncing) {
+                var agentName = typeof discussAgentLabel === 'function' ? discussAgentLabel() : 'Discuss';
+                ageText.textContent = 'Updating in ' + agentName + '…';
+            } else if (updatedIso && updatedIso === todayIso) {
+                dot.classList.add('is-fresh');
+                ageText.textContent = 'Synced today';
+            } else if (updatedIso && mtimeIso && mtimeIso > updatedIso) {
+                dot.classList.add('is-stale');
+                ageText.textContent = 'Updated ' + _shortMonthDay(updatedIso) + ' · older than file';
+            } else if (updatedIso) {
+                ageText.textContent = 'Updated ' + _shortMonthDay(updatedIso);
+            } else {
+                dot.classList.add('is-stale');
+                ageText.textContent = 'No sync date';
+            }
+            age.append(dot, ageText);
+
+            var syncBtn = document.createElement('button');
+            syncBtn.type = 'button';
+            syncBtn.className = 'fm-sync-btn';
+            syncBtn.textContent = syncing ? 'Updating…' : 'Update from scene';
+            syncBtn.disabled = !!syncing;
+            syncBtn.title = 'Rewrite story YAML fields from the current scene prose in Discuss (reversible via Undo all)';
+            syncBtn.addEventListener('click', function() {
+                if (typeof syncSceneFrontmatterFromDiscuss === 'function') {
+                    syncSceneFrontmatterFromDiscuss(syncBtn, p);
+                }
+            });
+
+            wrap.append(age, syncBtn);
+            return wrap;
+        }
+
+        function _buildSceneFrontmatterRelated(m) {
+            var relatedDocs = m && Array.isArray(m.related_docs) ? m.related_docs : [];
+            if (!relatedDocs.length) return null;
+            var wrap = document.createElement('div');
+            wrap.className = 'fm-related';
+            var label = document.createElement('span');
+            label.className = 'fm-related-label';
+            label.textContent = 'Related';
+            var list = document.createElement('ul');
+            list.className = 'fm-related-list';
+            relatedDocs.forEach(function(doc) {
+                var li = document.createElement('li');
+                li.className = 'fm-related-item';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'related-doc-link';
+                btn.dataset.path = doc.path || '';
+                btn.textContent = doc.path || '';
+                if (doc.preview_text) btn.title = doc.preview_text;
+                btn.addEventListener('click', function() {
+                    if (typeof openRelatedDoc === 'function') openRelatedDoc(btn.dataset.path);
+                });
+                var ext = document.createElement('a');
+                ext.className = 'related-doc-editor-icon';
+                ext.href = typeof buildEditorUrl === 'function' ? buildEditorUrl(doc.abs_path || '') : '#';
+                ext.target = '_blank';
+                ext.title = 'Open in ' + (typeof editorLabel !== 'undefined' ? editorLabel : 'editor');
+                ext.textContent = '\u2197';
+                li.append(btn, ext);
+                list.appendChild(li);
+            });
+            wrap.append(label, list);
+            return wrap;
+        }
+
+        function _buildSceneFrontmatterOptions(p, m) {
+            var charMentions = (m && m.char_mentions) || {};
+            return {
+                charMentions: charMentions,
+                canLinkCharacter: function(name) {
+                    var slug = String(name || '').toLowerCase().replace(/\s+/g, '-');
+                    return !!(typeof bios === 'object' && bios && bios[slug]) || !!charMentions[name];
+                },
+                onCharacter: function(name) {
+                    if (typeof openBio === 'function') openBio(name);
+                },
+                onTodoComplete: function(cb, todoText) {
+                    if (typeof completeFmTodo === 'function' && m) {
+                        completeFmTodo(cb, m.abs_path, todoText, m.mtime);
+                    }
+                },
+                footer: _buildSceneFrontmatterRelated(m)
+            };
+        }
+
         // The scene's frontmatter above its prose: highlighted while reading,
         // a YAML box in edit mode.
         function renderSceneFrontmatter(p) {
             var host = document.getElementById('sceneFrontmatter');
             if (!host) return;
             host.replaceChildren();
-            var text = meta[p] ? meta[p].frontmatter_text : null;
+            var m = meta[p] || null;
+            var text = m ? m.frontmatter_text : null;
             if (_pmEditMode && (text === null || text === undefined) && _pmFrontmatterDraft === null) {
                 host.appendChild(addFrontmatterButton(function() {
                     _pmFrontmatterDraft = '';
@@ -760,7 +886,20 @@
                 });
                 host.appendChild(editor);
             } else if (text !== null && text !== undefined) {
-                host.appendChild(renderFrontmatterBlock(text));
+                host.appendChild(renderFrontmatterBlock(text, _buildSceneFrontmatterActions(p), _buildSceneFrontmatterOptions(p, m)));
+            } else {
+                var bare = document.createElement('div');
+                bare.className = 'fm fm-bare';
+                var addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'fm-add fm-add-scaffold';
+                addBtn.dataset.absPath = (m && m.abs_path) || '';
+                addBtn.title = 'Add starter YAML frontmatter keys (characters, where, when, goal, conflict, outcome)';
+                addBtn.textContent = '+ Add frontmatter';
+                bare.appendChild(addBtn);
+                var related = _buildSceneFrontmatterRelated(m);
+                if (related) bare.appendChild(related);
+                host.appendChild(bare);
             }
         }
 

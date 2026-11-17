@@ -7,7 +7,7 @@ Identify 2–3 moments in this text that feel thin, rushed, or purely surface-le
 
 1. Subtext & Friction: Where dialogue or interaction is too straightforward—add unspoken tension, avoidance, deflection, or a gap between what a character says and what they do.
 2. Physical Anchoring & Micro-Business: Ground an emotional beat in tangible action (props, sensory details, physical reactions, loaded pauses) that shows internal state without explaining feelings.
-3. Cost & Callback: Make an existing beat cost the character something visible, or plant/pay off an echo with another part of the scene.
+3. Cost & Consequence: Make an existing beat cost the character something visible or shift the emotional stakes of the exchange without repeating earlier props or imagery.
 
 For each move:
 1. Quote the complete original passage in an italic blockquote (`> *...*`).

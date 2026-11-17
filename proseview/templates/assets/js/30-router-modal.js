@@ -588,22 +588,6 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        function renderCharacterTags(chars, charMentions) {
-            charMentions = charMentions || {};
-            return chars.map(function(c) {
-                const metrics = charMentions[c];
-                let title = 'Read bio';
-                if (metrics) {
-                    title = 'Mentions: ' + metrics.dialogue + ' dialogue, ' + metrics.prose + ' prose\nClick to read bio';
-                }
-                return '<button type="button" class="sc-char-tag" data-char-name="' +
-                    attrEscape(c) +
-                    '" onclick="openBio(this.dataset.charName)" title="' + attrEscape(title) + '">' +
-                    escHtml(c) +
-                    '</button>';
-            }).join('');
-        }
-
         function _extractProseTailParagraphs(rawMarkdown) {
             if (!rawMarkdown) return [];
             var cleaned = String(rawMarkdown).replace(/^---[\s\S]*?\n---\s*/, '');
@@ -730,165 +714,11 @@
                 oldScroll = scrollEl.scrollTop;
                 if (b) b.style.minHeight = scrollEl.scrollHeight + 'px';
             }
-            const fm = m.fm || {};
-            const chars = Array.isArray(fm.characters) ? fm.characters : (typeof fm.characters === 'string' ? [fm.characters] : []);
-            const charMentions = m.char_mentions || {};
-            const relatedDocs = Array.isArray(m.related_docs) ? m.related_docs : [];
-            const sceneTodos = Array.isArray(m.todos) ? m.todos : [];
-            const todosByPara = {};
-            const fmTodos = [];
-            sceneTodos.forEach(function(t) {
-                if (t.paragraph_index >= 0) {
-                    if (!todosByPara[t.paragraph_index]) todosByPara[t.paragraph_index] = [];
-                    todosByPara[t.paragraph_index].push(t);
-                } else {
-                    fmTodos.push(t);
-                }
-            });
-            const sceneNotes = Array.isArray(m.notes) ? m.notes : [];
-            const notesByPara = {};
-            sceneNotes.forEach(function(n) {
-                if (!notesByPara[n.paragraph_index]) notesByPara[n.paragraph_index] = [];
-                notesByPara[n.paragraph_index].push(n);
-            });
-
-            const editorHref = buildEditorUrl(m.abs_path);
-            let relatedHtml = '<div class="scene-card-related">' +
-                              '<div class="sc-row">' +
-                              '<span class="sc-label">Related Docs</span>';
-            if (relatedDocs.length) {
-                relatedHtml += '<ul class="related-doc-list">';
-                relatedDocs.forEach(doc => {
-                    const docHref = buildEditorUrl(doc.abs_path || '');
-                    const preview = doc.preview_text ? doc.preview_text.replace(/"/g, '&quot;') : '';
-                    relatedHtml += '<li class="related-doc-item">' +
-                                   '<button type="button" class="related-doc-link" data-path="' + attrEscape(doc.path || '') + '" onclick="openRelatedDoc(this.dataset.path)" title="' + attrEscape(preview) + '">' + escHtml(doc.path || '') + '</button>' +
-                                   '<a class="related-doc-editor-icon" href="' + attrEscape(docHref) + '" target="_blank" title="Open in ' + attrEscape(editorLabel) + '">\u2197</a>' +
-                                   '</li>';
-                });
-                relatedHtml += '</ul>';
-            } else {
-                relatedHtml += '<div class="related-doc-empty">No related planning or continuity docs matched this scene.</div>';
-            }
-            relatedHtml += '</div></div>';
-            // Story-layer fields, labelled with the keys this repo actually
-            // uses, so the row is traceable back to the frontmatter. Optional:
-            // a manuscript that does not use them shows no row rather than a
-            // line of "Unknown".
-            const storyFields = (typeof storyModel === 'object' && storyModel) || {};
-            const threadKey = storyFields.thread_field || 'thread';
-            const dayKey = storyFields.day_field || 'day';
-            const cap = function(t) { return t.charAt(0).toUpperCase() + t.slice(1); };
-            const storyRow = function(label, value) {
-                return value === undefined || value === null || value === ''
-                    ? ''
-                    : '<div class="sc-row"><span class="sc-label">' + escHtml(cap(label))
-                      + '</span><span class="sc-value">' + escHtml(String(value)) + '</span></div>';
-            };
-
-            // Every row below is optional. A manuscript written without
-            // frontmatter -- an Obsidian vault, an imported draft -- used to
-            // render seven rows of "Unknown" and "Not defined", which reads as
-            // a broken panel rather than an unused feature. Empty rows are
-            // dropped, and if nothing at all is set the block is replaced by
-            // one line saying what to add.
-            const contextRows =
-                storyRow('POV', fm.pov) +
-                storyRow(threadKey, fm[threadKey]) +
-                storyRow('When', fm.when) +
-                storyRow(dayKey, fm[dayKey]) +
-                storyRow('Where', fm.where || fm.location);
-            const hasCharacters = Array.isArray(chars) ? chars.length > 0 : !!chars;
-            const characterRow = hasCharacters
-                ? '<div class="sc-row"><span class="sc-label">Characters</span><div class="sc-characters">' +
-                  renderCharacterTags(chars, charMentions) + '</div></div>'
-                : '';
-
-            const arcRows =
-                storyRow('Goal', fm.goal) +
-                storyRow('Conflict', fm.conflict) +
-                storyRow('Outcome', fm.outcome);
-            const arcHtml = arcRows
-                ? '<div class="scene-card-arc">' + arcRows + '</div>'
-                : '';
-
-            const hasAnyFrontmatter = !!(contextRows || characterRow || arcRows);
-            const emptyHint = hasAnyFrontmatter ? '' :
-                '<div class="scene-card-fm-empty">' +
-                '<p>No scene details yet. These come from <em>frontmatter</em>: a small block ' +
-                'of notes about the scene, written in YAML between two <code>---</code> lines at ' +
-                'the very top of the file. It sits above your prose and never appears in the ' +
-                'finished text:</p>' +
-                '<pre><code>---\ncharacters:\nwhere:\nwhen:\ngoal:\nconflict:\noutcome:\n---</code></pre>' +
-                '<button type="button" class="scene-card-fm-add" ' +
-                'data-abs-path="' + attrEscape(m.abs_path || '') + '">Add this block</button>' +
-                '<p class="scene-card-fm-hint">The keys are written empty for you to fill in. ' +
-                'Every field is optional, and the rest of Proseview works without them.</p>' +
-                '</div>';
-
-            let cardHtml = '<div class="scene-card">' +
-                           '<div class="scene-card-meta">' +
-                           '<div class="scene-card-context-header" title="These fields are extracted from the YAML frontmatter block at the top of your markdown file.">Data from YAML Frontmatter &#x24D8;</div>' +
-                           '<div class="sc-row scene-card-top">' +
-                           '<span class="sc-label">Scene File <a class="editor-icon-btn" href="' + attrEscape(editorHref) + '" target="_blank" title="Open in ' + escHtml(editorLabel) + '">\u2197</a></span>' +
-                           '<span class="sc-value">' + escHtml(p) + '</span>' +
-                           '</div>' +
-                           contextRows +
-                           characterRow +
-                           '</div>' +
-                           arcHtml +
-                           emptyHint +
-                           relatedHtml +
-                           '</div>';
-
-            // Build tasks panel (all TODOs + notes sorted by paragraph order)
-            const allTasks = [];
-            sceneTodos.forEach(function(t) { allTasks.push({type: 'todo', para: t.paragraph_index, item: t}); });
-            sceneNotes.forEach(function(n) { allTasks.push({type: 'note', para: n.paragraph_index, item: n}); });
-            allTasks.sort(function(a, b) { return a.para - b.para; });
-            let tasksHtml = '';
-            if (allTasks.length) {
-                const rows = allTasks.map(function(task) {
-                    const jumpBtn = task.para >= 0
-                        ? '<button class="task-jump-btn" type="button" data-para-idx="' + task.para + '" title="Scroll to paragraph">&#x2193;</button>'
-                        : '';
-                    const entry = task.type === 'todo'
-                        ? todoEntryHtml(task.item, m.abs_path)
-                        : noteEntryHtml(task.item, m.abs_path);
-                    return '<div class="task-row">' + jumpBtn + entry + '</div>';
-                }).join('');
-                tasksHtml = '<div class="scene-tasks-section">' +
-                    '<div class="scene-tasks-header"><span class="scene-tasks-label">Tasks</span>' +
-                    '<span class="scene-tasks-count">' + allTasks.length + '</span></div>' +
-                    rows + '</div>';
-            }
-
-            if (fmTodos.length) {
-                const lineItems = fmTodos.map(function(t) {
-                    return '<li class="scene-todo-item">' +
-                           '<label class="fm-todo-label" style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">' +
-                           '<input type="checkbox" class="fm-todo-cb" style="margin-top:4px;" onchange="completeFmTodo(this, \'' + attrEscape(m.abs_path) + '\', \'' + attrEscape(t.text) + '\', \'' + m.mtime + '\')">' +
-                           '<span>' + escHtml(t.text) + '</span>' +
-                           '</label></li>';
-                }).join('');
-                cardHtml += '<div class="scene-todos-section"><div class="scene-todos-label">Scene TODOs (frontmatter)</div><ul class="scene-todos-list" style="list-style:none; padding:0; margin:0;">' + lineItems + '</ul></div>';
-            }
-
             // ProseMirror is the only renderer. If the module is still
             // loading, the inline ESM bootstrap at the bottom of the
             // template re-invokes render() once window._PM is ready.
-            // Context and tasks live in the scene panel, not above the prose:
-            // a disclosure here pushed the reading column down and reflowed it
-            // on every toggle. The prose starts at the top and stays there.
             b.innerHTML = '<div id="sceneFrontmatter"></div><div id="scenePrevTailHost"></div><div id="sceneProseHost"></div>';
             renderScenePrevTail(p);
-            if (!window._sceneContextBody) {
-                window._sceneContextBody = document.createElement('div');
-                window._sceneContextBody.id = 'sceneContextBody';
-                window._sceneContextBody.className = 'scene-secondary-body';
-            }
-            window._sceneContextBody.innerHTML = cardHtml + tasksHtml;
-            if (typeof renderSceneDetailsPane === 'function') renderSceneDetailsPane();
             if (typeof renderSceneFrontmatter === 'function') renderSceneFrontmatter(p);
             if (window._PM) {
                 mountProseView(p);
@@ -1107,9 +937,10 @@
 window.completeFmTodo = function(checkbox, absPath, text, openMtime) {
     if (!checkbox.checked) return;
     checkbox.disabled = true;
-    const originalText = checkbox.nextElementSibling.textContent;
-    checkbox.nextElementSibling.textContent = 'Removing...';
-    
+    const sibling = checkbox.nextElementSibling;
+    const originalHtml = sibling ? sibling.innerHTML : '';
+    if (sibling) sibling.textContent = 'Removing...';
+
     fetch('/delete-fm-todo', {
         method: 'POST',
         headers: pvHeaders(),
@@ -1123,8 +954,23 @@ window.completeFmTodo = function(checkbox, absPath, text, openMtime) {
         return r.json();
     }).then(function(data) {
         if (data.ok) {
-            checkbox.closest('.scene-todo-item').remove();
-            // Invalidate analysis to fetch updated data
+            const item = checkbox.closest('.fm-todo-item, .scene-todo-item');
+            if (item) {
+                const prev = item.previousSibling;
+                const next = item.nextSibling;
+                if (prev && prev.nodeType === 3 && prev.textContent === '\n') prev.remove();
+                else if (next && next.nodeType === 3 && next.textContent === '\n') next.remove();
+                item.remove();
+            }
+            const cur = typeof paths !== 'undefined' && typeof curIdx !== 'undefined' ? paths[curIdx] : null;
+            if (cur && typeof meta !== 'undefined' && meta[cur] && meta[cur].abs_path === absPath && meta[cur].frontmatter_text) {
+                const escRe = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const lineRe = new RegExp('^\\s*-\\s*["\']?' + escRe + '["\']?\\s*$');
+                meta[cur].frontmatter_text = meta[cur].frontmatter_text
+                    .split('\n')
+                    .filter(function(line) { return !lineRe.test(line); })
+                    .join('\n');
+            }
             if (typeof markAnalysisStale === 'function') markAnalysisStale();
         } else {
             throw new Error(data.error || 'Unknown error');
@@ -1132,7 +978,7 @@ window.completeFmTodo = function(checkbox, absPath, text, openMtime) {
     }).catch(function(err) {
         checkbox.disabled = false;
         checkbox.checked = false;
-        checkbox.nextElementSibling.textContent = originalText;
+        if (sibling) sibling.innerHTML = originalHtml;
         console.error(err);
         if (typeof sidebarShowToast === 'function') {
             sidebarShowToast('Could not complete TODO: ' + err.message, true);

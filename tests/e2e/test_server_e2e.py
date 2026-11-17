@@ -153,7 +153,8 @@ def test_the_action_list_carries_the_wording_the_writer_owns(server: ProseviewSe
     assert by_id["canon_refactor"]["description"]
 
     skill = server.root / ".proseview" / "skills" / "quick_critique" / "SKILL.md"
-    assert shipped in skill.read_text(encoding="utf-8")
+    assert not skill.exists()
+    skill.parent.mkdir(parents=True)
     skill.write_text(
         "---\nname: quick_critique\ndescription: Whatever I decide it is.\n---\n\nBody.\n",
         encoding="utf-8",
@@ -265,7 +266,7 @@ def test_a_preset_may_write_only_when_it_was_asked_to_change_something(server: P
     )
     assert snapshot["tasks"] == []
     records = [json.loads(line) for line in (fake_home / "fake-codex-received.jsonl").read_text(encoding="utf-8").splitlines()]
-    preset_records = [row for row in records if str(row["params"].get("clientUserMessageId", "")).startswith("preset-")]
+    preset_records = [row for row in records if str(row.get("params", {}).get("clientUserMessageId", "")).startswith("preset-")]
     assert len(preset_records) == len(actions)
     assert not any("outputSchema" in row["params"] for row in preset_records)
     # Every turn shares one read-only sandbox; a rewrite is told apart by

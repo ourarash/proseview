@@ -723,6 +723,55 @@ def test_a_finished_tool_keeps_the_command_it_started_with(tmp_path: Path, monke
     manager.close()
 
 
+def test_a_reply_stopped_by_safeguards_is_kept_and_marked(tmp_path: Path, monkeypatch):
+    """A review Claude's safeguards cut short is part of the answer; the writer
+    sees both halves, and why the first ends mid-sentence."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)
+    cid = manager.open({"kind": "scene", "path": "one.md"}, "claude")["conversation_id"]
+    client = manager._client_for("claude")
+    client.hold_next_turn = True
+    manager.submit(cid, client_request_id="stop-1", question="Review the subtext")
+    _wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] is not None)
+
+    turn_id = manager.get_snapshot(cid)["active_turn_id"]
+    thread_id = next(iter(client.threads))
+    common = {"threadId": thread_id, "turnId": turn_id}
+    client.callback({"method": "assistant/message", "params": {
+        **common, "itemId": "m1", "phase": "final_answer", "text": "Preserve the lie", "stopped": "safeguards",
+    }})
+    client.callback({"method": "assistant/message", "params": {
+        **common, "itemId": "m2", "phase": "final_answer", "text": "The rest",
+    }})
+
+    answers = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "assistant"]
+    assert [(m["text"], m["phase"], m.get("stopped")) for m in answers] == [
+        ("Preserve the lie", "final_answer", "safeguards"),
+        ("The rest", "final_answer", None),
+    ]
+    manager.stop(cid, turn_id)
+    manager.close()
+
+
+def test_restore_keeps_a_safeguards_stop(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    manager = DiscussManager(_repo(tmp_path), client_factory=lambda callback, _agent=None: _FakeClient(callback))
+    conversation = _Conversation("restored-stop", {"kind": "scene", "path": "one.md"})
+    manager._restore_thread(conversation, {"turns": [
+        {"id": "t1", "items": [
+            {"type": "userMessage", "content": [{"type": "text", "text": "Context\n\nUSER QUESTION\nReview it"}]},
+            {"type": "agentMessage", "phase": "final_answer", "text": "Preserve the lie", "stopped": "safeguards"},
+            {"type": "agentMessage", "phase": "final_answer", "text": "The rest"},
+        ]},
+    ]})
+    answers = [m for m in conversation.snapshot()["messages"] if m["role"] == "assistant"]
+    assert [(m["text"], m.get("stopped")) for m in answers] == [
+        ("Preserve the lie", "safeguards"),
+        ("The rest", None),
+    ]
+    manager.close()
+
+
 def test_a_repeated_progress_heartbeat_is_recorded_once(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     manager = DiscussManager(_repo(tmp_path), client_factory=fake_factory)

@@ -2782,6 +2782,8 @@ class DiscussManager:
                             "text": _bounded_text(item.get("text"), 524_288),
                             "restored": True,
                         }
+                        if item.get("stopped"):
+                            asst_msg["stopped"] = str(item["stopped"])
                         if item_created_at:
                             asst_msg["created_at"] = item_created_at
                         if turn_duration_ms is not None:
@@ -5149,7 +5151,7 @@ class DiscussManager:
                         duration_ms = None
                         if conversation.active_turn_started_monotonic is not None:
                             duration_ms = int((time.monotonic() - conversation.active_turn_started_monotonic) * 1000)
-                        conversation.messages.append({
+                        answer = {
                             "role": "assistant",
                             "text": event.get("text") or "",
                             "turn_id": event.get("turn_id"),
@@ -5157,7 +5159,12 @@ class DiscussManager:
                             "created_at": time.time(),
                             "duration_ms": duration_ms,
                             "phase": "final_answer",
-                        })
+                        }
+                        if event.get("stopped"):
+                            # Cut short by the agent's safeguards: still the answer,
+                            # and the writer should know why it ends mid-sentence.
+                            answer["stopped"] = str(event["stopped"])
+                        conversation.messages.append(answer)
                 elif event.get("phase") in {"thought", "commentary"}:
                     duration_ms = None
                     if conversation.active_turn_started_monotonic is not None:

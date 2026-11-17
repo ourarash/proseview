@@ -52,6 +52,7 @@ class AssistantMessage:
     session_id: str = "sess-1"
     uuid: str = "msg-1"
     error: str | None = None
+    stop_reason: str | None = None
 
 
 @dataclass
@@ -258,6 +259,62 @@ def test_intermediate_commentary_with_tool_is_emitted_as_thought():
         assert len(messages) == 1
         assert messages[0]["params"]["phase"] == "thought"
         assert messages[0]["params"]["text"] == "I'll inspect Alice's scene first."
+    finally:
+        client.close()
+
+
+def test_a_reply_stopped_by_safeguards_stays_an_answer():
+    """Claude's safety classifier cut a review off mid-quote, and Claude Code
+    continued once in a second reply. The first half is still the answer the
+    writer asked for: marked stopped, never demoted to a passing thought."""
+    client, seen, _made = make_client(script=[
+        AssistantMessage(content=[
+            TextBlock("## Preserve\nThe lie about the updates. One wave and I was back in"),
+            ToolUseBlock("Read", {"path": "manuscript/ch08/08.md"}, id="t-unrun"),
+        ], uuid="msg-stopped", stop_reason="refusal"),
+        AssistantMessage(content=[TextBlock("My last reply was cut off. Here is the rest.")], uuid="msg-rest"),
+        ResultMessage(),
+    ])
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "review"}]})
+        assert wait_for(lambda: any(m["method"] == "turn/completed" for m in seen))
+        messages = [m["params"] for m in seen if m["method"] == "assistant/message"]
+        assert [(m["phase"], m.get("stopped")) for m in messages] == [
+            ("final_answer", "safeguards"),
+            ("final_answer", None),
+        ]
+        event = sanitize_claude_message({"method": "assistant/message", "params": messages[0]})[0]
+        assert event["stopped"] == "safeguards"
+        assert "stopped" not in sanitize_claude_message({"method": "assistant/message", "params": messages[1]})[0]
+    finally:
+        client.close()
+
+
+def test_thread_read_keeps_the_safeguards_stop():
+    rows = [
+        type("Row", (), {"message": {"role": "user", "content": "review"}, "type": "user"})(),
+        type("Row", (), {
+            "message": {"role": "assistant", "stop_reason": "refusal",
+                        "content": [{"type": "text", "text": "Preserve the lie"}]},
+            "type": "assistant",
+        })(),
+        type("Row", (), {
+            "message": {"role": "assistant", "stop_reason": "end_turn",
+                        "content": [{"type": "text", "text": "The rest"}]},
+            "type": "assistant",
+        })(),
+    ]
+    client, _, _made = make_client(session_reader=lambda session_id, cwd: rows)
+    try:
+        thread_id = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "hi"}]})
+        assert wait_for(lambda: client._sessions[thread_id].session_id == "sess-1")
+        items = client.request("thread/read", {"threadId": thread_id, "includeTurns": True})["thread"]["turns"][0]["items"]
+        assert [(item["text"], item.get("stopped")) for item in items[1:]] == [
+            ("Preserve the lie", "safeguards"),
+            ("The rest", None),
+        ]
     finally:
         client.close()
 

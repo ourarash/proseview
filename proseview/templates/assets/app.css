@@ -6578,6 +6578,19 @@
             pointer-events: auto;
         }
 
+        /* A reply the agent's safeguards cut short: still the answer, with a
+           plain note on why it ends mid-sentence. */
+        .discuss-stopped-note {
+            margin-top: 10px;
+            padding: 7px 10px;
+            border-left: 2px solid var(--warning, #d97706);
+            border-radius: 0 6px 6px 0;
+            background: color-mix(in srgb, var(--warning, #f59e0b) 8%, var(--surface-card));
+            color: var(--text-soft);
+            font-size: 12.5px;
+            line-height: 1.45;
+        }
+
         @media (max-width: 600px) {
 
             .discuss-log>.chat-message-card,

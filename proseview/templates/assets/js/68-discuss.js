@@ -6933,7 +6933,10 @@
             messages.forEach(function(message, mIdx) {
                 var isUser = message.role === 'user';
                 var isThought = false;
-                if (!isUser) {
+                // A reply the agent's safeguards cut short is part of the answer,
+                // even though a continuation follows it in the same turn.
+                var wasStopped = !isUser && message.stopped === 'safeguards';
+                if (!isUser && !wasStopped) {
                     if (message.phase === 'thought' || message.phase === 'commentary') {
                         isThought = true;
                     } else if (message.turn_id) {
@@ -6957,6 +6960,14 @@
                 if (meta) head.appendChild(meta);
                 wrap.appendChild(head);
                 renderDiscussMarkdown(wrap, message.text);
+                if (wasStopped) {
+                    wrap.classList.add('is-stopped');
+                    var stoppedNote = elementWith('discuss-stopped-note',
+                        agentName + '’s safeguards stopped this reply partway through. '
+                        + 'The next reply continues without the withheld part.');
+                    stoppedNote.setAttribute('role', 'note');
+                    wrap.appendChild(stoppedNote);
+                }
                 highlightChatMentions(wrap, []);
                 var sent = String(message.text || '');
                 addCopyButton(wrap, function() { return sent; }, 'Copy message');

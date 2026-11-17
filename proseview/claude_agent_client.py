@@ -60,6 +60,11 @@ WRITE_TOOLS = ["Write", "Edit", "NotebookEdit"]
 #: These are never shown as activity and never reach the approval UI.
 INTERNAL_TOOLS = frozenset({"StructuredOutput"})
 
+#: Why a reply stopped early: Claude's safety classifier ended it
+#: (``stop_reason == "refusal"``). Carried on the message so Discuss can keep
+#: the partial reply as part of the answer and say what happened.
+SAFEGUARDS_STOP = "safeguards"
+
 #: An expired or missing Claude Code login. The CLI words it for its own
 #: terminal ("Failed to authenticate: OAuth session expired..."), which reads
 #: like a Proseview fault to a writer; what they need is the one fix.
@@ -283,13 +288,16 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             "text": _bounded(params.get("delta"), 65_536),
         }]
     if method == "assistant/message":
-        return [{
+        event = {
             "type": "response.completed",
             **common,
             "item_id": params.get("itemId"),
             "phase": params.get("phase") or "final_answer",
             "text": _bounded(params.get("text"), 524_288),
-        }]
+        }
+        if params.get("stopped") == SAFEGUARDS_STOP:
+            event["stopped"] = SAFEGUARDS_STOP
+        return [event]
     if method in {"turn/started", "turn/completed"}:
         return [{
             "type": "turn.started" if method.endswith("started") else "turn.completed",
@@ -1063,16 +1071,21 @@ class ClaudeAgentClient:
                         # answer arrives as structured output; treating this as
                         # the final message would fail the manager's validator.
                         continue
-                    phase = "thought" if has_tool else "final_answer"
-                    out.append((
-                        "assistant/message",
-                        {
-                            **common,
-                            "itemId": getattr(message, "uuid", None),
-                            "text": getattr(block, "text", ""),
-                            "phase": phase,
-                        },
-                    ))
+                    # Claude's safeguards can stop a reply partway through. What
+                    # it wrote is still the answer the writer asked for; Claude
+                    # Code then continues once in a second reply. Neither half
+                    # is a passing thought, and the stop must not hide the first.
+                    stopped = getattr(message, "stop_reason", None) == "refusal"
+                    phase = "thought" if has_tool and not stopped else "final_answer"
+                    params = {
+                        **common,
+                        "itemId": getattr(message, "uuid", None),
+                        "text": getattr(block, "text", ""),
+                        "phase": phase,
+                    }
+                    if stopped:
+                        params["stopped"] = SAFEGUARDS_STOP
+                    out.append(("assistant/message", params))
                 elif block_name == "ToolUseBlock":
                     tool = getattr(block, "name", "")
                     if tool in INTERNAL_TOOLS:
@@ -1171,11 +1184,14 @@ class ClaudeAgentClient:
                 }
                 turns.append(current)
             elif role == "assistant" and current is not None:
-                current["items"].append({
+                item = {
                     "type": "agentMessage",
                     "phase": "final_answer",
                     "text": _bounded(text, 524_288),
-                })
+                }
+                if isinstance(payload, dict) and payload.get("stop_reason") == "refusal":
+                    item["stopped"] = SAFEGUARDS_STOP
+                current["items"].append(item)
         return {"thread": {"id": session_id, "turns": turns}, "turns": turns}
 
     @staticmethod

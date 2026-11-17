@@ -192,14 +192,18 @@ def test_format_review_blocks_marks_wrap_only_and_avoids_reflow_word_noise():
 
     edited, wrap_only = blocks
     assert edited["whitespace_only"] is False
-    assert edited["note"] == "Rest re-wrapped"
+    assert edited["note"] == "Only darker words changed \u00b7 rest wrapped"
     assert '<del class="diff-delete">her cheek against mine,</del>' in edited["html"]
     assert '<ins class="diff-insert">' not in edited["html"]
-    assert "diff_wrap_line" in edited["html"]
+    assert "diff_wrap_line" not in edited["html"]
+    assert edited["html"].count('class="diff_sub"') >= 2
+    assert edited["html"].count('class="diff_add"') >= 2
 
     assert wrap_only["whitespace_only"] is True
     assert wrap_only["whitespace_kind"] == "wrap"
     assert "wrapping" in wrap_only["note"].lower()
     assert '<del class="diff-delete">' not in wrap_only["html"]
     assert '<ins class="diff-insert">' not in wrap_only["html"]
-    assert "diff_wrap_line" in wrap_only["html"]
+    assert "diff_wrap_line" not in wrap_only["html"]
+    assert 'class="diff_sub"' in wrap_only["html"]
+    assert 'class="diff_add"' in wrap_only["html"]

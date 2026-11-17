@@ -713,8 +713,8 @@ def _hunk_rows_with_meta(hunk: Hunk, mode: str, header: bool = True) -> tuple[li
             new_entry = added_rendered[offset] if offset < len(added_rendered) else None
             old_html, old_changed = old_entry if old_entry is not None else ("", False)
             new_html, new_changed = new_entry if new_entry is not None else ("", False)
-            old_cell_cls = "diff_sub" if old_changed else ("diff_wrap_line" if old_entry is not None else "")
-            new_cell_cls = "diff_add" if new_changed else ("diff_wrap_line" if new_entry is not None else "")
+            old_cell_cls = "diff_sub" if old_entry is not None else ""
+            new_cell_cls = "diff_add" if new_entry is not None else ""
             old_cell_no = old_ln if old_entry is not None else ""
             new_cell_no = new_ln if new_entry is not None else ""
             if mode == "inline":
@@ -836,12 +836,12 @@ def format_review_blocks(before: str, after: str, mode: str = "inline") -> list[
             )
             line_summary = f"{line_count} {'line' if line_count == 1 else 'lines'}"
         elif ws_kind == "wrap":
-            note = "Line wrapping & spaces only \u00b7 same text"
+            note = "Wrapping / spaces only \u00b7 same words"
             b_cnt, a_cnt = len(block.before), len(block.after)
             wrap_detail = "Only line breaks shifted \u2014 words and paragraph breaks are unchanged."
             line_summary = f"{b_cnt} \u2192 {a_cnt} lines reflowed" if b_cnt != a_cnt else f"{a_cnt} lines reflowed"
         elif has_reflow:
-            note = "Rest re-wrapped"
+            note = "Only darker words changed \u00b7 rest wrapped"
         out.append({
             "id": block.index,
             "header": _block_label(block),

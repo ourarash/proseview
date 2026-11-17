@@ -6876,35 +6876,6 @@
             background: color-mix(in srgb, var(--text-muted) 5%, transparent);
         }
 
-        .discuss-review-wrap-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 7px 11px;
-            border-top: 1px solid var(--border);
-            background: var(--editor-bg, var(--surface-card));
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
-        .discuss-review-wrap-detail {
-            min-width: 0;
-        }
-
-        .discuss-review-wrap-right {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex: none;
-        }
-
-        .discuss-review-wrap-lines {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--text-muted);
-        }
-
         .discuss-wrap-show-btn,
         .diff-wrap-toggle-btn {
             background: var(--surface-bg);
@@ -10810,15 +10781,29 @@
         }
 
         .diff-insert {
-            background-color: rgba(46, 160, 67, 0.2);
+            background-color: rgba(46, 160, 67, 0.26);
             text-decoration: none;
-            color: var(--text-primary);
+            color: var(--text-main);
+            border-radius: 2px;
+            padding: 0 2px;
         }
 
         .diff-delete {
-            background-color: rgba(248, 81, 73, 0.2);
-            text-decoration: line-through;
-            color: var(--text-muted);
+            background-color: rgba(248, 81, 73, 0.26);
+            text-decoration: none;
+            color: var(--text-main);
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+
+        [data-theme="dark"] .diff-insert {
+            background-color: rgba(46, 160, 67, 0.30);
+            color: #d7ffde;
+        }
+
+        [data-theme="dark"] .diff-delete {
+            background-color: rgba(248, 81, 73, 0.32);
+            color: #ffe2df;
         }
 
         .history-item {
@@ -10945,24 +10930,35 @@
         }
 
         table.diff .diff_add {
-            background-color: rgba(var(--success-rgb, 46, 160, 67), 0.15);
+            background-color: rgba(var(--success-rgb, 46, 160, 67), 0.10);
+            box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.55);
         }
 
         table.diff .diff_sub {
-            background-color: rgba(var(--danger-rgb, 248, 81, 73), 0.15);
+            background-color: rgba(var(--danger-rgb, 248, 81, 73), 0.10);
+            box-shadow: inset 3px 0 0 rgba(220, 38, 38, 0.55);
+        }
+
+        [data-theme="dark"] table.diff .diff_add {
+            background-color: rgba(46, 160, 67, 0.10);
+            box-shadow: inset 3px 0 0 rgba(46, 160, 67, 0.55);
+        }
+
+        [data-theme="dark"] table.diff .diff_sub {
+            background-color: rgba(248, 81, 73, 0.10);
+            box-shadow: inset 3px 0 0 rgba(248, 81, 73, 0.55);
         }
 
         table.diff .diff_chg {
             background-color: rgba(var(--warning-rgb, 210, 153, 34), 0.15);
         }
 
-        table.diff .diff_wrap_line {
-            background-color: color-mix(in srgb, var(--text-muted) 6%, transparent);
-            color: var(--text-muted);
+        table.diff.diff-side-by-side td:nth-child(2) {
+            border-right: 1px solid var(--border-color, var(--border));
         }
 
         table.diff td:nth-child(3) {
-            border-right: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color, var(--border));
         }
 
         /* Override difflib nowrap attribute */

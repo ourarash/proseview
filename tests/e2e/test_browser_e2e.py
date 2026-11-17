@@ -8296,10 +8296,10 @@ def test_ticks_in_the_expanded_view_are_what_the_card_applies(
     assert card.get_by_role("button", name="Undo 1 change").is_visible()
 
 
-def test_wrapping_only_changes_are_badged_collapsed_and_toggleable(
+def test_wrapping_only_changes_are_badged_shaded_and_toggleable(
     page: Page, server: ProseviewServer
 ) -> None:
-    """Formatting-only hunks are labeled calmly, collapsed until expanded, and reflow edits avoid noisy word diffs."""
+    """Formatting-only hunks stay expanded in uniform lighter shading, without strikethrough, and remain hideable."""
     open_scene(page, server)
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
@@ -8318,27 +8318,34 @@ def test_wrapping_only_changes_are_badged_collapsed_and_toggleable(
     edited_block = blocks.nth(0)
     wrap_block = blocks.nth(1)
 
-    assert "Rest re-wrapped" in edited_block.locator(".diff-block-badge").inner_text()
+    assert "Only darker words changed" in edited_block.locator(".diff-block-badge").inner_text()
     assert [t.strip() for t in edited_block.locator("del.diff-delete").all_inner_texts()] == ["used", "same"]
     assert [t.strip() for t in edited_block.locator("ins.diff-insert").all_inner_texts()] == ["changed"]
     assert "four" not in edited_block.locator("ins.diff-insert, del.diff-delete").all_inner_texts()
+    assert edited_block.locator(".diff_wrap_line").count() == 0
+    assert edited_block.locator(".diff_sub").count() == 1
+    assert edited_block.locator(".diff_add").count() == 3
+    assert edited_block.locator("del.diff-delete").first.evaluate(
+        "el => getComputedStyle(el).textDecorationLine"
+    ) == "none"
 
-    assert "Line wrapping & spaces only" in wrap_block.locator(".diff-block-badge").inner_text()
-    assert wrap_block.locator(".discuss-review-table").is_hidden()
-    assert wrap_block.locator(".discuss-review-wrap-bar").is_visible()
-
-    wrap_block.locator(".discuss-wrap-show-btn").click()
+    assert "Wrapping / spaces only" in wrap_block.locator(".diff-block-badge").inner_text()
     assert wrap_block.locator(".discuss-review-table").is_visible()
+    assert wrap_block.locator(".discuss-review-wrap-bar").count() == 0
     assert wrap_block.locator("del.diff-delete, ins.diff-insert").count() == 0
+    assert wrap_block.locator(".diff_sub").count() >= 1
+    assert wrap_block.locator(".diff_add").count() >= 1
 
     hide_btn = page.locator("#discussDiffHideWrapBtn")
     assert hide_btn.is_visible()
-    assert "Hide wrapping (1)" in hide_btn.inner_text()
+    assert "Hide formatting (1)" in hide_btn.inner_text()
     hide_btn.click()
     assert wrap_block.is_hidden()
     assert edited_block.is_visible()
+    assert "Show formatting (1)" in hide_btn.inner_text()
     hide_btn.click()
     assert wrap_block.is_visible()
+    assert "Hide formatting (1)" in hide_btn.inner_text()
 
 
 # ── static snapshot ─────────────────────────────────────────────────────────

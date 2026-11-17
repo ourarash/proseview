@@ -6961,7 +6961,11 @@ var _discussHideWrapOnly = false;
 function applyDiscussDiffWrapVisibility() {
     var contentDiv = document.getElementById('discussDiffModalContent');
     var btn = document.getElementById('discussDiffHideWrapBtn');
-    if (btn) btn.setAttribute('aria-pressed', _discussHideWrapOnly ? 'true' : 'false');
+    if (btn) {
+        btn.setAttribute('aria-pressed', _discussHideWrapOnly ? 'true' : 'false');
+        var countLabel = btn.dataset.wrapCount ? ' (' + btn.dataset.wrapCount + ')' : '';
+        btn.textContent = (_discussHideWrapOnly ? 'Show formatting' : 'Hide formatting') + countLabel;
+    }
     if (!contentDiv) return;
     var rows = contentDiv.querySelectorAll('.discuss-review-block');
     var wrapRows = 0;
@@ -6987,7 +6991,7 @@ function applyDiscussDiffWrapVisibility() {
             var showBtn = document.createElement('button');
             showBtn.type = 'button';
             showBtn.className = 'discuss-wrap-show-btn';
-            showBtn.textContent = 'Show wrapping';
+            showBtn.textContent = 'Show formatting';
             showBtn.onclick = function() {
                 if (_discussHideWrapOnly) toggleDiscussDiffHideWrapping();
             };
@@ -7007,10 +7011,12 @@ function syncDiscussDiffWrapToggle(blocks) {
     var wrapCount = (blocks || []).filter(function(b) { return !!b.whitespace_only; }).length;
     if (wrapCount > 0) {
         btn.hidden = false;
-        btn.textContent = 'Hide wrapping (' + wrapCount + ')';
+        btn.dataset.wrapCount = String(wrapCount);
+        btn.textContent = (_discussHideWrapOnly ? 'Show formatting' : 'Hide formatting') + ' (' + wrapCount + ')';
         btn.setAttribute('aria-pressed', _discussHideWrapOnly ? 'true' : 'false');
     } else {
         btn.hidden = true;
+        delete btn.dataset.wrapCount;
     }
 }
 
@@ -7233,35 +7239,6 @@ function loadDiscussDiffMode(mode) {
             if (block.whitespace_only) {
                 row.dataset.whitespaceOnly = 'true';
                 row.classList.add('discuss-review-block-wrap-only');
-                table.hidden = true;
-
-                var wrapBar = elementWith('discuss-review-wrap-bar');
-                var wrapSummary = elementWith(
-                    'discuss-review-wrap-detail',
-                    block.wrap_detail || 'Only line breaks shifted — words are unchanged.'
-                );
-                var wrapRight = elementWith('discuss-review-wrap-right');
-                if (block.line_summary) {
-                    wrapRight.appendChild(elementWith('discuss-review-wrap-lines', block.line_summary));
-                }
-                var toggleLinesBtn = document.createElement('button');
-                toggleLinesBtn.type = 'button';
-                toggleLinesBtn.className = 'discuss-wrap-show-btn';
-                toggleLinesBtn.textContent = 'Show lines';
-                toggleLinesBtn.setAttribute('aria-expanded', 'false');
-                toggleLinesBtn.onclick = function(event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    var expanding = table.hidden;
-                    table.hidden = !expanding;
-                    row.classList.toggle('is-wrap-expanded', expanding);
-                    toggleLinesBtn.setAttribute('aria-expanded', String(expanding));
-                    toggleLinesBtn.textContent = expanding ? 'Hide lines' : 'Show lines';
-                };
-                wrapRight.appendChild(toggleLinesBtn);
-                wrapBar.appendChild(wrapSummary);
-                wrapBar.appendChild(wrapRight);
-                row.appendChild(wrapBar);
             }
 
             row.appendChild(table);

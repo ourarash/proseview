@@ -197,17 +197,19 @@ function drainRoomOutbox(session) {
         if (!session.sendError) drainRoomOutbox(session);
     });
 }
-function submitManagedRoomMessage() {
+function submitManagedRoomMessage(options) {
     var scene = _roomCurrentScenePath(), session = _roomSessionFor(scene), input = document.getElementById('roomInput');
     var text = input ? input.value.trim() : _roomDraftInput.trim();
     if (!scene || !text) return;
+    var immediate = !!(options && options.mode === 'now');
     var body = roomRuntimeEnvelope(session, 'submit', {message_id: _roomNewId(), scene: scene, text: _roomWithSelection(text), authored: text,
-        created_at: Date.now() / 1000,
+        created_at: Date.now() / 1000, immediate: immediate,
         seats: roomRequestedSeats(text, session), attachments: discussMentionsIn(text), review_choices: roomReviewChoices(session), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})});
     if (!session.outbox) session.outbox = [];
     session.outbox.push(body);
     if (session.managed) roomRuntimePoll(session, true);
     rememberDiscussInstruction(text);
+    if (typeof recordChatMessageHistory === 'function') recordChatMessageHistory('room', text);
     _roomDraftInput = ''; if (input) input.value = '';
     _roomTargetChoice = 'auto';
     session.busy = true; session.statusText = 'Sending message…';

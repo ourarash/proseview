@@ -337,6 +337,8 @@ class CodexAppServer:
                 "reasoning_summary": '"summary"' in schema_text,
                 "restricted_read_access": '"readableRoots"' in schema_text,
                 "paginated_history": paginated_history,
+                "turn_steer": "turnsteerparams" in normalized_text or "turnsteer" in schema_names.replace("_", ""),
+                "thread_fork": "threadforkparams" in normalized_text or "threadfork" in schema_names.replace("_", ""),
                 "stable_discuss_protocol": True,
                 "approval_decisions": {
                     "command": command_decisions,

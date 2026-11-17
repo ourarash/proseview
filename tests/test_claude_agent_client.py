@@ -305,8 +305,83 @@ def test_unknown_method_is_method_not_found():
     client, _, _ = make_client()
     try:
         with pytest.raises(ClaudeRequestError) as excinfo:
-            client.request("thread/fork", {})
+            client.request("thread/does-not-exist", {})
         assert excinfo.value.code == -32601
+    finally:
+        client.close()
+
+
+def test_thread_fork_branches_started_session_with_read_only_ephemeral_options():
+    client, seen, made = make_client(script=[
+        AssistantMessage(content=[TextBlock("Answer")], session_id="claude-parent-sess"),
+        ResultMessage(session_id="claude-parent-sess"),
+    ])
+    try:
+        parent_id = client.request("thread/start", {"cwd": "/tmp"})["thread"]["id"]
+        client.request("turn/start", {"threadId": parent_id, "input": [{"type": "text", "text": "parent q"}]})
+        assert wait_for(lambda: len([m for m in seen if m["method"] == "turn/completed"]) == 1)
+
+        forked = client.request("thread/fork", {
+            "threadId": parent_id,
+            "ephemeral": True,
+            "tools": ["Read", "Write", "Edit", "Grep"],
+        })["thread"]
+        fork_id = forked["id"]
+        assert fork_id != parent_id
+        assert forked["forkedFrom"] == parent_id
+
+        client.request("turn/start", {
+            "threadId": fork_id,
+            "input": [{"type": "text", "text": "side question"}],
+            "mayWrite": False,
+        })
+        assert wait_for(lambda: len([m for m in seen if m["method"] == "turn/completed"]) == 2)
+        fork_opts = made[-1].options
+        assert fork_opts["resume"] == "claude-parent-sess"
+        assert fork_opts["fork_session"] is True
+        assert fork_opts["tools"] == ["Read", "Grep"]
+        assert fork_opts["extra_args"] == {"no-session-persistence": None, "strict-mcp-config": None}
+    finally:
+        client.close()
+
+
+def test_thread_fork_keeps_write_tools_when_allow_write_enabled():
+    client, seen, made = make_client(script=[
+        AssistantMessage(content=[TextBlock("Answer")], session_id="claude-parent-sess"),
+        ResultMessage(session_id="claude-parent-sess"),
+    ])
+    try:
+        parent_id = client.request("thread/start", {"cwd": "/tmp"})["thread"]["id"]
+        client.request("turn/start", {"threadId": parent_id, "input": [{"type": "text", "text": "parent q"}]})
+        assert wait_for(lambda: len([m for m in seen if m["method"] == "turn/completed"]) == 1)
+
+        forked = client.request("thread/fork", {
+            "threadId": parent_id,
+            "ephemeral": True,
+            "allowWrite": True,
+            "tools": ["Read", "Edit", "Write", "Grep"],
+        })["thread"]
+        client.request("turn/start", {
+            "threadId": forked["id"],
+            "input": [{"type": "text", "text": "apply side edit"}],
+            "mayWrite": True,
+        })
+        assert wait_for(lambda: len([m for m in seen if m["method"] == "turn/completed"]) == 2)
+        fork_opts = made[-1].options
+        assert fork_opts["resume"] == "claude-parent-sess"
+        assert fork_opts["fork_session"] is True
+        assert fork_opts["tools"] == ["Read", "Edit", "Write", "Grep"]
+        assert fork_opts["extra_args"] == {"no-session-persistence": None, "strict-mcp-config": None}
+    finally:
+        client.close()
+
+
+def test_thread_fork_rejects_unstarted_missing_parent():
+    client, _, _ = make_client()
+    try:
+        with pytest.raises(ClaudeRequestError) as excinfo:
+            client.request("thread/fork", {"threadId": "missing-thread", "ephemeral": True})
+        assert excinfo.value.code == -32004
     finally:
         client.close()
 

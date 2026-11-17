@@ -553,9 +553,12 @@
             // the tab showing an empty log that never connected.
             var live = panel && !panel.hidden && log && !log.hidden && _discussConversationId;
             if (live && agent === _discussAgent) { _showDiscussBody(); return; }
+            resetChatHistoryCursor(_discussAgent);
+            resetChatHistoryCursor(agent);
             if (panel && !panel.hidden) {
                 saveDiscussDraft();
                 _saveDiscussAgentLocal();
+                if (typeof _flushBtwDraft === 'function') _flushBtwDraft();
             }
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             if (_discussAgent !== agent) {
@@ -918,6 +921,7 @@
             var key = discussDocumentKey(doc);
             _discussDocumentKey = key;
             var input = document.getElementById('discussInput');
+            resetChatHistoryCursor(_discussAgent);
             _restoreDiscussAgentLocal();
             _discussPreservedDraft = restoreDiscussDraft(doc, _discussAgent);
             input.value = requestedAutoRun ? '' : (options.prefill || _discussPreservedDraft);
@@ -934,6 +938,7 @@
                 _discussConversationId = data.conversation_id;
                 _discussSnapshot = data.snapshot;
                 renderDiscussSnapshot();
+                renderBtwSplit();
                 connectDiscussEvents();
                 // The composer was rendered after its selection/draft state was
                 // restored above. Rebuilding it here detaches an open presets
@@ -1013,6 +1018,7 @@
                 else {
                     // A starter is put in the box for the writer to edit, never sent.
                     if (options.prefill) {
+                        resetChatHistoryCursor(_discussAgent);
                         document.getElementById('discussInput').value = options.prefill;
                         syncDiscussSendEmpty();
                     }
@@ -1026,10 +1032,12 @@
         function closeDiscuss() {
             saveDiscussDraft();
             _saveDiscussAgentLocal();
+            if (typeof _flushBtwDraft === 'function') _flushBtwDraft();
             closeDiscussContextPicker();
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
             document.body.classList.remove('discuss-open');
+            renderBtwSplit();
             try { sessionStorage.setItem('proseview-panel-open', 'false'); } catch(e) {}
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             clearTimeout(_discussRefreshTimer);
@@ -1204,6 +1212,7 @@
             // sitting above a pane of counts and frontmatter.
             _setDockHeading(spec.heading, false);
             _setUtilityTab(name);
+            renderBtwSplit();
             if (away) { _showScenePanelAway(name); return; }
             _hideScenePanelAway();
             Object.keys(SCENE_PANEL_PANES).forEach(function(key) {
@@ -1231,6 +1240,7 @@
             _setDockHeading(null, true);
             _applyDiscussAgentLabels();
             _setUtilityTab(_discussAgent);
+            renderBtwSplit();
         }
 
         function showDiscussTab(trigger) { showDiscussAgentTab(_discussAgent, trigger); }
@@ -1711,6 +1721,254 @@
             });
         }
 
+        var CHAT_HISTORY_LIMIT = 100;
+        var _chatHistoryState = {
+            codex: {index: -1, draft: '', justRecalled: false},
+            claude: {index: -1, draft: '', justRecalled: false},
+            room: {index: -1, draft: '', justRecalled: false}
+        };
+        var _chatCaretMirror = null;
+
+        function chatHistoryStorageKey(room) {
+            var root = typeof repoRoot !== 'undefined' ? String(repoRoot || '') : '';
+            return 'proseview-chat-history:' + root + ':' + room;
+        }
+
+        function normalizedChatHistory(rows, limit) {
+            if (!Array.isArray(rows)) return [];
+            var seen = Object.create(null);
+            var out = [];
+            for (var i = rows.length - 1; i >= 0; i--) {
+                if (typeof rows[i] !== 'string') continue;
+                var value = rows[i].trim();
+                if (!value || value.length > 32768 || seen[value]) continue;
+                seen[value] = true;
+                out.push(value);
+                if (limit && out.length >= limit) break;
+            }
+            return out.reverse();
+        }
+
+        function _extractAuthoredChatText(text) {
+            return String(text || '').split(/\n\nSelected passage(?:\s*\([^)\n]*\))?:\n/)[0].trim();
+        }
+
+        function chatConversationUserMessages(room) {
+            if (room === 'codex' || room === 'claude') {
+                if (room !== _discussAgent || !_discussSnapshot || !Array.isArray(_discussSnapshot.messages)) return [];
+                return _discussSnapshot.messages
+                    .filter(function(m) { return m && m.role === 'user'; })
+                    .map(function(m) { return _extractAuthoredChatText(m.text); })
+                    .filter(Boolean);
+            }
+            if (room === 'room') {
+                var path = typeof _roomCurrentScenePath === 'function' ? _roomCurrentScenePath() : null;
+                var session = path && typeof _roomSessionsByScene !== 'undefined' ? (_roomSessionsByScene[path] || _roomActiveSession) : _roomActiveSession;
+                if (!session || !Array.isArray(session.turns)) return [];
+                return session.turns
+                    .filter(function(turn) { return turn && turn.role === 'user'; })
+                    .map(function(turn) { return _extractAuthoredChatText(turn.authored || turn.text); })
+                    .filter(Boolean);
+            }
+            return [];
+        }
+
+        function getChatMessageHistory(room) {
+            var stored = [];
+            try {
+                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(room)) || '[]'), CHAT_HISTORY_LIMIT);
+            } catch (e) {}
+            var conv = chatConversationUserMessages(room);
+            if (!conv.length) return stored;
+            var unseen = conv.filter(function(msg) { return stored.indexOf(msg) < 0; });
+            return normalizedChatHistory(unseen.concat(stored), CHAT_HISTORY_LIMIT);
+        }
+
+        function resetChatHistoryCursor(room) {
+            _chatHistoryState[room] = {index: -1, draft: '', justRecalled: false};
+        }
+
+        function recordChatMessageHistory(room, value) {
+            value = String(value || '').trim();
+            if (!value || value.length > 32768) return;
+            var stored = [];
+            try {
+                stored = normalizedChatHistory(JSON.parse(localStorage.getItem(chatHistoryStorageKey(room)) || '[]'), CHAT_HISTORY_LIMIT);
+            } catch (e) {}
+            var next = normalizedChatHistory(stored.concat([value]), CHAT_HISTORY_LIMIT);
+            try { localStorage.setItem(chatHistoryStorageKey(room), JSON.stringify(next)); } catch (e) {}
+            resetChatHistoryCursor(room);
+        }
+
+        function _ensureChatCaretMirror() {
+            if (_chatCaretMirror) return _chatCaretMirror;
+            var el = document.createElement('div');
+            el.setAttribute('aria-hidden', 'true');
+            el.style.position = 'absolute';
+            el.style.top = '0';
+            el.style.left = '0';
+            el.style.visibility = 'hidden';
+            el.style.pointerEvents = 'none';
+            el.style.height = 'auto';
+            el.style.overflow = 'hidden';
+            el.style.whiteSpace = 'pre-wrap';
+            el.style.overflowWrap = 'break-word';
+            el.style.wordBreak = 'break-word';
+            el.style.borderStyle = 'solid';
+            el.style.borderWidth = '0';
+            el.style.margin = '0';
+            _chatCaretMirror = el;
+            return el;
+        }
+
+        function _setSingleCharRange(range, textNode, text, index) {
+            var start = Math.max(0, Math.min(text.length - 1, index));
+            var code = text.charCodeAt(start);
+            if (code >= 0xDC00 && code <= 0xDFFF && start > 0) start -= 1;
+            var next = text.charCodeAt(start);
+            var end = (next >= 0xD800 && next <= 0xDBFF && start + 1 < text.length) ? start + 2 : start + 1;
+            range.setStart(textNode, start);
+            range.setEnd(textNode, end);
+        }
+
+        function _isCaretOnTextareaEdgeLine(input, edge) {
+            if (!input || input.selectionStart !== input.selectionEnd) return false;
+            var value = input.value;
+            if (!value) return true;
+            var pos = input.selectionStart;
+            if (edge === 'first') {
+                if (pos === 0) return true;
+                if (value.slice(0, pos).indexOf('\n') >= 0) return false;
+            } else {
+                if (pos === value.length) return true;
+                if (value.slice(pos).indexOf('\n') >= 0) return false;
+            }
+            var parent = input.parentElement;
+            if (!parent || !input.clientWidth || typeof document.createRange !== 'function') return true;
+            var cs = getComputedStyle(input);
+            var mirror = _ensureChatCaretMirror();
+            mirror.style.boxSizing = 'border-box';
+            mirror.style.width = input.clientWidth + 'px';
+            mirror.style.paddingTop = cs.paddingTop;
+            mirror.style.paddingRight = cs.paddingRight;
+            mirror.style.paddingBottom = cs.paddingBottom;
+            mirror.style.paddingLeft = cs.paddingLeft;
+            mirror.style.fontFamily = cs.fontFamily;
+            mirror.style.fontSize = cs.fontSize;
+            mirror.style.fontWeight = cs.fontWeight;
+            mirror.style.fontStyle = cs.fontStyle;
+            mirror.style.letterSpacing = cs.letterSpacing;
+            mirror.style.wordSpacing = cs.wordSpacing;
+            mirror.style.lineHeight = cs.lineHeight;
+            mirror.style.textIndent = cs.textIndent;
+            mirror.style.overflowWrap = cs.overflowWrap;
+            mirror.style.wordBreak = cs.wordBreak;
+            mirror.style.tabSize = cs.tabSize;
+            mirror.textContent = value + ' ';
+            parent.appendChild(mirror);
+            try {
+                var textNode = mirror.firstChild;
+                if (!textNode) return true;
+                var lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 14) * 1.4;
+                var refStart = edge === 'first' ? 0 : value.length - 1;
+                var rRef = document.createRange();
+                _setSingleCharRange(rRef, textNode, value, refStart);
+                var refRect = rRef.getBoundingClientRect();
+                var caretIdx = edge === 'first'
+                    ? ((pos < value.length && value.charAt(pos) !== '\n') ? pos : pos - 1)
+                    : pos;
+                var rCaret = document.createRange();
+                _setSingleCharRange(rCaret, textNode, value, caretIdx);
+                var caretRect = rCaret.getBoundingClientRect();
+                if (!refRect.height || !caretRect.height) return true;
+                return Math.abs(caretRect.top - refRect.top) < lineHeight * 0.5;
+            } finally {
+                if (mirror.parentElement === parent) parent.removeChild(mirror);
+            }
+        }
+
+        function _applyChatHistoryEntry(input, config, nextValue) {
+            config.applyValue(nextValue);
+            input.setSelectionRange(nextValue.length, nextValue.length);
+            input.scrollTop = input.scrollHeight;
+            input.dispatchEvent(new Event('scroll'));
+        }
+
+        function handleChatHistoryKeydown(event, input, config) {
+            var room = typeof config.room === 'function' ? config.room() : config.room;
+            var state = _chatHistoryState[room] || (_chatHistoryState[room] = {index: -1, draft: '', justRecalled: false});
+            if (config.isMenuOpen && config.isMenuOpen()) return false;
+            if (event.isComposing) return false;
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) state.justRecalled = false;
+                return false;
+            }
+            if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+                state.justRecalled = false;
+                return false;
+            }
+            var history = getChatMessageHistory(room);
+            if (event.key === 'ArrowUp') {
+                if (!history.length) return false;
+                if (!state.justRecalled && !_isCaretOnTextareaEdgeLine(input, 'first')) return false;
+                if (state.index >= 0 && !state.justRecalled && input.value !== history[state.index]) {
+                    state.index = -1;
+                    state.draft = '';
+                }
+                event.preventDefault();
+                if (state.index === -1) {
+                    state.draft = input.value;
+                    state.index = history.length - 1;
+                } else if (state.index > 0) {
+                    state.index -= 1;
+                }
+                state.justRecalled = true;
+                _applyChatHistoryEntry(input, config, history[state.index]);
+                return true;
+            }
+            if (state.index < 0) return false;
+            if (!state.justRecalled && input.value !== history[state.index]) {
+                state.index = -1;
+                state.draft = '';
+                return false;
+            }
+            if (!state.justRecalled && !_isCaretOnTextareaEdgeLine(input, 'last')) return false;
+            event.preventDefault();
+            if (state.index < history.length - 1) {
+                state.index += 1;
+                state.justRecalled = true;
+                _applyChatHistoryEntry(input, config, history[state.index]);
+            } else {
+                var restored = state.draft;
+                state.index = -1;
+                state.draft = '';
+                state.justRecalled = false;
+                _applyChatHistoryEntry(input, config, restored);
+            }
+            return true;
+        }
+
+        function wireChatHistoryInput(input, room) {
+            if (!input) return;
+            input.addEventListener('mousedown', function() {
+                var key = typeof room === 'function' ? room() : room;
+                if (_chatHistoryState[key]) _chatHistoryState[key].justRecalled = false;
+            });
+            input.addEventListener('input', function() {
+                var key = typeof room === 'function' ? room() : room;
+                var state = _chatHistoryState[key];
+                if (!state) return;
+                state.justRecalled = false;
+                if (state.index >= 0) {
+                    var history = getChatMessageHistory(key);
+                    if (input.value !== (history[state.index] || '')) {
+                        state.index = -1;
+                        state.draft = '';
+                    }
+                }
+            });
+        }
+
         function chatComposerMentionRanges(input, participants) {
             return chatMentionRanges(input.value, participants).concat(input.id === 'roomInput' ? roomSkillMentionRanges(input.value) : discussSkillRanges(input.value))
                 .sort(function(a, b) { return a.start - b.start; });
@@ -1779,7 +2037,7 @@
             mirror.scrollTop = input.scrollTop; mirror.scrollLeft = input.scrollLeft;
         }
 
-        function _wireRoomMentions(input, menu, target, hint) {
+        function _wireRoomMentions(input, menu, target, hint, onHistoryApply) {
             var choices = [], active = 0, range = null;
             input.setAttribute('aria-autocomplete', 'list');
             input.setAttribute('aria-haspopup', 'listbox');
@@ -1933,10 +2191,27 @@
                     }
                     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
                 }
+                if (handleChatHistoryKeydown(event, input, {
+                    room: 'room',
+                    isMenuOpen: function() { return !menu.hidden; },
+                    applyValue: function(nextValue) {
+                        if (onHistoryApply) onHistoryApply(nextValue);
+                        else input.value = nextValue;
+                        close();
+                        updateRecipients();
+                    }
+                })) return;
                 if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault(); sendRoomComposerMessage();
+                    event.preventDefault();
+                    var roomSendNow = document.getElementById('roomSendNowBtn');
+                    if ((event.metaKey || event.ctrlKey) && roomSendNow && !roomSendNow.hidden) {
+                        sendRoomComposerMessage({mode: 'now'});
+                    } else {
+                        sendRoomComposerMessage();
+                    }
                 }
             };
+            wireChatHistoryInput(input, 'room');
             updateRecipients();
             close();
         }
@@ -2105,6 +2380,7 @@
             _roomRunToken++;
             _roomDraftInput = ''; _roomPendingSelection = ''; _roomPendingSelectionScene = ''; _roomTargetChoice = 'auto';
             var input = document.getElementById('roomInput'); if (input) input.value = '';
+            resetChatHistoryCursor('room');
             try { sessionStorage.removeItem(roomDraftKey(path)); } catch (error) {}
             Object.keys(_roomSessionsByScene).forEach(function(key) { if (_roomSessionsByScene[key] === _roomActiveSession) delete _roomSessionsByScene[key]; });
             _roomActiveSession = null;
@@ -2557,7 +2833,7 @@
             roomRuntimeControl(session, 'submit', {message_id: _roomNewId(), text: '@' + session.participants[seat - 1].handle + ' continue the discussion.', seats: [seat]}).catch(function() {});
         }
 
-        function sendRoomComposerMessage() { return submitRoomComposerMessage(); }
+        function sendRoomComposerMessage(options) { return submitRoomComposerMessage(options); }
 
         function insertRoomPlanTodo(item) {
             var path = _roomCurrentScenePath();
@@ -3859,7 +4135,7 @@
                 _discussSnapshot = JSON.parse(event.data);
                 renderDiscussSnapshot();
             });
-            ['connection', 'conversation.reset', 'turn.queued', 'turn.cancelled', 'turn.preparing', 'turn.started', 'turn.completed', 'turn.idle', 'response.completed', 'progress.delta',
+            ['connection', 'conversation.reset', 'turn.queued', 'turn.steered', 'turn.cancelled', 'turn.preparing', 'turn.started', 'turn.completed', 'turn.idle', 'response.completed', 'progress.delta',
              'plan.updated', 'activity.updated', 'approval.requested', 'approval.resolved', 'approval.expired', 'task.ready', 'task.failed',
              'task.updated', 'tasks.cleared', 'notice.dismissed', 'model.changed', 'warning', 'error'].forEach(function(type) {
                 source.addEventListener(type, function(event) {
@@ -3868,7 +4144,11 @@
                         setDiscussConnection(detail.state, detail.reason || '');
                     }
                     if (type === 'turn.started' || type === 'conversation.reset') _discussStreamText = '';
-                    if (type === 'conversation.reset') { _discussReview = []; _discussReviewKeep = {}; }
+                    if (type === 'conversation.reset') {
+                        _discussReview = [];
+                        _discussReviewKeep = {};
+                        _clearBtwTabs(cid);
+                    }
                     // A new question accepts what the last turn changed: the edits are
                     // already saved, and the server has already let go of their review.
                     // Asked rather than cleared here, since this event can arrive after
@@ -3897,6 +4177,12 @@
             source.addEventListener('response.delta', function(event) {
                 var detail = JSON.parse(event.data);
                 appendDiscussStreamDelta(detail.text || '');
+            });
+            ['side_question.started', 'side_question.delta', 'side_question.activity',
+             'side_question.completed', 'side_question.failed', 'side_question.cancelled'].forEach(function(type) {
+                source.addEventListener(type, function(event) {
+                    handleBtwEvent(cid, type, JSON.parse(event.data));
+                });
             });
         }
 
@@ -6792,6 +7078,8 @@
             log.setAttribute('aria-busy', snapshot.active_turn_id ? 'true' : 'false');
             renderDiscussModelChip();
             renderDiscussTurnStatus(snapshot);
+            syncDiscussSendEmpty();
+            renderBtwSplit();
             restoreDiscussScroll(log, scrollState);
             if (_discussLastApproval) {
                 var target = discussApprovalDecisionButton(
@@ -7181,6 +7469,7 @@
                     openButton.disabled = true; openButton.dataset.historyOpening = 'true';
                     discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/history/' + encodeURIComponent(item.thread_id) + '/open', {})
                         .then(function(data) {
+                            resetChatHistoryCursor(_discussAgent);
                             _discussSnapshot = data.snapshot; renderDiscussSnapshot();
                             document.getElementById('discussHistoryDialog').close('opened');
                             document.getElementById('discussAnnouncement').textContent = 'Conversation opened';
@@ -8247,15 +8536,36 @@ function loadDiscussDiffMode(mode) {
         // stays open, with focus on the control they were on.
         // Nothing to send, nothing to press: Send waits for text, unless what
         // it would send is an action that needs none (or it is "Try again").
+        function parseDiscussBtwDraft(rawText) {
+            var value = String(rawText || '');
+            var match = value.match(/^\s*\/btw(?:\s+([\s\S]*))?$/i);
+            if (!match) return null;
+            return {question: String(match[1] || '').trim()};
+        }
+
         function syncDiscussSendEmpty() {
             var button = document.getElementById('discussSend');
+            var sendNow = document.getElementById('discussSendNow');
+            var btwHint = document.getElementById('discussBtwHint');
             var input = document.getElementById('discussInput');
             if (!button || !input) return;
             var ordinary = !_discussPendingAction && !_discussRepositoryAction && !_discussCraftState.active && !_discussOpenFailed;
+            var busy = !!(_discussSnapshot && (_discussSnapshot.active_turn_id || _discussSnapshot.active_request_id));
+            var btwDraft = ordinary ? parseDiscussBtwDraft(input.value) : null;
+            if (btwHint) btwHint.hidden = !btwDraft;
             var craftNoScenes = _discussCraftState.active && !discussCraftSelectedScenes().length;
-            var empty = craftNoScenes ? true : (!input.value.trim() && ordinary);
+            var empty = btwDraft ? false : (craftNoScenes ? true : (!input.value.trim() && ordinary));
             button.dataset.empty = empty ? 'true' : 'false';
             button.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
+            if (ordinary && !button.disabled) {
+                button.textContent = btwDraft ? (btwDraft.question ? 'Ask /btw' : 'Open /btw') : (busy ? 'Queue' : 'Send');
+            }
+            if (sendNow) {
+                sendNow.hidden = !(ordinary && busy && !btwDraft);
+                sendNow.disabled = empty || button.disabled;
+                sendNow.dataset.empty = empty ? 'true' : 'false';
+                sendNow.setAttribute('aria-disabled', empty || button.disabled ? 'true' : 'false');
+            }
             // A preset sends itself; with a draft in the box it would replace
             // the draft, so it waits until the box is empty again.
             var draft = !!input.value.trim();
@@ -9000,6 +9310,7 @@ function loadDiscussDiffMode(mode) {
             }, 1200);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
                 .then(function(data) {
+                    resetChatHistoryCursor(_discussAgent);
                     _discussReview = []; _discussReviewKeep = {};
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';
@@ -9070,22 +9381,39 @@ function loadDiscussDiffMode(mode) {
             return text + '\n\n' + header + '\n' + source + quoted;
         }
 
-        function sendDiscussQuestion() {
+        function sendDiscussQuestion(options) {
             var input = document.getElementById('discussInput');
             var question = input.value.trim();
             var button = document.getElementById('discussSend');
+            var sendNow = document.getElementById('discussSendNow');
+            var immediate = !!(options && options.mode === 'now');
             if (_discussOpenFailed) { openDiscuss(_discussReturnFocus); return; }
             if (_discussPendingAction) { runDiscussSelectionAction(); return; }
             if (_discussRepositoryAction) { runDiscussRepositoryAction(); return; }
             if (_discussCraftState.active) { runDiscussCraftReview(); return; }
+            var btwDraft = parseDiscussBtwDraft(input.value);
+            if (btwDraft && _discussConversationId) {
+                if (btwDraft.question) {
+                    sendDiscussSideQuestion(btwDraft.question);
+                } else {
+                    input.value = '';
+                    saveDiscussDraft();
+                    closeDiscussContextPicker();
+                    syncDiscussSendEmpty();
+                    openBtwPane();
+                }
+                return;
+            }
             if (!question || !_discussConversationId || button.disabled) return;
             var turnDocument = discussTurnDocument();
             if (!turnDocument) return;
             var requestId = (crypto.randomUUID ? crypto.randomUUID() : 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
             clearDiscussError();
             button.disabled = true;
-            button.textContent = 'Sending…';
-            document.getElementById('discussAnnouncement').textContent = 'Sending question…';
+            if (sendNow) sendNow.disabled = true;
+            if (immediate && sendNow) sendNow.textContent = 'Sending…';
+            else button.textContent = 'Sending…';
+            document.getElementById('discussAnnouncement').textContent = immediate ? 'Sending now…' : 'Sending question…';
             var authored = question;
             var fullQuestion = _discussWithSelection(authored);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
@@ -9100,14 +9428,17 @@ function loadDiscussDiffMode(mode) {
                     return authored.indexOf('@' + item.path) < 0;
                 })),
                 include_current_document: _discussIncludeCurrentDocument,
+                immediate: immediate,
                 // A $skill typed in the question is the skill the turn runs.
                 skill: _discussSelectedSkill || (function() {
                     var named = discussSkillsIn(authored)[0];
                     return named ? {name: named.name, path: named.path} : null;
                 })()
-            }).then(function() {
+            }).then(function(data) {
                 _discussAttachments = [];
-                rememberDiscussInstruction(authored); input.value = '';
+                rememberDiscussInstruction(authored);
+                recordChatMessageHistory(_discussAgent, authored);
+                input.value = '';
                 if (!_discussSelection) {
                     _discussIncludeCurrentDocument = false;
                     _discussDraftDocument = null;
@@ -9115,21 +9446,24 @@ function loadDiscussDiffMode(mode) {
                 saveDiscussDraft(); _discussSelectedSkill = null;
                 var restoredLegacyDraft = activateLegacyDiscussDraft(discussDocument(), _discussAgent);
                 closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
+                var verb = data && data.status === 'steered' ? 'Sent now.' : immediate ? 'Sending now.' : 'Question queued.';
                 document.getElementById('discussAnnouncement').textContent = restoredLegacyDraft
-                    ? 'Question queued. Restored another saved draft for this file.'
+                    ? verb + ' Restored another saved draft for this file.'
                     : _discussSelection
-                    ? 'Question queued. Selection remains attached for follow-up questions.'
-                    : 'Question queued';
+                    ? verb + ' Selection remains attached for follow-up questions.'
+                    : verb;
             }).catch(function(error) {
                 renderDiscussError(error.message, {kind: error.name === 'NetworkError' ? 'transport' : 'request'});
                 document.getElementById('discussAnnouncement').textContent = 'Question was not confirmed. ' + error.message;
             }).finally(function() {
                 button.disabled = false;
+                if (sendNow) { sendNow.disabled = false; sendNow.textContent = 'Send now'; }
                 renderDiscussTaskMode();
                 var active = document.activeElement;
-                if (active === input || active === button || active === document.body) input.focus();
+                if (active === input || active === button || active === sendNow || active === document.body) input.focus();
             });
         }
+
 
         function startDiscussRepositoryAction(actionId) {
             _discussCraftState.active = false;
@@ -9841,8 +10175,28 @@ function loadDiscussDiffMode(mode) {
                 event.preventDefault(); selectDiscussContextOption(_discussContextActiveIndex);
             } else if (pickerOpen && event.key === 'Escape') {
                 event.preventDefault(); event.stopPropagation(); closeDiscussContextPicker();
-            } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendDiscussQuestion(); }
+            } else if (handleChatHistoryKeydown(event, this, {
+                room: function() { return _discussAgent; },
+                isMenuOpen: function() { return !document.getElementById('discussContextPicker').hidden; },
+                applyValue: function(nextValue) {
+                    var box = document.getElementById('discussInput');
+                    box.value = nextValue;
+                    saveDiscussDraft();
+                    syncDiscussSendEmpty();
+                }
+            })) {
+                return;
+            } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+                event.preventDefault();
+                var sendNowBtn = document.getElementById('discussSendNow');
+                if ((event.metaKey || event.ctrlKey) && sendNowBtn && !sendNowBtn.hidden && !sendNowBtn.disabled) {
+                    sendDiscussQuestion({mode: 'now'});
+                } else {
+                    sendDiscussQuestion();
+                }
+            }
         });
+        wireChatHistoryInput(document.getElementById('discussInput'), function() { return _discussAgent; });
         document.getElementById('discussInput').addEventListener('input', function() {
             var beforeDocument = discussDocumentKey(discussTurnDocument());
             saveDiscussDraft();
@@ -9871,36 +10225,71 @@ function loadDiscussDiffMode(mode) {
         });
         (function initDiscussResize() {
             var handle = document.getElementById('discussResizeHandle'); var dragging = false; var startX = 0; var startWidth = 0;
+            function splitSideBySide() {
+                var panel = document.getElementById('discussPanel');
+                return !!(panel && panel.classList.contains('has-btw-split') && !panel.classList.contains('is-stacked'));
+            }
             function setWidth(width) {
+                var zoom = workspaceZoomFactor();
+                if (splitSideBySide() && typeof _btwTotalBudget === 'function') {
+                    var budget = _btwTotalBudget();
+                    if (budget.stacked) return;
+                    var curSplit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--btw-split-w')) || 280;
+                    var maxMain = Math.max(240, Math.floor(budget.maxCombined - curSplit - 8));
+                    var clamped = Math.max(240, Math.min(maxMain, width));
+                    document.documentElement.style.setProperty('--btw-main-w', Math.round(clamped) + 'px');
+                    updateSeparatorValue(handle, clamped * zoom, 240 * zoom, maxMain * zoom);
+                    return;
+                }
                 var bounds = workspaceDockWidthBounds(340);
                 width = Math.max(bounds.min, Math.min(bounds.max, width));
                 var zoomed = document.documentElement.dataset.cssZoom === 'true';
                 document.documentElement.style.setProperty(zoomed ? '--css-zoom-dock-width' : '--utility-dock-w', width + 'px');
-                var zoom = workspaceZoomFactor();
                 updateSeparatorValue(handle, width * zoom, bounds.min * zoom, bounds.max * zoom);
             }
             function currentWidth() {
-                var rendered = document.getElementById('discussPanel').getBoundingClientRect().width;
+                // Measure only .discuss-shell so opening the /btw split pane
+                // never pollutes --utility-dock-w with combined dock width.
+                var shell = document.querySelector('#discussPanel .discuss-shell');
+                var rendered = shell ? shell.getBoundingClientRect().width : 0;
                 if (rendered > 0) return rendered / workspaceZoomFactor();
-                return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 420;
+                return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(
+                    splitSideBySide() ? '--btw-main-w' : '--utility-dock-w'
+                )) || 420;
             }
             handle.addEventListener('mousedown', function(event) { dragging = true; startX = event.clientX; startWidth = currentWidth(); handle.classList.add('is-dragging'); document.body.style.userSelect = 'none'; event.preventDefault(); });
             document.addEventListener('mousemove', function(event) { if (!dragging) return; setWidth(startWidth + (startX - event.clientX) / workspaceZoomFactor()); });
-            document.addEventListener('mouseup', function() { if (!dragging) return; dragging = false; handle.classList.remove('is-dragging'); document.body.style.userSelect = ''; });
+            document.addEventListener('mouseup', function() {
+                if (!dragging) return;
+                dragging = false;
+                handle.classList.remove('is-dragging');
+                document.body.style.userSelect = '';
+                if (splitSideBySide() && typeof _saveBtwLayout === 'function') _saveBtwLayout();
+            });
             handle.addEventListener('keydown', function(event) {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                var bounds = workspaceDockWidthBounds(340);
+                var minW = splitSideBySide() ? 240 : workspaceDockWidthBounds(340).min;
+                var maxW = (splitSideBySide() && typeof _btwTotalBudget === 'function')
+                    ? Math.max(240, _btwTotalBudget().maxCombined - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--btw-split-w')) || 280) - 8)
+                    : workspaceDockWidthBounds(340).max;
                 var current = currentWidth();
                 var next = current;
-                if (event.key === 'Home') next = bounds.min;
-                else if (event.key === 'End') next = bounds.max;
+                if (event.key === 'Home') next = minW;
+                else if (event.key === 'End') next = maxW;
                 else next += (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 50 : 20);
                 setWidth(next);
+                if (splitSideBySide() && typeof _saveBtwLayout === 'function') _saveBtwLayout();
                 event.preventDefault();
             });
             var initialBounds = workspaceDockWidthBounds(340);
             var initialWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--utility-dock-w')) || 420;
             setWidth(Math.min(initialBounds.max, Math.max(initialBounds.min, initialWidth)));
-            window.addEventListener('resize', function() { setWidth(currentWidth()); });
-            window.addEventListener('proseview:workspace-metrics', function() { setWidth(currentWidth()); });
+            window.addEventListener('resize', function() {
+                if (splitSideBySide() && typeof _applyBtwSplitDimensions === 'function') _applyBtwSplitDimensions(currentWidth(), parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--btw-split-w')) || 280);
+                else setWidth(currentWidth());
+            });
+            window.addEventListener('proseview:workspace-metrics', function() {
+                if (splitSideBySide() && typeof _applyBtwSplitDimensions === 'function') _applyBtwSplitDimensions(currentWidth(), parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--btw-split-w')) || 280);
+                else setWidth(currentWidth());
+            });
         })();

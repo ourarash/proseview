@@ -880,6 +880,11 @@
                 <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
                 <div id="discussTaskMode" class="discuss-task-mode" hidden></div>
                 <div id="discussSkillsPicker" class="discuss-skills-picker" hidden></div>
+                <div id="discussBtwHint" class="discuss-btw-hint" hidden>
+                    <span class="discuss-btw-badge">/btw</span>
+                    <span class="discuss-btw-hint-text">Side tab · Opens in right split</span>
+                    <span class="discuss-btw-hint-note">Off main chat</span>
+                </div>
                 <label class="sr-only" id="discussInputLabel" for="discussInput">Ask about your project</label>
                 <div class="discuss-input-wrap"><div id="discussInputMirror" class="discuss-input-mirror" aria-hidden="true"></div>
                 <textarea id="discussInput" rows="3" maxlength="32768" aria-describedby="discussHint" placeholder="Ask anything about your story…" aria-autocomplete="list" aria-controls="discussContextOptions" aria-expanded="false"></textarea></div>
@@ -899,11 +904,37 @@
                         </div>
                     </div>
                     <div id="discussSees" class="discuss-sees-slot"></div>
-                    <button id="discussSend" type="button" onclick="sendDiscussQuestion()" title="Send (Enter) · Shift+Enter for a new line">Send</button>
+                    <div class="discuss-send-actions">
+                        <button id="discussSendNow" type="button" class="discuss-send-now" onclick="sendDiscussQuestion({mode: 'now'})" title="Send now (⌘/Ctrl+Enter)" hidden>Send now</button>
+                        <button id="discussSend" type="button" onclick="sendDiscussQuestion()" title="Send (Enter) · Shift+Enter for a new line">Send</button>
+                    </div>
                 </div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
             </div>
         </div>
+        <div id="btwResizeHandle" class="btw-resize-handle" role="separator" tabindex="0" aria-label="Resize side question panel" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="560" aria-valuenow="340" hidden></div>
+        <section id="btwSplitPane" class="btw-split-pane" aria-label="Side questions" hidden>
+            <header class="btw-split-header">
+                <div class="btw-split-title-group">
+                    <span class="discuss-btw-badge">/btw</span>
+                    <span class="btw-split-title">Side questions</span>
+                </div>
+                <div class="btw-split-header-actions">
+                    <button id="btwNewTabBtn" type="button" class="btw-split-close-all" onclick="newBtwTab()" title="Open a new side question tab">+ New</button>
+                    <button id="btwCloseAll" type="button" class="btw-split-close-all" onclick="closeAllBtwTabs()" title="Close side panel">Close</button>
+                </div>
+            </header>
+            <div id="btwTabsBar" class="btw-tabs-bar" role="tablist" aria-label="Open side questions"></div>
+            <div id="btwTabPanel" class="btw-tab-panel" role="tabpanel"></div>
+            <div id="btwComposerArea" class="btw-composer-area">
+                <label class="sr-only" for="btwInput">Ask or follow up in this side question</label>
+                <textarea id="btwInput" rows="2" maxlength="32768" placeholder="Follow up in this tab… (Enter to ask · Shift+Enter newline)"></textarea>
+                <div class="btw-composer-foot">
+                    <span id="btwComposerHint" class="btw-composer-hint">Off the record · Can edit files</span>
+                    <button id="btwSendBtn" type="button" onclick="sendBtwInput()">Ask</button>
+                </div>
+            </div>
+        </section>
     </aside>
     <dialog id="discussNewConversationDialog" class="discuss-context-picker discuss-confirm-dialog" aria-labelledby="discussNewConversationTitle" aria-describedby="discussNewConversationDescription" aria-busy="false">
         <form method="dialog">

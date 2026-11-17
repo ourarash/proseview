@@ -187,8 +187,10 @@ class RoomRuntime:
                 if previous != action:
                     raise RoomRuntimeError("A Room request id was reused for another action")
                 return self._public(room)
+            steer_request: dict[str, Any] | None = None
+            stop_run_id: str | None = None
             if action == "submit":
-                self._submit(room, body)
+                steer_request, stop_run_id = self._submit(room, body)
             elif action == "preset":
                 self._preset(room, body)
             elif action == "remove":
@@ -257,15 +259,22 @@ class RoomRuntime:
                 raise RoomRuntimeError("Unknown Room action")
             room["commands"][request_id] = str(action)
             self._save(room)
-            run_id = (self._active(room) or {}).get("run_id") if action == "stop" else None
+            run_id = (self._active(room) or {}).get("run_id") if action == "stop" else stop_run_id
             if action != "stop":
                 self._start_worker(key)
             result = self._public(room)
+        if steer_request is not None:
+            fallback_stop_id = self._execute_steer(key, steer_request)
+            with self.lock:
+                room = self.rooms[key]
+                result = self._public(room)
+            if fallback_stop_id:
+                run_id = fallback_stop_id
         if run_id:
             self.manager.stop_room_turn(run_id)
         return result
 
-    def _submit(self, room: dict[str, Any], body: dict[str, Any]) -> None:
+    def _submit(self, room: dict[str, Any], body: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         text = body.get("text")
         if not isinstance(text, str) or not text.strip():
             raise RoomRuntimeError("A Room message cannot be empty")
@@ -291,13 +300,111 @@ class RoomRuntime:
         live_document = body.get("live_document")
         self.manager._validated_live_document({"kind": "scene", "path": scene}, live_document)
         choices = self._review_choices(body)
-        for index, seat in enumerate(seats):
-            room["steps"].append({"id": uuid.uuid4().hex, "message_id": mid, "seat": seat,
-                "state": "queued", "scene": scene, "text": text, "authored": str(body.get("authored") or re.split(r"\n\nSelected passage(?:\s*\([^)\n]*\))?:\n", text, maxsplit=1)[0]),
-                "settle_reviews": index == 0, "review_choices": copy.deepcopy(choices) if index == 0 else [],
-                "live_document": copy.deepcopy(live_document), "attachments": copy.deepcopy(body.get("attachments") or []), "kind": "message"})
-        if room["status"] == "idle":
+        authored = str(body.get("authored") or re.split(r"\n\nSelected passage(?:\s*\([^)\n]*\))?:\n", text, maxsplit=1)[0])
+        attachments = copy.deepcopy(body.get("attachments") or [])
+        created_at = body.get("created_at") or time.time()
+        steps = [
+            {"id": uuid.uuid4().hex, "message_id": mid, "seat": seat,
+             "state": "queued", "scene": scene, "text": text, "authored": authored,
+             "settle_reviews": index == 0, "review_choices": copy.deepcopy(choices) if index == 0 else [],
+             "live_document": copy.deepcopy(live_document), "attachments": copy.deepcopy(attachments),
+             "created_at": created_at, "kind": "message"}
+            for index, seat in enumerate(seats)
+        ]
+        immediate = bool(body.get("immediate")) or body.get("mode") == "now"
+        if not immediate:
+            room["steps"].extend(steps)
+            if room["status"] == "idle":
+                room["error"] = ""
+            return None, None
+
+        active = self._active(room)
+        if active and active["state"] in ("running", "interrupting"):
+            if active.get("kind") == "message" and active.get("message_id"):
+                for queued in room["steps"]:
+                    if queued["state"] == "queued" and queued.get("message_id") == active["message_id"]:
+                        queued["state"] = "cancelled"
+            insert_at = room["steps"].index(active) + 1
+            active_agent = room["participants"][active["seat"] - 1]["agent"]
+            can_steer = active["state"] == "running" and active_agent == "codex" and seats[0] == active["seat"]
+            if can_steer:
+                # Steer injects into the active Codex turn: show the writer's
+                # message immediately and queue any second tagged seat right behind.
+                active["steered"] = True
+                room["turns"].append({
+                    "role": "user", "label": "Me (Writer)", "scene": scene, "text": text,
+                    "message_id": mid, "attachments": copy.deepcopy(attachments), "created_at": created_at,
+                })
+                room["steps"][insert_at:insert_at] = steps[1:]
+                return {
+                    "active_id": active["id"],
+                    "run_id": active.get("run_id") or "",
+                    "seat": active["seat"],
+                    "scene": scene,
+                    "text": text,
+                    "authored": authored,
+                    "attachments": copy.deepcopy(attachments),
+                    "message_id": mid,
+                    "fallback_step": steps[0],
+                }, None
+            active["superseded"] = True
+            room["steps"][insert_at:insert_at] = steps
+            stop_run_id = None
+            if active["state"] == "running":
+                active["state"] = "interrupting"
+                stop_run_id = active.get("run_id") or None
             room["error"] = ""
+            room["notice"] = ""
+            return None, stop_run_id
+
+        if active and active["state"] == "interrupted":
+            active["state"] = "cancelled"
+            room["active_step"] = ""
+        first_queued = next((i for i, queued in enumerate(room["steps"]) if queued["state"] == "queued"), len(room["steps"]))
+        room["steps"][first_queued:first_queued] = steps
+        room["status"] = "idle"
+        room["error"] = ""
+        room["notice"] = ""
+        return None, None
+
+    def _execute_steer(self, key: str, steer_request: dict[str, Any]) -> str | None:
+        ok = self.manager.steer_room_turn(
+            steer_request["run_id"],
+            scene=steer_request["scene"],
+            text=steer_request["text"],
+            authored=steer_request["authored"],
+            seat=steer_request["seat"],
+            attachments=steer_request["attachments"],
+            message_id=steer_request["message_id"],
+        )
+        if ok:
+            return None
+        fallback_stop_id: str | None = None
+        with self.lock:
+            room = self.rooms.get(key)
+            if room is None:
+                return None
+            mid = steer_request["message_id"]
+            # Undo optimistic user turn so the fallback step emits it in true turn order.
+            room["turns"] = [turn for turn in room["turns"] if turn.get("message_id") != mid]
+            active = next((step for step in room["steps"] if step["id"] == steer_request["active_id"]), None)
+            follow_idx = next((i for i, step in enumerate(room["steps"]) if step.get("message_id") == mid), None)
+            if active is not None and active["state"] == "running" and active.get("run_id") == steer_request["run_id"]:
+                active.pop("steered", None)
+                active["superseded"] = True
+                active["state"] = "interrupting"
+                insert_at = follow_idx if follow_idx is not None else room["steps"].index(active) + 1
+                room["steps"].insert(insert_at, steer_request["fallback_step"])
+                fallback_stop_id = steer_request["run_id"] or None
+            else:
+                insert_at = follow_idx if follow_idx is not None else next(
+                    (i for i, step in enumerate(room["steps"]) if step["state"] == "queued"),
+                    len(room["steps"]),
+                )
+                room["steps"].insert(insert_at, steer_request["fallback_step"])
+                self._start_worker(key)
+            self._save(room)
+        return fallback_stop_id
 
     @staticmethod
     def _review_choices(body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -469,6 +576,8 @@ class RoomRuntime:
                     self._finish(room, step, result)
                     native = self.manager._room_threads.get(seat_key)
                     if native:
+                        if step.get("steered"):
+                            native["seen"] = len(room["turns"])
                         room["native_threads"][str(step["seat"])] = copy.deepcopy(native)
                     self._save(room)
                     if room["status"] != "idle":
@@ -478,6 +587,18 @@ class RoomRuntime:
                     if self.closing:
                         return
                     room = self.rooms[key]
+                    if step.get("superseded"):
+                        step["state"] = "cancelled"
+                        try:
+                            self._attach_interrupted_review(room, step)
+                        except Exception as review_error:
+                            room["notice"] = "The interrupted review could not be restored: " + str(review_error)
+                        room["active_step"] = ""
+                        room["status"] = "idle"
+                        room["notice"] = ""
+                        room["error"] = ""
+                        self._save(room)
+                        continue
                     step["state"] = "interrupted"
                     # Failures are visible recovery choices, not an invitation
                     # that can disappear from an otherwise open conversation.
@@ -493,7 +614,7 @@ class RoomRuntime:
                 self.context.room_id = self.context.step_id = ""
 
     def _finish(self, room: dict[str, Any], step: dict[str, Any], result: dict[str, Any]) -> None:
-        was_paused = room["status"] == "paused"
+        was_paused = room["status"] == "paused" and not step.get("superseded")
         step["state"] = "passed" if result.get("passed") else "completed"
         profile = room["participants"][step["seat"] - 1]
         if not any(turn.get("step_id") == step["id"] and turn["role"] == "critic" for turn in room["turns"]):

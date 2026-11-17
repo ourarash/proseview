@@ -5115,6 +5115,7 @@
 
         html {
             --utility-dock-w: clamp(340px, 28vw, 540px);
+            --btw-split-w: 290px;
         }
 
         /* ── Discuss / shared right utility dock ─────────────────────────── */
@@ -8517,6 +8518,38 @@
             font-size: 10px;
         }
 
+        .discuss-send-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+            margin-left: auto;
+        }
+
+        #discussSendNow {
+            border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+            border-radius: 7px;
+            padding: 6px 11px;
+            background: color-mix(in srgb, var(--primary) 12%, var(--surface-card));
+            color: var(--text-main);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #discussSendNow[hidden] {
+            display: none;
+        }
+
+        #discussSendNow:disabled,
+        #discussSendNow[data-empty="true"] {
+            opacity: .55;
+            cursor: default;
+            pointer-events: none;
+        }
+
         #discussSend {
             border: 0;
             border-radius: 7px;
@@ -8816,7 +8849,8 @@
             min-height: 52px;
         }
 
-        html[data-css-zoom="true"] #discussSend {
+        html[data-css-zoom="true"] #discussSend,
+        html[data-css-zoom="true"] #discussSendNow {
             padding: 4px 10px;
         }
 
@@ -15485,6 +15519,34 @@
             resize: none;
         }
 
+        .room-send-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+
+        .room-send-now-btn {
+            background: color-mix(in srgb, var(--primary) 12%, var(--bg-card, var(--surface-card)));
+            border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+            color: var(--text-main, var(--text-primary));
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .room-send-now-btn[hidden] {
+            display: none;
+        }
+
+        .room-send-now-btn:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+
         .room-send-btn {
             background: var(--bg-card, var(--surface-card));
             border: 1px solid var(--border);
@@ -15810,7 +15872,8 @@
             margin-left: auto;
         }
 
-        .room-send-row>.room-send-btn {
+        .room-send-row>.room-send-btn,
+        .room-send-row>.room-send-actions {
             margin-left: auto;
         }
 
@@ -17396,4 +17459,498 @@
         .beatmap-inline-progress-wrap {
             width: 100%;
             box-sizing: border-box;
+        }
+
+        /* ── /btw ephemeral split pane (right of Codex/Claude chat) ─────────── */
+        .discuss-btw-hint {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+            padding: 5px 8px;
+            border-radius: 7px;
+            border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border));
+            background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
+            font-size: 11px;
+            color: var(--text-main);
+        }
+
+        .discuss-btw-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 6px;
+            border-radius: 5px;
+            background: var(--primary);
+            color: var(--text-inverse);
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            flex: 0 0 auto;
+        }
+
+        .discuss-btw-hint-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .discuss-btw-hint-note {
+            flex: 0 0 auto;
+            color: var(--text-muted);
+            font-size: 10.5px;
+        }
+
+        body.discuss-open.btw-split-open:not(.btw-split-stacked) {
+            margin-right: calc(var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px);
+        }
+
+        .discuss-panel.has-btw-split:not(.is-stacked) {
+            width: calc(var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px);
+        }
+
+        .discuss-panel.has-btw-split:not(.is-stacked) .discuss-shell {
+            flex: 1 1 0;
+            min-width: 240px;
+            width: var(--btw-main-w, var(--utility-dock-w));
+        }
+
+        @media (min-width: 1121px) {
+            html:not([data-sidebar="closed"]) body.discuss-open.btw-split-open:not(.btw-split-stacked) {
+                width: calc(100vw - var(--sidebar-w) - (var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px));
+            }
+
+            html[data-sidebar="closed"] body.discuss-open.btw-split-open:not(.btw-split-stacked) {
+                width: calc(100vw - (var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px));
+            }
+        }
+
+        @media (max-width: 1120px) {
+            body.discuss-open.btw-split-open:not(.btw-split-stacked) {
+                width: calc(100vw - (var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px)) !important;
+            }
+
+            .discuss-panel.has-btw-split:not(.is-stacked) {
+                width: calc(var(--btw-main-w, var(--utility-dock-w)) + var(--btw-split-w) + 8px);
+            }
+        }
+
+        .btw-resize-handle {
+            width: 8px;
+            flex: 0 0 8px;
+            cursor: ew-resize;
+            background: var(--border);
+            position: relative;
+            z-index: 6;
+            transition: background 0.15s;
+        }
+
+        .btw-resize-handle::after {
+            content: '';
+            position: absolute;
+            inset: 0 3px;
+            background: var(--primary);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .btw-resize-handle:hover::after,
+        .btw-resize-handle.is-dragging::after,
+        .btw-resize-handle:focus-visible::after {
+            opacity: 0.65;
+        }
+
+        .btw-resize-handle:focus-visible {
+            outline: none;
+        }
+
+        .btw-split-pane {
+            width: var(--btw-split-w);
+            min-width: 220px;
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: var(--surface-card);
+        }
+
+        .btw-split-header {
+            height: 49px;
+            min-height: 49px;
+            max-height: 49px;
+            box-sizing: border-box;
+            padding: 0 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: var(--surface-card);
+        }
+
+        .btw-split-title-group {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+
+        .btw-split-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btw-split-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 0 0 auto;
+        }
+
+        .btw-composer-area {
+            flex: 0 0 auto;
+            border-top: 1px solid var(--border);
+            padding: 8px 10px 10px;
+            background: var(--surface-card);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        #btwInput {
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 44px;
+            max-height: 140px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 9px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 12.5px;
+            line-height: 1.45;
+        }
+
+        #btwInput:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btw-composer-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .btw-composer-hint {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #btwSendBtn {
+            border: 0;
+            border-radius: 7px;
+            padding: 5px 12px;
+            background: var(--primary);
+            color: var(--text-inverse);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        #btwSendBtn:disabled {
+            opacity: 0.55;
+            cursor: default;
+        }
+
+        .btw-exchange {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .btw-empty-hint {
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            background: var(--surface-card);
+        }
+
+        .btw-split-close-all {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-card);
+            color: var(--text-soft);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 500;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+
+        .btw-split-close-all:hover {
+            background: var(--button-hover);
+            color: var(--text-main);
+        }
+
+        .btw-tabs-bar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-app);
+            overflow-x: auto;
+            flex: 0 0 auto;
+        }
+
+        .btw-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            max-width: 175px;
+            padding: 2px 4px 2px 2px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--surface-card);
+            color: var(--text-soft);
+            font: inherit;
+            font-size: 11px;
+            flex: 0 0 auto;
+        }
+
+        .btw-tab-select {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            padding: 2px 4px 2px 6px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .btw-tab:hover {
+            border-color: var(--border-strong);
+            color: var(--text-main);
+        }
+
+        .btw-tab.active {
+            border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+            background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .btw-tab-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--text-muted);
+            flex: 0 0 auto;
+        }
+
+        .btw-tab[data-status="running"] .btw-tab-dot {
+            background: var(--primary);
+            animation: pulseDot 1.2s ease-in-out infinite;
+        }
+
+        .btw-tab[data-status="completed"] .btw-tab-dot {
+            background: var(--success);
+        }
+
+        .btw-tab[data-status="error"] .btw-tab-dot {
+            background: var(--danger);
+        }
+
+        .btw-tab-label {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .btw-tab-close {
+            border: 0;
+            background: transparent;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 13px;
+            line-height: 1;
+            padding: 0 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        .btw-tab-close:hover {
+            background: var(--surface-muted);
+            color: var(--text-main);
+        }
+
+        .btw-tab-panel {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 12px;
+            gap: 10px;
+            background: var(--bg-app);
+        }
+
+        .btw-question-box {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            padding: 9px 11px;
+        }
+
+        .btw-question-kicker {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            font-size: 10.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .btw-question-text {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-main);
+            line-height: 1.45;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .btw-answer-card {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.55;
+            color: var(--text-main);
+        }
+
+        .btw-answer-card.is-error {
+            border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+            background: var(--surface-danger);
+        }
+
+        .btw-status-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .btw-error-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .btw-meta-foot {
+            margin-top: auto;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .discuss-panel.has-btw-split.is-stacked {
+            flex-direction: column;
+        }
+
+        .discuss-panel.has-btw-split.is-stacked .btw-resize-handle {
+            display: none !important;
+        }
+
+        .discuss-panel.has-btw-split.is-stacked .btw-split-pane {
+            width: 100% !important;
+            min-width: 0;
+            height: 44%;
+            border-top: 2px solid var(--border-strong);
+        }
+
+        @media (max-width: 780px) {
+            .discuss-panel.has-btw-split {
+                flex-direction: column;
+                width: min(100vw, 540px) !important;
+            }
+
+            .discuss-panel.has-btw-split .btw-resize-handle {
+                display: none !important;
+            }
+
+            .discuss-panel.has-btw-split .btw-split-pane {
+                width: 100% !important;
+                min-width: 0;
+                height: 44%;
+                border-top: 2px solid var(--border-strong);
+            }
+        }
+
+        html[data-utility-overlay="true"] body.discuss-open.btw-split-open,
+        html[data-css-zoom="true"] body.discuss-open.btw-split-open {
+            margin-right: var(--css-zoom-dock-width);
+        }
+
+        html[data-utility-overlay="true"] body.discuss-open.btw-split-open {
+            margin-right: 0;
+        }
+
+        html[data-utility-overlay="true"] .discuss-panel.has-btw-split,
+        html[data-css-zoom="true"] .discuss-panel.has-btw-split {
+            flex-direction: column;
+            width: var(--css-zoom-dock-width);
+        }
+
+        html[data-utility-overlay="true"] .discuss-panel.has-btw-split {
+            width: var(--css-zoom-body-width);
+        }
+
+        html[data-utility-overlay="true"] .discuss-panel.has-btw-split .btw-resize-handle,
+        html[data-css-zoom="true"] .discuss-panel.has-btw-split .btw-resize-handle {
+            display: none !important;
+        }
+
+        html[data-utility-overlay="true"] .discuss-panel.has-btw-split .btw-split-pane,
+        html[data-css-zoom="true"] .discuss-panel.has-btw-split .btw-split-pane {
+            width: 100% !important;
+            min-width: 0;
+            height: 42%;
+            border-top: 2px solid var(--border-strong);
         }

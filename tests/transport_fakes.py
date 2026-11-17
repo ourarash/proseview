@@ -48,12 +48,16 @@ class CodexFakeClient:
         self.turn_params: list[dict] = []
         self.responses: list[tuple[object, dict]] = []
         self.interrupts: list[dict] = []
+        self.steers: list[dict] = []
+        self.forks: list[dict] = []
         self.active = 0
         self.max_active = 0
         self.turn_start_attempts = 0
         self.finish_delay = 0.04
         self.hold_next_turn = False
         self.interrupt_error: BaseException | None = None
+        self.steer_error: BaseException | None = None
+        self.fork_error: BaseException | None = None
         self.complete_turn_before_interrupt_error = False
         self.reject_turn_starts = False
         self.invalid_continuity_result = False
@@ -99,6 +103,17 @@ class CodexFakeClient:
             self.thread_start_params = getattr(self, "thread_start_params", []) + [dict(params)]
             self.next_thread += 1
             thread = {"id": f"thread-{self.next_thread}", "turns": []}
+            self.threads[thread["id"]] = thread
+            return {"thread": thread}
+        if method == "thread/fork":
+            self.forks.append(dict(params))
+            if self.fork_error is not None:
+                raise self.fork_error
+            parent = self.threads.get(params.get("threadId"))
+            if parent is None:
+                raise CodexRequestError(f"thread not found: {params.get('threadId')}", code=-32004)
+            self.next_thread += 1
+            thread = {"id": f"thread-{self.next_thread}", "turns": list(parent.get("turns") or []), "forkedFrom": parent["id"]}
             self.threads[thread["id"]] = thread
             return {"thread": thread}
         if method == "turn/start":
@@ -227,6 +242,11 @@ class CodexFakeClient:
             ]}
         if method == "config/read":
             return {"config": dict(self.config)}
+        if method == "turn/steer":
+            self.steers.append(dict(params))
+            if self.steer_error is not None:
+                raise self.steer_error
+            return {"turnId": params.get("expectedTurnId") or "turn-1"}
         if method == "turn/interrupt":
             self.interrupts.append(dict(params))
             if self.complete_turn_before_interrupt_error:
@@ -277,11 +297,13 @@ class ClaudeFakeClient:
         self.turn_params: list[dict] = []
         self.responses: list[tuple[object, dict]] = []
         self.interrupts: list[dict] = []
+        self.forks: list[dict] = []
         self.approvals: list[dict] = []
         self.finish_delay = 0.04
         self.hold_next_turn = False
         self.reject_turn_starts = False
         self.interrupt_error: BaseException | None = None
+        self.fork_error: BaseException | None = None
         self.capabilities = {
             "reasoning_summary": True,
             "approval_decisions": {
@@ -372,6 +394,17 @@ class ClaudeFakeClient:
             thread = {"id": f"claude-thread-{self.next_thread}", "turns": []}
             self.threads[thread["id"]] = thread
             return {"thread": thread}
+        if method == "thread/fork":
+            self.forks.append(dict(params))
+            if self.fork_error is not None:
+                raise self.fork_error
+            parent = self.threads.get(params.get("threadId"))
+            if parent is None:
+                raise ClaudeRequestError(f"thread not found: {params.get('threadId')}", code=-32004)
+            self.next_thread += 1
+            thread = {"id": f"claude-thread-{self.next_thread}", "turns": list(parent.get("turns") or []), "forkedFrom": parent["id"]}
+            self.threads[thread["id"]] = thread
+            return {"thread": thread}
         if method == "turn/start":
             if self.reject_turn_starts or params["threadId"] not in self.threads:
                 raise ClaudeRequestError(f"thread not found: {params['threadId']}", code=-32004)
@@ -403,6 +436,11 @@ class ClaudeFakeClient:
 
             threading.Timer(self.finish_delay, finish).start()
             return {"turn": {"id": turn_id}}
+        if method == "turn/steer":
+            self.steers.append(dict(params))
+            if self.steer_error is not None:
+                raise self.steer_error
+            return {"turnId": params.get("expectedTurnId") or "turn-1"}
         if method == "turn/interrupt":
             self.interrupts.append(dict(params))
             if self.interrupt_error is not None:

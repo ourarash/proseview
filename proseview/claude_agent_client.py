@@ -376,6 +376,8 @@ class _Session:
         #: True once a turn has run, so later turns resume the session rather
         #: than trying to name one that already exists.
         self.started = False
+        #: Non-empty when this session was forked from a parent conversation.
+        self.fork_from_session_id = ""
         #: What this session's live client was actually connected with. The
         #: model can be changed on a running session; the effort cannot, so a
         #: change to it has to be noticed here and reconnected.
@@ -553,6 +555,7 @@ class ClaudeAgentClient:
             # Thinking is summarised into progress rather than forwarded raw.
             "reasoning_summary": True,
             "restricted_read_access": True,
+            "thread_fork": True,
             "stable_discuss_protocol": True,
             "approval_decisions": {
                 "command": list(APPROVAL_DECISIONS),
@@ -585,6 +588,7 @@ class ClaudeAgentClient:
         params = params or {}
         handlers = {
             "thread/start": self._handle_thread_start,
+            "thread/fork": self._handle_thread_fork,
             "turn/start": self._handle_turn_start,
             "turn/interrupt": self._handle_turn_interrupt,
             "thread/read": self._handle_thread_read,
@@ -610,6 +614,31 @@ class ClaudeAgentClient:
             self._sessions[thread_id] = session
             self._evict_idle_locked()
         return {"thread": {"id": thread_id}}
+
+    def _handle_thread_fork(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
+        """Fork an existing Claude session into an isolated read-only branch."""
+        parent_thread_id = str(params.get("threadId") or "").strip()
+        if not parent_thread_id:
+            raise ClaudeRequestError("thread not found", code=-32004)
+        with self._lock:
+            parent = self._sessions.get(parent_thread_id)
+            has_in_memory = bool(parent and parent.started)
+            resume_id = (parent.session_id if parent and parent.session_id else "") or parent_thread_id
+        if not has_in_memory:
+            # Verify the parent thread actually exists in Claude's store before
+            # promising a fork; otherwise the caller falls back to seeded context.
+            read_result = self._submit(self._read_session(parent_thread_id), timeout=timeout)
+            if not read_result.get("turns"):
+                raise ClaudeRequestError("thread not found", code=-32004)
+        thread_id = str(uuid.uuid4())
+        session = _Session(thread_id)
+        session.thread_params = dict(params)
+        session.fork_from_session_id = resume_id
+        session.started = True
+        with self._lock:
+            self._sessions[thread_id] = session
+            self._evict_idle_locked()
+        return {"thread": {"id": thread_id, "forkedFrom": parent_thread_id}}
 
     def _handle_turn_start(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
         thread_id = str(params.get("threadId") or "")
@@ -809,23 +838,29 @@ class ClaudeAgentClient:
         schema = params.get("outputSchema")
         if schema:
             options["output_format"] = {"type": "json_schema", "schema": schema}
-        if session.started:
+        if session.fork_from_session_id:
+            options["resume"] = session.fork_from_session_id
+            options["fork_session"] = True
+        elif session.started:
             options["resume"] = session.thread_id
         else:
             options["session_id"] = session.thread_id
-        # A one-off request (a highlight suggestion): the tools it was given,
-        # all of them read-only, only the MCP servers switched on for it, and
-        # no transcript left behind for Claude Code's own history.
+        # Ephemeral requests (/btw side questions and highlight suggestions):
+        # keep session transcripts ephemeral (`no-session-persistence`) and only
+        # strip write tools when allowWrite is not set.
         if session.thread_params.get("ephemeral"):
-            tools = [str(t) for t in session.thread_params.get("tools") or [] if t not in WRITE_TOOLS]
+            raw_tools = [str(t) for t in session.thread_params.get("tools") or []]
+            allow_write = bool(session.thread_params.get("allowWrite"))
+            tools = raw_tools if allow_write else [t for t in raw_tools if t not in WRITE_TOOLS]
             options["tools"] = tools
             options["allowed_tools"] = list(tools)
             options["max_turns"] = 12 if tools else 3
             sources = session.thread_params.get("settingSources")
             if isinstance(sources, list):
                 options["setting_sources"] = [str(x) for x in sources]
+            extra_args: dict[str, Any] = {"no-session-persistence": None, "strict-mcp-config": None}
             options["mcp_servers"] = dict(session.thread_params.get("mcpServers") or {})
-            options["extra_args"] = {"no-session-persistence": None, "strict-mcp-config": None}
+            options["extra_args"] = extra_args
         if self._options_factory is not None:
             return self._options_factory(hooks={"PreToolUse": [pre_tool_use]}, **options)
 
@@ -948,6 +983,8 @@ class ClaudeAgentClient:
                 self._emit("error", {**common, "message": LOGIN_EXPIRED, "command": LOGIN_COMMAND})
                 # The CLI behind this session gave up on its login. The next
                 # turn starts a fresh one, which reads the login made since.
+                await self._disconnect(session)
+            elif session.thread_params.get("ephemeral"):
                 await self._disconnect(session)
             session.busy = False
             session.turn_id = ""

@@ -2331,6 +2331,10 @@ class _OneOff:
         self.started_at = time.monotonic()
         #: Stops the turn on the agent's side, once it has started.
         self.interrupt: Any = None
+        #: Injects follow-up user input into an active Codex turn.
+        self.steer: Any = None
+        #: Optional live listener invoked with translated transport events.
+        self.on_event: Callable[[dict[str, Any]], None] | None = None
         self.conversation: _Conversation | None = None
 
     def receive(self, event: dict[str, Any]) -> None:
@@ -2366,6 +2370,8 @@ class _OneOff:
             self.status = str(event.get("status") or "completed")
             self.error = self.error or str(event.get("error") or "")
             self.done.set()
+        if self.on_event is not None:
+            self.on_event(event)
 
 
 class DiscussManager:
@@ -2396,6 +2402,13 @@ class DiscussManager:
     #: network access and no per-search approval). Claude ignores this; its
     #: web tools ask each time.
     THREAD_CONFIG = {"web_search": "live"}
+    SIDE_DEVELOPER_INSTRUCTIONS = (
+        "You are answering a side conversation (/btw) in Prosview on an ephemeral branch separate from "
+        "the writer's main conversation transcript. Answer concisely and directly from the conversation context "
+        "and repository files, and edit files directly when the writer asks you to."
+    )
+    SIDE_CLAUDE_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit", "NotebookEdit"]
+    SIDE_TIMEOUT = 180.0
 
     def __init__(self, root: Path, *, client_factory: Any | None = None) -> None:
         self.root = root.resolve()
@@ -2424,6 +2437,9 @@ class DiscussManager:
         #: One-off requests (highlight suggestions) by thread key. They live
         #: outside every conversation: nothing here reaches a chat or History.
         self._one_offs: dict[str, _OneOff] = {}
+        #: Ephemeral /btw side-question turns in flight, by side_question_id.
+        self._side_runs: dict[str, _OneOff] = {}
+        self._side_lock = threading.Lock()
         #: Writers' Room turns in flight, by the browser's run id.
         self._room_runs: dict[str, _OneOff] = {}
         #: Each critic's ongoing conversation in a debate, by "debate:seat", so a
@@ -3832,6 +3848,7 @@ class DiscussManager:
         skill: dict[str, Any] | None = None,
         retry_of_task_id: str = "",
         verify_of_task_id: str = "",
+        immediate: bool = False,
     ) -> dict[str, Any]:
         conversation = self._get(conversation_id)
         request_id = str(client_request_id or "").strip()
@@ -4006,6 +4023,64 @@ class DiscussManager:
         result = {"accepted": True, "client_request_id": request_id, "status": "queued"}
         if task:
             result["task_id"] = task["id"]
+        steer_target: tuple[Any, str, str] | None = None
+        if immediate and not task and not action_id:
+            with conversation.lock:
+                existing = conversation.request_ids.get(request_id)
+                if existing is not None:
+                    return dict(existing)
+                if (
+                    conversation.agent == "codex"
+                    and not conversation.active_task_id
+                    and conversation.active_turn_id
+                    and conversation.thread_id
+                ):
+                    steer_client = self._clients.get(conversation.agent)
+                    if steer_client is not None:
+                        steer_target = (steer_client, conversation.thread_id, conversation.active_turn_id)
+        if steer_target is not None:
+            steer_client, steer_thread_id, steer_turn_id = steer_target
+            steer_input: list[dict[str, Any]] = [{"type": "text", "text": bundle.prompt}]
+            if skill_item:
+                steer_input.append({"type": "skill", **skill_item})
+            steer_params = {
+                "threadId": steer_thread_id,
+                "expectedTurnId": steer_turn_id,
+                "input": steer_input,
+                "clientUserMessageId": request_id,
+            }
+            try:
+                steer_response = steer_client.request("turn/steer", steer_params)
+            except Exception as exc:
+                from .claude_agent_client import ClaudeError
+                from .codex_app_server import CodexError
+
+                if not isinstance(exc, (CodexError, ClaudeError)):
+                    raise
+            else:
+                steered_id = str(steer_response.get("turnId") or steer_turn_id)
+                steer_payload = {
+                    "accepted": True,
+                    "client_request_id": request_id,
+                    "status": "steered",
+                    "turn_id": steered_id,
+                }
+                with conversation.lock:
+                    existing = conversation.request_ids.get(request_id)
+                    if existing is not None:
+                        return dict(existing)
+                    conversation.document = dict(turn_document)
+                    if may_write:
+                        conversation.active_may_write = True
+                    user_text = self._format_user_message_text(bundle, action_id, selection)
+                    self._insert_user_message(
+                        conversation, user_text, request_id, front=True, steered_turn_id=steer_turn_id
+                    )
+                    conversation.request_ids[request_id] = steer_payload
+                conversation.publish("turn.steered", steer_payload)
+                return steer_payload
+
+        stop_target: tuple[Any, str, str, threading.Event | None] | None = None
         with conversation.lock:
             existing = conversation.request_ids.get(request_id)
             if existing is not None:
@@ -4024,29 +4099,471 @@ class DiscussManager:
                     raise ContextError("this selection assistance attempt has already been retried")
                 parent["superseded_by"] = task["id"]
             conversation.document = dict(turn_document)
-            conversation.pending.append(_QueuedQuestion(
+            queued_item = _QueuedQuestion(
                 request_id, bundle, dict(turn_document), task["id"] if task else None,
                 output_schema, skill_item, may_write,
-            ))
+            )
+            if immediate:
+                conversation.pending.appendleft(queued_item)
+            else:
+                conversation.pending.append(queued_item)
             conversation.request_ids[request_id] = result
             if task:
                 conversation.tasks[task["id"]] = task
             else:
-                user_text = bundle.question
-                if not action_id and selection and not _SELECTED_PASSAGE_SPLIT_RE.search(user_text):
-                    clean = selection.strip()
-                    if clean:
-                        quoted = "\n".join(f"> {line}" for line in clean.splitlines())
-                        user_text = f"{user_text}\n\nSelected passage:\n{quoted}"
-                conversation.messages.append({
-                    "role": "user",
-                    "text": user_text,
-                    "client_request_id": request_id,
-                    "created_at": time.time(),
-                })
+                user_text = self._format_user_message_text(bundle, action_id, selection)
+                self._insert_user_message(conversation, user_text, request_id, front=immediate)
+            if immediate and conversation.active_turn_id and conversation.thread_id:
+                stop_client = self._clients.get(conversation.agent)
+                if stop_client is not None:
+                    stop_target = (stop_client, conversation.thread_id, conversation.active_turn_id, conversation.active_done)
             self._ensure_worker(conversation)
-        conversation.publish("turn.queued", result)
+        conversation.publish("turn.queued", {**result, "immediate": True} if immediate else result)
+        if stop_target is not None:
+            self._interrupt_active_turn(conversation, *stop_target)
         return result
+
+    @staticmethod
+    def _format_user_message_text(bundle: ContextBundle, action_id: str, selection: str) -> str:
+        user_text = bundle.question
+        if not action_id and selection and not _SELECTED_PASSAGE_SPLIT_RE.search(user_text):
+            clean = selection.strip()
+            if clean:
+                quoted = "\n".join(f"> {line}" for line in clean.splitlines())
+                user_text = f"{user_text}\n\nSelected passage:\n{quoted}"
+        return user_text
+
+    @staticmethod
+    def _insert_user_message(
+        conversation: _Conversation,
+        user_text: str,
+        request_id: str,
+        *,
+        front: bool = False,
+        steered_turn_id: str | None = None,
+    ) -> None:
+        entry = {
+            "role": "user",
+            "text": user_text,
+            "client_request_id": request_id,
+            "created_at": time.time(),
+        }
+        if not front:
+            conversation.messages.append(entry)
+            return
+        pending_ids = {item.request_id for item in conversation.pending}
+        insert_at = len(conversation.messages)
+        for index, message in enumerate(conversation.messages):
+            if message.get("role") == "user" and message.get("client_request_id") in pending_ids:
+                insert_at = index
+                break
+            if (
+                steered_turn_id
+                and conversation.active_turn_id != steered_turn_id
+                and message.get("role") == "assistant"
+                and message.get("turn_id") == steered_turn_id
+                and message.get("phase") == "final_answer"
+            ):
+                insert_at = index
+                break
+        conversation.messages.insert(insert_at, entry)
+
+    @staticmethod
+    def _format_side_prior_turns(prior_turns: list[dict[str, Any]] | None) -> str:
+        """Format previous exchanges from an open /btw tab for ephemeral follow-ups."""
+        if not isinstance(prior_turns, list):
+            return ""
+        chunks: list[str] = []
+        budget = 12_000
+        for row in reversed(prior_turns[-8:]):
+            if not isinstance(row, dict):
+                continue
+            q = str(row.get("question") or "").strip()
+            a = str(row.get("answer") or "").strip()
+            if not q and not a:
+                continue
+            part = "\n".join(x for x in (f"Writer: {q}" if q else "", f"You: {a}" if a else "") if x)
+            if len(part) > budget:
+                break
+            chunks.insert(0, part)
+            budget -= len(part)
+        if not chunks:
+            return ""
+        return "EARLIER IN THIS SIDE QUESTION (/btw) TAB\n" + "\n\n".join(chunks) + "\n\n"
+
+    def side_question(
+        self,
+        conversation_id: str,
+        *,
+        client_request_id: str = "",
+        question: str = "",
+        prior_turns: list[dict[str, Any]] | None = None,
+        document: dict[str, Any] | None = None,
+        selection: str = "",
+        live_document: dict[str, Any] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+        skill: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ask an ephemeral, read-only /btw side question in parallel with main work.
+
+        Tries ``thread/fork`` with ``ephemeral=True`` when the parent thread
+        exists, falling back to an ephemeral ``thread/start`` seeded from
+        recent messages. Never writes to ``conversation.messages``,
+        ``conversation.pending``, or persisted thread state.
+        """
+        conversation = self._get(conversation_id)
+        if conversation.agent not in {"codex", "claude"}:
+            raise ContextError("side questions are only supported for single-agent chats")
+        cleaned = re.sub(r"^\s*/btw(?:\s+|$)", "", str(question or ""), count=1, flags=re.IGNORECASE).strip()
+        if not cleaned:
+            raise ContextError("enter a question after /btw")
+        if len(cleaned.encode("utf-8")) > QUESTION_MAX:
+            raise ContextError("side question is too long")
+
+        with conversation.lock:
+            fallback_document = dict(conversation.document)
+            agent = conversation.agent
+            model_selection = dict(conversation.model_selection)
+            parent_thread_id = str(
+                conversation.thread_id
+                or self.state.get(fallback_document["kind"], fallback_document["path"], agent)
+                or ""
+            ).strip()
+
+        turn_document_raw = document if document is not None else fallback_document
+        if not isinstance(turn_document_raw, dict):
+            raise ContextError("document context is required")
+        try:
+            self.context.validate_document(turn_document_raw)
+        except ContextError:
+            if live_document is not None or self.context._document_target(turn_document_raw).exists():
+                raise
+        turn_document = {
+            "kind": str(turn_document_raw.get("kind") or ""),
+            "path": Path(str(turn_document_raw.get("path") or "")).as_posix(),
+        }
+        live_content = self._validated_live_document(turn_document, live_document)
+        skill_item = self._validated_skill(skill, agent=agent) if skill else None
+        bundle = self.context.build_mentions(
+            turn_document,
+            cleaned,
+            selection=selection,
+            mentions=attachments or [],
+            unsaved_content=live_content,
+        )
+        side_id = f"btw-{uuid.uuid4().hex[:12]}"
+        request_id = str(client_request_id or "").strip() or side_id
+        tab_history = self._format_side_prior_turns(prior_turns)
+        seed_history = self._carried_history(
+            conversation,
+            request_id,
+            intro=(
+                "BACKGROUND CONVERSATION\n"
+                "The writer asked a quick side question (/btw). Here is the recent main conversation as read-only background context."
+            ),
+        )
+        one_off = _OneOff()
+        one_off.cancelled = False  # type: ignore[attr-defined]
+        one_off.may_write = True  # type: ignore[attr-defined]
+        with self._side_lock:
+            self._side_runs[side_id] = one_off
+
+        worker = threading.Thread(
+            target=self._run_side_question,
+            args=(
+                conversation,
+                one_off,
+                side_id,
+                request_id,
+                cleaned,
+                tab_history + bundle.prompt,
+                seed_history,
+                parent_thread_id,
+                agent,
+                model_selection,
+                skill_item,
+            ),
+            daemon=True,
+            name=f"proseview-btw-{side_id}",
+        )
+        worker.start()
+        return {
+            "accepted": True,
+            "side_question_id": side_id,
+            "client_request_id": request_id,
+            "status": "running",
+            "question": cleaned,
+            "agent": agent,
+        }
+
+    def cancel_side_question(self, conversation_id: str, side_question_id: str) -> bool:
+        """Stop an in-flight /btw side question cleanly when its tab is closed."""
+        self._get(conversation_id)
+        side_id = str(side_question_id or "").strip()
+        if not side_id:
+            return False
+        with self._side_lock:
+            one_off = self._side_runs.get(side_id)
+        if one_off is None:
+            return False
+        one_off.cancelled = True  # type: ignore[attr-defined]
+        interrupt = getattr(one_off, "interrupt", None)
+        if interrupt is not None:
+            try:
+                interrupt()
+            except Exception:
+                pass
+        return True
+
+    def _side_thread_params(self, agent: str) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "cwd": str(self.root),
+            "approvalPolicy": CODEX_APPROVAL_POLICY,
+            "sandbox": "workspace-write",
+            "ephemeral": True,
+            "allowWrite": True,
+            "developerInstructions": self.SIDE_DEVELOPER_INSTRUCTIONS,
+        }
+        if agent == "claude":
+            params["tools"] = list(self.SIDE_CLAUDE_TOOLS)
+        else:
+            params["config"] = {**self.THREAD_CONFIG, "web_search": "disabled"}
+        return params
+
+    def _run_side_attempt(
+        self,
+        *,
+        conversation: _Conversation,
+        client: Any,
+        one_off: _OneOff,
+        side_id: str,
+        request_id: str,
+        question: str,
+        prompt_text: str,
+        agent: str,
+        model_selection: dict[str, str],
+        skill_item: dict[str, str] | None,
+        method: str,
+        thread_params: dict[str, Any],
+        mode: str,
+        fallback_reason: str = "",
+    ) -> bool:
+        started = client.request(method, thread_params)
+        thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
+        thread_id = str(thread.get("id") or "")
+        if not thread_id:
+            raise RuntimeError("The agent did not return a thread id")
+
+        def forward(event: dict[str, Any]) -> None:
+            kind = event.get("type")
+            if kind == "response.delta" and event.get("text"):
+                conversation.publish("side_question.delta", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                    "kind": "answer",
+                    "text": str(event.get("text") or ""),
+                })
+            elif kind == "progress.delta" and event.get("text"):
+                conversation.publish("side_question.delta", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                    "kind": "progress",
+                    "text": str(event.get("text") or ""),
+                })
+            elif kind == "response.completed" and event.get("phase") != "final_answer" and event.get("text"):
+                conversation.publish("side_question.delta", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                    "kind": "thought",
+                    "text": str(event.get("text") or ""),
+                })
+            elif kind == "activity.updated":
+                activity = event.get("activity") or {}
+                if activity.get("id"):
+                    conversation.publish("side_question.activity", {
+                        "side_question_id": side_id,
+                        "client_request_id": request_id,
+                        "activity": dict(activity),
+                    })
+
+        one_off.on_event = forward
+        key = self._thread_key(agent, thread_id)
+        self._one_offs[key] = one_off
+        conversation.publish("side_question.started", {
+            "side_question_id": side_id,
+            "client_request_id": request_id,
+            "question": question,
+            "agent": agent,
+            "mode": mode,
+            "fallback_reason": fallback_reason,
+        })
+        try:
+            turn_input: list[dict[str, Any]] = [{"type": "text", "text": prompt_text}]
+            if skill_item:
+                turn_input.append({"type": "skill", **skill_item})
+            turn_params: dict[str, Any] = {
+                "threadId": thread_id,
+                "input": turn_input,
+                "cwd": str(self.root),
+                "approvalPolicy": CODEX_APPROVAL_POLICY,
+                "sandboxPolicy": {"type": "workspaceWrite", "networkAccess": False},
+                "mayWrite": True,
+            }
+            if model_selection.get("model"):
+                turn_params["model"] = model_selection["model"]
+            if model_selection.get("effort"):
+                turn_params["effort"] = model_selection["effort"]
+            if getattr(one_off, "cancelled", False) or self._closed:
+                return False
+            turn = client.request("turn/start", turn_params)
+            turn_obj = turn.get("turn") if isinstance(turn.get("turn"), dict) else {}
+            turn_id = str(turn_obj.get("id") or "")
+
+            def interrupt() -> None:
+                if not turn_id:
+                    return
+                try:
+                    client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+                except Exception:
+                    pass
+
+            one_off.interrupt = interrupt
+            if getattr(one_off, "cancelled", False) or self._closed:
+                interrupt()
+                return False
+            if not one_off.done.wait(timeout=self.SIDE_TIMEOUT):
+                interrupt()
+                one_off.status = "failed"
+                one_off.error = "Side question timed out before responding."
+                return False
+        finally:
+            self._one_offs.pop(key, None)
+            one_off.on_event = None
+        return one_off.status == "completed" and bool(one_off.text)
+
+    def _run_side_question(
+        self,
+        conversation: _Conversation,
+        one_off: _OneOff,
+        side_id: str,
+        request_id: str,
+        question: str,
+        prompt: str,
+        seed_history: str,
+        parent_thread_id: str,
+        agent: str,
+        model_selection: dict[str, str],
+        skill_item: dict[str, str] | None,
+    ) -> None:
+        from .claude_agent_client import ClaudeError
+        from .codex_app_server import CodexError
+
+        started_at = time.monotonic()
+        mode = "seeded"
+        fallback_reason = ""
+        try:
+            client = self._client_for(agent)
+            base_params = self._side_thread_params(agent)
+            ok = False
+            if parent_thread_id:
+                mode = "fork"
+                fork_params = {**base_params, "threadId": parent_thread_id}
+                try:
+                    ok = self._run_side_attempt(
+                        conversation=conversation,
+                        client=client,
+                        one_off=one_off,
+                        side_id=side_id,
+                        request_id=request_id,
+                        question=question,
+                        prompt_text=prompt,
+                        agent=agent,
+                        model_selection=model_selection,
+                        skill_item=skill_item,
+                        method="thread/fork",
+                        thread_params=fork_params,
+                        mode="fork",
+                    )
+                except (CodexError, ClaudeError, RuntimeError) as exc:
+                    fallback_reason = str(exc) or "Parent thread could not be forked"
+                    ok = False
+                if not ok and not getattr(one_off, "cancelled", False) and not self._closed and not one_off.draft and not one_off.text:
+                    # Reset per-attempt buffers before falling back cleanly.
+                    fallback_reason = fallback_reason or one_off.error or "Parent thread could not be forked"
+                    one_off.done.clear()
+                    one_off.status = ""
+                    one_off.error = ""
+                    one_off.text = ""
+                    one_off.progress = ""
+                    one_off.activities.clear()
+                    one_off.interrupt = None
+                    mode = "seeded"
+                    ok = self._run_side_attempt(
+                        conversation=conversation,
+                        client=client,
+                        one_off=one_off,
+                        side_id=side_id,
+                        request_id=request_id,
+                        question=question,
+                        prompt_text=seed_history + prompt,
+                        agent=agent,
+                        model_selection=model_selection,
+                        skill_item=skill_item,
+                        method="thread/start",
+                        thread_params=dict(base_params),
+                        mode="seeded",
+                        fallback_reason=fallback_reason,
+                    )
+            else:
+                mode = "seeded"
+                fallback_reason = "No persisted parent thread yet"
+                ok = self._run_side_attempt(
+                    conversation=conversation,
+                    client=client,
+                    one_off=one_off,
+                    side_id=side_id,
+                    request_id=request_id,
+                    question=question,
+                    prompt_text=seed_history + prompt,
+                    agent=agent,
+                    model_selection=model_selection,
+                    skill_item=skill_item,
+                    method="thread/start",
+                    thread_params=dict(base_params),
+                    mode="seeded",
+                    fallback_reason=fallback_reason,
+                )
+
+            if getattr(one_off, "cancelled", False) or one_off.status in {"interrupted", "cancelled"}:
+                conversation.publish("side_question.cancelled", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                })
+            elif ok:
+                duration_ms = int((time.monotonic() - started_at) * 1000)
+                conversation.publish("side_question.completed", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                    "text": one_off.text,
+                    "mode": mode,
+                    "fallback_reason": fallback_reason,
+                    "duration_ms": duration_ms,
+                })
+            else:
+                conversation.publish("side_question.failed", {
+                    "side_question_id": side_id,
+                    "client_request_id": request_id,
+                    "error": one_off.error or "The agent did not return an answer for the side question.",
+                })
+        except Exception as exc:
+            conversation.publish("side_question.failed", {
+                "side_question_id": side_id,
+                "client_request_id": request_id,
+                "error": _bounded_text(str(exc) or "Side question failed", 2000),
+            })
+        finally:
+            with self._side_lock:
+                self._side_runs.pop(side_id, None)
 
     def cancel_queued(self, conversation_id: str, client_request_id: str) -> dict[str, Any]:
         """Remove one not-yet-started request without interrupting active work."""
@@ -4169,7 +4686,7 @@ class DiscussManager:
         return thread_id
 
     @staticmethod
-    def _carried_history(conversation: _Conversation, request_id: str) -> str:
+    def _carried_history(conversation: _Conversation, request_id: str, *, intro: str | None = None) -> str:
         """The visible conversation, as text a fresh agent thread can read."""
         with conversation.lock:
             rows = [
@@ -4187,12 +4704,12 @@ class DiscussManager:
                 break
             lines.insert(0, line)
             budget -= len(line)
-        return (
-            "EARLIER IN THIS CONVERSATION\n"
-            "Your earlier session could not be reopened. This is the conversation so far, as the writer saw it.\n\n"
-            + "\n\n".join(lines)
-            + "\n\n"
+        heading = (
+            intro
+            if intro is not None
+            else "EARLIER IN THIS CONVERSATION\nYour earlier session could not be reopened. This is the conversation so far, as the writer saw it."
         )
+        return heading + "\n\n" + "\n\n".join(lines) + "\n\n"
 
     def _forget_thread(self, conversation: _Conversation) -> None:
         with conversation.lock:
@@ -5563,7 +6080,21 @@ class DiscussManager:
                 except Exception:
                     pass
 
+            def steer(steer_input: list[dict[str, Any]], client_user_message_id: str = "") -> bool:
+                if agent != "codex" or not turn_id or one_off.done.is_set():
+                    return False
+                steer_params: dict[str, Any] = {
+                    "threadId": thread_id,
+                    "expectedTurnId": turn_id,
+                    "input": steer_input,
+                }
+                if client_user_message_id:
+                    steer_params["clientUserMessageId"] = client_user_message_id
+                client.request("turn/steer", steer_params)
+                return True
+
             one_off.interrupt = interrupt
+            one_off.steer = steer
             if not one_off.done.wait(timeout=timeout):
                 interrupt()
                 raise ContextError(f"The {who} took too long to respond; try again.")
@@ -5668,6 +6199,48 @@ class DiscussManager:
             return False
         interrupt()
         return True
+
+    def steer_room_turn(
+        self,
+        run_id: str,
+        *,
+        scene: str,
+        text: str,
+        authored: str = "",
+        seat: int = 1,
+        attachments: list[dict[str, Any]] | None = None,
+        message_id: str = "",
+    ) -> bool:
+        """Steer an active Codex Room turn with follow-up writer input."""
+        one_off = self._room_runs.get(str(run_id or ""))
+        steer_fn = getattr(one_off, "steer", None)
+        if one_off is None or steer_fn is None or one_off.done.is_set():
+            return False
+        conversation = one_off.conversation
+        agent = conversation.agent if conversation else "codex"
+        if agent != "codex":
+            return False
+        reference_text = ""
+        if attachments:
+            reference_text = self.context.build_mentions(
+                {"kind": "scene", "path": scene},
+                "Use your tools to inspect the mentioned project files as needed for this discussion.",
+                mentions=attachments,
+            ).prompt
+        prompt = room_module.chat_prompt(
+            seat=seat,
+            history=[{"role": "user", "label": "Me (Writer)", "scene": scene, "text": text}],
+            scene_path=scene,
+            reference_text=reference_text,
+        )
+        skill = self._room_skill_from_text(agent, authored or text)
+        steer_input: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        if skill:
+            steer_input.append({"type": "skill", **skill})
+        try:
+            return bool(steer_fn(steer_input, client_user_message_id=message_id))
+        except Exception:
+            return False
 
     def room_history(self, body: dict[str, Any], store: RoomHistoryStore | None = None) -> dict[str, Any]:
         """List, open, save or delete this book's Rooms, optionally filtering by scene."""
@@ -5928,8 +6501,20 @@ class DiscussManager:
         method = str(message.get("method") or "")
         params = message.get("params") if isinstance(message.get("params"), dict) else {}
         thread_id = str(params.get("threadId") or "")
-        conversation = self._threads.get(self._thread_key(agent, thread_id))
+        one_off = self._one_offs.get(self._thread_key(agent, thread_id))
         client = self._clients.get(agent)
+        if one_off is not None and one_off.conversation is None and client is not None:
+            # Writable /btw side turns accept file edits cleanly; highlight
+            # suggestions and unexpected shell/permission requests stay declined.
+            if getattr(one_off, "may_write", False) and method == "item/fileChange/requestApproval":
+                client.respond(message["id"], {"decision": "accept"})
+                return
+            if method == "item/permissions/requestApproval":
+                client.respond(message["id"], {"permissions": {}, "scope": "turn"})
+            else:
+                client.respond(message["id"], {"decision": "decline"})
+            return
+        conversation = self._threads.get(self._thread_key(agent, thread_id))
         if conversation is None or client is None:
             if client is not None:
                 client.respond_error(message["id"], "Unknown Prosview conversation")
@@ -6296,16 +6881,14 @@ class DiscussManager:
                 done.set()
             return True
 
-    def stop(self, conversation_id: str, turn_id: str) -> dict[str, Any]:
-        conversation = self._get(conversation_id)
-        with conversation.lock:
-            if not conversation.active_turn_id or conversation.active_turn_id != turn_id:
-                raise ContextError("turn is not active")
-            client = self._clients.get(conversation.agent)
-            thread_id = conversation.thread_id
-            done = conversation.active_done
-        if client is None or not thread_id:
-            raise ContextError("The agent connection is unavailable")
+    def _interrupt_active_turn(
+        self,
+        conversation: _Conversation,
+        client: Any,
+        thread_id: str,
+        turn_id: str,
+        done: threading.Event | None,
+    ) -> None:
         try:
             client.request(
                 "turn/interrupt",
@@ -6318,7 +6901,7 @@ class DiscussManager:
 
             if not isinstance(exc, (CodexError, ClaudeError)):
                 raise
-            # The writer's stop remains authoritative even when Codex has
+            # The writer's stop remains authoritative even when the agent has
             # already evicted the thread or fails to acknowledge promptly.
             # Detach it so late events cannot contaminate the next request.
             detached = self._complete_stopped_turn(
@@ -6331,7 +6914,7 @@ class DiscussManager:
                     "warning",
                     "The agent could not confirm the stop. Prosview detached that conversation and will use a fresh one.",
                 )
-            return {"stopping": False, "stopped": True, "turn_id": turn_id}
+            return
 
         if done is not None and not done.wait(timeout=STOP_COMPLETION_TIMEOUT):
             # An interrupt response without turn/completed would otherwise
@@ -6341,6 +6924,18 @@ class DiscussManager:
                 turn_id,
                 detach_thread_id=thread_id,
             )
+
+    def stop(self, conversation_id: str, turn_id: str) -> dict[str, Any]:
+        conversation = self._get(conversation_id)
+        with conversation.lock:
+            if not conversation.active_turn_id or conversation.active_turn_id != turn_id:
+                raise ContextError("turn is not active")
+            client = self._clients.get(conversation.agent)
+            thread_id = conversation.thread_id
+            done = conversation.active_done
+        if client is None or not thread_id:
+            raise ContextError("The agent connection is unavailable")
+        self._interrupt_active_turn(conversation, client, thread_id, turn_id, done)
         return {"stopping": False, "stopped": True, "turn_id": turn_id}
 
     def subscribe(self, conversation_id: str, last_event_id: int | None) -> tuple[dict[str, Any] | None, list[BrowserEvent], queue.Queue[BrowserEvent]]:
@@ -6391,6 +6986,8 @@ class DiscussManager:
             pending.error = "Proseview closed while the agent was working"
             pending.status = "failed"
             pending.done.set()
+        with self._side_lock:
+            self._side_runs.clear()
         self._task_context.clear()
         for client in list(self._clients.values()):
             try:

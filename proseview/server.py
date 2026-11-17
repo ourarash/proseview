@@ -3020,6 +3020,10 @@ class _Handler(BaseHTTPRequestHandler):
                 model_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/model", path)
                 new_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/new", path)
                 stop_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/turns/([^/]+)/stop", path)
+                side_question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/side-questions", path)
+                side_question_stop_match = re.fullmatch(
+                    r"/api/discuss/conversations/([^/]+)/side-questions/([^/]+)/stop", path
+                )
                 approval_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/approvals/([^/]+)", path)
                 turn_changes_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/changes", path)
                 apply_changes_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/changes/apply", path)
@@ -3058,6 +3062,7 @@ class _Handler(BaseHTTPRequestHandler):
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),
                         verify_of_task_id=str(body.get("verify_of_task_id") or ""),
+                        immediate=bool(body.get("immediate")) or body.get("mode") == "now",
                     )
                     self._send_json({"ok": True, **result}, 202)
                     return
@@ -3199,6 +3204,27 @@ class _Handler(BaseHTTPRequestHandler):
                 if new_match:
                     snapshot = self.discuss_manager.new_conversation(new_match.group(1))
                     self._send_json({"ok": True, "snapshot": snapshot})
+                    return
+                if side_question_match:
+                    result = self.discuss_manager.side_question(
+                        side_question_match.group(1),
+                        client_request_id=str(body.get("client_request_id") or ""),
+                        question=str(body.get("question") or ""),
+                        prior_turns=body.get("prior_turns") if isinstance(body.get("prior_turns"), list) else None,
+                        document=body.get("document") if isinstance(body.get("document"), dict) else None,
+                        selection=str(body.get("selection") or ""),
+                        live_document=body.get("live_document") if isinstance(body.get("live_document"), dict) else None,
+                        attachments=body.get("attachments") or [],
+                        skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
+                    )
+                    self._send_json({"ok": True, **result}, 202)
+                    return
+                if side_question_stop_match:
+                    stopped = self.discuss_manager.cancel_side_question(
+                        side_question_stop_match.group(1),
+                        side_question_stop_match.group(2),
+                    )
+                    self._send_json({"ok": True, "stopped": stopped})
                     return
                 if stop_match:
                     result = self.discuss_manager.stop(stop_match.group(1), stop_match.group(2))

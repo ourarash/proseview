@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import pathlib
 import uuid
 from types import SimpleNamespace
 
 __version__ = "e2e-fake"
 
 _sessions: dict[str, list[SimpleNamespace]] = {}
+_held_claude_once = False
+
+
+def _record_claude_event(payload: dict) -> None:
+    home = os.environ.get("HOME")
+    if not home:
+        return
+    record = pathlib.Path(home) / "fake-claude-received.jsonl"
+    try:
+        record.parent.mkdir(parents=True, exist_ok=True)
+        with record.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload) + "\n")
+    except OSError:
+        pass
 
 
 class ClaudeAgentOptions:
@@ -71,6 +88,8 @@ class ClaudeSDKClient:
             getattr(options, "resume", "") or getattr(options, "session_id", "") or uuid.uuid4()
         )
         self._response = []
+        self._hold_event: asyncio.Event | None = None
+        self._interrupted = False
 
     def _requested_kind(self):
         # A request with an output schema (a highlight suggestion) says what
@@ -78,10 +97,31 @@ class ClaudeSDKClient:
         schema = ((getattr(self.options, "output_format", None) or {}).get("schema") or {})
         return (((schema.get("properties") or {}).get("kind") or {}).get("enum") or [None])[0]
 
+    def _is_persistent(self) -> bool:
+        extra = getattr(self.options, "extra_args", None) or {}
+        return "no-session-persistence" not in extra
+
     async def connect(self):
-        _sessions.setdefault(self.session_id, [])
+        if self._is_persistent():
+            _sessions.setdefault(self.session_id, [])
 
     async def query(self, prompt: str):
+        global _held_claude_once
+        extra = getattr(self.options, "extra_args", None) or {}
+        _record_claude_event({
+            "method": "query",
+            "session_id": self.session_id,
+            "prompt": prompt,
+            "fork_session": bool(getattr(self.options, "fork_session", False)),
+            "resume": getattr(self.options, "resume", ""),
+            "tools": list(getattr(self.options, "tools", None) or []),
+            "ephemeral": "no-session-persistence" in extra,
+        })
+        self._hold_event = None
+        self._interrupted = False
+        if "HOLD_CLAUDE_ONCE" in prompt and not _held_claude_once:
+            _held_claude_once = True
+            self._hold_event = asyncio.Event()
         if "EXPIRED_CLAUDE_LOGIN" in prompt:
             # What Claude Code sends once its login can no longer be refreshed.
             result = ResultMessage(self.session_id)
@@ -89,7 +129,7 @@ class ClaudeSDKClient:
             result.result = EXPIRED_LOGIN
             self._response = [AssistantMessage(EXPIRED_LOGIN, self.session_id, "authentication_failed"), result]
             return
-        rows = _sessions.setdefault(self.session_id, [])
+        rows = _sessions.setdefault(self.session_id, []) if self._is_persistent() else []
         rows.append(SimpleNamespace(
             type="user", uuid=uuid.uuid4().hex,
             message={"role": "user", "content": [{"type": "text", "text": prompt}]},
@@ -217,11 +257,28 @@ class ClaudeSDKClient:
         ]
 
     async def receive_response(self):
+        if self._hold_event is not None:
+            try:
+                await asyncio.wait_for(self._hold_event.wait(), timeout=15.0)
+            except TimeoutError:
+                pass
+            if self._interrupted:
+                aborted = ResultMessage(self.session_id)
+                aborted.subtype = "error_during_execution"
+                aborted.terminal_reason = "aborted_streaming"
+                aborted.is_error = True
+                self._response = []
+                yield aborted
+                return
         for message in self._response:
             yield message
         self._response = []
 
     async def interrupt(self):
+        _record_claude_event({"method": "interrupt", "session_id": self.session_id})
+        self._interrupted = True
+        if self._hold_event is not None:
+            self._hold_event.set()
         return None
 
     async def disconnect(self):

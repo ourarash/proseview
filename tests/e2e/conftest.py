@@ -444,6 +444,7 @@ next_thread = int(saved_state.get('next_thread') or 0)
 next_turn = int(saved_state.get('next_turn') or 0)
 pending = {}
 unload_on_interrupt = set()
+held_once_used = False
 record = pathlib.Path(os.environ['HOME']) / 'fake-codex-received.jsonl'
 
 def emit(value):
@@ -495,6 +496,20 @@ for line in sys.stdin:
         threads[thread_id] = {'id': thread_id, 'turns': []}
         save_state()
         emit({'id': request_id, 'result': {'thread': threads[thread_id]}})
+    elif method == 'thread/fork':
+        parent = threads.get(params.get('threadId'))
+        record.parent.mkdir(parents=True, exist_ok=True)
+        with record.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps({'method': 'thread/fork', 'threadId': params.get('threadId'), 'params': params}) + '\\n')
+        if parent is None:
+            emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found'}})
+            continue
+        next_thread += 1
+        thread_id = f'thread-{next_thread}'
+        threads[thread_id] = {'id': thread_id, 'turns': list(parent.get('turns') or [])}
+        if not params.get('ephemeral'):
+            save_state()
+        emit({'id': request_id, 'result': {'thread': threads[thread_id]}})
     elif method == 'skills/list':
         cwd = params.get('cwds', [os.getcwd()])[0]
         emit({'id': request_id, 'result': {'data': [{'cwd': cwd, 'skills': [
@@ -544,6 +559,9 @@ for line in sys.stdin:
         emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'tool-' + turn_id, 'type': 'commandExecution', 'command': 'printf inspect', 'cwd': os.getcwd(), 'status': 'inProgress'}}})
         if 'HOLD_UNLOAD_ON_STOP' in prompt:
             unload_on_interrupt.add(turn_id)
+            continue
+        if 'HOLD_ONCE_FOR_STEER' in prompt and not held_once_used:
+            held_once_used = True
             continue
         if 'HOLD_FOR_STOP' in prompt:
             continue
@@ -733,7 +751,30 @@ for line in sys.stdin:
         if 'FORGET_THREAD_AFTER_TURN' in prompt.rsplit('USER QUESTION', 1)[-1]:
             threads.pop(thread_id, None)
             save_state()
+    elif method == 'turn/steer':
+        thread_id = params['threadId']
+        expected_turn_id = params['expectedTurnId']
+        thread = threads.get(thread_id)
+        turn = next((t for t in (thread or {}).get('turns', []) if t.get('id') == expected_turn_id and t.get('status') == 'inProgress'), None)
+        if turn is None:
+            emit({'id': request_id, 'error': {'code': -32602, 'message': 'no active turn matches expectedTurnId'}})
+            continue
+        steer_text = params['input'][0]['text'] if params.get('input') else ''
+        record.parent.mkdir(parents=True, exist_ok=True)
+        with record.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps({'method': 'turn/steer', 'threadId': thread_id, 'turnId': expected_turn_id, 'params': params}) + '\\n')
+        turn['items'].append({'type': 'userMessage', 'content': [{'type': 'text', 'text': steer_text}]})
+        emit({'id': request_id, 'result': {'turnId': expected_turn_id}})
+        if 'KEEP_STEER_OPEN' not in steer_text:
+            answer = 'Steered answer for ' + expected_turn_id + ': ' + steer_text.splitlines()[-1][:80]
+            emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': expected_turn_id, 'item': {'id': 'answer-' + expected_turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
+            turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}]})
+            save_state()
+            emit({'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': expected_turn_id, 'status': 'completed'}}})
     elif method == 'turn/interrupt':
+        record.parent.mkdir(parents=True, exist_ok=True)
+        with record.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps({'method': 'turn/interrupt', 'threadId': params['threadId'], 'turnId': params['turnId']}) + '\\n')
         if params['turnId'] in unload_on_interrupt:
             unload_on_interrupt.discard(params['turnId'])
             threads.pop(params['threadId'], None)

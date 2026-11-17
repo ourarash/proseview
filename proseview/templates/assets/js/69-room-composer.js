@@ -159,7 +159,7 @@ function roomRequestedSeats(text, session) {
     var effective = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : 'both';
     return effective === 'critic1' ? [1] : effective === 'critic2' ? [2] : [1, 2];
 }
-function submitRoomComposerMessage() { return submitManagedRoomMessage(); }
+function submitRoomComposerMessage(options) { return submitManagedRoomMessage(options); }
 function roomLoadSkills(agent) {
     if (_roomSkillCatalogs[agent]) return Promise.resolve(_roomSkillCatalogs[agent]);
     if (!_roomSkillRequests[agent]) _roomSkillRequests[agent] = discussApi('/api/discuss/skills', {agent: agent})
@@ -335,18 +335,29 @@ function createRoomComposer(session) {
     plus.setAttribute('aria-label', 'Add people, files and folders'); plus.setAttribute('aria-haspopup', 'listbox'); plus.onclick = function() { roomInsertContext('@'); };
     actions.appendChild(plus); (session.participants || []).forEach(function(profile) { actions.appendChild(createRoomModelControl(session, profile)); });
     var sees = elementWith('discuss-sees-slot'), current = elementWith('discuss-sees', session.scene); current.title = 'Current scene shared with the Room: ' + session.scene; sees.appendChild(current); targetRow.appendChild(sees);
+    var sendActions = elementWith('room-send-actions');
+    var sendNow = document.createElement('button'); sendNow.type = 'button'; sendNow.id = 'roomSendNowBtn'; sendNow.className = 'room-send-now-btn'; sendNow.textContent = 'Send now';
+    sendNow.hidden = !session.busy; sendNow.disabled = !_roomDraftInput.trim();
+    sendNow.title = 'Send now (⌘/Ctrl+Enter) · Steer or run immediately';
+    sendNow.onclick = function() { sendRoomComposerMessage({mode: 'now'}); };
     var send = document.createElement('button'); send.type = 'button'; send.id = 'roomSendBtn'; send.className = 'room-send-btn'; send.textContent = session.busy ? 'Queue' : 'Send';
-    send.disabled = !_roomDraftInput.trim(); send.title = 'Send (Enter) · Shift+Enter for a new line'; send.onclick = sendRoomComposerMessage;
-    toolbar.append(actions, send); composer.appendChild(toolbar);
+    send.disabled = !_roomDraftInput.trim(); send.title = 'Send (Enter) · Shift+Enter for a new line'; send.onclick = function() { sendRoomComposerMessage(); };
+    sendActions.append(sendNow, send);
+    toolbar.append(actions, sendActions); composer.appendChild(toolbar);
     var menu = elementWith('room-mention-menu'); menu.id = 'roomMentionMenu'; menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Mention an editor or project file'); menu.hidden = true;
     var connection = elementWith('room-connection-status'); connection.id = 'roomConnectionStatus'; connection.setAttribute('role', 'status'); composer.appendChild(connection);
     var hint = elementWith('sr-only'); hint.id = 'roomMentionHint'; hint.setAttribute('aria-live', 'polite'); composer.append(menu, hint);
-    input.oninput = function() {
-        _roomDraftInput = input.value; send.disabled = !_roomDraftInput.trim(); _roomSaveDraft(session.scene);
+    function syncRoomInputState() {
+        _roomDraftInput = input.value; send.disabled = !_roomDraftInput.trim(); sendNow.disabled = !_roomDraftInput.trim(); _roomSaveDraft(session.scene);
         paintRoomMentions(input, mirror); renderRoomQuickSend(quick, session);
-    };
+    }
+    input.oninput = syncRoomInputState;
     input.addEventListener('scroll', function() { paintRoomMentions(input, mirror); });
-    wireChatMentionReplacement(input, _roomMentionOptions); _wireRoomMentions(input, menu, target, hint);
+    wireChatMentionReplacement(input, _roomMentionOptions);
+    _wireRoomMentions(input, menu, target, hint, function(nextValue) {
+        input.value = nextValue;
+        syncRoomInputState();
+    });
     paintRoomMentions(input, mirror); renderRoomQuickSend(quick, session);
     return composer;
 }

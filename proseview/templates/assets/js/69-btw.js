@@ -493,7 +493,7 @@
                 if (ex.status !== 'running' || !ex.sideQuestionId) return;
                 fetch('/api/discuss/conversations/' + encodeURIComponent(cid) + '/side-questions/' + encodeURIComponent(ex.sideQuestionId) + '/stop', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: pvHeaders(),
                     body: '{}'
                 }).catch(function() {});
             });

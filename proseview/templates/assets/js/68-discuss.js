@@ -10248,10 +10248,11 @@ function loadDiscussDiffMode(mode) {
                 updateSeparatorValue(handle, width * zoom, bounds.min * zoom, bounds.max * zoom);
             }
             function currentWidth() {
-                // Measure only .discuss-shell so opening the /btw split pane
-                // never pollutes --utility-dock-w with combined dock width.
-                var shell = document.querySelector('#discussPanel .discuss-shell');
-                var rendered = shell ? shell.getBoundingClientRect().width : 0;
+                // A split measures its main shell; the ordinary dock includes
+                // its border so repeated layout updates preserve its width.
+                var panel = document.getElementById('discussPanel');
+                var target = splitSideBySide() ? panel.querySelector('.discuss-shell') : panel;
+                var rendered = target ? target.getBoundingClientRect().width : 0;
                 if (rendered > 0) return rendered / workspaceZoomFactor();
                 return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(
                     splitSideBySide() ? '--btw-main-w' : '--utility-dock-w'

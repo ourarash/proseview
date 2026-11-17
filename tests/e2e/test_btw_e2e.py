@@ -249,3 +249,21 @@ def test_btw_fallback_when_no_parent_thread_and_claude_fork_plus_room_exclusion(
     assert "Fake answer for turn-" in page.locator("#btwTabPanel").inner_text()
     page.locator(".btw-tab-select").nth(1).click()
     assert page.locator("#btwInput").input_value() == "unsent draft across refresh"
+
+
+def test_closing_a_running_btw_tab_cancels_its_backend_turn(page, server):
+    open_scene(page, server, SCENE_REL)
+    _open_discuss_agent(page, "codex")
+    page.fill("#discussInput", "/btw HOLD_FOR_STOP Wait for cancellation")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function(
+        "() => _btwState(_discussConversationId)?.tabs[0]?.exchanges[0]?.sideQuestionId"
+        " && document.querySelector('.btw-tab')?.dataset.status === 'running'"
+    )
+    with page.expect_response(
+        lambda response: "/side-questions/" in response.url and response.url.endswith("/stop")
+    ) as cancelled:
+        page.locator(".btw-tab-close").click()
+    assert cancelled.value.status == 200
+    assert cancelled.value.json()["stopped"] is True
+    assert page.locator("#btwSplitPane").is_hidden()

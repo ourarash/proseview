@@ -1,4 +1,4 @@
-"""Durable Room queues and review snapshots, independent of a browser lifetime."""
+"""Durable Group queues and review snapshots, independent of a browser lifetime."""
 import copy
 import threading
 import time
@@ -23,15 +23,15 @@ def wait_for(predicate):
         if value:
             return value
         time.sleep(0.01)
-    raise AssertionError("Room did not reach the expected state")
+    raise AssertionError("Group did not reach the expected state")
 
 
-def initial(manager, key="durable-room"):
-    return {"id": key, "scene": "one.md", "participants": manager.room_settings()["participants"], "turns": [], "title": "Conversation"}
+def initial(manager, key="durable-group"):
+    return {"id": key, "scene": "one.md", "participants": manager.group_settings()["participants"], "turns": [], "title": "Conversation"}
 
 
-def command(manager, action="state", key="durable-room", **kw):
-    return manager.room_command({"action": action, "room_id": key, "request_id": kw.pop("request_id", f"request-{time.monotonic_ns()}"), **kw})
+def command(manager, action="state", key="durable-group", **kw):
+    return manager.group_command({"action": action, "group_id": key, "request_id": kw.pop("request_id", f"request-{time.monotonic_ns()}"), **kw})
 
 
 def reply(kwargs, text="A useful reply."):
@@ -39,11 +39,11 @@ def reply(kwargs, text="A useful reply."):
     return {"seat": kwargs["seat"], "agent": profile["agent"], "reply": text, "passed": not text, "model": "", "changed_files": [], "unreviewable": []}
 
 
-def test_room_review_survives_restart_and_undo_remains_available(tmp_path):
+def test_group_review_survives_restart_and_undo_remains_available(tmp_path):
     root = _repo(tmp_path)
     first = _manager(root, [])
     try:
-        result = first.run_room_turn(scene="one.md", participants=first.room_settings()["participants"])
+        result = first.run_group_turn(scene="one.md", participants=first.group_settings()["participants"])
         cid = result["tool_conversation_id"]
         conversation = first._get(cid)
         scene = root / "manuscript" / "one.md"
@@ -74,7 +74,7 @@ def test_legacy_missing_review_does_not_block_messages(tmp_path):
     try:
         session = initial(manager)
         session["turns"] = [{"role": "critic", "seat": 1, "agent": "codex", "text": "Edited the file.", "review_pending": True, "tool_conversation_id": "lost-proxy"}]
-        manager.room_history({"action": "save", "session": session})
+        manager.group_history({"action": "save", "session": session})
         state = command(manager)
         assert state["status"] == "idle" and not state["turns"][0]["review_pending"]
         assert state["turns"][0]["review_unavailable"] and "no longer blocks" in state["notice"]
@@ -93,7 +93,7 @@ def test_server_finishes_all_invitations_without_an_attached_browser_and_dedupli
             started.set()
             assert release.wait(5)
         return reply(kw)
-    monkeypatch.setattr(manager, "run_room_turn", run)
+    monkeypatch.setattr(manager, "run_group_turn", run)
     try:
         body = dict(initial=initial(manager), request_id="send-once", message_id="message-one", text="First question", seats=[1, 2])
         command(manager, "submit", **body)
@@ -117,7 +117,7 @@ def test_preset_continues_after_a_pass_without_a_browser(tmp_path, monkeypatch):
     def run(**kw):
         calls.append(kw["seat"])
         return reply(kw, "" if len(calls) == 1 else "Second perspective.")
-    monkeypatch.setattr(manager, "run_room_turn", run)
+    monkeypatch.setattr(manager, "run_group_turn", run)
     try:
         command(manager, "preset", initial=initial(manager), invitations=[{"seat": 1, "prompt": "Your view?"}, {"seat": 2, "prompt": "Your view?"}])
         state = wait_for(lambda: len((s := command(manager))["turns"]) == 4 and s["status"] == "idle" and s)
@@ -134,7 +134,7 @@ def test_preset_checks_all_required_providers_before_any_invitation_starts(tmp_p
         if unavailable and agent == "claude":
             raise RuntimeError("Claude CLI is not installed")
     monkeypatch.setattr(manager, "_probe_agent", probe)
-    monkeypatch.setattr(manager, "run_room_turn", lambda **kw: reply(kw))
+    monkeypatch.setattr(manager, "run_group_turn", lambda **kw: reply(kw))
     try:
         invitations = [{"seat": 1, "prompt": "Your view?"}, {"seat": 2, "prompt": "Your view?"}]
         with pytest.raises(ContextError, match="Claude.*unavailable.*not installed"):
@@ -155,14 +155,14 @@ def test_restart_recovers_a_completed_reply_without_repeating_it(tmp_path, monke
         "turns": [{"role": "user", "label": "Writer", "text": "Discuss."}], "steps": [
             {"id": "step-one", "seat": 1, "kind": "message", "state": "running", "native_status": "completed", "native_reply": "Already completed.", "text": "Discuss.", "authored": "Discuss.", "message_id": "message"},
             {"id": "step-two", "seat": 2, "kind": "message", "state": "queued", "text": "Discuss.", "authored": "Discuss.", "message_id": "message"}]}
-    first.room_runtime.store.write("rooms", saved["id"], saved)
+    first.group_runtime.store.write("groups", saved["id"], saved)
     first.close()
     second = _manager(root, [])
     calls = []
     def run(**kw):
         calls.append(kw["seat"])
         return reply(kw)
-    monkeypatch.setattr(second, "run_room_turn", run)
+    monkeypatch.setattr(second, "run_group_turn", run)
     try:
         command(second)
         state = wait_for(lambda: (s := command(second))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 2 and s)
@@ -178,11 +178,11 @@ def test_restart_preserves_an_unfinished_reply_and_never_repeats_it_automaticall
     saved = {**initial(first), "managed": True, "version": 1, "revision": 1, "commands": {}, "native_threads": {}, "status": "running", "active_step": "step-one", "notice": "", "error": "", "plans": [],
         "turns": [{"role": "user", "label": "Writer", "text": "Edit this."}], "steps": [
             {"id": "step-one", "seat": 1, "kind": "message", "state": "running", "draft": "A partial reply", "text": "Edit this.", "authored": "Edit this.", "message_id": "message"}]}
-    first.room_runtime.store.write("rooms", saved["id"], saved)
+    first.group_runtime.store.write("groups", saved["id"], saved)
     first.close()
     second = _manager(root, [])
     calls = []
-    monkeypatch.setattr(second, "run_room_turn", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(second, "run_group_turn", lambda **kw: calls.append(kw))
     try:
         command(second)
         state = wait_for(lambda: (s := command(second))["status"] == "interrupted" and s)
@@ -195,17 +195,17 @@ def test_restart_preserves_an_unfinished_reply_and_never_repeats_it_automaticall
         second.close()
 
 
-def test_saved_managed_room_with_a_missing_review_is_usable(tmp_path, monkeypatch):
+def test_saved_managed_group_with_a_missing_review_is_usable(tmp_path, monkeypatch):
     root = _repo(tmp_path)
     first = _manager(root, [])
     saved = command(first, initial=initial(first))
     saved.update(status="review", commands={}, native_threads={}, turns=[{
         "role": "critic", "seat": 1, "agent": "codex", "text": "Saved changes.",
         "tool_conversation_id": "missing-review", "review_pending": True}])
-    first.room_runtime.store.write("rooms", saved["id"], saved)
+    first.group_runtime.store.write("groups", saved["id"], saved)
     first.close()
     second = _manager(root, [])
-    monkeypatch.setattr(second, "run_room_turn", lambda **kw: reply(kw))
+    monkeypatch.setattr(second, "run_group_turn", lambda **kw: reply(kw))
     try:
         state = command(second)
         assert state["status"] == "idle" and state["turns"][0]["review_unavailable"]
@@ -219,12 +219,12 @@ def test_a_late_checkpoint_cannot_overwrite_a_retried_attempt(tmp_path):
     manager = _manager(_repo(tmp_path), [])
     try:
         command(manager, initial=initial(manager))
-        room = manager.room_runtime.rooms["durable-room"]
-        room["steps"] = [{"id": "step", "seat": 1, "state": "running", "run_id": "new-attempt"}]
-        manager.room_runtime.checkpoint(room["id"], "step", {"run_id": "old-attempt", "native_status": "completed", "native_reply": "Old reply"})
-        assert "native_status" not in room["steps"][0]
-        manager.room_runtime.checkpoint(room["id"], "step", {"run_id": "new-attempt", "draft": "Current reply"})
-        assert room["steps"][0]["draft"] == "Current reply"
+        group = manager.group_runtime.groups["durable-group"]
+        group["steps"] = [{"id": "step", "seat": 1, "state": "running", "run_id": "new-attempt"}]
+        manager.group_runtime.checkpoint(group["id"], "step", {"run_id": "old-attempt", "native_status": "completed", "native_reply": "Old reply"})
+        assert "native_status" not in group["steps"][0]
+        manager.group_runtime.checkpoint(group["id"], "step", {"run_id": "new-attempt", "draft": "Current reply"})
+        assert group["steps"][0]["draft"] == "Current reply"
     finally:
         manager.close()
 
@@ -236,11 +236,11 @@ def test_stopped_completed_turn_stays_paused_after_restart(tmp_path, monkeypatch
         "id": "step", "seat": 1, "state": "interrupting", "kind": "invitation", "prompt": "Your view?",
         "native_status": "completed", "native_reply": "Finished before stopping."}, {
         "id": "next", "seat": 2, "state": "queued", "kind": "invitation", "prompt": "Your view?"}])
-    first.room_runtime.store.write("rooms", saved["id"], saved)
+    first.group_runtime.store.write("groups", saved["id"], saved)
     first.close()
     second = _manager(root, [])
     calls = []
-    monkeypatch.setattr(second, "run_room_turn", lambda **kw: calls.append(kw) or reply(kw))
+    monkeypatch.setattr(second, "run_group_turn", lambda **kw: calls.append(kw) or reply(kw))
     try:
         command(second)
         state = wait_for(lambda: (s := command(second))["status"] == "paused" and s)
@@ -256,7 +256,7 @@ def test_queued_unsaved_draft_conflict_needs_explicit_retry_using_current_files(
     manager = _manager(root := _repo(tmp_path), [])
     scene = root / "manuscript" / "one.md"
     calls = []
-    monkeypatch.setattr(manager, "run_room_turn", lambda **kw: calls.append(kw) or reply(kw))
+    monkeypatch.setattr(manager, "run_group_turn", lambda **kw: calls.append(kw) or reply(kw))
     try:
         command(manager, initial=initial(manager))
         command(manager, "stop")
@@ -281,7 +281,7 @@ def test_provider_conversation_link_resumes_after_restart(tmp_path):
     try:
         command(first, "submit", initial=initial(first), message_id="first", text="First question.", seats=[1])
         wait_for(lambda: (s := command(first))["status"] == "idle" and len(s["turns"]) == 2)
-        native = copy.deepcopy(first.room_runtime.rooms["durable-room"]["native_threads"]["1"])
+        native = copy.deepcopy(first.group_runtime.groups["durable-group"]["native_threads"]["1"])
         threads = copy.deepcopy(first_clients[0].threads)
     finally:
         first.close()
@@ -302,11 +302,11 @@ def test_provider_conversation_link_resumes_after_restart(tmp_path):
 
 def test_stale_browser_save_cannot_replace_server_transcript(tmp_path, monkeypatch):
     manager = _manager(_repo(tmp_path), [])
-    monkeypatch.setattr(manager, "run_room_turn", lambda **kw: reply(kw))
+    monkeypatch.setattr(manager, "run_group_turn", lambda **kw: reply(kw))
     try:
         command(manager, "submit", initial=initial(manager), message_id="first", text="Saved on the server.", seats=[1])
         wait_for(lambda: len(command(manager)["turns"]) == 2)
-        manager.room_history({"action": "save", "session": {**initial(manager), "turns": [{"role": "user", "text": "Outdated browser copy"}]}})
+        manager.group_history({"action": "save", "session": {**initial(manager), "turns": [{"role": "user", "text": "Outdated browser copy"}]}})
         assert command(manager)["turns"][0]["text"] == "Saved on the server."
     finally:
         manager.close()
@@ -321,7 +321,7 @@ def test_edit_review_does_not_pause_the_next_agent(tmp_path, monkeypatch):
         if len(calls) == 1:
             result.update(tool_conversation_id="saved-review", changed_files=["manuscript/one.md"])
         return result
-    monkeypatch.setattr(manager, "run_room_turn", run)
+    monkeypatch.setattr(manager, "run_group_turn", run)
     try:
         command(manager, "submit", initial=initial(manager), message_id="both", text="Discuss together.", seats=[1, 2])
         state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len(s["turns"]) == 3 and s)
@@ -339,10 +339,10 @@ def saved_edit(manager, root):
     original = scene.read_text()
     manager._capture_before(manager._get(cid), [{"path": "manuscript/one.md"}])
     scene.write_text(original.replace("First document.", "Revised opening."))
-    with manager.room_runtime.lock:
-        room = manager.room_runtime.rooms[state["id"]]
-        room["turns"][-1]["review_pending"] = True
-        manager.room_runtime._save(room)
+    with manager.group_runtime.lock:
+        group = manager.group_runtime.groups[state["id"]]
+        group["turns"][-1]["review_pending"] = True
+        manager.group_runtime._save(group)
     return cid, scene, original, manager.turn_file_changes(cid)["files"][0]
 
 
@@ -368,7 +368,7 @@ def test_optional_review_never_applies_stale_unticks_and_can_retry_with_refreshe
         scene.write_text(scene.read_text() + "\nAn external edit that must survive.\n")
         latest = scene.read_text()
         calls = []
-        monkeypatch.setattr(manager, "run_room_turn", lambda **kw: calls.append(kw) or reply(kw))
+        monkeypatch.setattr(manager, "run_group_turn", lambda **kw: calls.append(kw) or reply(kw))
         command(manager, "submit", message_id="followup", text="What next?", seats=[2], review_choices=[{
             "conversation_id": cid, "path": offer["path"], "drop": [offer["blocks"][0]["id"]], "fingerprint": offer["fingerprint"]}])
         state = wait_for(lambda: (s := command(manager))["status"] == "interrupted" and s)
@@ -381,20 +381,20 @@ def test_optional_review_never_applies_stale_unticks_and_can_retry_with_refreshe
         manager.close()
 
 
-def test_existing_review_paused_room_resumes_its_pending_agent_after_upgrade(tmp_path, monkeypatch):
+def test_existing_review_paused_group_resumes_its_pending_agent_after_upgrade(tmp_path, monkeypatch):
     first = _manager(root := _repo(tmp_path), [])
     try:
         cid, scene, original, offer = saved_edit(first, root)
-        with first.room_runtime.lock:
-            room = first.room_runtime.rooms["durable-room"]
-            room["status"] = "review"
-            room["steps"].append({"id": "waiting-agent", "seat": 2, "state": "queued", "kind": "invitation", "prompt": "Give your view."})
-            first.room_runtime._save(room)
+        with first.group_runtime.lock:
+            group = first.group_runtime.groups["durable-group"]
+            group["status"] = "review"
+            group["steps"].append({"id": "waiting-agent", "seat": 2, "state": "queued", "kind": "invitation", "prompt": "Give your view."})
+            first.group_runtime._save(group)
     finally:
         first.close()
     second = _manager(root, [])
     calls = []
-    monkeypatch.setattr(second, "run_room_turn", lambda **kw: calls.append(kw["seat"]) or reply(kw))
+    monkeypatch.setattr(second, "run_group_turn", lambda **kw: calls.append(kw["seat"]) or reply(kw))
     try:
         command(second)
         state = wait_for(lambda: (s := command(second))["status"] == "idle" and len(s["turns"]) == 4 and s)
@@ -404,12 +404,12 @@ def test_existing_review_paused_room_resumes_its_pending_agent_after_upgrade(tmp
         second.close()
 
 
-def test_room_turns_preserve_and_recover_timestamps_across_restart(tmp_path):
+def test_group_turns_preserve_and_recover_timestamps_across_restart(tmp_path):
     root = _repo(tmp_path)
     first = _manager(root, [])
     try:
-        session_id = "test-timestamps-room"
-        raw_room = {
+        session_id = "test-timestamps-group"
+        raw_group = {
             "id": session_id,
             "scene": "manuscript/ch01/01-opening.md",
             "managed": True,
@@ -422,14 +422,14 @@ def test_room_turns_preserve_and_recover_timestamps_across_restart(tmp_path):
             ],
             "plans": [],
         }
-        first.room_runtime.store.write("rooms", session_id, raw_room)
+        first.group_runtime.store.write("groups", session_id, raw_group)
     finally:
         first.close()
 
     second = _manager(root, [])
     try:
-        room = second.room_runtime._load(session_id)
-        turns = room["turns"]
+        group = second.group_runtime._load(session_id)
+        turns = group["turns"]
         assert len(turns) == 3
         # First turn was missing created_at, should be populated via interpolation:
         assert isinstance(turns[0].get("created_at"), float)
@@ -444,13 +444,13 @@ def test_room_turns_preserve_and_recover_timestamps_across_restart(tmp_path):
         second.close()
 
 
-def test_room_submit_auto_targets_both_initially_and_last_critic_afterwards_unless_all(tmp_path, monkeypatch):
+def test_group_submit_auto_targets_both_initially_and_last_critic_afterwards_unless_all(tmp_path, monkeypatch):
     manager = _manager(_repo(tmp_path), [])
     calls = []
     def run(**kw):
         calls.append(kw["seat"])
         return reply(kw, f"Reply from critic {kw['seat']}.")
-    monkeypatch.setattr(manager, "run_room_turn", run)
+    monkeypatch.setattr(manager, "run_group_turn", run)
     try:
         # 1. No messages yet: message without explicit seats goes to both [1, 2]
         command(manager, "submit", initial=initial(manager), message_id="first", text="Initial question")
@@ -478,7 +478,7 @@ def test_preset_can_continue_from_three_debate_runs_to_five_with_recap(tmp_path,
     def run(**kw):
         calls.append(kw["seat"])
         return reply(kw, f"Reply {len(calls)} from seat {kw['seat']}.")
-    monkeypatch.setattr(manager, "run_room_turn", run)
+    monkeypatch.setattr(manager, "run_group_turn", run)
     try:
         initial_steps = [
             {"seat": 1, "prompt": "Step 1"},

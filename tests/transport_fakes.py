@@ -22,8 +22,8 @@ from proseview.codex_app_server import CodexRequestError
 
 
 
-#: What a fake moderator makes of any Writers' Room debate.
-ROOM_MODERATOR_ANSWER = {
+#: What a fake moderator makes of any Group debate.
+GROUP_MODERATOR_ANSWER = {
     "agreed": [
         {"title": "Tighten the opening beat", "line": "3", "original": "It was a morning like any other.",
          "replacement": "Mira counted the ledger twice.", "why": "Open on action, not setup.",
@@ -160,7 +160,7 @@ class CodexFakeClient:
                 elif kind == "critique":
                     answer = json.dumps({"kind": "critique", "findings": [{"observation": "The opening is abstract.", "evidence": "First document.", "why_it_matters": "The image is hard to picture.", "next_step": "Use one concrete detail."}]})
                 elif "agreed" in (schema.get("properties") or {}):
-                    answer = json.dumps(ROOM_MODERATOR_ANSWER)
+                    answer = json.dumps(GROUP_MODERATOR_ANSWER)
                 elif kind == "continuity_report":
                     answer = json.dumps({
                         "kind": "continuity_report",
@@ -347,7 +347,7 @@ class ClaudeFakeClient:
                 "next_step": "Use one concrete detail.",
             }]})
         if "agreed" in (schema.get("properties") or {}):
-            return json.dumps(ROOM_MODERATOR_ANSWER)
+            return json.dumps(GROUP_MODERATOR_ANSWER)
         return f"Answer {turn_id}"
 
     def request(self, method, params, *, timeout=None):

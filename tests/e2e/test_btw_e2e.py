@@ -165,7 +165,7 @@ def test_btw_typing_indicator_parallel_tabs_resize_history_exclusion_and_esc_in_
     assert page.locator("#discussLog").inner_text().find("Check character age") == -1
 
 
-def test_btw_fallback_when_no_parent_thread_and_claude_fork_plus_room_exclusion(page, server):
+def test_btw_fallback_when_no_parent_thread_and_claude_fork_plus_group_exclusion(page, server):
     claude_log = server.home / "fake-claude-received.jsonl"
     claude_log.unlink(missing_ok=True)
 
@@ -196,10 +196,10 @@ def test_btw_fallback_when_no_parent_thread_and_claude_fork_plus_room_exclusion(
     assert forked_query["ephemeral"] is True
     assert {"Read", "Grep", "Glob", "Edit", "Write"}.issubset(set(forked_query["tools"]))
 
-    # Switching to Writers' Room hides /btw split, and /btw is excluded from Room.
-    page.evaluate("showScenePanelTab('room')")
+    # Switching to Group hides /btw split, and /btw is excluded from Group.
+    page.evaluate("showScenePanelTab('group')")
     assert page.locator("#btwSplitPane").is_hidden()
-    page.fill("#roomInput", "/btw Should not open side split")
+    page.fill("#groupInput", "/btw Should not open side split")
     assert page.locator("#discussBtwHint").is_hidden()
 
     # Returning to Codex and pressing Enter on bare "/btw " opens a blank tab

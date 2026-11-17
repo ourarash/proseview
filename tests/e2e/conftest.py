@@ -699,7 +699,7 @@ for line in sys.stdin:
                 'And in `plans/structure-notes.md`:\\n\\n'
                 '> Prose after the rule.'
             )
-        if "in a Writers' Room on the manuscript scene" in prompt:
+        if "in a Group on the manuscript scene" in prompt:
             answer = '### 1. Weather opening\\n\\n> *The weather was grey.*\\n\\nCut it and open on the safe combination.\\n\\n> She had used the same four digits since spring.'
         schema = params.get('outputSchema') or {}
         kind = ((((schema.get('properties') or {}).get('kind') or {}).get('enum') or [None])[0])
@@ -738,10 +738,10 @@ for line in sys.stdin:
                 ],
                 'open': [{'issue': 'When to reveal the safe code', 'critic1': 'In this scene, to raise the stakes.', 'critic2': 'In the next, to keep the subtext.'}],
             })
-        if 'ROOM_PASS_CODEX' in prompt:
-            answer = '[ROOM_PASS]'
+        if 'GROUP_PASS_CODEX' in prompt:
+            answer = '[GROUP_PASS]'
         emit({'method': 'item/agentMessage/delta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'itemId': 'answer-' + turn_id, 'delta': answer[:24]}})
-        wait_at_barrier('room-stream')
+        wait_at_barrier('group-stream')
         emit({'method': 'item/completed', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'answer-' + turn_id, 'type': 'agentMessage', 'phase': 'final_answer', 'text': answer}}})
         stored_answer = html.escape(answer).replace('&#x27;', '&#39;') if kind in {'alternatives', 'critique', 'continuity_report'} else answer
         turn.update({'status': 'completed', 'items': turn['items'] + [{'type': 'agentMessage', 'phase': 'final_answer', 'text': stored_answer}]})

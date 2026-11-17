@@ -173,7 +173,7 @@ class ClaudeSDKClient:
                 "open": [{"issue": "When to reveal the safe code", "critic1": "In this scene, to raise the stakes.", "critic2": "In the next, to keep the subtext."}],
             }
             answer = json.dumps(structured)
-        elif "in a Writers' Room on the manuscript scene" in prompt:
+        elif "in a Group on the manuscript scene" in prompt:
             answer = "**Agree:** Issue 1, and cut the weather outright.\n\n**Add:** a sharper pause before she speaks."
         elif "Visual Beat Map" in prompt:
             structured = {
@@ -245,8 +245,8 @@ class ClaudeSDKClient:
                 ]
             }
             answer = json.dumps(structured)
-        if "ROOM_PASS_CLAUDE" in prompt:
-            answer = "[ROOM_PASS]"
+        if "GROUP_PASS_CLAUDE" in prompt:
+            answer = "[GROUP_PASS]"
         rows.append(SimpleNamespace(
             type="assistant", uuid=uuid.uuid4().hex,
             message={"role": "assistant", "content": [{"type": "text", "text": answer}]},

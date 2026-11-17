@@ -129,7 +129,7 @@ terms. Proseview itself sends nothing anywhere.
 
 Nothing runs until you ask:
 
-- **The Writers’ Room.** One conversation with two editors (by default, a
+- **The Group.** One conversation with two editors (by default, a
   **Story Editor** for plot and pacing and a **Voice Editor** for tone and
   style) who discuss your book with you and with each other. `@mention` one to
   ask just them.
@@ -201,12 +201,12 @@ kind. Click a moment and the page shows its paragraph.
 
 ![The Beats tab beside the opening scene: a tension line across five beats, the first beat open to its moments, and the chosen moment's sentence marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-beatmap.gif)
 
-### Writers' Room
+### Group
 
-Ask the room a question and both editors answer in one conversation, each
+Ask the group a question and both editors answer in one conversation, each
 from their own side of the book.
 
-![The Room tab: a question about the opening scene, answered first by the Story Editor on Claude and then by the Voice Editor on Codex](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
+![The Group tab: a question about the opening scene, answered first by the Story Editor on Claude and then by the Voice Editor on Codex](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
 
 ### Agents
 

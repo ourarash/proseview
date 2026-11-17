@@ -1,4 +1,4 @@
-// Shared model controls and the Room composer. Agent identity and conversation
+// Shared model controls and the Group composer. Agent identity and conversation
 // state remain separate; the rendered model options are common to both chats.
 function renderChatModelOptions(config) {
     var catalog = config.catalog, selection = config.selection, list = config.list, efforts = config.efforts;
@@ -84,58 +84,58 @@ function renderChatModelOptions(config) {
 
 }
 
-var _roomDraftScene = '';
-var _roomSkillCatalogs = Object.create(null);
-var _roomSkillRequests = Object.create(null);
-var _roomModelCatalogs = Object.create(null);
-var _roomModelRequests = Object.create(null);
-var _roomProviderStatus = null;
-var _roomProviderStatusAt = 0;
-var _roomProviderRequest = null;
+var _groupDraftScene = '';
+var _groupSkillCatalogs = Object.create(null);
+var _groupSkillRequests = Object.create(null);
+var _groupModelCatalogs = Object.create(null);
+var _groupModelRequests = Object.create(null);
+var _groupProviderStatus = null;
+var _groupProviderStatusAt = 0;
+var _groupProviderRequest = null;
 
-function roomLoadProviderStatus(force) {
-    if (!force && _roomProviderStatus && Date.now() - _roomProviderStatusAt < 30000) return Promise.resolve(_roomProviderStatus);
-    if (!_roomProviderRequest) _roomProviderRequest = discussApi('/api/discuss/agents', {}).then(function(data) {
+function groupLoadProviderStatus(force) {
+    if (!force && _groupProviderStatus && Date.now() - _groupProviderStatusAt < 30000) return Promise.resolve(_groupProviderStatus);
+    if (!_groupProviderRequest) _groupProviderRequest = discussApi('/api/discuss/agents', {}).then(function(data) {
         if (!data.ok || !Array.isArray(data.agents)) throw new Error(data.error || 'Could not check agent availability');
-        _roomProviderStatus = data.agents; _roomProviderStatusAt = Date.now();
+        _groupProviderStatus = data.agents; _groupProviderStatusAt = Date.now();
         return data.agents;
-    }).finally(function() { _roomProviderRequest = null; });
-    return _roomProviderRequest;
+    }).finally(function() { _groupProviderRequest = null; });
+    return _groupProviderRequest;
 }
 
-function roomDraftKey(path) {
-    return 'proseview-room-draft:book:' + repoRoot;
+function groupDraftKey(path) {
+    return 'proseview-group-draft:book:' + repoRoot;
 }
-function _roomSaveDraft(path) {
+function _groupSaveDraft(path) {
     if (!path) return;
-    var session = _roomSessionsByScene[path];
-    var input = document.getElementById('roomInput');
+    var session = _groupSessionsByScene[path];
+    var input = document.getElementById('groupInput');
     try {
-        var previous = JSON.parse(sessionStorage.getItem(roomDraftKey(path)) || '{}'), current = path === _roomDraftScene;
-        sessionStorage.setItem(roomDraftKey(path), JSON.stringify({text: current ? _roomDraftInput : previous.text || '',
-            selection: current ? _roomPendingSelection : previous.selection || '', target: current ? _roomTargetChoice : previous.target || 'auto',
-            selectionScene: current ? _roomPendingSelectionScene : previous.selectionScene || '',
-            roomId: session && session.id || '', participants: session && session.participants,
+        var previous = JSON.parse(sessionStorage.getItem(groupDraftKey(path)) || '{}'), current = path === _groupDraftScene;
+        sessionStorage.setItem(groupDraftKey(path), JSON.stringify({text: current ? _groupDraftInput : previous.text || '',
+            selection: current ? _groupPendingSelection : previous.selection || '', target: current ? _groupTargetChoice : previous.target || 'auto',
+            selectionScene: current ? _groupPendingSelectionScene : previous.selectionScene || '',
+            groupId: session && session.id || '', participants: session && session.participants,
             providerChosen: !!(session && session.providerChosen),
             pending: session && session.managed ? [] : session && session.pendingMessages || [], outbox: session && session.outbox || [], height: current && input ? input.style.height : previous.height || ''}));
     } catch (error) { /* An unavailable draft store must not prevent sending. */ }
 }
-function _roomLoadDraft(path) {
-    if (_roomDraftScene === path) return;
-    if (_roomDraftScene) { _roomDraftScene = path; _roomSessionFor(path); return; }
-    _roomDraftScene = path;
+function _groupLoadDraft(path) {
+    if (_groupDraftScene === path) return;
+    if (_groupDraftScene) { _groupDraftScene = path; _groupSessionFor(path); return; }
+    _groupDraftScene = path;
     var saved = {};
     try {
-        var legacyKey = 'proseview-room-draft:' + (((typeof meta !== 'undefined' && meta[path]) || {}).abs_path || path);
-        saved = JSON.parse(sessionStorage.getItem(roomDraftKey(path)) || sessionStorage.getItem(legacyKey) || '{}');
+        var legacyKey = 'proseview-group-draft:' + (((typeof meta !== 'undefined' && meta[path]) || {}).abs_path || path);
+        saved = JSON.parse(sessionStorage.getItem(groupDraftKey(path)) || sessionStorage.getItem(legacyKey) || '{}');
     } catch (error) {}
-    _roomDraftInput = saved.text || ''; _roomPendingSelection = saved.selection || '';
-    _roomPendingSelectionScene = saved.selectionScene || path;
-    _roomTargetChoice = ['critic1', 'critic2', 'both'].includes(saved.target) ? saved.target : 'auto';
-    var session = _roomSessionFor(path);
+    _groupDraftInput = saved.text || ''; _groupPendingSelection = saved.selection || '';
+    _groupPendingSelectionScene = saved.selectionScene || path;
+    _groupTargetChoice = ['critic1', 'critic2', 'both'].includes(saved.target) ? saved.target : 'auto';
+    var session = _groupSessionFor(path);
     if (!session.turns.length && !session.participants && Array.isArray(saved.participants) && saved.participants.length === 2
-            && saved.participants.every(function(p) { return _roomSettings.library.profiles.some(function(available) { return available.id === p.id; }); })) {
-        session.participants = _roomProfiles(saved.participants.map(function(p) { return p.id; }));
+            && saved.participants.every(function(p) { return _groupSettings.library.profiles.some(function(available) { return available.id === p.id; }); })) {
+        session.participants = _groupProfiles(saved.participants.map(function(p) { return p.id; }));
         session.participants.forEach(function(p, index) {
             if (saved.providerChosen && (saved.participants[index].agent === 'codex' || saved.participants[index].agent === 'claude')) {
                 p.agent = saved.participants[index].agent;
@@ -143,64 +143,64 @@ function _roomLoadDraft(path) {
             p.model = saved.participants[index].model || '';
             p.effort = saved.participants[index].effort || '';
         });
-        if (saved.providerChosen) session.participants = _roomSnapshotPair(session.participants);
+        if (saved.providerChosen) session.participants = _groupSnapshotPair(session.participants);
         session.participantsChosen = true;
         session.providerChosen = !!saved.providerChosen;
     }
     if (!session.pendingMessages && Array.isArray(saved.pending)) { session.pendingMessages = saved.pending; session.queuePaused = !!saved.pending.length; }
     session.composerHeight = saved.height || '';
     if (!session.outbox && Array.isArray(saved.outbox)) session.outbox = saved.outbox;
-    if (!session.id) session.id = session.outbox && session.outbox.length ? session.outbox[0].room_id : saved.roomId || '';
+    if (!session.id) session.id = session.outbox && session.outbox.length ? session.outbox[0].group_id : saved.groupId || '';
 }
-function roomRequestedSeats(text, session) {
-    var mentioned = _roomMentionRecipients(text);
+function groupRequestedSeats(text, session) {
+    var mentioned = _groupMentionRecipients(text);
     if (mentioned.length) return mentioned;
-    session = session || _roomSessionFor(_roomCurrentScenePath());
-    var effective = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : 'both';
+    session = session || _groupSessionFor(_groupCurrentScenePath());
+    var effective = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'both';
     return effective === 'critic1' ? [1] : effective === 'critic2' ? [2] : [1, 2];
 }
-function submitRoomComposerMessage(options) { return submitManagedRoomMessage(options); }
-function roomLoadSkills(agent) {
-    if (_roomSkillCatalogs[agent]) return Promise.resolve(_roomSkillCatalogs[agent]);
-    if (!_roomSkillRequests[agent]) _roomSkillRequests[agent] = discussApi('/api/discuss/skills', {agent: agent})
-        .then(function(data) { _roomSkillCatalogs[agent] = data.skills || []; return _roomSkillCatalogs[agent]; })
-        .finally(function() { delete _roomSkillRequests[agent]; });
-    return _roomSkillRequests[agent];
+function submitGroupComposerMessage(options) { return submitManagedGroupMessage(options); }
+function groupLoadSkills(agent) {
+    if (_groupSkillCatalogs[agent]) return Promise.resolve(_groupSkillCatalogs[agent]);
+    if (!_groupSkillRequests[agent]) _groupSkillRequests[agent] = discussApi('/api/discuss/skills', {agent: agent})
+        .then(function(data) { _groupSkillCatalogs[agent] = data.skills || []; return _groupSkillCatalogs[agent]; })
+        .finally(function() { delete _groupSkillRequests[agent]; });
+    return _groupSkillRequests[agent];
 }
-function roomSkillForInvitation(participant, text) {
+function groupSkillForInvitation(participant, text) {
     if (!/(?:^|\s)\$/.test(text)) return Promise.resolve(null);
-    return roomLoadSkills(participant.agent).then(function(skills) {
+    return groupLoadSkills(participant.agent).then(function(skills) {
         var match = skills.find(function(skill) {
             return new RegExp('(?:^|\\s)\\$' + skill.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[\\s.,;:!?])').test(text);
         });
         return match ? {name: match.name, path: match.path} : null;
     });
 }
-function roomLoadModelCatalog(agent) {
-    var existing = _roomModelCatalogs[agent] || ((_roomSettings || {}).catalogs || {})[agent];
+function groupLoadModelCatalog(agent) {
+    var existing = _groupModelCatalogs[agent] || ((_groupSettings || {}).catalogs || {})[agent];
     if (existing && !existing.unavailable) return Promise.resolve(existing);
-    if (!_roomModelRequests[agent]) _roomModelRequests[agent] = discussApi('/api/discuss/models', {agent: agent})
-        .then(function(data) { _roomModelCatalogs[agent] = data.catalog; return data.catalog; })
-        .finally(function() { delete _roomModelRequests[agent]; });
-    return _roomModelRequests[agent];
+    if (!_groupModelRequests[agent]) _groupModelRequests[agent] = discussApi('/api/discuss/models', {agent: agent})
+        .then(function(data) { _groupModelCatalogs[agent] = data.catalog; return data.catalog; })
+        .finally(function() { delete _groupModelRequests[agent]; });
+    return _groupModelRequests[agent];
 }
-function roomInsertContext(trigger) {
-    var input = document.getElementById('roomInput');
+function groupInsertContext(trigger) {
+    var input = document.getElementById('groupInput');
     if (!input) return;
     input.focus();
     var start = input.selectionStart;
     input.setRangeText((start && !/\s/.test(input.value.charAt(start - 1)) ? ' ' : '') + trigger, start, input.selectionEnd, 'end');
     input.dispatchEvent(new Event('input', {bubbles: true}));
 }
-function createRoomModelControl(session, profile) {
-    var wrap = elementWith('room-model-control');
+function createGroupModelControl(session, profile) {
+    var wrap = elementWith('group-model-control');
     var chip = document.createElement('button'); chip.type = 'button'; chip.className = 'discuss-model-chip';
     chip.setAttribute('aria-haspopup', 'dialog'); chip.setAttribute('aria-expanded', 'false');
     chip.disabled = session.busy || !!(session.outbox && session.outbox.length);
-    var panel = elementWith('discuss-model-picker room-model-picker'); panel.hidden = true;
+    var panel = elementWith('discuss-model-picker group-model-picker'); panel.hidden = true;
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Choose model for ' + profile.name);
-    var head = elementWith('discuss-model-picker-head', profile.name + ' · ' + _roomAgentDisplay(profile.agent));
-    var close = document.createElement('button'); close.type = 'button'; close.className = 'room-header-btn'; close.textContent = 'Close';
+    var head = elementWith('discuss-model-picker-head', profile.name + ' · ' + _groupAgentDisplay(profile.agent));
+    var close = document.createElement('button'); close.type = 'button'; close.className = 'group-header-btn'; close.textContent = 'Close';
     close.setAttribute('aria-label', 'Close model picker');
     close.onclick = function() { panel.hidden = true; chip.setAttribute('aria-expanded', 'false'); chip.focus(); };
     head.appendChild(close);
@@ -211,7 +211,7 @@ function createRoomModelControl(session, profile) {
     var efforts = elementWith('discuss-model-efforts'); efforts.setAttribute('role', 'group'); efforts.setAttribute('aria-label', 'Reasoning effort');
     var foot = elementWith('discuss-model-foot'); panel.append(head, list, desc, efforts, foot); wrap.append(chip, panel);
     var catalog = null, note = '', providerWarning = '', providerUnavailable = false, catalogWarning = '';
-    function inherited() { return ((_roomSettings || {}).chat_models || {})[profile.agent] || {}; }
+    function inherited() { return ((_groupSettings || {}).chat_models || {})[profile.agent] || {}; }
     function paintChip() {
         var selection = inherited(), id = profile.model || selection.model || '', row = discussModelRow(catalog, id);
         var name = row && row.label || id || (catalog && catalog.default && (catalog.default.label || catalog.default.model)) || 'Same as chat';
@@ -221,12 +221,12 @@ function createRoomModelControl(session, profile) {
         chip.textContent = (warning ? '⚠ ' : '') + profile.name + ' · ' + label + ' ▾';
         chip.dataset.warning = warning ? 'true' : 'false';
         chip.setAttribute('aria-label', 'Model for ' + profile.name + ': ' + (warning || name + (effort ? ', effort ' + effort : '')));
-        chip.title = warning ? warning + ' Open the picker to retry.' : profile.name + ' · ' + _roomAgentDisplay(profile.agent) + ' · ' + name + (effort ? ' · ' + effort : '') + '. Applies to the next message in this Room.';
+        chip.title = warning ? warning + ' Open the picker to retry.' : profile.name + ' · ' + _groupAgentDisplay(profile.agent) + ' · ' + name + (effort ? ' · ' + effort : '') + '. Applies to the next message in this Group.';
         chip.dataset.inherited = !profile.model && !profile.effort ? 'true' : 'false';
     }
     function save(model, effort) {
         profile.model = model; profile.effort = effort;
-        _roomSaveDraft(session.scene); _saveRoomSession(session); paintChip(); paintOptions();
+        _groupSaveDraft(session.scene); _saveGroupSession(session); paintChip(); paintOptions();
     }
     function chooseModel(id) {
         if (!id) { note = ''; save('', ''); return; }
@@ -239,17 +239,17 @@ function createRoomModelControl(session, profile) {
     function paintOptions() {
         if (!catalog) return;
         renderChatModelOptions({catalog: catalog, selection: {model: profile.model || '', effort: profile.effort || ''},
-            agentLabel: _roomAgentDisplay(profile.agent), inheritLabel: 'Same as individual chat',
-            inheritDescription: 'Follow the current ' + _roomAgentDisplay(profile.agent) + ' chat model and effort.',
-            inheritEffortDescription: 'Inherited from the individual ' + _roomAgentDisplay(profile.agent) + ' chat',
-            footNote: 'Applies to ' + profile.name + ' in this Room, from the next message. The reusable profile stays unchanged.',
+            agentLabel: _groupAgentDisplay(profile.agent), inheritLabel: 'Same as individual chat',
+            inheritDescription: 'Follow the current ' + _groupAgentDisplay(profile.agent) + ' chat model and effort.',
+            inheritEffortDescription: 'Inherited from the individual ' + _groupAgentDisplay(profile.agent) + ' chat',
+            footNote: 'Applies to ' + profile.name + ' in this Group, from the next message. The reusable profile stays unchanged.',
             list: list, efforts: efforts, description: explanation, foot: foot, note: note,
             chooseModel: chooseModel, chooseEffort: function(value) { note = ''; save(profile.model, value); }});
     }
     chip.onclick = function() {
         var opening = panel.hidden;
-        document.querySelectorAll('.room-model-picker').forEach(function(picker) { picker.hidden = true; });
-        document.querySelectorAll('.room-model-control > button').forEach(function(button) { button.setAttribute('aria-expanded', 'false'); });
+        document.querySelectorAll('.group-model-picker').forEach(function(picker) { picker.hidden = true; });
+        document.querySelectorAll('.group-model-control > button').forEach(function(button) { button.setAttribute('aria-expanded', 'false'); });
         panel.hidden = !opening; chip.setAttribute('aria-expanded', String(opening));
         if (!opening) return;
         if (catalog) { paintOptions(); list.querySelector('[aria-checked="true"]').focus(); }
@@ -258,13 +258,13 @@ function createRoomModelControl(session, profile) {
     };
     paintChip();
     function loadCatalog(force) {
-        roomLoadProviderStatus(force).then(function(rows) {
+        groupLoadProviderStatus(force).then(function(rows) {
             var provider = rows.find(function(row) { return row.id === profile.agent; });
             providerUnavailable = !!(provider && !provider.available);
-            providerWarning = provider && !provider.available ? _roomAgentDisplay(profile.agent) + ': ' + (provider.reason || 'Agent unavailable') : '';
+            providerWarning = provider && !provider.available ? _groupAgentDisplay(profile.agent) + ': ' + (provider.reason || 'Agent unavailable') : '';
         }).catch(function(error) { providerUnavailable = false; providerWarning = 'Availability unknown: ' + error.message; })
             .finally(function() { if (chip.isConnected) paintChip(); });
-        return roomLoadModelCatalog(profile.agent).then(function(value) {
+        return groupLoadModelCatalog(profile.agent).then(function(value) {
             if (!value) throw new Error('No model catalogue was returned.');
             catalog = value; catalogWarning = ''; if (chip.isConnected) { paintChip(); paintOptions(); }
         }).catch(function(error) {
@@ -276,20 +276,20 @@ function createRoomModelControl(session, profile) {
     loadCatalog();
     return wrap;
 }
-function renderRoomQuickSend(node, session) {
-    var hasDraft = !!_roomDraftInput.trim();
+function renderGroupQuickSend(node, session) {
+    var hasDraft = !!_groupDraftInput.trim();
     var allPresets = presetDiscussInstructions();
-    var presets = allPresets.filter(function(value) { return _roomPendingSelection || !discussInstructionNeedsSelection(value); });
-    var recents = recentDiscussInstructions().filter(function(value) { return allPresets.indexOf(value) < 0 && (_roomPendingSelection || !discussInstructionNeedsSelection(value)); });
+    var presets = allPresets.filter(function(value) { return _groupPendingSelection || !discussInstructionNeedsSelection(value); });
+    var recents = recentDiscussInstructions().filter(function(value) { return allPresets.indexOf(value) < 0 && (_groupPendingSelection || !discussInstructionNeedsSelection(value)); });
     node.replaceChildren(); node.hidden = !presets.length && !recents.length;
     node.appendChild(elementWith('discuss-presets-label', 'Quick send:'));
     var controls = {choose: function(value, details) {
         if (hasDraft) return;
         if (details) details.open = false;
-        var field = document.getElementById('roomInput'); field.value = value; _roomDraftInput = value;
-        submitRoomComposerMessage();
+        var field = document.getElementById('groupInput'); field.value = value; _groupDraftInput = value;
+        submitGroupComposerMessage();
     }, refresh: function() {
-        renderRoomQuickSend(node, session);
+        renderGroupQuickSend(node, session);
         var details = node.querySelector('details'); if (details) { details.open = true; details.querySelector('summary').focus(); }
     }};
     var inline = elementWith('discuss-presets-inline');
@@ -301,91 +301,91 @@ function renderRoomQuickSend(node, session) {
     if (allPresets.length > presets.length || presets.length > 3 || recents.length || favoriteDiscussInstructions().length) appendDiscussPresetsMenu(node, allPresets, recents, controls);
     node.querySelectorAll('.discuss-preset-inline, .discuss-preset-menu-choice').forEach(function(button) { button.disabled = hasDraft; });
 }
-function createRoomComposer(session) {
-    var composer = elementWith('room-composer'); composer.id = 'roomComposer';
-    var targetRow = elementWith('room-composer-bar'), targetLeft = elementWith('room-composer-target');
-    targetLeft.appendChild(elementWith('room-apply-label', 'To:'));
-    var target = document.createElement('select'); target.id = 'roomTargetSelect'; target.className = 'room-target-select'; target.setAttribute('aria-label', 'Room message recipient');
-    var bothLabel = typeof _roomBothLabel === 'function' ? _roomBothLabel(session) : 'Room (Both editors)';
-    var critic1Label = (typeof _roomSeatLabel === 'function' ? _roomSeatLabel(1, session) : _roomSeatName(1)) + ' only';
-    var critic2Label = (typeof _roomSeatLabel === 'function' ? _roomSeatLabel(2, session) : _roomSeatName(2)) + ' only';
+function createGroupComposer(session) {
+    var composer = elementWith('group-composer'); composer.id = 'groupComposer';
+    var targetRow = elementWith('group-composer-bar'), targetLeft = elementWith('group-composer-target');
+    targetLeft.appendChild(elementWith('group-apply-label', 'To:'));
+    var target = document.createElement('select'); target.id = 'groupTargetSelect'; target.className = 'group-target-select'; target.setAttribute('aria-label', 'Group message recipient');
+    var bothLabel = typeof _groupBothLabel === 'function' ? _groupBothLabel(session) : 'Group (Both editors)';
+    var critic1Label = (typeof _groupSeatLabel === 'function' ? _groupSeatLabel(1, session) : _groupSeatName(1)) + ' only';
+    var critic2Label = (typeof _groupSeatLabel === 'function' ? _groupSeatLabel(2, session) : _groupSeatName(2)) + ' only';
     [{value: 'both', name: bothLabel}, {value: 'critic1', name: critic1Label}, {value: 'critic2', name: critic2Label}].forEach(function(item) {
         var option = document.createElement('option'); option.value = item.value; option.textContent = item.name; target.appendChild(option);
     });
-    target.value = typeof _roomEffectiveTarget === 'function' ? _roomEffectiveTarget(session) : 'both'; target.onchange = function() { _roomTargetChoice = target.value; _roomSaveDraft(session.scene); };
+    target.value = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'both'; target.onchange = function() { _groupTargetChoice = target.value; _groupSaveDraft(session.scene); };
     targetLeft.appendChild(target); targetRow.appendChild(targetLeft); composer.appendChild(targetRow);
-    if (_roomPendingSelection) {
-        var selection = elementWith('discuss-selection-chip room-selection-chip'); selection.id = 'roomSelectionChip';
-        var words = _roomPendingSelection.trim().split(/\s+/).length;
-        var excerpt = elementWith('discuss-selection-chip-text', 'Selection · ' + words + ' words · “' + _roomPendingSelection.replace(/\s+/g, ' ').slice(0, 72) + '”'); excerpt.title = _roomPendingSelection;
-        var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'room-selection-clear'; remove.setAttribute('aria-label', 'Remove selection'); remove.textContent = '×';
-        remove.onclick = function() { _roomPendingSelection = ''; _roomPendingSelectionScene = ''; _roomSaveDraft(session.scene); renderSceneRoomPane(); };
+    if (_groupPendingSelection) {
+        var selection = elementWith('discuss-selection-chip group-selection-chip'); selection.id = 'groupSelectionChip';
+        var words = _groupPendingSelection.trim().split(/\s+/).length;
+        var excerpt = elementWith('discuss-selection-chip-text', 'Selection · ' + words + ' words · “' + _groupPendingSelection.replace(/\s+/g, ' ').slice(0, 72) + '”'); excerpt.title = _groupPendingSelection;
+        var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'group-selection-clear'; remove.setAttribute('aria-label', 'Remove selection'); remove.textContent = '×';
+        remove.onclick = function() { _groupPendingSelection = ''; _groupPendingSelectionScene = ''; _groupSaveDraft(session.scene); renderSceneGroupPane(); };
         selection.append(excerpt, remove); composer.appendChild(selection);
     }
-    var quick = elementWith('room-quick-send'); quick.id = 'roomQuickSend'; composer.appendChild(quick);
-    var label = document.createElement('label'); label.className = 'sr-only'; label.htmlFor = 'roomInput'; label.textContent = 'Message the room'; composer.appendChild(label);
-    var inputWrap = elementWith('room-input-wrap'), mirror = elementWith('room-input-mirror'); mirror.setAttribute('aria-hidden', 'true');
-    var input = document.createElement('textarea'); input.id = 'roomInput'; input.className = 'room-input'; input.rows = 2; input.maxLength = 32768;
-    input.setAttribute('aria-describedby', 'roomMentionHint'); input.placeholder = _roomPendingSelection ? 'Ask about this selection…' : 'Message the room…';
+    var quick = elementWith('group-quick-send'); quick.id = 'groupQuickSend'; composer.appendChild(quick);
+    var label = document.createElement('label'); label.className = 'sr-only'; label.htmlFor = 'groupInput'; label.textContent = 'Message the group'; composer.appendChild(label);
+    var inputWrap = elementWith('group-input-wrap'), mirror = elementWith('group-input-mirror'); mirror.setAttribute('aria-hidden', 'true');
+    var input = document.createElement('textarea'); input.id = 'groupInput'; input.className = 'group-input'; input.rows = 2; input.maxLength = 32768;
+    input.setAttribute('aria-describedby', 'groupMentionHint'); input.placeholder = _groupPendingSelection ? 'Ask about this selection…' : 'Message the group…';
     input.title = 'Enter to send · Shift+Enter for a new line';
-    input.value = _roomDraftInput; if (session.composerHeight) input.style.height = session.composerHeight;
+    input.value = _groupDraftInput; if (session.composerHeight) input.style.height = session.composerHeight;
     inputWrap.append(mirror, input); composer.appendChild(inputWrap);
-    var toolbar = elementWith('discuss-send-row room-send-row'), actions = elementWith('discuss-composer-action-group room-composer-actions');
-    var plus = document.createElement('button'); plus.type = 'button'; plus.className = 'discuss-context-button'; plus.id = 'roomContextButton'; plus.textContent = '+';
-    plus.setAttribute('aria-label', 'Add people, files and folders'); plus.setAttribute('aria-haspopup', 'listbox'); plus.onclick = function() { roomInsertContext('@'); };
-    actions.appendChild(plus); (session.participants || []).forEach(function(profile) { actions.appendChild(createRoomModelControl(session, profile)); });
-    var sees = elementWith('discuss-sees-slot'), current = elementWith('discuss-sees', session.scene); current.title = 'Current scene shared with the Room: ' + session.scene; sees.appendChild(current); targetRow.appendChild(sees);
-    var sendActions = elementWith('room-send-actions');
-    var sendNow = document.createElement('button'); sendNow.type = 'button'; sendNow.id = 'roomSendNowBtn'; sendNow.className = 'room-send-now-btn'; sendNow.textContent = 'Send now';
-    sendNow.hidden = !session.busy; sendNow.disabled = !_roomDraftInput.trim();
+    var toolbar = elementWith('discuss-send-row group-send-row'), actions = elementWith('discuss-composer-action-group group-composer-actions');
+    var plus = document.createElement('button'); plus.type = 'button'; plus.className = 'discuss-context-button'; plus.id = 'groupContextButton'; plus.textContent = '+';
+    plus.setAttribute('aria-label', 'Add people, files and folders'); plus.setAttribute('aria-haspopup', 'listbox'); plus.onclick = function() { groupInsertContext('@'); };
+    actions.appendChild(plus); (session.participants || []).forEach(function(profile) { actions.appendChild(createGroupModelControl(session, profile)); });
+    var sees = elementWith('discuss-sees-slot'), current = elementWith('discuss-sees', session.scene); current.title = 'Current scene shared with the Group: ' + session.scene; sees.appendChild(current); targetRow.appendChild(sees);
+    var sendActions = elementWith('group-send-actions');
+    var sendNow = document.createElement('button'); sendNow.type = 'button'; sendNow.id = 'groupSendNowBtn'; sendNow.className = 'group-send-now-btn'; sendNow.textContent = 'Send now';
+    sendNow.hidden = !session.busy; sendNow.disabled = !_groupDraftInput.trim();
     sendNow.title = 'Send now (⌘/Ctrl+Enter) · Steer or run immediately';
-    sendNow.onclick = function() { sendRoomComposerMessage({mode: 'now'}); };
-    var send = document.createElement('button'); send.type = 'button'; send.id = 'roomSendBtn'; send.className = 'room-send-btn'; send.textContent = session.busy ? 'Queue' : 'Send';
-    send.disabled = !_roomDraftInput.trim(); send.title = 'Send (Enter) · Shift+Enter for a new line'; send.onclick = function() { sendRoomComposerMessage(); };
+    sendNow.onclick = function() { sendGroupComposerMessage({mode: 'now'}); };
+    var send = document.createElement('button'); send.type = 'button'; send.id = 'groupSendBtn'; send.className = 'group-send-btn'; send.textContent = session.busy ? 'Queue' : 'Send';
+    send.disabled = !_groupDraftInput.trim(); send.title = 'Send (Enter) · Shift+Enter for a new line'; send.onclick = function() { sendGroupComposerMessage(); };
     sendActions.append(sendNow, send);
     toolbar.append(actions, sendActions); composer.appendChild(toolbar);
-    var menu = elementWith('room-mention-menu'); menu.id = 'roomMentionMenu'; menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Mention an editor or project file'); menu.hidden = true;
-    var connection = elementWith('room-connection-status'); connection.id = 'roomConnectionStatus'; connection.setAttribute('role', 'status'); composer.appendChild(connection);
-    var hint = elementWith('sr-only'); hint.id = 'roomMentionHint'; hint.setAttribute('aria-live', 'polite'); composer.append(menu, hint);
-    function syncRoomInputState() {
-        _roomDraftInput = input.value; send.disabled = !_roomDraftInput.trim(); sendNow.disabled = !_roomDraftInput.trim(); _roomSaveDraft(session.scene);
-        paintRoomMentions(input, mirror); renderRoomQuickSend(quick, session);
+    var menu = elementWith('group-mention-menu'); menu.id = 'groupMentionMenu'; menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Mention an editor or project file'); menu.hidden = true;
+    var connection = elementWith('group-connection-status'); connection.id = 'groupConnectionStatus'; connection.setAttribute('role', 'status'); composer.appendChild(connection);
+    var hint = elementWith('sr-only'); hint.id = 'groupMentionHint'; hint.setAttribute('aria-live', 'polite'); composer.append(menu, hint);
+    function syncGroupInputState() {
+        _groupDraftInput = input.value; send.disabled = !_groupDraftInput.trim(); sendNow.disabled = !_groupDraftInput.trim(); _groupSaveDraft(session.scene);
+        paintGroupMentions(input, mirror); renderGroupQuickSend(quick, session);
     }
-    input.oninput = syncRoomInputState;
-    input.addEventListener('scroll', function() { paintRoomMentions(input, mirror); });
-    wireChatMentionReplacement(input, _roomMentionOptions);
-    _wireRoomMentions(input, menu, target, hint, function(nextValue) {
+    input.oninput = syncGroupInputState;
+    input.addEventListener('scroll', function() { paintGroupMentions(input, mirror); });
+    wireChatMentionReplacement(input, _groupMentionOptions);
+    _wireGroupMentions(input, menu, target, hint, function(nextValue) {
         input.value = nextValue;
-        syncRoomInputState();
+        syncGroupInputState();
     });
-    paintRoomMentions(input, mirror); renderRoomQuickSend(quick, session);
+    paintGroupMentions(input, mirror); renderGroupQuickSend(quick, session);
     return composer;
 }
 
 document.addEventListener('mousedown', function(event) {
-    if (event.target.closest && event.target.closest('.room-model-control')) return;
-    document.querySelectorAll('.room-model-picker').forEach(function(panel) { panel.hidden = true; });
-    document.querySelectorAll('.room-model-control > button').forEach(function(chip) { chip.setAttribute('aria-expanded', 'false'); });
+    if (event.target.closest && event.target.closest('.group-model-control')) return;
+    document.querySelectorAll('.group-model-picker').forEach(function(panel) { panel.hidden = true; });
+    document.querySelectorAll('.group-model-control > button').forEach(function(chip) { chip.setAttribute('aria-expanded', 'false'); });
 });
 document.addEventListener('keydown', function(event) {
     if (event.key !== 'Escape') return;
-    var panel = document.querySelector('.room-model-picker:not([hidden])');
+    var panel = document.querySelector('.group-model-picker:not([hidden])');
     if (!panel) return;
     event.preventDefault(); event.stopPropagation(); panel.hidden = true;
     var chip = panel.parentElement.querySelector('button'); chip.setAttribute('aria-expanded', 'false'); chip.focus();
 }, true);
 
-function roomClearEditedSelection(scenePath, files) {
-    var selectedScene = _roomPendingSelectionScene || scenePath;
+function groupClearEditedSelection(scenePath, files) {
+    var selectedScene = _groupPendingSelectionScene || scenePath;
     if (!files.some(function(file) { var target = prosviewTargetForRepositoryPath(file); return target && target.kind === 'scene' && target.path === selectedScene; })) return;
-    _roomPendingSelection = ''; _roomPendingSelectionScene = '';
-    _roomSaveDraft(_roomDraftScene || scenePath);
+    _groupPendingSelection = ''; _groupPendingSelectionScene = '';
+    _groupSaveDraft(_groupDraftScene || scenePath);
 }
 
-function roomSkillMentionRanges(text) {
+function groupSkillMentionRanges(text) {
     var names = [];
-    _roomMentionOptions().forEach(function(profile) {
-        (_roomSkillCatalogs[profile.agent] || []).forEach(function(skill) { if (!names.includes(skill.name)) names.push(skill.name); });
+    _groupMentionOptions().forEach(function(profile) {
+        (_groupSkillCatalogs[profile.agent] || []).forEach(function(skill) { if (!names.includes(skill.name)) names.push(skill.name); });
     });
     names.sort(function(a, b) { return b.length - a.length; });
     var ranges = [], pattern = /(^|\s)\$/g, match;

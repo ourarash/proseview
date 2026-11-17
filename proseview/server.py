@@ -2935,11 +2935,11 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     self._send_json({"ok": True, **result})
                     return
-                if path == "/api/discuss/room-settings":
+                if path == "/api/discuss/group-settings":
                     if body.get("save"):
-                        settings = self.discuss_manager.save_room_settings(body)
+                        settings = self.discuss_manager.save_group_settings(body)
                     else:
-                        settings = self.discuss_manager.room_settings()
+                        settings = self.discuss_manager.group_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
                 if path == "/api/discuss/beatmap-settings":
@@ -2949,11 +2949,11 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.beatmap_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
-                if path == "/api/discuss/room-run":
-                    self._send_json({"ok": True, "room": self.discuss_manager.room_command(body)})
+                if path == "/api/discuss/group-run":
+                    self._send_json({"ok": True, "group": self.discuss_manager.group_command(body)})
                     return
-                if path == "/api/discuss/room-turn":
-                    result = self.discuss_manager.run_room_turn(
+                if path == "/api/discuss/group-turn":
+                    result = self.discuss_manager.run_group_turn(
                         scene=str(body.get("scene") or ""),
                         live_content=str(body.get("live_content") or ""),
                         seat=int(body.get("seat") or 1),
@@ -2970,8 +2970,8 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     self._send_json({"ok": True, **result})
                     return
-                if path == "/api/discuss/room-moderator":
-                    result = self.discuss_manager.run_room_moderator(
+                if path == "/api/discuss/group-moderator":
+                    result = self.discuss_manager.run_group_moderator(
                         scene=str(body.get("scene") or ""),
                         preset_id=str(body.get("preset_id") or ""),
                         question=str(body.get("question") or ""),
@@ -2981,15 +2981,15 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     self._send_json({"ok": True, **result})
                     return
-                if path == "/api/discuss/room-stop":
-                    stopped = self.discuss_manager.stop_room_turn(str(body.get("run_id") or ""))
+                if path == "/api/discuss/group-stop":
+                    stopped = self.discuss_manager.stop_group_turn(str(body.get("run_id") or ""))
                     self._send_json({"ok": True, "stopped": stopped})
                     return
-                if path == "/api/discuss/room-history":
-                    self._send_json({"ok": True, **self.discuss_manager.room_history(body)})
+                if path == "/api/discuss/group-history":
+                    self._send_json({"ok": True, **self.discuss_manager.group_history(body)})
                     return
-                if path == "/api/discuss/room-progress":
-                    progress = self.discuss_manager.room_progress(str(body.get("run_id") or ""))
+                if path == "/api/discuss/group-progress":
+                    progress = self.discuss_manager.group_progress(str(body.get("run_id") or ""))
                     self._send_json({"ok": True, **progress})
                     return
                 if path == "/api/discuss/skills":

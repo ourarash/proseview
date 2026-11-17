@@ -665,10 +665,10 @@
                 if (currentSelectionRange) pinSelectionHighlight(currentSelectionRange);
                 selectionMemoryPreserved = true;
                 setSelectionMenuExpanded(false, {restoreFocus: true});
-                // With the Writers' Room open, Ask and Polish go to the room.
+                // With the Group open, Ask and Polish go to the group.
                 var opts = options || {};
-                if (!opts.actionId && !opts.showSkills && typeof roomTabIsOpen === 'function' && roomTabIsOpen()) {
-                    attachSelectionToRoom(selection, opts.sendInstruction || '');
+                if (!opts.actionId && !opts.showSkills && typeof groupTabIsOpen === 'function' && groupTabIsOpen()) {
+                    attachSelectionToGroup(selection, opts.sendInstruction || '');
                     pendingSelectionActionContext = null;
                     return;
                 }

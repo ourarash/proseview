@@ -1,4 +1,4 @@
-"""End-to-end browser tests for Send now across Codex, Claude, and Writers' Room."""
+"""End-to-end browser tests for Send now across Codex, Claude, and Group."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ pytest.importorskip("playwright.sync_api")
 
 from .conftest import SCENE_REL
 from .test_browser_e2e import open_scene
-from .test_highlight_card_e2e import _room_idle
+from .test_highlight_card_e2e import _group_idle
 
 pytestmark = pytest.mark.e2e_browser
 
@@ -130,30 +130,30 @@ def test_claude_send_now_interrupts_active_turn_and_runs_ahead_of_queue(page, se
     assert urgent_idx < queued_idx
 
 
-def test_room_send_now_steers_codex_and_keeps_claude_turn_queued(page, server):
+def test_group_send_now_steers_codex_and_keeps_claude_turn_queued(page, server):
     codex_log = server.home / "fake-codex-received.jsonl"
     codex_log.unlink(missing_ok=True)
 
     open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
+    page.evaluate("showScenePanelTab('group')")
 
-    send_btn = page.locator("#roomSendBtn")
-    now_btn = page.locator("#roomSendNowBtn")
+    send_btn = page.locator("#groupSendBtn")
+    now_btn = page.locator("#groupSendNowBtn")
     assert send_btn.inner_text().strip() == "Send"
     assert now_btn.is_hidden()
 
-    page.fill("#roomInput", "@all HOLD_ONCE_FOR_STEER Initial prompt")
-    page.press("#roomInput", "Enter")
+    page.fill("#groupInput", "@all HOLD_ONCE_FOR_STEER Initial prompt")
+    page.press("#groupInput", "Enter")
 
-    page.wait_for_function("() => document.querySelector('#roomSendBtn').textContent.trim() === 'Queue'")
+    page.wait_for_function("() => document.querySelector('#groupSendBtn').textContent.trim() === 'Queue'")
     assert now_btn.is_visible()
 
     _wait_jsonl_entry(codex_log, lambda rows: "turnId" in rows[0])
 
-    page.fill("#roomInput", "@all Urgent steer direction")
+    page.fill("#groupInput", "@all Urgent steer direction")
     now_btn.click()
 
-    _room_idle(page)
+    _group_idle(page)
     assert send_btn.inner_text().strip() == "Send"
     assert now_btn.is_hidden()
 
@@ -161,34 +161,34 @@ def test_room_send_now_steers_codex_and_keeps_claude_turn_queued(page, server):
     assert any(r.get("method") == "turn/steer" and "Urgent steer direction" in r["params"]["input"][0]["text"] for r in records)
     assert not any(r.get("method") == "turn/interrupt" for r in records), f"Unexpected interrupt in {[ {k: r.get(k) for k in ('method', 'turnId')} for r in records ]}"
 
-    labels = page.locator(".room-turn-card:not(.is-user) .chat-message-name").all_inner_texts()
+    labels = page.locator(".group-turn-card:not(.is-user) .chat-message-name").all_inner_texts()
     assert len(labels) == 2
     assert "StoryEditor" in labels[0] or "Codex" in labels[0]
     assert "VoiceEditor" in labels[1] or "Claude" in labels[1]
 
 
-def test_room_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagged_first(page, server):
+def test_group_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagged_first(page, server):
     codex_log = server.home / "fake-codex-received.jsonl"
     codex_log.unlink(missing_ok=True)
 
     open_scene(page, server, SCENE_REL)
-    page.evaluate("showScenePanelTab('room')")
+    page.evaluate("showScenePanelTab('group')")
 
-    page.fill("#roomInput", "@all HOLD_ONCE_FOR_STEER Start codex")
-    page.press("#roomInput", "Enter")
+    page.fill("#groupInput", "@all HOLD_ONCE_FOR_STEER Start codex")
+    page.press("#groupInput", "Enter")
 
-    page.wait_for_function("() => document.querySelector('#roomSendBtn').textContent.trim() === 'Queue'")
+    page.wait_for_function("() => document.querySelector('#groupSendBtn').textContent.trim() === 'Queue'")
     _wait_jsonl_entry(codex_log, lambda rows: "turnId" in rows[0])
 
-    page.fill("#roomInput", "@VoiceEditor @StoryEditor respond in mention order")
-    page.locator("#roomSendNowBtn").click()
+    page.fill("#groupInput", "@VoiceEditor @StoryEditor respond in mention order")
+    page.locator("#groupSendNowBtn").click()
 
-    _room_idle(page)
+    _group_idle(page)
 
     records = _wait_jsonl_entry(codex_log, lambda rows: any(r.get("method") == "turn/interrupt" for r in rows))
     assert not any(r.get("method") == "turn/steer" for r in records)
 
-    labels = page.locator(".room-turn-card:not(.is-user) .chat-message-name").all_inner_texts()
+    labels = page.locator(".group-turn-card:not(.is-user) .chat-message-name").all_inner_texts()
     assert len(labels) == 2
     assert "VoiceEditor" in labels[0] or "Claude" in labels[0]
     assert "StoryEditor" in labels[1] or "Codex" in labels[1]

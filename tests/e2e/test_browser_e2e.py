@@ -3598,7 +3598,7 @@ def test_repo_tree_auto_reveal_keeps_expansion_semantics_in_sync(
     ))
 
 
-def test_file_explorer_uses_roomy_targets_and_coherent_vector_icons(
+def test_file_explorer_uses_groupy_targets_and_coherent_vector_icons(
     page: Page,
     server: ProseviewServer,
 ):
@@ -3721,7 +3721,7 @@ def test_file_explorer_icons_distinguish_file_types(page: Page, server: Prosevie
     }
 
 
-def test_discuss_and_room_cards_real_estate_and_user_bubble(page: Page, server: ProseviewServer):
+def test_discuss_and_group_cards_real_estate_and_user_bubble(page: Page, server: ProseviewServer):
     """Verify discuss & room cards eliminate wasted real estate, use full width, tight 6px margins, and calm meta."""
     open_dashboard(page, server)
 

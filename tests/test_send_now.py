@@ -1,4 +1,4 @@
-"""Send-now (steer vs interrupt + mention order) tests across Codex, Claude, and Writers' Room."""
+"""Send-now (steer vs interrupt + mention order) tests across Codex, Claude, and Group."""
 from __future__ import annotations
 
 import threading
@@ -164,20 +164,20 @@ def _controllable_manager(root: Path, *, hold: tuple[str, ...] = ("codex", "clau
     return DiscussManager(root, client_factory=factory), created
 
 
-def _initial_room(manager: DiscussManager, key: str = "send-now-room") -> dict:
+def _initial_group(manager: DiscussManager, key: str = "send-now-group") -> dict:
     return {
         "id": key,
         "scene": "one.md",
-        "participants": manager.room_settings()["participants"],
+        "participants": manager.group_settings()["participants"],
         "turns": [],
         "title": "Conversation",
     }
 
 
-def _room_cmd(manager: DiscussManager, action: str = "state", key: str = "send-now-room", **kw):
-    return manager.room_command({
+def _group_cmd(manager: DiscussManager, action: str = "state", key: str = "send-now-group", **kw):
+    return manager.group_command({
         "action": action,
-        "room_id": key,
+        "group_id": key,
         "request_id": kw.pop("request_id", f"req-{time.monotonic_ns()}"),
         **kw,
     })
@@ -209,7 +209,8 @@ def test_codex_send_now_steers_active_turn_and_keeps_queue_behind(tmp_path: Path
         assert user_texts == ["HOLD_TURN First question", "Steer now", "Queued behind"]
 
         codex.first_turn_release.set()
-        done = wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None and not s["queue"] and s)
+        done = wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None
+                        and s["active_request_id"] is None and not s["queue"] and s)
         assert [m["role"] for m in done["messages"]].count("assistant") == 2
     finally:
         manager.close()
@@ -236,7 +237,8 @@ def test_codex_send_now_falls_back_to_interrupt_and_front_of_queue_when_steer_re
         assert len(codex.steers) == 1
         assert len(codex.interrupts) == 1 and codex.interrupts[0]["turnId"] == "turn-1"
 
-        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None and not s["queue"])
+        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None
+                 and s["active_request_id"] is None and not s["queue"])
         start_prompts = [payload for kind, payload in codex.event_log if kind == "start"]
         assert "First question" in start_prompts[0]
         assert "Immediate fallback" in start_prompts[1]
@@ -264,7 +266,8 @@ def test_claude_send_now_interrupts_active_turn_and_runs_ahead_of_queue(tmp_path
         assert len(claude.interrupts) == 1
         assert claude.interrupts[0]["turnId"] == "claude-turn-1"
 
-        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None and not s["queue"])
+        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None
+                 and s["active_request_id"] is None and not s["queue"])
         start_prompts = [payload for kind, payload in claude.event_log if kind == "start"]
         assert "Claude first" in start_prompts[0]
         assert "Claude urgent" in start_prompts[1]
@@ -273,28 +276,28 @@ def test_claude_send_now_interrupts_active_turn_and_runs_ahead_of_queue(tmp_path
         manager.close()
 
 
-def test_room_send_now_steers_codex_and_queues_second_seat_while_cancelling_stale_seat(tmp_path: Path):
+def test_group_send_now_steers_codex_and_queues_second_seat_while_cancelling_stale_seat(tmp_path: Path):
     manager, clients = _controllable_manager(_repo(tmp_path), hold=("codex",))
     try:
-        _room_cmd(manager, "submit", initial=_initial_room(manager), message_id="m1", text="Original both", seats=[1, 2])
+        _group_cmd(manager, "submit", initial=_initial_group(manager), message_id="m1", text="Original both", seats=[1, 2])
         wait_for(lambda: "codex" in clients and clients["codex"].first_turn_started.is_set())
-        wait_for(lambda: bool(manager._room_runs))
+        wait_for(lambda: bool(manager._group_runs))
 
-        _room_cmd(manager, "submit", message_id="m2", text="Steer both now", seats=[1, 2], immediate=True)
+        _group_cmd(manager, "submit", message_id="m2", text="Steer both now", seats=[1, 2], immediate=True)
 
         codex = clients["codex"]
         assert len(codex.steers) == 1
         assert "Steer both now" in codex.steers[0]["input"][0]["text"]
         assert codex.interrupts == []
 
-        state = _room_cmd(manager)
+        state = _group_cmd(manager)
         stale_m1_seat2 = [s for s in state["steps"] if s.get("message_id") == "m1" and s["seat"] == 2]
         assert stale_m1_seat2 and stale_m1_seat2[0]["state"] == "cancelled"
         m2_seat2 = [s for s in state["steps"] if s.get("message_id") == "m2" and s["seat"] == 2]
         assert m2_seat2 and m2_seat2[0]["state"] == "queued"
 
         codex.first_turn_release.set()
-        done = wait_for(lambda: (s := _room_cmd(manager))["status"] == "idle" and s)
+        done = wait_for(lambda: (s := _group_cmd(manager))["status"] == "idle" and s)
 
         critic_turns = [t for t in done["turns"] if t["role"] == "critic"]
         assert [t["seat"] for t in critic_turns] == [1, 2]
@@ -305,14 +308,14 @@ def test_room_send_now_steers_codex_and_queues_second_seat_while_cancelling_stal
         manager.close()
 
 
-def test_room_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagged_first(tmp_path: Path):
+def test_group_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagged_first(tmp_path: Path):
     manager, clients = _controllable_manager(_repo(tmp_path), hold=("codex",))
     try:
-        _room_cmd(manager, "submit", initial=_initial_room(manager), message_id="m1", text="Codex working", seats=[1, 2])
+        _group_cmd(manager, "submit", initial=_initial_group(manager), message_id="m1", text="Codex working", seats=[1, 2])
         wait_for(lambda: "codex" in clients and clients["codex"].first_turn_started.is_set())
-        wait_for(lambda: bool(manager._room_runs))
+        wait_for(lambda: bool(manager._group_runs))
 
-        _room_cmd(
+        _group_cmd(
             manager,
             "submit",
             message_id="m2",
@@ -325,7 +328,7 @@ def test_room_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagg
         assert codex.steers == []
         assert len(codex.interrupts) == 1
 
-        done = wait_for(lambda: (s := _room_cmd(manager))["status"] == "idle" and any(t.get("message_id") == "m2" for t in s["turns"]) and s)
+        done = wait_for(lambda: (s := _group_cmd(manager))["status"] == "idle" and any(t.get("message_id") == "m2" for t in s["turns"]) and s)
         critic_turns = [t for t in done["turns"] if t["role"] == "critic"]
         assert [t["seat"] for t in critic_turns] == [2, 1]
         assert done["error"] == ""
@@ -333,19 +336,19 @@ def test_room_send_now_interrupts_codex_to_follow_mention_order_when_claude_tagg
         manager.close()
 
 
-def test_room_send_now_interrupts_claude_active_turn_and_runs_both_tagged_seats(tmp_path: Path):
+def test_group_send_now_interrupts_claude_active_turn_and_runs_both_tagged_seats(tmp_path: Path):
     manager, clients = _controllable_manager(_repo(tmp_path), hold=("claude",))
     try:
-        _room_cmd(manager, "submit", initial=_initial_room(manager), message_id="m1", text="@VoiceEditor hold", seats=[2])
+        _group_cmd(manager, "submit", initial=_initial_group(manager), message_id="m1", text="@VoiceEditor hold", seats=[2])
         wait_for(lambda: "claude" in clients and clients["claude"].first_turn_started.is_set())
-        wait_for(lambda: bool(manager._room_runs))
+        wait_for(lambda: bool(manager._group_runs))
 
-        _room_cmd(manager, "submit", message_id="m2", text="@all urgent pivot", seats=[1, 2], immediate=True)
+        _group_cmd(manager, "submit", message_id="m2", text="@all urgent pivot", seats=[1, 2], immediate=True)
 
         claude = clients["claude"]
         assert len(claude.interrupts) == 1
 
-        done = wait_for(lambda: (s := _room_cmd(manager))["status"] == "idle" and any(t.get("message_id") == "m2" for t in s["turns"]) and s)
+        done = wait_for(lambda: (s := _group_cmd(manager))["status"] == "idle" and any(t.get("message_id") == "m2" for t in s["turns"]) and s)
         critic_turns = [t for t in done["turns"] if t["role"] == "critic"]
         assert [t["seat"] for t in critic_turns] == [1, 2]
         assert done["error"] == ""

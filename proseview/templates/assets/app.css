@@ -6404,10 +6404,10 @@
             margin-bottom: 4px;
         }
 
-        /* The same readable message surface is used in individual chats and the Room. */
+        /* The same readable message surface is used in individual chats and the Group. */
         .discuss-log>.chat-message-card,
-        .room-turn-card.chat-message-card {
-            --chat-accent: var(--room-accent, var(--primary));
+        .group-turn-card.chat-message-card {
+            --chat-accent: var(--group-accent, var(--primary));
             box-sizing: border-box;
             width: 100%;
             min-width: 0;
@@ -6422,7 +6422,7 @@
         }
 
         .discuss-log>.chat-message-card.user,
-        .room-turn-card.chat-message-card.is-user {
+        .group-turn-card.chat-message-card.is-user {
             --chat-accent: var(--accent, var(--primary));
             width: fit-content;
             max-width: 86%;
@@ -6519,7 +6519,7 @@
         .chat-message-card> :last-child,
         .chat-message-card> :last-child:not(.md-copy-btn),
         .chat-message-card> :nth-last-child(2):not(.chat-message-header):not(.md-copy-btn),
-        .room-turn-body> :last-child {
+        .group-turn-body> :last-child {
             margin-bottom: 0;
         }
 
@@ -6594,7 +6594,7 @@
         @media (max-width: 600px) {
 
             .discuss-log>.chat-message-card,
-            .room-turn-card.chat-message-card {
+            .group-turn-card.chat-message-card {
                 width: 100%;
                 padding: 12px;
             }
@@ -6604,7 +6604,7 @@
             }
 
             .discuss-log>.chat-message-card.user,
-            .room-turn-card.chat-message-card.is-user {
+            .group-turn-card.chat-message-card.is-user {
                 width: fit-content;
                 max-width: 92%;
                 padding: 10px 12px;
@@ -14798,8 +14798,8 @@
             display: block;
         }
 
-        /* ── Writers' Room (#sceneRoomPane) ── */
-        #sceneRoomPane:not([hidden]) {
+        /* ── Group (#sceneGroupPane) ── */
+        #sceneGroupPane:not([hidden]) {
             display: flex;
             flex-direction: column;
             flex: 1;
@@ -14808,7 +14808,7 @@
             overflow: hidden;
         }
 
-        .room-header-strip {
+        .group-header-strip {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -14821,7 +14821,7 @@
             flex-shrink: 0;
         }
 
-        .room-header-summary {
+        .group-header-summary {
             font-weight: 500;
             color: var(--text-main, var(--text-primary));
             overflow: hidden;
@@ -14829,14 +14829,14 @@
             white-space: nowrap;
         }
 
-        .room-header-actions {
+        .group-header-actions {
             display: flex;
             align-items: center;
             gap: 6px;
             flex-shrink: 0;
         }
 
-        .room-header-btn {
+        .group-header-btn {
             background: transparent;
             border: 1px solid var(--border);
             color: var(--text-muted);
@@ -14848,12 +14848,12 @@
             position: relative;
         }
 
-        .room-header-btn:hover {
+        .group-header-btn:hover {
             color: var(--text-main, var(--text-primary));
             border-color: var(--text-muted);
         }
 
-        .room-body {
+        .group-body {
             flex: 1;
             overflow-y: auto;
             overflow-anchor: auto;
@@ -14863,7 +14863,7 @@
             gap: 12px;
         }
 
-        .room-starter-head {
+        .group-starter-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -14872,7 +14872,7 @@
             margin-bottom: 3px;
         }
 
-        .room-starter-badge {
+        .group-starter-badge {
             font-size: 10.5px;
             font-weight: 600;
             padding: 2px 7px;
@@ -14882,7 +14882,7 @@
             white-space: nowrap;
         }
 
-        .room-topic-banner {
+        .group-topic-banner {
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -14893,78 +14893,78 @@
             font-size: 12px;
         }
 
-        .room-topic-top {
+        .group-topic-top {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
         }
 
-        .room-topic-title {
+        .group-topic-title {
             font-weight: 600;
             color: var(--text-main, var(--text-primary));
         }
 
-        .room-topic-badge {
+        .group-topic-badge {
             font-size: 11px;
             color: var(--text-muted);
         }
 
-        .room-topic-question {
+        .group-topic-question {
             color: var(--text-muted);
             font-style: italic;
         }
 
-        .room-turns-list {
+        .group-turns-list {
             display: flex;
             flex-direction: column;
             gap: 6px;
         }
 
         /* Seat accents supplement the name; provider and model remain explicit. */
-        .room-turn-card {
-            --room-accent: var(--primary);
+        .group-turn-card {
+            --group-accent: var(--primary);
         }
 
-        .room-turn-card.is-critic-1 {
-            --room-accent: #0284c7;
+        .group-turn-card.is-critic-1 {
+            --group-accent: #0284c7;
         }
 
-        .room-turn-card.is-critic-2 {
-            --room-accent: #b45309;
+        .group-turn-card.is-critic-2 {
+            --group-accent: #b45309;
         }
 
-        [data-theme="dark"] .room-turn-card.is-critic-1,
-        [data-theme="hopscotch"] .room-turn-card.is-critic-1,
-        [data-theme="graphite-dark"] .room-turn-card.is-critic-1 {
-            --room-accent: #38bdf8;
+        [data-theme="dark"] .group-turn-card.is-critic-1,
+        [data-theme="hopscotch"] .group-turn-card.is-critic-1,
+        [data-theme="graphite-dark"] .group-turn-card.is-critic-1 {
+            --group-accent: #38bdf8;
         }
 
-        [data-theme="dark"] .room-turn-card.is-critic-2,
-        [data-theme="hopscotch"] .room-turn-card.is-critic-2,
-        [data-theme="graphite-dark"] .room-turn-card.is-critic-2 {
-            --room-accent: #fbbf24;
+        [data-theme="dark"] .group-turn-card.is-critic-2,
+        [data-theme="hopscotch"] .group-turn-card.is-critic-2,
+        [data-theme="graphite-dark"] .group-turn-card.is-critic-2 {
+            --group-accent: #fbbf24;
         }
 
-        .room-turn-card.is-user {
-            --room-accent: var(--accent, #e06c58);
+        .group-turn-card.is-user {
+            --group-accent: var(--accent, #e06c58);
         }
 
-        .room-turn-card .discuss-message {
-            --primary: var(--room-accent);
+        .group-turn-card .discuss-message {
+            --primary: var(--group-accent);
             margin: 0;
             padding: 0;
         }
 
-        .room-turn-card.chat-message-card {
+        .group-turn-card.chat-message-card {
             margin-bottom: 0;
         }
 
-        .room-turn-card .discuss-message> :first-child {
+        .group-turn-card .discuss-message> :first-child {
             margin-top: 0;
         }
 
-        .room-turn-head {
+        .group-turn-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -14974,67 +14974,67 @@
             font-size: 11px;
         }
 
-        .room-turn-head-left {
+        .group-turn-head-left {
             display: flex;
             align-items: center;
             gap: 6px;
             flex-wrap: wrap;
         }
 
-        .room-critic-badge {
+        .group-critic-badge {
             font-weight: 700;
             padding: 1px 6px;
             border-radius: 4px;
             font-size: 11px;
         }
 
-        .room-critic-badge.is-critic-1 {
+        .group-critic-badge.is-critic-1 {
             background: rgba(56, 189, 248, 0.14);
             color: #0284c7;
         }
 
-        [data-theme="dark"] .room-critic-badge.is-critic-1,
-        [data-theme="hopscotch"] .room-critic-badge.is-critic-1,
-        [data-theme="graphite-dark"] .room-critic-badge.is-critic-1 {
+        [data-theme="dark"] .group-critic-badge.is-critic-1,
+        [data-theme="hopscotch"] .group-critic-badge.is-critic-1,
+        [data-theme="graphite-dark"] .group-critic-badge.is-critic-1 {
             color: #38bdf8;
         }
 
-        .room-critic-badge.is-critic-2 {
+        .group-critic-badge.is-critic-2 {
             background: rgba(245, 158, 11, 0.15);
             color: #b45309;
         }
 
-        [data-theme="dark"] .room-critic-badge.is-critic-2,
-        [data-theme="hopscotch"] .room-critic-badge.is-critic-2,
-        [data-theme="graphite-dark"] .room-critic-badge.is-critic-2 {
+        [data-theme="dark"] .group-critic-badge.is-critic-2,
+        [data-theme="hopscotch"] .group-critic-badge.is-critic-2,
+        [data-theme="graphite-dark"] .group-critic-badge.is-critic-2 {
             color: #fbbf24;
         }
 
-        .room-critic-badge.is-user {
+        .group-critic-badge.is-user {
             background: rgba(224, 108, 88, 0.15);
             color: var(--accent, #e06c58);
         }
 
-        .room-turn-tag,
-        .room-turn-model {
+        .group-turn-tag,
+        .group-turn-model {
             color: var(--text-muted);
             font-size: 11px;
         }
 
-        .room-turn-model {
+        .group-turn-model {
             margin-left: auto;
             overflow-wrap: anywhere;
         }
 
-        .room-turn-body p:first-child {
+        .group-turn-body p:first-child {
             margin-top: 0;
         }
 
-        .room-turn-body p:last-child {
+        .group-turn-body p:last-child {
             margin-bottom: 0;
         }
 
-        .room-live-status {
+        .group-live-status {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -15045,7 +15045,7 @@
             color: var(--text-muted);
         }
 
-        .room-live-status-text {
+        .group-live-status-text {
             flex: 1;
         }
 
@@ -15053,61 +15053,61 @@
             display: none !important;
         }
 
-        .suggestion-grid.room-seat-grid {
+        .suggestion-grid.group-seat-grid {
             grid-template-columns: minmax(90px, auto) 1fr 1fr 1fr;
         }
 
-        .room-plan-by {
+        .group-plan-by {
             margin-top: 2px;
             font-size: 11px;
             color: var(--text-muted);
         }
 
-        .room-open {
+        .group-open {
             margin-top: 10px;
             padding-top: 8px;
             border-top: 1px dashed var(--border);
             font-size: 12px;
         }
 
-        .room-open-title {
+        .group-open-title {
             font-weight: 600;
             margin-bottom: 6px;
         }
 
-        .room-open-item {
+        .group-open-item {
             margin-bottom: 8px;
         }
 
-        .room-open-issue {
+        .group-open-issue {
             font-weight: 600;
             color: var(--text-main, var(--text-primary));
         }
 
-        .room-open-side {
+        .group-open-side {
             color: var(--text-muted);
             margin-top: 2px;
         }
 
-        .room-header-btn.is-active {
+        .group-header-btn.is-active {
             color: var(--text-main, var(--text-primary));
             border-color: var(--text-muted);
         }
 
-        .room-history-menu {
+        .group-history-menu {
             border: 1px solid var(--border);
             border-radius: 7px;
             padding: 8px;
             font-size: 12px;
         }
 
-        .room-history-head {
+        .group-history-head {
             color: var(--text-muted);
             font-weight: 600;
             padding: 0 4px 6px;
         }
 
-        .room-history-list {
+        .group-history-list {
             display: flex;
             flex-direction: column;
             gap: 2px;
@@ -15115,24 +15115,24 @@
             overflow-y: auto;
         }
 
-        .room-history-empty {
+        .group-history-empty {
             color: var(--text-muted);
             padding: 4px;
         }
 
-        .room-history-item {
+        .group-history-item {
             display: flex;
             align-items: center;
             gap: 4px;
             border-radius: 5px;
         }
 
-        .room-history-item:hover,
-        .room-history-item.is-current {
+        .group-history-item:hover,
+        .group-history-item.is-current {
             background: var(--bg-subtle, rgba(127, 127, 127, 0.08));
         }
 
-        .room-history-open {
+        .group-history-open {
             flex: 1;
             min-width: 0;
             display: flex;
@@ -15147,7 +15147,7 @@
             cursor: pointer;
         }
 
-        .room-history-title {
+        .group-history-title {
             max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -15155,12 +15155,12 @@
             color: var(--text-main, var(--text-primary));
         }
 
-        .room-history-meta {
+        .group-history-meta {
             color: var(--text-muted);
             font-size: 11px;
         }
 
-        .room-history-delete {
+        .group-history-delete {
             background: transparent;
             border: 0;
             color: var(--text-muted);
@@ -15169,7 +15169,7 @@
             cursor: pointer;
         }
 
-        .room-live-progress {
+        .group-live-progress {
             margin-top: -4px;
             padding: 8px 12px;
             border-left: 2px solid var(--border);
@@ -15177,7 +15177,7 @@
             color: var(--text-muted);
         }
 
-        .room-live-steps {
+        .group-live-steps {
             display: flex;
             flex-direction: column;
             gap: 2px;
@@ -15186,17 +15186,17 @@
             font-size: 11px;
         }
 
-        .room-live-step {
+        .group-live-step {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
-        .room-live-draft {
+        .group-live-draft {
             opacity: 0.75;
         }
 
-        .room-stop-btn {
+        .group-stop-btn {
             background: transparent;
             border: 1px solid var(--border);
             color: var(--text-muted);
@@ -15206,7 +15206,7 @@
             cursor: pointer;
         }
 
-        .room-error-banner {
+        .group-error-banner {
             padding: 9px 12px;
             border-radius: 7px;
             border: 1px solid rgba(248, 81, 73, 0.4);
@@ -15215,7 +15215,7 @@
             font-size: 12px;
         }
 
-        .room-plan-card {
+        .group-plan-card {
             padding: 12px 13px;
             border-radius: 8px;
             border: 1px solid var(--border);
@@ -15225,14 +15225,14 @@
             gap: 9px;
         }
 
-        .room-plan-head {
+        .group-plan-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
         }
 
-        .room-plan-title {
+        .group-plan-title {
             font-size: 11.5px;
             font-weight: 700;
             text-transform: uppercase;
@@ -15240,31 +15240,31 @@
             color: var(--text-main);
         }
 
-        [data-theme="dark"] .room-plan-title,
-        [data-theme="hopscotch"] .room-plan-title,
-        [data-theme="graphite-dark"] .room-plan-title {
+        [data-theme="dark"] .group-plan-title,
+        [data-theme="hopscotch"] .group-plan-title,
+        [data-theme="graphite-dark"] .group-plan-title {
             color: var(--text-main);
         }
 
-        .room-plan-sub {
+        .group-plan-sub {
             font-size: 11px;
             color: var(--text-muted);
         }
 
-        .room-plan-list {
+        .group-plan-list {
             display: flex;
             flex-direction: column;
             gap: 7px;
         }
 
-        .room-plan-section-title {
+        .group-plan-section-title {
             margin: 8px 0 10px;
             font-size: 13px;
             font-weight: 650;
             color: var(--text-main);
         }
 
-        .room-plan-item {
+        .group-plan-item {
             display: flex;
             align-items: flex-start;
             gap: 8px;
@@ -15276,21 +15276,21 @@
             line-height: 1.45;
         }
 
-        .room-plan-check {
+        .group-plan-check {
             margin-top: 3px;
             cursor: pointer;
         }
 
-        .room-plan-item-text {
+        .group-plan-item-text {
             flex: 1;
             min-width: 0;
         }
 
-        .room-plan-item.is-applied .room-plan-item-text {
+        .group-plan-item.is-applied .group-plan-item-text {
             opacity: 0.6;
         }
 
-        .room-plan-toggle {
+        .group-plan-toggle {
             margin-left: auto;
             background: transparent;
             border: 1px solid var(--border);
@@ -15301,20 +15301,20 @@
             cursor: pointer;
         }
 
-        .room-plan-change {
+        .group-plan-change {
             margin: 6px 0 0;
             padding: 0;
         }
 
-        .room-plan-change blockquote {
+        .group-plan-change blockquote {
             margin: 6px 0;
         }
 
-        .room-plan-change> :last-child {
+        .group-plan-change> :last-child {
             margin-bottom: 0;
         }
 
-        .room-todo-btn {
+        .group-todo-btn {
             background: transparent;
             border: 1px solid var(--border);
             color: var(--text-muted);
@@ -15327,17 +15327,17 @@
             flex-shrink: 0;
         }
 
-        .room-todo-btn:hover:not(:disabled) {
+        .group-todo-btn:hover:not(:disabled) {
             color: var(--text-main, var(--text-primary));
             border-color: var(--text-muted);
         }
 
-        .room-todo-btn.is-added {
+        .group-todo-btn.is-added {
             border-color: rgba(52, 211, 153, 0.5);
             color: #059669;
         }
 
-        .room-authors-call {
+        .group-authors-call {
             padding-top: 7px;
             border-top: 1px dashed var(--border);
             font-size: 11.5px;
@@ -15345,7 +15345,7 @@
             line-height: 1.45;
         }
 
-        .room-plan-actions {
+        .group-plan-actions {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -15354,13 +15354,13 @@
             flex-wrap: wrap;
         }
 
-        .room-apply-label {
+        .group-apply-label {
             font-size: 11px;
             color: var(--text-muted);
         }
 
-        .room-apply-select,
-        .room-target-select {
+        .group-apply-select,
+        .group-target-select {
             background: var(--bg-card, var(--surface-card));
             color: var(--text-main, var(--text-primary));
             border: 1px solid var(--border);
@@ -15371,7 +15371,7 @@
             cursor: pointer;
         }
 
-        .room-apply-btn {
+        .group-apply-btn {
             flex: 1;
             background: var(--accent, #e06c58);
             color: #fff;
@@ -15384,12 +15384,12 @@
             white-space: nowrap;
         }
 
-        .room-apply-btn:disabled {
+        .group-apply-btn:disabled {
             opacity: 0.5;
             cursor: default;
         }
 
-        .room-more-turn-btn {
+        .group-more-turn-btn {
             background: transparent;
             border: 1px solid var(--border);
             color: var(--text-main, var(--text-primary));
@@ -15400,18 +15400,18 @@
             cursor: pointer;
         }
 
-        .room-more-turn-btn:hover:not(:disabled) {
+        .group-more-turn-btn:hover:not(:disabled) {
             border-color: var(--text-muted);
             background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
         }
 
-        .room-continue-bar {
+        .group-continue-bar {
             display: flex;
             justify-content: flex-end;
             margin-top: 6px;
         }
 
-        .room-composer {
+        .group-composer {
             position: relative;
             padding: 8px 12px;
             border-top: 1px solid var(--border);
@@ -15422,31 +15422,31 @@
             flex-shrink: 0;
         }
 
-        .room-composer-bar {
+        .group-composer-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
         }
 
-        .room-composer-target {
+        .group-composer-target {
             display: flex;
             align-items: center;
             gap: 6px;
         }
 
-        .room-composer-hint {
+        .group-composer-hint {
             font-size: 11px;
             color: var(--text-muted);
         }
 
-        .room-composer-input-row {
+        .group-composer-input-row {
             display: flex;
             gap: 6px;
             align-items: flex-end;
         }
 
-        .room-mention-menu {
+        .group-mention-menu {
             position: absolute;
             bottom: calc(100% + 4px);
             left: 14px;
@@ -15461,14 +15461,14 @@
             overflow-y: auto;
         }
 
-        .room-mention-group {
+        .group-mention-group {
             padding: 5px 10px;
             color: var(--text-muted);
             font-size: 11px;
             font-weight: 600;
         }
 
-        .room-tool-review {
+        .group-tool-review {
             padding: 14px;
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -15476,17 +15476,17 @@
             font-size: 12px;
         }
 
-        .room-live-approvals:empty {
+        .group-live-approvals:empty {
             display: none;
         }
 
-        .room-pass-note {
+        .group-pass-note {
             color: var(--text-muted);
             font-size: 11.5px;
             padding: 2px 0;
         }
 
-        .room-mention-option {
+        .group-mention-option {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -15505,22 +15505,22 @@
             cursor: pointer;
         }
 
-        .room-mention-option[aria-selected="true"],
-        .room-mention-option:hover {
+        .group-mention-option[aria-selected="true"],
+        .group-mention-option:hover {
             background: var(--surface-muted);
         }
 
-        .room-mention-name {
+        .group-mention-name {
             font-weight: 600;
         }
 
-        .room-mention-handle,
-        .room-mention-hint {
+        .group-mention-handle,
+        .group-mention-hint {
             color: var(--text-muted);
             font-size: 11px;
         }
 
-        .room-input {
+        .group-input {
             flex: 1;
             background: var(--bg-card, var(--surface-card));
             border: 1px solid var(--border);
@@ -15532,14 +15532,14 @@
             resize: none;
         }
 
-        .room-send-actions {
+        .group-send-actions {
             display: flex;
             align-items: center;
             gap: 6px;
             flex: 0 0 auto;
         }
 
-        .room-send-now-btn {
+        .group-send-now-btn {
             background: color-mix(in srgb, var(--primary) 12%, var(--bg-card, var(--surface-card)));
             border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
             color: var(--text-main, var(--text-primary));
@@ -15551,16 +15551,16 @@
             white-space: nowrap;
         }
 
-        .room-send-now-btn[hidden] {
+        .group-send-now-btn[hidden] {
             display: none;
         }
 
-        .room-send-now-btn:disabled {
+        .group-send-now-btn:disabled {
             opacity: 0.45;
             cursor: default;
         }
 
-        .room-send-btn {
+        .group-send-btn {
             background: var(--bg-card, var(--surface-card));
             border: 1px solid var(--border);
             color: var(--text-main, var(--text-primary));
@@ -15571,12 +15571,12 @@
             cursor: pointer;
         }
 
-        .room-send-btn:disabled {
+        .group-send-btn:disabled {
             opacity: 0.45;
             cursor: default;
         }
 
-        .room-selection-chip {
+        .group-selection-chip {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -15588,7 +15588,7 @@
             color: var(--muted)
         }
 
-        .room-selection-text {
+        .group-selection-text {
             flex: 1;
             min-width: 0;
             overflow: hidden;
@@ -15597,7 +15597,7 @@
             font-style: italic
         }
 
-        .room-selection-clear {
+        .group-selection-clear {
             border: 0;
             background: none;
             cursor: pointer;
@@ -15607,17 +15607,17 @@
             padding: 0 2px
         }
 
-        /* Reusable Room profiles and explicit preset invitations. */
-        .room-library-pair,
-        .room-participant-picker {
+        /* Reusable Group profiles and explicit preset invitations. */
+        .group-library-pair,
+        .group-participant-picker {
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
             margin: 16px 0;
         }
 
-        .room-library-field,
-        .room-participant-choice {
+        .group-library-field,
+        .group-participant-choice {
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -15625,70 +15625,70 @@
             min-width: 0;
         }
 
-        .room-participant-choice {
+        .group-participant-choice {
             margin: 0;
             font-size: 12px;
             color: var(--text-muted);
         }
 
-        .room-participant-selects {
+        .group-participant-selects {
             display: flex;
             align-items: center;
             gap: 6px;
         }
 
-        .room-swap-agents-btn {
+        .group-swap-agents-btn {
             align-self: flex-end;
             height: 28px;
         }
 
-        .room-library-card {
+        .group-library-card {
             padding: 14px;
             margin: 10px 0;
             border: 1px solid var(--border);
             border-radius: 8px;
         }
 
-        .room-library-card>summary {
+        .group-library-card>summary {
             cursor: pointer;
             font-weight: 600;
         }
 
-        .room-library-field :is(input, textarea, select) {
+        .group-library-field :is(input, textarea, select) {
             width: 100%;
             box-sizing: border-box;
         }
 
-        .room-library-step {
+        .group-library-step {
             border-left: 2px solid var(--border);
             padding-left: 14px;
             margin-top: 18px;
         }
 
-        .room-preset-preview {
+        .group-preset-preview {
             margin-top: 12px;
             text-align: left;
             color: var(--text);
             width: 100%;
         }
 
-        .room-preset-preview ol {
+        .group-preset-preview ol {
             padding-left: 24px;
         }
 
-        .room-preset-preview li {
+        .group-preset-preview li {
             margin: 12px 0;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }
 
-        .room-preset-actions {
+        .group-preset-actions {
             display: flex;
             gap: 8px;
             margin-top: 18px;
         }
 
-        .room-preset-invitation {
+        .group-preset-invitation {
             display: flex;
             gap: 8px;
             color: var(--text-muted);
@@ -15697,24 +15697,24 @@
             overflow-wrap: anywhere;
         }
 
-        .room-preset-invitation> :last-child {
+        .group-preset-invitation> :last-child {
             min-width: 0;
             white-space: pre-wrap;
         }
 
-        .room-preset-label {
+        .group-preset-label {
             font-weight: 600;
             flex-shrink: 0;
         }
 
-        .room-empty {
+        .group-empty {
             width: 100%;
             max-width: 640px;
             margin: 16px auto 0;
             text-align: left;
         }
 
-        .room-library-field input.settings-input {
+        .group-library-field input.settings-input {
             text-align: left;
         }
 
@@ -15741,7 +15741,7 @@
             font-size: 0.9em;
         }
 
-        .room-input-wrap {
+        .group-input-wrap {
             position: relative;
             flex: 1;
             min-width: 0;
@@ -15749,7 +15749,7 @@
             background: var(--bg-card, var(--surface-card));
         }
 
-        .room-input-wrap .room-input {
+        .group-input-wrap .group-input {
             position: relative;
             display: block;
             width: 100%;
@@ -15760,7 +15760,7 @@
             word-break: break-word;
         }
 
-        .room-input-mirror {
+        .group-input-mirror {
             position: absolute;
             inset: 0;
             box-sizing: border-box;
@@ -15777,7 +15777,7 @@
             pointer-events: none;
         }
 
-        .room-input-mirror .discuss-mention {
+        .group-input-mirror .discuss-mention {
             color: transparent;
             background: color-mix(in srgb, var(--primary) 22%, transparent);
             border-radius: 4px;
@@ -15793,57 +15793,57 @@
             overflow: visible;
         }
 
-        .room-composer .room-input {
+        .group-composer .group-input {
             min-height: 56px;
             max-height: 180px;
             resize: vertical;
             padding: 9px 10px;
         }
 
-        .room-composer .room-input-mirror {
+        .group-composer .group-input-mirror {
             padding: 9px 10px;
         }
 
-        .room-composer-bar {
+        .group-composer-bar {
             flex-wrap: nowrap;
         }
 
-        .room-composer-target {
+        .group-composer-target {
             flex-shrink: 0;
         }
 
-        .room-composer-bar .discuss-sees-slot {
+        .group-composer-bar .discuss-sees-slot {
             min-width: 0;
         }
 
-        .room-send-row {
+        .group-send-row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             margin-top: 0;
             gap: 8px;
         }
 
-        .room-composer-actions {
+        .group-composer-actions {
             display: grid;
             grid-template-columns: auto repeat(2, minmax(0, 1fr));
             min-width: 0;
         }
 
-        .room-connection-status:empty {
+        .group-connection-status:empty {
             display: none;
         }
 
-        .room-model-control {
+        .group-model-control {
             min-width: 0;
             max-width: 100%;
         }
 
-        .room-model-control>button[data-warning="true"] {
+        .group-model-control>button[data-warning="true"] {
             color: var(--warning, #d6a850);
             border-color: var(--warning, #d6a850);
         }
 
-        .room-model-control>.discuss-model-chip {
+        .group-model-control>.discuss-model-chip {
             width: 100%;
             max-width: 100%;
             overflow: hidden;
@@ -15852,7 +15852,7 @@
             display: block;
         }
 
-        .room-model-picker {
+        .group-model-picker {
             left: 12px;
             right: auto;
             bottom: calc(100% + 6px);
@@ -15860,7 +15860,7 @@
             box-sizing: border-box;
         }
 
-        .room-quick-send {
+        .group-quick-send {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -15868,25 +15868,25 @@
             font-size: 11px;
         }
 
-        .room-quick-send[hidden] {
+        .group-quick-send[hidden] {
             display: none;
         }
 
-        .room-quick-send .discuss-presets-inline {
+        .group-quick-send .discuss-presets-inline {
             flex-wrap: wrap;
         }
 
-        .room-message-queue {
+        .group-message-queue {
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }
 
-        .room-composer-hint {
+        .group-composer-hint {
             margin-left: auto;
         }
 
-        .room-send-row>.room-send-btn,
-        .room-send-row>.room-send-actions {
+        .group-send-row>.group-send-btn,
+        .group-send-row>.group-send-actions {
             margin-left: auto;
         }
 

@@ -26,15 +26,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from . import room as room_module
+from . import group as group_module
 from .config import (
     DEFAULT_SKILLS_PATH,
     DISCUSS_AGENTS,
     SUGGESTION_CONTEXTS,
     SUGGESTION_PROMPT_MAX,
-    ROOM_DISPLAY_NAME_MAX,
+    GROUP_DISPLAY_NAME_MAX,
     Config,
-    RoomConfig,
+    GroupConfig,
     SuggestionsConfig,
 )
 from .hunks import changed_blocks, compose
@@ -53,7 +53,7 @@ from .highlights import compute_scene_highlights, strip_markdown_for_offsets
 from .lexical import build_content_stopwords, glue_share_pct, prose_only, top_repeated_content_words
 from .scenes import extract_scene_text, iter_scene_paths, resolve_manuscript_dir, split_frontmatter
 from . import suggestions as suggestions_module
-from .suggestions import RoomAppSettings, RoomHistoryStore, SuggestionAppSettings
+from .suggestions import GroupAppSettings, GroupHistoryStore, SuggestionAppSettings
 
 
 QUESTION_MAX = 32 * 1024
@@ -590,7 +590,7 @@ def action_output_schema(kind: str, count: int) -> dict[str, Any]:
     }
 
 
-ROOM_MODERATOR_SCHEMA: dict[str, Any] = {
+GROUP_MODERATOR_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "agreed": {
@@ -631,37 +631,37 @@ ROOM_MODERATOR_SCHEMA: dict[str, Any] = {
 }
 
 # The same change shape is used for explicit consensus and individual suggestions.
-ROOM_MODERATOR_SCHEMA["properties"]["suggested"] = {
-    **ROOM_MODERATOR_SCHEMA["properties"]["agreed"],
+GROUP_MODERATOR_SCHEMA["properties"]["suggested"] = {
+    **GROUP_MODERATOR_SCHEMA["properties"]["agreed"],
     "description": "Individual suggestions without explicit agreement on the exact fix; accepted must be false.",
 }
 
-_ROOM_NOTHING_NEW_RE = re.compile(
-    r"(?:^|\n)\s*\**\s*" + re.escape(suggestions_module.ROOM_NOTHING_NEW) + r"\.?\s*\**\.?\s*$", re.IGNORECASE
+_GROUP_NOTHING_NEW_RE = re.compile(
+    r"(?:^|\n)\s*\**\s*" + re.escape(suggestions_module.GROUP_NOTHING_NEW) + r"\.?\s*\**\.?\s*$", re.IGNORECASE
 )
 
 
-_ROOM_TOOL_JUNK_RE = re.compile(r"<(?:invoke|function_calls|antml:invoke)\b[\s\S]*?</(?:invoke|function_calls|antml:invoke)>")
-_ROOM_FIRST_POINT_RE = re.compile(r"^(?:#{1,4}\s|\*\*(?:Agree|Disagree|Add)\b)", re.MULTILINE)
+_GROUP_TOOL_JUNK_RE = re.compile(r"<(?:invoke|function_calls|antml:invoke)\b[\s\S]*?</(?:invoke|function_calls|antml:invoke)>")
+_GROUP_FIRST_POINT_RE = re.compile(r"^(?:#{1,4}\s|\*\*(?:Agree|Disagree|Add)\b)", re.MULTILINE)
 
 
-def _parse_room_reply(raw_text: str) -> tuple[str, bool]:
+def _parse_group_reply(raw_text: str) -> tuple[str, bool]:
     """A critic's Markdown reply, and whether it said it has nothing new."""
     text = str(raw_text or "").strip()
-    if _ROOM_TOOL_JUNK_RE.search(text):
+    if _GROUP_TOOL_JUNK_RE.search(text):
         # A critic with no tools sometimes writes out the calls it wanted to
         # make, and its musing about them. Keep only the critique after them.
-        text = _ROOM_TOOL_JUNK_RE.split(text)[-1]
-        first = _ROOM_FIRST_POINT_RE.search(text) or re.search(r"\*\*(?:Agree|Disagree|Add)\b", text)
+        text = _GROUP_TOOL_JUNK_RE.split(text)[-1]
+        first = _GROUP_FIRST_POINT_RE.search(text) or re.search(r"\*\*(?:Agree|Disagree|Add)\b", text)
         text = (text[first.start():] if first else text).strip()
-    match = _ROOM_NOTHING_NEW_RE.search(text)
+    match = _GROUP_NOTHING_NEW_RE.search(text)
     if not match:
         return text, False
     rest = text[: match.start()].strip()
     return rest or "Nothing new to add.", True
 
 
-def _parse_room_moderator_output(raw_text: str) -> dict[str, Any]:
+def _parse_group_moderator_output(raw_text: str) -> dict[str, Any]:
     cleaned = str(raw_text or "").strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
@@ -768,8 +768,8 @@ def _partial_json_string(raw: str, key: str) -> str:
     return "".join(out)
 
 
-class _RoomThreadGone(RuntimeError):
-    """The agent no longer has a Room critic's conversation; start it again."""
+class _GroupThreadGone(RuntimeError):
+    """The agent no longer has a Group critic's conversation; start it again."""
 
 
 class ContextError(ValueError):
@@ -2324,7 +2324,7 @@ class _OneOff:
         #: What the agent did on the way: files read, searches, MCP calls.
         self.activities: dict[str, dict[str, Any]] = {}
         #: What it says while it works, and its answer as it streams, for a
-        #: caller that shows progress (the Writers' Room).
+        #: caller that shows progress (the Group).
         self.progress = ""
         self.draft = ""
         self.structured_output = False
@@ -2440,11 +2440,11 @@ class DiscussManager:
         #: Ephemeral /btw side-question turns in flight, by side_question_id.
         self._side_runs: dict[str, _OneOff] = {}
         self._side_lock = threading.Lock()
-        #: Writers' Room turns in flight, by the browser's run id.
-        self._room_runs: dict[str, _OneOff] = {}
+        #: Group turns in flight, by the browser's run id.
+        self._group_runs: dict[str, _OneOff] = {}
         #: Each critic's ongoing conversation in a debate, by "debate:seat", so a
         #: later turn sends only what was said since, as a chat would.
-        self._room_threads: dict[str, dict[str, Any]] = {}
+        self._group_threads: dict[str, dict[str, Any]] = {}
         self._task_context: dict[str, dict[str, dict[str, Any]]] = {}
         # Model catalogs, per agent, with the reading's monotonic timestamp.
         self._model_catalogs: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -2452,9 +2452,9 @@ class DiscussManager:
         # needs to know which names are the story's own vocabulary.
         self._content_stopwords: set[str] | None = None
         self._closed = False
-        self._room_restore_lock = threading.RLock()
-        from .room_runtime import RoomRuntime
-        self.room_runtime = RoomRuntime(self)
+        self._group_restore_lock = threading.RLock()
+        from .group_runtime import GroupRuntime
+        self.group_runtime = GroupRuntime(self)
         self._offer_default_skills()
 
     def _offer_default_skills(self) -> None:
@@ -5255,7 +5255,7 @@ class DiscussManager:
                     client_request_id=conversation.active_request_id or "",
                     **extra,
                 )
-            self._persist_room_review(conversation, force=event_type in {"response.completed", "turn.completed", "activity.updated"})
+            self._persist_group_review(conversation, force=event_type in {"response.completed", "turn.completed", "activity.updated"})
             conversation.publish(event_type, event)
 
     def suggest_for_highlight(
@@ -5510,17 +5510,17 @@ class DiscussManager:
             store.save(current)
         return self.suggestion_settings(store)
 
-    def _room_chat_model(self, agent: str, scene: str = "") -> dict[str, str]:
+    def _group_chat_model(self, agent: str, scene: str = "") -> dict[str, str]:
         chat = self._conversations.get(self._conversation_id({"kind": "scene", "path": scene}, agent))
         if chat:
             with chat.lock:
                 return dict(chat.model_selection)
         return self.state.model("scene", scene, self.state.get("scene", scene, agent) or "", agent)
 
-    def room_settings(self, app_settings: RoomAppSettings | None = None) -> dict[str, Any]:
-        """Everything Settings -> Writers' Room and the Room tab need."""
-        book = Config.load(self.root).room
-        app = (app_settings or RoomAppSettings()).load()
+    def group_settings(self, app_settings: GroupAppSettings | None = None) -> dict[str, Any]:
+        """Everything Settings -> Group and the Group tab need."""
+        book = Config.load(self.root).group
+        app = (app_settings or GroupAppSettings()).load()
         library = app.effective_library(book)
         by_id = {profile["id"]: profile for profile in library["profiles"]}
         return {
@@ -5528,87 +5528,87 @@ class DiscussManager:
                 "critic1_name": book.critic1_name,
                 "critic2_name": book.critic2_name,
                 "moderator_name": book.moderator_name,
-                "critic1_prompt": book.critic1_prompt or suggestions_module.DEFAULT_ROOM_CRITIC1_PROMPT,
-                "critic2_prompt": book.critic2_prompt or suggestions_module.DEFAULT_ROOM_CRITIC2_PROMPT,
+                "critic1_prompt": book.critic1_prompt or suggestions_module.DEFAULT_GROUP_CRITIC1_PROMPT,
+                "critic2_prompt": book.critic2_prompt or suggestions_module.DEFAULT_GROUP_CRITIC2_PROMPT,
                 "preset_prompts": {
                     key: (book.preset_prompt(key) if book.preset_prompt(key) is not None else text)
-                    for key, text in suggestions_module.DEFAULT_ROOM_PRESET_PROMPTS.items()
+                    for key, text in suggestions_module.DEFAULT_GROUP_PRESET_PROMPTS.items()
                 },
             },
             "app": app.to_json(),
             "defaults": {
-                "critic1_name": RoomConfig().critic1_name,
-                "critic2_name": RoomConfig().critic2_name,
-                "moderator_name": RoomConfig().moderator_name,
-                "critic1_prompt": suggestions_module.DEFAULT_ROOM_CRITIC1_PROMPT,
-                "critic2_prompt": suggestions_module.DEFAULT_ROOM_CRITIC2_PROMPT,
-                "preset_prompts": dict(suggestions_module.DEFAULT_ROOM_PRESET_PROMPTS),
+                "critic1_name": GroupConfig().critic1_name,
+                "critic2_name": GroupConfig().critic2_name,
+                "moderator_name": GroupConfig().moderator_name,
+                "critic1_prompt": suggestions_module.DEFAULT_GROUP_CRITIC1_PROMPT,
+                "critic2_prompt": suggestions_module.DEFAULT_GROUP_CRITIC2_PROMPT,
+                "preset_prompts": dict(suggestions_module.DEFAULT_GROUP_PRESET_PROMPTS),
                 "step_templates": {
                     key: [dict(step) for step in steps]
-                    for key, steps in suggestions_module.DEFAULT_ROOM_PRESET_STEPS.items()
+                    for key, steps in suggestions_module.DEFAULT_GROUP_PRESET_STEPS.items()
                 },
             },
             "library": library,
-            "chat_models": {agent: self._room_chat_model(agent) for agent in ("codex", "claude")},
+            "chat_models": {agent: self._group_chat_model(agent) for agent in ("codex", "claude")},
             "presets": [{**preset, "label": preset["name"], "copy": preset["description"], "group": "Start a discussion", "badge": str(len(preset["invitations"])) + " invitations"} for preset in library["presets"]],
-            "lengths": dict(suggestions_module.ROOM_LENGTHS),
-            "participants": room_module.clean_participants([by_id[key] for key in library["default_profiles"]]),
+            "lengths": dict(suggestions_module.GROUP_LENGTHS),
+            "participants": group_module.clean_participants([by_id[key] for key in library["default_profiles"]]),
         }
 
-    def save_room_settings(
-        self, body: dict[str, Any], app_settings: RoomAppSettings | None = None
+    def save_group_settings(
+        self, body: dict[str, Any], app_settings: GroupAppSettings | None = None
     ) -> dict[str, Any]:
         """Save the reusable library, or accept legacy book/computer settings payloads."""
-        store = app_settings or RoomAppSettings()
+        store = app_settings or GroupAppSettings()
         if "library" in body:
             try:
-                library = room_module.clean_library(body["library"])
+                library = group_module.clean_library(body["library"])
             except ValueError as exc:
                 raise ContextError(str(exc)) from exc
             current = store.load()
             current.library = library
             store.save(current)
-            return self.room_settings(store)
+            return self.group_settings(store)
         raw_book = body.get("book") if isinstance(body.get("book"), dict) else None
         if raw_book is not None:
             defaults = suggestions_module
             cfg = Config.load(self.root)
             names: dict[str, str] = {}
             for key in ("critic1_name", "critic2_name", "moderator_name"):
-                name = raw_book.get(key, getattr(cfg.room, key))
-                if not isinstance(name, str) or len(name.strip()) > ROOM_DISPLAY_NAME_MAX:
-                    raise ContextError(f"a Writers' Room display name must be text of at most {ROOM_DISPLAY_NAME_MAX} characters")
-                names[key] = name.strip() or getattr(RoomConfig(), key)
-            c1 = str(raw_book.get("critic1_prompt", cfg.room.critic1_prompt) or "").strip()
-            c2 = str(raw_book.get("critic2_prompt", cfg.room.critic2_prompt) or "").strip()
+                name = raw_book.get(key, getattr(cfg.group, key))
+                if not isinstance(name, str) or len(name.strip()) > GROUP_DISPLAY_NAME_MAX:
+                    raise ContextError(f"a Group display name must be text of at most {GROUP_DISPLAY_NAME_MAX} characters")
+                names[key] = name.strip() or getattr(GroupConfig(), key)
+            c1 = str(raw_book.get("critic1_prompt", cfg.group.critic1_prompt) or "").strip()
+            c2 = str(raw_book.get("critic2_prompt", cfg.group.critic2_prompt) or "").strip()
             presets = {
                 key: str(text).strip()
-                for key, text in (raw_book.get("preset_prompts", dict(cfg.room.preset_prompts)) or {}).items()
-                if key in defaults.DEFAULT_ROOM_PRESET_PROMPTS
-                and str(text).strip() != defaults.DEFAULT_ROOM_PRESET_PROMPTS[key]
+                for key, text in (raw_book.get("preset_prompts", dict(cfg.group.preset_prompts)) or {}).items()
+                if key in defaults.DEFAULT_GROUP_PRESET_PROMPTS
+                and str(text).strip() != defaults.DEFAULT_GROUP_PRESET_PROMPTS[key]
             }
             if (
                 len(c1) > SUGGESTION_PROMPT_MAX
                 or len(c2) > SUGGESTION_PROMPT_MAX
                 or any(len(t) > SUGGESTION_PROMPT_MAX for t in presets.values())
             ):
-                raise ContextError("a Writers' Room prompt is too long")
+                raise ContextError("a Group prompt is too long")
             cfg = Config.load(self.root)
             cfg.with_overrides(
-                room=RoomConfig(
-                    critic1_prompt="" if c1 == defaults.DEFAULT_ROOM_CRITIC1_PROMPT.strip() else c1,
-                    critic2_prompt="" if c2 == defaults.DEFAULT_ROOM_CRITIC2_PROMPT.strip() else c2,
+                group=GroupConfig(
+                    critic1_prompt="" if c1 == defaults.DEFAULT_GROUP_CRITIC1_PROMPT.strip() else c1,
+                    critic2_prompt="" if c2 == defaults.DEFAULT_GROUP_CRITIC2_PROMPT.strip() else c2,
                     preset_prompts=tuple(sorted(presets.items())),
                     **names,
                 )
             ).save(self.root)
         raw_app = body.get("app") if isinstance(body.get("app"), dict) else None
         if raw_app is not None:
-            current = suggestions_module.RoomComputerSettings.from_json(raw_app)
+            current = suggestions_module.GroupComputerSettings.from_json(raw_app)
             if "library" not in raw_app:
                 current.library = store.load().library
             store.save(current)
-        return self.room_settings(store)
+        return self.group_settings(store)
 
     def beatmap_settings(self) -> dict[str, Any]:
         """Everything Settings -> Beat Map needs."""
@@ -5671,7 +5671,7 @@ class DiscussManager:
             ).save(self.root)
         return self.beatmap_settings()
 
-    def run_room_turn(
+    def run_group_turn(
         self,
         *,
         scene: str = "",
@@ -5683,22 +5683,22 @@ class DiscussManager:
         question: str = "",
         history: list[dict[str, Any]] | None = None,
         timeout: float = 60 * 60,
-        app_settings: RoomAppSettings | None = None,
+        app_settings: GroupAppSettings | None = None,
         run_id: str = "",
         debate_id: str = "",
         attachments: list[dict[str, Any]] | None = None,
         participants: list[dict[str, Any]] | None = None,
         skill: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Run one critic's turn of a Writers' Room debate.
+        """Run one critic's turn of a Group debate.
 
         Each critic keeps one regular agent conversation per debate: its first
         turn carries the scene and the brief, and each later turn only what
         the room said since. A conversation the agent no longer has (after a
         restart, or a settings change) is started again from the transcript.
         """
-        book = Config.load(self.root).room
-        app = (app_settings or RoomAppSettings()).load()
+        book = Config.load(self.root).group
+        app = (app_settings or GroupAppSettings()).load()
         turn_start_monotonic = time.monotonic()
         turn_created_at = time.time()
         seat_num = 2 if int(seat or 1) == 2 else 1
@@ -5708,13 +5708,13 @@ class DiscussManager:
         roster = None
         if participants is not None:
             try:
-                roster = room_module.clean_participants(participants)
+                roster = group_module.clean_participants(participants)
             except ValueError as exc:
                 raise ContextError(str(exc)) from exc
             profile = roster[seat_num - 1]
-            seat_cfg = suggestions_module.RoomSeatSettings.from_json(profile)
+            seat_cfg = suggestions_module.GroupSeatSettings.from_json(profile)
             if not seat_cfg.model or not seat_cfg.effort:
-                selected = self._room_chat_model(seat_cfg.agent, str(scene))
+                selected = self._group_chat_model(seat_cfg.agent, str(scene))
                 seat_cfg.model = seat_cfg.model or selected.get("model", "")
                 seat_cfg.effort = seat_cfg.effort or selected.get("effort", "")
 
@@ -5728,14 +5728,14 @@ class DiscussManager:
         elif scene_name and (scene_path := self._scene_file(scene_name)) is not None:
             raw = read_repo_text(scene_path)
         else:
-            raise ContextError("Open a manuscript scene before running the Writers' Room.")
+            raise ContextError("Open a manuscript scene before running the Group.")
         fm, _body = split_frontmatter(raw)
         scene_notes = _scene_frontmatter_notes(fm)
         scene_text = _numbered_scene_body(raw)
         if len(scene_text.encode("utf-8")) > suggestions_module.CONTEXT_MAX:
             scene_text = scene_text.encode("utf-8")[: suggestions_module.CONTEXT_MAX].decode("utf-8", "ignore")
 
-        clean = self._clean_room_history(history)
+        clean = self._clean_group_history(history)
         if attachments is not None and not isinstance(attachments, list):
             raise ContextError("attachments must be a list")
         reference_text = ""
@@ -5758,25 +5758,25 @@ class DiscussManager:
         scene_hash = hashlib.sha256((scene_name + '\0' + scene_notes + '\0' + scene_text + '\0' + reference_text + '\0' + beatmap_text).encode("utf-8")).hexdigest()
         signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
-        known = self._room_threads.get(key) if key else None
+        known = self._group_threads.get(key) if key else None
         if known and (known["signature"] != signature or known["seen"] > len(clean)):
             known = None
         instructions = (
             self.DEVELOPER_INSTRUCTIONS + "\n\n"
-            "You are an editor in Proseview's Writers' Room, discussing the project with the writer and "
+            "You are an editor in Proseview's Group, discussing the project with the writer and "
             "another editor. Use your usual tools and project context, including reading other files when "
             "needed. A critique or suggestion is discussion, not permission to apply it: change files only "
             "when the writer explicitly asks you to. Coordinate with the other editor and check what is "
             "already applied before editing. Reply in Markdown."
         )
         if roster:
-            instructions = self.DEVELOPER_INSTRUCTIONS + "\n\n" + room_module.chat_instructions(roster[seat_num - 1], roster)
-        self.room_runtime.context.native_cache = {"signature": signature, "seen": len(clean) + 1, "scene": scene_hash}
+            instructions = self.DEVELOPER_INSTRUCTIONS + "\n\n" + group_module.chat_instructions(roster[seat_num - 1], roster)
+        self.group_runtime.context.native_cache = {"signature": signature, "seen": len(clean) + 1, "scene": scene_hash}
         text = ""
         thread_id = ""
         if known:
             if roster:
-                followup = room_module.chat_prompt(
+                followup = group_module.chat_prompt(
                     seat=seat_num, history=clean[known["seen"]:], scene_path=scene_name,
                     scene_text="" if known["scene"] == scene_hash else scene_text,
                     scene_notes="" if known["scene"] == scene_hash else scene_notes,
@@ -5784,7 +5784,7 @@ class DiscussManager:
                     beatmap_text="" if known["scene"] == scene_hash else beatmap_text,
                 )
             else:
-                followup = suggestions_module.render_room_followup(
+                followup = suggestions_module.render_group_followup(
                     turn_index=turn_idx,
                     total_turns=total_cnt,
                     new_entries=clean[known["seen"]:],
@@ -5792,26 +5792,26 @@ class DiscussManager:
                     scene_text="" if known["scene"] == scene_hash else scene_text,
                     reference_text="" if known["scene"] == scene_hash else reference_text,
                     length=app.length,
-                    participants=suggestions_module.room_participants(book, app),
+                    participants=suggestions_module.group_participants(book, app),
                     seat=seat_num,
                 )
             try:
-                text, thread_id = self._run_room_call(
+                text, thread_id = self._run_group_call(
                     seat_cfg, followup, instructions=instructions, schema=None, run_id=run_id,
                     timeout=timeout, who="critic", thread_id=known["thread_id"],
                     scene=scene_name, skill=skill_item,
                 )
-            except _RoomThreadGone:
+            except _GroupThreadGone:
                 known = None
         if not known:
             if roster:
-                prompt = room_module.chat_prompt(
+                prompt = group_module.chat_prompt(
                     seat=seat_num, history=clean or [{"role": "user", "text": question}],
                     scene_path=scene_name, scene_text=scene_text, scene_notes=scene_notes,
                     reference_text=reference_text, beatmap_text=beatmap_text,
                 )
             else:
-                prompt = suggestions_module.render_room_prompt(
+                prompt = suggestions_module.render_group_prompt(
                     book,
                     app,
                     seat=seat_num,
@@ -5826,30 +5826,30 @@ class DiscussManager:
                     method=action_instruction(self.root, "quick_critique"),
                     reference_text=reference_text,
                 )
-            text, thread_id = self._run_room_call(
+            text, thread_id = self._run_group_call(
                 seat_cfg, prompt, instructions=instructions, schema=None, run_id=run_id,
                 timeout=timeout, who="critic",
                 scene=scene_name, skill=skill_item,
             )
         if key:
-            self._room_threads[key] = {
+            self._group_threads[key] = {
                 "thread_id": thread_id,
                 "signature": signature,
                 "seen": len(clean) + 1,
                 "scene": scene_hash,
             }
-            while len(self._room_threads) > 40:
-                self._room_threads.pop(next(iter(self._room_threads)))
+            while len(self._group_threads) > 40:
+                self._group_threads.pop(next(iter(self._group_threads)))
         if roster:
-            passed = text.strip().upper() in {room_module.PASS_MARKER, "NOTHING NEW", "NOTHING NEW."}
+            passed = text.strip().upper() in {group_module.PASS_MARKER, "NOTHING NEW", "NOTHING NEW."}
             reply, done = ("" if passed else text.strip()), False
         else:
-            reply, done = _parse_room_reply(text)
+            reply, done = _parse_group_reply(text)
             passed = done
         tool_conversation = self._threads.get(self._thread_key(seat_cfg.agent, thread_id))
         changes = self.turn_file_changes(tool_conversation.id) if tool_conversation else {"files": [], "unreviewable": []}
         if key and tool_conversation:
-            self._room_threads[key]["conversation_id"] = tool_conversation.id
+            self._group_threads[key]["conversation_id"] = tool_conversation.id
         turn_duration_ms = int((time.monotonic() - turn_start_monotonic) * 1000)
         return {
             "seat": seat_num,
@@ -5868,7 +5868,7 @@ class DiscussManager:
             "duration_ms": turn_duration_ms,
         }
 
-    def run_room_moderator(
+    def run_group_moderator(
         self,
         *,
         scene: str = "",
@@ -5876,7 +5876,7 @@ class DiscussManager:
         question: str = "",
         history: list[dict[str, Any]] | None = None,
         timeout: float = 180.0,
-        app_settings: RoomAppSettings | None = None,
+        app_settings: GroupAppSettings | None = None,
         run_id: str = "",
         earlier: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
@@ -5885,16 +5885,16 @@ class DiscussManager:
         *earlier* is what the writer already has from this debate's earlier
         plans, so a new plan after a follow-up question holds only what is new.
         """
-        app = (app_settings or RoomAppSettings()).load()
-        clean = self._clean_room_history(history)
+        app = (app_settings or GroupAppSettings()).load()
+        clean = self._clean_group_history(history)
         if not any(entry.get("role") != "user" for entry in clean):
             raise ContextError("There is no debate to summarise yet.")
-        prompt = suggestions_module.render_room_moderator_prompt(
+        prompt = suggestions_module.render_group_moderator_prompt(
             scene_path=str(scene or "").strip() or "scene.md",
             history=clean,
             preset_id=str(preset_id or "").strip(),
             question=_bounded_text(str(question or ""), 2000),
-            participants=suggestions_module.room_participants(Config.load(self.root).room, app),
+            participants=suggestions_module.group_participants(Config.load(self.root).group, app),
             earlier=[
                 {
                     "title": _bounded_text(str(item.get("title") or ""), 300),
@@ -5905,24 +5905,24 @@ class DiscussManager:
                 if isinstance(item, dict)
             ],
         )
-        text, _thread = self._run_room_call(
+        text, _thread = self._run_group_call(
             app.moderator,
             prompt,
             instructions=(
-                "You are the neutral moderator of Proseview's Writers' Room. Read only the transcript "
+                "You are the neutral moderator of Proseview's Group. Read only the transcript "
                 "you are given. Reply only with the structured result asked for."
             ),
-            schema=ROOM_MODERATOR_SCHEMA,
+            schema=GROUP_MODERATOR_SCHEMA,
             run_id=run_id,
             timeout=timeout,
             who="moderator",
         )
-        result = _parse_room_moderator_output(text)
+        result = _parse_group_moderator_output(text)
         result["agent"] = app.moderator.agent
         return result
 
     @staticmethod
-    def _clean_room_history(history: Any) -> list[dict[str, Any]]:
+    def _clean_group_history(history: Any) -> list[dict[str, Any]]:
         clean: list[dict[str, Any]] = []
         entries = history if isinstance(history, list) else []
         for entry in entries:
@@ -5947,7 +5947,7 @@ class DiscussManager:
                 clean.append(row)
         return clean
 
-    def _run_room_call(
+    def _run_group_call(
         self,
         seat_cfg: Any,
         prompt: str,
@@ -5961,7 +5961,7 @@ class DiscussManager:
         scene: str = "",
         skill: dict[str, str] | None = None,
     ) -> tuple[str, str]:
-        """One request for the Room: its final text, and the thread it ran on.
+        """One request for the Group: its final text, and the thread it ran on.
 
         With *thread_id*, the turn continues that conversation; otherwise it
         starts a new one. Editors use the ordinary tool/approval configuration;
@@ -6005,12 +6005,12 @@ class DiscussManager:
             try:
                 client.request("thread/resume", {**thread_params, "threadId": thread_id})
             except (CodexRequestError, ClaudeRequestError) as exc:
-                raise _RoomThreadGone(str(exc)) from exc
+                raise _GroupThreadGone(str(exc)) from exc
         one_off = _OneOff()
         one_off.structured_output = bool(schema)
         if regular:
-            context = self.room_runtime.context
-            room_id, step_id = getattr(context, "room_id", ""), getattr(context, "step_id", "")
+            context = self.group_runtime.context
+            group_id, step_id = getattr(context, "group_id", ""), getattr(context, "step_id", "")
             previous = self._threads.get(key)
             if previous is None and getattr(context, "previous_review_id", ""):
                 try:
@@ -6018,17 +6018,17 @@ class DiscussManager:
                 except ContextError:
                     pass
             conversation = previous
-            if conversation is None or room_id:
+            if conversation is None or group_id:
                 conversation = _Conversation(uuid.uuid4().hex, {"kind": "scene", "path": scene}, agent)
                 conversation.thread_id = thread_id
                 if previous:
                     conversation.agent_notes = previous.drain_agent_notes()
-                    self._persist_room_review(previous, force=True)
+                    self._persist_group_review(previous, force=True)
                 self._threads[key] = conversation
                 self._conversations[conversation.id] = conversation
-            conversation.is_room = True
-            conversation.room_id, conversation.room_step_id = room_id, step_id
-            conversation.room_run_id = run_id
+            conversation.is_group = True
+            conversation.group_id, conversation.group_step_id = group_id, step_id
+            conversation.group_run_id = run_id
             conversation.begin_turn()
             conversation.active_done = one_off.done
             conversation.active_request_id = run_id or uuid.uuid4().hex
@@ -6046,9 +6046,9 @@ class DiscussManager:
         self._one_offs[key] = one_off
         run_key = _bounded_text(str(run_id or ""), 80)
         if run_key:
-            self._room_runs[run_key] = one_off
+            self._group_runs[run_key] = one_off
         if one_off.conversation:
-            self._persist_room_review(one_off.conversation, force=True)
+            self._persist_group_review(one_off.conversation, force=True)
         try:
             turn_params: dict[str, Any] = {
                 "threadId": thread_id,
@@ -6074,12 +6074,12 @@ class DiscussManager:
                 turn = client.request("turn/start", turn_params)
             except (CodexRequestError, ClaudeRequestError) as exc:
                 if resuming:
-                    raise _RoomThreadGone(str(exc)) from exc
+                    raise _GroupThreadGone(str(exc)) from exc
                 raise
             turn_id = str((turn.get("turn") or {}).get("id") or "")
             if one_off.conversation and not one_off.done.is_set():
                 one_off.conversation.active_turn_id = turn_id
-                self._persist_room_review(one_off.conversation, force=True)
+                self._persist_group_review(one_off.conversation, force=True)
 
             def interrupt() -> None:
                 try:
@@ -6115,46 +6115,46 @@ class DiscussManager:
                     conversation.active_turn_id = None
                     conversation.active_request_id = None
                     conversation.active_done = None
-                self._persist_room_review(conversation, force=True)
+                self._persist_group_review(conversation, force=True)
             self._one_offs.pop(key, None)
             if run_key:
-                self._room_runs.pop(run_key, None)
+                self._group_runs.pop(run_key, None)
 
         if one_off.status != "completed" or not one_off.text:
             raise ContextError(one_off.error or f"The {who} did not respond; try again.")
         return one_off.text, thread_id
 
-    def _persist_room_review(self, conversation: _Conversation, *, force: bool = False) -> None:
-        if not getattr(conversation, "is_room", False):
+    def _persist_group_review(self, conversation: _Conversation, *, force: bool = False) -> None:
+        if not getattr(conversation, "is_group", False):
             return
         now = time.monotonic()
-        if not force and now - getattr(conversation, "room_checkpoint_at", 0) < 0.75:
+        if not force and now - getattr(conversation, "group_checkpoint_at", 0) < 0.75:
             return
-        conversation.room_checkpoint_at = now
+        conversation.group_checkpoint_at = now
         with conversation.lock:
             one_off = self._one_offs.get(self._thread_key(conversation.agent, conversation.thread_id or ""))
             record = {
                 "id": conversation.id, "agent": conversation.agent, "document": conversation.document,
-                "thread_id": conversation.thread_id, "room_id": getattr(conversation, "room_id", ""),
-                "step_id": getattr(conversation, "room_step_id", ""), "file_before": dict(conversation.file_before),
+                "thread_id": conversation.thread_id, "group_id": getattr(conversation, "group_id", ""),
+                "step_id": getattr(conversation, "group_step_id", ""), "file_before": dict(conversation.file_before),
                 "activities": copy.deepcopy(conversation.activities), "agent_notes": list(conversation.agent_notes),
             }
             checkpoint = {"tool_conversation_id": conversation.id, "native_thread_id": conversation.thread_id,
-                          "run_id": getattr(conversation, "room_run_id", "")}
+                          "run_id": getattr(conversation, "group_run_id", "")}
             if conversation.active_turn_id:
                 checkpoint["native_turn_id"] = conversation.active_turn_id
-            if record["room_id"]:
-                native_cache = getattr(self.room_runtime.context, "native_cache", None)
+            if record["group_id"]:
+                native_cache = getattr(self.group_runtime.context, "native_cache", None)
                 if native_cache:
                     checkpoint["native_cache"] = {**native_cache, "thread_id": conversation.thread_id, "conversation_id": conversation.id}
             if one_off:
                 checkpoint.update(native_status=one_off.status, native_reply=one_off.text, draft=one_off.draft)
                 record["checkpoint"] = checkpoint
-        self.room_runtime.store.write("reviews", conversation.id, record)
-        if record["room_id"] and record["step_id"]:
-            self.room_runtime.checkpoint(record["room_id"], record["step_id"], checkpoint)
+        self.group_runtime.store.write("reviews", conversation.id, record)
+        if record["group_id"] and record["step_id"]:
+            self.group_runtime.checkpoint(record["group_id"], record["step_id"], checkpoint)
 
-    def _room_skill_from_text(self, agent: str, text: str) -> dict[str, str] | None:
+    def _group_skill_from_text(self, agent: str, text: str) -> dict[str, str] | None:
         if not re.search(r"(?:^|\s)\$", text):
             return None
         for skill in self.list_skills(agent=agent):
@@ -6162,7 +6162,7 @@ class DiscussManager:
                 return {"name": skill["name"], "path": skill["path"]}
         return None
 
-    def _room_references(self, history: list[dict[str, Any]]) -> list[dict[str, str]]:
+    def _group_references(self, history: list[dict[str, Any]]) -> list[dict[str, str]]:
         found = []
         for turn in history:
             if turn["role"] in ("user", "invitation"):
@@ -6171,7 +6171,7 @@ class DiscussManager:
                         found.append(dict(item))
         return found
 
-    def _recover_room_result(self, step: dict[str, Any], participants: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _recover_group_result(self, step: dict[str, Any], participants: list[dict[str, Any]]) -> dict[str, Any] | None:
         reply = step.get("native_reply", "")
         status = step.get("native_status", "")
         agent = participants[step["seat"] - 1]["agent"]
@@ -6187,27 +6187,27 @@ class DiscussManager:
             return None
         cid = step.get("tool_conversation_id", "")
         changes = self.turn_file_changes(cid) if cid else {"files": [], "unreviewable": []}
-        passed = reply.strip().upper() in {room_module.PASS_MARKER, "NOTHING NEW", "NOTHING NEW."}
+        passed = reply.strip().upper() in {group_module.PASS_MARKER, "NOTHING NEW", "NOTHING NEW."}
         return {"agent": agent, "seat": step["seat"], "reply": "" if passed else reply, "passed": passed,
                 "model": participants[step["seat"] - 1].get("model", ""), "tool_conversation_id": cid,
                 "changed_files": [row["path"] for row in changes["files"]], "unreviewable": changes["unreviewable"]}
 
-    def room_command(self, body: dict[str, Any]) -> dict[str, Any]:
+    def group_command(self, body: dict[str, Any]) -> dict[str, Any]:
         try:
-            return self.room_runtime.command(body)
+            return self.group_runtime.command(body)
         except ValueError as exc:
             raise ContextError(str(exc)) from exc
 
-    def stop_room_turn(self, run_id: str) -> bool:
-        """Stop a Room turn in flight, so a stopped debate stops costing anything."""
-        one_off = self._room_runs.get(str(run_id or ""))
+    def stop_group_turn(self, run_id: str) -> bool:
+        """Stop a Group turn in flight, so a stopped debate stops costing anything."""
+        one_off = self._group_runs.get(str(run_id or ""))
         interrupt = getattr(one_off, "interrupt", None)
         if interrupt is None:
             return False
         interrupt()
         return True
 
-    def steer_room_turn(
+    def steer_group_turn(
         self,
         run_id: str,
         *,
@@ -6218,8 +6218,8 @@ class DiscussManager:
         attachments: list[dict[str, Any]] | None = None,
         message_id: str = "",
     ) -> bool:
-        """Steer an active Codex Room turn with follow-up writer input."""
-        one_off = self._room_runs.get(str(run_id or ""))
+        """Steer an active Codex Group turn with follow-up writer input."""
+        one_off = self._group_runs.get(str(run_id or ""))
         steer_fn = getattr(one_off, "steer", None)
         if one_off is None or steer_fn is None or one_off.done.is_set():
             return False
@@ -6234,13 +6234,13 @@ class DiscussManager:
                 "Use your tools to inspect the mentioned project files as needed for this discussion.",
                 mentions=attachments,
             ).prompt
-        prompt = room_module.chat_prompt(
+        prompt = group_module.chat_prompt(
             seat=seat,
             history=[{"role": "user", "label": "Me (Writer)", "scene": scene, "text": text}],
             scene_path=scene,
             reference_text=reference_text,
         )
-        skill = self._room_skill_from_text(agent, authored or text)
+        skill = self._group_skill_from_text(agent, authored or text)
         steer_input: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         if skill:
             steer_input.append({"type": "skill", **skill})
@@ -6249,20 +6249,20 @@ class DiscussManager:
         except Exception:
             return False
 
-    def room_history(self, body: dict[str, Any], store: RoomHistoryStore | None = None) -> dict[str, Any]:
-        """List, open, save or delete this book's Rooms, optionally filtering by scene."""
-        store = store or RoomHistoryStore(self.root)
+    def group_history(self, body: dict[str, Any], store: GroupHistoryStore | None = None) -> dict[str, Any]:
+        """List, open, save or delete this book's Groups, optionally filtering by scene."""
+        store = store or GroupHistoryStore(self.root)
         action = str(body.get("action") or "list")
         if action == "save":
             raw = body.get("session")
             if isinstance(raw, dict) and raw.get("id"):
                 try:
-                    managed = self.room_runtime.store.read("rooms", raw["id"])
+                    managed = self.group_runtime.store.read("groups", raw["id"])
                 except ValueError:
                     managed = None
                 if managed:
                     if "plans" in raw:
-                        self.room_command({"room_id": raw["id"], "action": "preferences", "request_id": uuid.uuid4().hex, "plans": raw["plans"]})
+                        self.group_command({"group_id": raw["id"], "action": "preferences", "request_id": uuid.uuid4().hex, "plans": raw["plans"]})
                     return {"saved": raw["id"]}
             try:
                 session = store.save(body.get("session"))
@@ -6272,20 +6272,20 @@ class DiscussManager:
         if action == "get":
             session = store.get(str(body.get("id") or ""))
             if session is None:
-                raise ContextError("That Writers' Room debate is no longer saved")
+                raise ContextError("That Group debate is no longer saved")
             return {"session": session}
         if action == "delete":
             try:
-                self.room_runtime.delete(str(body.get("id") or ""))
+                self.group_runtime.delete(str(body.get("id") or ""))
             except ValueError as exc:
                 raise ContextError(str(exc)) from exc
             store.delete(str(body.get("id") or ""))
             return {"deleted": True}
         return {"sessions": store.list(str(body.get("scene") or ""))}
 
-    def room_progress(self, run_id: str) -> dict[str, Any]:
-        """How a Writers' Room turn in flight is going, for the browser to poll."""
-        one_off = self._room_runs.get(str(run_id or ""))
+    def group_progress(self, run_id: str) -> dict[str, Any]:
+        """How a Group turn in flight is going, for the browser to poll."""
+        one_off = self._group_runs.get(str(run_id or ""))
         if one_off is None:
             return {"running": False}
         conversation = one_off.conversation
@@ -6703,7 +6703,7 @@ class DiscussManager:
                 continue
             with conversation.lock:
                 conversation.file_before.setdefault(rel, text)
-            self._persist_room_review(conversation, force=True)
+            self._persist_group_review(conversation, force=True)
 
     def turn_file_changes(self, conversation_id: str) -> dict[str, Any]:
         """Every file this turn changed, as a pair of versions plus its blocks.
@@ -6835,7 +6835,7 @@ class DiscussManager:
                 f"Kept {len(kept)} of {total} change{'' if total == 1 else 's'} in {resolved.name}."
                 if dropped else f"Kept every change in {resolved.name}.",
             )
-        self._persist_room_review(conversation, force=True)
+        self._persist_group_review(conversation, force=True)
         return {"path": str(path), "kept": kept, "dropped": dropped, "total": total}
 
     def _resolve_change_path(self, raw: str) -> Path:
@@ -6965,11 +6965,11 @@ class DiscussManager:
     def _get(self, conversation_id: str) -> _Conversation:
         conversation = self._conversations.get(str(conversation_id))
         if conversation is None:
-            with self._room_restore_lock:
+            with self._group_restore_lock:
                 conversation = self._conversations.get(str(conversation_id))
                 if conversation is None:
                     try:
-                        saved = self.room_runtime.store.read("reviews", str(conversation_id))
+                        saved = self.group_runtime.store.read("reviews", str(conversation_id))
                     except ValueError:
                         saved = None
                     if saved:
@@ -6978,16 +6978,16 @@ class DiscussManager:
                         conversation.file_before = dict(saved.get("file_before") or {})
                         conversation.activities = dict(saved.get("activities") or {})
                         conversation.agent_notes = list(saved.get("agent_notes") or [])
-                        conversation.is_room = True
-                        conversation.room_id = saved.get("room_id", "")
-                        conversation.room_step_id = saved.get("step_id", "")
+                        conversation.is_group = True
+                        conversation.group_id = saved.get("group_id", "")
+                        conversation.group_step_id = saved.get("step_id", "")
                         self._conversations[conversation.id] = conversation
         if conversation is None:
             raise ContextError("conversation not found")
         return conversation
 
     def close(self) -> None:
-        self.room_runtime.close()
+        self.group_runtime.close()
         self._closed = True
         for pending in list(self._one_offs.values()):
             pending.error = "Proseview closed while the agent was working"

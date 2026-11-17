@@ -82,9 +82,9 @@ callouts:
 Every key has a sensible default. Missing optional folders are skipped, but the
 configured manuscript directory is required.
 
-## Writers’ Room profiles and conversation
+## Group profiles and conversation
 
-**Settings → Writers’ Room** holds a reusable library of agent profiles and
+**Settings → Group** holds a reusable library of agent profiles and
 discussion presets on this computer. The default pair is **Story Editor**
 (plot, stakes, pacing, continuity) and **Voice Editor** (voice, emotion,
 atmosphere, rhythm). Each profile has a display name, specialty, conversational
@@ -93,18 +93,18 @@ Blank model and effort choices inherit the provider’s individual chat settings
 Claude or Codex stays visible beside each name. A specialty guides perspective
 without limiting what the agent can discuss.
 
-Choose two profiles before starting a Room. Each conversation saves its own
+Choose two profiles before starting a Group. Each conversation saves its own
 participant snapshots, so later Settings edits or deletions do not rename or
-change a saved conversation. Existing book-level Room names and prompts seed
+change a saved conversation. Existing book-level Group names and prompts seed
 the library until you save the new Settings; the original `.proseview.yaml`
 configuration and saved revision plans remain available.
 
-Rooms belong to the book. Opening another scene keeps the current discussion;
+Groups belong to the book. Opening another scene keeps the current discussion;
 the scene label shows the context for your next message. Messages already sent
 or queued retain their original scene, and older line references still open
 the scene they describe. **History** lists conversations across the whole book,
-with their starting scenes. Open a saved Room without leaving the scene you are
-reading, or choose **New** to start a separate discussion. A Room started by
+with their starting scenes. Open a saved Group without leaving the scene you are
+reading, or choose **New** to start a separate discussion. A Group started by
 typing uses its first message as its title. Existing discussions stay separate
 and remain available in History.
 
@@ -117,7 +117,7 @@ There is no permanent moderator, and you can keep talking after the preset ends.
 Edit preset names, descriptions, participants, invitations, and recap choices
 in Settings, or add your own presets and profiles.
 
-Type **@** in the Room composer to choose an agent or project file/folder.
+Type **@** in the Group composer to choose an agent or project file/folder.
 The default tags are `@StoryEditor` and `@VoiceEditor`; `@Codex` or `@Claude`
 also work when that provider belongs to just one participant. Tags override
 the **To** selector for that message. Tag one agent for one invitation, tag
@@ -135,14 +135,14 @@ whole mention in the composer. Copying a message preserves its original text.
 File mentions identify reference material rather than changing who replies.
 For example, `@VoiceEditor compare this with @story-bible/characters/shadi.md`
 addresses the Voice Editor and makes that reference available in the discussion.
-Room participants use the same tools and project settings as their individual
+Group participants use the same tools and project settings as their individual
 chats: they can read project files, search, and use configured tools and MCP
 servers. References remain available when continuing or reopening the saved
 thread, and mentioned paths must remain inside the project.
 
 The composer includes the same context and model controls as individual chat:
 **+** opens people/files/folders, typing **$** lists available agent skills, and each
-participant has a model/effort picker. Model overrides belong to this Room and
+participant has a model/effort picker. Model overrides belong to this Group and
 leave the reusable profile and individual chat unchanged. A warning on a model
 chip identifies an unavailable agent or model catalogue; open it to retry.
 Presets check required agents before starting any invitations. These availability
@@ -165,16 +165,16 @@ After Stop, use **Resume remaining invitations** when you are ready.
 
 Review snapshots and agent conversation links survive server restarts, so saved
 changes can still be inspected or undone. If the server stops during a reply,
-the Room first checks whether that reply completed. Otherwise it preserves any
+the Group first checks whether that reply completed. Otherwise it preserves any
 partial reply and saved changes, then offers **Retry interrupted invitation**
 or **Skip interrupted invitation**. It never automatically repeats an uncertain
 edit. Saved changes remain available for optional review. An older review
-that predates recovery support may be unavailable; the Room explains this and
+that predates recovery support may be unavailable; the Group explains this and
 keeps messages usable, with file history available to inspect the saved edits.
 
-Tool permission requests appear in the Room with the same decisions as in
+Tool permission requests appear in the Group with the same decisions as in
 single chat. A critique or proposal does not itself authorize an edit.
-After an agent changes files, the Room uses the same compact review card and
+After an agent changes files, the Group uses the same compact review card and
 **Expand view** as individual chat. The large viewer can be resized, offers
 split/inline layouts and font-size controls, and lets you untick individual
 changes. Close it to use **Looks good**, **Undo all**, or undo only the unticked
@@ -188,7 +188,7 @@ shared discussion, including earlier proposals and corrections. Background
 guidance asks it to distinguish the writer’s approval, agreement about a
 direction, agreement on exact wording, and unresolved alternatives. Summaries
 are ordinary chat replies and do not authorize edits. Existing revision-plan
-cards from earlier Rooms can still be reopened, applied, or added as TODOs.
+cards from earlier Groups can still be reopened, applied, or added as TODOs.
 
 ## Privacy screen password
 

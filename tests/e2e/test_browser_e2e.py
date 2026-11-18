@@ -7761,7 +7761,7 @@ def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
         }));
     }""")
     assert len(tab_tooltips) == 6
-    assert [t["text"] for t in tab_tooltips] == ["Analysis", "History", "Codex", "Claude", "Group", "Beats"]
+    assert [t["text"] for t in tab_tooltips] == ["Analysis", "History", "Beats", "Codex", "Claude", "Group"]
     for tab in tab_tooltips:
         assert len(tab["title"]) > 10, f"Tab {tab['id']} missing descriptive title: {tab}"
         assert tab["title"] == tab["dataTip"]

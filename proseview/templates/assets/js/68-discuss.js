@@ -791,10 +791,9 @@
 
         // ── Scene panel tabs ────────────────────────────────────────────
         //
-        // Six tabs in one dock: deterministic inspection (Analysis, History)
-        // first, then AI collaborators (Codex, Claude, Group), with the less
-        // frequent Beat Map tucked at the end.
-        const SCENE_PANEL_TABS = ['analysis', 'history', 'codex', 'claude', 'group', 'beats'];
+        // Six tabs in one dock: scene inspection & beat map (Analysis,
+        // History, Beats) first, then AI collaborators (Codex, Claude, Group).
+        const SCENE_PANEL_TABS = ['analysis', 'history', 'beats', 'codex', 'claude', 'group'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -814,10 +813,10 @@
         const UTILITY_TAB_IDS = {
             analysis: ['utilityTabAnalysis'],
             history: ['utilityTabHistory'],
+            beats: ['utilityTabBeats'],
             codex: ['utilityTabCodex'],
             claude: ['utilityTabClaude'],
-            group: ['utilityTabGroup'],
-            beats: ['utilityTabBeats']
+            group: ['utilityTabGroup']
         };
 
         function _setUtilityTab(name) {
@@ -871,16 +870,16 @@
         const SCENE_PANEL_PANES = {
             analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }},
-            group: {id: 'sceneGroupPane', heading: 'Group', render: renderSceneGroupPane},
-            beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }}
+            beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }},
+            group: {id: 'sceneGroupPane', heading: 'Group', render: renderSceneGroupPane}
         };
 
         // What a scene tab says over the dashboard, where there is no scene.
         const SCENE_PANEL_AWAY = {
             analysis: 'Open a scene to see its analysis.',
             history: 'Open a scene to see its history.',
-            group: 'Open a scene to run the Group.',
-            beats: 'Open a scene to see its beat map.'
+            beats: 'Open a scene to see its beat map.',
+            group: 'Open a scene to run the Group.'
         };
 
         function _scenePanelAwayEl() {

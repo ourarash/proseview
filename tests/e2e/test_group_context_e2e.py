@@ -46,7 +46,9 @@ def test_summary_is_first_context_message_and_source_stays_unchanged(page, serve
     assert turns[0]['role'] == 'context' and len(turns) == 5
     assert all('OLDER_GOAL_ONLY' not in t['text'] for t in turns[1:])
     assert not page.evaluate('_groupActiveSession.runtime.steps.length')
-    pane.get_by_role('button', name='Source chat ↗').click()
+    with page.expect_response(lambda response: '/history/' in response.url and response.url.endswith('/open')) as restored:
+        pane.get_by_role('button', name='Source chat ↗').click()
+    assert restored.value.ok and restored.value.json()['ok']
     page.wait_for_function('() => !!_discussSnapshot && !document.querySelector("#discussLog").hidden')
     assert page.evaluate('_discussSnapshot.thread_id') == source_id
     assert page.evaluate('_discussSnapshot.messages.length') == source_count

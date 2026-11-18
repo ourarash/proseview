@@ -6181,6 +6181,7 @@ def test_a_manuscript_with_no_frontmatter_is_still_usable(
 
     page.goto(f"{bare_server.base_url}#/scene/one.md", wait_until="load")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.wait_for_function("() => Number.isFinite(meta['one.md'].mattr) && Number.isFinite(meta['one.md'].mtld)")
     assert "counted the boats" in page.locator("#sceneProseHost .ProseMirror").inner_text()
 
 

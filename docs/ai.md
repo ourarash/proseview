@@ -28,11 +28,26 @@ Three places where AI shows up, all opt-in:
    it** starts no agent; **Second opinion & recap** asks the other assistant
    to weigh in, the original to respond, then recaps their positions. The same
    workflow is available in Group alongside its separate task presets.
+   Recaps stay in Markdown. Agreed edits appear as cards with italic Before
+   quotes, complete After replacements, and clickable file/line references.
+   Expand a card to read the full edit or copy its replacement. Unresolved
+   choices stay visible; withdrawn items and agent positions are collapsed.
+   Messages can be collapsed individually, with **Collapse earlier messages**,
+   **Expand all**, and **Latest recap** shortcuts. An edit verified against a
+   saved change shows **Applied · View changes**. Older recap formats remain
+   readable as ordinary Markdown.
+   Group remembers your reading position per conversation across reloads,
+   history switches, and background updates. New replies follow the bottom
+   only when you were already reading there.
    Conversation history, request instructions, structured results, and current
    files transfer; available tool history accompanies them. Pending approvals
    and apply actions stay in the source chat. Links connect both conversations.
    The original uses an isolated native fork when possible; changing its
    provider or model starts a fresh session with the transferred context.
+   Transfer information appears once in a collapsed **Context transferred**
+   entry at the start of the Group conversation. Session fallback details
+   stay inside it under **Technical details**; they do not occupy space above
+   the composer. Missing summaries and recovery actions remain visible.
 
    Setup can also keep only the last 1–10 exchanges (default 3), with an
    optional summary of earlier conversation. Both Group participants then

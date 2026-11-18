@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-pytest.importorskip('playwright.sync_api')
+expect = pytest.importorskip('playwright.sync_api').expect
 from .conftest import SCENE_REL
 from .test_browser_e2e import open_scene
 from .test_btw_e2e import _open_discuss_agent
@@ -38,12 +38,28 @@ def test_manual_fork_preserves_source_and_routes_untagged_group_messages(page, s
     pane = page.locator('#sceneGroupPane')
     pane.wait_for(state='visible')
     page.wait_for_function('() => _groupActiveSession?.managed && !_groupActiveSession.busy')
+    transfer = pane.locator('.group-transferred-context')
+    assert transfer.count() == 1
+    assert not transfer.evaluate('el=>el.open')
+    assert transfer.locator('summary').first.inner_text() == 'Context transferred'
+    assert transfer.evaluate('el=>el.parentElement.firstElementChild===el')
+    assert pane.locator('.group-runtime-notice').count() == 0
+    assert 'private reasoning' not in pane.inner_text()
+    if agent == 'agy':
+        transfer.locator(':scope > summary').click()
+        expect(transfer).to_contain_text('Started a new session with transferred context.')
+        assert 'thread/fork' not in transfer.inner_text()
+        transfer.locator('.group-transfer-technical > summary').click()
+        expect(transfer).to_contain_text('thread/fork')
+        transfer.locator(':scope > summary').click()
     assert all(t['inherited'] for t in page.evaluate('_groupActiveSession.turns'))
     assert not [p for p in posts if p.get('action') in ('submit', 'preset')]
     pane.locator('#groupInput').fill('Tell me more about the ending.')
     pane.locator('#groupSendBtn').click()
     _group_idle(page)
     assert any(not t.get('inherited') and t['role'] == 'critic' for t in page.evaluate('_groupActiveSession.turns'))
+    assert transfer.count() == 1 and not transfer.evaluate('el=>el.open')
+    assert pane.locator('.group-runtime-notice').count() == 0
     pane.locator('#groupInput').fill('Remember the previous Group reply and continue.')
     pane.locator('#groupSendBtn').click()
     _group_idle(page)
@@ -66,6 +82,8 @@ def test_manual_fork_preserves_source_and_routes_untagged_group_messages(page, s
     page.evaluate("showScenePanelTab('group')")
     page.wait_for_function('id => _groupActiveSession?.id === id && _groupActiveSession?.managed && !!_groupActiveSession.source', arg=group_id)
     pane.get_by_role('button', name='Source chat ↗', exact=True).wait_for()
+    assert transfer.count() == 1 and not transfer.evaluate('el=>el.open')
+    assert pane.locator('.group-runtime-notice').count() == 0
 
 
 def test_second_opinion_is_shared_and_starts_only_the_selected_workflow(page, server):
@@ -80,13 +98,16 @@ def test_second_opinion_is_shared_and_starts_only_the_selected_workflow(page, se
     setup = page.locator('#discussGroupForkDialog')
     setup.locator('[data-preset="second_opinion"]').wait_for()
     setup.locator('[data-preset="second_opinion"]').click()
-    assert setup.get_by_label('Show each agent’s final stance in a table for Second opinion & recap').is_checked()
+    assert setup.get_by_label('Include agent positions in Discussion for Second opinion & recap').is_checked()
     setup.locator('#groupForkConfirm').click()
     pane.wait_for(state='visible')
     _group_idle(page)
     page.wait_for_function('() => _groupActiveSession?.turns.filter(t => t.role === "invitation").length === 4 && !_groupActiveSession.busy')
     invitations = page.evaluate('_groupActiveSession.turns.filter(t => t.role === "invitation").map(t => t.seat)')
     assert invitations == [2, 3, 1, 3]
+    assert pane.locator('.group-positions-card').count() == 1
+    assert not pane.locator('.group-positions-card').evaluate('el => el.open')
+    pane.locator('.group-positions-card > summary').click()
     assert pane.get_by_role('table', name='Recorded positions').count() == 1
     assert pane.locator('#groupContinueToFiveBtn').count() == 0
     pane.get_by_text('Conversation workflows', exact=True).click()
@@ -99,14 +120,14 @@ def test_task_recap_keeps_revision_plan_with_optional_positions_table(page, serv
     page.evaluate("showScenePanelTab('group')")
     pane = page.locator('#sceneGroupPane')
     pane.locator('[data-preset="editorial_critique"]').click()
-    pane.get_by_label('Show each agent’s final stance in a table for Editorial critique').check()
+    pane.get_by_label('Include agent positions in Discussion for Editorial critique').check()
     pane.locator('#groupStartPresetBtn').click()
     _group_idle(page)
     assert pane.get_by_text('Revision plan', exact=True).count() == 1
-    assert pane.get_by_role('table', name='Recorded positions').count() == 1
+    assert pane.locator('.group-positions-card').count() == 1
     pane.get_by_text('Conversation workflows', exact=True).click()
     pane.locator('[data-preset="second_opinion"]').click()
     page.wait_for_function('() => _groupActiveSession?.presetId === "second_opinion" && _groupActiveSession.turns.filter(t => t.tag === "Recap").length === 2')
     _group_idle(page)
     assert pane.get_by_text('Revision plan', exact=True).count() == 1
-    assert pane.get_by_role('table', name='Recorded positions').count() == 2
+    assert pane.locator('.group-positions-card').count() == 2

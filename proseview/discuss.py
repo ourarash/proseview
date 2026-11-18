@@ -6830,11 +6830,18 @@ class DiscussManager:
             return
         conversation.group_checkpoint_at = now
         with conversation.lock:
+            # Acceptance advances file_before; recap verification still needs
+            # the first snapshot, including after a restart.
+            if not hasattr(conversation, "group_original_before"):
+                conversation.group_original_before = {}
+            for path, before in conversation.file_before.items():
+                conversation.group_original_before.setdefault(path, before)
             one_off = self._one_offs.get(self._thread_key(conversation.agent, conversation.thread_id or ""))
             record = {
                 "id": conversation.id, "agent": conversation.agent, "document": conversation.document,
                 "thread_id": conversation.thread_id, "group_id": getattr(conversation, "group_id", ""),
                 "step_id": getattr(conversation, "group_step_id", ""), "file_before": dict(conversation.file_before),
+                "original_before": dict(conversation.group_original_before),
                 "activities": copy.deepcopy(conversation.activities), "agent_notes": list(conversation.agent_notes),
             }
             checkpoint = {"tool_conversation_id": conversation.id, "native_thread_id": conversation.thread_id,
@@ -7403,17 +7410,18 @@ class DiscussManager:
                 conversation.file_before.setdefault(rel, text)
             self._persist_group_review(conversation, force=True)
 
-    def turn_file_changes(self, conversation_id: str) -> dict[str, Any]:
+    def turn_file_changes(self, conversation_id: str, *, original: bool = False) -> dict[str, Any]:
         """Every file this turn changed, as a pair of versions plus its blocks.
 
         This is the whole review surface. It does not consult the agent's
         reported diffs at all: the two texts are what Prosview holds, so what
         the writer is shown is what is actually on disk versus what was there
         before -- including anything the agent did without reporting it.
+        With original=True, retain accepted Group edits in that comparison.
         """
         conversation = self._get(conversation_id)
         with conversation.lock:
-            captured = dict(conversation.file_before)
+            captured = dict(getattr(conversation, "group_original_before", conversation.file_before) if original else conversation.file_before)
         files = []
         for rel, before in sorted(captured.items()):
             try:
@@ -7674,6 +7682,7 @@ class DiscussManager:
                         conversation = _Conversation(str(conversation_id), saved["document"], saved["agent"])
                         conversation.thread_id = saved.get("thread_id")
                         conversation.file_before = dict(saved.get("file_before") or {})
+                        conversation.group_original_before = dict(saved.get("original_before", conversation.file_before))
                         conversation.activities = dict(saved.get("activities") or {})
                         conversation.agent_notes = list(saved.get("agent_notes") or [])
                         conversation.is_group = True

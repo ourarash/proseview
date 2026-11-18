@@ -213,7 +213,7 @@ function submitManagedGroupMessage(options) {
     _groupDraftInput = ''; if (input) input.value = '';
     _groupTargetChoice = 'auto';
     session.busy = true; session.statusText = 'Sending message…';
-    if (typeof _groupScrollByScene !== 'undefined') _groupScrollByScene[scene] = {top: 0, atBottom: true};
+    groupFollowLatest(session);
     _groupSaveDraft(scene); renderSceneGroupPane(); drainGroupOutbox(session);
 }
 function startManagedGroupPreset(session) {
@@ -271,7 +271,7 @@ function queueManagedGroupPreset(session) {
     var body = groupRuntimeEnvelope(session, 'preset', {invitations: invitations, append: preset.kind === 'workflow' && !!session.turns.length, preset_id: preset.id, positions_table: !!preset.positions_table});
     session.pendingPreset = null; session.outbox = [body];
     session.busy = true; session.statusText = 'Starting discussion…';
-    if (typeof _groupScrollByScene !== 'undefined') _groupScrollByScene[session.scene] = {top: 0, atBottom: true};
+    groupFollowLatest(session);
     _groupSaveDraft(session.scene); renderSceneGroupPane(); drainGroupOutbox(session);
 }
 function continueManagedGroupToFive(session) {
@@ -299,7 +299,7 @@ function continueManagedGroupToFive(session) {
     session.outbox.push(body);
     session.busy = true;
     session.statusText = 'Continuing discussion to 5 turns…';
-    if (typeof _groupScrollByScene !== 'undefined') _groupScrollByScene[session.scene] = {top: 0, atBottom: true};
+    groupFollowLatest(session);
     _groupSaveDraft(session.scene); renderSceneGroupPane(); drainGroupOutbox(session);
 }
 function saveManagedGroup(session) {
@@ -339,7 +339,8 @@ function renderManagedGroupQueue(session, body) {
     }
     var state = session.runtime;
     if (!state) return;
-    if (state.notice) body.appendChild(elementWith('group-runtime-notice', state.notice));
+    var notice = groupRuntimeNotice(session);
+    if (notice) body.appendChild(elementWith('group-runtime-notice', notice));
     if (state.status === 'interrupted' || state.status === 'paused') {
         var recovery = elementWith('group-runtime-recovery');
         var active = state.steps.find(function(step) { return step.id === state.active_step; });

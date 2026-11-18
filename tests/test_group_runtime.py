@@ -39,7 +39,8 @@ def reply(kwargs, text="A useful reply."):
     return {"seat": kwargs["seat"], "agent": profile["agent"], "reply": text, "passed": not text, "model": "", "changed_files": [], "unreviewable": []}
 
 
-def test_group_review_survives_restart_and_undo_remains_available(tmp_path):
+@pytest.mark.parametrize('accept', [False, True])
+def test_group_review_survives_restart_and_undo_remains_available(tmp_path, accept):
     root = _repo(tmp_path)
     first = _manager(root, [])
     try:
@@ -57,14 +58,20 @@ def test_group_review_survives_restart_and_undo_remains_available(tmp_path):
         changes = second.turn_file_changes(cid)
         assert changes["files"][0]["before"] == original
         assert "A revised opening." in changes["files"][0]["after"]
-        second.apply_file_selection(cid, "manuscript/one.md", [], changes["files"][0]["fingerprint"])
-        assert scene.read_text() == original
+        second.apply_file_selection(cid, "manuscript/one.md", [1] if accept else [], changes["files"][0]["fingerprint"])
+        assert (scene.read_text() == original) is not accept
     finally:
         second.close()
     third = _manager(root, [])
     try:
         assert third.turn_file_changes(cid)["files"] == []
-        assert third._get(cid).agent_notes, "review corrections must survive another restart"
+        archived = third.turn_file_changes(cid, original=True)["files"]
+        if accept:
+            assert archived[0]["before"] == original
+            assert "A revised opening." in archived[0]["after"]
+        else:
+            assert archived == []
+            assert third._get(cid).agent_notes, "review corrections must survive another restart"
     finally:
         third.close()
 

@@ -19340,6 +19340,12 @@
             cursor: pointer;
         }
 
+        .group-transferred-context { margin: 0 0 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
+        .group-transferred-context summary { cursor: pointer; }
+        .group-transferred-context[open] > summary { margin-bottom: 10px; }
+        .group-transfer-technical { margin-top: 10px; overflow-wrap: anywhere; }
+        .group-transfer-technical[open] > summary { margin-bottom: 8px; }
+
         .group-preset-choice {
             min-width: 0;
             margin: 8px 0;
@@ -19408,6 +19414,35 @@
             border-radius: 8px;
             background: var(--surface-muted);
         }
+
+        .group-positions-card > summary { cursor: pointer; font-weight: 600; }
+        .group-positions-card[open] > summary { margin-bottom: 12px; }
+        .group-conversation-navigation { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0; background: var(--surface-card); }
+        .group-message-toggle { border: 0; background: none; color: var(--text-muted); cursor: pointer; padding: 3px 5px; flex-shrink: 0; }
+        .group-turn-head { cursor: pointer; }
+        .group-message-preview { display: none; margin: 8px 0 0; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .is-message-collapsed > :not(.group-turn-head):not(.group-message-preview) { display: none !important; }
+        .is-message-collapsed > .group-message-preview { display: block; }
+        .group-recap-message { scroll-margin-top: 62px; }
+        .group-edit-card { border: 1px solid var(--border); border-radius: 9px; padding: 12px; margin: 12px 0; background: var(--surface-card); min-width: 0; }
+        .group-edit-heading { display: flex; align-items: flex-start; gap: 8px; }
+        .group-edit-heading h3 { flex: 1; margin-top: 0 !important; }
+        .group-edit-status { flex-shrink: 0; font-size: 11px; color: var(--text-muted); }
+        .is-applied > .group-edit-heading .group-edit-status { color: var(--text-success); }
+        .group-edit-source { display: block; font-size: 12px; overflow-wrap: anywhere; margin: 2px 0 10px; }
+        .group-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+        .group-edit-content { font-size: 14px; line-height: 1.5; }
+        .group-edit-content > p { margin: 6px 0; }
+        .group-edit-content blockquote { margin: 6px 0; padding: 8px 10px; }
+        .group-edit-card.is-single-edit .discuss-quote-header .discuss-quote-line-tag { visibility: hidden; }
+        .group-edit-reason { color: var(--text-muted); font-size: 12px; }
+        .group-recap-section { scroll-margin-top: 52px; }
+        .group-edit-card:not(.is-edit-expanded) .group-edit-content blockquote { max-height: 9em; overflow: hidden; }
+        .group-edit-card:not(.is-edit-expanded) .group-edit-content > p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .group-recap-section.is-withdrawn { margin: 12px 0; padding: 10px; border-top: 1px solid var(--border); }
+        .group-recap-section.is-withdrawn > summary { cursor: pointer; font-weight: 600; }
+        .group-recap-section.is-choices { border-left: 3px solid var(--text-warning); padding-left: 10px; }
+        .group-message-toggle:focus-visible, .group-edit-actions button:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
 
         .group-positions-card table {
             width: 100%;

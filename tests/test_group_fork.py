@@ -6,7 +6,7 @@ import time
 import pytest
 
 from proseview.discuss import ContextError
-from proseview.group import extract_stances, positions_table, visible_reply
+from proseview.group import PROSE_EDIT_FORMAT, extract_stances, positions_table, visible_reply
 from proseview.group_fork import materialize, split_prompt
 from tests.test_highlight_suggestions import _manager, _repo
 
@@ -67,6 +67,7 @@ def test_manual_fork_is_idle_and_original_native_session_is_isolated(tmp_path, a
         child = record['native_threads']['1']['thread_id']
         assert child != parent
         assert clients[0].forks[-1]['threadId'] == parent
+        assert PROSE_EDIT_FORMAT in clients[0].forks[-1]['developerInstructions']
         assert not clients[0].forks[-1].get('ephemeral')
         send(manager, saved['id'], 'Continue only in the Group.', [1])
         wait_for(lambda: len(state(manager, saved['id'])['turns']) > len(saved['turns']) + 1)
@@ -137,6 +138,22 @@ def test_lost_native_fork_restores_instructions_and_keeps_fallback_disclosure(tm
         manager.close()
 
 
+def test_untouched_legacy_native_fork_refreshes_guidance_and_preserves_context(tmp_path):
+    manager = _manager(_repo(tmp_path), clients := [])
+    try:
+        cid = answered(manager)
+        created = manager.fork_group(cid, {'scene': 'one.md'}, create=True)['group']
+        native = manager.group_runtime.groups[created['id']]['native_threads']['1']
+        child = native['thread_id']
+        native.pop('guidance_hash')
+        send(manager, created['id'], 'Recap the agreed edits.', [1])
+        wait_for(lambda: (s := state(manager, created['id']))['status'] == 'idle' and len(s['turns']) > len(created['turns']) + 1)
+        assert clients[0].turn_params[-1]['threadId'] != child
+        assert PROSE_EDIT_FORMAT in clients[0].thread_start_params[-1]['developerInstructions']
+        assert 'Preserve the quiet ending' in clients[0].prompts[-1]
+        assert 'Recap the agreed edits.' in clients[0].prompts[-1]
+    finally:
+        manager.close()
 
 
 def test_models_remain_attributed_after_source_chat_is_reopened(tmp_path):

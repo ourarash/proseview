@@ -6,6 +6,40 @@ function groupForkElement(tagOrClass, classOrText, text) {
 var _groupForkDialogState = null;
 var _groupForkLinks = Object.create(null);
 
+function groupTransferWarnings(session) {
+    return Array.from(new Set((session.runtime && session.runtime.handoff_warnings || session.handoffWarnings || []).filter(Boolean)));
+}
+function groupRuntimeNotice(session) {
+    var notice = session.runtime && session.runtime.notice || '';
+    // Older Groups repeat their transfer notes in the runtime notice above
+    // the composer. Keep recovery notices there, and transfer details in history.
+    groupTransferWarnings(session).forEach(function(warning) { notice = notice.split(warning).join(''); });
+    return notice.trim();
+}
+function groupTransferredContextCard(session) {
+    var warnings = groupTransferWarnings(session);
+    if (!session.source && !warnings.length) return null;
+    var card = document.createElement('details'); card.className = 'group-transferred-context';
+    card.appendChild(groupForkElement('summary', '', 'Context transferred'));
+    var options = session.runtime && session.runtime.context_options || {};
+    card.appendChild(groupForkElement('p', 'settings-note', options.mode === 'recent'
+        ? 'The selected recent exchanges and current scene were transferred. Other files remain available by reference.'
+        : 'Conversation messages, request instructions, structured results, and available tool history were transferred.'));
+    if (options.mode === 'recent' && (session.turns || []).some(function(turn) { return turn.role === 'context'; })) {
+        card.appendChild(groupForkElement('p', 'settings-note', 'A summary of the earlier conversation is also included.'));
+    }
+    if (warnings.some(function(warning) { return /fresh session|new session|could not be forked/i.test(warning); })) {
+        card.appendChild(groupForkElement('p', 'settings-note', 'Started a new session with transferred context.'));
+    }
+    if (warnings.length) {
+        var technical = document.createElement('details'); technical.className = 'group-transfer-technical';
+        technical.appendChild(groupForkElement('summary', '', 'Technical details'));
+        warnings.forEach(function(warning) { technical.appendChild(groupForkElement('p', 'settings-note', warning)); });
+        card.appendChild(technical);
+    }
+    return card;
+}
+
 function groupVisibleReply(text, streaming) {
     var lines = String(text || '').split('\n');
     return lines.filter(function(line, index) {
@@ -29,12 +63,12 @@ function groupSetPositions(id, checked) {
 function createGroupPositionsOption(preset, change) {
     var label = document.createElement('label'); label.className = 'group-positions-option';
     var option = document.createElement('input'); option.type = 'checkbox'; option.checked = !!preset.positions_table;
-    var title = 'Show each agent’s final stance in a table';
+    var title = 'Include agent positions in Discussion';
     option.setAttribute('aria-label', title + ' for ' + preset.name);
     option.onchange = function() { change(option.checked); };
     var copy = document.createElement('span');
     copy.appendChild(groupForkElement('span', 'group-positions-title', title));
-    copy.appendChild(groupForkElement('span', 'group-positions-help', 'The recap lists each suggestion, each agent’s final view, and their supporting evidence.'));
+    copy.appendChild(groupForkElement('span', 'group-positions-help', 'Keep agent-by-agent positions in a collapsed Discussion section beneath the recap.'));
     label.append(option, copy);
     return label;
 }
@@ -76,8 +110,8 @@ function renderGroupWorkflowPicker(session, body) {
     details.appendChild(list); body.appendChild(details);
 }
 function groupPositionsCard(session, turn) {
-    var box = groupForkElement('group-positions-card');
-    box.appendChild(groupForkElement('strong', '', 'Positions'));
+    var box = document.createElement('details'); box.className = 'group-positions-card';
+    box.appendChild(groupForkElement('summary', '', 'Discussion · agent positions'));
     var scroll = groupForkElement('md-table-scroll'), table = document.createElement('table');
     table.setAttribute('aria-label', 'Recorded positions');
     var head = document.createElement('tr');

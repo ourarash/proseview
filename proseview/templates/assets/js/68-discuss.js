@@ -1405,10 +1405,11 @@
                 _groupReviewContexts.set(turn, review);
                 review.refresh = function() {
                     var token = review.loadToken = (review.loadToken || 0) + 1;
-                    return discussApi('/api/discuss/conversations/' + encodeURIComponent(review.conversationId) + '/changes', {mode: review.mode})
+                    return discussApi('/api/discuss/conversations/' + encodeURIComponent(review.conversationId) + '/changes', {mode: review.mode, include_text: true})
                         .then(function(data) {
                             if (review.loadToken !== token) return;
                             review.files = data.files || []; review.unreviewable = data.unreviewable || [];
+                            review.historyFiles = data.history_files || review.files;
                             review.loaded = true; review.error = '';
                             Object.keys(review.keep).forEach(function(path) {
                                 if (!review.files.some(function(file) { return file.path === path; })) delete review.keep[path];
@@ -1423,6 +1424,7 @@
             }
             review.render = function(focusPath) {
                 review.save();
+                if (typeof groupUpdateAppliedEdits === 'function') groupUpdateAppliedEdits(session);
                 if (!box.isConnected) return;
                 content.replaceChildren();
                 if (!review.loaded) content.textContent = review.error ? '' : 'Loading changes…';
@@ -2006,7 +2008,6 @@
         var _groupHistoryChecked = Object.create(null);
         var _groupHistoryList = Object.create(null);
         var _groupHistoryOpen = false;
-        var _groupScrollByScene = Object.create(null);
         // A passage picked with Ask or Polish, sent with the next message.
         var _groupPendingSelection = '';
         var _groupPendingSelectionScene = '';
@@ -2557,29 +2558,57 @@
         // way a Codex answer links its own citations, whichever agent wrote it.
         function _groupLinkLines(text, scenePath) {
             scenePath = scenePath || _discussCurrentScenePath();
+            var activeSource = '';
+            var namedSources = new Set();
+            var namedTargets = [];
+            (String(text || '').match(/[^\s`<>()\[\]#]+\.md/g) || []).forEach(function(source) {
+                var target = resolveProsviewFileReference(source);
+                var key = target ? target.kind + ':' + target.path : source;
+                if (target && !namedSources.has(key)) namedTargets.push(target);
+                namedSources.add(key);
+            });
             var abs = String(((typeof meta !== 'undefined' && meta[scenePath]) || {}).abs_path || '');
             var docRef = abs ? ('<' + abs + ':') : (scenePath ? ('<' + scenePath + '#L') : '');
             function link(all, source, start, end) {
                 var rangeSuffix = end ? ('-' + end) : '';
                 if (source) {
                     // A named source must never fall back to the open scene.
+                    activeSource = source;
                     var target = resolveProsviewFileReference(source);
                     if (!target) return all;
                     return '[' + all + '](<' + source + '#L' + start + rangeSuffix + '>)';
                 }
+                if (activeSource) return link(all, activeSource, start, end);
+                if (namedSources.size) return all;
                 return docRef ? '[' + all + '](' + docRef + start + rangeSuffix + '>)' : all;
             }
             var parts = String(text || '').split(/(```[\s\S]*?```|~~~[\s\S]*?~~~|\[[^\]]*\]\([^)]*\)|`[^`]*`)/);
             return parts.map(function(part, idx) {
                 if (idx % 2 === 1) {
                     var citation = part.match(/^`([^`\n]+\.md)\s*[·,:]\s*lines?\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?`$/i);
+                    var namedLink = part.match(/\]\(<?([^#\n]+?\.md)(?:#|:\d|>?\))/);
+                    if (namedLink) activeSource = namedLink[1];
                     return citation ? link(part.slice(1, -1), citation[1], citation[2], citation[3]) : part;
                 }
                 var precedingPath = idx > 0 && parts[idx - 1].match(/^`([^`\n]+\.md)`$/);
-                return part.replace(/(?:([^\s`<>\[\]()]+\.md)\s*[·,:]\s*)?\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, source, word, start, end, offset) {
-                    if (!source && precedingPath && /^\s*[·,:]\s*$/.test(part.slice(0, offset))) source = precedingPath[1];
-                    return link(all, source, start, end);
-                });
+                return part.split(/(\n)/).map(function(line, lineIndex) {
+                    if (/^\s*#{1,6}\s/.test(line)) activeSource = '';
+                    return line.replace(/(?:([^\s`<>\[\]()]+\.md)\s*[·,:]\s*)?\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, source, word, start, end, offset) {
+                        if (!source && precedingPath && lineIndex === 0 && /^\s*[·,:]\s*$/.test(line.slice(0, offset))) source = precedingPath[1];
+                        if (!source) {
+                            var naturalSource = line.slice(0, offset).match(/\b(?:in|from)\s+(?:the\s+)?([^,\n]+),\s*$/i);
+                            if (naturalSource) {
+                                var name = naturalSource[1].trim().toLowerCase();
+                                var matches = namedTargets.filter(function(target) {
+                                    return target.path.split('/').pop().replace(/^\d+[-_]/, '').replace(/\.md$/i, '').replace(/[-_]/g, ' ').toLowerCase() === name;
+                                });
+                                if (matches.length !== 1) return all;
+                                source = matches[0].path;
+                            }
+                        }
+                        return link(all, source, start, end);
+                    });
+                }).join('');
             }).join('');
         }
 
@@ -2625,9 +2654,7 @@
             box.hidden = !box.childNodes.length;
             if (body && wasAtBottom) {
                 body.scrollTop = body.scrollHeight;
-                if (session && session.scene) {
-                    _groupScrollByScene[session.scene] = {top: body.scrollTop, atBottom: true};
-                }
+                groupRememberScroll(body);
             }
             var approvals = document.getElementById('groupLiveApprovals');
             if (approvals) {
@@ -2653,9 +2680,9 @@
             var session = _groupSessionFor(_groupCurrentScenePath());
             if (!session || session.busy) return;
             var last = session.turns.filter(function(turn) { return turn.role === 'critic'; }).slice(-1)[0];
-            if (session.scene) _groupScrollByScene[session.scene] = {top: 0, atBottom: true};
             var count = (session.participants && session.participants.length) || 2;
             var seat = last && last.seat ? ((last.seat % count) + 1) : 1;
+            groupFollowLatest(session);
             groupRuntimeControl(session, 'submit', {message_id: _groupNewId(), text: '@' + session.participants[seat - 1].handle + ' continue the discussion.', seats: [seat]}).catch(function() {});
         }
 
@@ -2832,27 +2859,12 @@
             _groupLoadDraft(path);
 
             var oldBody = document.getElementById('groupBody');
-            var oldWasAtBottom = oldBody && oldBody.clientHeight > 0
-                ? (oldBody.scrollHeight - oldBody.scrollTop - oldBody.clientHeight < 48)
-                : null;
-            var oldScrollTop = oldBody && oldBody.clientHeight > 0 ? oldBody.scrollTop : null;
-
-            var keepScroll = _groupScrollByScene[path] || null;
-            if (oldWasAtBottom !== null) {
-                keepScroll = {
-                    top: oldScrollTop,
-                    atBottom: oldWasAtBottom
-                };
-                _groupScrollByScene[path] = keepScroll;
-            }
+            groupRememberScroll(oldBody);
+            if (oldBody && oldBody._groupDisconnectScroll) oldBody._groupDisconnectScroll();
             pane.replaceChildren();
             var session = _groupSessionFor(path);
             _restoreLatestGroupSession(path);
             _groupEnsureParticipants(session);
-            if (!keepScroll && session && session.turns && session.turns.length > 0) {
-                keepScroll = {top: 0, atBottom: true};
-                _groupScrollByScene[path] = keepScroll;
-            }
 
             // 1. Header strip
             var header = elementWith('group-header-strip');
@@ -2907,13 +2919,6 @@
                 var missingSummary = (session.runtime && session.runtime.handoff_warnings || session.handoffWarnings || []).find(function(w) { return w.indexOf('Summary missing.') === 0; });
                 var missingNotice = elementWith('group-runtime-notice group-summary-missing', missingSummary || 'Summary missing. This Group received recent exchanges and the current scene only.');
                 missingNotice.setAttribute('role', 'status'); body.appendChild(missingNotice);
-            }
-            var handoffWarnings = session.runtime && session.runtime.handoff_warnings || session.handoffWarnings || [];
-            if (handoffWarnings.length) {
-                var handoff = document.createElement('details'); handoff.className = 'group-fork-context';
-                var handoffTitle = document.createElement('summary'); handoffTitle.textContent = 'Transferred conversation context'; handoff.appendChild(handoffTitle);
-                handoffWarnings.forEach(function(warning) { handoff.appendChild(elementWith('settings-note', warning)); });
-                body.appendChild(handoff);
             }
             if (session.turns.length && !session.busy) renderGroupWorkflowPicker(session, body);
 
@@ -2971,6 +2976,8 @@
 
                 // Turns list
                 var turnsWrap = elementWith('group-turns-list');
+                var transferredContext = groupTransferredContextCard(session);
+                if (transferredContext) turnsWrap.appendChild(transferredContext);
                 var placedPlans = {};
                 var appendPlansAfter = function(count) {
                     (session.plans || []).forEach(function(plan, pIdx) {
@@ -2982,11 +2989,14 @@
                 session.turns.forEach(function(turn, turnIdx) {
                     if (turn.role === 'context') {
                         var summaryCard = elementWith('group-turn-card chat-message-card group-conversation-summary');
-                        summaryCard.appendChild(elementWith('chat-message-name', 'Generated conversation summary'));
-                        if (turn.model) summaryCard.appendChild(elementWith('group-turn-model', turn.model));
+                        var summaryHead = elementWith('group-turn-head chat-message-header');
+                        summaryHead.appendChild(elementWith('chat-message-name', 'Generated conversation summary'));
+                        if (turn.model) summaryHead.appendChild(elementWith('group-turn-model', turn.model));
+                        summaryCard.appendChild(summaryHead);
                         var summaryBody = elementWith('group-turn-body discuss-message assistant');
                         renderDiscussMarkdown(summaryBody, turn.text); summaryCard.appendChild(summaryBody);
                         addCopyButton(summaryCard, function() { return turn.text; }, 'Copy summary');
+                        groupMessageDisclosure(summaryCard, summaryHead, session, turn, turnIdx);
                         turnsWrap.appendChild(summaryCard); appendPlansAfter(turnIdx + 1); return;
                     }
                     if (turn.passed) {
@@ -3029,6 +3039,7 @@
                         highlightChatMentions(uBody, session.participants);
                         uCard.appendChild(uBody);
                         addCopyButton(uCard, function() { return turn.text; }, 'Copy message');
+                        groupMessageDisclosure(uCard, uHead, session, turn, turnIdx);
                         turnsWrap.appendChild(uCard);
                         appendPlansAfter(turnIdx + 1);
                         return;
@@ -3061,11 +3072,16 @@
                     renderDiscussMarkdown(textWrap, _groupLinkLines(groupVisibleReply(turn.text, false), turn.scene || session.originScene || path));
                     highlightChatMentions(textWrap, session.participants);
                     card.appendChild(textWrap);
+                    if (turn.tag === 'Recap' || Array.from(textWrap.querySelectorAll('h1,h2')).some(function(node) { return /^Agreed edits\b/i.test(node.textContent); })) {
+                        card.classList.add('group-recap-message');
+                        groupDecorateRecap(textWrap, session, turn, turnIdx);
+                    }
                     if (turn.inherited) card.classList.add('group-inherited-message');
                     if (turn.model_inferred) head.appendChild(elementWith('group-turn-model', 'model inferred'));
                     if (turn.tag === 'Recap' && (turn.preset_kind ? turn.preset_kind !== 'workflow' : session.presetId !== 'second_opinion')) card.insertBefore(elementWith('group-plan-title', 'Revision plan'), textWrap);
                     if (turn.positions) card.appendChild(groupPositionsCard(session, turn));
                     addCopyButton(card, function() { return groupVisibleReply(turn.text, false); }, 'Copy message');
+                    groupMessageDisclosure(card, head, session, turn, turnIdx);
                     turnsWrap.appendChild(card);
                     if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_groupToolReview(session, turn));
                     if (turn.review_unavailable) turnsWrap.appendChild(elementWith('group-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
@@ -3091,6 +3107,7 @@
                     contBar.appendChild(contBtn);
                     turnsWrap.appendChild(contBar);
                 }
+                body.appendChild(groupConversationNavigation(session, turnsWrap));
                 body.appendChild(turnsWrap);
 
                 // Live status spinner
@@ -3129,22 +3146,9 @@
             pane.appendChild(body);
             // Append the composer before restoring scroll so body already has its final flex height:
             pane.appendChild(createGroupComposer(session));
+            queueMicrotask(function() { groupHydrateRecapReviews(session); });
             body.dataset.scene = path;
-            body.addEventListener('scroll', function() {
-                if (!body.isConnected || !body.clientHeight) return;
-                _groupScrollByScene[path] = {
-                    top: body.scrollTop,
-                    atBottom: body.scrollHeight - body.scrollTop - body.clientHeight < 48
-                };
-            });
-            if (keepScroll) {
-                var restoreScroll = function() {
-                    if (!body.isConnected) return;
-                    body.scrollTop = keepScroll.atBottom ? body.scrollHeight : keepScroll.top;
-                };
-                restoreScroll();
-                requestAnimationFrame(restoreScroll);
-            }
+            groupInstallScroll(body, session);
             if (_groupLatestPlan(session)) _syncGroupApplyButton(session);
             if (session.managed) groupRuntimePoll(session);
             if (inputFocus) {

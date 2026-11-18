@@ -67,6 +67,20 @@ def test_chat_preserves_full_history_and_keeps_format_and_profile_guidance_in_ba
         manager.close()
 
 
+def test_prose_edit_format_and_self_contained_recaps_apply_with_custom_group_guidance():
+    from proseview.group import GENERAL_CHAT_GUIDANCE, PROSE_EDIT_FORMAT, RECAP_GUIDANCE, SECOND_OPINION_RECAP, chat_instructions
+    profiles = [{"seat": 1, "name": "Reader", "specialty": "Voice", "style": "Direct", "agent": "codex", "handle": "reader", "aliases": []}]
+    for custom in ('', 'Keep the narrator affectionate.', GENERAL_CHAT_GUIDANCE):
+        instructions = chat_instructions(profiles[0], profiles, custom_instructions=custom)
+        assert instructions.count(PROSE_EDIT_FORMAT.strip()) == 1
+        assert instructions.count(RECAP_GUIDANCE.strip()) == 1
+        if custom:
+            assert custom.strip() in instructions
+    assert PROSE_EDIT_FORMAT in SECOND_OPINION_RECAP
+    assert 'italic blockquote' in PROSE_EDIT_FORMAT and 'plain blockquote' in PROSE_EDIT_FORMAT
+    assert 'explicit file-and-line' in PROSE_EDIT_FORMAT
+    assert '## Agreed edits' in SECOND_OPINION_RECAP and '## Choices for you' in SECOND_OPINION_RECAP
+    assert 'final corrected wording' in SECOND_OPINION_RECAP
 
 
 def test_pass_is_an_individual_outcome_and_survives_history(tmp_path, monkeypatch):
@@ -128,6 +142,22 @@ def test_native_group_conversation_continues_when_the_scene_changes(tmp_path):
         manager.close()
 
 
+def test_group_guidance_updates_refresh_native_instructions_without_losing_history(tmp_path, monkeypatch):
+    from proseview import group
+    manager = _manager(_repo(tmp_path), clients := [])
+    try:
+        participants = manager.group_settings()['participants']
+        history = [{'role': 'user', 'text': 'Keep this original discussion context.'}]
+        first = manager.run_group_turn(scene='one.md', participants=participants, history=history, debate_id='format-update')
+        history.extend([{'role': 'critic', 'seat': 1, 'text': first['reply']}, {'role': 'user', 'text': 'Now recap the agreed edits.'}])
+        monkeypatch.setattr(group, 'RECAP_GUIDANCE', group.RECAP_GUIDANCE + ' UPDATED_RECAP_GUIDANCE')
+        manager.run_group_turn(scene='one.md', participants=participants, history=history, debate_id='format-update')
+        assert len(clients[0].thread_start_params) == 2
+        assert 'UPDATED_RECAP_GUIDANCE' in clients[0].thread_start_params[-1]['developerInstructions']
+        assert history[0]['text'] in clients[0].prompts[-1]
+        assert history[-1]['text'] in clients[0].prompts[-1]
+    finally:
+        manager.close()
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude", "agy"])

@@ -3202,12 +3202,22 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 if turn_changes_match:
                     review = self.discuss_manager.turn_file_changes(turn_changes_match.group(1))
+                    if body.get("include_text") is True:
+                        import difflib
+                        archived = self.discuss_manager.turn_file_changes(turn_changes_match.group(1), original=True)
+                        review["history_files"] = []
+                        for row in archived["files"]:
+                            review["history_files"].append({"path": row["path"], "before": row["before"], "after": row["after"],
+                                "diff": "\n".join(difflib.unified_diff(row["before"].splitlines(), row["after"].splitlines(),
+                                                                      fromfile=row["path"], tofile=row["path"], lineterm="")) + "\n"})
                     mode_str = "side-by-side" if body.get("mode") == "side-by-side" else "inline"
                     # The manager deals in text; the HTML is put on here so it
                     # never has to know how a diff looks.
                     for row in review["files"]:
-                        row["blocks"] = format_review_blocks(row.pop("before"), row["after"], mode=mode_str)
-                        row.pop("after", None)
+                        row["blocks"] = format_review_blocks(row["before"], row["after"], mode=mode_str)
+                        if body.get("include_text") is not True:
+                            row.pop("before", None)
+                            row.pop("after", None)
                     self._send_json({"ok": True, **review})
                     return
                 if task_status_match:

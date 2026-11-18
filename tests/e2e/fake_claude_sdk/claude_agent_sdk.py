@@ -87,6 +87,10 @@ class ClaudeSDKClient:
         self.session_id = str(
             getattr(options, "resume", "") or getattr(options, "session_id", "") or uuid.uuid4()
         )
+        if getattr(options, "fork_session", False):
+            parent = self.session_id
+            self.session_id = str(uuid.uuid4())
+            _sessions[self.session_id] = list(_sessions.get(parent, []))
         self._response = []
         self._hold_event: asyncio.Event | None = None
         self._interrupted = False

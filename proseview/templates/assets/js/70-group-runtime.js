@@ -70,7 +70,7 @@ function groupRuntimeApply(session, state, options) {
         var oldOutboxLength = (session.outbox || []).length;
         session.outbox = (session.outbox || []).filter(function(body) { return !acknowledged.includes(body.request_id); });
         if (oldOutboxLength > session.outbox.length) session.sendError = '';
-        session.originScene = state.scene;
+        session.originScene = state.scene; session.source = state.source || null;
         delete _groupHistoryList.book;
     } else {
         Object.assign(session.runtime, {status: state.status, live: state.live, partial_reply: state.partial_reply});
@@ -236,6 +236,7 @@ function startManagedGroupPreset(session) {
         .finally(function() { session.startingPreset = false; if (_groupSessionsByScene[session.scene] === session) renderSceneGroupPane(); });
 }
 function groupRecapPrompt(presetId) {
+    if (presetId === 'second_opinion') return 'Recap the existing discussion: explicit agreements, unresolved differences, and choices for the writer. Do not start a new review or infer agreement from silence.';
     if (presetId === 'pitch_next_beat') {
         return (
             'Deliver a self-contained, actionable recap of where we landed so the writer does not need to piece it together from earlier turns: ' +
@@ -262,12 +263,12 @@ function groupPresetDebateInvitationCount(session) {
 function queueManagedGroupPreset(session) {
     var preset = session.pendingPreset;
     if (!preset) return;
-    session.id = _groupNewId(); session.createdAt = Date.now() / 1000;
+    if (preset.kind !== 'workflow' || !session.managed) { session.id = _groupNewId(); session.createdAt = Date.now() / 1000; }
     session.topicLabel = preset.name; session.presetId = preset.id;
     session.topicBadge = preset.invitations.length + ' invitations' + (preset.recap ? ' + recap' : '');
     var invitations = preset.invitations.map(function(step) { return {seat: step.seat, prompt: step.prompt, attachments: discussMentionsIn(step.prompt)}; });
     if (preset.recap) invitations.push({seat: preset.recap, recap: true, prompt: groupRecapPrompt(preset.id)});
-    var body = groupRuntimeEnvelope(session, 'preset', {invitations: invitations});
+    var body = groupRuntimeEnvelope(session, 'preset', {invitations: invitations, append: preset.kind === 'workflow' && !!session.turns.length, preset_id: preset.id, positions_table: !!preset.positions_table});
     session.pendingPreset = null; session.outbox = [body];
     session.busy = true; session.statusText = 'Starting discussion…';
     if (typeof _groupScrollByScene !== 'undefined') _groupScrollByScene[session.scene] = {top: 0, atBottom: true};

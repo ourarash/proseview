@@ -2963,6 +2963,11 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.discuss_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
+                if path == "/api/discuss/group-fork":
+                    result = self.discuss_manager.fork_group(str(body.get("conversation_id") or ""), body,
+                                                            create=body.get("action") == "create")
+                    self._send_json({"ok": True, **result})
+                    return
                 if path == "/api/discuss/group-run":
                     self._send_json({"ok": True, "group": self.discuss_manager.group_command(body)})
                     return

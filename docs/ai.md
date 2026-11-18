@@ -23,6 +23,24 @@ Three places where AI shows up, all opt-in:
    are always there, and one that cannot start explains why rather than
    disappearing.
 
+   **Send to Group** forks a finished chat into a conversation with two
+   assistants. Choose both providers and models in setup. **None — I’ll direct
+   it** starts no agent; **Second opinion & recap** asks the other assistant
+   to weigh in, the original to respond, then recaps their positions. The same
+   workflow is available in Group alongside its separate task presets.
+   Conversation history, request instructions, structured results, and current
+   files transfer; available tool history accompanies them. Pending approvals
+   and apply actions stay in the source chat. Links connect both conversations.
+   The original uses an isolated native fork when possible; changing its
+   provider or model starts a fresh session with the transferred context.
+
+   Setup can also keep only the last 1–10 exchanges (default 3), with an
+   optional summary of earlier conversation. Both Group participants then
+   start fresh. The current scene stays numbered for citations. A summary is
+   made only when you fork; Cancel returns to setup with your choices intact.
+   If summarization fails, the Group opens with recent exchanges and a
+   **Summary missing** notice.
+
    Every question tells the agent where you are, the way the editor
    extensions do: which file is open, and your selection if it is in the
    panel. A quiet line at the top of the panel names that file. The agent

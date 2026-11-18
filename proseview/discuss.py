@@ -1250,6 +1250,8 @@ class DiscussStateStore:
                 "updated_at": updated_at,
                 "renamed": bool(raw.get("renamed")),
                 "model": model,
+                **({"message_models": {str(k): _bounded_text(v, MODEL_ID_MAX) for k, v in raw["message_models"].items()
+                                        if isinstance(v, str)}} if isinstance(raw.get("message_models"), dict) else {}),
                 "documents": [dict(item) for item in (raw.get("documents") or [])
                               if isinstance(item, dict)
                               and item.get("kind") in {"scene", "file"}
@@ -1485,6 +1487,16 @@ class DiscussStateStore:
                 return
             row["model"] = dict(selection)
             self._write(data)
+
+    def record_message_model(self, document: dict[str, str], thread_id: str, turn_id: str, model: str, agent: str) -> None:
+        """Keep model attribution across reloads without storing prompt bodies."""
+        with self._lock:
+            data = self._load()
+            _agents, entry, _migrated = self._entry(data, document["kind"], document["path"], agent)
+            row = next((r for r in entry["threads"] if r["thread_id"] == thread_id), None)
+            if row is not None:
+                row.setdefault("message_models", {})[turn_id] = model
+                self._write(data)
 
     def clear_active(self, kind: str, path: str, agent: str = DEFAULT_AGENT) -> None:
         with self._lock:
@@ -2152,6 +2164,9 @@ class _Conversation:
         # and the agent's own configuration decides. A pinned choice belongs to
         # this conversation and is persisted with its thread.
         self.model_selection: dict[str, str] = {"model": "", "effort": ""}
+        self.active_model = ""
+        self.forking = False
+        self.group_forks: list[dict[str, Any]] = []
         self.connection = "Restoring conversation"
         self.unavailable_reason = ""
         self.messages: list[dict[str, Any]] = []
@@ -2246,6 +2261,9 @@ class _Conversation:
                 "document": dict(self.document),
                 "agent": self.agent,
                 "model": dict(self.model_selection),
+                "thread_id": self.thread_id,
+                "group_forks": list(self.group_forks),
+                "forking": self.forking,
                 "connection": self.connection,
                 "unavailable_reason": self.unavailable_reason,
                 "messages": [dict(message) for message in self.messages],
@@ -2491,6 +2509,8 @@ class DiscussManager:
         #: Ephemeral /btw side-question turns in flight, by side_question_id.
         self._side_runs: dict[str, _OneOff] = {}
         self._side_lock = threading.Lock()
+        self._fork_jobs: dict[str, dict[str, Any]] = {}
+        self._fork_lock = threading.RLock()
         #: Group turns in flight, by the browser's run id.
         self._group_runs: dict[str, _OneOff] = {}
         #: Each critic's ongoing conversation in a debate, by "debate:seat", so a
@@ -2766,6 +2786,9 @@ class DiscussManager:
         restored_tasks: dict[str, dict[str, Any]] = {}
         unsafe_turns = 0
         rebuild_tasks = not conversation.thread_restored
+        saved_row = next((row for row in self.state.list(conversation.document["kind"], conversation.document["path"], conversation.agent)
+                          if row["thread_id"] == conversation.thread_id), {})
+        message_models = saved_row.get("message_models") or {}
         for turn_index, turn in enumerate(thread.get("turns") or []):
             if not isinstance(turn, dict):
                 continue
@@ -2780,6 +2803,8 @@ class DiscussManager:
                     ))
                 elif item.get("type") == "agentMessage" and (item.get("phase") or "final_answer") == "final_answer":
                     final_answers.append(str(item.get("text") or ""))
+            recorded_model = message_models.get(str(turn.get("id") or "")) or next((
+                item["model"] for item in items if item.get("type") == "agentMessage" and item.get("model")), "")
             action = _restored_action_metadata(prompts[-1]) if prompts else None
             repository_action = _is_repository_action_prompt(prompts[-1]) if prompts else False
             if action is not None:
@@ -2793,6 +2818,8 @@ class DiscussManager:
                         source_document=source_document,
                     )
                     restored_tasks[task["id"]] = task
+                    if recorded_model:
+                        task["model"] = recorded_model
                 # Structured action prompts and results have their own safe UI
                 # projection. Never expose either as ordinary chat text.
                 continue
@@ -2846,7 +2873,7 @@ class DiscussManager:
                         if isinstance(part, dict) and part.get("type") == "text"
                     )
                     visible = text.rsplit(marker, 1)[-1]
-                    user_msg: dict[str, Any] = {"role": "user", "text": _bounded_text(visible), "restored": True}
+                    user_msg: dict[str, Any] = {"role": "user", "text": _bounded_text(visible), "restored": True, "turn_id": turn.get("id", "")}
                     if item_created_at:
                         user_msg["created_at"] = item_created_at
                     restored.append(user_msg)
@@ -2866,6 +2893,8 @@ class DiscussManager:
                         }
                         if item.get("stopped"):
                             asst_msg["stopped"] = str(item["stopped"])
+                        if recorded_model:
+                            asst_msg["model"] = recorded_model
                         if item_created_at:
                             asst_msg["created_at"] = item_created_at
                         if turn_duration_ms is not None:
@@ -2878,6 +2907,8 @@ class DiscussManager:
                             "phase": "thought",
                             "restored": True,
                         }
+                        if recorded_model:
+                            asst_msg["model"] = recorded_model
                         if item_created_at:
                             asst_msg["created_at"] = item_created_at
                         if turn_duration_ms is not None:
@@ -3558,6 +3589,8 @@ class DiscussManager:
             # A model the provider is retiring stays selectable; hiding the
             # notice would make the eventual failure look like Prosview's.
             "retiring": bool(raw.get("upgrade") or upgrade.get("model")),
+            "context_window": next((raw[k] for k in ("contextWindow", "context_window", "maxInputTokens", "inputTokenLimit")
+                                    if type(raw.get(k)) is int and raw[k] > 0), None),
         }
 
     @staticmethod
@@ -4126,6 +4159,8 @@ class DiscussManager:
         include_adjacent: bool | None = None,
     ) -> dict[str, Any]:
         conversation = self._get(conversation_id)
+        if conversation.forking:
+            raise ContextError("Wait for the Group fork to finish before sending another question.")
         request_id = str(client_request_id or "").strip()
         if not request_id or len(request_id) > 128:
             raise ContextError("client_request_id is required and must be at most 128 characters")
@@ -4415,6 +4450,8 @@ class DiscussManager:
 
         stop_target: tuple[Any, str, str, threading.Event | None] | None = None
         with conversation.lock:
+            if conversation.forking:
+                raise ContextError("Wait for the Group fork to finish before sending another question.")
             existing = conversation.request_ids.get(request_id)
             if existing is not None:
                 if task:
@@ -4448,6 +4485,7 @@ class DiscussManager:
                 conversation.pending.append(queued_item)
             conversation.request_ids[request_id] = result
             if task:
+                task["context_sent"] = context_sent
                 conversation.tasks[task["id"]] = task
             else:
                 user_text = self._format_user_message_text(bundle, action_id, selection)
@@ -4692,12 +4730,6 @@ class DiscussManager:
         mode: str,
         fallback_reason: str = "",
     ) -> bool:
-        started = client.request(method, thread_params)
-        thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
-        thread_id = str(thread.get("id") or "")
-        if not thread_id:
-            raise RuntimeError("The agent did not return a thread id")
-
         def forward(event: dict[str, Any]) -> None:
             kind = event.get("type")
             if kind == "response.delta" and event.get("text"):
@@ -4731,59 +4763,66 @@ class DiscussManager:
                     })
 
         one_off.on_event = forward
+        def on_started(thread_id: str) -> None:
+            conversation.publish("side_question.started", {
+                "side_question_id": side_id, "client_request_id": request_id,
+                "question": question, "agent": agent, "mode": mode, "fallback_reason": fallback_reason,
+            })
+        turn_input: list[dict[str, Any]] = [{"type": "text", "text": prompt_text}]
+        if skill_item:
+            turn_input.append({"type": "skill", **skill_item})
+        return self._run_ephemeral_attempt(client=client, one_off=one_off, agent=agent,
+            method=method, thread_params=thread_params, timeout=self.SIDE_TIMEOUT, on_started=on_started,
+            turn_params={"input": turn_input, "approvalPolicy": CODEX_APPROVAL_POLICY,
+                         "sandboxPolicy": {"type": "workspaceWrite", "networkAccess": False},
+                         "mayWrite": True, **{k: v for k, v in model_selection.items() if v}})
+
+    def _run_ephemeral_attempt(self, *, client: Any, one_off: _OneOff, agent: str,
+                               method: str, thread_params: dict[str, Any], turn_params: dict[str, Any],
+                               timeout: float, on_started: Any = None) -> bool:
+        """Shared fork/start, timeout and interrupt mechanics; callers own policy and events."""
+        deadline = time.monotonic() + timeout
+        started = client.request(method, thread_params, timeout=min(timeout, 30.0))
+        thread_id = str((started.get("thread") or {}).get("id") or "")
+        if not thread_id:
+            raise RuntimeError("The agent did not return a thread id")
         key = self._thread_key(agent, thread_id)
         self._one_offs[key] = one_off
-        conversation.publish("side_question.started", {
-            "side_question_id": side_id,
-            "client_request_id": request_id,
-            "question": question,
-            "agent": agent,
-            "mode": mode,
-            "fallback_reason": fallback_reason,
-        })
         try:
-            turn_input: list[dict[str, Any]] = [{"type": "text", "text": prompt_text}]
-            if skill_item:
-                turn_input.append({"type": "skill", **skill_item})
-            turn_params: dict[str, Any] = {
-                "threadId": thread_id,
-                "input": turn_input,
-                "cwd": str(self.root),
-                "approvalPolicy": CODEX_APPROVAL_POLICY,
-                "sandboxPolicy": {"type": "workspaceWrite", "networkAccess": False},
-                "mayWrite": True,
-            }
-            if model_selection.get("model"):
-                turn_params["model"] = model_selection["model"]
-            if model_selection.get("effort"):
-                turn_params["effort"] = model_selection["effort"]
+            if on_started:
+                on_started(thread_id)
             if getattr(one_off, "cancelled", False) or self._closed:
                 return False
-            turn = client.request("turn/start", turn_params)
-            turn_obj = turn.get("turn") if isinstance(turn.get("turn"), dict) else {}
-            turn_id = str(turn_obj.get("id") or "")
-
+            turn = client.request("turn/start", {"threadId": thread_id, "cwd": str(self.root), **turn_params},
+                                  timeout=max(1.0, min(30.0, deadline - time.monotonic())))
+            turn_id = str((turn.get("turn") or {}).get("id") or "")
             def interrupt() -> None:
-                if not turn_id:
-                    return
-                try:
-                    client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
-                except Exception:
-                    pass
-
+                if turn_id:
+                    try:
+                        client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id}, timeout=10.0)
+                    except Exception:
+                        pass
             one_off.interrupt = interrupt
+            if getattr(one_off, "tool_used", False):
+                interrupt()
+                return False
             if getattr(one_off, "cancelled", False) or self._closed:
                 interrupt()
                 return False
-            if not one_off.done.wait(timeout=self.SIDE_TIMEOUT):
+            if not one_off.done.wait(timeout=max(0, deadline - time.monotonic())):
                 interrupt()
-                one_off.status = "failed"
-                one_off.error = "Side question timed out before responding."
+                one_off.status, one_off.error = "failed", "The temporary request timed out before responding."
                 return False
+            return one_off.status == "completed" and bool(one_off.text) and not getattr(one_off, "cancelled", False) and not getattr(one_off, "tool_used", False)
         finally:
             self._one_offs.pop(key, None)
             one_off.on_event = None
-        return one_off.status == "completed" and bool(one_off.text)
+            discard = getattr(client, "discard_ephemeral_thread", None)
+            if thread_params.get("ephemeral") and callable(discard):
+                try:
+                    discard(thread_id)
+                except Exception:
+                    pass  # Older transports may not implement unsubscribe.
 
     def _run_side_question(
         self,
@@ -5080,7 +5119,8 @@ class DiscussManager:
         turn_running = conversation.active_done is not None and not conversation.active_done.is_set()
         approval_pending = any(value.get("status") == "pending" for value in conversation.approvals.values())
         return bool(
-            conversation.active_request_id
+            conversation.forking
+            or conversation.active_request_id
             or conversation.active_turn_id
             or turn_running
             or conversation.pending
@@ -5317,6 +5357,15 @@ class DiscussManager:
                     # an empty string here.
                     with conversation.lock:
                         selection = dict(conversation.model_selection)
+                    resolved_model = selection.get("model")
+                    if not resolved_model:
+                        try:
+                            resolved_model = self.list_models(conversation.agent)["default"]["model"]
+                        except Exception:
+                            pass
+                    conversation.active_model = resolved_model or f"{conversation.agent.title()} default"
+                    if task is not None:
+                        task["model"] = conversation.active_model
                     if selection.get("model"):
                         turn_params["model"] = selection["model"]
                     if selection.get("effort"):
@@ -5368,6 +5417,7 @@ class DiscussManager:
                     conversation.active_turn_phase = "working"
                 if queued.task_id and queued.task_id in conversation.tasks:
                     conversation.tasks[queued.task_id]["turn_id"] = turn_id
+                self.state.record_message_model(queued.document, thread_id, turn_id, conversation.active_model, conversation.agent)
                 conversation.publish("turn.started", {"turn_id": turn_id, "client_request_id": queued.request_id})
                 if not done.wait(timeout=60 * 60):
                     raise RuntimeError("The agent turn timed out")
@@ -5511,6 +5561,7 @@ class DiscussManager:
                             "created_at": time.time(),
                             "duration_ms": duration_ms,
                             "phase": "final_answer",
+                            "model": conversation.active_model or conversation.model_selection.get("model") or f"{agent.title()} default",
                         }
                         if event.get("stopped"):
                             # Cut short by the agent's safeguards: still the answer,
@@ -5529,6 +5580,7 @@ class DiscussManager:
                         "created_at": time.time(),
                         "duration_ms": duration_ms,
                         "phase": "thought",
+                        "model": conversation.active_model or conversation.model_selection.get("model") or f"{agent.title()} default",
                     })
                     text = str(event.get("text") or "").strip()
                     if text:
@@ -5893,6 +5945,8 @@ class DiscussManager:
         skill_prompt = ""
         if action_id and (action_id in ACTION_DEFINITIONS or action_id in REPOSITORY_ACTION_DEFINITIONS):
             skill_prompt = action_instruction(self.root, action_id)
+        from .group_fork import split_prompt
+        request_instructions, _files = split_prompt(full_prompt)
         return {
             "developer_instructions": developer_instructions or self._effective_developer_instructions(cfg),
             "project_instructions": self._instruction_files_for(agent),
@@ -5912,6 +5966,7 @@ class DiscussManager:
             "documents": list(documents),
             "selection": _bounded_text(selection, 4000) if selection else "",
             "full_prompt": _bounded_text(full_prompt, 32_000),
+            "request_instructions": request_instructions,
         }
 
     def discuss_settings(self) -> dict[str, Any]:
@@ -6008,6 +6063,10 @@ class DiscussManager:
                 return dict(chat.model_selection)
         return self.state.model("scene", scene, self.state.get("scene", scene, agent) or "", agent)
 
+    def fork_group(self, conversation_id: str, body: dict[str, Any], *, create: bool = False) -> dict[str, Any]:
+        from .group_fork import fork_chat
+        return fork_chat(self, conversation_id, body, create=create)
+
     def group_settings(self, app_settings: GroupAppSettings | None = None) -> dict[str, Any]:
         """Everything Settings -> Group and the Group tab need."""
         cfg = Config.load(self.root)
@@ -6046,7 +6105,7 @@ class DiscussManager:
             },
             "library": library,
             "chat_models": {agent: self._group_chat_model(agent) for agent in ("codex", "claude")},
-            "presets": [{**preset, "label": preset["name"], "copy": preset["description"], "group": "Start a discussion", "badge": str(len(preset["invitations"])) + " invitations"} for preset in library["presets"]],
+            "presets": [{**preset, "label": preset["name"], "copy": preset["description"], "group": "Conversation workflows" if preset.get("kind") == "workflow" else "Task presets", "badge": str(len(preset["invitations"])) + " invitations"} for preset in library["presets"]],
             "lengths": dict(suggestions_module.GROUP_LENGTHS),
             "participants": group_module.clean_participants([by_id[key] for key in library["default_profiles"]]),
         }
@@ -6216,7 +6275,7 @@ class DiscussManager:
                 raise ContextError(str(exc)) from exc
             profile = roster[seat_num - 1]
             seat_cfg = suggestions_module.GroupSeatSettings.from_json(profile)
-            if not seat_cfg.model or not seat_cfg.effort:
+            if (not seat_cfg.model or not seat_cfg.effort) and not getattr(self.group_runtime.context, "fork_context", None):
                 selected = self._group_chat_model(seat_cfg.agent, str(scene))
                 seat_cfg.model = seat_cfg.model or selected.get("model", "")
                 seat_cfg.effort = seat_cfg.effort or selected.get("effort", "")
@@ -6262,6 +6321,8 @@ class DiscussManager:
         signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
         known = self._group_threads.get(key) if key else None
+        if known and known.get("forked") and known.get("signature") is None:
+            known["signature"] = signature
         if known and (known["signature"] != signature or known["seen"] > len(clean)):
             known = None
         dev_instructions = self._effective_developer_instructions(cfg)
@@ -6275,8 +6336,26 @@ class DiscussManager:
         )
         if roster:
             instructions = dev_instructions + "\n\n" + group_module.chat_instructions(
-                roster[seat_num - 1], roster, custom_instructions=book.instructions
+                roster[seat_num - 1], roster, custom_instructions=(group_module.GENERAL_CHAT_GUIDANCE
+                    if getattr(self.group_runtime.context, "fork_context", None) or preset_id == "second_opinion" else book.instructions)
             )
+        if getattr(self.group_runtime.context, "positions_table", False):
+            instructions += "\n\n" + group_module.POSITIONS_GUIDANCE
+        fork_context = getattr(self.group_runtime.context, "fork_context", None)
+        fork_material = ""
+        if fork_context:
+            from .group_fork import materialize
+            file_versions = []
+            for path in fork_context.get("files", []):
+                try:
+                    file_versions.append([path, self.context._relative_target(path).stat().st_mtime_ns])
+                except (OSError, ValueError):
+                    file_versions.append([path, None])
+            scene_hash = hashlib.sha256((scene_hash + json.dumps(file_versions) + json.dumps(fork_context.get("live_document"), sort_keys=True)).encode()).hexdigest()
+            if not known or known.get("scene") != scene_hash:
+                fork_material = materialize(self, fork_context, instructions=not bool(known))
+            # The portable package includes the current scene exactly once.
+            scene_text = scene_notes = reference_text = beatmap_text = ""
         self.group_runtime.context.native_cache = {"signature": signature, "seen": len(clean) + 1, "scene": scene_hash}
         text = ""
         thread_id = ""
@@ -6302,6 +6381,9 @@ class DiscussManager:
                     participants=suggestions_module.group_participants(book, app),
                     seat=seat_num,
                 )
+            followup += "\n\n" + fork_material if fork_material else ""
+            if getattr(self.group_runtime.context, "positions_table", False):
+                followup += "\n\n" + group_module.POSITIONS_GUIDANCE
             try:
                 text, thread_id = self._run_group_call(
                     seat_cfg, followup, instructions=instructions, schema=None, run_id=run_id,
@@ -6311,7 +6393,23 @@ class DiscussManager:
                 sent_prompt = followup
             except _GroupThreadGone:
                 known = None
+                # A native continuation carried only changed files. A replacement
+                # session needs the original request instructions and evidence too.
+                if fork_context:
+                    fork_material = materialize(self, fork_context)
+                    runtime = self.group_runtime
+                    with runtime.lock:
+                        saved = runtime.groups.get(getattr(runtime.context, "group_id", ""))
+                        if saved:
+                            warning = f"{roster[seat_num - 1]['name'] if roster else 'Assistant'}'s session is unavailable; continuing in a fresh session with transferred context."
+                            warnings = saved.setdefault("handoff_warnings", [])
+                            if warning not in warnings:
+                                warnings.append(warning)
+                                runtime._save(saved)
         if not known:
+            if fork_context and not fork_material:
+                from .group_fork import materialize
+                fork_material = materialize(self, fork_context)
             if roster:
                 prompt = group_module.chat_prompt(
                     seat=seat_num, history=clean or [{"role": "user", "text": question}],
@@ -6334,6 +6432,9 @@ class DiscussManager:
                     method=action_instruction(self.root, "quick_critique"),
                     reference_text=reference_text,
                 )
+            prompt += "\n\n" + fork_material if fork_material else ""
+            if getattr(self.group_runtime.context, "positions_table", False):
+                prompt += "\n\n" + group_module.POSITIONS_GUIDANCE
             text, thread_id = self._run_group_call(
                 seat_cfg, prompt, instructions=instructions, schema=None, run_id=run_id,
                 timeout=timeout, who="critic",
@@ -6456,12 +6557,17 @@ class DiscussManager:
         for entry in entries:
             if isinstance(entry, dict):
                 row = {
-                    "role": entry.get("role") if entry.get("role") in ("user", "invitation") else "critic",
+                    "role": entry.get("role") if entry.get("role") in ("user", "invitation", "context") else "critic",
                     "label": _bounded_text(str(entry.get("label") or ""), 120),
+                    "model": _bounded_text(str(entry.get("model") or ""), MODEL_ID_MAX),
                     "text": str(entry.get("text") or ""),
                     "passed": bool(entry.get("passed")),
                     "scene": str(entry.get("scene") or ""),
                 }
+                if entry.get("stances"):
+                    row["text"] += "\n" + "\n".join(
+                        f"STANCE | {r['suggestion_id']} | {r['stance']} | {r['evidence']}"
+                        for r in entry["stances"] if all(k in r for k in ("suggestion_id", "stance", "evidence")))
                 if "created_at" in entry and entry["created_at"]:
                     try:
                         row["created_at"] = float(entry["created_at"])
@@ -6650,6 +6756,15 @@ class DiscussManager:
 
         if one_off.status != "completed" or not one_off.text:
             raise ContextError(one_off.error or f"The {who} did not respond; try again.")
+        # Claude's provider-assigned child id must survive a server restart.
+        session = getattr(client, "_sessions", {}).get(thread_id)
+        if session is not None and getattr(session, "forked", False) and session.session_id:
+            canonical = session.session_id
+            if one_off.conversation:
+                one_off.conversation.thread_id = canonical
+                self._threads[self._thread_key(agent, canonical)] = one_off.conversation
+                self._persist_group_review(one_off.conversation, force=True)
+            thread_id = canonical
         return one_off.text, thread_id
 
     def _persist_group_review(self, conversation: _Conversation, *, force: bool = False) -> None:
@@ -7517,6 +7632,10 @@ class DiscussManager:
     def close(self) -> None:
         self.group_runtime.close()
         self._closed = True
+        with self._fork_lock:
+            for job in self._fork_jobs.values():
+                job["one_off"].cancelled = True
+                job["one_off"].done.set()
         for pending in list(self._one_offs.values()):
             pending.error = "Proseview closed while the agent was working"
             pending.status = "failed"

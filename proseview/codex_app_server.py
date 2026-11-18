@@ -372,6 +372,9 @@ class CodexAppServer:
         self.capabilities["schema_generation"] = False
         return dict(self.capabilities)
 
+    def discard_ephemeral_thread(self, thread_id: str) -> None:
+        self.request("thread/unsubscribe", {"threadId": thread_id}, timeout=5.0)
+
     def close(self) -> None:
         proc = self._proc
         self._proc = None

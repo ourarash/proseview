@@ -678,12 +678,15 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
     for turn in raw_turns:
         if not isinstance(turn, dict) or not (str(turn.get("text") or "").strip() or turn.get("passed")):
             continue
-        role = turn.get("role") if turn.get("role") in ("user", "invitation") else "critic"
+        role = turn.get("role") if turn.get("role") in ("user", "invitation", "context") else "critic"
         row: dict[str, Any] = {
             "role": role,
             "label": _clip(turn.get("label"), 120),
             "text": str(turn.get("text") or ""),
         }
+        for field in ("inherited", "model_inferred", "stances", "positions", "preset_kind"):
+            if field in turn:
+                row[field] = turn[field]
         if turn.get("step_id"):
             row["step_id"] = _clip(turn.get("step_id"), 120)
         if turn.get("message_id"):
@@ -702,6 +705,9 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
                 review_unavailable=bool(turn.get("review_unavailable")),
                 passed=bool(turn.get("passed")),
             )
+        if role == "context":
+            row["model"] = _clip(turn.get("model"), 200)
+            row["agent"] = "claude" if turn.get("agent") == "claude" else "codex"
         if role == "invitation":
             row["seat"] = 2 if turn.get("seat") == 2 else 1
             row["recap"] = bool(turn.get("recap"))
@@ -788,6 +794,14 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
     }
     if raw.get("participants") is not None:
         result["participants"] = clean_participants(raw["participants"])
+    if isinstance(raw.get("source"), dict):
+        result["source"] = {key: raw["source"].get(key) for key in ("conversation_id", "thread_id", "agent", "scene", "document")}
+    result["preset_kind"] = raw.get("preset_kind", "task")
+    if isinstance(raw.get("handoff_warnings"), list):
+        result["handoff_warnings"] = list(raw["handoff_warnings"])
+    for field in ("context_options", "context_counts", "summary_missing"):
+        if field in raw:
+            result[field] = raw[field]
     return result
 
 
@@ -841,6 +855,7 @@ class GroupHistoryStore:
                 "turns": sum(1 for t in s.get("turns") or [] if t.get("role") == "critic"),
                 "has_plan": bool(s.get("plans") or s.get("plan") or s.get("open")),
                 "updated_at": s.get("updated_at") or 0,
+                "source": s.get("source"),
             }
             for s in rows
         ]

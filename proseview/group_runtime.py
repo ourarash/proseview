@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .group import PASS_MARKER, clean_participants
+from .group import PASS_MARKER, SECOND_OPINION_RECAP, clean_participants, extract_stances, visible_reply, positions_table
 from .suggestions import GroupHistoryStore, _clean_group_session, _group_history_path, group_title
 
 
@@ -442,12 +442,22 @@ class GroupRuntime:
         self._save(group)
 
     def _preset(self, group: dict[str, Any], body: dict[str, Any]) -> None:
+        preset_id = str(body.get("preset_id") or "")
+        preset = next((p for p in self.manager.group_settings()["library"]["presets"] if p["id"] == preset_id), {})
+        workflow = preset.get("kind") == "workflow"
+        if workflow and not any(t.get("role") == "critic" and not t.get("passed") for t in group["turns"]):
+            raise GroupRuntimeError("Ask for an answer before starting Second opinion & recap")
         append = bool(body.get("append"))
         if not append and (group["turns"] or group["steps"]):
             raise GroupRuntimeError("Start a new Group before running a preset")
         if append and (group["status"] != "idle" or any(s["state"] in ("queued", "running", "interrupting") for s in group["steps"])):
             raise GroupRuntimeError("Wait for the current invitations to finish before continuing")
         invitations = body.get("invitations")
+        if workflow:
+            # Both entry points execute the shared definition, including its recap.
+            invitations = copy.deepcopy(preset["invitations"])
+            if preset.get("recap"):
+                invitations.append({"seat": preset["recap"], "recap": True, "prompt": SECOND_OPINION_RECAP})
         min_steps = 1 if append else 2
         if not isinstance(invitations, list) or not min_steps <= len(invitations) <= 13:
             raise GroupRuntimeError("A preset needs 2–12 invitations plus its optional recap")
@@ -461,7 +471,13 @@ class GroupRuntime:
                 raise GroupRuntimeError(f"{agent.title()} is unavailable: {exc}") from exc
         for step in invitations:
             group["steps"].append({"id": uuid.uuid4().hex, "seat": step["seat"], "state": "queued",
-                "kind": "invitation", "prompt": step["prompt"], "recap": bool(step.get("recap")), "attachments": copy.deepcopy(step.get("attachments") or [])})
+                "kind": "invitation", "prompt": step["prompt"], "recap": bool(step.get("recap")),
+                "positions_table": bool(body.get("positions_table", preset.get("positions_table", False))),
+                "preset_kind": preset.get("kind", "task"),
+                "attachments": copy.deepcopy(step.get("attachments") or [])})
+        if preset_id:
+            group["preset_id"] = preset_id
+            group["preset_kind"] = preset.get("kind", "task")
         if append:
             total_invitations = sum(1 for s in group["steps"] if s.get("kind") == "invitation" and not s.get("recap") and s.get("state") != "cancelled")
             has_recap = any(s.get("recap") for s in invitations)
@@ -471,21 +487,28 @@ class GroupRuntime:
         return next((step for step in group["steps"] if step["id"] == group.get("active_step")), None)
 
     def _public(self, group: dict[str, Any], *, unchanged: bool = False) -> dict[str, Any]:
+        def public_live(value):
+            if value:
+                value = copy.deepcopy(value)
+                value["draft"] = visible_reply(str(value.get("draft") or ""), streaming=True)
+            return value
         if unchanged:
             active = self._active(group)
             return {"id": group["id"], "revision": group["revision"], "status": group["status"], "unchanged": True,
-                    "live": self.manager.group_progress(active.get("run_id", "")) if active and group["status"] == "running" else None,
-                    "partial_reply": (active or {}).get("draft", "")}
-        result = {key: copy.deepcopy(value) for key, value in group.items() if key not in ("commands", "native_threads", "version")}
+                    "live": public_live(self.manager.group_progress(active.get("run_id", ""))) if active and group["status"] == "running" else None,
+                    "partial_reply": visible_reply((active or {}).get("draft", ""), streaming=True)}
+        result = {key: copy.deepcopy(value) for key, value in group.items() if key not in ("commands", "native_threads", "version", "fork_context")}
         result["acknowledged_requests"] = list(group["commands"])
         result["title"] = group_title(group)
         active = self._active(group)
-        result["live"] = self.manager.group_progress(active.get("run_id", "")) if active and group["status"] == "running" else None
+        result["live"] = public_live(self.manager.group_progress(active.get("run_id", ""))) if active and group["status"] == "running" else None
         # A disk checkpoint is also readable if the process died between a
         # streamed reply and committing its completed transcript entry.
         if active and not (result["live"] or {}).get("running"):
-            result["partial_reply"] = active.get("draft", "")
+            result["partial_reply"] = visible_reply(active.get("draft", ""), streaming=True)
         for step in result["steps"]:
+            if step.get("draft"):
+                step["draft"] = visible_reply(step["draft"], streaming=True)
             for key in ("live_content", "live_document", "native_reply", "native_status", "signature", "native_thread_id", "native_turn_id"):
                 step.pop(key, None)
         return result
@@ -551,6 +574,15 @@ class GroupRuntime:
                 native = copy.deepcopy(group["native_threads"].get(str(step["seat"])))
             try:
                 self.context.group_id, self.context.step_id = key, step["id"]
+                self.context.fork_context = copy.deepcopy(group.get("fork_context"))
+                if self.context.fork_context:
+                    current = self.manager.context._document_target({"kind": "scene", "path": scene}).relative_to(self.manager.root).as_posix()
+                    if current not in self.context.fork_context["files"]:
+                        self.context.fork_context["files"].append(current)
+                    if step.get("live_document") is not None:
+                        self.context.fork_context["scene"] = scene
+                        self.context.fork_context["live_document"] = step["live_document"]
+                self.context.positions_table = bool(step.get("positions_table"))
                 self.context.previous_review_id = step.get("previous_review_id") or (native or {}).get("conversation_id", "")
                 seat_key = f"{key}:{step['seat']}"
                 if native:
@@ -568,7 +600,7 @@ class GroupRuntime:
                 result = self.manager.run_group_turn(scene=scene, live_content=live_content or "",
                     seat=step["seat"], turn_index=sum(t["role"] == "critic" for t in history) + 1,
                     history=history, participants=participants, attachments=attachments, skill=skill,
-                    debate_id=key, run_id=run_id)
+                    debate_id=key, run_id=run_id, preset_id=group.get("preset_id", ""))
                 with self.lock:
                     if self.closing or self.groups[key].get("deleted"):
                         return
@@ -612,6 +644,8 @@ class GroupRuntime:
                 return
             finally:
                 self.context.group_id = self.context.step_id = ""
+                self.context.fork_context = None
+                self.context.positions_table = False
 
     def _finish(self, group: dict[str, Any], step: dict[str, Any], result: dict[str, Any]) -> None:
         was_paused = group["status"] == "paused" and not step.get("superseded")
@@ -620,13 +654,17 @@ class GroupRuntime:
         if not any(turn.get("step_id") == step["id"] and turn["role"] == "critic" for turn in group["turns"]):
             group["turns"].append({"role": "critic", "step_id": step["id"], "seat": step["seat"], "scene": step.get("scene") or group["scene"],
                 "agent": result["agent"], "model": result.get("model", ""), "label": profile["name"] + " · " + result["agent"].title(),
-                "tag": "Recap" if step.get("recap") else "Reply", "text": result.get("reply", ""), "passed": bool(result.get("passed")),
+                "tag": "Recap" if step.get("recap") else "Reply", "text": visible_reply(result.get("reply", "")), "passed": bool(result.get("passed")),
+                "stances": extract_stances(result.get("reply", "")),
+                "preset_kind": step.get("preset_kind", "task"),
                 "changed_files": result.get("changed_files", []),
                 "tool_conversation_id": result.get("tool_conversation_id", ""),
                 "review_pending": bool(result.get("changed_files") or result.get("unreviewable")),
                 "created_at": result.get("created_at") or time.time(),
                 "duration_ms": result.get("duration_ms"),
                 **({"context_sent": result["context_sent"]} if result.get("context_sent") else {})})
+            if step.get("recap") and step.get("positions_table"):
+                group["turns"][-1]["positions"] = positions_table(group["turns"])
         if step.get("native_cache"):
             group["native_threads"][str(step["seat"])] = step["native_cache"]
         group["active_step"] = ""

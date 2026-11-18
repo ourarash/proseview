@@ -484,12 +484,14 @@ for line in sys.stdin:
         continue
     elif method == 'account/read':
         emit({'id': request_id, 'result': {'account': {'type': 'apiKey'}, 'requiresOpenaiAuth': True}})
-    elif method == 'thread/read':
+    elif method in ('thread/read', 'thread/resume'):
         thread = threads.get(params.get('threadId'))
         if thread is None:
             emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found'}})
         else:
             emit({'id': request_id, 'result': {'thread': thread}})
+    elif method == 'thread/unsubscribe':
+        emit({'id': request_id, 'result': {'status': 'unsubscribed'}})
     elif method == 'thread/start':
         next_thread += 1
         thread_id = f'thread-{next_thread}'
@@ -501,7 +503,7 @@ for line in sys.stdin:
         record.parent.mkdir(parents=True, exist_ok=True)
         with record.open('a', encoding='utf-8') as handle:
             handle.write(json.dumps({'method': 'thread/fork', 'threadId': params.get('threadId'), 'params': params}) + '\\n')
-        if parent is None:
+        if parent is None or params.get('ephemeral') and (pathlib.Path.cwd() / '.proseview' / 'fail-group-summary').exists():
             emit({'id': request_id, 'error': {'code': -32004, 'message': 'thread not found'}})
             continue
         next_thread += 1
@@ -556,7 +558,10 @@ for line in sys.stdin:
         emit({'method': 'item/reasoning/textDelta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'delta': 'PRIVATE RAW REASONING'}})
         emit({'method': 'item/reasoning/summaryTextDelta', 'params': {'threadId': thread_id, 'turnId': turn_id, 'delta': 'Reviewing the attached document'}})
         emit({'method': 'turn/plan/updated', 'params': {'threadId': thread_id, 'turnId': turn_id, 'plan': [{'step': 'Read context', 'status': 'completed'}, {'step': 'Answer question', 'status': 'inProgress'}]}})
-        emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'tool-' + turn_id, 'type': 'commandExecution', 'command': 'printf inspect', 'cwd': os.getcwd(), 'status': 'inProgress'}}})
+        if prompt.startswith('CONVERSATION HANDOFF SUMMARY') and (pathlib.Path.cwd() / '.proseview' / 'hold-group-summary').exists():
+            continue
+        if not prompt.startswith('CONVERSATION HANDOFF SUMMARY'):
+            emit({'method': 'item/started', 'params': {'threadId': thread_id, 'turnId': turn_id, 'item': {'id': 'tool-' + turn_id, 'type': 'commandExecution', 'command': 'printf inspect', 'cwd': os.getcwd(), 'status': 'inProgress'}}})
         if 'HOLD_UNLOAD_ON_STOP' in prompt:
             unload_on_interrupt.add(turn_id)
             continue

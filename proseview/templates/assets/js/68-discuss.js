@@ -596,7 +596,7 @@
         function openDiscuss(trigger, options) {
             options = options || {};
             closeDiscussModelPicker();
-            var doc = discussDocument() || _discussDockDocument;
+            var doc = options.document || discussDocument() || _discussDockDocument;
             if (!doc) {
                 if (trigger && typeof sidebarShowToast === 'function') {
                     sidebarShowToast('Open a scene or supported text file before starting a discussion.', true);
@@ -665,6 +665,12 @@
             renderDiscussContext();
             var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
             discussApi('/api/discuss/conversations/open', openBody).then(function(data) {
+                if (!options.threadId) return data;
+                return discussApi('/api/discuss/conversations/' + encodeURIComponent(data.conversation_id) + '/history/' + encodeURIComponent(options.threadId) + '/open', {}).then(function(restored) {
+                    if (!restored.ok) throw new Error(restored.error || 'Could not reopen the source conversation');
+                    data.snapshot = restored.snapshot; return data;
+                });
+            }).then(function(data) {
                 if (_discussDocumentKey !== key) return;
                 _discussConversationId = data.conversation_id;
                 _discussSnapshot = data.snapshot;
@@ -865,7 +871,7 @@
         const SCENE_PANEL_PANES = {
             analysis: {id: 'sceneAnalysisPane', heading: 'Analysis', render: renderSceneAnalysisPane},
             history: {id: 'sceneHistoryPane', heading: 'History', render: function() { if(paths[curIdx]) loadSceneHistory(paths[curIdx]); }},
-            group: {id: 'sceneGroupPane', heading: 'Writers\u2019 Group', render: renderSceneGroupPane},
+            group: {id: 'sceneGroupPane', heading: 'Group', render: renderSceneGroupPane},
             beats: {id: 'sceneBeatMapPane', heading: 'Beat Map', render: function() { if (typeof renderSceneBeatMapPane === 'function') renderSceneBeatMapPane(); }}
         };
 
@@ -873,7 +879,7 @@
         const SCENE_PANEL_AWAY = {
             analysis: 'Open a scene to see its analysis.',
             history: 'Open a scene to see its history.',
-            group: 'Open a scene to run the Writers\u2019 Group.',
+            group: 'Open a scene to run the Group.',
             beats: 'Open a scene to see its beat map.'
         };
 
@@ -2217,6 +2223,9 @@
                 session.presetId = saved.preset_id || '';
                 session.topicLabel = saved.title || '';
                 session.topicBadge = saved.badge || '';
+                session.source = saved.source || null;
+                session.handoffWarnings = saved.handoff_warnings || [];
+                session.summaryMissing = !!saved.summary_missing;
                 session.question = saved.question || '';
                 session.turns = saved.turns || [];
                 session.participants = saved.participants || null;
@@ -2361,7 +2370,7 @@
                     open.type = 'button';
                     open.className = 'group-history-open';
                     open.append(
-                        elementWith('group-history-title', row.title || 'Writers\u2019 Group'),
+                        elementWith('group-history-title', row.title || 'Group'),
                         elementWith('group-history-meta', (row.scene ? row.scene + ' · ' : '') + row.turns + (row.turns === 1 ? ' reply' : ' replies')
                             + (row.has_plan ? ' \u00b7 plan' : '') + ' \u00b7 ' + _formatGroupWhen(row.updated_at))
                     );
@@ -2397,6 +2406,7 @@
                 var preset = library.presets.find(function(p) { return p.id === options.presetId; });
                 if (!preset) return;
                 session.pendingPreset = JSON.parse(JSON.stringify(preset));
+                if (preset.kind === 'workflow') { openCurrentGroupWorkflow(session, preset); return; }
                 var presetUsesDefaultPair = JSON.stringify(preset.profiles) === JSON.stringify(library.default_profiles);
                 if (!session.participantsChosen || !presetUsesDefaultPair || !session.participants || session.participants.length !== 2) {
                     session.participants = _groupProfiles(preset.profiles);
@@ -2517,7 +2527,7 @@
             if (live.draft && !quietPass) {
                 var draft = elementWith('group-live-draft group-turn-body discuss-message assistant');
                 var active = session.runtime && session.runtime.steps.find(function(step) { return step.id === session.runtime.active_step; });
-                renderDiscussMarkdown(draft, _groupLinkLines(live.draft, active && active.scene || session.originScene || session.scene));
+                renderDiscussMarkdown(draft, _groupLinkLines(groupVisibleReply(live.draft, true), active && active.scene || session.originScene || session.scene));
                 box.appendChild(draft);
             } else if (live.progress) {
                 var note = live.progress.length > 400 ? '\u2026' + live.progress.slice(-400) : live.progress;
@@ -2655,7 +2665,7 @@
                 }
                 return (idx + 1) + '. ' + item.title + where + (item.detail ? ': ' + item.detail : '') + change;
             });
-            var instruction = 'Please revise this scene to apply the following Writers\u2019 Group revision plan:\n' + lines.join('\n');
+            var instruction = 'Please revise this scene to apply the following Group revision plan:\n' + lines.join('\n');
 
             if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }
             if (_discussAgent !== targetAgent) {
@@ -2700,6 +2710,9 @@
             });
             recap.value = String(preset.recap); recap.onchange = function() { preset.recap = Number(recap.value); };
             recapLabel.appendChild(recap); preview.appendChild(recapLabel);
+            preview.appendChild(createGroupPositionsOption(preset, function(checked) {
+                preset.positions_table = checked; groupSetPositions(preset.id, checked);
+            }));
             var actions = elementWith('group-preset-actions');
             if (session.presetError) { var error = elementWith('group-error-text', session.presetError); error.setAttribute('role', 'alert'); preview.appendChild(error); }
             var start = document.createElement('button'); start.type = 'button'; start.id = 'groupStartPresetBtn'; start.className = 'group-send-btn'; start.textContent = 'Start discussion';
@@ -2716,7 +2729,7 @@
             if (!pane) return;
             const path = _groupCurrentScenePath();
             if (!path) {
-                pane.replaceChildren(_scenePanelEmpty('Open a scene to run the Writers\u2019 Group.'));
+                pane.replaceChildren(_scenePanelEmpty('Open a scene to run the Group.'));
                 return;
             }
             if (!_groupSettings) {
@@ -2777,12 +2790,16 @@
             historyBtn.className = 'group-header-btn' + (_groupHistoryOpen ? ' is-active' : '');
             historyBtn.textContent = 'History';
             historyBtn.setAttribute('aria-expanded', _groupHistoryOpen ? 'true' : 'false');
-            historyBtn.setAttribute('data-tip', 'Open a previous Writers\u2019 Group debate on this scene');
+            historyBtn.setAttribute('data-tip', 'Open a previous Group debate on this scene');
             historyBtn.onclick = function() {
                 _groupHistoryOpen = !_groupHistoryOpen;
                 renderSceneGroupPane();
             };
             actions.appendChild(historyBtn);
+            if (session.source) {
+                var sourceBtn = document.createElement('button'); sourceBtn.type = 'button'; sourceBtn.className = 'group-header-btn'; sourceBtn.textContent = 'Source chat ↗';
+                sourceBtn.onclick = function() { openGroupForkSource(session.source); }; actions.appendChild(sourceBtn);
+            }
             var gearBtn = document.createElement('button');
             gearBtn.type = 'button';
             gearBtn.id = 'groupSettingsBtn';
@@ -2800,6 +2817,19 @@
             var body = elementWith('group-body');
             body.id = 'groupBody';
             if (_groupHistoryOpen) _renderGroupHistoryMenu(body, path, session);
+            if (session.runtime && session.runtime.summary_missing || session.summaryMissing) {
+                var missingSummary = (session.runtime && session.runtime.handoff_warnings || session.handoffWarnings || []).find(function(w) { return w.indexOf('Summary missing.') === 0; });
+                var missingNotice = elementWith('group-runtime-notice group-summary-missing', missingSummary || 'Summary missing. This Group received recent exchanges and the current scene only.');
+                missingNotice.setAttribute('role', 'status'); body.appendChild(missingNotice);
+            }
+            var handoffWarnings = session.runtime && session.runtime.handoff_warnings || session.handoffWarnings || [];
+            if (handoffWarnings.length) {
+                var handoff = document.createElement('details'); handoff.className = 'group-fork-context';
+                var handoffTitle = document.createElement('summary'); handoffTitle.textContent = 'Transferred conversation context'; handoff.appendChild(handoffTitle);
+                handoffWarnings.forEach(function(warning) { handoff.appendChild(elementWith('settings-note', warning)); });
+                body.appendChild(handoff);
+            }
+            if (session.turns.length && !session.busy) renderGroupWorkflowPicker(session, body);
 
             if (session.turns.length === 0 && !session.busy && !session.error && !(session.outbox || []).length) {
                 var empty = elementWith('discuss-empty group-empty');
@@ -2825,20 +2855,9 @@
                     empty.appendChild(elementWith('discuss-story-group', g.name));
                     var list = elementWith('discuss-story-actions');
                     g.cards.forEach(function(card) {
-                        var btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'discuss-story-action group-starter-card';
-                        btn.dataset.preset = card.id;
-                        var head = elementWith('group-starter-head');
-                        head.append(
-                            elementWith('discuss-story-action-title', card.label),
-                            elementWith('group-starter-badge', card.badge)
-                        );
-                        btn.append(head, elementWith('discuss-story-action-copy', card.copy));
-                        btn.onclick = function() {
+                        list.appendChild(createGroupPresetCard(card, session, function() {
                             startGroupDebate({presetId: card.id, label: card.label, badge: card.badge});
-                        };
-                        list.appendChild(btn);
+                        }));
                     });
                     empty.appendChild(list);
                 });
@@ -2849,7 +2868,7 @@
                 if (session.topicLabel || session.question) {
                     var banner = elementWith('group-topic-banner');
                     var bannerTop = elementWith('group-topic-top');
-                    bannerTop.appendChild(elementWith('group-topic-title', session.topicLabel || 'Writers\u2019 Group'));
+                    bannerTop.appendChild(elementWith('group-topic-title', session.topicLabel || 'Group'));
                     if (session.topicBadge) {
                         bannerTop.appendChild(elementWith('group-topic-badge', session.topicBadge));
                     }
@@ -2873,6 +2892,15 @@
                     });
                 };
                 session.turns.forEach(function(turn, turnIdx) {
+                    if (turn.role === 'context') {
+                        var summaryCard = elementWith('group-turn-card chat-message-card group-conversation-summary');
+                        summaryCard.appendChild(elementWith('chat-message-name', 'Generated conversation summary'));
+                        if (turn.model) summaryCard.appendChild(elementWith('group-turn-model', turn.model));
+                        var summaryBody = elementWith('group-turn-body discuss-message assistant');
+                        renderDiscussMarkdown(summaryBody, turn.text); summaryCard.appendChild(summaryBody);
+                        addCopyButton(summaryCard, function() { return turn.text; }, 'Copy summary');
+                        turnsWrap.appendChild(summaryCard); appendPlansAfter(turnIdx + 1); return;
+                    }
                     if (turn.passed) {
                         var previous = session.turns[turnIdx - 1], next = session.turns[turnIdx + 1];
                         if (!(previous && previous.passed && previous.seat !== turn.seat)) {
@@ -2932,10 +2960,14 @@
                     }
                     card.appendChild(head);
                     var textWrap = elementWith('group-turn-body discuss-message assistant');
-                    renderDiscussMarkdown(textWrap, _groupLinkLines(turn.text, turn.scene || session.originScene || path));
+                    renderDiscussMarkdown(textWrap, _groupLinkLines(groupVisibleReply(turn.text, false), turn.scene || session.originScene || path));
                     highlightChatMentions(textWrap, session.participants);
                     card.appendChild(textWrap);
-                    addCopyButton(card, function() { return turn.text; }, 'Copy message');
+                    if (turn.inherited) card.classList.add('group-inherited-message');
+                    if (turn.model_inferred) head.appendChild(elementWith('group-turn-model', 'model inferred'));
+                    if (turn.tag === 'Recap' && (turn.preset_kind ? turn.preset_kind !== 'workflow' : session.presetId !== 'second_opinion')) card.insertBefore(elementWith('group-plan-title', 'Revision plan'), textWrap);
+                    if (turn.positions) card.appendChild(groupPositionsCard(session, turn));
+                    addCopyButton(card, function() { return groupVisibleReply(turn.text, false); }, 'Copy message');
                     turnsWrap.appendChild(card);
                     if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_groupToolReview(session, turn));
                     if (turn.review_unavailable) turnsWrap.appendChild(elementWith('group-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
@@ -2949,7 +2981,7 @@
                 });
                 var doneInvitations = typeof groupPresetDebateInvitationCount === 'function' ? groupPresetDebateInvitationCount(session) : 0;
                 if (!session.busy && !session.queuePaused && !(session.outbox || []).length && !(session.pendingMessages || []).length
-                    && session.presetId && doneInvitations >= 2 && doneInvitations < 5) {
+                    && session.presetId && session.presetId !== 'second_opinion' && doneInvitations >= 2 && doneInvitations < 5) {
                     var contBar = elementWith('group-continue-bar');
                     var contBtn = document.createElement('button');
                     contBtn.type = 'button';
@@ -6746,6 +6778,7 @@
             var snapshot = _discussSnapshot;
             if (!snapshot) return;
             syncDiscussHistoryOpenButtons();
+            syncDiscussGroupFork();
             // The agent has stopped, so the file has stopped moving: the first
             // moment there is something settled to review. Keyed on the turn
             // that finished so it is asked exactly once per turn.

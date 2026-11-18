@@ -520,6 +520,9 @@
                 recap.appendChild(_rmSelect([{value: '0', label: 'No recap'}, {value: '1', label: names[0]}, {value: '2', label: names[1]}], preset.recap,
                     function(v) { preset.recap = Number(v); }, prefix + ' recap'));
                 card.appendChild(recap);
+                card.appendChild(createGroupPositionsOption(preset, function(checked) {
+                    preset.positions_table = checked; _rmChanged();
+                }));
                 var remove = _sgEl('button', 'settings-plain-btn', 'Delete preset'); remove.type = 'button';
                 remove.onclick = function() { library.presets.splice(index, 1); _rmChanged(); renderGroupSettings(); };
                 card.appendChild(remove); body.appendChild(card);

@@ -386,6 +386,7 @@ class _Session:
         self.started = False
         #: Non-empty when this session was forked from a parent conversation.
         self.fork_from_session_id = ""
+        self.forked = False
         #: What this session's live client was actually connected with. The
         #: model can be changed on a running session; the effort cannot, so a
         #: change to it has to be noticed here and reconnected.
@@ -600,6 +601,7 @@ class ClaudeAgentClient:
             "turn/start": self._handle_turn_start,
             "turn/interrupt": self._handle_turn_interrupt,
             "thread/read": self._handle_thread_read,
+            "thread/resume": self._handle_thread_resume,
             "skills/list": self._handle_skills_list,
             "model/list": self._handle_model_list,
         }
@@ -642,6 +644,7 @@ class ClaudeAgentClient:
         session = _Session(thread_id)
         session.thread_params = dict(params)
         session.fork_from_session_id = resume_id
+        session.forked = True
         session.started = True
         with self._lock:
             self._sessions[thread_id] = session
@@ -679,6 +682,15 @@ class ClaudeAgentClient:
             raise ClaudeRequestError("thread not found", code=-32004)
         self._submit(self._interrupt(session), timeout=timeout)
         return {}
+
+    def _handle_thread_resume(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
+        thread_id = str(params.get("threadId") or "")
+        with self._lock:
+            session = self._sessions.get(thread_id)
+            if session is not None:
+                session.thread_params.update(params)
+                return {"thread": {"id": thread_id}}
+        return self._handle_thread_read(params, timeout)
 
     def _handle_thread_read(self, params: dict[str, Any], timeout: float) -> dict[str, Any]:
         """Read a conversation, adopting one this process has never seen.
@@ -775,6 +787,17 @@ class ClaudeAgentClient:
             if victim.client is not None and self._loop is not None:
                 asyncio.run_coroutine_threadsafe(self._disconnect(victim), self._loop)
 
+    def discard_ephemeral_thread(self, thread_id: str) -> None:
+        """Release a finished/cancelled temporary fork and all its aliases."""
+        with self._lock:
+            session = self._sessions.get(thread_id)
+            if session is None or not session.thread_params.get("ephemeral"):
+                return
+            for key, value in list(self._sessions.items()):
+                if value is session:
+                    self._sessions.pop(key, None)
+        self._submit(self._disconnect(session), timeout=5.0)
+
     async def _disconnect(self, session: _Session) -> None:
         client = session.client
         session.client = None
@@ -850,7 +873,7 @@ class ClaudeAgentClient:
             options["resume"] = session.fork_from_session_id
             options["fork_session"] = True
         elif session.started:
-            options["resume"] = session.thread_id
+            options["resume"] = (session.session_id or session.thread_id) if session.forked else session.thread_id
         else:
             options["session_id"] = session.thread_id
         # Ephemeral requests (/btw side questions and highlight suggestions):
@@ -939,6 +962,9 @@ class ClaudeAgentClient:
     async def _start_turn(
         self, session: _Session, turn_id: str, prompt: str, params: dict[str, Any]
     ) -> None:
+        # A fork's logical bootstrap id and persisted provider id can alias
+        # the same live client. Route this turn's events to the requested id.
+        session.thread_id = str(params.get("threadId") or session.thread_id)
         await self._apply_model_change(session, params)
         client = await self._ensure_session_client(session, params)
         session.turn_id = turn_id
@@ -975,6 +1001,12 @@ class ClaudeAgentClient:
                 if session_id:
                     session.session_id = str(session_id)
                 if type(message).__name__ == "ResultMessage":
+                    if session.forked and session.session_id:
+                        # The source is used exactly once. Reconnects must
+                        # resume the child's history, including its first turn.
+                        session.fork_from_session_id = ""
+                        with self._lock:
+                            self._sessions[session.session_id] = session
                     if session.expects_structured:
                         payload = self._structured_payload(message)
                         if payload:
@@ -1149,6 +1181,10 @@ class ClaudeAgentClient:
         await client.interrupt()
 
     async def _read_session(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session and session.forked and session.session_id:
+                session_id = session.session_id
         if self._session_reader is not None:
             messages = self._session_reader(session_id, self.cwd)
         else:
@@ -1179,7 +1215,7 @@ class ClaudeAgentClient:
                     "id": str(getattr(row, "uuid", "") or f"turn-{len(turns) + 1}"),
                     "items": [{
                         "type": "userMessage",
-                        "content": [{"type": "text", "text": _bounded(text, 524_288)}],
+                        "content": [{"type": "text", "text": text}],
                     }],
                 }
                 turns.append(current)
@@ -1189,6 +1225,8 @@ class ClaudeAgentClient:
                     "phase": "final_answer",
                     "text": _bounded(text, 524_288),
                 }
+                if isinstance(payload, dict) and payload.get("model"):
+                    item["model"] = str(payload["model"])
                 if isinstance(payload, dict) and payload.get("stop_reason") == "refusal":
                     item["stopped"] = SAFEGUARDS_STOP
                 current["items"].append(item)

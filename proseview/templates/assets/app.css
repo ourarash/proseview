@@ -19194,3 +19194,325 @@
             height: 42%;
             border-top: 2px solid var(--border-strong);
         }
+
+        /* Single-chat forks share Group workflow cards and theme variables. */
+        .group-fork-dialog {
+            width: min(610px, calc(100vw - 28px));
+            max-height: calc(100dvh - 32px);
+            overflow: auto;
+            padding: 0;
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            background: var(--surface-card);
+            color: var(--text-main);
+            box-shadow: 0 24px 80px #0006;
+        }
+
+        .group-fork-dialog::backdrop {
+            background: var(--surface-overlay);
+            backdrop-filter: blur(2px);
+        }
+
+        .group-fork-head,
+        .group-fork-body,
+        .group-fork-footer {
+            padding: 18px 22px;
+        }
+
+        .group-fork-head {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .group-fork-head h2 {
+            font-size: 20px;
+            margin: 0 0 5px;
+        }
+
+        .group-fork-head p {
+            margin: 0;
+        }
+
+        .group-fork-body h3 {
+            font-size: 12px;
+            margin: 19px 0 10px;
+        }
+
+        .group-fork-models {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 12px;
+        }
+
+        .group-fork-model {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .group-fork-model strong {
+            font-size: 12px;
+        }
+
+        .group-fork-model label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 11px;
+        }
+
+        .group-fork-model select,
+        .group-fork-model input {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            margin-top: 5px;
+            padding: 7px;
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            background: var(--surface-field);
+            color: var(--text-main);
+            font: inherit;
+        }
+
+        .group-fork-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            position: sticky;
+            bottom: 0;
+            background: var(--surface-muted);
+            border-top: 1px solid var(--border);
+        }
+
+        .group-fork-footer button {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-strong);
+            cursor: pointer;
+        }
+
+        .group-fork-footer button:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        .group-fork-context {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 18px;
+        }
+
+        .group-fork-context summary {
+            cursor: pointer;
+        }
+
+        .group-preset-choice {
+            min-width: 0;
+            margin: 8px 0;
+        }
+
+        .group-preset-choice>.group-starter-card {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .group-preset-choice .is-selected,
+        .group-fork-manual.is-selected {
+            border-color: var(--primary);
+            background: var(--surface-soft);
+        }
+
+        .group-fork-manual {
+            width: 100%;
+            padding: 13px;
+            text-align: left;
+        }
+
+        .group-positions-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 7px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin: 8px 4px;
+        }
+
+        .group-positions-option input {
+            accent-color: var(--primary);
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .group-positions-title {
+            display: block;
+            color: var(--text-main);
+        }
+
+        .group-positions-help {
+            display: block;
+            margin-top: 4px;
+            line-height: 1.5;
+        }
+
+        .group-workflow-picker {
+            margin: 10px 0 18px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .group-workflow-picker>summary {
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .group-positions-card {
+            margin-top: 16px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-muted);
+        }
+
+        .group-positions-card table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            min-width: 380px;
+            overflow-wrap: break-word;
+            word-break: normal;
+        }
+
+        .group-positions-card th,
+        .group-positions-card td {
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .group-positions-card th {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+
+        .group-stance-agree {
+            color: var(--text-success);
+        }
+
+        .group-stance-disagree {
+            color: var(--text-warning);
+        }
+
+        .group-stance-revised {
+            color: var(--secondary);
+        }
+
+        .group-stance-withdrawn {
+            color: var(--text-muted);
+        }
+
+        .group-inherited-message {
+            border-left: 2px solid var(--border-strong);
+        }
+
+        @media(max-width:540px) {
+
+            .group-fork-head,
+            .group-fork-body,
+            .group-fork-footer {
+                padding: 15px;
+            }
+
+            .group-fork-model {
+                padding: 10px;
+            }
+
+            .group-fork-models {
+                gap: 8px;
+            }
+
+            #discussGroupFork,
+            #discussForkGroupLink {
+                font-size: 10px;
+            }
+        }
+
+        .group-fork-context-choice {
+            display: flex;
+            gap: 9px;
+            align-items: flex-start;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 11px 12px;
+            margin: 8px 0 0;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .group-fork-context-choice.is-selected {
+            border-color: var(--primary);
+            background: var(--surface-soft);
+        }
+
+        .group-fork-context-choice input {
+            accent-color: var(--primary);
+            margin-top: 3px;
+        }
+
+        .group-fork-context-choice strong,
+        .group-fork-context-choice .settings-note {
+            display: block;
+        }
+
+        .group-fork-context-choice .settings-note {
+            margin-top: 4px;
+        }
+
+        .group-fork-recent-options {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-top: 0;
+            border-radius: 0 0 8px 8px;
+            font-size: 12px;
+        }
+
+        .group-fork-count {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .group-fork-count input {
+            width: 60px;
+            padding: 5px 7px;
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            color: var(--text-main);
+            background: var(--surface-field);
+            font: inherit;
+        }
+
+        .group-fork-fresh-note {
+            border-top: 1px solid var(--border);
+            padding-top: 10px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .group-fork-summary-progress {
+            padding: 25px 0 10px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .group-conversation-summary {
+            border-color: var(--primary);
+            background: var(--surface-soft);
+        }
+
+        .group-summary-missing {
+            border: 1px solid var(--text-warning);
+            color: var(--text-warning);
+        }

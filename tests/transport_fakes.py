@@ -383,6 +383,10 @@ class ClaudeFakeClient:
                 ],
                 "default": dict(self.model_default),
             }
+        if method == "thread/resume":
+            if params["threadId"] not in self.threads:
+                raise ClaudeRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            return {"thread": self.threads[params["threadId"]]}
         if method == "thread/read":
             thread = self.threads.get(params["threadId"])
             if thread is None:

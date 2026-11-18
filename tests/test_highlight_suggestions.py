@@ -452,8 +452,8 @@ def test_group_settings_round_trip_splits_book_prompts_and_computer_seats(tmp_pa
         assert initial["app"]["critic2"]["agent"] == "claude"
         assert initial["app"]["turns"] == 3
         assert initial["app"]["moderator"] == {"agent": "claude", "model": "", "effort": "low"}
-        assert len(initial["presets"]) == 4
-        assert [p["id"] for p in initial["presets"]] == ["editorial_critique", "tough_love", "deepen_and_layer", "pitch_next_beat"]
+        assert [p["id"] for p in initial["presets"] if p["kind"] == "task"] == ["editorial_critique", "tough_love", "deepen_and_layer", "pitch_next_beat"]
+        assert [p["id"] for p in initial["presets"] if p["kind"] == "workflow"] == ["second_opinion"]
         assert all(len(steps) == 5 for steps in initial["defaults"]["step_templates"].values())
 
         saved = manager.save_group_settings({

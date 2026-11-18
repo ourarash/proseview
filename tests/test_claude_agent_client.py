@@ -1240,3 +1240,33 @@ def test_a_failing_version_check_falls_back_to_the_bundled_cli(monkeypatch):
     monkeypatch.setattr(module.shutil, "which", lambda name: "/bin/claude")
     monkeypatch.setattr(module, "_installed_cli_version", boom)
     assert module.pick_cli_path() is None
+
+
+def test_persistent_native_fork_second_turn_and_reconnect_use_child_history():
+    """A child reconnect resumes its own first answer, never the source session."""
+    client, seen, made = make_client(script=[
+        AssistantMessage(content=[TextBlock('Remember the child turn')], session_id='child-session'),
+        ResultMessage(session_id='child-session'),
+    ])
+    try:
+        parent = client.request('thread/start', {})['thread']['id']
+        client.request('turn/start', {'threadId': parent, 'input': [{'type': 'text', 'text': 'Parent'}]})
+        assert wait_for(lambda: not client._sessions[parent].busy)
+        client._sessions[parent].session_id = 'source-session'
+        child = client.request('thread/fork', {'threadId': parent})['thread']['id']
+        client.request('turn/start', {'threadId': child, 'input': [{'type': 'text', 'text': 'Child first'}], 'effort': 'low'})
+        assert wait_for(lambda: not client._sessions[child].busy and client._sessions[child].session_id == 'child-session')
+        first = made[-1]
+        assert first.options['resume'] == 'source-session' and first.options['fork_session']
+        assert 'no-session-persistence' not in first.options.get('extra_args', {})
+        assert client._sessions[child].fork_from_session_id == ''
+        client.request('turn/start', {'threadId': 'child-session', 'input': [{'type': 'text', 'text': 'Child second'}], 'effort': 'low'})
+        assert wait_for(lambda: first.queries == ['Child first', 'Child second'] and not client._sessions[child].busy)
+        assert wait_for(lambda: any(m.get('method') == 'turn/completed' and m['params'].get('threadId') == 'child-session' for m in seen))
+        client.request('turn/start', {'threadId': 'child-session', 'input': [{'type': 'text', 'text': 'Recall the first child turn'}], 'effort': 'high'})
+        assert wait_for(lambda: len(made) == 3)
+        assert made[-1].options['resume'] == 'child-session'
+        assert not made[-1].options.get('fork_session')
+        assert made[-1].queries == ['Recall the first child turn']
+    finally:
+        client.close()

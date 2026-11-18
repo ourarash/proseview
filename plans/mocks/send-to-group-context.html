@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Send to Group · Conversation context mock</title>
+  <style>
+    :root { color-scheme: dark; --bg: #080f1f; --panel: #0f172a; --raised: #172237; --field: #111b2d; --border: #2a3850; --text: #e2e8f0; --muted: #9aaac0; --blue: #7bb4ff; --soft-blue: #172b46; --green: #97dfbd; --amber: #edca8c; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button, select, input[type="checkbox"], input[type="radio"], summary { cursor: pointer; }
+    button { padding: 7px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--raised); }
+    button:hover:not(:disabled) { background: #22334f; }
+    button:disabled { opacity: .45; cursor: default; }
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--blue); }
+    input, select, textarea { border: 1px solid var(--border); border-radius: 6px; background: var(--field); padding: 7px 9px; }
+    select { max-width: 100%; }
+    textarea { resize: vertical; }
+    h1, h2, h3, p { margin-top: 0; }
+    .muted, small { color: var(--muted); }
+    small { font-size: 11px; }
+    .row { display: flex; align-items: center; gap: 9px; }
+    .between { justify-content: space-between; }
+    .grow { flex: 1; min-width: 0; }
+    .primary { background: #3479dc; border-color: #438bea; color: #fff; }
+    .primary:hover:not(:disabled) { background: #3b86ee; }
+    .link { border: 0; background: transparent; padding: 0; color: var(--blue); }
+    .link:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+    .icon { width: 27px; height: 27px; padding: 0; border-color: transparent; background: transparent; display: inline-grid; place-items: center; font-size: 18px; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 5px; font-size: 10px; color: var(--muted); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #6bd5a0; display: inline-block; }
+    .prototype { flex-shrink: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 10px 19px; border-bottom: 1px solid var(--border); background: #131e32; }
+    .prototype strong { font-size: 12px; font-weight: 600; }
+    .prototype .tag { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .prototype label { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+    .prototype select, .prototype button { padding: 4px 7px; font-size: 11px; }
+    .workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 190px minmax(240px, 1fr) minmax(430px, 540px); }
+    .sidebar { border-right: 1px solid var(--border); padding: 18px 12px; overflow: auto; }
+    .book { font: 19px/1.4 Georgia, serif; padding: 0 8px 24px; }
+    .side-title { text-transform: uppercase; color: var(--muted); font-size: 9px; letter-spacing: .09em; margin: 20px 8px 8px; }
+    .scene { padding: 7px 10px; color: var(--muted); font-size: 11px; border-radius: 5px; }
+    .scene.selected { background: var(--soft-blue); color: var(--blue); }
+    .editor { min-width: 0; display: flex; flex-direction: column; background: #111a2b; }
+    .editor-head { min-height: 49px; padding: 0 22px; border-bottom: 1px solid var(--border); }
+    .editor-body { overflow: auto; padding: 39px clamp(22px, 4vw, 68px); }
+    .editor h1 { font: 31px/1.2 Georgia, serif; margin: 12px 0 25px; }
+    .prose { font: 17px/1.9 Georgia, serif; color: #c9d3e0; }
+    .prose p { margin-bottom: 21px; }
+    .line { font: 10px/1.5 ui-monospace, monospace; color: #7e91ad; display: block; margin-bottom: 3px; }
+    .prose mark { background: #3b321f; color: inherit; padding: 2px 0; }
+    .dock { min-height: 0; min-width: 0; border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; }
+    .dock-head { height: 49px; flex-shrink: 0; padding: 0 13px; gap: 3px; border-bottom: 1px solid var(--border); }
+    .tab { padding: 4px 7px; background: transparent; border-color: transparent; font-size: 11px; color: var(--muted); }
+    .tab.active { background: var(--raised); color: var(--blue); }
+    .tab-spacer { flex: 1; }
+    .context-strip { padding: 11px 18px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .chat-scroll { flex: 1; min-height: 0; overflow: auto; padding: 19px 20px; }
+    .chat-meta { text-align: center; color: var(--muted); font-size: 10px; margin-bottom: 20px; }
+    .message { padding: 13px 14px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 13px; background: #101b2e; }
+    .message.user { margin-left: 35px; background: var(--raised); }
+    .message-head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; font-size: 11px; }
+    .message-head strong { font-weight: 650; }
+    .model { color: var(--muted); font-size: 10px; }
+    .message-text { margin: 0; line-height: 1.75; white-space: pre-wrap; }
+    .composer { padding: 12px 15px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .composer textarea { width: 100%; min-height: 74px; font-size: 12px; }
+    .composer .row { margin-top: 8px; }
+    .composer select { font-size: 11px; padding: 4px 7px; }
+    .source-note { font-size: 10px; margin-top: 7px; color: var(--muted); }
+    .group-title { padding: 15px 18px; border-bottom: 1px solid var(--border); }
+    .group-title h2 { margin: 0; font-size: 14px; }
+    .participants { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+    .notice { border: 1px solid #715b35; border-radius: 8px; background: #29251e; color: var(--amber); padding: 11px 13px; font-size: 12px; margin-bottom: 15px; }
+    .summary-message { border-color: #36567b; background: #13243a; }
+    .summary-message .message-head strong { color: #a4caff; }
+    .history { border: 1px solid var(--border); border-radius: 8px; margin: 14px 0; }
+    .history > summary { padding: 11px 13px; font-size: 12px; color: #c4d0df; }
+    .history-body { padding: 0 11px; }
+    .history .message { font-size: 12px; }
+    .history .message.user { margin-left: 12px; }
+    .references { color: var(--muted); font-size: 11px; margin: 14px 0; }
+    .references summary { margin-bottom: 8px; }
+    .references pre { max-height: 240px; overflow: auto; white-space: pre-wrap; padding: 11px; background: var(--bg); border-radius: 6px; font-size: 10px; }
+    .ready { color: var(--muted); text-align: center; font-size: 12px; padding: 18px 15px; }
+    .status { font-size: 11px; color: var(--blue); margin: 14px 0; }
+    .status:before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-right: 7px; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: 11px; min-width: 410px; }
+    th, td { padding: 9px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); background: var(--raised); font-weight: 500; }
+    td small { display: block; margin-top: 3px; font-size: 10px; }
+    dialog { padding: 0; width: min(650px, calc(100vw - 28px)); max-height: calc(100dvh - 38px); overflow: auto; color: var(--text); background: var(--panel); border: 1px solid #35445e; border-radius: 12px; box-shadow: 0 24px 90px #0008; }
+    dialog::backdrop { background: #030817bd; backdrop-filter: blur(3px); }
+    .modal-head { position: sticky; top: 0; z-index: 2; padding: 18px 22px 15px; background: var(--panel); border-bottom: 1px solid var(--border); }
+    .modal-head h2 { font-size: 20px; letter-spacing: -.025em; margin: 0 0 3px; }
+    .modal-head p { margin: 0; color: var(--muted); font-size: 12px; }
+    .modal-body { padding: 18px 22px 21px; }
+    .section-label { display: block; font-size: 12px; font-weight: 650; margin: 0 0 10px; }
+    .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .model-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
+    .model-card strong { font-size: 12px; }
+    .model-card label { display: block; font-size: 11px; color: var(--muted); margin-top: 10px; }
+    .model-card select, .model-card input { display: block; width: 100%; margin-top: 4px; font-size: 12px; }
+    .continuity { color: var(--muted); margin: 9px 0 0; font-size: 10px; line-height: 1.55; }
+    .section { margin-top: 21px; }
+    .context-choice { display: flex; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; cursor: pointer; }
+    .context-choice.selected { border-color: #619ee9; background: #14243a; }
+    .context-choice input { margin: 4px 0 0; flex-shrink: 0; }
+    .choice-title { display: block; font-weight: 600; font-size: 12px; }
+    .choice-help { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.6; }
+    .recent-options { padding: 13px 13px 12px; border: 1px solid var(--border); border-top: 0; margin: -4px 0 0; border-radius: 0 0 8px 8px; }
+    .count-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+    .count-row label { font-size: 12px; }
+    .stepper { display: inline-flex; align-items: center; gap: 2px; }
+    .stepper input { text-align: center; width: 52px; height: 32px; appearance: textfield; }
+    .stepper input::-webkit-inner-spin-button { appearance: none; }
+    .stepper button { width: 28px; height: 32px; padding: 0; font-size: 16px; background: transparent; }
+    .count-caption { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+    .option-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; margin-top: 13px; }
+    .option-check input { flex-shrink: 0; margin: 4px 0 0; }
+    .option-check small { display: block; margin-top: 3px; line-height: 1.6; }
+    .fresh-note { font-size: 11px; margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--border); color: #b9cde6; }
+    .included { margin-top: 12px; font-size: 11px; color: var(--muted); }
+    .included > summary { color: #b6c8df; }
+    .included p { margin: 9px 0; }
+    .included ol { padding-left: 18px; margin: 10px 0; }
+    .included li { margin-bottom: 7px; }
+    .included q { display: block; color: #c6d1de; }
+    .workflow { width: 100%; display: flex; text-align: left; gap: 9px; padding: 11px 12px; background: transparent; margin-top: 8px; }
+    .workflow.selected { border-color: #619ee9; background: #14243a; }
+    .radio-dot { height: 14px; width: 14px; border: 1px solid #7890ad; border-radius: 50%; display: inline-block; margin-top: 3px; flex-shrink: 0; }
+    .workflow.selected .radio-dot { border: 4px solid var(--blue); }
+    .workflow strong { font-size: 12px; font-weight: 600; }
+    .workflow small { display: block; margin-top: 3px; }
+    .modal-footer { position: sticky; bottom: 0; z-index: 2; padding: 14px 22px; background: #172135; border-top: 1px solid var(--border); }
+    .modal-footer .hint { font-size: 11px; color: var(--muted); line-height: 1.55; margin-bottom: 11px; }
+    .modal-footer .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+    .error { padding: 11px 12px; border: 1px solid #715b35; border-radius: 7px; color: var(--amber); font-size: 12px; margin-top: 14px; }
+    .progress { padding: 27px 10px 29px; text-align: center; }
+    .progress h3 { font-size: 17px; margin: 13px 0 7px; }
+    .progress p { font-size: 12px; color: var(--muted); max-width: 350px; margin: 0 auto; }
+    .spinner { width: 27px; height: 27px; margin: 2px auto 16px; border: 2px solid #34506f; border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 1170px) { .workspace { grid-template-columns: minmax(240px, 1fr) minmax(420px, 540px); } .sidebar { display: none; } }
+    @media (max-width: 820px) { .workspace { display: flex; justify-content: center; } .editor { display: none; } .dock { width: 100%; max-width: 650px; border-right: 1px solid var(--border); } .prototype .tag { display: none; } }
+    @media (max-width: 540px) { .prototype { padding: 8px 12px; gap: 8px; } .prototype strong { width: 100%; } .prototype label { margin-left: 0; } .modal-head, .modal-body { padding: 15px; } .modal-footer { padding: 12px 15px; } .model-grid { gap: 8px; } .model-card { padding: 10px; } .model-card label { font-size: 10px; } .model-card strong { font-size: 11px; } .chat-scroll { padding: 15px; } }
+    @media (prefers-reduced-motion: reduce) { *, *:before { animation: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="prototype">
+    <span class="tag">Interactive mock</span><strong>Send to Group · Conversation context</strong>
+    <label>Scenario <select id="scenario" aria-label="Mock scenario"><option value="normal">Summary succeeds</option><option value="summary-fails">Summary unavailable</option><option value="preflight">Kept context too large</option><option value="after-summary">Too large after summary</option></select></label>
+    <button id="resetMock">Reset mock</button>
+  </div>
+  <main class="workspace">
+    <aside class="sidebar">
+      <div class="book">The Harbor Letters</div><div class="side-title">Manuscript</div>
+      <div class="scene">Chapter 7 · The crossing</div><div class="scene">Chapter 8 · An old debt</div>
+      <div class="scene selected">02 · The last ferry</div><div class="scene">03 · What she left</div>
+      <div class="side-title">Story bible</div><div class="scene">Characters</div><div class="scene">Timeline</div><div class="scene">Places</div>
+    </aside>
+    <section class="editor">
+      <div class="editor-head row between"><span>The last ferry</span><span class="pill">Unsaved changes</span></div>
+      <div class="editor-body"><small>CHAPTER 8 / SCENE 02</small><h1>The last ferry</h1>
+        <div class="prose">
+          <span class="line">1</span><p>The city expected her back by morning. It had made a habit of expecting things from Mara.</p>
+          <span class="line">7</span><p>Below the window, a porter dragged a trunk through the rain. She listened until the wheels caught on the broken paving stone, then started moving again.</p>
+          <span class="line">12</span><p>“If I miss the last ferry, they’ll search the house,” she said.</p>
+          <span class="line">18</span><p>She touched the envelope in her pocket. <mark>She pressed its corners flat.</mark> Across the hall, a door opened and someone struck a match.</p>
+          <span class="line">23</span><p>The envelope held a name she had promised never to use. She left the key on the table.</p>
+          <span class="line">27</span><p>Mara took the stairs two at a time. For once, the city could wait.</p>
+        </div>
+      </div>
+    </section>
+    <section class="dock" aria-label="Conversation">
+      <header class="dock-head row"><span class="tab muted">Analysis</span><span class="tab muted">History</span><span class="tab muted">Beats</span><button class="tab" id="sourceTab">Claude</button><button class="tab" id="groupTab" disabled>Group</button><span class="tab-spacer"></span><span class="dot" aria-label="Connected"></span></header>
+      <div id="dockContent" class="grow" style="display:flex;flex-direction:column;min-height:0"></div>
+    </section>
+  </main>
+  <dialog id="setup" aria-labelledby="setupTitle"></dialog>
+  <script>
+    'use strict';
+    const $ = selector => document.querySelector(selector);
+    const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const providerName = value => value === 'claude' ? 'Claude' : 'Codex';
+    const SOURCE = { provider: 'claude', model: '', title: 'The last ferry' };
+    const SCENE = '   1| The city expected her back by morning. It had made a habit of expecting things from Mara.\n   7| Below the window, a porter dragged a trunk through the rain. She listened until the wheels caught on the broken paving stone, then started moving again.\n  12| “If I miss the last ferry, they’ll search the house,” she said.\n  18| She touched the envelope in her pocket. She pressed its corners flat. Across the hall, a door opened and someone struck a match.\n  23| The envelope held a name she had promised never to use. She left the key on the table.\n  27| Mara took the stairs two at a time.\n  28| For once, the city could wait.';
+    const EXCHANGES = [
+      {q:'What does this scene need to accomplish?', a:'Mara needs to choose departure over obligation. The ferry gives that choice a deadline.', summary:'The scene’s purpose is Mara choosing departure over obligation. The last ferry supplies the deadline.'},
+      {q:'Keep the emotional movement understated. I don’t want her feelings explained.', a:'Use the departure, the key, and the envelope to carry the choice. Avoid adding a statement about relief or guilt.', summary:'The writer wants understated emotional movement, carried by actions and objects rather than explanations of feeling.'},
+      {q:'The envelope contains a name, not a letter. That matters later.', a:'Understood. Preserve that fact, and avoid suggesting that she reads or destroys a letter here.', summary:'Continuity constraint: the envelope contains a name, not a letter. Do not introduce reading or destroying a letter.'},
+      {q:'Can you check the city callback against the opening?', a:'“For once, the city could wait” answers the city’s expectation in the first line. It connects her private departure to her larger obligation.', summary:'The closing city callback answers the opening expectation and connects Mara’s departure to her larger obligation.'},
+      {q:'Would you make the deadline more explicit?', a:'No extra deadline is needed. Line 12 already says the house will be searched if she misses the ferry.', summary:'Line 12 already establishes the consequence of missing the ferry: the house will be searched.'},
+      {q:'Give me the two most useful revision priorities.', a:'1. Keep the final city callback.\n2. Keep the first envelope touch and cut the repeated handling at Line 18.', summary:'Numbered suggestions: 1. Keep the final city callback. 2. Keep the first envelope touch; cut the repeated handling at Line 18.'},
+      {q:'Don’t cut the envelope touch entirely. I want her checking that it is still there.', a:'Agreed. Keep “She touched the envelope in her pocket.” Only “She pressed its corners flat” repeats the action.', summary:'Writer correction for suggestion 2: preserve “She touched the envelope in her pocket.” Only “She pressed its corners flat” is proposed for cutting.'},
+      {q:'Is the key another redundant gesture?', a:'It serves a different function: leaving the key makes her departure harder to reverse. I would keep it.', summary:'Keep the key on the table. It makes Mara’s departure harder to reverse and serves a different function from the envelope touch.'},
+      {q:'Please keep quotations exact in any later suggestions.', a:'I’ll retain exact quotations and finding numbers. The proposed cuts remain suggestions for you to decide.', summary:'Preserve exact quotations and suggestion numbers. Proposed edits remain undecided unless the writer explicitly accepts them.'},
+      {q:'Show the smallest cut to the envelope passage.', a:'2. Cut only the second action at Line 18.\n\nKeep: “She touched the envelope in her pocket.”\nCut: “She pressed its corners flat.”', summary:'Suggestion 2 is a minimal cut: remove “She pressed its corners flat.” Keep the preceding touch verbatim.'},
+      {q:'Does the last sentence over-explain the choice?', a:'1. I would keep it. “For once, the city could wait” carries the opening’s promise forward. Ending on the stairs is quicker, but loses that callback.', summary:'Suggestion 1 remains to keep the closing city callback. Ending on the stairs is an alternative with a different emphasis.'},
+      {q:'What would you carry into a second opinion?', a:'1. Keep “For once, the city could wait.”\n2. Keep the first envelope touch and cut only “She pressed its corners flat.”\n\nThe open question is whether the final callback adds resonance or explains a choice already clear in the action.', summary:'The open question for a second opinion is whether the final callback adds resonance or over-explains the departure.'}
+    ];
+    const S = {view:'source', mode:'whole', count:3, includeSummary:true, providers:['claude','codex'], models:['',''], workflow:'none', positions:true, group:null, summarizing:false, timer:null, error:'', showAll:false};
+    try {
+      const prefs = JSON.parse(localStorage.getItem('proseview-context-mock-preferences') || '{}');
+      if (['whole','recent'].includes(prefs.mode)) S.mode = prefs.mode;
+      if (Number.isFinite(prefs.count)) S.count = Math.max(1, Math.min(10, Math.round(prefs.count)));
+      if (typeof prefs.includeSummary === 'boolean') S.includeSummary = prefs.includeSummary;
+    } catch (_) {}
+    function savePreferences() {
+      try { localStorage.setItem('proseview-context-mock-preferences', JSON.stringify({mode:S.mode, count:S.count, includeSummary:S.includeSummary})); } catch (_) {}
+    }
+    const counts = () => ({kept:Math.min(S.count, EXCHANGES.length), older:Math.max(0, EXCHANGES.length - S.count)});
+    const wantsSummary = () => S.mode === 'recent' && S.includeSummary && counts().older > 0;
+    const modelName = i => S.models[i] || 'Provider default';
+    const changedOriginal = () => S.providers[0] !== SOURCE.provider || S.models[0] !== SOURCE.model;
+    function message(author, model, text, user=false) {
+      return `<article class="message${user?' user':''}"><div class="message-head"><span class="dot" style="background:${user?'#7bb4ff':'#c9a1ed'}"></span><strong>${esc(author)}</strong>${model?`<span class="model">${esc(model)}</span>`:''}</div><p class="message-text">${esc(text)}</p></article>`;
+    }
+    function exchangeMarkup(exchange, inherited=false) {
+      return message('Writer', '', exchange.q, true) + message(inherited?'Original assistant · Claude':'Claude', 'Source model · default', exchange.a);
+    }
+    function render() {
+      $('#sourceTab').classList.toggle('active', S.view === 'source');
+      $('#groupTab').classList.toggle('active', S.view === 'group');
+      $('#groupTab').disabled = !S.group;
+      if (S.view === 'source') renderSource(); else renderGroup();
+    }
+    function renderSource() {
+      const visible = S.showAll ? EXCHANGES : EXCHANGES.slice(-3);
+      $('#dockContent').innerHTML = `<div class="context-strip row between"><span>ch08/02-the-last-ferry.md</span><button class="link" id="headerFork">Send to Group ↗</button></div><div class="chat-scroll" id="chatScroll"><div class="chat-meta">${EXCHANGES.length} complete exchanges · Claude</div>${!S.showAll?'<p style="text-align:center"><button class="link" id="showEarlier">Show 9 earlier exchanges</button></p>':''}${visible.map(e=>exchangeMarkup(e)).join('')}${S.group?'<div class="references"><button class="link" id="openLinkedGroup">Open linked Group ↗</button></div>':''}</div><div class="composer"><textarea aria-label="Source chat message" placeholder="Ask anything about your story…" readonly></textarea><div class="row"><span class="pill">Claude · Provider default</span><span class="grow"></span><button id="sourceFork">Send to Group</button><button disabled>Send</button></div></div>`;
+      $('#headerFork').onclick = openSetup;
+      $('#sourceFork').onclick = openSetup;
+      if ($('#showEarlier')) $('#showEarlier').onclick = () => { S.showAll = true; renderSource(); };
+      if ($('#openLinkedGroup')) $('#openLinkedGroup').onclick = () => { S.view = 'group'; render(); };
+    }
+    function modelCard(i) {
+      const isOriginal = i === 0;
+      let note = isOriginal ? (S.mode === 'recent' ? 'Fresh session with the selected context.' : changedOriginal() ? 'Fresh session because provider or model changed.' : 'Continues in an isolated native fork.') : 'Fresh session with the selected context.';
+      return `<div class="model-card"><strong>${isOriginal?'Original assistant':'Second opinion'}</strong><label>Provider<select aria-label="${isOriginal?'Original assistant':'Second opinion'} provider" data-provider="${i}"><option value="claude" ${S.providers[i]==='claude'?'selected':''}>Claude</option><option value="codex" ${S.providers[i]==='codex'?'selected':''}>Codex</option></select></label><label>Model<select aria-label="${isOriginal?'Original assistant':'Second opinion'} model" data-model="${i}"><option value="" ${!S.models[i]?'selected':''}>Provider default</option><option value="custom" ${S.models[i]?'selected':''}>Custom model…</option></select></label>${S.models[i]?`<input aria-label="${isOriginal?'Original assistant':'Second opinion'} custom model" data-custom="${i}" placeholder="Configured model ID" value="${esc(S.models[i]==='custom'?'':S.models[i])}">`:''}<p class="continuity">${note}</p></div>`;
+    }
+    function renderSetup(focusId) {
+      const c = counts();
+      if (S.summarizing) {
+        $('#setup').innerHTML = `<div class="modal-head"><h2 id="setupTitle">Send to Group</h2><p>Preparing the conversation context</p></div><div class="modal-body"><div class="progress" role="status"><div class="spinner"></div><h3>Summarizing ${c.older} earlier exchanges…</h3><p>Claude is preparing the summary. Your latest ${c.kept} exchanges will be kept in full.</p></div></div><div class="modal-footer"><div class="hint">The source chat stays unchanged. You can cancel before a Group is opened.</div><div class="buttons"><button id="cancelSummary">Cancel</button></div></div>`;
+        $('#cancelSummary').onclick = cancelSummary;
+        return;
+      }
+      const recentChoices = `<div class="recent-options"><div class="count-row"><label for="recentCount">Keep the last</label><div class="stepper"><button id="decreaseCount" aria-label="Keep fewer exchanges" ${S.count===1?'disabled':''}>−</button><input id="recentCount" type="number" min="1" max="10" value="${S.count}" aria-label="Number of recent exchanges"><button id="increaseCount" aria-label="Keep more exchanges" ${S.count===10?'disabled':''}>+</button></div><span>exchanges</span></div><p class="count-caption" id="countCaption">${c.kept} of ${EXCHANGES.length} exchanges kept in full. One exchange includes your request and the assistant’s replies.</p><label class="option-check"><input id="includeSummary" type="checkbox" ${S.includeSummary?'checked':''}><span>Include a summary of earlier exchanges<small id="summaryHint">${c.older?`${c.older} earlier exchanges ${S.includeSummary?'will be summarized when you fork.':'will stay only in the source chat.'}`:'All exchanges are kept; no summary call is needed.'}</small></span></label><p class="fresh-note">Both participants start fresh sessions with this context.</p></div>`;
+      const kept = S.mode === 'whole' ? EXCHANGES : EXCHANGES.slice(-c.kept);
+      const submitLabel = S.workflow === 'none' ? 'Fork to Group' : 'Fork & run';
+      $('#setup').innerHTML = `<div class="modal-head"><div class="row between"><div><h2 id="setupTitle">Send to Group</h2><p>Choose who joins and how much conversation to bring.</p></div><button class="icon" id="closeSetup" aria-label="Close setup">×</button></div></div><div class="modal-body"><span class="section-label">Participants</span><div class="model-grid">${modelCard(0)}${modelCard(1)}</div><section class="section"><h3 class="section-label">Conversation context</h3><label class="context-choice ${S.mode==='whole'?'selected':''}"><input type="radio" name="contextMode" id="contextWhole" value="whole" ${S.mode==='whole'?'checked':''}><span><span class="choice-title">Whole conversation</span><span class="choice-help">All ${EXCHANGES.length} exchanges, request instructions, and available evidence.</span></span></label><label class="context-choice ${S.mode==='recent'?'selected':''}"><input type="radio" name="contextMode" id="contextRecent" value="recent" ${S.mode==='recent'?'checked':''}><span><span class="choice-title">Recent exchanges</span><span class="choice-help">Choose how much recent conversation to keep. Optionally summarize the rest.</span></span></label>${S.mode==='recent'?recentChoices:''}<details class="included"><summary>What will the agents receive?</summary><p>${S.mode==='whole'?'The whole conversation and its request instructions, structured results, and available tool evidence.':'The retained exchanges and their request instructions, structured results, and relevant quotations.'} ${wantsSummary()?'A generated summary of older history comes first.':''}</p><p>The current scene is included once with line numbers, using your unsaved draft. ${S.mode==='recent'?'Other sources travel as file references; agents can read them with their tools.':'Other current sources are included once.'}</p><details id="keptExchangesPreview"><summary>${kept.length} exchanges kept verbatim</summary><ol start="${EXCHANGES.length-kept.length+1}">${kept.map(e=>`<li><q>${esc(e.q)}</q><span>${esc(e.a.split('\n')[0])}</span></li>`).join('')}</ol></details><p>Pending approvals and actionable proposals stay in the source chat. Private model reasoning is not exported.</p></details></section><section class="section"><h3 class="section-label">Conversation workflow</h3><button class="workflow ${S.workflow==='none'?'selected':''}" data-workflow="none" aria-pressed="${S.workflow==='none'}"><span class="radio-dot"></span><span><strong>None — I’ll direct it</strong><small>No Group participant runs automatically.</small></span></button><button class="workflow ${S.workflow==='second_opinion'?'selected':''}" data-workflow="second_opinion" aria-pressed="${S.workflow==='second_opinion'}"><span class="radio-dot"></span><span><strong>Second opinion & recap</strong><small>The other agent weighs in, the original responds, then a recap.</small></span></button>${S.workflow==='second_opinion'?`<label class="option-check"><input id="positionsOption" type="checkbox" ${S.positions?'checked':''}><span>Show each agent’s final stance in a table<small>The recap lists each suggestion, each agent’s final view, and their evidence.</small></span></label>`:''}</section>${S.error?`<div class="error" role="alert">${esc(S.error)}</div>`:''}</div><div class="modal-footer"><div class="hint">${wantsSummary()?'A summary is made when you fork. ':''}${S.workflow==='none'?'Then you direct the Group; no participant responds until you send a message.':'The selected workflow starts after the context is ready.'}</div><div class="buttons"><button id="cancelSetup">Cancel</button><button class="primary" id="forkButton">${submitLabel} ↗</button></div></div>`;
+      $('#closeSetup').onclick = closeSetup; $('#cancelSetup').onclick = closeSetup; $('#forkButton').onclick = fork;
+      document.querySelectorAll('[name="contextMode"]').forEach(el => el.onchange = () => { S.mode = el.value; S.error = ''; renderSetup(); });
+      if ($('#recentCount')) {
+        $('#recentCount').oninput = event => { if (event.target.value) setCount(event.target.value, false); };
+        $('#recentCount').onchange = event => setCount(event.target.value);
+        $('#decreaseCount').onclick = () => setCount(S.count-1);
+        $('#increaseCount').onclick = () => setCount(S.count+1);
+        $('#includeSummary').onchange = event => { S.includeSummary = event.target.checked; S.error = ''; renderSetup('includeSummary'); };
+      }
+      document.querySelectorAll('[data-provider]').forEach(el => el.onchange = () => { const i = +el.dataset.provider; S.providers[i] = el.value; S.models[i] = ''; S.error = ''; renderSetup(); });
+      document.querySelectorAll('[data-model]').forEach(el => el.onchange = () => { S.models[+el.dataset.model] = el.value; S.error = ''; renderSetup(); });
+      document.querySelectorAll('[data-custom]').forEach(el => el.oninput = () => { S.models[+el.dataset.custom] = el.value.trim() || 'custom'; });
+      document.querySelectorAll('[data-workflow]').forEach(el => el.onclick = () => { S.workflow = el.dataset.workflow; renderSetup(); });
+      if ($('#positionsOption')) $('#positionsOption').onchange = event => { S.positions = event.target.checked; };
+      if (focusId) document.getElementById(focusId)?.focus();
+    }
+    function setCount(value, normalize=true) {
+      S.count = Math.max(1, Math.min(10, Math.round(Number(value) || 1))); S.error = '';
+      if (normalize) $('#recentCount').value = S.count;
+      const c = counts();
+      $('#decreaseCount').disabled = S.count === 1; $('#increaseCount').disabled = S.count === 10;
+      $('#countCaption').textContent = `${c.kept} of ${EXCHANGES.length} exchanges kept in full. One exchange includes your request and the assistant’s replies.`;
+      $('#summaryHint').textContent = c.older ? `${c.older} earlier exchanges ${S.includeSummary?'will be summarized when you fork.':'will stay only in the source chat.'}` : 'All exchanges are kept; no summary call is needed.';
+      $('#keptExchangesPreview').innerHTML = `<summary>${c.kept} exchanges kept verbatim</summary><ol start="${EXCHANGES.length-c.kept+1}">${EXCHANGES.slice(-c.kept).map(e=>`<li><q>${esc(e.q)}</q><span>${esc(e.a.split('\n')[0])}</span></li>`).join('')}</ol>`;
+      $('#setup .error')?.remove();
+    }
+    function openSetup() { S.error = ''; renderSetup(); if (!$('#setup').open) $('#setup').showModal(); }
+    function closeSetup() { $('#setup').close(); }
+    function cancelSummary() { clearTimeout(S.timer); S.timer = null; S.summarizing = false; renderSetup('forkButton'); }
+    $('#setup').oncancel = event => { if (S.summarizing) { event.preventDefault(); cancelSummary(); } };
+    function fork() {
+      S.error = '';
+      if (S.models.some(model=>model==='custom')) { S.error = 'Enter a custom model ID or choose Provider default.'; renderSetup(); return; }
+      if ($('#scenario').value === 'preflight') { S.error = 'The kept exchanges and current scene exceed a selected model’s known limit. Choose another model or keep fewer exchanges before forking.'; renderSetup(); return; }
+      if (!wantsSummary()) { finishFork(); return; }
+      S.summarizing = true; renderSetup();
+      // Simulated delay only. This standalone mock never calls an agent.
+      S.timer = setTimeout(() => {
+        S.summarizing = false; S.timer = null;
+        if ($('#scenario').value === 'after-summary') { S.error = 'The summary, kept exchanges, and current scene exceed a selected model’s known limit. No Group agent has started. Choose another model or keep fewer exchanges.'; renderSetup(); return; }
+        finishFork($('#scenario').value === 'summary-fails');
+      }, 2300);
+    }
+    function finishFork(summaryFailed=false) {
+      const c = counts(), compact = S.mode === 'recent';
+      S.group = {mode:S.mode, count:compact?c.kept:EXCHANGES.length, providers:[...S.providers], models:[...S.models],
+        nativeOriginal:!compact&&!changedOriginal(), summary:compact&&S.includeSummary&&c.older&&!summaryFailed ? EXCHANGES.slice(0,c.older).map(e=>'• '+e.summary).join('\n\n') : '',
+        summaryFailed, older:compact?c.older:0, history:compact?EXCHANGES.slice(-c.kept):[...EXCHANGES], messages:[], running:false, positions:false};
+      savePreferences(); $('#setup').close(); S.view = 'group'; render();
+      if (S.workflow === 'second_opinion') runWorkflow();
+    }
+    function renderGroup() {
+      const g = S.group;
+      const summary = g.summary ? `<article class="message summary-message"><div class="message-head"><strong>Generated conversation summary</strong><span class="pill">${g.older} earlier exchanges</span></div><p class="message-text">${esc(g.summary)}</p><p class="source-note">Prepared from the source chat · Claude · Source model</p></article>` : '';
+      const table = g.positions ? `<div class="table-scroll"><table aria-label="Recorded positions"><thead><tr><th>Suggestion</th><th>Original assistant</th><th>Second opinion</th></tr></thead><tbody><tr><td>1. Keep the city callback</td><td>Agree<small>Line 28 answers the opening expectation.</small></td><td>Disagree<small>Line 27 already carries the departure through action.</small></td></tr><tr><td>2. Cut the repeated envelope action</td><td>Agree<small>Keep the first touch; cut “She pressed its corners flat.”</small></td><td>Agree<small>The second action at Line 18 repeats the first.</small></td></tr></tbody></table></div>` : '';
+      $('#dockContent').innerHTML = `<div class="group-title"><div class="row between"><h2>Group</h2><button class="link" id="backToSource">Source chat ↗</button></div><div class="participants">${g.providers.map((p,i)=>`<span class="pill">${i?'Second opinion':'Original assistant'} · ${providerName(p)} · ${i===0&&g.nativeOriginal?'Native fork':'Fresh session'}</span>`).join('')}</div></div><div class="chat-scroll" id="chatScroll"><div class="chat-meta">${g.mode==='whole'?'Whole conversation':`${g.count} recent exchanges${g.summary?' + earlier summary':''}`}</div>${g.summaryFailed?`<div class="notice" role="status"><strong>Summary missing.</strong> The summary could not be created. Only the latest ${g.count} exchanges were transferred, along with the current scene. Earlier conversation is available in the source chat.</div>`:''}${summary}<details class="history"><summary>${g.history.length} retained exchanges · original authors and models</summary><div class="history-body">${g.history.map(e=>exchangeMarkup(e,true)).join('')}</div></details><details class="references"><summary>Current scene and sources</summary><p>Current scene · unsaved draft included once, with line numbers</p><pre>${esc(SCENE)}</pre><p>${g.mode==='recent'?'Other files available by reference:':'Other current sources included once:'}<br>story-bible/characters/mara.md<br>story-bible/timeline.md</p></details>${g.messages.map(m=>message(m.seat===null?'Writer':`${m.seat?'Second opinion':'Original assistant'} · ${providerName(g.providers[m.seat])}`,m.seat===null?'':g.models[m.seat]||'Provider default',m.text,m.seat===null)).join('')}${g.running?`<div class="status" role="status">${esc(g.status)}</div>`:''}${table}${!g.messages.length&&!g.running?'<p class="ready">Ready when you are. Choose either participant and continue the conversation.</p>':''}</div><div class="composer"><textarea id="groupMessage" aria-label="Group message" placeholder="Ask either assistant, or use @ to address one…" ${g.running?'disabled':''}></textarea><div class="row"><select id="groupTarget" aria-label="Message target"><option value="0">Original assistant</option><option value="1">Second opinion</option><option value="both">Both</option></select><span class="grow"></span><button id="groupSend" class="primary" ${g.running?'disabled':''}>Send</button></div><p class="source-note">Untagged messages use the selected participant.</p></div>`;
+      $('#backToSource').onclick = () => { S.view = 'source'; render(); };
+      $('#groupSend').onclick = sendGroup;
+      $('#groupMessage').onkeydown = event => { if (event.key==='Enter'&&!event.shiftKey) { event.preventDefault(); sendGroup(); } };
+    }
+    function scrollToReply() { const scroll = $('#chatScroll'); if (scroll) scroll.scrollTop = scroll.scrollHeight; }
+    function sendGroup() {
+      const input = $('#groupMessage'), text = input.value.trim(), g = S.group;
+      if (!text || g.running) return;
+      let target = $('#groupTarget').value;
+      if (/@secondopinion/i.test(text)) target = '1'; else if (/@originalassistant/i.test(text)) target = '0';
+      g.messages.push({seat:null,text});
+      for (const seat of target==='both'?[0,1]:[Number(target)]) g.messages.push({seat,text:seat===0?'I’d keep the final city callback. It answers the opening expectation. For the envelope passage, keep the first touch and cut only the repeated action at Line 18.':'I agree about cutting only the repeated envelope action. I’d question the final callback: ending on the stairs lets Mara’s action carry the choice. That remains a difference in emphasis.'});
+      renderGroup(); scrollToReply();
+    }
+    function runWorkflow() {
+      const g = S.group; g.running = true; g.status = 'Second opinion is weighing in…'; renderGroup();
+      const steps = [
+        {seat:1,text:'1. Keep the final city callback — I disagree. Line 27 already puts the choice into action. Ending on the stairs would give her departure more momentum.\n\n2. Cut the repeated envelope action — I agree. Keep the first touch and cut “She pressed its corners flat.”'},
+        {seat:0,text:'1. I still favor the city callback. Line 28 answers the opening’s expectation of Mara, so it carries a larger obligation beyond this departure.\n\n2. We agree on the envelope: keep the first touch and cut only the repeated handling.'},
+        {seat:1,text:'Recap\n\nWe agree on suggestion 2: keep the first envelope touch and cut the repeat.\n\nSuggestion 1 remains disputed. The Original assistant favors the city callback; the Second opinion favors ending on the physical departure.'}
+      ];
+      let index=0;
+      const advance = () => {
+        if (S.group !== g) return;
+        g.messages.push(steps[index++]);
+        if (index===steps.length) { g.running=false; g.positions=S.positions; }
+        else { g.status=index===1?'Original assistant is responding…':'Second opinion is writing the recap…'; setTimeout(advance,850); }
+        if (S.view==='group') { renderGroup(); scrollToReply(); }
+      };
+      setTimeout(advance,850);
+    }
+    $('#sourceTab').onclick = () => { S.view='source'; render(); };
+    $('#groupTab').onclick = () => { if (S.group) { S.view='group'; render(); } };
+    $('#resetMock').onclick = () => { clearTimeout(S.timer); Object.assign(S,{view:'source',mode:'whole',count:3,includeSummary:true,providers:['claude','codex'],models:['',''],workflow:'none',positions:true,group:null,summarizing:false,error:'',showAll:false}); $('#scenario').value='normal'; try { localStorage.removeItem('proseview-context-mock-preferences'); } catch (_) {} render(); };
+    render();
+    if (new URLSearchParams(location.search).has('setup')) openSetup();
+  </script>
+</body>
+</html>

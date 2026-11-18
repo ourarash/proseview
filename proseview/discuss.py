@@ -1836,6 +1836,15 @@ def _review_include_keep(value: Any) -> bool:
     return value
 
 
+def _review_big_picture(value: Any) -> bool:
+    """Whether a review runs in big-picture mode without mandatory Before/After rewrites."""
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise ContextError("the Big-picture choice must be on or off")
+    return value
+
+
 def _keeps_list(action_id: str) -> bool:
     """Review cards with an optional Keep list. Deepen offers opportunities only,
     and Bird by Bird's keep/assignment format is the review itself."""
@@ -3189,6 +3198,7 @@ class DiscussManager:
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
         review_include_keep: Any = None,
+        review_big_picture: Any = None,
         include_frontmatter: bool = True,
         include_adjacent: bool = True,
     ) -> tuple[str, str, str, list[dict[str, str]], list[str] | None]:
@@ -3241,6 +3251,7 @@ class DiscussManager:
             count = len(multi_paths) if multi_paths is not None else 1
             max_findings = _review_max_findings(review_max_findings)
             include_keep = _review_include_keep(review_include_keep)
+            big_picture = _review_big_picture(review_big_picture) if _keeps_list(action_id) else False
             try:
                 lanes = selected_review_lanes(action_id, review_lanes, focus=focus)
                 if action_id == "comedy_review":
@@ -3281,6 +3292,8 @@ class DiscussManager:
                 receipt += f"\n\n{noun}: up to {max_findings}"
             if _keeps_list(action_id):
                 receipt += "\n\nKeep: " + ("list what to preserve" if include_keep else "off")
+                if big_picture:
+                    receipt += "\n\nFormat: big-picture critique (Before/After optional)"
             if action_id == "comedy_review":
                 receipt += "\n\nComic styles: " + (", ".join(style["label"] for style in comic_styles) or "Follow the draft")
                 receipt += "\n\nReview goals: " + ", ".join(goal["label"] for goal in comic_goals)
@@ -3302,6 +3315,7 @@ class DiscussManager:
                 action_id, lanes, scene_count=count, check_plan=craft_check_plan,
                 comedy_styles=comedy_styles, comedy_goal=comedy_goal, comedy_goals=comedy_goals,
                 max_findings=max_findings, include_keep=include_keep and _keeps_list(action_id),
+                big_picture=big_picture,
             )
             question = receipt + f"\n\n{divider}:\n" + contract + "\n\nReview guide:\n" + question
         elif custom and action_id != "update_frontmatter":
@@ -3346,7 +3360,7 @@ class DiscussManager:
                 + citation_hint
             )
             if is_review:
-                question += "\n\n" + review_self_check(action_id)
+                question += "\n\n" + review_self_check(action_id, big_picture=big_picture)
             beatmap_paths = [
                 path.relative_to(man_dir).as_posix()
                 for path in multi_paths
@@ -4175,6 +4189,7 @@ class DiscussManager:
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
         review_include_keep: Any = None,
+        review_big_picture: Any = None,
         skill: dict[str, Any] | None = None,
         retry_of_task_id: str = "",
         verify_of_task_id: str = "",
@@ -4312,6 +4327,7 @@ class DiscussManager:
                 comedy_goals=comedy_goals,
                 review_max_findings=review_max_findings,
                 review_include_keep=review_include_keep,
+                review_big_picture=review_big_picture,
                 include_frontmatter=eff_frontmatter,
                 include_adjacent=eff_adjacent,
             )
@@ -4403,6 +4419,8 @@ class DiscussManager:
                           if review_guide(action_id) and not selection and action_id != "craft_lamott" else None),
             include_keep=(_review_include_keep(review_include_keep)
                           if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
+            big_picture=(_review_big_picture(review_big_picture)
+                         if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
         )
         # A pass that exists to report stays sandboxed read-only. Everything
         # else may write, because the writer asked for something to be done and
@@ -5979,6 +5997,7 @@ class DiscussManager:
         check_plan: bool | None = None,
         max_findings: int | None = None,
         include_keep: bool | None = None,
+        big_picture: bool | None = None,
     ) -> dict[str, Any]:
         skill_prompt = ""
         if action_id and (action_id in ACTION_DEFINITIONS or action_id in REPOSITORY_ACTION_DEFINITIONS):
@@ -6000,6 +6019,8 @@ class DiscussManager:
             "max_findings": max_findings,
             # Whether the review lists moments to keep; other turns omit it.
             "include_keep": include_keep,
+            # Whether the review runs in big-picture mode; other turns omit it.
+            "big_picture": big_picture,
             "notes": _bounded_text(notes, 8000) if notes else "",
             "documents": list(documents),
             "selection": _bounded_text(selection, 4000) if selection else "",

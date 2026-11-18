@@ -51,6 +51,9 @@
             // Whether a custom review lists moments to keep, remembered across
             // reloads. Run now leaves it off.
             includeKeep: _readReviewIncludeKeepPref(),
+            // Whether a custom review uses big-picture mode without mandatory
+            // Before/After rewrites, remembered across reloads.
+            bigPicture: _readReviewBigPicturePref(),
             storyContexts: Object.create(null),
             storyContextLoaded: Object.create(null),
             storyContextVersions: Object.create(null),
@@ -8824,7 +8827,8 @@ function loadDiscussDiffMode(mode) {
                     + (_discussCraftState.checkPlan ? ' · Plan check' : '')
                     + (craftLens.id === 'craft_lamott' ? '' : ' · Up to ' + _discussCraftState.maxFindings
                         + (craftLens.id === 'deepen_and_layer' ? ' opportunities' : ' priorities'))
-                    + (_discussCraftState.includeKeep && discussReviewHasKeepChoice(craftLens.id) ? ' · Keep list' : '');
+                    + (_discussCraftState.includeKeep && discussReviewHasKeepChoice(craftLens.id) ? ' · Keep list' : '')
+                    + (_discussCraftState.bigPicture && discussReviewHasBigPictureChoice(craftLens.id) ? ' · Big-picture' : '');
                 node.appendChild(craftHelp);
                 if (_discussCraftState.modeId === 'comedy_review') {
                     node.appendChild(elementWith('discuss-comedy-summary', discussComedySummary()));
@@ -10357,6 +10361,9 @@ function loadDiscussDiffMode(mode) {
             if (ctx.include_keep === true || ctx.include_keep === false) {
                 addPill('Keep list: ' + (ctx.include_keep ? 'On' : 'Off'), ctx.include_keep);
             }
+            if (ctx.big_picture === true || ctx.big_picture === false) {
+                addPill('Big-picture: ' + (ctx.big_picture ? 'On' : 'Off'), ctx.big_picture);
+            }
             if (ctx.check_plan === true || ctx.check_plan === false) {
                 addPill('Plan check: ' + (ctx.check_plan ? 'On' : 'Off'), ctx.check_plan);
             }
@@ -10496,6 +10503,7 @@ function loadDiscussDiffMode(mode) {
                 craft_check_plan: !defaults && !!_discussCraftState.checkPlan,
                 review_max_findings: defaults ? DISCUSS_DEFAULT_MAX_FINDINGS : _discussCraftState.maxFindings,
                 review_include_keep: !defaults && !!_discussCraftState.includeKeep,
+                review_big_picture: !defaults && !!_discussCraftState.bigPicture,
                 craft_lanes: lanes.map(discussCraftLaneName),
                 review_lanes: lanes.map(function(lane) { return lane.id; }),
                 review_contexts: contexts,

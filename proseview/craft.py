@@ -39,6 +39,18 @@ and a one-sentence reason. Keep items are not revision priorities. Omit the head
 nothing clearly earns it."""
 
 
+def selected_lanes_instruction(selected_lanes: list[dict], *, total_lanes: int, big_picture: bool = False) -> str:
+    """How strictly the review sticks to the chosen lanes."""
+    names = "; ".join(lane_name(lane) for lane in selected_lanes)
+    if not big_picture:
+        return f"Selected lanes: {names}. Stay within the selected lanes."
+    if len(selected_lanes) < total_lanes:
+        return (f"Pay particular attention to the selected lanes: {names}. "
+                "Connect wider structural issues from this editorial lens to them where relevant.")
+    return (f"Selected lanes: {names}. "
+            "Draw freely on the wider structural principles of this editorial lens as well.")
+
+
 # Reviews got short and minor when this contract was 1,400 words of rules, most
 # of them about what not to report. It now keeps only what the app depends on
 # (the quote/link order, the Lane line, the rewrite lead-in) and one line for
@@ -46,41 +58,65 @@ nothing clearly earns it."""
 # reviews shows it is missing. See plans/review-prompt-rewrite.md.
 def review_contract(
     *, scene_count: int, max_findings: int, check_plan: bool, include_keep: bool,
-    goal: str = "", item: str = "finding",
+    goal: str = "", item: str = "finding", big_picture: bool = False,
+    big_picture_goal: str = "",
 ) -> str:
     """The shared goal, output format, and rules for a review card."""
     scope = "scene" if scene_count == 1 else "selection of scenes"
-    goal = (goal or "Find the changes that would most improve this {scope}, and write each {item} "
-            "as text the writer can paste.").format(scope=scope, item=item)
-    lines = [
-        "The review guide supplies the editorial lens; this format governs the output. "
-        "If they conflict on format, follow this format.",
-        f"{goal} Give up to {max_findings}, most important first.",
-    ]
-    subject = "the scene" if scene_count == 1 else "the selection"
-    lines.append(f"Within the selected review and lanes, start with improvements to how {subject} works as a whole"
-                 + (", including development across scenes" if scene_count > 1 else "")
-                 + ". Then address individual passages and wording.")
-    lines.append(
-        f"For each {item}, under a short numbered heading:\n"
-        "- A **Lane: <name> — <why>** line, using a selected lane's exact name "
-        "(**Lanes:** with two names if it spans both).\n"
-        "- **Before:** on its own line, then the passage quoted exactly in an italic blockquote, "
-        "with its link on the line below it, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18).\n"
-        "- **Why:** the specific weakness or missed opportunity, and what the change improves for the reader.\n"
-        "- **After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):, then the replacement "
-        "in a plain blockquote, ready to paste. For an addition, cite the insertion point instead: "
-        "**After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):. For a cut, show how "
-        "the passage reads after it.\n"
-        "Every link uses the quoted scene's own file name and path; the file name above is only an example."
-    )
-    lines.append("When a finding requires changes in several places, group the connected edits under one finding "
-                 "and write out each replacement or insertion.")
+    if big_picture:
+        goal_line = (
+            big_picture_goal or "Give high-level feedback on what most holds this {scope} back, "
+            "using the editorial lens (up to {max_findings} points, most important first)."
+        ).format(scope=scope, max_findings=max_findings, item=item)
+        lines = [
+            "The review guide supplies the editorial lens; this format governs the output. "
+            "If they conflict on format or scope, follow these instructions.",
+            goal_line,
+            "Focus on big-picture structure, scene turns, escalation, opposition, setup/payoff, "
+            "and dramatic movement rather than sentence-level polish or phrasing templates.",
+            "Anchor observations with exact quotes (italic blockquote, no ellipses) and a clickable link "
+            "on the line below each quote, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18), "
+            "using each quoted scene's own file name and path.",
+            "When you suggest a concrete rewrite, show **Before:** (italic blockquote + link below) and "
+            "**After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18): "
+            "(or **After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):) "
+            "as a plain blockquote; when a point is structural (cutting a sagging stretch, reordering beats, "
+            "adding an obstacle), a brief direction is enough.",
+        ]
+        voice_rule = "Suggested text keeps the scene's voice. Mark any new story fact as a possibility."
+    else:
+        goal = (goal or "Find the changes that would most improve this {scope}, and write each {item} "
+                "as text the writer can paste.").format(scope=scope, item=item)
+        lines = [
+            "The review guide supplies the editorial lens; this format governs the output. "
+            "If they conflict on format, follow this format.",
+            f"{goal} Give up to {max_findings}, most important first.",
+        ]
+        subject = "the scene" if scene_count == 1 else "the selection"
+        lines.append(f"Within the selected review and lanes, start with improvements to how {subject} works as a whole"
+                     + (", including development across scenes" if scene_count > 1 else "")
+                     + ". Then address individual passages and wording.")
+        lines.append(
+            f"For each {item}, under a short numbered heading:\n"
+            "- A **Lane: <name> — <why>** line, using a selected lane's exact name "
+            "(**Lanes:** with two names if it spans both).\n"
+            "- **Before:** on its own line, then the passage quoted exactly in an italic blockquote, "
+            "with its link on the line below it, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18).\n"
+            "- **Why:** the specific weakness or missed opportunity, and what the change improves for the reader.\n"
+            "- **After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):, then the replacement "
+            "in a plain blockquote, ready to paste. For an addition, cite the insertion point instead: "
+            "**After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):. For a cut, show how "
+            "the passage reads after it.\n"
+            "Every link uses the quoted scene's own file name and path; the file name above is only an example."
+        )
+        lines.append("When a finding requires changes in several places, group the connected edits under one finding "
+                     "and write out each replacement or insertion.")
+        voice_rule = "Replacement text keeps the scene's voice. Mark any new story fact as a possibility."
     rules = [
         "Quote exactly, with no ellipses, and link every quote, including lines from other scenes.",
         "Manuscript lines wrap mid-sentence. Before saying something never appears or is never set up, "
         "search for one distinctive word. If you can't check, say so.",
-        "Replacement text keeps the scene's voice. Mark any new story fact as a possibility.",
+        voice_rule,
     ]
     if not check_plan:
         rules.append("Notes and frontmatter are background, not requirements.")
@@ -111,7 +147,7 @@ Assess this gap against the writer's stated plan; a note is not a rule from the 
 def craft_review_contract(
     action_id: str, *, focus: str = "", scene_count: int = 1, check_plan: bool = False,
     lane_ids: list[str] | None = None, max_findings: int = DEFAULT_MAX_FINDINGS,
-    include_keep: bool = False,
+    include_keep: bool = False, big_picture: bool = False,
 ) -> str:
     guide = craft_guide(action_id)
     if not guide:
@@ -134,11 +170,13 @@ def craft_review_contract(
         ]
         if check_plan:
             lines.append(_PLAN_CHECK_ON)
+        lines.append(selected_lanes_instruction(selected_lanes, total_lanes=len(guide["lanes"])))
     else:
         lines = [review_contract(scene_count=scene_count, max_findings=max_findings,
-                                 check_plan=check_plan, include_keep=include_keep)]
-    lines.append("Selected lanes: " + "; ".join(lane_name(lane) for lane in selected_lanes)
-                 + ". Stay within the selected lanes.")
+                                 check_plan=check_plan, include_keep=include_keep,
+                                 big_picture=big_picture)]
+        lines.append(selected_lanes_instruction(selected_lanes, total_lanes=len(guide["lanes"]),
+                                                big_picture=big_picture))
     lines.append(f"Selected book: {guide['book']}\nSelected book principles:")
     for lane in selected_lanes:
         lines.append(f"- {lane_name(lane)} — {lane['brief']}\nPrinciple: {lane['summary']}")

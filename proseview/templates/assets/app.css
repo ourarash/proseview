@@ -6400,6 +6400,15 @@
             outline-offset: 1px;
         }
 
+        .discuss-review-keep-toggle,
+        .discuss-review-big-picture-toggle {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
         .discuss-craft-focus-box {
             position: relative;
         }

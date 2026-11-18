@@ -461,3 +461,38 @@ def test_bird_by_bird_explains_it_has_no_priority_cap(page: Page, server: Prosev
     page.locator('#discussReviewBook-craft_lamott').click()
     assert not page.locator('#discussReviewMaxFindings').count()
     assert 'one small drafting assignment' in page.locator('.discuss-review-limit').inner_text()
+
+
+def test_big_picture_critique_is_off_by_default_remembered_and_left_out_of_run_now(page: Page, server: ProseviewServer):
+    requests = []
+    page.on('request', lambda request: requests.append(request.post_data_json)
+            if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
+    open_review(page, server, 'Deepen & layer')
+    assert not page.locator('#discussReviewBigPicture').count()
+    customize_review(page, 'Craft review')
+    page.locator('#discussReviewBook-craft_mckee').click()
+    bp = page.locator('#discussReviewBigPicture')
+    assert not bp.is_checked()
+    bp.check()
+    assert 'Big-picture' in page.locator('#discussTaskMode').inner_text()
+    page.locator('#discussReviewFocusTrigger').click()
+    page.locator('#discussReviewLanesClear').click()
+    page.locator('#discussReviewLane-want').click()
+    page.locator('#discussReviewLane-subtext').click()
+    page.keyboard.press('Escape')
+    page.locator('#discussSend').click()
+    wait_for_discuss_answer(page, 'Fake answer')
+    assert requests[-1]['review_big_picture'] is True
+    assert requests[-1]['review_lanes'] == ['want', 'subtext']
+    assert 'Format: big-picture critique (Before/After optional)' in page.locator('.discuss-craft-request-summary').last.inner_text()
+    wait_for_discuss_idle(page)
+    # The card's Run now keeps the default.
+    page.locator('#discussCraftButton').click()
+    page.get_by_role('button', name='Run Craft review with defaults', exact=True).click()
+    page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
+    assert requests[-1]['review_big_picture'] is False
+    assert 'Format: big-picture critique' not in page.locator('.discuss-craft-request-summary').last.inner_text()
+    wait_for_discuss_idle(page)
+    page.reload()
+    page.wait_for_function("() => typeof _discussCraftState === 'object'")
+    assert page.evaluate('_discussCraftState.bigPicture') is True

@@ -309,3 +309,61 @@ def test_review_self_check_follows_builtin_and_writer_owned_guides(tmp_path, mon
         assert clients[0].turn_params[0]['sandboxPolicy']['type'] == 'readOnly'
     finally:
         manager.close()
+
+
+@pytest.mark.parametrize('action', ['craft_mckee', 'quick_critique', 'comedy_review'])
+@pytest.mark.parametrize('scene_count', [1, 3])
+def test_big_picture_contract_relaxes_rewrites_and_preserves_lane_focus(action, scene_count):
+    all_lanes = selected_review_lanes(action, None)
+    wide = scene_review_contract(action, all_lanes, scene_count=scene_count, check_plan=False, big_picture=True)
+    assert 'Give high-level feedback' in wide
+    assert 'rather than sentence-level polish' in wide
+    assert 'When you suggest a concrete rewrite' in wide
+    assert 'as text the writer can paste' not in wide
+    assert 'Stay within the selected lanes' not in wide
+    assert 'Draw freely on the wider structural principles' in wide
+
+    narrowed = scene_review_contract(action, all_lanes[:2], scene_count=scene_count, check_plan=False, big_picture=True)
+    assert 'Pay particular attention to the selected lanes:' in narrowed
+    assert 'Connect wider structural issues' in narrowed
+    assert 'Stay within the selected lanes' not in narrowed
+
+
+@pytest.mark.parametrize(('action', 'shown'), [
+    ('quick_critique', True), ('comedy_review', True), ('craft_mckee', True),
+    ('deepen_and_layer', False), ('craft_lamott', False),
+])
+@pytest.mark.parametrize('big_picture', [None, True])
+def test_big_picture_choice_reaches_prompt_receipt_and_context_inspector(tmp_path: Path, monkeypatch, action, shown, big_picture):
+    manager, cid, clients, _ = _manager(tmp_path, monkeypatch)
+    try:
+        manager.submit(cid, client_request_id='bp', question='', action_id=action,
+                       action_scope='scene', scenes=['scene.md'], review_big_picture=big_picture)
+        deadline = time.monotonic() + 3
+        while not clients[0].prompts and time.monotonic() < deadline:
+            time.sleep(.01)
+        prompt = clients[0].prompts[0]
+        message = [m for m in manager.get_snapshot(cid)['messages'] if m['role'] == 'user'][-1]
+        if not shown:
+            assert 'Format: big-picture critique' not in message['text']
+            assert message['context_sent']['big_picture'] is None
+            return
+        expected = bool(big_picture)
+        assert ('Give high-level feedback' in prompt) is expected
+        assert ('rather than sentence polish?' in prompt) is expected
+        assert ('Format: big-picture critique (Before/After optional)' in message['text']) is expected
+        assert message['context_sent']['big_picture'] is expected
+    finally:
+        manager.close()
+
+
+@pytest.mark.parametrize('value', ['on', 1, 'true'])
+def test_an_invalid_big_picture_choice_is_refused_before_a_model_request(tmp_path: Path, monkeypatch, value):
+    manager, cid, clients, _ = _manager(tmp_path, monkeypatch)
+    try:
+        with pytest.raises(ContextError):
+            manager.submit(cid, client_request_id='bad-bp', question='', action_id='craft_mckee',
+                           action_scope='scene', scenes=['scene.md'], review_big_picture=value)
+        assert not clients[0].prompts
+    finally:
+        manager.close()

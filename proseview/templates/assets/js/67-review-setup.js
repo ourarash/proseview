@@ -28,9 +28,18 @@
         function _readReviewIncludeKeepPref() {
             try { return localStorage.getItem(DISCUSS_INCLUDE_KEEP_PREF) === 'on'; } catch (e) { return false; }
         }
+        // Big-picture critique drops mandatory Before/After rewrites and widens
+        // lane framing so structural flaws surface first. Off unless enabled.
+        const DISCUSS_BIG_PICTURE_PREF = 'proseview-review-big-picture';
+        function _readReviewBigPicturePref() {
+            try { return localStorage.getItem(DISCUSS_BIG_PICTURE_PREF) === 'on'; } catch (e) { return false; }
+        }
         // Deepen offers opportunities only, and Bird by Bird's keep/assignment
         // format is the review itself.
         function discussReviewHasKeepChoice(id) {
+            return id !== 'deepen_and_layer' && id !== 'craft_lamott';
+        }
+        function discussReviewHasBigPictureChoice(id) {
             return id !== 'deepen_and_layer' && id !== 'craft_lamott';
         }
 
@@ -528,25 +537,51 @@
             var row = elementWith('discuss-review-limit-row');
             row.append(label, input, elementWith('discuss-review-limit-noun', noun));
             box.append(row, help);
+            function addReviewOptionToggle(className, id, helpId, titleText, helpText, checked, onChange) {
+                var toggle = document.createElement('label');
+                toggle.className = className;
+                var toggleInput = document.createElement('input');
+                toggleInput.type = 'checkbox'; toggleInput.id = id;
+                toggleInput.checked = !!checked;
+                toggleInput.setAttribute('aria-describedby', helpId);
+                toggleInput.onchange = function() { onChange(toggleInput.checked); };
+                var copy = elementWith('discuss-review-note-copy');
+                var title = document.createElement('strong'); title.textContent = titleText;
+                var toggleHelp = elementWith('discuss-craft-context-help', helpText);
+                toggleHelp.id = helpId;
+                copy.append(title, toggleHelp);
+                toggle.append(toggleInput, copy);
+                box.appendChild(toggle);
+            }
             if (discussReviewHasKeepChoice(guide.id)) {
-                var keep = document.createElement('label');
-                keep.className = 'discuss-review-keep-toggle';
-                var keepInput = document.createElement('input');
-                keepInput.type = 'checkbox'; keepInput.id = 'discussReviewIncludeKeep';
-                keepInput.checked = !!_discussCraftState.includeKeep;
-                keepInput.setAttribute('aria-describedby', 'discussReviewIncludeKeepHelp');
-                keepInput.onchange = function() {
-                    _discussCraftState.includeKeep = keepInput.checked;
-                    try { localStorage.setItem(DISCUSS_INCLUDE_KEEP_PREF, keepInput.checked ? 'on' : 'off'); } catch (e) {}
-                    renderDiscussTaskMode();
-                };
-                var keepCopy = elementWith('discuss-review-note-copy');
-                var keepTitle = document.createElement('strong'); keepTitle.textContent = 'Show what to keep';
-                var keepHelp = elementWith('discuss-craft-context-help', 'One or two moments that work, listed apart from the revision priorities.');
-                keepHelp.id = 'discussReviewIncludeKeepHelp';
-                keepCopy.append(keepTitle, keepHelp);
-                keep.append(keepInput, keepCopy);
-                box.appendChild(keep);
+                addReviewOptionToggle(
+                    'discuss-review-keep-toggle',
+                    'discussReviewIncludeKeep',
+                    'discussReviewIncludeKeepHelp',
+                    'Show what to keep',
+                    'One or two moments that work, listed apart from the revision priorities.',
+                    _discussCraftState.includeKeep,
+                    function(on) {
+                        _discussCraftState.includeKeep = on;
+                        try { localStorage.setItem(DISCUSS_INCLUDE_KEEP_PREF, on ? 'on' : 'off'); } catch (e) {}
+                        renderDiscussTaskMode();
+                    }
+                );
+            }
+            if (discussReviewHasBigPictureChoice(guide.id)) {
+                addReviewOptionToggle(
+                    'discuss-review-big-picture-toggle',
+                    'discussReviewBigPicture',
+                    'discussReviewBigPictureHelp',
+                    'Big-picture critique',
+                    'Focus on structure and dramatic movement; use Before/After only when suggesting a rewrite.',
+                    _discussCraftState.bigPicture,
+                    function(on) {
+                        _discussCraftState.bigPicture = on;
+                        try { localStorage.setItem(DISCUSS_BIG_PICTURE_PREF, on ? 'on' : 'off'); } catch (e) {}
+                        renderDiscussTaskMode();
+                    }
+                );
             }
             return box;
         }

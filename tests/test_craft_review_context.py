@@ -44,11 +44,12 @@ def test_craft_context_and_lane_names_reach_prompt_even_with_custom_skill(tmp_pa
         assert 'Writer-supplied story context:\nFamily drama.' in prompt
         assert 'Focus: Subtext' in prompt
         assert 'Writer instructions:\nPreserve the understatement.' in prompt
-        assert 'Available review lanes:\n- Desire\n- Resistance\n- Actions & reactions\n- Subtext\n- Change' in prompt
-        assert '**Lane: <name> — <why this finding belongs here>**' in prompt
-        assert 'for numbered and unnumbered suggestions' in prompt
-        assert 'never checklist item numbers' in prompt
-        assert prompt.index('Feedback lane labels:') > prompt.index('label each fix with checklist item numbers')
+        assert 'Selected lanes: Subtext. Report only problems in these lanes.' in prompt
+        assert '**Lane: <name> — <why>**' in prompt
+        # A writer's own skill is the editorial lens; the contract before it
+        # says its format governs the output.
+        assert 'If they conflict on format, follow this format.' in prompt
+        assert prompt.index('this format governs the output') < prompt.index('label each fix with checklist item numbers')
         assert 'STALE_CHARACTER_MARKER' not in prompt
         assert 'UNSELECTED_NEIGHBOR_MARKER' not in prompt
         assert clients[0].turn_params[0]['sandboxPolicy']['type'] == 'readOnly'
@@ -106,12 +107,11 @@ def test_review_contract_uses_the_same_principles_as_the_guide_and_covers_each_s
             assert lane['summary'] in contract
             assert lane['spot'] in contract
             focused = craft_review_contract(guide['id'], focus=lane['id'])
-            assert 'Selected focus: ' + lane_name(lane) in focused
+            assert 'Selected lanes: ' + lane_name(lane) + '.' in focused
             assert lane['summary'] in focused
         if guide['id'] != 'craft_lamott':
-            assert 'EVERY selected scene' in contract
-            assert 'concrete demonstration' in contract
-            assert 'Book-based reading' in contract
+            assert 'how the selection works as a whole' in contract
+            assert 'ready to paste' in contract
 
 
 def test_plan_check_is_off_unless_the_writer_asks():
@@ -119,12 +119,10 @@ def test_plan_check_is_off_unless_the_writer_asks():
     for guide in craft_guides():
         off = craft_review_contract(guide['id'])
         assert 'Writer-plan gap' not in off
-        assert 'Do not report\na beat, setup, or dependency' in off
-        # Story context typed for this review still informs it.
-        assert 'Writer-supplied\nstory context for this review is current' in off
+        assert 'Notes and frontmatter are background, not requirements.' in off
         on = craft_review_contract(guide['id'], check_plan=True)
         assert '**Writer-plan gap**' in on
-        assert 'Judge the drafted prose on the page' not in on
+        assert 'Notes and frontmatter are background' not in on
         # No principle quietly asks for the note check the toggle governs.
         for lane in guide['lanes']:
             assert 'notes' not in lane['spot'].lower()

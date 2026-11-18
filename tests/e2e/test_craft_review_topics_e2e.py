@@ -43,7 +43,7 @@ def test_added_craft_topic_focus_sends_guide_lane_names(page: Page, server: Pros
     assert label in requests[-1]['craft_lanes']
     assert all(not name[0].isdigit() for name in requests[-1]['craft_lanes'])
     page.locator('.discuss-craft-prompt summary').click()
-    assert 'Feedback lane labels:' in page.locator('.discuss-craft-prompt-body').inner_text()
+    assert 'Selected lanes: ' + label + '.' in page.locator('.discuss-craft-prompt-body').inner_text()
     assert label in page.locator('.discuss-craft-prompt-body').inner_text()
     assert title in page.locator('.discuss-craft-prompt-body').inner_text()
     assert 'Principle:' in page.locator('.discuss-craft-prompt-body').inner_text()
@@ -188,6 +188,49 @@ def test_a_suggested_rewrite_points_at_the_passage_it_replaces(page: Page, serve
     assert quotes.nth(1).get_attribute('data-target-path') == 'ch01/01-opening.md'
     assert quotes.nth(1).locator('.discuss-quote-line-tag').inner_text() == 'line 20'
     assert quotes.nth(2).locator('.discuss-quote-line-tag').inner_text() == 'line 26'
+
+
+def test_keep_citations_after_quotes_and_long_lead_ins_label_the_right_passage(page: Page, server: ProseviewServer):
+    # From a chapter review: Keep items cite their quote at the start of the
+    # reason below it, and a long explanation ending "Possibility:" links other
+    # scenes in passing before a rewrite of the quoted passage.
+    open_scene(page, server)
+    open_discuss(page)
+    source = (server.root / 'manuscript/ch01/01-opening.md').read_text().splitlines()
+    markdown = '\n'.join([
+        '**Keep**',
+        '',
+        f'> *{source[19]}*',
+        '',
+        '[01-opening.md · Line 20](manuscript/ch01/01-opening.md#L20). The comparison sets up the turn.',
+        '',
+        '> *A line from the next scene.*',
+        '',
+        '[02-walk.md · Line 3](manuscript/ch01/02-walk.md#L3). The cover story comes back reversed.',
+        '',
+        '### 1. A finding',
+        '',
+        f'> *{source[25]}*',
+        '',
+        '[01-opening.md · Line 26](manuscript/ch01/01-opening.md#L26)',
+        '',
+        'He never pushes back on what [02-walk.md · Line 3](manuscript/ch01/02-walk.md#L3) set up. '
+        'Replace the duplicate with a push that gives her a reason of her own. Possibility:',
+        '',
+        '> "A rewrite of the passage quoted above."',
+    ])
+    page.evaluate("""text => {
+        const parent = document.createElement('div');
+        parent.id = 'keepCitationCheck';
+        renderDiscussMarkdown(parent, text, 'ch01/01-opening.md');
+        document.getElementById('discussLog').appendChild(parent);
+    }""", markdown)
+    quotes = page.locator('#keepCitationCheck blockquote')
+    assert quotes.nth(0).get_attribute('data-target-line') == '20'
+    assert quotes.nth(1).get_attribute('data-target-path') == 'ch01/02-walk.md'
+    assert quotes.nth(1).get_attribute('data-target-line') == '3'
+    assert quotes.nth(3).get_attribute('data-target-path') == 'ch01/01-opening.md'
+    assert quotes.nth(3).get_attribute('data-target-line') == '26'
 
 
 def test_update_from_scene_button_opens_discuss_sends_update_frontmatter_and_keeps_chat_open(page: Page, server: ProseviewServer):

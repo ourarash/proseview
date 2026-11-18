@@ -19,3 +19,5 @@ need not contain a complete dramatic unit; locate connections in supplied
 neighboring scenes. With a confirmed genre, explain which relevant reader
 promise this scene prepares, develops, or fulfills. Assess whole-story
 obligations only when the supplied coverage supports that judgment.
+
+Then fix what you find: each problem ends in text the writer can paste.

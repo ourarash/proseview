@@ -3,7 +3,7 @@ name: deepen_and_layer
 description: Add unspoken tension, physical micro-business, and emotional resonance in 2–3 key beats.
 ---
 
-Identify 2–3 moments in this text that feel thin, rushed, or purely surface-level, and deepen their emotional and narrative resonance:
+Find the moments in this text that feel thin, rushed, or purely surface-level, and deepen their emotional and narrative resonance:
 
 1. Subtext & Friction: Where dialogue or interaction is too straightforward—add unspoken tension, avoidance, deflection, or a gap between what a character says and what they do.
 2. Physical Anchoring & Micro-Business: Ground an emotional beat in tangible action (props, sensory details, physical reactions, loaded pauses) that shows internal state without explaining feelings.

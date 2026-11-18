@@ -5,8 +5,7 @@ import json
 from pathlib import Path
 
 from .craft import (
-    _PLAN_CHECK_OFF, _PLAN_CHECK_ON, ABSENCE_RULE, DEFAULT_MAX_FINDINGS, KEEP_RULE, MAX_FINDINGS_LIMIT,
-    craft_guide, craft_review_contract, findings_limit_rule, lane_name,
+    DEFAULT_MAX_FINDINGS, MAX_FINDINGS_LIMIT, craft_guide, craft_review_contract, lane_name, review_contract,
 )
 
 
@@ -64,86 +63,53 @@ def scene_review_contract(
     action_id: str, lanes: list[dict], *, scene_count: int, check_plan: bool,
     comedy_styles: list[str] | None = None, comedy_goal: str | None = None,
     comedy_goals: list[str] | None = None, max_findings: int = DEFAULT_MAX_FINDINGS,
+    include_keep: bool = False,
 ) -> str:
     if action_id.startswith("craft_"):
         return craft_review_contract(action_id, focus=lanes[0]["id"] if len(lanes) == 1 else "",
                                      scene_count=scene_count, check_plan=check_plan,
-                                     lane_ids=[lane["id"] for lane in lanes], max_findings=max_findings)
-    lines = [
-        "Shared scene review requirements:",
-        "Review the supplied scenes in order. Do not modify files. Respect the writer's purpose, "
-        "voice, viewpoint, genre, and established facts. Frontmatter, beat maps, titles, and TODO/NOTE "
-        "annotations are background, not narrative prose. Distinguish the prose from supplied notes "
-        "and from your interpretation. Do not invent missing context or assume that unselected scenes "
-        "fail to bridge a gap.",
-        _PLAN_CHECK_ON if check_plan else _PLAN_CHECK_OFF,
-        "Selected review lanes: " + "; ".join(lane_name(lane) for lane in lanes) + ". "
-        "Only these lanes may produce suggestions; other topics can inform the reading without becoming extra audits.",
-        "For each numbered finding or suggestion, add a brief **Lane: <name> — <why this belongs here>** "
-        "line using the selected lane's exact name. Use **Lanes:** with at most two selected names when needed.",
-        "Quote the smallest complete original passage exactly in an italicized blockquote. Link it to its "
-        "supplied repository-relative file and numbered source line, such as "
-        "[scene.md · Line 18](manuscript/scene.md#L18). Numeric prefixes label lines; omit them from quotations. "
-        "Do not abbreviate evidence with ellipses or invent a passage or line number. For a missing beat, "
-        "cite an existing insertion point. Adjacent excerpts are background, not source-line citations.",
-        "Explain the reader effect in plain English. Give a specific revision action and an optional "
-        "drop-in replacement in a plain blockquote. For a structural issue, show a concrete possible beat "
-        "or before/after sequence. Label new story material as a possibility. 'Clarify the stakes' alone "
-        "is not a useful fix. Preserve useful restraint and do not rewrite a whole scene.",
-        ABSENCE_RULE,
-    ]
-    if scene_count > 1:
-        lines.append("Before the suggestions, show one compact coverage table row for EVERY selected scene, "
-                     "in manuscript order: Scene | Selected-lane reading | Source line. Describe what is "
-                     "present or mark insufficient evidence. A row establishes coverage, not a quota of problems.")
+                                     lane_ids=[lane["id"] for lane in lanes], max_findings=max_findings,
+                                     include_keep=include_keep)
+    shared = {"scene_count": scene_count, "max_findings": max_findings, "check_plan": check_plan}
+    lines: list[str] = []
     if action_id == "comedy_review":
         styles, goals = comedy_review_options(comedy_styles, comedy_goal, goals=comedy_goals)
         goal_labels = {
             "strengthen": "**Type: Strengthen existing humor**",
             "explore": "**Type: Comic opportunity**",
         }
-        goal_types = " or ".join(goal_labels[goal["id"]] for goal in goals)
         lines.extend([
+            review_contract(**shared, include_keep=include_keep,
+                            goal="Find where the comedy in this {scope} most needs work or has the best new "
+                                 "chance, and write each {item} as text the writer can paste."),
             "Selected comedy review goals: " + "; ".join(goal["label"] for goal in goals) + ". "
-            "Apply only the selected goals, with up to " + str(max_findings) + " priorities TOTAL across all selected goals and scenes. "
-            "Label each finding " + goal_types + ". "
-            + ("Assess existing humor and suggest new opportunities in one combined review. " if len(goals) > 1 else "")
-            + "An opportunity is an optional addition, not evidence that the original passage failed.",
-            "Comic styles guide how you evaluate the selected lanes; they do not select additional lanes. "
-            "When no style is selected, follow the draft's existing register, including any darkness or sarcasm already present.",
-            "Begin with a brief Comic reading grounded in supplied lines: the comic idea or perspective, "
-            "the recognizable pressure, and the expectation or contrast. Include only aspects relevant to selected lanes. "
-            "Separate an interpretation of existing humor from an optional new comic direction.",
-            KEEP_RULE,
-            "Give up to " + str(max_findings) + " distinct Revision priorities "
-            "across the entire selection. For each, identify the technique and explain what the reader expects, "
-            "what changes, and the exact words or action affecting that change. Follow with a concrete optional "
-            "replacement or beat sequence in the scene's voice, and explain the difference. Remove vague instructions "
-            "such as 'make this funnier' or 'heighten the absurdity' unless you demonstrate the actual revision.",
-            "Truth + pain is a starting point, not a scale on which more suffering earns more laughs. "
-            "Playing it straight, using three beats, adding specific detail, or ending on a punch word are techniques "
-            "to judge in context. Do not mechanically impose them. Keep the needed setup, speaker clarity, pauses, "
-            "and aftermath. Heighten through consequence or commitment when appropriate, not just louder or darker wording.",
-            "For a callback, connect the earlier seed to its changed later use with source links. "
-            "If its setup or payoff lies outside the supplied scenes, identify what remains unverified. "
-            "Do not invent a missing callback as a defect.",
-            "Distinguish the speaker, the target of the joke, and the story's apparent stance. "
-            "Explain competing readings when they matter without assuming the writer's beliefs. "
-            "Preserve intentional bitterness, discomfort, and emotional stakes. Assess craft and likely reader effects; "
-            "do not promise laughter, give numerical funniness scores, or present benign violation as a universal law.",
+            "The limit covers all selected goals together. Under each heading, label the finding "
+            + " or ".join(goal_labels[goal["id"]] for goal in goals) + ". "
+            "An opportunity is an optional addition, not evidence that the passage failed; "
+            "cite its insertion point.",
+            "Comic styles guide how you judge the selected lanes; they do not select more lanes. "
+            "With no style selected, follow the draft's own register.",
+            "You may open with a brief Comic reading: the comic idea, the pressure beneath it, and "
+            "the expectation the reader is invited to notice.",
+            "Truth + pain, playing it straight, three beats, specific detail, and a final punch word are "
+            "techniques to judge in context, not rules. Distinguish the speaker, the target of the joke, and "
+            "the story's apparent stance. Preserve intended discomfort and consequences. Do not promise "
+            "laughter or give numerical funniness scores.",
         ])
         lines.extend("Selected review goal: " + goal["label"] + ". " + goal["prompt"] for goal in goals)
         lines.extend("Selected comic style: " + style["label"] + ". " + style["prompt"] for style in styles)
     elif action_id == "deepen_and_layer":
-        lines.append("Offer up to " + str(max_findings) + " useful opportunities across the entire selection, with the biggest "
-                     "benefit first. Develop the scene's existing action rather than manufacturing tension, "
-                     "extra gestures, or larger stakes. Show enough of each proposed expansion to judge it in context.")
+        lines.extend([
+            # Deepen offers opportunities, not faults, so it has no Keep list.
+            review_contract(**shared, include_keep=False, item="opportunity",
+                            goal="Find the moments in this {scope} that most need deepening, and write "
+                                 "each {item} out as an expansion the writer can paste."),
+            "Develop the scene's existing action rather than adding tension, gestures, or stakes it doesn't need.",
+        ])
     else:
-        lines.append(KEEP_RULE)
-        lines.append("Then give up to " + str(max_findings) + " distinct "
-                     "revision priorities across the entire selection, ordered by reader impact. Remove abstract "
-                     "or marginal notes. Do not force a quota of problems.")
-    lines.append(findings_limit_rule(max_findings, "opportunities" if action_id == "deepen_and_layer" else "revision priorities"))
+        lines.append(review_contract(**shared, include_keep=include_keep))
+    lines.append("Selected lanes: " + "; ".join(lane_name(lane) for lane in lanes)
+                 + ". Report only problems in these lanes.")
     lines.append("Selected principles and what to look for:")
     for lane in lanes:
         lines.append(f"{lane_name(lane)} — {lane['title']}\nPrinciple: {lane['summary']}\nLook for: {lane['spot']}")

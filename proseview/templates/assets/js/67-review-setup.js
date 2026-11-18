@@ -8,9 +8,31 @@
         ];
 
         // One cap on revision priorities for every review card. Customize
-        // changes it for a single review; Bird by Bird keeps one assignment.
+        // changes it, and the choice is remembered; a card's Run now keeps the
+        // default. Bird by Bird keeps one assignment.
         const DISCUSS_DEFAULT_MAX_FINDINGS = 5;
-        const DISCUSS_MAX_FINDINGS_LIMIT = 8;
+        const DISCUSS_MAX_FINDINGS_LIMIT = 20;
+        const DISCUSS_MAX_FINDINGS_PREF = 'proseview-review-max-findings';
+
+        function _readReviewMaxFindingsPref() {
+            try {
+                var saved = Number(localStorage.getItem(DISCUSS_MAX_FINDINGS_PREF));
+                if (Number.isInteger(saved) && saved >= 1 && saved <= DISCUSS_MAX_FINDINGS_LIMIT) return saved;
+            } catch (e) {}
+            return DISCUSS_DEFAULT_MAX_FINDINGS;
+        }
+
+        // A separate Keep list of what works. Off unless the writer turns it on
+        // in Customize; shared by every card that has one and remembered.
+        const DISCUSS_INCLUDE_KEEP_PREF = 'proseview-review-include-keep';
+        function _readReviewIncludeKeepPref() {
+            try { return localStorage.getItem(DISCUSS_INCLUDE_KEEP_PREF) === 'on'; } catch (e) { return false; }
+        }
+        // Deepen offers opportunities only, and Bird by Bird's keep/assignment
+        // format is the review itself.
+        function discussReviewHasKeepChoice(id) {
+            return id !== 'deepen_and_layer' && id !== 'craft_lamott';
+        }
 
         function discussReviewMode() {
             return DISCUSS_REVIEW_MODES.find(function(mode) { return mode.id === _discussCraftState.modeId; }) || DISCUSS_REVIEW_MODES[2];
@@ -97,6 +119,7 @@
             addRow('Scene details', flag('includeFrontmatter'), 'Fields such as goal, conflict, and outcome.');
             addRow('Nearby scenes', flag('includeAdjacent'), 'Short excerpts from the scenes immediately before and after.');
             addRow('Revision priorities', 'Up to ' + DISCUSS_DEFAULT_MAX_FINDINGS, 'Most important first. Change the number in Customize.');
+            addRow('Keep list', 'Off', 'To list moments that work apart from the priorities, turn on “Show what to keep” in Customize.');
             addRow('Check planned events', 'Off', 'Notes provide background. To check for missing events, turn on “Check my notes for planned beats” in Customize.');
             body.append(rows, elementWith('discuss-review-info-note', error
                 ? 'Could not load Discuss settings. Close and reopen this information to retry.'
@@ -147,6 +170,11 @@
             });
         }
 
+        function toggleDiscussReviewCards() {
+            if (_discussCraftState.cardsOpen) closeDiscussReviewCards();
+            else openDiscussReviewCards();
+        }
+
         function openDiscussReviewCards() {
             closeDiscussCraftInfoDialog();
             leaveDiscussReviewSetup();
@@ -171,6 +199,7 @@
 
         function renderDiscussReviewCardPicker(container) {
             var picker = elementWith('discuss-empty discuss-review-container discuss-review-card-picker');
+            picker.id = 'discussReviewCardPicker';
             var head = elementWith('discuss-craft-head');
             var back = document.createElement('button');
             back.type = 'button';
@@ -479,19 +508,46 @@
             input.min = '1'; input.max = String(DISCUSS_MAX_FINDINGS_LIMIT); input.step = '1';
             input.value = String(_discussCraftState.maxFindings);
             input.setAttribute('aria-describedby', 'discussReviewMaxFindingsHelp');
+            var helpText = 'Most important first. The review gives fewer when fewer earn their place. Default '
+                + DISCUSS_DEFAULT_MAX_FINDINGS + ', most ' + DISCUSS_MAX_FINDINGS_LIMIT + '.';
+            var help = elementWith('discuss-craft-context-help', helpText);
+            help.id = 'discussReviewMaxFindingsHelp';
             input.onchange = function() {
-                var value = Math.round(Number(input.value));
-                if (!isFinite(value)) value = DISCUSS_DEFAULT_MAX_FINDINGS;
+                var typed = Math.round(Number(input.value));
+                var value = isFinite(typed) && input.value !== '' ? typed : DISCUSS_DEFAULT_MAX_FINDINGS;
                 value = Math.min(DISCUSS_MAX_FINDINGS_LIMIT, Math.max(1, value));
                 input.value = String(value);
                 _discussCraftState.maxFindings = value;
+                try { localStorage.setItem(DISCUSS_MAX_FINDINGS_PREF, String(value)); } catch (e) {}
                 renderDiscussTaskMode();
+                // Say so when the number typed is not the number that will be used.
+                help.textContent = typed > DISCUSS_MAX_FINDINGS_LIMIT
+                    ? 'The most a review can give is ' + DISCUSS_MAX_FINDINGS_LIMIT + ', so it is set to ' + DISCUSS_MAX_FINDINGS_LIMIT + '.'
+                    : typed < 1 ? 'A review gives at least 1, so it is set to 1.' : helpText;
             };
             var row = elementWith('discuss-review-limit-row');
             row.append(label, input, elementWith('discuss-review-limit-noun', noun));
-            var help = elementWith('discuss-craft-context-help', 'Most important first. The review gives fewer when fewer earn their place. Default ' + DISCUSS_DEFAULT_MAX_FINDINGS + '.');
-            help.id = 'discussReviewMaxFindingsHelp';
             box.append(row, help);
+            if (discussReviewHasKeepChoice(guide.id)) {
+                var keep = document.createElement('label');
+                keep.className = 'discuss-review-keep-toggle';
+                var keepInput = document.createElement('input');
+                keepInput.type = 'checkbox'; keepInput.id = 'discussReviewIncludeKeep';
+                keepInput.checked = !!_discussCraftState.includeKeep;
+                keepInput.setAttribute('aria-describedby', 'discussReviewIncludeKeepHelp');
+                keepInput.onchange = function() {
+                    _discussCraftState.includeKeep = keepInput.checked;
+                    try { localStorage.setItem(DISCUSS_INCLUDE_KEEP_PREF, keepInput.checked ? 'on' : 'off'); } catch (e) {}
+                    renderDiscussTaskMode();
+                };
+                var keepCopy = elementWith('discuss-review-note-copy');
+                var keepTitle = document.createElement('strong'); keepTitle.textContent = 'Show what to keep';
+                var keepHelp = elementWith('discuss-craft-context-help', 'One or two moments that work, listed apart from the revision priorities.');
+                keepHelp.id = 'discussReviewIncludeKeepHelp';
+                keepCopy.append(keepTitle, keepHelp);
+                keep.append(keepInput, keepCopy);
+                box.appendChild(keep);
+            }
             return box;
         }
 

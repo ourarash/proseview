@@ -19,3 +19,5 @@ purposeful development. Identify what the scene sets in motion: a next action,
 obligation, risk, or changed choice. Connect it to supplied later material or an
 explicit writer-plan dependency. If neither is available, mark the proposed
 consequence as a possibility rather than inventing a future event.
+
+Then fix what you find: each problem ends in text the writer can paste.

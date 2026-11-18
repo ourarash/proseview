@@ -401,9 +401,14 @@ def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, serv
     assert noun in page.locator('.discuss-review-limit-row').inner_text()
     cap.fill('12')
     cap.press('Tab')
-    assert cap.input_value() == '8'  # The largest cap the prompt allows.
+    assert cap.input_value() == '12'
+    cap.fill('25')
+    cap.press('Tab')
+    assert cap.input_value() == '20'  # The largest cap the prompt allows, and the writer is told.
+    assert 'The most a review can give is 20' in page.locator('#discussReviewMaxFindingsHelp').inner_text()
     cap.fill('2')
     cap.press('Tab')
+    assert 'Default 5' in page.locator('#discussReviewMaxFindingsHelp').inner_text()
     assert 'Up to 2' in page.locator('#discussTaskMode').inner_text()
     page.locator('#discussSend').click()
     wait_for_discuss_answer(page, 'Fake answer')
@@ -416,6 +421,39 @@ def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, serv
     page.get_by_role('button', name='Run ' + label + ' with defaults', exact=True).click()
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
     assert requests[-1]['review_max_findings'] == 5
+    # The writer's cap survives a reload.
+    wait_for_discuss_idle(page)
+    page.reload()
+    page.wait_for_function("() => typeof _discussCraftState === 'object'")
+    assert page.evaluate('_discussCraftState.maxFindings') == 2
+
+
+def test_show_what_to_keep_is_off_by_default_remembered_and_left_out_of_run_now(page: Page, server: ProseviewServer):
+    requests = []
+    page.on('request', lambda request: requests.append(request.post_data_json)
+            if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
+    open_review(page, server, 'Deepen & layer')
+    assert not page.locator('#discussReviewIncludeKeep').count()  # Deepen offers opportunities only.
+    customize_review(page, 'Quick critique')
+    keep = page.locator('#discussReviewIncludeKeep')
+    assert not keep.is_checked()
+    keep.check()
+    assert 'Keep list' in page.locator('#discussTaskMode').inner_text()
+    page.locator('#discussSend').click()
+    wait_for_discuss_answer(page, 'Fake answer')
+    assert requests[-1]['review_include_keep'] is True
+    assert 'Keep: list what to preserve' in page.locator('.discuss-craft-request-summary').last.inner_text()
+    wait_for_discuss_idle(page)
+    # The card's Run now keeps the default.
+    page.locator('#discussCraftButton').click()
+    page.get_by_role('button', name='Run Quick critique with defaults', exact=True).click()
+    page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
+    assert requests[-1]['review_include_keep'] is False
+    assert 'Keep: off' in page.locator('.discuss-craft-request-summary').last.inner_text()
+    wait_for_discuss_idle(page)
+    page.reload()
+    page.wait_for_function("() => typeof _discussCraftState === 'object'")
+    assert page.evaluate('_discussCraftState.includeKeep') is True
 
 
 def test_bird_by_bird_explains_it_has_no_priority_cap(page: Page, server: ProseviewServer):

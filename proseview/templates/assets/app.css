@@ -4011,6 +4011,8 @@
             font-family: Inter, system-ui, sans-serif;
             font-size: 13px;
             line-height: 1.5;
+            overflow-wrap: break-word;
+            word-break: normal;
         }
 
         .repo-preview-body .md-table-scroll th,
@@ -4022,6 +4024,8 @@
             text-align: left;
             vertical-align: top;
             white-space: normal;
+            overflow-wrap: break-word;
+            word-break: normal;
         }
 
         .repo-preview-body .md-table-scroll th,
@@ -4029,11 +4033,63 @@
             background: var(--surface-muted);
             color: var(--text-main);
             font-weight: 600;
+            overflow-wrap: normal;
         }
 
         .repo-preview-body .md-table-scroll tbody tr:nth-child(even),
         .discuss-message .md-table-scroll tbody tr:nth-child(even) {
             background: var(--surface-muted);
+        }
+
+        /* Chat cards are narrow and inherit `overflow-wrap: anywhere`; keep
+           Markdown tables clean with an outer rounded frame, subtle dividers,
+           and minimum column widths on 3+ column tables so labels aren't
+           crushed mid-word. */
+        .discuss-message .md-table-scroll {
+            margin: 12px 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-card);
+        }
+
+        .discuss-message .md-table-scroll table {
+            font-size: 12px;
+            line-height: 1.48;
+        }
+
+        .discuss-message .md-table-scroll th,
+        .discuss-message .md-table-scroll td {
+            border: 0;
+            border-bottom: 1px solid var(--border);
+            padding: 8px 11px;
+        }
+
+        .discuss-message .md-table-scroll th:not(:last-child),
+        .discuss-message .md-table-scroll td:not(:last-child) {
+            border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+        }
+
+        .discuss-message .md-table-scroll th {
+            font-size: 11.5px;
+            letter-spacing: 0.01em;
+        }
+
+        .discuss-message .md-table-scroll tbody tr:nth-child(even) {
+            background: color-mix(in srgb, var(--surface-muted) 45%, transparent);
+        }
+
+        .discuss-message .md-table-scroll tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .discuss-message .md-table-scroll table:has(th:nth-child(3)) th:first-child,
+        .discuss-message .md-table-scroll table:has(th:nth-child(3)) td:first-child {
+            min-width: 96px;
+        }
+
+        .discuss-message .md-table-scroll table:has(th:nth-child(3)) th:not(:first-child),
+        .discuss-message .md-table-scroll table:has(th:nth-child(3)) td:not(:first-child) {
+            min-width: 150px;
         }
 
         .repo-preview-body hr,
@@ -6012,7 +6068,7 @@
             text-align: left;
         }
 
-        .discuss-continuity-tools > summary {
+        .discuss-continuity-tools>summary {
             padding: 6px 0;
             color: var(--text-muted);
             font-size: 12px;
@@ -6071,8 +6127,14 @@
             line-height: 1.4;
         }
 
-        .discuss-empty.discuss-review-landing { max-width: none; margin: 8px 4px 0; }
-        .discuss-review-cards-help + .discuss-story-actions { margin-top: 0; }
+        .discuss-empty.discuss-review-landing {
+            max-width: none;
+            margin: 8px 4px 0;
+        }
+
+        .discuss-review-cards-help+.discuss-story-actions {
+            margin-top: 0;
+        }
 
         .discuss-review-card {
             position: relative;
@@ -6139,13 +6201,43 @@
             cursor: pointer;
         }
 
-        .discuss-review-customize:hover, .discuss-review-customize:focus-visible { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
-        .discuss-review-customize:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
-        .discuss-review-customize:disabled, .discuss-review-run:disabled { opacity: .6; cursor: wait; }
+        .discuss-review-customize:hover,
+        .discuss-review-customize:focus-visible {
+            color: var(--primary);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
 
-        .discuss-review-heading { display: flex; align-items: center; gap: 5px; margin: 14px 0 6px; }
-        .discuss-review-heading .discuss-story-group { margin: 0; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--text-main); }
-        .discuss-craft-head > .discuss-review-heading { margin: 0; }
+        .discuss-review-customize:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: -3px;
+        }
+
+        .discuss-review-customize:disabled,
+        .discuss-review-run:disabled {
+            opacity: .6;
+            cursor: wait;
+        }
+
+        .discuss-review-heading {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin: 14px 0 6px;
+        }
+
+        .discuss-review-heading .discuss-story-group {
+            margin: 0;
+            font-size: 14px;
+            letter-spacing: normal;
+            text-transform: none;
+            color: var(--text-main);
+        }
+
+        .discuss-craft-head>.discuss-review-heading {
+            margin: 0;
+        }
+
         .discuss-review-info-trigger {
             display: inline-flex;
             align-items: center;
@@ -6161,8 +6253,17 @@
             font-size: 13px;
             cursor: pointer;
         }
-        .discuss-review-info-trigger:hover, .discuss-review-info-trigger[aria-expanded="true"] { color: var(--primary); }
-        .discuss-review-info-trigger:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+        .discuss-review-info-trigger:hover,
+        .discuss-review-info-trigger[aria-expanded="true"] {
+            color: var(--primary);
+        }
+
+        .discuss-review-info-trigger:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
+        }
+
         .discuss-review-info-popover {
             position: fixed;
             box-sizing: border-box;
@@ -6178,8 +6279,15 @@
             font-size: 12px;
             line-height: 1.5;
         }
-        .discuss-review-info-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .discuss-review-info-head > button {
+
+        .discuss-review-info-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .discuss-review-info-head>button {
             flex-shrink: 0;
             width: 26px;
             height: 26px;
@@ -6191,41 +6299,107 @@
             font-size: 20px;
             cursor: pointer;
         }
-        .discuss-review-info-head > button:hover { color: var(--primary); }
-        .discuss-review-info-head > button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
-        .discuss-review-info-body dl { margin: 9px 0; }
-        .discuss-review-info-row { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-        .discuss-review-info-row:last-child { border-bottom: 0; }
-        .discuss-review-info-row dt { font-weight: 600; }
-        .discuss-review-info-row dd { margin: 0; }
+
+        .discuss-review-info-head>button:hover {
+            color: var(--primary);
+        }
+
+        .discuss-review-info-head>button:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
+        }
+
+        .discuss-review-info-body dl {
+            margin: 9px 0;
+        }
+
+        .discuss-review-info-row {
+            display: grid;
+            grid-template-columns: 105px minmax(0, 1fr);
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .discuss-review-info-row:last-child {
+            border-bottom: 0;
+        }
+
+        .discuss-review-info-row dt {
+            font-weight: 600;
+        }
+
+        .discuss-review-info-row dd {
+            margin: 0;
+        }
+
         .discuss-review-info-note {
             margin-top: 3px;
             color: var(--text-muted);
             font-size: 11px;
             line-height: 1.5;
         }
-        @media (max-width: 600px) { .discuss-review-customize { min-height: 36px; bottom: 6px; } }
+
+        @media (max-width: 600px) {
+            .discuss-review-customize {
+                min-height: 36px;
+                bottom: 6px;
+            }
+        }
 
         .discuss-craft-setup {
             text-align: left;
             display: grid;
             gap: 10px;
         }
+
         .discuss-empty.discuss-review-container {
             max-width: none;
             margin: 8px 4px 0;
         }
-        .discuss-craft-setup > .discuss-craft-context-help { margin: 0 0 6px; font-size: 12px; }
-        .discuss-craft-ai-grid:has(> :only-child) { grid-template-columns: 1fr; }
 
-        .discuss-review-limit { margin: 8px 0 4px; }
-        .discuss-review-limit .discuss-craft-context-help { margin: 4px 0 0; font-size: 12px; }
-        .discuss-review-limit-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main, inherit); }
-        .discuss-review-limit-row input {
-            width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
-            background: var(--surface-card); color: inherit; font: inherit; text-align: center;
+        .discuss-craft-setup>.discuss-craft-context-help {
+            margin: 0 0 6px;
+            font-size: 12px;
         }
-        .discuss-review-limit-row input:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 1px; }
+
+        .discuss-craft-ai-grid:has(> :only-child) {
+            grid-template-columns: 1fr;
+        }
+
+        .discuss-review-limit {
+            margin: 8px 0 4px;
+        }
+
+        .discuss-review-limit .discuss-craft-context-help {
+            margin: 4px 0 0;
+            font-size: 12px;
+        }
+
+        .discuss-review-limit-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-main, inherit);
+        }
+
+        .discuss-review-limit-row input {
+            width: 56px;
+            padding: 4px 6px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-card);
+            color: inherit;
+            font: inherit;
+            text-align: center;
+        }
+
+        .discuss-review-limit-row input:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 1px;
+        }
+
         .discuss-craft-focus-box {
             position: relative;
         }
@@ -6425,7 +6599,7 @@
             font-weight: 600;
         }
 
-        .discuss-craft-another-example > summary {
+        .discuss-craft-another-example>summary {
             cursor: pointer;
             font-weight: 600;
             line-height: 1.5;
@@ -6468,10 +6642,27 @@
             resize: vertical;
         }
 
-        .discuss-comedy-options { display: grid; gap: 8px; min-width: 0; }
-        .discuss-comedy-options > strong { font-size: 12px; }
-        .discuss-comedy-options .discuss-craft-context-help { margin: 0 0 4px; font-size: 12px; }
-        .discuss-comedy-styles { display: flex; flex-wrap: wrap; gap: 6px; }
+        .discuss-comedy-options {
+            display: grid;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .discuss-comedy-options>strong {
+            font-size: 12px;
+        }
+
+        .discuss-comedy-options .discuss-craft-context-help {
+            margin: 0 0 4px;
+            font-size: 12px;
+        }
+
+        .discuss-comedy-styles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
         .discuss-comedy-style {
             display: flex;
             align-items: center;
@@ -6480,20 +6671,74 @@
             border-radius: 7px;
             padding: 5px 7px;
         }
+
         .discuss-comedy-style:has(input:checked) {
             border-color: var(--primary);
             background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
         }
-        .discuss-comedy-style label { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
-        .discuss-comedy-style input { margin: 0; accent-color: var(--primary); }
-        .discuss-comedy-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-        .discuss-comedy-goal { display: flex; min-width: 0; font-size: 12px; line-height: 1.4; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
-        .discuss-comedy-goal input { margin: 0; flex-shrink: 0; accent-color: var(--primary); }
-        .discuss-comedy-summary { flex-basis: 100%; font-size: 11px; color: var(--text-muted); }
-        .discuss-review-sources > summary { cursor: pointer; font-weight: 600; }
-        .discuss-review-source { margin-top: 12px; }
-        .discuss-review-source a { font-size: 12px; color: var(--primary); }
-        .discuss-review-selected-scenes { display: flex; flex-wrap: wrap; gap: 5px; }
+
+        .discuss-comedy-style label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .discuss-comedy-style input {
+            margin: 0;
+            accent-color: var(--primary);
+        }
+
+        .discuss-comedy-goals {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .discuss-comedy-goal {
+            display: flex;
+            min-width: 0;
+            font-size: 12px;
+            line-height: 1.4;
+            flex-direction: row;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+        }
+
+        .discuss-comedy-goal input {
+            margin: 0;
+            flex-shrink: 0;
+            accent-color: var(--primary);
+        }
+
+        .discuss-comedy-summary {
+            flex-basis: 100%;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .discuss-review-sources>summary {
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .discuss-review-source {
+            margin-top: 12px;
+        }
+
+        .discuss-review-source a {
+            font-size: 12px;
+            color: var(--primary);
+        }
+
+        .discuss-review-selected-scenes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
         .discuss-review-selected-scene {
             max-width: 100%;
             padding: 3px 6px;
@@ -6502,7 +6747,12 @@
             font-size: 11px;
             overflow-wrap: anywhere;
         }
-        .discuss-review-lane-copy { flex: 1; min-width: 0; }
+
+        .discuss-review-lane-copy {
+            flex: 1;
+            min-width: 0;
+        }
+
         .discuss-review-lane-check {
             box-sizing: border-box;
             width: 13px;
@@ -6515,11 +6765,13 @@
             text-align: center;
             flex-shrink: 0;
         }
-        .is-selected > .discuss-craft-focus-option-pick .discuss-review-lane-check {
+
+        .is-selected>.discuss-craft-focus-option-pick .discuss-review-lane-check {
             background: var(--primary);
             border-color: var(--primary);
             color: var(--surface-card);
         }
+
         .discuss-review-focus-footer {
             display: flex;
             align-items: center;
@@ -6528,8 +6780,16 @@
             border-top: 1px solid var(--border);
             padding: 7px 2px 2px;
         }
-        .discuss-review-focus-footer .discuss-secondary { padding: 4px 7px; font-size: 11px; }
-        .discuss-review-focus-footer .discuss-craft-hint { font-size: 11px; }
+
+        .discuss-review-focus-footer .discuss-secondary {
+            padding: 4px 7px;
+            font-size: 11px;
+        }
+
+        .discuss-review-focus-footer .discuss-craft-hint {
+            font-size: 11px;
+        }
+
         .discuss-craft-notes-row:has(.discuss-review-note-copy) {
             display: grid;
             gap: 0;
@@ -6537,16 +6797,37 @@
             border: 1px solid var(--border);
             border-radius: 7px;
         }
+
         .discuss-craft-note-toggle:has(.discuss-review-note-copy) {
             align-items: flex-start;
             padding: 10px 0;
             white-space: normal;
         }
-        .discuss-craft-note-toggle:has(.discuss-review-note-copy) + .discuss-craft-note-toggle { border-top: 1px solid var(--border); }
-        .discuss-craft-note-toggle.is-disabled { opacity: .55; cursor: default; }
-        .discuss-review-note-copy { flex: 1; min-width: 0; }
-        .discuss-review-note-copy strong { font-size: 12px; margin: 0; }
-        .discuss-review-note-copy .discuss-craft-context-help { margin: 4px 0 0; font-size: 11px; }
+
+        .discuss-craft-note-toggle:has(.discuss-review-note-copy)+.discuss-craft-note-toggle {
+            border-top: 1px solid var(--border);
+        }
+
+        .discuss-craft-note-toggle.is-disabled {
+            opacity: .55;
+            cursor: default;
+        }
+
+        .discuss-review-note-copy {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .discuss-review-note-copy strong {
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .discuss-review-note-copy .discuss-craft-context-help {
+            margin: 4px 0 0;
+            font-size: 11px;
+        }
+
         .discuss-craft-story-context select {
             width: 100%;
             box-sizing: border-box;
@@ -6558,8 +6839,15 @@
             color: var(--text-main);
             font: inherit;
         }
-        .discuss-review-scene-dialog { max-width: calc(100vw - 24px); }
-        .discuss-review-scene-dialog .discuss-craft-dialog-head h2 { margin: 0; }
+
+        .discuss-review-scene-dialog {
+            max-width: calc(100vw - 24px);
+        }
+
+        .discuss-review-scene-dialog .discuss-craft-dialog-head h2 {
+            margin: 0;
+        }
+
         #discussReviewSceneSearch {
             box-sizing: border-box;
             width: 100%;
@@ -6570,16 +6858,56 @@
             color: var(--text-main);
             font: inherit;
         }
-        .discuss-review-scene-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-        .discuss-review-picker-chapter { margin: 18px 0 8px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
-        .discuss-review-picker-copy { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-        .discuss-review-scene-choices .discuss-craft-custom-item { align-items: center; padding: 10px 3px; }
-        .discuss-review-scene-choices .discuss-craft-custom-words { white-space: nowrap; }
+
+        .discuss-review-scene-tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .discuss-review-picker-chapter {
+            margin: 18px 0 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .discuss-review-picker-copy {
+            min-width: 0;
+            flex: 1;
+            overflow-wrap: anywhere;
+        }
+
+        .discuss-review-scene-choices .discuss-craft-custom-item {
+            align-items: center;
+            padding: 10px 3px;
+        }
+
+        .discuss-review-scene-choices .discuss-craft-custom-words {
+            white-space: nowrap;
+        }
 
         .discuss-craft-launch {
-            margin-bottom: 7px;
-            padding: 4px 8px;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            width: auto;
+            min-width: 22px;
+            padding: 0 4px;
+            font: inherit;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .discuss-craft-launch[aria-expanded="true"] svg {
+            transform: rotate(180deg);
+        }
+
+        @container (max-width: 480px) {
+            .discuss-craft-launch-label {
+                display: none;
+            }
         }
 
         .discuss-craft-request-summary p {
@@ -7696,6 +8024,15 @@
         .discuss-message a.discuss-line-ref:focus-visible {
             outline: 1.5px solid color-mix(in srgb, var(--primary) 50%, transparent);
             outline-offset: 1px;
+        }
+
+        .discuss-message .md-table-scroll a[data-prosview-line],
+        .discuss-message .md-table-scroll a.discuss-line-ref {
+            font-size: 0.88em;
+            line-height: 1.3;
+            padding: 0 4px;
+            margin: 0 1px;
+            white-space: nowrap;
         }
 
         .discuss-task {

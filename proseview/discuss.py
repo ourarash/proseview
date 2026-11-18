@@ -1808,6 +1808,21 @@ def _selection_fingerprint(
 
 
 
+def _review_include_keep(value: Any) -> bool:
+    """Whether a review lists moments to keep. Off unless the writer turns it on."""
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise ContextError("the Keep choice must be on or off")
+    return value
+
+
+def _keeps_list(action_id: str) -> bool:
+    """Review cards with an optional Keep list. Deepen offers opportunities only,
+    and Bird by Bird's keep/assignment format is the review itself."""
+    return action_id not in {"deepen_and_layer", "craft_lamott"}
+
+
 def _review_max_findings(value: Any) -> int:
     """The writer's cap on revision priorities for one review, or the default."""
     if value is None:
@@ -3122,6 +3137,7 @@ class DiscussManager:
         comedy_goal: str | None = None,
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
+        review_include_keep: Any = None,
         include_frontmatter: bool = True,
         include_adjacent: bool = True,
     ) -> tuple[str, str, str, list[dict[str, str]], list[str] | None]:
@@ -3173,6 +3189,7 @@ class DiscussManager:
         if is_review:
             count = len(multi_paths) if multi_paths is not None else 1
             max_findings = _review_max_findings(review_max_findings)
+            include_keep = _review_include_keep(review_include_keep)
             try:
                 lanes = selected_review_lanes(action_id, review_lanes, focus=focus)
                 if action_id == "comedy_review":
@@ -3211,6 +3228,8 @@ class DiscussManager:
             if action_id != "craft_lamott":
                 noun = "Opportunities" if action_id == "deepen_and_layer" else "Revision priorities"
                 receipt += f"\n\n{noun}: up to {max_findings}"
+            if _keeps_list(action_id):
+                receipt += "\n\nKeep: " + ("list what to preserve" if include_keep else "off")
             if action_id == "comedy_review":
                 receipt += "\n\nComic styles: " + (", ".join(style["label"] for style in comic_styles) or "Follow the draft")
                 receipt += "\n\nReview goals: " + ", ".join(goal["label"] for goal in comic_goals)
@@ -3226,12 +3245,14 @@ class DiscussManager:
             if custom:
                 receipt += "\n\nWriter instructions:\n" + custom
             divider = "Craft review instructions" if is_craft else "Scene review instructions"
-            question = receipt + f"\n\n{divider}:\n" + question
-            question += "\n\n" + scene_review_contract(
+            # The goal and output format come first, then the card's skill as
+            # the editorial lens; the receipt display splits on the divider.
+            contract = scene_review_contract(
                 action_id, lanes, scene_count=count, check_plan=craft_check_plan,
                 comedy_styles=comedy_styles, comedy_goal=comedy_goal, comedy_goals=comedy_goals,
-                max_findings=max_findings,
+                max_findings=max_findings, include_keep=include_keep and _keeps_list(action_id),
             )
+            question = receipt + f"\n\n{divider}:\n" + contract + "\n\nReview guide:\n" + question
         elif custom and action_id != "update_frontmatter":
             question += "\n\n" + custom
 
@@ -4096,6 +4117,7 @@ class DiscussManager:
         comedy_goal: str | None = None,
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
+        review_include_keep: Any = None,
         skill: dict[str, Any] | None = None,
         retry_of_task_id: str = "",
         verify_of_task_id: str = "",
@@ -4230,6 +4252,7 @@ class DiscussManager:
                 comedy_goal=comedy_goal,
                 comedy_goals=comedy_goals,
                 review_max_findings=review_max_findings,
+                review_include_keep=review_include_keep,
                 include_frontmatter=eff_frontmatter,
                 include_adjacent=eff_adjacent,
             )
@@ -4319,6 +4342,8 @@ class DiscussManager:
             check_plan=bool(craft_check_plan) if review_guide(action_id) and not selection else None,
             max_findings=(_review_max_findings(review_max_findings)
                           if review_guide(action_id) and not selection and action_id != "craft_lamott" else None),
+            include_keep=(_review_include_keep(review_include_keep)
+                          if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
         )
         # A pass that exists to report stays sandboxed read-only. Everything
         # else may write, because the writer asked for something to be done and
@@ -5863,6 +5888,7 @@ class DiscussManager:
         developer_instructions: str = "",
         check_plan: bool | None = None,
         max_findings: int | None = None,
+        include_keep: bool | None = None,
     ) -> dict[str, Any]:
         skill_prompt = ""
         if action_id and (action_id in ACTION_DEFINITIONS or action_id in REPOSITORY_ACTION_DEFINITIONS):
@@ -5880,6 +5906,8 @@ class DiscussManager:
             "check_plan": check_plan,
             # The review's cap on revision priorities; other turns omit it.
             "max_findings": max_findings,
+            # Whether the review lists moments to keep; other turns omit it.
+            "include_keep": include_keep,
             "notes": _bounded_text(notes, 8000) if notes else "",
             "documents": list(documents),
             "selection": _bounded_text(selection, 4000) if selection else "",

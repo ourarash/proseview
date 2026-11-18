@@ -43,8 +43,8 @@ def test_comedy_request_honors_lanes_goal_styles_context_and_read_only_scope(tmp
         assert 'STALE_CHARACTER_MARKER' not in prompt
         assert 'The character uses formal language to cope with fear.' in prompt
         assert 'Keep the narrator affectionate toward the family.' in prompt
-        assert 'EVERY selected scene' in prompt
-        assert 'Comic reading' in prompt and 'up to 5 distinct Revision priorities' in prompt
+        assert 'how the selection works as a whole' in prompt
+        assert 'Comic reading' in prompt and 'Give up to 5, most important first.' in prompt
         assert 'numerical funniness scores' in prompt
         assert '**Writer-plan gap**' not in prompt
         assert clients[0].turn_params[0]['sandboxPolicy']['type'] == 'readOnly'
@@ -54,7 +54,7 @@ def test_comedy_request_honors_lanes_goal_styles_context_and_read_only_scope(tmp
         for style in guide['styles']:
             assert (style['prompt'] in prompt) == (style['id'] in styles)
         assert all(goal['prompt'] in prompt for goal in selected_goals)
-        assert 'up to 5 priorities TOTAL across all selected goals' in prompt
+        assert 'The limit covers all selected goals together.' in prompt
         assert ('**Type: Strengthen existing humor**' in prompt) == any(goal['id'] == 'strengthen' for goal in selected_goals)
         assert ('**Type: Comic opportunity**' in prompt) == any(goal['id'] == 'explore' for goal in selected_goals)
         receipt = [m for m in manager.get_snapshot(cid)['messages'] if m['role'] == 'user'][-1]

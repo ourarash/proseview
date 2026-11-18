@@ -17,3 +17,5 @@ next when surrounding scenes are supplied. An internal change should affect
 an agenda or choice, rather than merely label a mood. Do not invent a formative
 wound or diagnose a core misbelief from an ambiguous gesture. Missing history
 limits that diagnosis; it is not automatically a prose defect.
+
+Then fix what you find: each problem ends in text the writer can paste.

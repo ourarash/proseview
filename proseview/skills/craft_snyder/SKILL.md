@@ -17,3 +17,5 @@ consequence. Adapt screenwriting techniques to the prose's genre and pace.
 Quiet closure, summary, and restrained behavior can serve those purposes;
 judge their effect rather than prescribing a cliffhanger or alternating
 emotional signs between every pair of scenes.
+
+Then fix what you find: each problem ends in text the writer can paste.

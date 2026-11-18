@@ -91,6 +91,14 @@ Three places where AI shows up, all opt-in:
    Turn it on to compare the draft with beats planned in frontmatter, beat maps,
    or TODO notes. The request receipt and context inspector show that choice.
 
+   Each finding shows **Before** (the quoted passage and its line), **Why** (what
+   goes wrong for the reader), and **After** (a replacement you can paste, or the
+   passage as it reads after a cut). A review starts with problems in how the
+   scene, or the selection, works as a whole. Customize sets how many findings a
+   review may give (5 by default, up to 20) and remembers it; a card's Run now
+   uses 5. **Show what to keep**, off by default and also remembered, adds one or
+   two moments that already work. Bird by Bird keeps its single assignment.
+
    Comedy review has ten lanes: truth and pain; comic premise and perspective;
    character and status; deadpan and subtext; setup and surprise; escalation and
    callbacks; specificity and detail; timing and wording; tone and target; and
@@ -108,7 +116,7 @@ Three places where AI shows up, all opt-in:
    Combined reviews label each finding as strengthening existing humor or proposing
    a comic opportunity, with one shared priority limit across both goals and the selection.
    Findings include source quotes, lane labels,
-   explanations, and concrete optional revisions. Comic options remain selected
+   explanations, and revisions you can paste. Comic options remain selected
    when switching review types and are sent only with Comedy review.
 
    The collapsed **Continuity tools** section contains two occasional revision

@@ -19,3 +19,5 @@ backstory serves the present moment. Examine redundant qualifiers, strained
 images, and sentence and paragraph rhythm. Preserve deliberate voice and
 rhythm; tightening should not make every sentence short or replace each
 character's behavior with stock gestures.
+
+Then fix what you find: each problem ends in text the writer can paste.

@@ -45,9 +45,12 @@
             // Off unless the writer asks: notes go stale quietly, and a planned
             // beat they dropped should not lead every review.
             checkPlan: false,
-            // How many revision priorities a custom review may give. The cards'
-            // Run now always uses the default.
-            maxFindings: DISCUSS_DEFAULT_MAX_FINDINGS,
+            // How many revision priorities a custom review may give, remembered
+            // across reloads. The cards' Run now always uses the default.
+            maxFindings: _readReviewMaxFindingsPref(),
+            // Whether a custom review lists moments to keep, remembered across
+            // reloads. Run now leaves it off.
+            includeKeep: _readReviewIncludeKeepPref(),
             storyContexts: Object.create(null),
             storyContextLoaded: Object.create(null),
             storyContextVersions: Object.create(null),
@@ -4878,6 +4881,28 @@
             jumpAndHighlightDiscussQuote(targetPath, targetLine, targetEndLine, cleanText, targetKind);
         }
 
+        // Whether the paragraph above a quote names that quote's source: it is
+        // just a citation, a short lead-in ("In ch08/02, line 149:"), or ends
+        // with a citation and a colon. A long explanation ending in "Possibility:"
+        // only mentions its links; the quote below is a rewrite of the passage
+        // quoted before it.
+        function _discussIntroducesQuote(prevEl, prevText) {
+            if (/^[\s(\[]*(?:[^\s]+\.md\s*[·,:]\s*)?lines?\s+\d+(?:\s*[-–—]\s*\d+)?[\s)\].]*$/i.test(prevText)) return true;
+            if (!/:$/.test(prevText)) return false;
+            if (prevText.split(/\s+/).length <= 12) return true;
+            var links = prevEl.querySelectorAll ? prevEl.querySelectorAll('a[data-prosview-path]') : [];
+            var lastRef = links.length ? (links[links.length - 1].textContent || '') : '';
+            var at = lastRef ? prevText.lastIndexOf(lastRef) : -1;
+            if (at < 0) {
+                var mentions = prevText.match(/\b(?:lines?|l)\s*\d+(?:\s*(?:[-–—]|to)\s*l?\d+)?/gi);
+                lastRef = mentions ? mentions[mentions.length - 1] : '';
+                at = lastRef ? prevText.lastIndexOf(lastRef) : -1;
+            }
+            if (at < 0) return false;
+            var trailing = prevText.slice(at + lastRef.length).replace(/[:\s.,;)\]]+$/, '').trim();
+            return !trailing || trailing.split(/\s+/).length <= 4;
+        }
+
         function decorateDiscussBlockquote(quoteEl, ctx, prevEl, followingCitation) {
             if (!quoteEl) return;
             var baseScenePath = (ctx && ctx.scenePath) || _discussCurrentScenePath();
@@ -4926,7 +4951,7 @@
             var prevHint = null;
             if (prevEl) {
                 var prevText = (prevEl.textContent || '').trim();
-                var introduces = /:$/.test(prevText) || /^[\s(\[]*(?:[^\s]+\.md\s*[·,:]\s*)?lines?\s+\d+(?:\s*[-–—]\s*\d+)?[\s)\].]*$/i.test(prevText);
+                var introduces = _discussIntroducesQuote(prevEl, prevText);
                 var prevTarget = detectProsviewTargetInPrevEl(prevEl, baseScenePath);
                 if (!prevTarget && !quoteEl.dataset.targetLine && prevText) {
                     var m = prevText.match(/\b(?:lines?|l)\s*(\d+)\s*(?:[-–—]|to)\s*(?:l)?(\d+)\b/i);
@@ -5779,10 +5804,19 @@
                     var citationOnly = citationLinks.length === 1 && citationParts.every(function(item) {
                         return item.type === 'link' || (item.type === 'text' && /^[\s—–().-]*$/.test(item.text || ''));
                     });
+                    // A Keep item puts its citation first in the reason below the
+                    // quote: "[scene.md · Line 176](…). Nima states …".
+                    var leading = citationParts.findIndex(function(item) {
+                        return !(item.type === 'text' && /^[\s—–(]*$/.test(item.text || ''));
+                    });
+                    var afterLead = leading >= 0 ? citationParts[leading + 1] : null;
+                    var leadingCitation = leading >= 0 && citationParts[leading].type === 'link'
+                        && /#L\d+/i.test(citationParts[leading].href || '')
+                        && (!afterLead || (afterLead.type === 'text' && /^\s*[.,;:)—–-]/.test(afterLead.text || '')));
                     var followingCitation = null;
-                    if (citationOnly) {
+                    if (citationOnly || leadingCitation) {
                         var citationNode = document.createElement('p');
-                        appendMarkdownTokens(citationNode, citationParts, Object.assign({}, ctx));
+                        appendMarkdownTokens(citationNode, citationOnly ? citationParts : [citationParts[leading]], Object.assign({}, ctx));
                         followingCitation = detectProsviewTargetInPrevEl(citationNode, ctx.scenePath);
                     }
                     decorateDiscussBlockquote(node, ctx, prevSibling, followingCitation);
@@ -8537,8 +8571,9 @@ function loadDiscussDiffMode(mode) {
             var craftButton = document.getElementById('discussCraftButton');
             var doc = discussTurnDocument();
             if (craftButton) {
-                craftButton.hidden = !doc || doc.kind !== 'scene' || _discussCraftState.active || _discussCraftState.cardsOpen
+                craftButton.hidden = !doc || doc.kind !== 'scene' || _discussCraftState.active
                     || !(_discussSnapshot && (_discussSnapshot.messages || []).length);
+                craftButton.setAttribute('aria-expanded', String(!!_discussCraftState.cardsOpen));
             }
             var ordinary = !_discussPendingAction && !_discussRepositoryAction && !_discussCraftState.active && !_discussOpenFailed;
             var busy = !!(_discussSnapshot && (_discussSnapshot.active_turn_id || _discussSnapshot.active_request_id));
@@ -8638,7 +8673,8 @@ function loadDiscussDiffMode(mode) {
                     + (adjOn ? ' · ±1 excerpts' : '')
                     + (_discussCraftState.checkPlan ? ' · Plan check' : '')
                     + (craftLens.id === 'craft_lamott' ? '' : ' · Up to ' + _discussCraftState.maxFindings
-                        + (craftLens.id === 'deepen_and_layer' ? ' opportunities' : ' priorities'));
+                        + (craftLens.id === 'deepen_and_layer' ? ' opportunities' : ' priorities'))
+                    + (_discussCraftState.includeKeep && discussReviewHasKeepChoice(craftLens.id) ? ' · Keep list' : '');
                 node.appendChild(craftHelp);
                 if (_discussCraftState.modeId === 'comedy_review') {
                     node.appendChild(elementWith('discuss-comedy-summary', discussComedySummary()));
@@ -10168,6 +10204,9 @@ function loadDiscussDiffMode(mode) {
             addPill('Frontmatter: ' + (ctx.include_frontmatter ? 'On' : 'Off'), !!ctx.include_frontmatter);
             addPill('±1 Excerpts: ' + (ctx.include_adjacent ? 'On' : 'Off'), !!ctx.include_adjacent);
             addPill('Beat Map: ' + (ctx.beatmap_included ? 'Included' : 'None'), !!ctx.beatmap_included);
+            if (ctx.include_keep === true || ctx.include_keep === false) {
+                addPill('Keep list: ' + (ctx.include_keep ? 'On' : 'Off'), ctx.include_keep);
+            }
             if (ctx.check_plan === true || ctx.check_plan === false) {
                 addPill('Plan check: ' + (ctx.check_plan ? 'On' : 'Off'), ctx.check_plan);
             }
@@ -10306,6 +10345,7 @@ function loadDiscussDiffMode(mode) {
                 craft_context: '',
                 craft_check_plan: !defaults && !!_discussCraftState.checkPlan,
                 review_max_findings: defaults ? DISCUSS_DEFAULT_MAX_FINDINGS : _discussCraftState.maxFindings,
+                review_include_keep: !defaults && !!_discussCraftState.includeKeep,
                 craft_lanes: lanes.map(discussCraftLaneName),
                 review_lanes: lanes.map(function(lane) { return lane.id; }),
                 review_contexts: contexts,

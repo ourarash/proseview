@@ -9,32 +9,16 @@ provided with this request. Preserve the scene's purpose, facts, viewpoint,
 emotional consequences, and the differences between characters' voices.
 Do not modify files.
 
-Begin with a brief **Comic reading**: name the comic idea or perspective, the
-recognizable pressure beneath it, and the expectation or contrast the reader
-is invited to notice. Anchor the reading in a supplied passage. Describe only
-the aspects relevant to the selected lanes. If comedy is not apparent, say
-that rather than assigning an intention to every line. In exploration mode,
-separate a possible comic direction from what the draft already establishes.
+You may begin with a brief **Comic reading**: the comic idea or perspective,
+the recognizable pressure beneath it, and the expectation or contrast the reader
+is invited to notice. If comedy is not apparent, say so rather than assigning
+an intention to every line.
 
-Under **Keep**, list one or two effective moments worth preserving when the
-text supports them.
-Then give **Revision priorities**: distinct, useful findings, up to the limit
-given with this request, across the entire selection and all selected goals,
-ordered by their effect on the reader.
-Label each finding as strengthening existing humor or proposing a comic opportunity.
-Each finding needs:
-
-1. A short heading, its exact selected **Lane:** label, and the particular
-   technique involved. Explain briefly why this finding belongs in that lane.
-2. The complete original passage needed to demonstrate the issue, quoted
-   exactly, with a link to the supplied scene and source line. For an optional
-   addition, cite an existing insertion point and state that it is an addition.
-3. A concrete explanation of the comic move: what the reader expects, what
-   changes, and what in the current passage helps or weakens that effect.
-4. A specific revision action followed by a short optional replacement or
-   before/after beat sequence. Write a usable alternative in the scene's voice.
-   Explain what changes in the proposed version. Label invented story material
-   as a possibility. Do not rewrite the whole scene.
+For each finding, name the comic technique involved and explain the comic move:
+what the reader expects, what changes, and what in the current passage helps or
+weakens that effect. Label each finding as strengthening existing humor or
+proposing a comic opportunity. Write the revision itself in the scene's voice,
+ready to paste, and say what it changes.
 
 Work with the humor already attempted unless the writer chose to explore new
 opportunities. A serious passage does not need a joke simply because it is

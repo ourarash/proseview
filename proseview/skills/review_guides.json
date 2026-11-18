@@ -7,7 +7,7 @@
     "tagline": "What is working against the scene, with evidence and a useful fix.",
     "defaultScope": "this_scene",
     "thesis": "A quick critique finds the few things most likely to interrupt the reader’s experience. It follows the scene’s logic, the characters’ choices, the pace of the exchange, and the words on the page.\n\nChoose all lanes for a general reading, or select the ones you are revising. A quiet scene can work well: the review should explain a specific reader problem and show a practical fix that preserves the scene’s purpose and voice.",
-    "reviewNote": "Prioritize concrete issues in your selected lanes. Each note quotes a passage, explains its effect on the reader, and offers a specific revision. For several scenes, a short coverage table comes before the priorities.",
+    "reviewNote": "Finds the problems that most hold the scene back in your selected lanes, up to the limit you set (5 by default). Each shows the passage, what goes wrong for the reader, and a replacement you can paste. For several scenes, problems across the whole selection come first.",
     "bestFor": "Finding the most useful revisions before another draft.",
     "skipWhen": "You want to explore additions rather than diagnose reader problems; try Deepen & layer.",
     "lanes": [
@@ -73,7 +73,7 @@
     "tagline": "Explore a few places where subtext, emotion, or a physical detail could carry more meaning.",
     "defaultScope": "this_scene",
     "thesis": "Deepen & layer looks for a few moments that could carry more meaning through an exchange, a response, an object, or the consequence of a choice. It starts with what is already in the draft.\n\nChoose the kinds of development you want to explore. Each suggestion pairs an exact original passage with a possible revision, so you can judge whether the added detail earns its place. You decide what belongs in the story.",
-    "reviewNote": "Offer the most useful opportunities across the selected scenes, up to the limit you set (5 by default). Each has an exact source passage and an optional replacement or expansion. Preserve restraint where it already carries the feeling.",
+    "reviewNote": "Finds the moments that most need deepening across the selected scenes, up to the limit you set (5 by default). Each quotes the passage and writes out an expansion you can paste. Preserves restraint where it already carries the feeling.",
     "bestFor": "Developing a scene whose basic action works but whose important moments pass too lightly.",
     "skipWhen": "You need to resolve a major logic or motivation problem first; try Quick critique.",
     "lanes": [
@@ -139,7 +139,7 @@
     "tagline": "Strengthen humor through character, surprise, timing, and a clear comic point of view.",
     "defaultScope": "this_scene",
     "thesis": "Comedy often begins with something a person takes seriously: wanting approval, avoiding embarrassment, keeping control, or getting through a bad day. The comic move changes how we see that pressure. This review looks for that move in your scenes and shows where it could become clearer, more particular, or better timed.\n\nChoose the lanes you want to work on. Dark comedy, sarcasm, and dry delivery can be combined; they change how the review reads your selected lanes. Strengthen existing humor is selected by default. Select Find comic opportunities for suggestions about adding it, or select both goals to do both in one review. Feedback labels revisions to existing humor and optional additions separately. Serious passages can keep their purpose throughout.",
-    "reviewNote": "First, describe the comic idea and the pressure beneath it, using the lanes you selected. Then preserve one effective moment and give the most useful revisions, up to the limit you set (5 by default), across the selected scenes. Each finding names its lane and technique, quotes the source, explains the likely reader effect, and offers a concrete optional revision. For several scenes, a short table shows what was read before the main suggestions.",
+    "reviewNote": "Finds where the comedy most needs work or has the best new chance, up to the limit you set (5 by default) across your selected goals. Each finding names its lane and technique, quotes the passage, explains the likely reader effect, and gives a revision you can paste.",
     "bestFor": "A scene with attempted humor, a comic character or situation, or a few moments you want to explore for humor.",
     "skipWhen": "You want a general diagnosis of plot, motivation, or prose before deciding where comedy belongs; Quick critique covers that work.",
     "sourceNote": "These lanes combine selected comedy-writing ideas with practical checks for fiction. The explanations and examples are original Proseview material. The books offer different approaches; Poking a Dead Frog is a collection of writers’ perspectives. Benign violation is credited separately to researchers Peter McGraw and Caleb Warren.",

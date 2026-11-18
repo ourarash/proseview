@@ -2947,8 +2947,8 @@ def test_packaged_craft_skills_run_read_only_single_and_multi_scene(
     _wait_for(lambda: bool(clients[0].prompts))
 
     single_prompt = clients[0].prompts[0]
-    assert "Revision priorities" in single_prompt
-    assert "Zero necessary revisions is acceptable" in single_prompt
+    assert "Give up to 5, most important first." in single_prompt
+    assert "Zero necessary revisions" not in single_prompt
     assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/02-two.md"' in single_prompt
     assert '   9| Patel set his palm on the counter.' in single_prompt
     assert "Force the archivist to hand over the ledger" in single_prompt

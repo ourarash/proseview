@@ -3089,6 +3089,7 @@ class _Handler(BaseHTTPRequestHandler):
                         comedy_goal=body.get("comedy_goal"),
                         comedy_goals=body.get("comedy_goals"),
                         review_max_findings=body.get("review_max_findings"),
+                        review_include_keep=body.get("review_include_keep"),
                         skill=body.get("skill") if isinstance(body.get("skill"), dict) else None,
                         retry_of_task_id=str(body.get("retry_of_task_id") or ""),
                         verify_of_task_id=str(body.get("verify_of_task_id") or ""),

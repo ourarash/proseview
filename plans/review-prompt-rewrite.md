@@ -205,3 +205,12 @@ Every run since the new contract has a pasteable Before/Why/After. Codex gives
 changed nothing measurable and were dropped. The scene-level line stays. Single
 runs vary as much as the wording changes, so judging a wording change needs
 several runs of each version.
+
+## Chapter results (Craft review · McKee · Chapter 8, final prompt, fresh chats)
+
+| Run | Findings | Story-level | Pasteable After |
+| --- | --- | --- | --- |
+| Codex, cap 16, baseline | 3 | 0 (two timing mismatches, one trim) | partly |
+| Codex, cap 16, new | 8 | 4 (Perkins's rule, the first betrayal, the water trick, Grace's question) | all |
+| Claude, cap 5, baseline | 4 | 2 | two were "cut L185–L206" or an arrow sequence |
+| Claude, cap 5, new | 5 | 5 (the hack stays private, a belief repeated across four scenes, the Madam Mim leak) | all |

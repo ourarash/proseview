@@ -45,12 +45,13 @@ def test_comedy_request_honors_lanes_goal_styles_context_and_read_only_scope(tmp
         assert 'Keep the narrator affectionate toward the family.' in prompt
         assert 'how the selection works as a whole' in prompt
         assert 'Comic reading' in prompt and 'Give up to 5, most important first.' in prompt
-        assert 'numerical funniness scores' in prompt
+        assert 'numerical funniness scores' in ' '.join(prompt.split())
         assert '**Writer-plan gap**' not in prompt
         assert clients[0].turn_params[0]['sandboxPolicy']['type'] == 'readOnly'
         guide = review_guide('comedy_review')
         for lane in guide['lanes']:
-            assert (lane['summary'] in prompt) == (lane['id'] in {'truth_pain', 'deadpan_subtext'})
+            assert (lane['brief'] in prompt) == (lane['id'] in {'truth_pain', 'deadpan_subtext'})
+            assert lane['summary'] not in prompt
         for style in guide['styles']:
             assert (style['prompt'] in prompt) == (style['id'] in styles)
         assert all(goal['prompt'] in prompt for goal in selected_goals)
@@ -118,17 +119,32 @@ def test_comedy_guides_cover_the_requested_techniques_and_keep_the_prompt_select
     }
     for lane in guide['lanes']:
         contract = scene_review_contract('comedy_review', [lane], scene_count=1, check_plan=False)
-        assert lane['summary'] in contract and lane['spot'] in contract and lane['fix'] in contract
+        assert lane['brief'] in contract
+        assert all(lane[field] not in contract for field in ('summary', 'spot', 'fix'))
+        for source in guide['sources']:
+            label = source['label'].replace(' · ', ', ')
+            assert (label in contract) is (source['id'] in lane['sources'])
         assert lane['flat'] != lane['working']
         assert lane['why'] and lane['tryIt'] and lane['caution']
         assert lane['anotherExample']['text'] and lane['anotherExample']['why']
-        assert all(other['summary'] not in contract for other in guide['lanes'] if other is not lane)
+        assert all(other['brief'] not in contract for other in guide['lanes'] if other is not lane)
     all_lanes = selected_review_lanes('comedy_review', None)
     contract = scene_review_contract('comedy_review', all_lanes, scene_count=2, check_plan=True)
     assert 'Three beats are an option' in next(lane['caution'] for lane in all_lanes if lane['id'] == 'escalation_callbacks')
     assert '**Writer-plan gap**' in contract
     assert 'theory and a useful question' in next(lane['caution'] for lane in all_lanes if lane['id'] == 'violation_distance')
     assert next(source for source in guide['sources'] if source['id'] == 'violation')['label'].startswith('Peter McGraw & Caleb Warren')
+
+
+def test_all_comedy_lanes_stay_short_and_unattributed_lanes_have_no_parentheses():
+    lanes = selected_review_lanes('comedy_review', None)
+    contract = scene_review_contract('comedy_review', lanes, scene_count=1, check_plan=False)
+    rows = contract.split('Selected lane descriptions:\n', 1)[1]
+    assert len(rows.split()) < 300
+    assert len(rows.splitlines()) == 10
+    deadpan = next(row for row in rows.splitlines() if row.startswith('- Deadpan & subtext'))
+    assert deadpan.startswith('- Deadpan & subtext — ')
+    assert '()' not in rows
 
 
 def test_new_comedy_builtin_stays_in_app_and_writer_takeover_is_preserved(tmp_path, monkeypatch):

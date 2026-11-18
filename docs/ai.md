@@ -99,6 +99,10 @@ Three places where AI shows up, all opt-in:
    examines the comic idea, character, delivery, and timing. Every lane has
    a short description and an information button with explanations and before/after
    examples. Lane labels in the feedback open the matching guide.
+   Review prompts send each selected lane's name and brief description. Craft
+   includes its book once above the lanes and keeps each lane's book principle;
+   Comedy includes each lane's sources. Detailed checklists and examples stay
+   in the guides.
 
    Scene selection, context toggles, and one-time instructions carry across review
    types. Lane choices are remembered separately for each review type and book.
@@ -109,10 +113,14 @@ Three places where AI shows up, all opt-in:
    Turn it on to compare the draft with beats planned in frontmatter, beat maps,
    or TODO notes. The request receipt and context inspector show that choice.
 
-   Each finding shows **Before** (the quoted passage and its line), **Why** (what
-   goes wrong for the reader), and **After** (a replacement you can paste, or the
-   passage as it reads after a cut). A review starts with problems in how the
-   scene, or the selection, works as a whole. Customize sets how many findings a
+   Each finding shows **Before** (the quoted passage and its line), **Why** (the
+   weakness or missed opportunity and what the change improves), and **After**
+   (a replacement you can paste, or the passage as it reads after a cut).
+   Connected edits in several passages or scenes can share one finding, with
+   each edit written out and linked. A review starts with improvements to how
+   the scene, or the selection, works as a whole through the selected lanes.
+   Before returning feedback, the agent silently checks coverage, overlapping
+   findings, and complete edits. Customize sets how many findings a
    review may give (5 by default, up to 20) and remembers it; a card's Run now
    uses 5. **Show what to keep**, off by default and also remembered, adds one or
    two moments that already work. Bird by Bird keeps its single assignment.

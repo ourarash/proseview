@@ -30,7 +30,7 @@ from typing import Any, Iterable
 from . import group as group_module
 from .citations import verify_review_citations
 from .craft import DEFAULT_MAX_FINDINGS, MAX_FINDINGS_LIMIT, lane_name as craft_lane_name
-from .reviews import comedy_review_options, review_guide, scene_review_contract, selected_review_lanes
+from .reviews import comedy_review_options, review_guide, review_self_check, scene_review_contract, selected_review_lanes
 from .builtin_skills import migrate_builtin_copies
 from .config import (
     DEFAULT_SKILLS_PATH,
@@ -3325,6 +3325,8 @@ class DiscussManager:
                 "replacements, include each scene's repository-relative path and line number, "
                 + citation_hint
             )
+            if is_review:
+                question += "\n\n" + review_self_check(action_id)
             beatmap_paths = [
                 path.relative_to(man_dir).as_posix()
                 for path in multi_paths

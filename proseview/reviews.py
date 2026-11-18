@@ -59,6 +59,21 @@ def comedy_review_options(
             [item for item in guide["goals"] if item["id"] in goal_ids])
 
 
+def review_self_check(action_id: str) -> str:
+    """The final review check, including when the writer supplies their own guide."""
+    questions = ["Have I considered the whole selection through the selected review and lanes?"]
+    if action_id == "craft_lamott":
+        questions.append("Is the single assignment useful, manageable, and clear about where to start?")
+    else:
+        questions.extend([
+            "Did I combine overlapping findings and retain worthwhile findings within the configured limit?",
+            "Does every finding end in complete, pasteable edits?",
+        ])
+    return ("Before returning feedback, check silently:\n\n"
+            + "\n".join("- " + question for question in questions)
+            + "\n\nResolve any gaps before returning. Do not print this checklist.")
+
+
 def scene_review_contract(
     action_id: str, lanes: list[dict], *, scene_count: int, check_plan: bool,
     comedy_styles: list[str] | None = None, comedy_goal: str | None = None,
@@ -89,12 +104,6 @@ def scene_review_contract(
             "cite its insertion point.",
             "Comic styles guide how you judge the selected lanes; they do not select more lanes. "
             "With no style selected, follow the draft's own register.",
-            "You may open with a brief Comic reading: the comic idea, the pressure beneath it, and "
-            "the expectation the reader is invited to notice.",
-            "Truth + pain, playing it straight, three beats, specific detail, and a final punch word are "
-            "techniques to judge in context, not rules. Distinguish the speaker, the target of the joke, and "
-            "the story's apparent stance. Preserve intended discomfort and consequences. Do not promise "
-            "laughter or give numerical funniness scores.",
         ])
         lines.extend("Selected review goal: " + goal["label"] + ". " + goal["prompt"] for goal in goals)
         lines.extend("Selected comic style: " + style["label"] + ". " + style["prompt"] for style in styles)
@@ -109,10 +118,12 @@ def scene_review_contract(
     else:
         lines.append(review_contract(**shared, include_keep=include_keep))
     lines.append("Selected lanes: " + "; ".join(lane_name(lane) for lane in lanes)
-                 + ". Report only problems in these lanes.")
-    lines.append("Selected principles and what to look for:")
+                 + ". Stay within the selected lanes.")
+    guide = review_guide(action_id) or {}
+    sources = {source["id"]: source["label"].replace(" · ", ", ") for source in guide.get("sources", [])}
+    rows = []
     for lane in lanes:
-        lines.append(f"{lane_name(lane)} — {lane['title']}\nPrinciple: {lane['summary']}\nLook for: {lane['spot']}")
-        if action_id == "comedy_review":
-            lines.append("Revision approach for " + lane_name(lane) + ": " + lane["fix"])
+        cited = "; ".join(sources[source] for source in lane.get("sources", []) if source in sources)
+        rows.append(f"- {lane_name(lane)}" + (f" ({cited})" if cited else "") + f" — {lane['brief']}")
+    lines.append("Selected lane descriptions:\n" + "\n".join(rows))
     return "\n\n".join(lines)

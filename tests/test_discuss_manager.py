@@ -2832,9 +2832,9 @@ def test_deepen_and_layer_and_layer_subtext_actions(tmp_path: Path, monkeypatch)
     manager.submit(cid, client_request_id="deepen-1", question="", action_id="deepen_and_layer", action_scope="scene")
     _wait_for(lambda: bool(clients[0].prompts))
     prompt = clients[0].prompts[0]
-    assert "Subtext & Friction" in prompt
-    assert "Physical Anchoring & Micro-Business" in prompt
-    assert "Cost & Consequence" in prompt
+    assert "existing action, subtext, physical detail" in prompt
+    assert "consequences" in prompt
+    assert "write the expansion in a plain blockquote" in prompt
 
     conversation = manager._get(cid)
     task, question, schema, _skill = manager._action_task(
@@ -2973,7 +2973,7 @@ def test_packaged_craft_skills_run_read_only_single_and_multi_scene(
     _wait_for(lambda: len(clients[0].prompts) >= 2)
 
     multi_prompt = clients[0].prompts[1]
-    assert "negative → more negative" in multi_prompt
+    assert "choices between competing goods or between costly alternatives" in multi_prompt
     assert "Focus: The choice" in multi_prompt
     assert "Writer instructions:\nFocus only on the Crisis choice in Scene 1." in multi_prompt
     assert "Focus only on the Crisis choice in Scene 1." in multi_prompt

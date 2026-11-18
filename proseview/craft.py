@@ -46,37 +46,36 @@ nothing clearly earns it."""
 # reviews shows it is missing. See plans/review-prompt-rewrite.md.
 def review_contract(
     *, scene_count: int, max_findings: int, check_plan: bool, include_keep: bool,
-    goal: str = "", item: str = "problem",
+    goal: str = "", item: str = "finding",
 ) -> str:
     """The shared goal, output format, and rules for a review card."""
     scope = "scene" if scene_count == 1 else "selection of scenes"
-    goal = (goal or "Find what most holds this {scope} back, and fix each {item} with text the "
-            "writer can paste.").format(scope=scope, item=item)
+    goal = (goal or "Find the changes that would most improve this {scope}, and write each {item} "
+            "as text the writer can paste.").format(scope=scope, item=item)
     lines = [
         "The review guide supplies the editorial lens; this format governs the output. "
         "If they conflict on format, follow this format.",
         f"{goal} Give up to {max_findings}, most important first.",
     ]
-    # Without this, reviews of one scene listed only trims and rewordings.
-    if scene_count > 1:
-        lines.append("Start with problems in how the selection works as a whole: a scene that doesn't turn, "
-                     "a choice that doesn't land, a stretch where the pressure stalls. Then problems inside a scene.")
-    else:
-        lines.append("Start with problems in how the scene works as a whole: its turn, a choice that doesn't "
-                     "land, a stretch where the pressure stalls. Then problems in single passages.")
+    subject = "the scene" if scene_count == 1 else "the selection"
+    lines.append(f"Within the selected review and lanes, start with improvements to how {subject} works as a whole"
+                 + (", including development across scenes" if scene_count > 1 else "")
+                 + ". Then address individual passages and wording.")
     lines.append(
         f"For each {item}, under a short numbered heading:\n"
         "- A **Lane: <name> — <why>** line, using a selected lane's exact name "
         "(**Lanes:** with two names if it spans both).\n"
         "- **Before:** on its own line, then the passage quoted exactly in an italic blockquote, "
         "with its link on the line below it, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18).\n"
-        "- **Why:** what goes wrong for the reader, in plain words.\n"
+        "- **Why:** the specific weakness or missed opportunity, and what the change improves for the reader.\n"
         "- **After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):, then the replacement "
         "in a plain blockquote, ready to paste. For an addition, cite the insertion point instead: "
         "**After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):. For a cut, show how "
         "the passage reads after it.\n"
         "Every link uses the quoted scene's own file name and path; the file name above is only an example."
     )
+    lines.append("When a finding requires changes in several places, group the connected edits under one finding "
+                 "and write out each replacement or insertion.")
     rules = [
         "Quote exactly, with no ellipses, and link every quote, including lines from other scenes.",
         "Manuscript lines wrap mid-sentence. Before saying something never appears or is never set up, "
@@ -139,8 +138,8 @@ def craft_review_contract(
         lines = [review_contract(scene_count=scene_count, max_findings=max_findings,
                                  check_plan=check_plan, include_keep=include_keep)]
     lines.append("Selected lanes: " + "; ".join(lane_name(lane) for lane in selected_lanes)
-                 + ". Report only problems in these lanes.")
-    lines.append("Selected book principles and what to look for:")
+                 + ". Stay within the selected lanes.")
+    lines.append(f"Selected book: {guide['book']}\nSelected book principles:")
     for lane in selected_lanes:
-        lines.append(f"{lane_name(lane)} — {lane['title']}\nPrinciple: {lane['summary']}\nLook for: {lane['spot']}")
+        lines.append(f"- {lane_name(lane)} — {lane['brief']}\nPrinciple: {lane['summary']}")
     return "\n\n".join(lines)

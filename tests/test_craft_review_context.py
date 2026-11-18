@@ -44,7 +44,7 @@ def test_craft_context_and_lane_names_reach_prompt_even_with_custom_skill(tmp_pa
         assert 'Writer-supplied story context:\nFamily drama.' in prompt
         assert 'Focus: Subtext' in prompt
         assert 'Writer instructions:\nPreserve the understatement.' in prompt
-        assert 'Selected lanes: Subtext. Report only problems in these lanes.' in prompt
+        assert 'Selected lanes: Subtext. Stay within the selected lanes.' in prompt
         assert '**Lane: <name> — <why>**' in prompt
         # A writer's own skill is the editorial lens; the contract before it
         # says its format governs the output.
@@ -105,7 +105,8 @@ def test_review_contract_uses_the_same_principles_as_the_guide_and_covers_each_s
         for lane in guide['lanes']:
             assert lane_name(lane) in contract
             assert lane['summary'] in contract
-            assert lane['spot'] in contract
+            assert lane['brief'] in contract
+            assert lane['spot'] not in contract
             focused = craft_review_contract(guide['id'], focus=lane['id'])
             assert 'Selected lanes: ' + lane_name(lane) + '.' in focused
             assert lane['summary'] in focused

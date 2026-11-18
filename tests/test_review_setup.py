@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from proseview.craft import KEEP_RULE
+from proseview.config import Config
+from proseview.craft import KEEP_RULE, craft_guides, lane_name
 from proseview.discuss import ContextError, default_skill_body
-from proseview.reviews import review_guides, scene_review_contract, selected_review_lanes
+from proseview.reviews import review_guides, review_self_check, scene_review_contract, selected_review_lanes
 from .test_craft_review_context import _manager
 
 
@@ -47,7 +49,8 @@ def test_review_sends_selected_lanes_full_scenes_and_each_scenes_notes(tmp_path:
         assert message['context_sent']['check_plan'] is True
         assert 'CURRENT_SECOND_SCENE_CONTEXT' in message['text']
         for lane in selected_review_lanes(action, ids):
-            assert lane['summary'] in prompt
+            assert lane['brief'] in prompt
+            assert (lane['summary'] in prompt) is action.startswith('craft_')
     finally:
         manager.close()
 
@@ -73,18 +76,24 @@ def test_review_rejects_invalid_lanes_and_unselected_context(tmp_path: Path, mon
         manager.close()
 
 
-def test_guide_and_prompt_share_lane_definitions_and_honor_multiple_selected_lanes():
-    for guide in review_guides():
-        lanes = selected_review_lanes(guide['id'], [lane['id'] for lane in guide['lanes'][:2]])
-        contract = scene_review_contract(guide['id'], lanes, scene_count=2, check_plan=False)
-        for lane in guide['lanes'][:2]:
-            assert lane['summary'] in contract
-            assert lane['spot'] in contract
-            assert lane['flat'] and lane['working'] and lane['why'] and lane['caution']
-        for lane in guide['lanes'][2:]:
-            assert lane['summary'] not in contract
-        assert '**Writer-plan gap**' not in contract
-        assert 'Report only problems in these lanes' in contract
+@pytest.mark.parametrize('guide', review_guides() + craft_guides(), ids=lambda guide: guide['id'])
+def test_guide_and_prompt_share_lane_definitions_and_honor_multiple_selected_lanes(guide):
+    action = guide['id']
+    lanes = selected_review_lanes(action, [lane['id'] for lane in guide['lanes'][:2]])
+    contract = scene_review_contract(action, lanes, scene_count=2, check_plan=False)
+    for lane in guide['lanes']:
+        selected = lane in lanes
+        assert (lane['brief'] in contract) is selected
+        assert (lane['summary'] in contract) is (selected and action.startswith('craft_'))
+        assert lane['spot'] not in contract
+        assert lane['flat'] and lane['working'] and lane['why'] and lane['caution']
+    if action.startswith('craft_'):
+        assert contract.count(f"Selected book: {guide['book']}\n") == 1
+        rows = contract.split('Selected book principles:\n', 1)[1].lstrip()
+        assert rows == '\n\n'.join(f"- {lane_name(lane)} — {lane['brief']}\nPrinciple: {lane['summary']}" for lane in lanes)
+    assert '**Writer-plan gap**' not in contract
+    assert 'Stay within the selected lanes.' in contract
+    if action != 'craft_lamott':
         assert 'how the selection works as a whole' in contract
 
 
@@ -226,6 +235,12 @@ def test_every_review_card_asks_for_pasteable_fixes_in_the_format_the_app_reads(
                  "the quoted scene's own file name",
                  'in a plain blockquote, ready to paste', '**After:** Insert after', 'this format governs the output'):
         assert part in contract
+    assert '**Why:** the specific weakness or missed opportunity, and what the change improves for the reader.' in contract
+    assert 'group the connected edits under one finding' in contract
+    assert 'write out each replacement or insertion' in contract
+    assert 'Stay within the selected lanes.' in contract
+    assert 'Report only problems' not in contract
+    assert ('For each opportunity' if action == 'deepen_and_layer' else 'For each finding') in contract
     # Without this, reviews listed only trims and rewordings.
     assert ('how the selection works as a whole' if scene_count > 1 else 'how the scene works as a whole') in contract
     # A review got short and minor when most of its rules said what not to
@@ -250,5 +265,47 @@ def test_the_contract_comes_before_the_card_skill(tmp_path: Path, monkeypatch):
         contract = prompt.index('this format governs the output')
         skill = prompt.index(default_skill_body('quick_critique').splitlines()[0])
         assert divider < contract < prompt.index('Review guide:') < skill
+    finally:
+        manager.close()
+
+
+@pytest.mark.parametrize('action', [guide['id'] for guide in review_guides() + craft_guides()])
+@pytest.mark.parametrize('scene_count', [1, 2])
+@pytest.mark.parametrize('guide_source', ['builtin', 'file', 'yaml'])
+def test_review_self_check_follows_builtin_and_writer_owned_guides(tmp_path, monkeypatch, action, scene_count, guide_source):
+    manager, cid, clients, custom_skill = _manager(tmp_path, monkeypatch)
+    custom_skill.unlink()
+    owned = manager.root / '.proseview/skills' / action / 'SKILL.md'
+    body = default_skill_body(action)
+    if guide_source == 'file':
+        body = 'WRITER_OWNED_GUIDE_MARKER'
+        owned.parent.mkdir(parents=True, exist_ok=True)
+        owned.write_text(f'---\nname: {action}\n---\n\n{body}\n')
+    elif guide_source == 'yaml':
+        body = 'WRITER_YAML_GUIDE_MARKER'
+        cfg = Config.load(manager.root)
+        cfg.with_overrides(discuss=replace(cfg.discuss, skill_prompts=((action, body),))).save(manager.root)
+    try:
+        manager.submit(cid, client_request_id='final-check', question='', action_id=action,
+                       action_scope='scenes', scenes=['scene.md', 'z-next.md'][:scene_count])
+        deadline = time.monotonic() + 3
+        while not clients[0].prompts and time.monotonic() < deadline:
+            time.sleep(.01)
+        prompt = clients[0].prompts[0]
+        check = review_self_check(action)
+        assert prompt.count('Before returning feedback, check silently:') == 1
+        assert prompt.index('Review guide:\n' + body) < prompt.index(check)
+        assert prompt.endswith(check)
+        assert check.count('\n- ') == (2 if action == 'craft_lamott' else 3)
+        assert 'quotations' not in check and 'voice' not in check
+        if action == 'craft_lamott':
+            assert 'single assignment useful, manageable' in check
+            assert 'pasteable edits' not in check and 'configured limit' not in check
+        else:
+            assert 'retain worthwhile findings within the configured limit' in check
+            assert 'complete, pasteable edits' in check
+        if guide_source == 'file':
+            assert owned.read_text() == f'---\nname: {action}\n---\n\n{body}\n'
+        assert clients[0].turn_params[0]['sandboxPolicy']['type'] == 'readOnly'
     finally:
         manager.close()

@@ -33,7 +33,7 @@ def test_added_craft_topic_focus_sends_guide_lane_names(page: Page, server: Pros
     page.locator(f'.discuss-craft-lens[data-lens="{lens_id}"] .discuss-craft-info-btn').click()
     dialog = page.locator('#discussCraftInfoDialog')
     dialog.locator(f'.discuss-craft-dialog-tab[data-tab="{lane_id}"]').click()
-    title = dialog.locator('.discuss-craft-lane-detail-head h3').inner_text()
+    principle = dialog.locator('.discuss-craft-info-thesis').inner_text()
     dialog.get_by_role('button', name='Focus review on this topic').click()
     assert page.locator('#discussInput').input_value() == 'Keep the existing voice.'
     page.locator('#discussSend').click()
@@ -45,8 +45,9 @@ def test_added_craft_topic_focus_sends_guide_lane_names(page: Page, server: Pros
     page.locator('.discuss-craft-prompt summary').click()
     assert 'Selected lanes: ' + label + '.' in page.locator('.discuss-craft-prompt-body').inner_text()
     assert label in page.locator('.discuss-craft-prompt-body').inner_text()
-    assert title in page.locator('.discuss-craft-prompt-body').inner_text()
+    assert principle in page.locator('.discuss-craft-prompt-body').inner_text()
     assert 'Principle:' in page.locator('.discuss-craft-prompt-body').inner_text()
+    assert 'Look for:' not in page.locator('.discuss-craft-prompt-body').inner_text()
 
 
 def test_optional_story_context_survives_render_lens_switch_and_reload(page: Page, server: ProseviewServer):

@@ -5042,6 +5042,7 @@
         function decorateDiscussBlockquote(quoteEl, ctx, prevEl, followingCitation) {
             if (!quoteEl) return;
             var baseScenePath = (ctx && ctx.scenePath) || _discussCurrentScenePath();
+            quoteEl._discussCompareLead = prevEl ? prevEl.textContent.trim() : '';
             quoteEl.classList.add('discuss-clickable-quote');
             quoteEl.title = 'Click to jump to this passage in the scene';
             quoteEl.setAttribute('tabindex', '0');
@@ -5801,7 +5802,7 @@
                 }
                 if (token.type === 'paragraph') node = document.createElement('p');
                 else if (token.type === 'heading') {
-                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = null;
+                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
                     node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
                 }
                 else if (token.type === 'strong') node = document.createElement('strong');
@@ -5958,7 +5959,9 @@
                     decorateDiscussBlockquote(node, ctx, prevSibling, followingCitation);
                     if (ctx.agentOutput) {
                         var quote = node;
-                        parent.appendChild(withCopyButton(quote, function() { return extractDiscussQuoteText(quote); }));
+                        var quoteWrap = withCopyButton(quote, function() { return extractDiscussQuoteText(quote); });
+                        decorateDiscussQuoteActions(quoteWrap, quote, ctx);
+                        parent.appendChild(quoteWrap);
                         return;
                     }
                 }
@@ -7879,6 +7882,8 @@ function toggleDiscussDiffHideWrapping() {
 }
 
 function openDiscussReviewModal(path, review) {
+    _currentDiscussQuoteComparison = null;
+    document.getElementById('discussDiffModalOverlay').classList.remove('is-quote-comparison');
     _currentDiscussReviewContext = review || null;
     _currentDiscussReviewPath = path;
     _currentDiscussDiffString = null;
@@ -7893,14 +7898,16 @@ function openDiscussReviewModal(path, review) {
     updateDiscussDiffFontSize(initialSize);
 }
 
-function openDiscussDiffModal(diffString) {
+function openDiscussDiffModal(diffString, options) {
+    _currentDiscussQuoteComparison = options && options.comparison || null;
+    document.getElementById('discussDiffModalOverlay').classList.toggle('is-quote-comparison', !!_currentDiscussQuoteComparison);
     _currentDiscussReviewContext = null;
     _discussReturnFocus = document.activeElement;
-    document.getElementById('discussDiffModalTitle').textContent = 'Review Changes';
+    document.getElementById('discussDiffModalTitle').textContent = _currentDiscussQuoteComparison ? 'Compare passage' : 'Review Changes';
     _currentDiscussReviewPath = null;
     _currentDiscussDiffString = diffString;
     syncDiscussDiffWrapToggle([]);
-    document.getElementById('discussDiffModalNote').textContent = 'Review the changes the agent made.';
+    document.getElementById('discussDiffModalNote').textContent = _currentDiscussQuoteComparison ? 'Preview · loading current passage…' : 'Review the changes the agent made.';
         document.getElementById("discussDiffModalOverlay").hidden = false;
     
     // Set initial mode UI
@@ -7917,6 +7924,7 @@ function openDiscussDiffModal(diffString) {
 
 function closeDiscussDiffModal() {
     var review = _currentDiscussReviewContext, path = _currentDiscussReviewPath;
+    var comparison = _currentDiscussQuoteComparison;
     var overlay = document.getElementById('discussDiffModalOverlay');
     if (!overlay || overlay.hidden) return;
     overlay.hidden = true;
@@ -7924,9 +7932,10 @@ function closeDiscussDiffModal() {
     _currentDiscussDiffString = null;
     _currentDiscussReviewPath = null;
     _currentDiscussReviewContext = null;
+    _currentDiscussQuoteComparison = null;
     // Each surface reads back the same choices made in the expanded view.
     if (review) review.render(path);
-    else if (_discussSnapshot) renderDiscussSnapshot();
+    else if (!comparison && _discussSnapshot) renderDiscussSnapshot();
     if (_discussReturnFocus && _discussReturnFocus.focus && _discussReturnFocus.isConnected) {
         _discussReturnFocus.focus();
     }
@@ -7963,6 +7972,7 @@ function setDiscussDiffMode(mode) {
 function loadDiscussDiffMode(mode) {
     var contentDiv = document.getElementById('discussDiffModalContent');
     var token = ++_discussDiffLoadToken;
+    if (_currentDiscussQuoteComparison) { loadDiscussQuoteComparison(mode, token); return; }
     if (_currentDiscussReviewPath) {
         var review = _currentDiscussReviewContext;
         if (review) { review.mode = mode; if (review.save) review.save(); } else _discussReviewMode = mode;

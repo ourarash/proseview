@@ -36,6 +36,11 @@ Three places where AI shows up, all opt-in:
    **Expand all**, and **Latest recap** shortcuts. An edit verified against a
    saved change shows **Applied · View changes**. Older recap formats remain
    readable as ordinary Markdown.
+   Source-linked quotes also have **Compare**, beside Copy. It opens the
+   existing diff viewer for just that passage, comparing the current scene
+   (including unsaved edits) or file with the quoted suggestion. Split and
+   Inline views emphasize changed words. Matching quotes and missing or
+   ambiguous passages get an explanation. Comparing does not apply edits.
    Group remembers your reading position per conversation across reloads,
    history switches, and background updates. New replies follow the bottom
    only when you were already reading there.

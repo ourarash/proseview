@@ -3079,6 +3079,29 @@ class _Handler(BaseHTTPRequestHandler):
                     except Exception as exc:
                         self._send_json({"ok": False, "error": str(exc)}, 500)
                     return
+                if path == "/api/discuss/compare-quote":
+                    from .quote_compare import compare_passage
+                    document = body.get("document") or {}
+                    target = self.discuss_manager.context._document_target(document)
+                    saved = self.discuss_manager.context._read_file(target).content.replace("\r\n", "\n").replace("\r", "\n")
+                    live = self.discuss_manager._validated_live_document(document, body.get("live_document"))
+                    live_offset = 0
+                    if live is not None:
+                        _, saved_body = split_frontmatter(saved)
+                        prose = extract_scene_text(saved_body)
+                        start = saved.find(prose) if prose else -1
+                        live_offset = saved[:start].count("\n") if start >= 0 else 0
+                    try:
+                        result = compare_passage(saved, str(body.get("quote") or ""),
+                            original=str(body.get("original") or ""), line=int(body.get("line") or 0) or None,
+                            end_line=int(body.get("end_line") or 0) or None, live=live, live_line_offset=live_offset,
+                            kind=str(body.get("kind") or "replace"))
+                    except ValueError as exc:
+                        self._send_json({"ok": True, "unavailable": str(exc)})
+                        return
+                    self._send_json({"ok": True, **result, "unsaved": live is not None,
+                                     "path": str(document.get("path") or ""), "kind": document.get("kind")})
+                    return
                 if question_match:
                     result = self.discuss_manager.submit(
                         question_match.group(1),

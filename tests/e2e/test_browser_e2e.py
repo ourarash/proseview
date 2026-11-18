@@ -6873,7 +6873,7 @@ def test_a_critique_answers_in_the_conversation_and_keeps_its_subject(
     assert page.locator(".discuss-task").count() == 0
     asked = page.locator(".discuss-message.user").last.inner_text()
     assert "Critique the provided text" in asked
-    assert "Provide a clear suggested fix" in asked
+    assert "write a pasteable revision" in asked
     assert "Selection" in page.locator("#discussSelectionChip").inner_text()
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -6928,9 +6928,9 @@ def test_deepen_and_layer_across_scene_and_selection_surfaces(page: Page, server
     assert 'Lanes: Subtext, Emotional response, Physical grounding, Cost & consequence' in asked
     page.locator('.discuss-craft-prompt summary').click()
     prompt = page.locator('.discuss-craft-prompt-body').inner_text()
-    assert "Subtext & Friction" in prompt
-    assert "Physical Anchoring & Micro-Business" in prompt
-    assert "Cost & Consequence" in prompt
+    assert "existing action, subtext, physical detail" in prompt
+    assert "consequences" in prompt
+    assert "write the expansion in a plain blockquote" in prompt
 
     # 3. Selection menus: Layer subtext under Rewrite, Deepen & layer under Critique
     open_selection_menu(page, "the slow algebra")
@@ -7038,7 +7038,8 @@ def test_craft_review_card_customizes_book_lens_and_multi_scene_scope(page: Page
     assert "Five Commandments at the appropriate dramatic scale" not in asked
     receipt = page.locator(".discuss-message.user").last
     receipt.locator(".discuss-craft-prompt summary").click()
-    assert "Five Commandments at the appropriate dramatic scale" in receipt.inner_text()
+    assert "Selected book: The Story Grid" in receipt.inner_text()
+    assert "Principle:" in receipt.inner_text()
     page.evaluate("renderDiscussSnapshot()")
     assert page.locator(".discuss-craft-prompt").last.get_attribute("open") is not None
     assert page.locator(".discuss-task").count() == 0

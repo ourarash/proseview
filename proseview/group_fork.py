@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import re
@@ -161,22 +162,33 @@ def prepare(manager: Any, source: Any, body: dict[str, Any]) -> dict[str, Any]:
             warnings.append(f"Referenced file is unavailable: {path}")
     profiles = []
     available = []
-    for agent in (source.agent, "claude" if source.agent == "codex" else "codex"):
+    from .config import DISCUSS_AGENTS
+
+    others = [agent for agent in DISCUSS_AGENTS if agent != source.agent]
+    for agent in (source.agent, *others):
         try:
             manager._probe_agent(agent)
             available.append(agent)
         except Exception:
             pass
-    other = "claude" if source.agent == "codex" else "codex"
-    if other not in available:
-        other = source.agent
-    for index, (name, agent) in enumerate((("Original assistant", source.agent), ("Second opinion", other))):
+    other_agents = [agent for agent in others if agent in available]
+    second_agent = other_agents[0] if len(other_agents) >= 1 else source.agent
+    third_agent = other_agents[1] if len(other_agents) >= 2 else (other_agents[0] if len(other_agents) == 1 else source.agent)
+    seed_profiles = (
+        ("Original assistant", source.agent),
+        ("Second opinion", second_agent),
+        ("Third perspective", third_agent),
+    )
+    for index, (name, agent) in enumerate(seed_profiles):
         profiles.append({"id": f"fork-{index + 1}", "name": name, "agent": agent,
                          "model": selection.get("model", "") if index == 0 else "", "effort": selection.get("effort", "") if index == 0 else "",
                          "specialty": "", "style": ""})
-    roster = group.clean_participants(body.get("participants") or profiles)
+    raw_participants = body.get("participants") or profiles
+    roster = group.clean_participants(raw_participants)
     for index, profile in enumerate(roster):
-        profile.update(name=profiles[index]["name"], specialty="", style="")
+        raw_item = raw_participants[index] if index < len(raw_participants) and isinstance(raw_participants[index], dict) else {}
+        fallback_name = profiles[index]["name"] if index < len(profiles) else f"Participant {index + 1}"
+        profile.update(name=str(raw_item.get("name") or fallback_name), specialty="", style="")
     turns = []
     for message in messages:
         if not str(message.get("text") or "").strip():
@@ -205,7 +217,7 @@ def prepare(manager: Any, source: Any, body: dict[str, Any]) -> dict[str, Any]:
     portable["mode"] = context_options["mode"]
     if context_options["mode"] == "recent":
         portable["tool_turn_ids"] = []
-        warnings.append("Both participants start fresh sessions. Other files remain available by reference; private reasoning is excluded.")
+        warnings.append("All participants start fresh sessions. Other files remain available by reference; private reasoning is excluded.")
     else:
         warnings.append("Only tool results available from provider session history can be transferred; private reasoning is excluded.")
     return {"scene": scene, "participants": roster, "turns": turns, "fork_context": portable,
@@ -471,7 +483,8 @@ def fork_chat(manager: Any, conversation_id: str, body: dict[str, Any], *, creat
             saved["notice"] = " ".join(response["warnings"])
             saved["handoff_warnings"] = list(response["warnings"])
             if native_id:
-                saved["native_threads"]["1"] = {"thread_id": native_id, "seen": len(saved["turns"]), "scene": "", "signature": None, "forked": True}
+                saved["native_threads"]["1"] = {"thread_id": native_id, "seen": len(saved["turns"]), "scene": "", "signature": None, "forked": True,
+                                                "guidance_hash": hashlib.sha256(group.GENERAL_CHAT_GUIDANCE.encode("utf-8")).hexdigest()}
             if workflow:
                 runtime._preset(saved, {"append": True, "preset_id": workflow["id"], "kind": "workflow",
                                        "positions_table": body.get("positions_table", workflow.get("positions_table", True))})

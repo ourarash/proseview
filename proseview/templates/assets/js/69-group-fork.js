@@ -87,7 +87,8 @@ function groupPositionsCard(session, turn) {
     turn.positions.forEach(function(row) {
         var tr = document.createElement('tr'); tr.appendChild(groupForkElement('td', '', row.id + '. ' + row.suggestion));
         var evidence = [];
-        [1, 2].forEach(function(seat) {
+        session.participants.forEach(function(_, idx) {
+            var seat = idx + 1;
             var position = row.agents[String(seat)];
             tr.appendChild(groupForkElement('td', position ? 'group-stance-' + position.stance : '', position ? position.stance : ''));
             if (position) evidence.push(session.participants[seat - 1].name + ': ' + position.evidence);
@@ -112,7 +113,7 @@ function syncDiscussGroupFork() {
         || (s.approvals || []).some(function(p) { return p.status === 'pending' || p.status === 'resolving'; })
         || !!(active && (active.busy || (active.outbox || []).length))
         || !(s.messages || []).some(function(m) { return m.role === 'assistant'; }) && !(s.tasks || []).some(function(t) { return t.result; });
-    button.title = button.disabled ? 'Finish running work and approvals, and wait for an answer before forking' : 'Continue this conversation with two assistants';
+    button.title = button.disabled ? 'Finish running work and approvals, and wait for an answer before forking' : 'Continue this conversation with two or three assistants';
     var key = _discussConversationId + ':' + (s.thread_id || '');
     if (_discussConversationId && !_groupForkLinks[key]) {
         _groupForkLinks[key] = [];
@@ -179,11 +180,42 @@ function renderDiscussGroupFork() {
         var progressFoot = groupForkElement('group-fork-footer'); var stop = document.createElement('button'); stop.type = 'button'; stop.id = 'groupForkCancelSummary'; stop.textContent = state.cancelRequested ? 'Stopping…' : 'Cancel'; stop.disabled = !!state.cancelRequested; stop.onclick = function() { cancelGroupForkSummary(state); }; progressFoot.appendChild(stop); dialog.appendChild(progressFoot); return;
     }
     if (state.loading) body.appendChild(groupForkElement('p', '', 'Preparing conversation context…'));
+    if (state.participants.length >= 2) {
+        var countBar = groupForkElement('div', 'group-room-size-toggle');
+        countBar.style.marginBottom = '10px';
+        countBar.appendChild(groupForkElement('span', 'group-apply-label', 'Participants:'));
+        [2, 3].forEach(function(count) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'group-header-btn group-room-size-btn' + (state.participants.length === count ? ' is-active' : '');
+            btn.textContent = count + ' agents';
+            btn.setAttribute('aria-pressed', state.participants.length === count ? 'true' : 'false');
+            btn.onclick = function() {
+                if (state.participants.length === count) return;
+                if (count === 2) {
+                    state.removedThird = Object.assign({}, state.participants[2]);
+                    state.participants = state.participants.slice(0, 2);
+                } else {
+                    var third = state.removedThird || (function() {
+                        var used = new Set(state.participants.map(function(p) { return p.agent; }));
+                        var agent = DISCUSS_AGENTS.find(function(a) { return !used.has(a); }) || 'agy';
+                        return {id: 'fork-3', name: 'Third perspective', agent: agent, model: '', effort: '', specialty: '', style: ''};
+                    })();
+                    state.participants = state.participants.concat([third]);
+                }
+                state.limits = [];
+                renderDiscussGroupFork();
+                checkGroupForkContext(state);
+            };
+            countBar.appendChild(btn);
+        });
+        body.appendChild(countBar);
+    }
     var grid = groupForkElement('div', ''); grid.className = 'group-fork-models';
     state.participants.forEach(function(profile, index) {
         var card = groupForkElement('group-fork-model'); card.appendChild(groupForkElement('strong', '', profile.name));
         var provider = document.createElement('select'); provider.setAttribute('aria-label', profile.name + ' provider');
-        ['codex', 'claude'].forEach(function(p) { var option = document.createElement('option'); option.value = p; option.textContent = _groupAgentDisplay(p); provider.appendChild(option); });
+        DISCUSS_AGENTS.forEach(function(p) { var option = document.createElement('option'); option.value = p; option.textContent = _groupAgentDisplay(p); provider.appendChild(option); });
         provider.value = profile.agent;
         provider.onchange = function() { profile.agent = provider.value; profile.model = ''; profile.effort = ''; profile.custom = false; state.limits = []; renderDiscussGroupFork(); checkGroupForkContext(state); };
         var pLabel = groupForkElement('label', '', 'Provider'); pLabel.appendChild(provider); card.appendChild(pLabel);
@@ -194,9 +226,20 @@ function renderDiscussGroupFork() {
         if (profile.model && !Array.from(model.options).some(function(o) { return o.value === profile.model; })) { var custom = document.createElement('option'); custom.value = profile.model; custom.textContent = profile.model; model.appendChild(custom); }
         var customOption = document.createElement('option'); customOption.value = '__custom'; customOption.textContent = 'Custom model…'; model.appendChild(customOption);
         model.value = profile.custom ? '__custom' : profile.model;
-        model.onchange = function() { if (model.value === '__custom') { profile.custom = true; profile.model = ''; renderDiscussGroupFork(); } else { profile.model = model.value; profile.custom = false; state.limits = []; renderDiscussGroupFork(); checkGroupForkContext(state); } };
+        model.onchange = function() { if (model.value === '__custom') { profile.custom = true; profile.model = ''; profile.effort = ''; renderDiscussGroupFork(); } else { profile.model = model.value; profile.custom = false; profile.effort = ''; state.limits = []; renderDiscussGroupFork(); checkGroupForkContext(state); } };
         var mLabel = groupForkElement('label', '', 'Model'); mLabel.appendChild(model); card.appendChild(mLabel);
         if (profile.custom) { var input = document.createElement('input'); input.id = 'groupForkCustom' + index; input.setAttribute('aria-label', profile.name + ' custom model'); input.placeholder = 'Configured model ID'; input.value = profile.model; input.oninput = function() { profile.model = input.value.trim(); state.limits = []; checkGroupForkContext(state); }; card.appendChild(input); }
+        var effort = document.createElement('select'); effort.setAttribute('aria-label', profile.name + ' reasoning effort');
+        var effortDef = document.createElement('option'); effortDef.value = ''; effortDef.textContent = 'Provider default'; effort.appendChild(effortDef);
+        var modelRow = catalog && (catalog.models || []).find(function(row) { return row.id === profile.model; });
+        var supportedEfforts = modelRow && modelRow.supportedReasoningEfforts && modelRow.supportedReasoningEfforts.length
+            ? modelRow.supportedReasoningEfforts.map(function(e) { return e.reasoningEffort || e; })
+            : ['low', 'medium', 'high', 'xhigh', 'max'];
+        if (profile.effort && !supportedEfforts.includes(profile.effort)) supportedEfforts = supportedEfforts.concat([profile.effort]);
+        supportedEfforts.forEach(function(effId) { var option = document.createElement('option'); option.value = effId; option.textContent = effId; effort.appendChild(option); });
+        effort.value = profile.effort || '';
+        effort.onchange = function() { profile.effort = effort.value; };
+        var eLabel = groupForkElement('label', '', 'Reasoning effort'); eLabel.appendChild(effort); card.appendChild(eLabel);
         grid.appendChild(card);
         if (!catalog && !state['loading-' + profile.agent]) {
             state['loading-' + profile.agent] = true;
@@ -261,7 +304,7 @@ function renderGroupForkContextChoices(state, body) {
     summary.onchange = function() { state.contextOptions.include_summary = summary.checked; renderDiscussGroupFork(); };
     var copy = document.createElement('span'); copy.append(groupForkElement('span', 'group-positions-title', 'Include a summary of earlier exchanges'), groupForkElement('span', 'group-positions-help', (state.counts.older || 0) + ' earlier exchanges. A selected summary is made when you fork.'));
     summaryLabel.append(summary, copy); box.appendChild(summaryLabel);
-    box.appendChild(groupForkElement('p', 'group-fork-fresh-note', 'Both participants start fresh sessions with this context.'));
+    box.appendChild(groupForkElement('p', 'group-fork-fresh-note', 'All participants start fresh sessions with this context.'));
     body.appendChild(box);
 }
 function checkGroupForkContext(state) {

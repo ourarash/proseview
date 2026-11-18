@@ -11,7 +11,7 @@
         // Nothing here scrolls. The card follows its line as the reader
         // scrolls, and every focus it takes is preventScroll.
         var _hlCard = null;
-        var HL_AGENTS = [{id: 'codex', label: 'Codex'}, {id: 'claude', label: 'Claude'}];
+        var HL_AGENTS = [{id: 'codex', label: 'Codex'}, {id: 'claude', label: 'Claude'}, {id: 'agy', label: 'Agy'}];
         // Which agents can run, from the same check the dock makes. Until it
         // answers, both are offered.
         var _hlAvailable = null;

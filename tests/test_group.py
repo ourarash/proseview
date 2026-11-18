@@ -26,9 +26,9 @@ def test_profiles_and_presets_migrate_and_are_reusable_across_books(tmp_path):
         library = settings["library"]
         assert library["profiles"][0]["name"] == "Plot Partner"
         assert library["profiles"][0]["specialty"] == "Watch the stakes."
-        assert library["default_profiles"] == [p["id"] for p in library["profiles"][:2]]
+        assert library["default_profiles"] == [p["id"] for p in library["profiles"][:3]]
         assert len(library["presets"][0]["invitations"]) == settings["app"]["turns"]
-        assert library["presets"][0]["recap"] in (1, 2)
+        assert library["presets"][0]["recap"] in (1, 2, 3)
         library["profiles"].append({"id": "reader", "name": "First Reader", "specialty": "Reader expectations", "style": "Curious and candid", "agent": "claude", "model": "", "effort": ""})
         library["default_profiles"] = ["reader", library["profiles"][0]["id"]]
         saved = manager.save_group_settings({"library": library})
@@ -65,6 +65,8 @@ def test_chat_preserves_full_history_and_keeps_format_and_profile_guidance_in_ba
         assert reopened["participants"][0]["name"] == participants[0]["name"]
     finally:
         manager.close()
+
+
 
 
 def test_pass_is_an_individual_outcome_and_survives_history(tmp_path, monkeypatch):
@@ -126,7 +128,9 @@ def test_native_group_conversation_continues_when_the_scene_changes(tmp_path):
         manager.close()
 
 
-@pytest.mark.parametrize("agent", ["codex", "claude"])
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude", "agy"])
 def test_profile_inherits_individual_chat_model_and_effort_and_keeps_tools(tmp_path, agent):
     manager = _manager(_repo(tmp_path), clients := [])
     try:
@@ -179,7 +183,7 @@ def test_native_group_threads_resume_with_new_entries_and_recover_full_history(t
     lambda lib: lib["profiles"][0].update(agent="unknown"),
     lambda lib: lib["profiles"][1].update(id=lib["profiles"][0]["id"]),
     lambda lib: lib["presets"][0].update(invitations=[]),
-    lambda lib: lib["presets"][0].update(recap=3),
+    lambda lib: lib["presets"][0].update(recap=4),
     lambda lib: lib["presets"][0]["invitations"][0].update(seat=True),
 ])
 def test_invalid_library_is_rejected_without_overwriting_saved_settings(tmp_path, mutation):
@@ -207,7 +211,7 @@ def test_normal_group_reply_is_not_rewritten_by_legacy_debate_parser(tmp_path, m
         manager.close()
 
 
-@pytest.mark.parametrize("agent", ["codex", "claude"])
+@pytest.mark.parametrize("agent", ["codex", "claude", "agy"])
 def test_group_invokes_only_an_explicit_available_skill_using_the_native_input(tmp_path, monkeypatch, agent):
     manager = _manager(_repo(tmp_path), clients := [])
     try:
@@ -244,5 +248,100 @@ def test_group_history_has_no_artificial_entry_cutoff_and_uses_chat_timeout(tmp_
         assert calls[0]["timeout"] == 60 * 60
         manager.group_history({"action": "save", "session": {"id": "long-group", "scene": "one.md", "turns": history, "participants": participants}})
         assert len(manager.group_history({"action": "get", "id": "long-group"})["session"]["turns"]) == 2100
+    finally:
+        manager.close()
+
+
+def test_agy_group_profile_persists_resumes_and_recovers_missing_thread(tmp_path):
+    manager = _manager(_repo(tmp_path), clients := [])
+    try:
+        settings = manager.group_settings()
+        assert "agy" in settings["chat_models"]
+        library = settings["library"]
+        library["profiles"].append({
+            "id": "agy-editor",
+            "name": "Agy Editor",
+            "specialty": "Pacing",
+            "style": "Direct",
+            "agent": "agy",
+            "model": "gemini-4-argon",
+            "effort": "medium",
+        })
+        library["default_profiles"] = ["agy-editor", library["profiles"][0]["id"]]
+        saved = manager.save_group_settings({"library": library})
+        assert saved["participants"][0]["agent"] == "agy"
+
+        participants = saved["participants"]
+        history = [{"role": "user", "text": "Original writer request."}]
+        first = manager.run_group_turn(scene="one.md", participants=participants, history=history, debate_id="agy-group")
+        assert first["reply"]
+
+        history.extend([
+            {"role": "critic", "seat": 1, "agent": "agy", "label": "Agy Editor · Agy", "text": first["reply"]},
+            {"role": "user", "text": "Follow up."},
+        ])
+        # Simulate lost Agy ACP session after restart -> AgyRequestError triggers full-history recovery.
+        clients[0].threads.clear()
+        second = manager.run_group_turn(scene="one.md", participants=participants, history=history, debate_id="agy-group")
+        assert second["reply"]
+        assert "Original writer request." in clients[0].prompts[-1]
+        assert "Follow up." in clients[0].prompts[-1]
+
+        unpinned = [{**participants[0], "model": "", "effort": ""}, participants[1]]
+        third = manager.run_group_turn(scene="one.md", participants=unpinned, history=history, debate_id="agy-group-default")
+        assert third["model"] == "Agy default"
+    finally:
+        manager.close()
+
+
+def test_two_vs_three_seat_workflows_moderator_and_config_roundtrip(tmp_path):
+    from proseview.discuss import _parse_group_moderator_output
+    from proseview.group import adapt_preset_for_participants
+    from proseview.suggestions import _clean_group_session
+
+    root = _repo(tmp_path)
+    Config.load(root).with_overrides(
+        group=GroupConfig(critic3_name="Timeline Keeper", critic3_prompt="Track every hour and prop.")
+    ).save(root)
+    reloaded = Config.load(root)
+    assert reloaded.group.critic3_name == "Timeline Keeper"
+    assert reloaded.group.critic3_prompt == "Track every hour and prop."
+
+    manager = _manager(root, [])
+    try:
+        settings = manager.group_settings()
+        participants = settings["participants"]
+        assert len(participants) == 3
+        assert participants[2]["name"] == "Timeline Keeper" and participants[2]["agent"] == "agy"
+
+        second_op = next(p for p in settings["library"]["presets"] if p["id"] == "second_opinion")
+        folded = adapt_preset_for_participants(second_op, participants[:2])
+        assert all(s["seat"] in (1, 2) for s in folded["invitations"]) and folded["recap"] == 2
+
+        legacy_two = {
+            "id": "second_opinion",
+            "invitations": [{"seat": 2, "prompt": "Audit."}, {"seat": 1, "prompt": "Respond."}],
+            "recap": 2,
+        }
+        expanded = adapt_preset_for_participants(legacy_two, participants)
+        assert [s["seat"] for s in expanded["invitations"]] == [2, 3, 1] and expanded["recap"] == 3
+
+        parsed = _parse_group_moderator_output(
+            '{"agreed": [{"title": "Fix date", "line": "17", "original": "Nov", "replacement": "Oct", "why": "Matches ch03", "proposed_by": "Critic 3", "accepted": true}],'
+            ' "suggested": [],'
+            ' "open": [{"issue": "Clock pause", "critic1": "Cut", "critic2": "Keep", "critic3": "Keep if October fixed"}]}'
+        )
+        assert parsed["plan"][0]["proposed_by"] == "Critic 3"
+        assert parsed["open"][0]["critic3"] == "Keep if October fixed"
+
+        session = _clean_group_session({
+            "id": "three-seat-hist",
+            "scene": "one.md",
+            "participants": participants,
+            "turns": [{"role": "critic", "seat": 3, "agent": "agy", "text": "Timeline note."}],
+            "plans": [{"after_turn": 1, "agent": "claude", "items": [], "open": parsed["open"]}],
+        })
+        assert session["turns"][0]["seat"] == 3
+        assert session["plans"][0]["open"][0]["critic3"] == "Keep if October fixed"
     finally:
         manager.close()

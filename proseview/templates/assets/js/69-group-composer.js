@@ -137,7 +137,7 @@ function _groupLoadDraft(path) {
             && saved.participants.every(function(p) { return _groupSettings.library.profiles.some(function(available) { return available.id === p.id; }); })) {
         session.participants = _groupProfiles(saved.participants.map(function(p) { return p.id; }));
         session.participants.forEach(function(p, index) {
-            if (saved.providerChosen && (saved.participants[index].agent === 'codex' || saved.participants[index].agent === 'claude')) {
+            if (saved.providerChosen && DISCUSS_AGENTS.indexOf(saved.participants[index].agent) >= 0) {
                 p.agent = saved.participants[index].agent;
             }
             p.model = saved.participants[index].model || '';
@@ -156,8 +156,14 @@ function groupRequestedSeats(text, session) {
     var mentioned = _groupMentionRecipients(text);
     if (mentioned.length) return mentioned;
     session = session || _groupSessionFor(_groupCurrentScenePath());
-    var effective = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'both';
-    return effective === 'critic1' ? [1] : effective === 'critic2' ? [2] : [1, 2];
+    var count = (session && session.participants && session.participants.length) || 2;
+    var allSeats = Array.from({length: count}, function(_, i) { return i + 1; });
+    var effective = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'all';
+    if (/^critic(\d+)$/.test(effective)) {
+        var seatNum = Number(RegExp.$1);
+        if (seatNum >= 1 && seatNum <= count) return [seatNum];
+    }
+    return allSeats;
 }
 function submitGroupComposerMessage(options) { return submitManagedGroupMessage(options); }
 function groupLoadSkills(agent) {
@@ -306,13 +312,21 @@ function createGroupComposer(session) {
     var targetRow = elementWith('group-composer-bar'), targetLeft = elementWith('group-composer-target');
     targetLeft.appendChild(elementWith('group-apply-label', 'To:'));
     var target = document.createElement('select'); target.id = 'groupTargetSelect'; target.className = 'group-target-select'; target.setAttribute('aria-label', 'Group message recipient');
-    var bothLabel = typeof _groupBothLabel === 'function' ? _groupBothLabel(session) : 'Group (Both editors)';
-    var critic1Label = (typeof _groupSeatLabel === 'function' ? _groupSeatLabel(1, session) : _groupSeatName(1)) + ' only';
-    var critic2Label = (typeof _groupSeatLabel === 'function' ? _groupSeatLabel(2, session) : _groupSeatName(2)) + ' only';
-    [{value: 'both', name: bothLabel}, {value: 'critic1', name: critic1Label}, {value: 'critic2', name: critic2Label}].forEach(function(item) {
+    var allLabel = typeof _groupAllLabel === 'function' ? _groupAllLabel(session)
+        : (typeof _groupBothLabel === 'function' ? _groupBothLabel(session) : 'Group (All editors)');
+    var items = [{value: 'all', name: allLabel}];
+    var participants = (session && session.participants && session.participants.length) ? session.participants : [{seat: 1}, {seat: 2}];
+    participants.forEach(function(p, idx) {
+        var s = p.seat || (idx + 1);
+        var seatLabel = (typeof _groupSeatLabel === 'function' ? _groupSeatLabel(s, session) : _groupSeatName(s)) + ' only';
+        items.push({value: 'critic' + s, name: seatLabel});
+    });
+    items.forEach(function(item) {
         var option = document.createElement('option'); option.value = item.value; option.textContent = item.name; target.appendChild(option);
     });
-    target.value = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'both'; target.onchange = function() { _groupTargetChoice = target.value; _groupSaveDraft(session.scene); };
+    var effectiveTarget = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : 'all';
+    if (effectiveTarget === 'both') effectiveTarget = 'all';
+    target.value = effectiveTarget; target.onchange = function() { _groupTargetChoice = target.value; _groupSaveDraft(session.scene); };
     targetLeft.appendChild(target); targetRow.appendChild(targetLeft); composer.appendChild(targetRow);
     if (_groupPendingSelection) {
         var selection = elementWith('discuss-selection-chip group-selection-chip'); selection.id = 'groupSelectionChip';

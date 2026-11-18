@@ -24,9 +24,9 @@ import pytest
 
 from proseview.discuss import ContextError, DiscussManager
 
-from .transport_fakes import ClaudeFakeClient, CodexFakeClient, fake_factory
+from .transport_fakes import AgyFakeClient, ClaudeFakeClient, CodexFakeClient, fake_factory
 
-AGENTS = ["codex", "claude"]
+AGENTS = ["codex", "claude", "agy"]
 
 
 @pytest.fixture(params=AGENTS)
@@ -357,7 +357,7 @@ def test_an_approval_request_surfaces_and_resolves(repo: Path, agent: str):
         conversation = manager._get(cid)
         thread_id, turn_id = conversation.thread_id, conversation.active_turn_id
 
-        if agent == "claude":
+        if agent in {"claude", "agy"}:
             request_id = client.ask_approval(thread_id, turn_id)
         else:
             request_id = "approval-1"
@@ -390,10 +390,11 @@ def test_an_approval_request_surfaces_and_resolves(repo: Path, agent: str):
 
 def test_the_two_doubles_really_speak_different_protocols():
     """Guards the suite itself: shared emitting code would prove nothing."""
-    codex_methods, claude_methods = [], []
+    codex_methods, claude_methods, agy_methods = [], [], []
     codex = CodexFakeClient(lambda m: codex_methods.append(m["method"]))
     claude = ClaudeFakeClient(lambda m: claude_methods.append(m["method"]))
-    for client, sink in ((codex, codex_methods), (claude, claude_methods)):
+    agy = AgyFakeClient(lambda m: agy_methods.append(m["method"]))
+    for client, sink in ((codex, codex_methods), (claude, claude_methods), (agy, agy_methods)):
         thread = client.request("thread/start", {})["thread"]["id"]
         client.finish_delay = 0
         client.request("turn/start", {"threadId": thread, "input": [{"type": "text", "text": "hi"}]})
@@ -401,16 +402,17 @@ def test_the_two_doubles_really_speak_different_protocols():
         while not sink and time.monotonic() < deadline:
             time.sleep(0.01)
         time.sleep(0.05)
-    assert codex_methods and claude_methods
-    # turn/completed is common to both protocols, but carries a different
+    assert codex_methods and claude_methods and agy_methods
+    # turn/completed is common to Codex and Claude, but carries a different
     # payload shape in each. Everything that actually conveys content differs,
     # which is what makes the shared behaviour suite meaningful.
     codex_content = set(codex_methods) - {"turn/completed"}
     claude_content = set(claude_methods) - {"turn/completed"}
-    assert codex_content and claude_content
-    assert not codex_content & claude_content, (
-        "the doubles emit the same methods, so the translators are not being exercised"
-    )
+    agy_content = set(agy_methods)
+    assert codex_content and claude_content and agy_content
+    assert not codex_content & claude_content
+    assert not codex_content & agy_content
+    assert not claude_content & agy_content
 
 
 # --- model selection ----------------------------------------------------------

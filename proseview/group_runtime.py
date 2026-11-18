@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .group import PASS_MARKER, SECOND_OPINION_RECAP, clean_participants, extract_stances, visible_reply, positions_table
+from .group import PASS_MARKER, SECOND_OPINION_RECAP, adapt_preset_for_participants, clean_participants, extract_stances, visible_reply, positions_table
 from .suggestions import GroupHistoryStore, _clean_group_session, _group_history_path, group_title
 
 
@@ -280,16 +280,17 @@ class GroupRuntime:
             raise GroupRuntimeError("A Group message cannot be empty")
         if len(text.encode()) > 128 * 1024:
             raise GroupRuntimeError("The Group message is too large")
+        valid_seats = tuple(range(1, len(group["participants"]) + 1))
         seats = body.get("seats")
         if seats is None:
             text_str = str(text or "")
             if re.search(r"(?:^|[\s(])@(all|everyone)(?=$|[\s.,!?:;)\]'’])", text_str, re.IGNORECASE):
-                seats = [1, 2]
+                seats = list(valid_seats)
             else:
-                last_seat = next((turn["seat"] for turn in reversed(group.get("turns", [])) if turn.get("role") == "critic" and turn.get("seat") in (1, 2)), None)
-                seats = [last_seat] if last_seat in (1, 2) else [1, 2]
-        if not isinstance(seats, list) or not seats or any(type(s) is not int or s not in (1, 2) for s in seats) or len(set(seats)) != len(seats):
-            raise GroupRuntimeError("Choose one or both participants")
+                last_seat = next((turn["seat"] for turn in reversed(group.get("turns", [])) if turn.get("role") == "critic" and turn.get("seat") in valid_seats), None)
+                seats = [last_seat] if last_seat in valid_seats else list(valid_seats)
+        if not isinstance(seats, list) or not seats or any(type(s) is not int or s not in valid_seats for s in seats) or len(set(seats)) != len(seats):
+            raise GroupRuntimeError("Choose at least one active participant")
         mid = identifier(body.get("message_id"))
         if any(step.get("message_id") == mid for step in group["steps"]):
             raise GroupRuntimeError("That message id is already in use")
@@ -452,17 +453,19 @@ class GroupRuntime:
             raise GroupRuntimeError("Start a new Group before running a preset")
         if append and (group["status"] != "idle" or any(s["state"] in ("queued", "running", "interrupting") for s in group["steps"])):
             raise GroupRuntimeError("Wait for the current invitations to finish before continuing")
+        valid_seats = tuple(range(1, len(group["participants"]) + 1))
         invitations = body.get("invitations")
         if workflow:
+            adapted = adapt_preset_for_participants(preset, group["participants"])
             # Both entry points execute the shared definition, including its recap.
-            invitations = copy.deepcopy(preset["invitations"])
-            if preset.get("recap"):
-                invitations.append({"seat": preset["recap"], "recap": True, "prompt": SECOND_OPINION_RECAP})
+            invitations = copy.deepcopy(adapted["invitations"])
+            if adapted.get("recap"):
+                invitations.append({"seat": adapted["recap"], "recap": True, "prompt": SECOND_OPINION_RECAP})
         min_steps = 1 if append else 2
         if not isinstance(invitations, list) or not min_steps <= len(invitations) <= 13:
             raise GroupRuntimeError("A preset needs 2–12 invitations plus its optional recap")
         for step in invitations:
-            if not isinstance(step, dict) or type(step.get("seat")) is not int or step["seat"] not in (1, 2) or not isinstance(step.get("prompt"), str) or not step["prompt"].strip():
+            if not isinstance(step, dict) or type(step.get("seat")) is not int or step["seat"] not in valid_seats or not isinstance(step.get("prompt"), str) or not step["prompt"].strip():
                 raise GroupRuntimeError("Invalid preset invitation")
         for agent in {group["participants"][step["seat"] - 1]["agent"] for step in invitations}:
             try:

@@ -98,6 +98,7 @@ EFFORT_VALUES = ("low", "medium", "high", "xhigh", "max", "ultra")
 #: Codex predates the second agent, so it keeps the unprefixed history keys and
 #: remains what an unqualified request means.
 DEFAULT_AGENT = "codex"
+_AGENT_LABELS: dict[str, str] = {"codex": "Codex", "claude": "Claude", "agy": "Agy"}
 # Direct unit reconstruction has no persisted history row, so it retains the
 # historical behavior of using the conversation document. History-backed
 # restores pass either their one recorded origin or ``None`` to fail closed.
@@ -600,7 +601,7 @@ GROUP_MODERATOR_SCHEMA: dict[str, Any] = {
                     "original": {"type": "string", "maxLength": 2000},
                     "replacement": {"type": "string", "maxLength": 2000},
                     "why": {"type": "string", "maxLength": 600},
-                    "proposed_by": {"type": "string", "enum": ["Critic 1", "Critic 2", "Writer"]},
+                    "proposed_by": {"type": "string", "enum": ["Critic 1", "Critic 2", "Critic 3", "Writer"]},
                     "accepted": {"type": "boolean"},
                 },
                 "required": ["title", "line", "original", "replacement", "why", "proposed_by", "accepted"],
@@ -616,6 +617,7 @@ GROUP_MODERATOR_SCHEMA: dict[str, Any] = {
                     "issue": {"type": "string", "maxLength": 300},
                     "critic1": {"type": "string", "maxLength": 800},
                     "critic2": {"type": "string", "maxLength": 800},
+                    "critic3": {"type": "string", "maxLength": 800},
                 },
                 "required": ["issue", "critic1", "critic2"],
                 "additionalProperties": False,
@@ -687,17 +689,21 @@ def _parse_group_moderator_output(raw_text: str) -> dict[str, Any]:
             "original": original,
             "replacement": replacement,
             "detail": why,
-            "proposed_by": by if by in {"Critic 1", "Critic 2", "Writer"} else "",
+            "proposed_by": by if by in {"Critic 1", "Critic 2", "Critic 3", "Writer"} else "",
             "accepted": can_be_agreed and item.get("accepted") is True,
         })
     open_items: list[dict[str, str]] = []
     for item in (parsed.get("open") or [])[:4]:
         if isinstance(item, dict) and str(item.get("issue") or "").strip():
-            open_items.append({
+            row = {
                 "issue": str(item.get("issue") or "").strip(),
                 "critic1": str(item.get("critic1") or "").strip(),
                 "critic2": str(item.get("critic2") or "").strip(),
-            })
+            }
+            critic3 = str(item.get("critic3") or "").strip()
+            if critic3:
+                row["critic3"] = critic3
+            open_items.append(row)
     return {"plan": agreed, "open": open_items}
 
 
@@ -1658,13 +1664,14 @@ def _bounded_text(value: Any, limit: int = 524_288) -> str:
 def _is_thread_unavailable(error: BaseException) -> bool:
     """Return true only for an authoritative missing or unloaded thread response.
 
-    Matched structurally rather than by class so both agent transports qualify:
+    Matched structurally rather than by class so all agent transports qualify:
     a request error carrying a not-found code or message.
     """
+    from .agy_acp_client import AgyRequestError
     from .claude_agent_client import ClaudeRequestError
     from .codex_app_server import CodexRequestError
 
-    if not isinstance(error, (CodexRequestError, ClaudeRequestError)):
+    if not isinstance(error, (CodexRequestError, ClaudeRequestError, AgyRequestError)):
         return False
     message = str(error).lower()
     return (
@@ -2596,14 +2603,14 @@ class DiscussManager:
     def agents(self) -> list[dict[str, Any]]:
         """Report every agent and whether it can currently run.
 
-        Both tabs always exist, so an agent that cannot start must explain
+        All agent tabs always exist, so an agent that cannot start must explain
         itself rather than quietly disappear from the dock.
         """
         rows: list[dict[str, Any]] = []
         for agent in DISCUSS_AGENTS:
             row: dict[str, Any] = {
                 "id": agent,
-                "label": "Codex" if agent == "codex" else "Claude",
+                "label": _AGENT_LABELS.get(agent, agent.title()),
                 "available": True,
                 "reason": "",
             }
@@ -2623,6 +2630,11 @@ class DiscussManager:
             from .claude_agent_client import ClaudeAgentClient
 
             ClaudeAgentClient(cwd=self.root).inspect_capabilities()
+            return
+        if agent == "agy":
+            from .agy_acp_client import AgyAcpClient
+
+            AgyAcpClient(cwd=self.root).inspect_capabilities()
             return
         import shutil
 
@@ -2657,7 +2669,7 @@ class DiscussManager:
     def _build_client(self, agent: str) -> Any:
         """Construct one agent's transport.
 
-        Both present the same surface, so nothing above this method needs to
+        All present the same surface, so nothing above this method needs to
         know which agent answered. The callbacks are bound to the agent so
         inbound messages can be routed back to the right conversations.
         """
@@ -2665,6 +2677,14 @@ class DiscussManager:
             from .claude_agent_client import ClaudeAgentClient
 
             return ClaudeAgentClient(
+                cwd=self.root,
+                on_message=lambda message: self._on_agent_message(agent, message),
+                on_failure=lambda error: self._on_agent_failure(agent, error),
+            )
+        if agent == "agy":
+            from .agy_acp_client import AgyAcpClient
+
+            return AgyAcpClient(
                 cwd=self.root,
                 on_message=lambda message: self._on_agent_message(agent, message),
                 on_failure=lambda error: self._on_agent_failure(agent, error),
@@ -3513,6 +3533,8 @@ class DiscussManager:
         """
         if agent == "claude":
             return "Claude Code settings"
+        if agent == "agy":
+            return "Agy CLI settings (~/.gemini/antigravity-cli/settings.json)"
         home = os.environ.get("CODEX_HOME")
         path = f"{home.rstrip('/')}/config.toml" if home else "~/.codex/config.toml"
         return f"Codex settings ({path})"
@@ -4596,7 +4618,7 @@ class DiscussManager:
         ``conversation.pending``, or persisted thread state.
         """
         conversation = self._get(conversation_id)
-        if conversation.agent not in {"codex", "claude"}:
+        if conversation.agent not in DISCUSS_AGENTS:
             raise ContextError("side questions are only supported for single-agent chats")
         cleaned = re.sub(r"^\s*/btw(?:\s+|$)", "", str(question or ""), count=1, flags=re.IGNORECASE).strip()
         if not cleaned:
@@ -4710,7 +4732,7 @@ class DiscussManager:
         }
         if agent == "claude":
             params["tools"] = list(self.SIDE_CLAUDE_TOOLS)
-        else:
+        elif agent == "codex":
             params["config"] = {**self.THREAD_CONFIG, "web_search": "disabled"}
         return params
 
@@ -4840,6 +4862,7 @@ class DiscussManager:
         model_selection: dict[str, str],
         skill_item: dict[str, str] | None,
     ) -> None:
+        from .agy_acp_client import AgyError
         from .claude_agent_client import ClaudeError
         from .codex_app_server import CodexError
 
@@ -4869,7 +4892,7 @@ class DiscussManager:
                         thread_params=fork_params,
                         mode="fork",
                     )
-                except (CodexError, ClaudeError, RuntimeError) as exc:
+                except (CodexError, ClaudeError, AgyError, RuntimeError) as exc:
                     fallback_reason = str(exc) or "Parent thread could not be forked"
                     ok = False
                 if not ok and not getattr(one_off, "cancelled", False) and not self._closed and not one_off.draft and not one_off.text:
@@ -5404,7 +5427,7 @@ class DiscussManager:
                         self._clear_active_thread(conversation)
                         conversation.add_notice(
                             "warning",
-                            f"{'Codex' if conversation.agent == 'codex' else 'Claude'} could not reopen this conversation, so Prosview "
+                            f"{_AGENT_LABELS.get(conversation.agent, conversation.agent.title())} could not reopen this conversation, so Prosview "
                             "started a new one and passed it the messages above as text. It has what was said, "
                             "not its own working notes from before.",
                             client_request_id=queued.request_id,
@@ -5690,7 +5713,7 @@ class DiscussManager:
         The answer is checked exactly as a Rephrase action's is, and comes
         back with an account of how it was made.
         """
-        if agent not in {"codex", "claude"}:
+        if agent not in DISCUSS_AGENTS:
             raise ContextError("unknown agent")
         text = str(text or "").strip()
         paragraph = str(paragraph or "").strip() or text
@@ -5749,7 +5772,7 @@ class DiscussManager:
                 config["project_doc_max_bytes"] = 0
             thread_params["config"] = config
             mcp_on = [s["name"] for s in servers if s["name"] in settings.mcp_on and s["configured_on"]]
-        else:
+        elif agent == "claude":
             servers = suggestions_module.claude_mcp_servers(self.root)
             enabled = {s["name"]: s["config"] for s in servers if s["name"] in settings.mcp_on}
             thread_params["tools"] = suggestions_module.CLAUDE_TOOLS[settings.tools]
@@ -5760,6 +5783,10 @@ class DiscussManager:
             if book.instructions:
                 instruction_files = suggestions_module.claude_instruction_files(self.root)
             mcp_on = sorted(enabled)
+        else:
+            if book.instructions:
+                instruction_files = suggestions_module.agy_instruction_files(self.root)
+            mcp_on = []
 
         started_at = time.monotonic()
         client = self._client_for(agent)
@@ -5796,6 +5823,12 @@ class DiscussManager:
                 raise ContextError("The agent took too long to suggest anything; try again")
         finally:
             self._one_offs.pop(key, None)
+            discard = getattr(client, "discard_ephemeral_thread", None)
+            if callable(discard):
+                try:
+                    discard(thread_id)
+                except Exception:
+                    pass
         finished = time.monotonic()
         if one_off.status != "completed" or not one_off.text:
             raise ContextError(one_off.error or "The agent did not return any suggestions; try again")
@@ -5824,7 +5857,7 @@ class DiscussManager:
 
         result["used"] = {
             "agent": agent,
-            "model": model or f"{'Claude' if agent == 'claude' else 'Codex'}'s default",
+            "model": model or f"{_AGENT_LABELS.get(agent, agent.title())}'s default",
             "effort": effort,
             "tools": settings.tools,
             "context": context_label.lower(),
@@ -5874,6 +5907,7 @@ class DiscussManager:
                     {"name": s["name"], "configured_on": s["configured_on"]}
                     for s in suggestions_module.claude_mcp_servers(self.root)
                 ],
+                "agy": [],
             },
         }
 
@@ -5910,7 +5944,7 @@ class DiscussManager:
         raw_app = body.get("app") if isinstance(body.get("app"), dict) else None
         if raw_app is not None:
             current = store.load()
-            for agent in ("codex", "claude"):
+            for agent in DISCUSS_AGENTS:
                 if isinstance(raw_app.get(agent), dict):
                     current[agent] = suggestions_module.AgentSuggestionSettings.from_json(raw_app[agent])
             store.save(current)
@@ -5924,6 +5958,8 @@ class DiscussManager:
     def _instruction_files_for(self, agent: str) -> list[str]:
         if agent == "claude":
             return list(suggestions_module.claude_instruction_files(self.root))
+        if agent == "agy":
+            return list(suggestions_module.agy_instruction_files(self.root))
         return ["AGENTS.md"] if (self.root / "AGENTS.md").is_file() else []
 
     def _build_context_sent(
@@ -6016,8 +6052,7 @@ class DiscussManager:
             },
             "skills": skills,
             "instruction_files": {
-                "codex": self._instruction_files_for("codex"),
-                "claude": self._instruction_files_for("claude"),
+                agent: self._instruction_files_for(agent) for agent in DISCUSS_AGENTS
             },
         }
 
@@ -6080,9 +6115,11 @@ class DiscussManager:
             "book": {
                 "critic1_name": book.critic1_name,
                 "critic2_name": book.critic2_name,
+                "critic3_name": book.critic3_name,
                 "moderator_name": book.moderator_name,
                 "critic1_prompt": book.critic1_prompt or suggestions_module.DEFAULT_GROUP_CRITIC1_PROMPT,
                 "critic2_prompt": book.critic2_prompt or suggestions_module.DEFAULT_GROUP_CRITIC2_PROMPT,
+                "critic3_prompt": book.critic3_prompt or suggestions_module.DEFAULT_GROUP_CRITIC3_PROMPT,
                 "preset_prompts": {
                     key: (book.preset_prompt(key) if book.preset_prompt(key) is not None else text)
                     for key, text in suggestions_module.DEFAULT_GROUP_PRESET_PROMPTS.items()
@@ -6094,9 +6131,11 @@ class DiscussManager:
             "defaults": {
                 "critic1_name": GroupConfig().critic1_name,
                 "critic2_name": GroupConfig().critic2_name,
+                "critic3_name": GroupConfig().critic3_name,
                 "moderator_name": GroupConfig().moderator_name,
                 "critic1_prompt": suggestions_module.DEFAULT_GROUP_CRITIC1_PROMPT,
                 "critic2_prompt": suggestions_module.DEFAULT_GROUP_CRITIC2_PROMPT,
+                "critic3_prompt": suggestions_module.DEFAULT_GROUP_CRITIC3_PROMPT,
                 "preset_prompts": dict(suggestions_module.DEFAULT_GROUP_PRESET_PROMPTS),
                 "include_frontmatter": GroupConfig().include_frontmatter,
                 "instructions": group_module.DEFAULT_CHAT_GUIDANCE,
@@ -6106,7 +6145,7 @@ class DiscussManager:
                 },
             },
             "library": library,
-            "chat_models": {agent: self._group_chat_model(agent) for agent in ("codex", "claude")},
+            "chat_models": {agent: self._group_chat_model(agent) for agent in DISCUSS_AGENTS},
             "presets": [{**preset, "label": preset["name"], "copy": preset["description"], "group": "Conversation workflows" if preset.get("kind") == "workflow" else "Task presets", "badge": str(len(preset["invitations"])) + " invitations"} for preset in library["presets"]],
             "lengths": dict(suggestions_module.GROUP_LENGTHS),
             "participants": group_module.clean_participants([by_id[key] for key in library["default_profiles"]]),
@@ -6132,13 +6171,14 @@ class DiscussManager:
             defaults = suggestions_module
             cfg = Config.load(self.root)
             names: dict[str, str] = {}
-            for key in ("critic1_name", "critic2_name", "moderator_name"):
+            for key in ("critic1_name", "critic2_name", "critic3_name", "moderator_name"):
                 name = raw_book.get(key, getattr(cfg.group, key))
                 if not isinstance(name, str) or len(name.strip()) > GROUP_DISPLAY_NAME_MAX:
                     raise ContextError(f"a Group display name must be text of at most {GROUP_DISPLAY_NAME_MAX} characters")
                 names[key] = name.strip() or getattr(GroupConfig(), key)
             c1 = str(raw_book.get("critic1_prompt", cfg.group.critic1_prompt) or "").strip()
             c2 = str(raw_book.get("critic2_prompt", cfg.group.critic2_prompt) or "").strip()
+            c3 = str(raw_book.get("critic3_prompt", cfg.group.critic3_prompt) or "").strip()
             presets = {
                 key: str(text).strip()
                 for key, text in (raw_book.get("preset_prompts", dict(cfg.group.preset_prompts)) or {}).items()
@@ -6150,6 +6190,7 @@ class DiscussManager:
             if (
                 len(c1) > SUGGESTION_PROMPT_MAX
                 or len(c2) > SUGGESTION_PROMPT_MAX
+                or len(c3) > SUGGESTION_PROMPT_MAX
                 or any(len(t) > SUGGESTION_PROMPT_MAX for t in presets.values())
                 or len(group_instr) > DISCUSS_PROMPT_MAX
             ):
@@ -6159,6 +6200,7 @@ class DiscussManager:
                 group=GroupConfig(
                     critic1_prompt="" if c1 == defaults.DEFAULT_GROUP_CRITIC1_PROMPT.strip() else c1,
                     critic2_prompt="" if c2 == defaults.DEFAULT_GROUP_CRITIC2_PROMPT.strip() else c2,
+                    critic3_prompt="" if c3 == defaults.DEFAULT_GROUP_CRITIC3_PROMPT.strip() else c3,
                     preset_prompts=tuple(sorted(presets.items())),
                     include_frontmatter=include_fm,
                     instructions="" if group_instr == group_module.DEFAULT_CHAT_GUIDANCE.strip() else group_instr,
@@ -6212,7 +6254,7 @@ class DiscussManager:
             prompt = str(raw_book.get("prompt") or "").strip()
             tension_rubric = str(raw_book.get("tension_rubric") or "").strip()
             agent = str(raw_book.get("agent") or "claude").strip().lower()
-            if agent not in {"claude", "codex"}:
+            if agent not in DISCUSS_AGENTS:
                 agent = "claude"
             model = str(raw_book.get("model") or "").strip()
             target_beats = str(raw_book.get("target_beats") or "auto").strip()
@@ -6265,22 +6307,25 @@ class DiscussManager:
         app = (app_settings or GroupAppSettings()).load()
         turn_start_monotonic = time.monotonic()
         turn_created_at = time.time()
-        seat_num = 2 if int(seat or 1) == 2 else 1
         turn_idx = max(1, min(2000, int(turn_index or 1)))
         total_cnt = max(turn_idx, min(2000, int(total_turns or app.turns)))
-        seat_cfg = app.critic1 if seat_num == 1 else app.critic2
+        raw_seat = int(seat or 1)
         roster = None
         if participants is not None:
             try:
                 roster = group_module.clean_participants(participants)
             except ValueError as exc:
                 raise ContextError(str(exc)) from exc
+            seat_num = raw_seat if 1 <= raw_seat <= len(roster) else 1
             profile = roster[seat_num - 1]
             seat_cfg = suggestions_module.GroupSeatSettings.from_json(profile)
             if (not seat_cfg.model or not seat_cfg.effort) and not getattr(self.group_runtime.context, "fork_context", None):
                 selected = self._group_chat_model(seat_cfg.agent, str(scene))
                 seat_cfg.model = seat_cfg.model or selected.get("model", "")
                 seat_cfg.effort = seat_cfg.effort or selected.get("effort", "")
+        else:
+            seat_num = raw_seat if raw_seat in (1, 2, 3) else 1
+            seat_cfg = app.critic3 if seat_num == 3 else (app.critic2 if seat_num == 2 else app.critic1)
 
         if skill is not None and not isinstance(skill, dict):
             raise ContextError("skill must be an object")
@@ -6320,13 +6365,7 @@ class DiscussManager:
         except Exception:
             pass
         scene_hash = hashlib.sha256((scene_name + '\0' + scene_notes + '\0' + scene_text + '\0' + reference_text + '\0' + beatmap_text).encode("utf-8")).hexdigest()
-        signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster]
         key = f"{_bounded_text(str(debate_id or ''), 80)}:{seat_num}" if debate_id else ""
-        known = self._group_threads.get(key) if key else None
-        if known and known.get("forked") and known.get("signature") is None:
-            known["signature"] = signature
-        if known and (known["signature"] != signature or known["seen"] > len(clean)):
-            known = None
         dev_instructions = self._effective_developer_instructions(cfg)
         instructions = (
             dev_instructions + "\n\n"
@@ -6343,6 +6382,16 @@ class DiscussManager:
             )
         if getattr(self.group_runtime.context, "positions_table", False):
             instructions += "\n\n" + group_module.POSITIONS_GUIDANCE
+        signature = [seat_cfg.agent, seat_cfg.model, seat_cfg.effort, "regular-tools", roster,
+                     hashlib.sha256(instructions.encode("utf-8")).hexdigest()]
+        known = self._group_threads.get(key) if key else None
+        if known and known.get("forked") and known.get("signature") is None:
+            if known.get("guidance_hash") == hashlib.sha256(group_module.GENERAL_CHAT_GUIDANCE.encode("utf-8")).hexdigest():
+                known["signature"] = signature
+            else:
+                known = None
+        if known and (known["signature"] != signature or known["seen"] > len(clean)):
+            known = None
         fork_context = getattr(self.group_runtime.context, "fork_context", None)
         fork_material = ""
         if fork_context:
@@ -6370,6 +6419,7 @@ class DiscussManager:
                     scene_notes="" if known["scene"] == scene_hash else scene_notes,
                     reference_text="" if known["scene"] == scene_hash else reference_text,
                     beatmap_text="" if known["scene"] == scene_hash else beatmap_text,
+                    participant_count=len(roster),
                 )
             else:
                 followup = suggestions_module.render_group_followup(
@@ -6417,6 +6467,7 @@ class DiscussManager:
                     seat=seat_num, history=clean or [{"role": "user", "text": question}],
                     scene_path=scene_name, scene_text=scene_text, scene_notes=scene_notes,
                     reference_text=reference_text, beatmap_text=beatmap_text,
+                    participant_count=len(roster),
                 )
             else:
                 prompt = suggestions_module.render_group_prompt(
@@ -6481,10 +6532,11 @@ class DiscussManager:
             full_prompt=sent_prompt,
             developer_instructions=instructions,
         )
+        agent_label = _AGENT_LABELS.get(seat_cfg.agent, seat_cfg.agent.title())
         return {
             "seat": seat_num,
             "agent": seat_cfg.agent,
-            "model": seat_cfg.model or f"{'Claude' if seat_cfg.agent == 'claude' else 'Codex'} default",
+            "model": seat_cfg.model or f"{agent_label} default",
             "effort": seat_cfg.effort,
             "turn_index": turn_idx,
             "total_turns": total_cnt,
@@ -6603,7 +6655,7 @@ class DiscussManager:
         starts a new one. Editors use the ordinary tool/approval configuration;
         the transcript-only moderator retains its narrow configuration.
         """
-        agent = seat_cfg.agent if seat_cfg.agent in {"codex", "claude"} else "codex"
+        agent = seat_cfg.agent if seat_cfg.agent in DISCUSS_AGENTS else "codex"
         regular = who == "critic"
         thread_params: dict[str, Any] = {
             "cwd": str(self.root),
@@ -6618,13 +6670,14 @@ class DiscussManager:
             for server in suggestions_module.codex_mcp_servers():
                 config[f"mcp_servers.{server['name']}.enabled"] = False
             thread_params["config"] = config
-        else:
+        elif agent == "claude":
             thread_params["tools"] = suggestions_module.CLAUDE_TOOLS["none"]
             thread_params["settingSources"] = ["user", "project", "local"]
             thread_params["mcpServers"] = {}
         if not regular:
             thread_params["ephemeral"] = True
 
+        from .agy_acp_client import AgyRequestError
         from .claude_agent_client import ClaudeRequestError
         from .codex_app_server import CodexRequestError
 
@@ -6640,7 +6693,7 @@ class DiscussManager:
         if resuming and regular and key not in self._threads:
             try:
                 client.request("thread/resume", {**thread_params, "threadId": thread_id})
-            except (CodexRequestError, ClaudeRequestError) as exc:
+            except (CodexRequestError, ClaudeRequestError, AgyRequestError) as exc:
                 raise _GroupThreadGone(str(exc)) from exc
         one_off = _OneOff()
         one_off.structured_output = bool(schema)
@@ -6708,7 +6761,7 @@ class DiscussManager:
                 turn_params["effort"] = seat_cfg.effort
             try:
                 turn = client.request("turn/start", turn_params)
-            except (CodexRequestError, ClaudeRequestError) as exc:
+            except (CodexRequestError, ClaudeRequestError, AgyRequestError) as exc:
                 if resuming:
                     raise _GroupThreadGone(str(exc)) from exc
                 raise

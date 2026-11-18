@@ -30,6 +30,7 @@ from time import perf_counter
 from typing import Callable, Any
 
 from .config import GENRE_MTLD_BANDS, Config, book_config_keys, lexical_bands, validated_band
+from .agy_acp_client import AgyAuthError, AgyProtocolError, AgyUnavailableError
 from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError, claude_logged_in, open_login_terminal
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
 from .discuss import ContextError, DiscussManager
@@ -983,9 +984,10 @@ def _suggestion_save_source(raw: Any) -> str:
         return "Manual Save"
     if raw.get("undone"):
         return f"Suggestion undone: {check}"
-    if agent not in {"codex", "claude"}:
+    labels = {"codex": "Codex", "claude": "Claude", "agy": "Agy"}
+    if agent not in labels:
         return "Manual Save"
-    return f"Suggestion: {check} ({'Codex' if agent == 'codex' else 'Claude'})"
+    return f"Suggestion: {check} ({labels[agent]})"
 
 
 def resolve_scene_write_target(
@@ -1779,9 +1781,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _send_discuss_error(self, exc: Exception) -> None:
         message = str(exc) or exc.__class__.__name__
-        if isinstance(exc, CodexAuthError):
+        if isinstance(exc, (CodexAuthError, AgyAuthError)):
             status = 401
-        elif isinstance(exc, (CodexUnavailableError, CodexProtocolError, ClaudeUnavailableError, ClaudeProtocolError)):
+        elif isinstance(
+            exc,
+            (
+                CodexUnavailableError,
+                CodexProtocolError,
+                ClaudeUnavailableError,
+                ClaudeProtocolError,
+                AgyUnavailableError,
+                AgyProtocolError,
+            ),
+        ):
             status = 503
         elif isinstance(exc, ContextError):
             status = 409 if any(word in message.lower() for word in ("stale", "already", "not active", "busy")) else 400

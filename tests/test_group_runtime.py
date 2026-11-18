@@ -452,22 +452,28 @@ def test_group_submit_auto_targets_both_initially_and_last_critic_afterwards_unl
         return reply(kw, f"Reply from critic {kw['seat']}.")
     monkeypatch.setattr(manager, "run_group_turn", run)
     try:
-        # 1. No messages yet: message without explicit seats goes to both [1, 2]
+        # 1. No messages yet: message without explicit seats goes to all active [1, 2, 3]
         command(manager, "submit", initial=initial(manager), message_id="first", text="Initial question")
-        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 2 and s)
-        assert calls == [1, 2]
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 3 and s)
+        assert calls == [1, 2, 3]
 
-        # 2. Both replied (last was seat 2): next message without seats goes to seat 2
+        # 2. All replied (last was seat 3): next message without seats goes to seat 3
         calls.clear()
         command(manager, "submit", message_id="followup-1", text="Followup for last critic")
-        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 3 and s)
-        assert calls == [2]
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 4 and s)
+        assert calls == [3]
 
-        # 3. Next message with @all goes to both [1, 2]
+        # 3. Next message with @all goes to all [1, 2, 3]
         calls.clear()
-        command(manager, "submit", message_id="to-all", text="@all what do both of you think?")
-        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 5 and s)
-        assert calls == [1, 2]
+        command(manager, "submit", message_id="to-all", text="@all what do all of you think?")
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 7 and s)
+        assert calls == [1, 2, 3]
+
+        # 4. Subset explicit seats [1, 3] addresses only Seat 1 and Seat 3
+        calls.clear()
+        command(manager, "submit", message_id="subset", text="@StoryEditor @ContinuityEditor check line 1", seats=[1, 3])
+        state = wait_for(lambda: (s := command(manager))["status"] == "idle" and len([t for t in s["turns"] if t["role"] == "critic"]) == 9 and s)
+        assert calls == [1, 3]
     finally:
         manager.close()
 

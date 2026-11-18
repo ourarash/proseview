@@ -136,6 +136,7 @@ def test_group_send_now_steers_codex_and_keeps_claude_turn_queued(page, server):
 
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('group')")
+    page.get_by_role("button", name="2 agents", exact=True).click()
 
     send_btn = page.locator("#groupSendBtn")
     now_btn = page.locator("#groupSendNowBtn")

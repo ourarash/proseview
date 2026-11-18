@@ -20,7 +20,7 @@ def answer(page, agent):
     page.locator('#discussGroupFork:not([disabled])').wait_for()
 
 
-@pytest.mark.parametrize('agent', ['codex', 'claude'])
+@pytest.mark.parametrize('agent', ['codex', 'claude', 'agy'])
 def test_manual_fork_preserves_source_and_routes_untagged_group_messages(page, server, agent):
     open_scene(page, server, SCENE_REL)
     answer(page, agent)
@@ -84,9 +84,9 @@ def test_second_opinion_is_shared_and_starts_only_the_selected_workflow(page, se
     setup.locator('#groupForkConfirm').click()
     pane.wait_for(state='visible')
     _group_idle(page)
-    page.wait_for_function('() => _groupActiveSession?.turns.filter(t => t.role === "invitation").length === 3 && !_groupActiveSession.busy')
+    page.wait_for_function('() => _groupActiveSession?.turns.filter(t => t.role === "invitation").length === 4 && !_groupActiveSession.busy')
     invitations = page.evaluate('_groupActiveSession.turns.filter(t => t.role === "invitation").map(t => t.seat)')
-    assert invitations == [2, 1, 2]
+    assert invitations == [2, 3, 1, 3]
     assert pane.get_by_role('table', name='Recorded positions').count() == 1
     assert pane.locator('#groupContinueToFiveBtn').count() == 0
     pane.get_by_text('Conversation workflows', exact=True).click()

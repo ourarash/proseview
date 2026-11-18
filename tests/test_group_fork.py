@@ -137,6 +137,8 @@ def test_lost_native_fork_restores_instructions_and_keeps_fallback_disclosure(tm
         manager.close()
 
 
+
+
 def test_models_remain_attributed_after_source_chat_is_reopened(tmp_path):
     manager = _manager(_repo(tmp_path), clients := [])
     try:
@@ -199,28 +201,52 @@ def test_fork_refuses_busy_source_or_any_book_group(tmp_path, busy):
         manager.close()
 
 
-def test_workflow_is_shared_has_two_invitations_and_keeps_latest_stances(tmp_path, monkeypatch):
+def test_workflow_is_shared_has_three_invitations_by_default_and_keeps_latest_stances(tmp_path, monkeypatch):
     manager = _manager(_repo(tmp_path), [])
     calls = []
     try:
         cid = answered(manager)
         preset = next(p for p in manager.group_settings()['library']['presets'] if p['id'] == 'second_opinion')
-        assert preset['kind'] == 'workflow' and preset['positions_table'] and [s['seat'] for s in preset['invitations']] == [2, 1]
+        assert preset['kind'] == 'workflow' and preset['positions_table'] and [s['seat'] for s in preset['invitations']] == [2, 3, 1]
         def run(**kw):
             calls.append(kw)
             raw = ('1. Keep the callback\n\nUseful reply.\nSTANCE | 1 | disagree | line 8 has A | B' if len(calls) == 1 else
+                   '1. Keep the callback\n\nContinuity verified.\nSTANCE | 1 | agree | line 8 matches ch03' if len(calls) == 2 else
                    '1. Keep the callback\n\nI revise that.\nSTANCE | 1 | revised | line 8 has A | B')
             return {'reply': raw, 'agent': kw['participants'][kw['seat'] - 1]['agent'], 'passed': False}
         monkeypatch.setattr(manager, 'run_group_turn', run)
         created = manager.fork_group(cid, {'scene': 'one.md', 'workflow': 'second_opinion'}, create=True)['group']
-        done = wait_for(lambda: (s := state(manager, created['id']))['status'] == 'idle' and len(calls) == 3 and s)
-        assert [kw['seat'] for kw in calls] == [2, 1, 2]
+        done = wait_for(lambda: (s := state(manager, created['id']))['status'] == 'idle' and len(calls) == 4 and s)
+        assert [kw['seat'] for kw in calls] == [2, 3, 1, 3]
         assert all('STANCE' not in t['text'] for t in done['turns'])
         row = done['turns'][-1]['positions'][0]
-        assert row['agents']['1']['stance'] == row['agents']['2']['stance'] == 'revised'
+        assert row['agents']['1']['stance'] == row['agents']['3']['stance'] == 'revised'
+        assert row['agents']['2']['stance'] == 'disagree'
         assert row['agents']['1']['evidence'] == 'line 8 has A | B'
         restored = manager.group_runtime.history.get(done['id'])
         assert restored['source'] == done['source'] and restored['turns'][-1]['positions'] == done['turns'][-1]['positions']
+    finally:
+        manager.close()
+
+
+def test_fork_group_supports_two_or_three_participants_with_custom_models_and_efforts(tmp_path):
+    manager = _manager(_repo(tmp_path), [])
+    try:
+        cid = answered(manager)
+        prepared = manager.fork_group(cid, {'scene': 'one.md'})
+        assert [p['agent'] for p in prepared['participants']] == ['codex', 'claude', 'agy']
+        assert prepared['participants'][2]['name'] == 'Third perspective'
+
+        two_seat = manager.fork_group(cid, {
+            'scene': 'one.md',
+            'participants': [
+                {'id': 'fork-1', 'name': 'Original assistant', 'agent': 'codex', 'model': 'm-1', 'effort': 'low'},
+                {'id': 'fork-2', 'name': 'Second opinion', 'agent': 'agy', 'model': 'gemini-4-argon', 'effort': 'high'},
+            ],
+        })
+        assert len(two_seat['participants']) == 2
+        assert two_seat['participants'][1]['model'] == 'gemini-4-argon'
+        assert two_seat['participants'][1]['effort'] == 'high'
     finally:
         manager.close()
 
@@ -232,3 +258,20 @@ def test_partial_stance_records_never_reach_streamed_chat():
     rows = positions_table([{'role': 'critic', 'seat': 1, 'text': '7. Keep the title',
                              'stances': extract_stances('STANCE | 7 | agree | yes\nSTANCE | 7 | withdrawn | changed')}])
     assert rows[0]['agents']['1']['stance'] == 'withdrawn' and '2' not in rows[0]['agents']
+
+
+def test_fork_from_agy_falls_back_cleanly_to_fresh_session(tmp_path):
+    manager = _manager(_repo(tmp_path), clients := [])
+    try:
+        cid = answered(manager, 'agy')
+        result = manager.fork_group(cid, {'scene': 'one.md'}, create=True)
+        saved = result['group']
+        assert saved['status'] == 'idle'
+        assert saved['participants'][0]['agent'] == 'agy'
+        assert saved['participants'][1]['agent'] == 'codex'
+        assert any('fresh session' in w.lower() for w in result['warnings'])
+        send(manager, saved['id'], 'Continue in Group.', [1])
+        wait_for(lambda: len(state(manager, saved['id'])['turns']) > len(saved['turns']) + 1)
+        assert clients[0].prompts[-1]
+    finally:
+        manager.close()

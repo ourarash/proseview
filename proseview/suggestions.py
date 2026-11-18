@@ -218,12 +218,14 @@ class SuggestionAppSettings:
         self.path = path or _app_settings_path()
 
     def load(self) -> dict[str, AgentSuggestionSettings]:
+        from .config import DISCUSS_AGENTS
+
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raw = {}
         raw = raw if isinstance(raw, dict) else {}
-        return {agent: AgentSuggestionSettings.from_json(raw.get(agent)) for agent in ("codex", "claude")}
+        return {agent: AgentSuggestionSettings.from_json(raw.get(agent)) for agent in DISCUSS_AGENTS}
 
     def save(self, settings: dict[str, AgentSuggestionSettings]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -281,8 +283,7 @@ def claude_mcp_servers(root: Path) -> list[dict[str, Any]]:
 
 # -- what the agent is shown -------------------------------------------------
 
-def claude_instruction_files(root: Path) -> list[str]:
-    """The project instruction files Claude Code loads in *root*, imports included."""
+def _collect_instruction_files(root: Path, candidates: tuple[str, ...]) -> list[str]:
     seen: list[str] = []
 
     def visit(path: Path) -> None:
@@ -297,9 +298,19 @@ def claude_instruction_files(root: Path) -> list[str]:
         for match in re.finditer(r"(?m)(?:^|\s)@([\w./~-]+\.md)\b", text):
             visit((path.parent / match.group(1)).resolve())
 
-    for name in ("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"):
+    for name in candidates:
         visit((root / name).resolve())
     return seen
+
+
+def claude_instruction_files(root: Path) -> list[str]:
+    """The project instruction files Claude Code loads in *root*, imports included."""
+    return _collect_instruction_files(root, ("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"))
+
+
+def agy_instruction_files(root: Path) -> list[str]:
+    """The project instruction files Agy CLI loads in *root*, imports included."""
+    return _collect_instruction_files(root, ("GEMINI.md", ".gemini/GEMINI.md", "AGENTS.md"))
 
 
 # -- Group settings & prompts ----------------------------------------
@@ -337,6 +348,12 @@ DEFAULT_GROUP_CRITIC2_PROMPT: str = (
     "on-the-nose dialogue or generic phrasing, and flag pacing or structural beats that ring false."
 )
 
+DEFAULT_GROUP_CRITIC3_PROMPT: str = (
+    "Continuity, physical logic, and detail instinct: track timeline consistency, setup/payoff callbacks, "
+    "spatial blocking, character knowledge, and concrete details across the scene and manuscript. Flag "
+    "contradictions, missing transitions, or unmotivated props, while keeping suggestions concise and grounded."
+)
+
 _LEGACY_GROUP_CRITIC_PROMPTS: dict[str, str] = {
     "story-editor": "Narrative drive, stakes, scene structure, cause-and-effect, pacing, and continuity.",
     "voice-editor": "Character voice, dialogue subtext, sensory grounding, emotional nuance, and prose rhythm.",
@@ -345,7 +362,7 @@ _LEGACY_GROUP_CRITIC_PROMPTS: dict[str, str] = {
 DEFAULT_GROUP_PRESET_PROMPTS: dict[str, str] = {
     "editorial_critique": (
         "Lead from your editorial lens to find the 1–2 biggest friction points in this scene—whether in pacing, "
-        "stakes, and cause-and-effect or in character voice and subtext. For each, cite the line, quote the "
+        "stakes, and cause-and-effect or in character voice, subtext, and continuity. For each, cite the line, quote the "
         "complete passage in an italic blockquote (> *...*), diagnose the issue in 1–2 sentences, and provide "
         "a concrete cut or drop-in replacement in a plain blockquote (> ...)."
     ),
@@ -379,30 +396,30 @@ DEFAULT_GROUP_PRESET_STEPS: dict[str, list[dict[str, Any]]] = {
     "editorial_critique": [
         {"seat": 1, "prompt": DEFAULT_GROUP_PRESET_PROMPTS["editorial_critique"]},
         {"seat": 2, "prompt": "Audit Editor 1's proposed edits from your own lens: push back if a cut or rewrite strips subtext, character voice, or narrative drive, and rewrite any fix that sounds flat or generic into a plain blockquote (> ...). Then flag at most 1 crucial issue Editor 1 missed, with its complete italic blockquote (> *...*) and replacement blockquote (> ...)."},
-        {"seat": 1, "prompt": "Resolve the trade-offs between both sets of notes. Adopt Editor 2's phrasing where it is sharper, defend any cut or beat the scene still requires, and provide the complete updated replacement blockquotes (> ...) for any revised lines."},
-        {"seat": 2, "prompt": "Pressure-test the scene's opening hook and closing turn alongside the edits so far. If either the entry or exit lands softly, quote the complete passage (> *...*) and offer a sharper cut or rewrite (> ...); otherwise refine any remaining contested line."},
-        {"seat": 1, "prompt": "Make the final call on any remaining contested lines or opening/closing trims so every surviving edit earns its place. State the complete original (> *...*) and final replacement blockquote (> ...) you back for each."},
+        {"seat": 3, "prompt": "Audit both editors' proposals for timeline consistency, character knowledge, spatial/physical logic, and setup/payoff continuity across the scene and book. Refine any edit that breaks continuity and flag at most 1 crucial continuity or detail gap missed so far (with complete italic and plain blockquotes)."},
+        {"seat": 1, "prompt": "Resolve the trade-offs across the group's notes. Adopt sharper phrasing or continuity fixes where warranted, defend any cut or beat the scene still requires, and provide the complete updated replacement blockquotes (> ...) for any revised lines."},
+        {"seat": 2, "prompt": "Pressure-test the scene's opening hook and closing turn alongside the agreed edits so far. If either the entry or exit lands softly, quote the complete passage (> *...*) and offer a sharper cut or rewrite (> ...); otherwise refine any remaining contested line."},
     ],
     "tough_love": [
         {"seat": 1, "prompt": DEFAULT_GROUP_PRESET_PROMPTS["tough_love"]},
         {"seat": 2, "prompt": "Audit Editor 1's cuts and rewrites: rescue any cut detail that carries essential character voice or subtext by fusing it into a tighter plain blockquote (> ...), and challenge any rewrite that sounds sanitized or generic. Add 1 high-leverage line cut or dialogue sharpen of your own that Editor 1 missed, with complete original (> *...*) and replacement (> ...) blockquotes."},
-        {"seat": 1, "prompt": "Compare both sets of red-pen edits without mercy. Keep the sharpest version of each fix, drop any note that is mere nitpicking, and show the complete surviving replacement blockquotes (> ...)."},
-        {"seat": 2, "prompt": "Do a second-pass audit for telling-instead-of-showing, filter verbs, or dialogue lines where characters state their subtext out loud. Quote the complete original (> *...*) and give a tighter replacement (> ...)."},
-        {"seat": 1, "prompt": "Lock in the strongest cuts and replacements across both passes. Discard anything that over-edits the author's voice and confirm the complete final replacement blockquotes (> ...)."},
+        {"seat": 3, "prompt": "Check both editors' cuts for accidental continuity holes, lost setup details, or muddy blocking, and flag 1 redundant exposition line or logical crutch they missed with complete original (> *...*) and replacement (> ...) blockquotes."},
+        {"seat": 1, "prompt": "Compare all red-pen edits without mercy. Keep the sharpest version of each fix, preserve essential setup/continuity anchors, drop nitpicking, and show the complete surviving replacement blockquotes (> ...)."},
+        {"seat": 2, "prompt": "Do a final compression pass for telling-instead-of-showing, filter verbs, or dialogue lines where characters state their subtext out loud. Quote the complete original (> *...*) and give a tighter replacement (> ...)."},
     ],
     "deepen_and_layer": [
         {"seat": 1, "prompt": DEFAULT_GROUP_PRESET_PROMPTS["deepen_and_layer"]},
         {"seat": 2, "prompt": "Audit Editor 1's proposed layers: ensure the added subtext and physical action feel organic to the character's voice rather than forced or writerly. Refine and enrich Editor 1's rewrites into stronger plain blockquotes (> ...), and offer 1 additional subtextual turn, unspoken friction, or physical callback of your own (with complete original `> *...*` and replacement `> ...` blockquotes)."},
-        {"seat": 1, "prompt": "Synthesize the 2–3 strongest layering and expansion moves across the scene. Adopt Editor 2's phrasing where it deepens character truth, protect beats that give the scene necessary emotional breathing room, and provide the complete updated replacement blockquotes (> ...) for every surviving touchpoint."},
-        {"seat": 2, "prompt": "Examine the scene's climax, turning point, or closing beat alongside the layered moments so far. Ensure the emotional shift is earned and felt. If the scene's exit or turning beat needs a sharper callback or deeper resonance, quote the complete original (> *...*) and give the exact replacement (> ...); otherwise refine the agreed expansions so every added sentence hits with emotional precision."},
-        {"seat": 1, "prompt": "Lock in the final 2–3 layered expansions so the writer gets real depth, subtext, and grounded emotional weight across the scene. Confirm the complete original passage (> *...*) and final replacement blockquote (> ...) you back for each."},
+        {"seat": 3, "prompt": "Ground the layered moments in concrete scene continuity, physical props, and cross-scene callbacks. Challenge any added detail that contradicts established canon or blocking, and propose 1 concrete setup/payoff or sensory continuity echo with complete `> *...*` and `> ...` blockquotes."},
+        {"seat": 1, "prompt": "Synthesize the 2–3 strongest layering and expansion moves across the group. Adopt phrasing and callbacks that deepen character truth while protecting pace, and provide the complete updated replacement blockquotes (> ...) for every surviving touchpoint."},
+        {"seat": 2, "prompt": "Examine the scene's climax, turning point, or closing beat alongside the layered moments so far. Ensure the emotional shift is earned and felt, refining agreed expansions or quoting one final stronger closing beat (`> *...*` and `> ...`)."},
     ],
     "pitch_next_beat": [
         {"seat": 1, "prompt": DEFAULT_GROUP_PRESET_PROMPTS["pitch_next_beat"]},
         {"seat": 2, "prompt": "Pressure-test both beats against the character's core desires, psychology, and subtext. Call out anything that feels contrived, pick or remix the beat that feels genuinely earned, and name the unexpected complication that character would trigger."},
-        {"seat": 1, "prompt": "Synthesize Editor 2's pushback into a concrete scene-beat blueprint: the opening disruption, the mid-scene turn, and the exact cliffhanger or pivot that ends the sequence."},
+        {"seat": 3, "prompt": "Stress-test the leading beat against established plot continuity, timeline constraints, character locations, and unresolved setups. Flag any logical flaw or missed payoff opportunity you can weaponize next."},
+        {"seat": 1, "prompt": "Synthesize both critiques into a concrete scene-beat blueprint: the opening disruption, the mid-scene turn, and the exact cliffhanger or pivot that ends the sequence."},
         {"seat": 2, "prompt": "Identify the specific character blind spot, lie, or unspoken tension that should drive the dialogue and subtext in that winning beat, and propose the concrete sensory detail or action it should turn on."},
-        {"seat": 1, "prompt": "Tighten the winning next-beat blueprint into a step-by-step sequence of 3–4 scene beats the writer can draft from immediately, incorporating Editor 2's subtext and turning-point detail."},
     ],
 }
 
@@ -484,9 +501,11 @@ class GroupSeatSettings:
 
     @classmethod
     def from_json(cls, raw: Any, default_agent: str = "codex") -> "GroupSeatSettings":
+        from .config import DISCUSS_AGENTS
+
         raw = raw if isinstance(raw, dict) else {}
         agent = str(raw.get("agent") or default_agent).lower()
-        if agent not in ("codex", "claude"):
+        if agent not in DISCUSS_AGENTS:
             agent = default_agent
         return cls(
             agent=agent,
@@ -499,6 +518,7 @@ class GroupSeatSettings:
 class GroupComputerSettings:
     critic1: GroupSeatSettings = field(default_factory=lambda: GroupSeatSettings(agent="codex"))
     critic2: GroupSeatSettings = field(default_factory=lambda: GroupSeatSettings(agent="claude"))
+    critic3: GroupSeatSettings = field(default_factory=lambda: GroupSeatSettings(agent="agy"))
     #: Reads the debate and writes the plan; it adds no opinion of its own.
     moderator: GroupSeatSettings = field(default_factory=lambda: GroupSeatSettings(agent="claude", effort="low"))
     turns: int = GROUP_TURNS_DEFAULT
@@ -509,6 +529,7 @@ class GroupComputerSettings:
         result = {
             "critic1": self.critic1.to_json(),
             "critic2": self.critic2.to_json(),
+            "critic3": self.critic3.to_json(),
             "moderator": self.moderator.to_json(),
             "turns": self.turns,
             "length": self.length,
@@ -525,6 +546,23 @@ class GroupComputerSettings:
                     profile["specialty"] = DEFAULT_GROUP_CRITIC1_PROMPT
                 elif profile["id"] == "voice-editor" and profile["specialty"] == _LEGACY_GROUP_CRITIC_PROMPTS["voice-editor"]:
                     profile["specialty"] = DEFAULT_GROUP_CRITIC2_PROMPT
+            if {p["id"] for p in cleaned["profiles"]} == {"story-editor", "voice-editor"}:
+                cleaned["profiles"].append({
+                    "id": "continuity-editor",
+                    "name": book.critic3_name,
+                    "specialty": book.critic3_prompt or DEFAULT_GROUP_CRITIC3_PROMPT,
+                    "style": "Observant, grounded, and logical. Catches timeline slips, lost props, and unclosed setup/payoffs.",
+                    **self.critic3.to_json(),
+                })
+                if cleaned["default_profiles"] == ["story-editor", "voice-editor"]:
+                    cleaned["default_profiles"] = ["story-editor", "voice-editor", "continuity-editor"]
+                for preset in cleaned["presets"]:
+                    if preset["profiles"] == ["story-editor", "voice-editor"] and preset["id"] in DEFAULT_GROUP_PRESET_STEPS:
+                        preset["profiles"] = ["story-editor", "voice-editor", "continuity-editor"]
+                        preset["invitations"] = [dict(s) for s in DEFAULT_GROUP_PRESET_STEPS[preset["id"]][:max(3, self.turns)]]
+                        preset["recap"] = 3
+                    elif preset["id"] == "second_opinion" and preset["profiles"] == ["story-editor", "voice-editor"]:
+                        preset.update(second_opinion_preset(["story-editor", "voice-editor", "continuity-editor"]))
             cards_by_id = {c["id"]: c for c in GROUP_PRESET_CARDS}
             for preset in cleaned["presets"]:
                 if preset["id"] == "tough_love" and preset["name"] == "Tough-love critique":
@@ -533,7 +571,8 @@ class GroupComputerSettings:
                         preset["description"] = cards_by_id["tough_love"]["copy"]
                 legacy = _LEGACY_GROUP_PRESET_STEPS.get(preset["id"])
                 if legacy and preset["invitations"] == legacy:
-                    preset["invitations"] = [dict(s) for s in DEFAULT_GROUP_PRESET_STEPS[preset["id"]][:GROUP_TURNS_DEFAULT]]
+                    count = max(len(preset["profiles"]), GROUP_TURNS_DEFAULT)
+                    preset["invitations"] = [dict(s) for s in DEFAULT_GROUP_PRESET_STEPS[preset["id"]][:count]]
             preset_ids = [p["id"] for p in cleaned["presets"]]
             if set(preset_ids) == {"editorial_critique", "tough_love", "pitch_next_beat"}:
                 card = cards_by_id["deepen_and_layer"]
@@ -542,8 +581,8 @@ class GroupComputerSettings:
                     "name": card["label"],
                     "description": card["copy"],
                     "profiles": list(cleaned["default_profiles"]),
-                    "invitations": [dict(s) for s in DEFAULT_GROUP_PRESET_STEPS["deepen_and_layer"][:GROUP_TURNS_DEFAULT]],
-                    "recap": 2,
+                    "invitations": [dict(s) for s in DEFAULT_GROUP_PRESET_STEPS["deepen_and_layer"][:max(len(cleaned["default_profiles"]), GROUP_TURNS_DEFAULT)]],
+                    "recap": len(cleaned["default_profiles"]),
                 }
                 insert_at = preset_ids.index("pitch_next_beat")
                 cleaned["presets"].insert(insert_at, deepen_preset)
@@ -553,21 +592,24 @@ class GroupComputerSettings:
              "style": "Direct, structural, and concise. Spots where momentum drags, quotes the line, and suggests a cut or beat.", **self.critic1.to_json()},
             {"id": "voice-editor", "name": book.critic2_name, "specialty": book.critic2_prompt or DEFAULT_GROUP_CRITIC2_PROMPT,
              "style": "Attentive to ear, rhythm, and subtext. Challenges wooden dialogue and offers punchy, authentic phrasing.", **self.critic2.to_json()},
+            {"id": "continuity-editor", "name": book.critic3_name, "specialty": book.critic3_prompt or DEFAULT_GROUP_CRITIC3_PROMPT,
+             "style": "Observant, grounded, and logical. Catches timeline slips, lost props, and unclosed setup/payoffs.", **self.critic3.to_json()},
         ]
-        pair = [p["id"] for p in profiles]
+        roster = [p["id"] for p in profiles]
         presets = []
         for card in GROUP_PRESET_CARDS:
             template = DEFAULT_GROUP_PRESET_STEPS.get(card["id"], [])
             first = book.preset_prompt(card["id"]) or (template[0]["prompt"] if template else DEFAULT_GROUP_PRESET_PROMPTS[card["id"]])
             steps = [{"seat": 1, "prompt": first}]
-            for index in range(1, max(2, self.turns)):
+            step_target = max(len(roster), self.turns)
+            for index in range(1, step_target):
                 if index < len(template):
                     steps.append({"seat": template[index]["seat"], "prompt": template[index]["prompt"]})
                 else:
-                    steps.append({"seat": index % 2 + 1, "prompt": "Respond to the latest proposal. Agree, push back, or offer a concrete alternative."})
+                    steps.append({"seat": (index % len(roster)) + 1, "prompt": "Respond to the latest proposal. Agree, push back, or offer a concrete alternative."})
             presets.append({"id": card["id"], "name": card["label"], "description": card["copy"].replace("Ends with a revision plan.", "An optional recap closes the discussion."),
-                            "profiles": pair, "invitations": steps[:max(2, self.turns)], "recap": 2})
-        return clean_library({"profiles": profiles, "presets": presets, "default_profiles": pair})
+                            "profiles": roster, "invitations": steps[:step_target], "recap": len(roster)})
+        return clean_library({"profiles": profiles, "presets": presets, "default_profiles": roster})
 
     @classmethod
     def from_json(cls, raw: Any) -> "GroupComputerSettings":
@@ -588,6 +630,7 @@ class GroupComputerSettings:
         return cls(
             critic1=GroupSeatSettings.from_json(raw.get("critic1"), default_agent="codex"),
             critic2=GroupSeatSettings.from_json(raw.get("critic2"), default_agent="claude"),
+            critic3=GroupSeatSettings.from_json(raw.get("critic3"), default_agent="agy"),
             moderator=moderator,
             turns=turns,
             length=length,
@@ -597,11 +640,12 @@ class GroupComputerSettings:
 
 def group_participants(book: GroupConfig, app: GroupComputerSettings) -> list[dict[str, Any]]:
     """Addressable editors, with unique handles independent of their provider."""
-    names = [book.critic1_name, book.critic2_name]
+    names = [book.critic1_name, book.critic2_name, book.critic3_name]
     handles = [re.sub(r"[^\w-]", "", name) or f"Editor{seat}" for seat, name in enumerate(names, 1)]
-    if handles[0].lower() == handles[1].lower():
-        handles = [f"{handle}{seat}" for seat, handle in enumerate(handles, 1)]
-    agents = [app.critic1.agent, app.critic2.agent]
+    seen = [h.lower() for h in handles]
+    if len(set(seen)) != len(seen):
+        handles = [f"{handle}{seat}" if seen.count(handle.lower()) > 1 else handle for seat, handle in enumerate(handles, 1)]
+    agents = [app.critic1.agent, app.critic2.agent, app.critic3.agent]
     participants = []
     for seat, (name, handle, agent) in enumerate(zip(names, handles, agents), 1):
         aliases = [handle, f"{handle}-{agent.title()}", f"{handle}{agent.title()}"]
@@ -665,6 +709,8 @@ def group_title(raw: dict[str, Any]) -> str:
 
 def _clean_group_session(raw: Any) -> dict[str, Any] | None:
     """A saved debate as the browser sent it, bounded, or None when unusable."""
+    from .config import DISCUSS_AGENTS
+
     if not isinstance(raw, dict):
         return None
     session_id = str(raw.get("id") or "")
@@ -695,9 +741,11 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
         if role in ("user", "invitation") and isinstance(turn.get("attachments"), list):
             row["attachments"] = [{"kind": item.get("kind", "file"), "path": str(item.get("path") or "")} for item in turn["attachments"] if isinstance(item, dict)]
         if role == "critic":
+            raw_seat = turn.get("seat")
+            seat_num = raw_seat if raw_seat in (1, 2, 3) else 1
             row.update(
-                seat=2 if turn.get("seat") == 2 else 1,
-                agent="claude" if turn.get("agent") == "claude" else "codex",
+                seat=seat_num,
+                agent=turn.get("agent") if turn.get("agent") in DISCUSS_AGENTS else "codex",
                 model=_clip(turn.get("model"), 200),
                 tag=_clip(turn.get("tag"), 120),
                 tool_conversation_id=_clip(turn.get("tool_conversation_id"), 120),
@@ -707,9 +755,10 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
             )
         if role == "context":
             row["model"] = _clip(turn.get("model"), 200)
-            row["agent"] = "claude" if turn.get("agent") == "claude" else "codex"
+            row["agent"] = turn.get("agent") if turn.get("agent") in DISCUSS_AGENTS else "codex"
         if role == "invitation":
-            row["seat"] = 2 if turn.get("seat") == 2 else 1
+            raw_seat = turn.get("seat")
+            row["seat"] = raw_seat if raw_seat in (1, 2, 3) else 1
             row["recap"] = bool(turn.get("recap"))
         if "created_at" in turn and turn["created_at"]:
             try:
@@ -741,22 +790,25 @@ def _clean_group_session(raw: Any) -> dict[str, Any] | None:
             for item in (raw_plan.get("items") or [])[:6]
             if isinstance(item, dict)
         ]
-        open_items = [
-            {
-                "issue": _clip(item.get("issue"), 300),
-                "critic1": _clip(item.get("critic1"), 800),
-                "critic2": _clip(item.get("critic2"), 800),
-            }
-            for item in (raw_plan.get("open") or [])[:4]
-            if isinstance(item, dict) and str(item.get("issue") or "").strip()
-        ]
+        open_items = []
+        for item in (raw_plan.get("open") or [])[:4]:
+            if isinstance(item, dict) and str(item.get("issue") or "").strip():
+                entry = {
+                    "issue": _clip(item.get("issue"), 300),
+                    "critic1": _clip(item.get("critic1"), 800),
+                    "critic2": _clip(item.get("critic2"), 800),
+                }
+                critic3_text = _clip(item.get("critic3"), 800)
+                if critic3_text:
+                    entry["critic3"] = critic3_text
+                open_items.append(entry)
         try:
             after = max(0, min(len(turns), int(after_turn)))
         except (TypeError, ValueError):
             after = len(turns)
         return {
             "after_turn": after,
-            "agent": raw_plan.get("agent") if raw_plan.get("agent") in ("codex", "claude") else "",
+            "agent": raw_plan.get("agent") if raw_plan.get("agent") in DISCUSS_AGENTS else "",
             "items": items,
             "open": open_items,
             "authors_call": _clip(raw_plan.get("authors_call"), 1000),
@@ -910,19 +962,23 @@ def render_group_prompt(
     skill does, or, for the writer's own question with no preset, answers it
     directly. Every later turn joins the conversation so far.
     """
-    lens = (book.critic1_prompt if seat == 1 else book.critic2_prompt) or (
-        DEFAULT_GROUP_CRITIC1_PROMPT if seat == 1 else DEFAULT_GROUP_CRITIC2_PROMPT
-    )
+    if seat == 3:
+        lens = book.critic3_prompt or DEFAULT_GROUP_CRITIC3_PROMPT
+    elif seat == 2:
+        lens = book.critic2_prompt or DEFAULT_GROUP_CRITIC2_PROMPT
+    else:
+        lens = book.critic1_prompt or DEFAULT_GROUP_CRITIC1_PROMPT
     history = history or []
     has_editor_reply = any(entry.get("role") != "user" for entry in history)
+    roster = group_participants(book, app)
 
     parts: list[str] = [
-        f"You are Critic {seat} of two in a Group on the manuscript scene `{scene_path}`. "
+        f"You are Critic {seat} of {len(roster)} in a Group on the manuscript scene `{scene_path}`. "
         f"This is turn {turn_index} of at most {total_turns}.\n"
         f"Your emphasis: {lens.strip()} It is an emphasis, not a limit: report the strongest issues "
         "whatever they are."
     ]
-    parts.append(_group_participant_context(group_participants(book, app), seat))
+    parts.append(_group_participant_context(roster, seat))
     if preset_id and preset_id in DEFAULT_GROUP_PRESET_PROMPTS:
         preset_text = book.preset_prompt(preset_id)
         if preset_text is None or not preset_text.strip():
@@ -994,9 +1050,9 @@ def _group_reply_rules(history: list[dict[str, Any]]) -> str:
         ("The writer has just spoken. Respond directly to the writer: acknowledge their choices, "
          "answer their question, and follow their latest direction before returning to earlier concerns.\n"
          if writer_spoke else
-         "Respond to the other editor and the writer's latest direction together. Say what you agree "
+         "Respond to the other editors and the writer's latest direction together. Say what you agree "
          "with, question, or would approach differently, and explain why in natural language.\n")
-        + "This is a conversation between the writer and two editors, not a review form. "
+        + "This is a conversation between the writer and the editorial group, not a review form. "
         "Do not force Agree / Disagree / Add labels or numbered issue references. "
         "You may agree without inventing an improvement, disagree, refine an idea, offer another direction, "
         "or ask a useful question. Name the specific point you are responding to. "
@@ -1070,17 +1126,20 @@ def render_group_moderator_prompt(
         brief = f"The session was: {GROUP_PRESET_TITLES.get(preset_id, preset_id)}.\n"
     if question.strip():
         brief += f"The writer asked: {question.strip()}\n"
+    count = len(participants) if participants else 2
+    open_fields = "`issue` (a few words), `critic1`, `critic2`" + (", `critic3`" if count >= 3 else "") + " (each participating critic's position in one sentence, or \"\" if uninvolved)"
+    proposers = '"Critic 1", "Critic 2", "Critic 3" or "Writer"' if count >= 3 else '"Critic 1", "Critic 2" or "Writer"'
     return (
-        f"You moderate a Group debate between two critics about the scene `{scene_path}`. "
+        f"You moderate a Group debate among {count} critics about the scene `{scene_path}`. "
         "You add no opinion of your own and invent nothing: report only what the transcript says.\n"
         + brief
         + (_group_participant_context(participants) if participants else "")
         + "\nFrom the transcript, produce:\n"
-        "- `agreed`: concrete changes where both critics explicitly support the same replacement "
+        "- `agreed`: concrete changes where the participating critics explicitly support the same replacement "
         "or cut. `accepted` must be true. Silence is not agreement; absence of an objection is not endorsement. "
         "Agreeing about a problem while proposing different fixes does not settle the edit. "
         "An Agree label alone is not evidence that the exact fix was accepted.\n"
-        "- `suggested`: useful individual suggestions that the other critic has not explicitly endorsed, "
+        "- `suggested`: useful individual suggestions that have not been explicitly endorsed across the critics, "
         "with `accepted` false. Do not include rejected changes. A different fix for an unresolved issue "
         "belongs in `open`, not in either change list.\n"
         "Keep at most 6 changes across `agreed` and `suggested`, most important first. For each: "
@@ -1088,8 +1147,8 @@ def render_group_moderator_prompt(
         "\"58–59\", or \"\" if none); `original` (the exact scene text being changed, copied word for "
         "word from the transcript's quotes, or \"\" for a pure insertion); `replacement` (the exact new "
         "text, copied word for word from the fix the debate settled on, or \"\" for a cut); `why` (one "
-        "short sentence, without retelling the debate); `proposed_by` (\"Critic 1\", \"Critic 2\" or "
-        "\"Writer\"); and `accepted` (true only if the other critic explicitly agreed). For an insertion, "
+        f"short sentence, without retelling the debate); `proposed_by` ({proposers}); and `accepted` "
+        "(true only if the participating critics explicitly agreed). For an insertion, "
         "say in `why` where it goes. Never choose a winner between competing fixes yourself.\n"
         "When an edit has been revised, return the complete current proposal as one self-contained change, "
         "not only its newest sentence or closing lines. Never assume an unapplied suggestion is already in "
@@ -1097,8 +1156,8 @@ def render_group_moderator_prompt(
         "Do not list mutually exclusive wordings as separate cumulative changes; mention an optional "
         "variant in the main change's `why` instead.\n"
         "- `open`: up to 4 disagreements that are still unresolved, for the writer to decide. For each, "
-        "`issue` (a few words), `critic1` and `critic2` (each position in one sentence).\n"
-        "The writer's own messages outrank both critics. Write plain sentences; quote the scene in "
+        f"{open_fields}.\n"
+        "The writer's own messages outrank all critics. Write plain sentences; quote the scene in "
         "\"double quotes\".\n\n"
         + _earlier_plan_note(earlier or [])
         + "GROUP TRANSCRIPT\n<<<\n" + "\n\n".join(lines) + "\n>>>\n"

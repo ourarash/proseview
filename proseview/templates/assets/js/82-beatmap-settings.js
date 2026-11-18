@@ -11,7 +11,8 @@
 
         var BM_AGENTS = [
             {value: 'claude', label: 'Claude CLI'},
-            {value: 'codex', label: 'Codex CLI'}
+            {value: 'codex', label: 'Codex CLI'},
+            {value: 'agy', label: 'Agy CLI'}
         ];
 
         var BM_PACING_OPTIONS = [

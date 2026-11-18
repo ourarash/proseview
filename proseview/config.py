@@ -117,7 +117,7 @@ class BeatMapConfig:
 
 
 #: Agents Discuss can be pointed at.
-DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude")
+DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude", "agy")
 
 #: What a highlight suggestion is shown besides the marked passage.
 SUGGESTION_CONTEXTS: tuple[str, ...] = ("paragraph", "scene")
@@ -153,9 +153,11 @@ class GroupConfig:
 
     critic1_prompt: str = ""
     critic2_prompt: str = ""
+    critic3_prompt: str = ""
     preset_prompts: tuple[tuple[str, str], ...] = ()
     critic1_name: str = "Story Editor"
     critic2_name: str = "Voice Editor"
+    critic3_name: str = "Continuity Editor"
     moderator_name: str = "Moderator"
     #: Whether Group turns include scene YAML frontmatter notes.
     include_frontmatter: bool = True
@@ -473,9 +475,11 @@ class Config:
         for key, value in (
             ("critic1_prompt", self.group.critic1_prompt),
             ("critic2_prompt", self.group.critic2_prompt),
+            ("critic3_prompt", self.group.critic3_prompt),
             ("preset_prompts", dict(self.group.preset_prompts)),
             ("critic1_name", self.group.critic1_name),
             ("critic2_name", self.group.critic2_name),
+            ("critic3_name", self.group.critic3_name),
             ("moderator_name", self.group.moderator_name),
             ("include_frontmatter", self.group.include_frontmatter),
             ("instructions", self.group.instructions),
@@ -640,7 +644,7 @@ def _coerce_beatmap(v: Any) -> BeatMapConfig:
     if not isinstance(v, dict):
         raise ConfigError(f"'beatmap' must be a mapping, got {type(v).__name__}: {v!r}")
     agent = str(v.get("agent", "claude")).strip().lower()
-    if agent not in {"claude", "codex"}:
+    if agent not in DISCUSS_AGENTS:
         agent = "claude"
     placement = str(v.get("placement", "vertical")).strip().lower()
     if placement not in {"vertical", "horizontal"}:
@@ -874,17 +878,17 @@ def _coerce_group(v: Any) -> GroupConfig:
         raise ConfigError(f"'group' must be a mapping, got {type(v).__name__}: {v!r}")
     defaults = GroupConfig()
     names: dict[str, str] = {}
-    for key in ("critic1_name", "critic2_name", "moderator_name"):
+    for key in ("critic1_name", "critic2_name", "critic3_name", "moderator_name"):
         name = v.get(key, getattr(defaults, key))
         if not isinstance(name, str) or len(name.strip()) > GROUP_DISPLAY_NAME_MAX:
             raise ConfigError(f"'group.{key}' must be a display name of at most {GROUP_DISPLAY_NAME_MAX} characters")
         names[key] = name.strip() or getattr(defaults, key)
     critic1_prompt = v.get("critic1_prompt", "") or ""
     critic2_prompt = v.get("critic2_prompt", "") or ""
-    if not isinstance(critic1_prompt, str) or len(critic1_prompt) > SUGGESTION_PROMPT_MAX:
-        raise ConfigError(f"'group.critic1_prompt' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
-    if not isinstance(critic2_prompt, str) or len(critic2_prompt) > SUGGESTION_PROMPT_MAX:
-        raise ConfigError(f"'group.critic2_prompt' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
+    critic3_prompt = v.get("critic3_prompt", "") or ""
+    for pkey, pval in (("critic1_prompt", critic1_prompt), ("critic2_prompt", critic2_prompt), ("critic3_prompt", critic3_prompt)):
+        if not isinstance(pval, str) or len(pval) > SUGGESTION_PROMPT_MAX:
+            raise ConfigError(f"'group.{pkey}' must be text of at most {SUGGESTION_PROMPT_MAX} characters")
     raw_presets = v.get("preset_prompts") or {}
     if not isinstance(raw_presets, dict):
         raise ConfigError("'group.preset_prompts' must be a mapping of preset id to text")
@@ -901,6 +905,7 @@ def _coerce_group(v: Any) -> GroupConfig:
     return GroupConfig(
         critic1_prompt=critic1_prompt,
         critic2_prompt=critic2_prompt,
+        critic3_prompt=critic3_prompt,
         preset_prompts=tuple(sorted(presets)),
         include_frontmatter=v.get("include_frontmatter", defaults.include_frontmatter),
         instructions=instructions,

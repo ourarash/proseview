@@ -13,12 +13,20 @@
             return cid ? (BTW_STORAGE_PREFIX + cid) : '';
         }
 
+        function _normalizeBtwAgent(raw) {
+            return (raw === 'claude' || raw === 'agy') ? raw : 'codex';
+        }
+
+        function _btwAgentLabel(agent) {
+            return agent === 'claude' ? 'Claude' : (agent === 'agy' ? 'Agy' : 'Codex');
+        }
+
         function _serializeBtwExchange(ex) {
             return {
                 id: String(ex.id || ''),
                 sideQuestionId: String(ex.sideQuestionId || ''),
                 clientRequestId: String(ex.clientRequestId || ''),
-                agent: ex.agent === 'claude' ? 'claude' : 'codex',
+                agent: _normalizeBtwAgent(ex.agent),
                 question: String(ex.question || ''),
                 status: String(ex.status || 'idle'),
                 mode: String(ex.mode || ''),
@@ -54,7 +62,7 @@
                 id: String(raw.id || ''),
                 sideQuestionId: String(raw.sideQuestionId || ''),
                 clientRequestId: String(raw.clientRequestId || raw.id || ''),
-                agent: raw.agent === 'claude' ? 'claude' : 'codex',
+                agent: _normalizeBtwAgent(raw.agent),
                 question: String(raw.question || ''),
                 status: status,
                 mode: String(raw.mode || ''),
@@ -90,7 +98,7 @@
                     var tab = {
                         id: String(rawTab.id),
                         title: String(rawTab.title || 'New question'),
-                        agent: rawTab.agent === 'claude' ? 'claude' : 'codex',
+                        agent: _normalizeBtwAgent(rawTab.agent),
                         status: 'idle',
                         draft: String(rawTab.draft || ''),
                         atBottom: rawTab.atBottom !== false,
@@ -126,7 +134,7 @@
                         return {
                             id: String(tab.id || ''),
                             title: String(tab.title || 'New question'),
-                            agent: tab.agent === 'claude' ? 'claude' : 'codex',
+                            agent: _normalizeBtwAgent(tab.agent),
                             status: _btwTabStatus(tab),
                             draft: String(tab.draft || ''),
                             atBottom: tab.atBottom !== false,
@@ -309,7 +317,7 @@
         function sendDiscussSideQuestion(questionText, options) {
             var input = document.getElementById('discussInput');
             var cid = _discussConversationId;
-            if (!cid || (_discussAgent !== 'codex' && _discussAgent !== 'claude')) return;
+            if (!cid || DISCUSS_AGENTS.indexOf(_discussAgent) < 0) return;
             var cleaned = String(questionText || '').replace(/^\s*\/btw(?:\s+|$)/i, '').trim();
             if (!cleaned) return;
             var turnDocument = discussTurnDocument();
@@ -403,7 +411,7 @@
 
         function newBtwTab() {
             var cid = _discussConversationId;
-            if (!cid || (_discussAgent !== 'codex' && _discussAgent !== 'claude')) return;
+            if (!cid || DISCUSS_AGENTS.indexOf(_discussAgent) < 0) return;
             var st = _btwState(cid);
             var cur = st.tabs.find(function(item) { return item.id === st.activeId; });
             var btwInput = document.getElementById('btwInput');
@@ -429,7 +437,7 @@
 
         function openBtwPane() {
             var cid = _discussConversationId;
-            if (!cid || (_discussAgent !== 'codex' && _discussAgent !== 'claude')) return;
+            if (!cid || DISCUSS_AGENTS.indexOf(_discussAgent) < 0) return;
             var st = _btwState(cid);
             var activeTab = st.tabs.find(function(item) { return item.id === st.activeId; });
             if (activeTab && !activeTab.exchanges.length && !activeTab.draft) {
@@ -632,7 +640,7 @@
                 var block = elementWith('btw-exchange');
                 var qBox = elementWith('btw-question-box');
                 var kicker = elementWith('btw-question-kicker');
-                var agentName = ex.agent === 'claude' ? 'Claude' : 'Codex';
+                var agentName = _btwAgentLabel(ex.agent);
                 kicker.appendChild(elementWith('', agentName + ' · Off the record'));
                 qBox.append(kicker, elementWith('btw-question-text', ex.question));
                 block.appendChild(qBox);
@@ -752,7 +760,7 @@
             var handle = document.getElementById('btwResizeHandle');
             var split = document.getElementById('btwSplitPane');
             if (!panel || !handle || !split) return;
-            var isSingleAgent = _discussAgent === 'codex' || _discussAgent === 'claude';
+            var isSingleAgent = DISCUSS_AGENTS.indexOf(_discussAgent) >= 0;
             var inSceneTab = !!panel.dataset.sceneTab;
             var st = (_discussConversationId && isSingleAgent) ? _btwState(_discussConversationId) : null;
             var visible = !!(panel && !panel.hidden && !inSceneTab && isSingleAgent && st && st.tabs.length);

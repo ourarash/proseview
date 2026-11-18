@@ -656,7 +656,7 @@ def extract_beatmap_with_agent(
         if agent == "codex":
             if not cfg.beatmap.instructions:
                 thread_params["config"] = {"project_doc_max_bytes": 0}
-        else:
+        elif agent == "claude":
             thread_params["settingSources"] = ["user", "project", "local"] if cfg.beatmap.instructions else ["user"]
 
         started = client.request("thread/start", thread_params)
@@ -732,6 +732,12 @@ def extract_beatmap_with_agent(
             with _active_beatmap_lock:
                 _active_beatmap_jobs.pop(job_key, None)
             discuss_manager._one_offs.pop(key, None)
+            discard = getattr(client, "discard_ephemeral_thread", None)
+            if callable(discard):
+                try:
+                    discard(thread_id)
+                except Exception:
+                    pass
 
     return heuristic_beatmap_extractor(rel_path, raw_scene_text, agent=agent, guidance=guidance)
 

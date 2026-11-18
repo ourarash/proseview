@@ -123,7 +123,8 @@
         // other keeps working and its state is restored from its snapshot when
         // you come back. Only the things a snapshot cannot carry -- the draft
         // you were typing, what you had attached -- are held here per agent.
-        const DISCUSS_AGENTS = ['codex', 'claude'];
+        const DISCUSS_AGENTS = ['codex', 'claude', 'agy'];
+        const DISCUSS_AGENT_LABELS = {codex: 'Codex', claude: 'Claude', agy: 'Agy'};
         // Reading passes are ordinary questions: no schema, no card, and the
         // thing they read stays attached so a follow-up can refer to it.
         const DISCUSS_READING_ACTIONS = [
@@ -226,7 +227,7 @@
         const DISCUSS_AGENT_KEY = 'proseview-discuss-agent';
         var _discussAgent = _readDiscussAgent();
         var _discussAgentAvailability = {};
-        var _discussAgentLocal = {codex: null, claude: null};
+        var _discussAgentLocal = {codex: null, claude: null, agy: null};
         var _discussAgentPollTimer = null;
 
         function _readDiscussAgent() {
@@ -238,7 +239,8 @@
         }
 
         function discussAgentLabel(agent) {
-            return (agent || _discussAgent) === 'claude' ? 'Claude' : 'Codex';
+            var id = agent || _discussAgent;
+            return DISCUSS_AGENT_LABELS[id] || 'Codex';
         }
 
         function _saveDiscussAgentLocal() {
@@ -707,7 +709,8 @@
                 var msg = error.message || '';
                 var label = discussAgentLabel();
                 if (msg.includes('Codex') || msg.includes('API key') || msg.includes('app-server')
-                    || msg.includes('claude-agent-sdk') || msg.includes('Claude Code')) {
+                    || msg.includes('claude-agent-sdk') || msg.includes('Claude Code')
+                    || msg.includes('Agy')) {
                     setDiscussConnection('Not connected', '');
                     var log = document.getElementById('discussLog');
                     log.textContent = '';
@@ -791,9 +794,9 @@
 
         // ── Scene panel tabs ────────────────────────────────────────────
         //
-        // Six tabs in one dock: scene inspection & beat map (Analysis,
-        // History, Beats) first, then AI collaborators (Codex, Claude, Group).
-        const SCENE_PANEL_TABS = ['analysis', 'history', 'beats', 'codex', 'claude', 'group'];
+        // Seven tabs in one dock: scene inspection & beat map (Analysis,
+        // History, Beats) first, then AI collaborators (Codex, Claude, Agy, Group).
+        const SCENE_PANEL_TABS = ['analysis', 'history', 'beats', 'codex', 'claude', 'agy', 'group'];
         const SCENE_PANEL_TAB_KEY = 'proseview-scene-panel-tab';
 
         function _readScenePanelTab() {
@@ -816,6 +819,7 @@
             beats: ['utilityTabBeats'],
             codex: ['utilityTabCodex'],
             claude: ['utilityTabClaude'],
+            agy: ['utilityTabAgy'],
             group: ['utilityTabGroup']
         };
 
@@ -1074,6 +1078,7 @@
             var lower = String(agentId).toLowerCase();
             if (lower === 'claude') return 'Claude';
             if (lower === 'codex') return 'Codex';
+            if (lower === 'agy') return 'Agy';
             if (lower === 'gemini') return 'Gemini';
             return lower.charAt(0).toUpperCase() + lower.slice(1);
         }
@@ -1085,8 +1090,8 @@
             var session = _groupSessionsByScene[_groupCurrentScenePath()];
             var participant = ((session && session.participants) || (_groupSettings && _groupSettings.participants) || [])[Number(seat) - 1];
             if (participant) return participant.name;
-            var key = seat === 2 ? 'critic2' : seat === 'moderator' ? 'moderator' : 'critic1';
-            var fallback = {critic1: 'Story Editor', critic2: 'Voice Editor', moderator: 'Moderator'};
+            var key = Number(seat) === 3 ? 'critic3' : Number(seat) === 2 ? 'critic2' : seat === 'moderator' ? 'moderator' : 'critic1';
+            var fallback = {critic1: 'Story Editor', critic2: 'Voice Editor', critic3: 'Continuity Editor', moderator: 'Moderator'};
             return ((_groupSettings && _groupSettings.book) || {})[key + '_name'] || fallback[key];
         }
 
@@ -1107,8 +1112,8 @@
             var p = _groupSeatParticipant(seat, session);
             if (p && p.agent) return p.agent;
             var book = (_groupSettings && _groupSettings.book) || {};
-            var key = Number(seat) === 2 ? 'critic2_agent' : Number(seat) === 1 ? 'critic1_agent' : 'moderator_agent';
-            return book[key] || (Number(seat) === 2 ? 'claude' : 'codex');
+            var key = Number(seat) === 3 ? 'critic3_agent' : Number(seat) === 2 ? 'critic2_agent' : Number(seat) === 1 ? 'critic1_agent' : 'moderator_agent';
+            return book[key] || (Number(seat) === 3 ? 'agy' : Number(seat) === 2 ? 'claude' : 'codex');
         }
 
         function _groupSeatLabel(seat, session) {
@@ -1121,19 +1126,27 @@
         }
         window._groupSeatLabel = _groupSeatLabel;
 
-        function _groupBothAgents(session) {
-            var a1 = _groupAgentDisplay(_groupSeatAgent(1, session));
-            var a2 = _groupAgentDisplay(_groupSeatAgent(2, session));
-            if (a1 && a2 && a1 !== a2) return a1 + ', ' + a2;
-            return a1 || a2 || '';
+        function _groupAllAgents(session) {
+            var list = (session && session.participants) || (_groupSettings && _groupSettings.participants) || [];
+            var seen = [];
+            (list.length ? list : [{seat: 1}, {seat: 2}]).forEach(function(p, idx) {
+                var label = _groupAgentDisplay(_groupSeatAgent(p.seat || (idx + 1), session));
+                if (label && seen.indexOf(label) < 0) seen.push(label);
+            });
+            return seen.join(', ');
         }
-        window._groupBothAgents = _groupBothAgents;
+        window._groupAllAgents = _groupAllAgents;
+        window._groupBothAgents = _groupAllAgents;
 
-        function _groupBothLabel(session) {
-            var both = _groupBothAgents(session);
-            return both ? 'Group (Both: ' + both + ')' : 'Group (Both editors)';
+        function _groupAllLabel(session) {
+            var list = (session && session.participants) || (_groupSettings && _groupSettings.participants) || [];
+            var count = list.length || 2;
+            var agents = _groupAllAgents(session);
+            var scope = count === 2 ? 'Both' : 'All ' + count;
+            return agents ? 'Group (' + scope + ': ' + agents + ')' : 'Group (' + scope + ' editors)';
         }
-        window._groupBothLabel = _groupBothLabel;
+        window._groupAllLabel = _groupAllLabel;
+        window._groupBothLabel = _groupAllLabel;
 
         function _groupSpeakerName(seat, agent) {
             return _groupSeatName(seat) + ' \u00b7 ' + _groupAgentDisplay(agent);
@@ -1142,6 +1155,7 @@
         function _groupProposerName(value) {
             if (value === 'Critic 1') return _groupSeatName(1);
             if (value === 'Critic 2') return _groupSeatName(2);
+            if (value === 'Critic 3') return _groupSeatName(3);
             return value === 'Writer' ? 'Me' : value;
         }
         var _groupSessionsByScene = Object.create(null);
@@ -1151,9 +1165,10 @@
 
         function _groupLastCriticSeat(session) {
             if (!session || !session.turns || !session.turns.length) return null;
+            var maxSeat = (session.participants && session.participants.length) || 3;
             for (var i = session.turns.length - 1; i >= 0; i--) {
                 var turn = session.turns[i];
-                if (turn.role === 'critic' && (turn.seat === 1 || turn.seat === 2)) {
+                if (turn.role === 'critic' && turn.seat >= 1 && turn.seat <= maxSeat) {
                     return turn.seat;
                 }
             }
@@ -1163,10 +1178,10 @@
 
         function _groupEffectiveTarget(session) {
             if (_groupTargetChoice && _groupTargetChoice !== 'auto') {
-                return _groupTargetChoice;
+                return _groupTargetChoice === 'both' ? 'all' : _groupTargetChoice;
             }
             var lastSeat = _groupLastCriticSeat(session);
-            return lastSeat ? 'critic' + lastSeat : 'both';
+            return lastSeat ? 'critic' + lastSeat : 'all';
         }
         window._groupEffectiveTarget = _groupEffectiveTarget;
 
@@ -1178,25 +1193,29 @@
         function _groupProfiles(ids) {
             var library = (_groupSettings || {}).library;
             if (!library) return [];
-            return _groupSnapshotPair(ids.map(function(id) { return library.profiles.find(function(profile) { return profile.id === id; }); }));
+            var found = (ids || []).map(function(id) { return library.profiles.find(function(profile) { return profile.id === id; }); }).filter(Boolean);
+            return _groupSnapshotRoster(found);
         }
 
-        function _groupSnapshotPair(profiles) {
-            var pair = JSON.parse(JSON.stringify(profiles));
-            var handles = pair.map(function(profile, index) { return profile.name.replace(/[^\p{L}\p{N}_-]/gu, '') || 'Editor' + (index + 1); });
-            if (handles[0].toLowerCase() === handles[1].toLowerCase()) handles = handles.map(function(handle, index) { return handle + (index + 1); });
-            pair.forEach(function(profile, index) {
+        function _groupSnapshotRoster(profiles) {
+            var roster = JSON.parse(JSON.stringify(profiles || []));
+            var handles = roster.map(function(profile, index) { return profile.name.replace(/[^\p{L}\p{N}_-]/gu, '') || 'Editor' + (index + 1); });
+            var counts = Object.create(null);
+            handles.forEach(function(h) { var k = h.toLowerCase(); counts[k] = (counts[k] || 0) + 1; });
+            handles = handles.map(function(h, index) { return counts[h.toLowerCase()] > 1 ? h + (index + 1) : h; });
+            roster.forEach(function(profile, index) {
                 profile.seat = index + 1;
                 profile.handle = handles[index];
                 profile.aliases = [profile.handle, profile.handle + '-' + _groupAgentDisplay(profile.agent), profile.handle + _groupAgentDisplay(profile.agent)];
-                if (pair.filter(function(p) { return p.agent === profile.agent; }).length === 1
+                if (roster.filter(function(p) { return p.agent === profile.agent; }).length === 1
                         && !handles.some(function(handle) { return handle.toLowerCase() === profile.agent; })) profile.aliases.push(profile.agent);
             });
-            return pair;
+            return roster;
         }
+        var _groupSnapshotPair = _groupSnapshotRoster;
 
         function _groupEnsureParticipants(session) {
-            if (!session.participants && _groupSettings && _groupSettings.library) {
+            if ((!session.participants || session.participants.length < 2) && _groupSettings && _groupSettings.library) {
                 session.participants = _groupProfiles(_groupSettings.library.default_profiles);
             }
             return session.participants || [];
@@ -1205,9 +1224,46 @@
         function _groupPairPicker(session, container, onChange) {
             var library = (_groupSettings || {}).library;
             if (!library) return;
-            var pair = _groupEnsureParticipants(session);
+            var roster = _groupEnsureParticipants(session);
             var locked = !!session.turns.length || session.busy || session.managed || !!(session.outbox && session.outbox.length);
-            pair.forEach(function(profile, index) {
+
+            if (library.profiles.length >= 2) {
+                var sizeWrap = elementWith('group-participant-choice group-room-size-choice');
+                sizeWrap.appendChild(document.createTextNode('Agents'));
+                var sizeRow = elementWith('group-room-size-toggle');
+                [2, 3].forEach(function(count) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'group-header-btn group-room-size-btn' + (roster.length === count ? ' is-active' : '');
+                    btn.textContent = count + ' agents';
+                    btn.setAttribute('aria-pressed', roster.length === count ? 'true' : 'false');
+                    btn.disabled = locked || (count === 3 && library.profiles.length < 3);
+                    btn.onclick = function() {
+                        if (roster.length === count) return;
+                        var nextRoster;
+                        if (count === 2) {
+                            nextRoster = roster.slice(0, 2);
+                        } else {
+                            var used = new Set(roster.map(function(p) { return p.id; }));
+                            var thirdId = (library.default_profiles || []).find(function(id) { return !used.has(id); });
+                            var extra = (thirdId && library.profiles.find(function(p) { return p.id === thirdId; }))
+                                || library.profiles.find(function(p) { return !used.has(p.id); });
+                            if (!extra) return;
+                            nextRoster = roster.concat([JSON.parse(JSON.stringify(extra))]);
+                        }
+                        session.participants = _groupSnapshotRoster(nextRoster);
+                        session.participantsChosen = true;
+                        if (onChange) onChange(session.participants.map(function(p) { return p.id; }));
+                        _groupSaveDraft(session.scene);
+                        renderSceneGroupPane();
+                    };
+                    sizeRow.appendChild(btn);
+                });
+                sizeWrap.appendChild(sizeRow);
+                container.appendChild(sizeWrap);
+            }
+
+            roster.forEach(function(profile, index) {
                 var label = document.createElement('label');
                 label.className = 'group-participant-choice';
                 label.appendChild(document.createTextNode('Participant ' + (index + 1)));
@@ -1218,23 +1274,25 @@
                 library.profiles.forEach(function(option) {
                     var node = document.createElement('option');
                     node.value = option.id;
-                    var shownAgent = option.id === profile.id ? profile.agent : (option.id === pair[1 - index].id ? pair[1 - index].agent : option.agent);
+                    var existing = roster.find(function(p) { return p.id === option.id; });
+                    var shownAgent = existing ? existing.agent : option.agent;
                     node.textContent = option.name + ' · ' + _groupAgentDisplay(shownAgent);
                     select.appendChild(node);
                 });
                 select.value = profile.id;
                 select.disabled = locked;
                 select.onchange = function() {
-                    var nextPair;
-                    if (select.value === pair[1 - index].id) {
-                        nextPair = [pair[1], pair[0]];
+                    var nextRoster = roster.slice();
+                    var existingIdx = roster.findIndex(function(p, pi) { return pi !== index && p.id === select.value; });
+                    if (existingIdx >= 0) {
+                        nextRoster[index] = roster[existingIdx];
+                        nextRoster[existingIdx] = roster[index];
                     } else {
                         var chosen = library.profiles.find(function(p) { return p.id === select.value; });
                         if (!chosen) return;
-                        nextPair = pair.slice();
-                        nextPair[index] = JSON.parse(JSON.stringify(chosen));
+                        nextRoster[index] = JSON.parse(JSON.stringify(chosen));
                     }
-                    session.participants = _groupSnapshotPair(nextPair);
+                    session.participants = _groupSnapshotRoster(nextRoster);
                     session.participantsChosen = true;
                     var ids = session.participants.map(function(p) { return p.id; });
                     if (onChange) onChange(ids);
@@ -1244,7 +1302,7 @@
                 var provider = document.createElement('select');
                 provider.className = 'group-target-select group-provider-select';
                 provider.setAttribute('aria-label', 'Group participant ' + (index + 1) + ' provider');
-                ['codex', 'claude'].forEach(function(agentId) {
+                DISCUSS_AGENTS.forEach(function(agentId) {
                     var node = document.createElement('option');
                     node.value = agentId;
                     node.textContent = _groupAgentDisplay(agentId);
@@ -1253,11 +1311,11 @@
                 provider.value = profile.agent;
                 provider.disabled = locked;
                 provider.onchange = function() {
-                    var nextPair = JSON.parse(JSON.stringify(pair));
-                    nextPair[index].agent = provider.value;
-                    nextPair[index].model = '';
-                    nextPair[index].effort = '';
-                    session.participants = _groupSnapshotPair(nextPair);
+                    var nextRoster = JSON.parse(JSON.stringify(roster));
+                    nextRoster[index].agent = provider.value;
+                    nextRoster[index].model = '';
+                    nextRoster[index].effort = '';
+                    session.participants = _groupSnapshotRoster(nextRoster);
                     session.participantsChosen = true;
                     session.providerChosen = true;
                     if (onChange) onChange(session.participants.map(function(p) { return p.id; }));
@@ -1272,16 +1330,20 @@
             swapBtn.type = 'button';
             swapBtn.id = 'groupSwapAgentsBtn';
             swapBtn.className = 'group-header-btn group-swap-agents-btn';
-            swapBtn.textContent = '\u21c4 Swap agents';
+            swapBtn.textContent = roster.length > 2 ? '\u21c4 Rotate agents' : '\u21c4 Swap agents';
             swapBtn.setAttribute('aria-label', 'Swap participant agents');
-            swapBtn.setAttribute('data-tip', 'Swap which agent (Codex vs. Claude) plays each role');
+            swapBtn.setAttribute('data-tip', roster.length > 2 ? 'Rotate which agent plays each role' : 'Swap which agent plays each role');
             swapBtn.disabled = locked;
             swapBtn.onclick = function() {
-                var nextPair = JSON.parse(JSON.stringify(pair));
-                var a0 = nextPair[0].agent, m0 = nextPair[0].model, e0 = nextPair[0].effort;
-                nextPair[0].agent = nextPair[1].agent; nextPair[0].model = nextPair[1].model; nextPair[0].effort = nextPair[1].effort;
-                nextPair[1].agent = a0; nextPair[1].model = m0; nextPair[1].effort = e0;
-                session.participants = _groupSnapshotPair(nextPair);
+                var nextRoster = JSON.parse(JSON.stringify(roster));
+                var snapshot = nextRoster.map(function(p) { return {agent: p.agent, model: p.model, effort: p.effort}; });
+                for (var i = 0; i < nextRoster.length; i++) {
+                    var src = snapshot[(i + 1) % snapshot.length];
+                    nextRoster[i].agent = src.agent;
+                    nextRoster[i].model = src.model;
+                    nextRoster[i].effort = src.effort;
+                }
+                session.participants = _groupSnapshotRoster(nextRoster);
                 session.participantsChosen = true;
                 session.providerChosen = true;
                 if (onChange) onChange(session.participants.map(function(p) { return p.id; }));
@@ -1446,6 +1508,7 @@
         var _chatHistoryState = {
             codex: {index: -1, draft: '', justRecalled: false},
             claude: {index: -1, draft: '', justRecalled: false},
+            agy: {index: -1, draft: '', justRecalled: false},
             group: {index: -1, draft: '', justRecalled: false}
         };
         var _chatCaretMirror = null;
@@ -1475,7 +1538,7 @@
         }
 
         function chatConversationUserMessages(group) {
-            if (group === 'codex' || group === 'claude') {
+            if (DISCUSS_AGENTS.indexOf(group) >= 0) {
                 if (group !== _discussAgent || !_discussSnapshot || !Array.isArray(_discussSnapshot.messages)) return [];
                 return _discussSnapshot.messages
                     .filter(function(m) { return m && m.role === 'user'; })
@@ -1773,7 +1836,7 @@
                 var seats = _groupMentionRecipients(input.value);
                 var session = _groupSessionFor(_groupCurrentScenePath());
                 var effective = _groupEffectiveTarget(session);
-                target.value = seats.length > 1 ? 'both' : seats.length ? 'critic' + seats[0] : effective;
+                target.value = seats.length > 1 ? 'all' : seats.length ? 'critic' + seats[0] : effective;
                 target.disabled = seats.length > 0;
                 hint.textContent = seats.length
                     ? 'Replies: ' + seats.map(function(s) { return _groupSeatLabel(s, session); }).join(', ')
@@ -1784,7 +1847,7 @@
                 var token = option.kind === 'skill' ? '$' + option.name : '@' + (option.kind === 'editor' ? option.handle : option.path + (option.kind === 'folder' ? '/' : ''));
                 var session = _groupSessionFor(_groupCurrentScenePath());
                 var effective = typeof _groupEffectiveTarget === 'function' ? _groupEffectiveTarget(session) : _groupTargetChoice;
-                if (option.kind === 'skill' && !_groupMentionRecipients(input.value).length && effective === 'both') token = '@' + option.participant.handle + ' ' + token;
+                if (option.kind === 'skill' && !_groupMentionRecipients(input.value).length && (effective === 'all' || effective === 'both')) token = '@' + option.participant.handle + ' ' + token;
                 input.setRangeText(token + ' ', range.start, range.end, 'end');
                 close();
                 input.dispatchEvent(new Event('input', {bubbles: true}));
@@ -2052,10 +2115,6 @@
             return _groupActiveSession;
         }
 
-        function _groupAgentDisplay(agentId) {
-            return agentId === 'claude' ? 'Claude' : 'Codex';
-        }
-
         function _groupHeaderSummaryText() {
             var session = _groupSessionsByScene[_groupCurrentScenePath()];
             var pair = (session && session.participants) || (_groupSettings && _groupSettings.participants) || [];
@@ -2234,7 +2293,7 @@
                     var app = _groupSettings.app || {};
                     var snapshots = [1, 2].map(function(seat) {
                         var previous = session.turns.find(function(t) { return t.role === 'critic' && t.seat === seat; });
-                        var recordedName = previous && String(previous.label || '').replace(/\s*·\s*(?:Codex|Claude).*$/, '').trim();
+                        var recordedName = previous && String(previous.label || '').replace(/\s*·\s*(?:Codex|Claude|Agy).*$/, '').trim();
                         if (/^Critic\s*[12]$/i.test(recordedName || '')) recordedName = '';
                         var config = app['critic' + seat] || {};
                         var agent = previous ? previous.agent : config.agent || (seat === 1 ? 'codex' : 'claude');
@@ -2393,6 +2452,33 @@
             if (session && session.managed) groupRuntimeControl(session, 'stop').catch(function() {});
         }
 
+        function _groupAdaptPresetForRoster(preset, roster) {
+            var copy = JSON.parse(JSON.stringify(preset));
+            var originalCount = (preset.profiles && preset.profiles.length) || 2;
+            var count = (roster && roster.length) || 2;
+            copy.profiles = (roster || []).map(function(p) { return p.id; });
+            if (count === 2) {
+                var kept = (copy.invitations || []).filter(function(step) { return step.seat === 1 || step.seat === 2; });
+                copy.invitations = kept.length >= 2
+                    ? kept
+                    : (copy.invitations || []).map(function(step) { return Object.assign({}, step, {seat: step.seat > 2 ? 2 : step.seat}); });
+                if (copy.recap > 2) copy.recap = 2;
+            } else if (count === 3 && originalCount < 3) {
+                var hasSeat3 = (copy.invitations || []).some(function(step) { return step.seat === 3; });
+                if (!hasSeat3 && (copy.invitations || []).length < 12) {
+                    var at = (copy.id === 'second_opinion' && (copy.invitations || []).length === 2 && copy.invitations[0].seat === 2)
+                        ? 1
+                        : Math.min(2, (copy.invitations || []).length);
+                    copy.invitations.splice(at, 0, {
+                        seat: 3,
+                        prompt: 'Audit the discussion and proposed edits from your own lens (continuity, scene logic, and concrete detail): '
+                            + 'challenge weak assumptions, flag at most 1 crucial missed issue with italic/plain blockquotes, or pass.'
+                    });
+                }
+            }
+            return copy;
+        }
+
         function startGroupDebate(options) {
             options = options || {};
             var path = _groupCurrentScenePath();
@@ -2404,14 +2490,14 @@
             if (!options.start) {
                 var preset = library.presets.find(function(p) { return p.id === options.presetId; });
                 if (!preset) return;
-                session.pendingPreset = JSON.parse(JSON.stringify(preset));
-                if (preset.kind === 'workflow') { openCurrentGroupWorkflow(session, preset); return; }
-                var presetUsesDefaultPair = JSON.stringify(preset.profiles) === JSON.stringify(library.default_profiles);
-                if (!session.participantsChosen || !presetUsesDefaultPair || !session.participants || session.participants.length !== 2) {
+                if (preset.kind === 'workflow') { session.pendingPreset = JSON.parse(JSON.stringify(preset)); openCurrentGroupWorkflow(session, preset); return; }
+                var presetUsesDefaultRoster = JSON.stringify(preset.profiles) === JSON.stringify(library.default_profiles);
+                if (!session.participantsChosen && !presetUsesDefaultRoster) {
                     session.participants = _groupProfiles(preset.profiles);
                 } else {
-                    session.pendingPreset.profiles = session.participants.map(function(p) { return p.id; });
+                    _groupEnsureParticipants(session);
                 }
+                session.pendingPreset = _groupAdaptPresetForRoster(preset, session.participants);
                 renderSceneGroupPane();
                 return;
             }
@@ -2567,8 +2653,9 @@
             var session = _groupSessionFor(_groupCurrentScenePath());
             if (!session || session.busy) return;
             var last = session.turns.filter(function(turn) { return turn.role === 'critic'; }).slice(-1)[0];
-            var seat = last && last.seat === 1 ? 2 : 1;
             if (session.scene) _groupScrollByScene[session.scene] = {top: 0, atBottom: true};
+            var count = (session.participants && session.participants.length) || 2;
+            var seat = last && last.seat ? ((last.seat % count) + 1) : 1;
             groupRuntimeControl(session, 'submit', {message_id: _groupNewId(), text: '@' + session.participants[seat - 1].handle + ' continue the discussion.', seats: [seat]}).catch(function() {});
         }
 
@@ -2646,7 +2733,7 @@
             if (!session || !plan) return;
             var ticked = plan.items.filter(function(item) { return item.checked && !item.applied; });
             if (!ticked.length) return;
-            var targetAgent = (agent === 'codex' || agent === 'claude') ? agent : 'claude';
+            var targetAgent = DISCUSS_AGENTS.indexOf(agent) >= 0 ? agent : 'claude';
             ticked.forEach(function(item) {
                 item.applied = _groupAgentDisplay(targetAgent);
                 item.checked = false;
@@ -2837,7 +2924,9 @@
                 empty.appendChild(title);
                 empty.appendChild(document.createTextNode(session.pendingPreset ? 'Review the participants and invitations before starting.' : 'Choose participants, then type a message or preview a discussion preset.'));
                 var pairPicker = elementWith('group-participant-picker');
-                _groupPairPicker(session, pairPicker, function(ids) { if (session.pendingPreset) session.pendingPreset.profiles = ids; });
+                _groupPairPicker(session, pairPicker, function(ids) {
+                    if (session.pendingPreset) session.pendingPreset = _groupAdaptPresetForRoster(session.pendingPreset, session.participants);
+                });
                 empty.appendChild(pairPicker);
                 if (session.pendingPreset) {
                     _renderGroupPresetPreview(session, empty);
@@ -2901,10 +2990,19 @@
                         turnsWrap.appendChild(summaryCard); appendPlansAfter(turnIdx + 1); return;
                     }
                     if (turn.passed) {
-                        var previous = session.turns[turnIdx - 1], next = session.turns[turnIdx + 1];
-                        if (!(previous && previous.passed && previous.seat !== turn.seat)) {
-                            var both = next && next.passed && next.seat !== turn.seat;
-                            turnsWrap.appendChild(elementWith('group-pass-note', both ? 'Both editors had no additions.' : _groupSpeakerName(turn.seat, turn.agent) + ' had no additions.'));
+                        var runStart = turnIdx;
+                        while (runStart > 0 && session.turns[runStart - 1].passed) runStart--;
+                        var passSeats = [];
+                        for (var pIdx = runStart; pIdx < session.turns.length && session.turns[pIdx].passed; pIdx++) {
+                            if (passSeats.indexOf(session.turns[pIdx].seat) < 0) passSeats.push(session.turns[pIdx].seat);
+                        }
+                        var totalSeats = (session.participants && session.participants.length) || 2;
+                        var allPassed = passSeats.length >= totalSeats;
+                        if (!allPassed) {
+                            turnsWrap.appendChild(elementWith('group-pass-note', _groupSpeakerName(turn.seat, turn.agent) + ' had no additions.'));
+                        } else if (turnIdx === runStart) {
+                            var msg = totalSeats === 2 ? 'Both editors had no additions.' : 'All ' + totalSeats + ' editors had no additions.';
+                            turnsWrap.appendChild(elementWith('group-pass-note', msg));
                         }
                         if (turn.review_pending && turn.tool_conversation_id) turnsWrap.appendChild(_groupToolReview(session, turn));
                         if (turn.review_unavailable) turnsWrap.appendChild(elementWith('group-runtime-notice', 'An older review is unavailable after the restart. Your changes remain saved; use file history to inspect them.'));
@@ -2935,7 +3033,8 @@
                         appendPlansAfter(turnIdx + 1);
                         return;
                     }
-                    var seatCls = turn.seat === 2 ? 'is-critic-2' : 'is-critic-1';
+                    var seatNum = turn.seat === 3 ? 3 : (turn.seat === 2 ? 2 : 1);
+                    var seatCls = 'is-critic-' + seatNum;
                     var card = elementWith('group-turn-card chat-message-card ' + seatCls);
                     var head = elementWith('group-turn-head chat-message-header');
                     var left = elementWith('group-turn-head-left');
@@ -3128,9 +3227,11 @@
                     content.appendChild(document.createTextNode(' \u2014 ' + item.detail));
                 }
                 if (item.proposedBy || item.applied) {
+                    var agreeCopy = (session.participants && session.participants.length > 2) ? ' \u00b7 all agree' : ' \u00b7 both agree';
+                    var unendorsedCopy = (session.participants && session.participants.length > 2) ? ' \u00b7 not yet endorsed by all editors' : ' \u00b7 not yet endorsed by both editors';
                     content.appendChild(elementWith('group-plan-by',
                         (item.applied ? '\u2713 Applied with ' + item.applied + (item.proposedBy ? ' \u00b7 ' : '') : '')
-                        + (item.proposedBy ? _groupProposerName(item.proposedBy) + (item.accepted ? ' \u00b7 both agree' : ' \u00b7 not yet endorsed by both editors') : '')));
+                        + (item.proposedBy ? _groupProposerName(item.proposedBy) + (item.accepted ? agreeCopy : unendorsedCopy) : '')));
                 }
                 var todoBtn = document.createElement('button');
                 todoBtn.type = 'button';
@@ -3161,7 +3262,7 @@
                 plan.open.forEach(function(item) {
                     var openItem = elementWith('group-open-item');
                     openItem.appendChild(elementWith('group-open-issue', item.issue || ''));
-                    [['Critic 1', item.critic1], ['Critic 2', item.critic2]].forEach(function(pair) {
+                    [['Critic 1', item.critic1], ['Critic 2', item.critic2], ['Critic 3', item.critic3]].forEach(function(pair) {
                         if (!pair[1]) return;
                         var line = elementWith('group-open-side');
                         var who = document.createElement('strong');
@@ -3195,10 +3296,10 @@
             agentSelect.id = 'groupApplyAgentSelect';
             agentSelect.className = 'group-apply-select';
             agentSelect.setAttribute('aria-label', 'Agent to apply ticked revisions');
-            [{id: 'claude', label: 'Claude'}, {id: 'codex', label: 'Codex'}].forEach(function(a) {
+            DISCUSS_AGENTS.forEach(function(id) {
                 var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.label;
+                opt.value = id;
+                opt.textContent = _groupAgentDisplay(id);
                 agentSelect.appendChild(opt);
             });
             agentSelect.value = _groupApplyAgentChoice;
@@ -5467,7 +5568,7 @@
             statusSpan.className = 'discuss-beatmap-status';
 
             function getProposalStageInfo(elapsedSec, status, agent) {
-                var agentName = (agent === 'codex' ? 'Codex CLI' : 'Claude CLI');
+                var agentName = (agent === 'codex' ? 'Codex CLI' : (agent === 'agy' ? 'Agy CLI' : 'Claude CLI'));
                 var wordCount = (status && status.word_count) ? status.word_count : 0;
                 var totalParas = (status && status.total_paragraphs) ? status.total_paragraphs : 0;
                 var draftLen = (status && typeof status.draft_length === 'number') ? status.draft_length : 0;
@@ -6755,6 +6856,9 @@
             } else if (/Claude/.test(label)) {
                 how = 'Install Claude Code from claude.com/claude-code, sign in once in a terminal, then reopen this tab:';
                 steps = ['claude'];
+            } else if (/Agy/.test(label)) {
+                how = 'Install Antigravity CLI (agy) and sign in once in a terminal, then reopen this tab:';
+                steps = ['agy'];
             } else {
                 how = 'Install Codex and sign in once in a terminal, then reopen this tab:';
                 steps = ['npm install -g @openai/codex', 'codex'];
@@ -8829,8 +8933,8 @@ function loadDiscussDiffMode(mode) {
         // question does not quietly become the standing cost of every later
         // one. Both agents apply it from the next turn, never to the running
         // one, and the chip says so rather than implying otherwise.
-        var _discussModelCatalogs = {codex: null, claude: null};
-        var _discussModelCatalogPending = {codex: false, claude: false};
+        var _discussModelCatalogs = {codex: null, claude: null, agy: null};
+        var _discussModelCatalogPending = {codex: false, claude: false, agy: false};
         var _discussModelPickerOpen = false;
         var _discussModelBusy = false;
 
@@ -10471,7 +10575,7 @@ function loadDiscussDiffMode(mode) {
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/turns/' + encodeURIComponent(_discussSnapshot.active_turn_id) + '/stop', {})
                 .then(scheduleDiscussSnapshot).catch(function(error) {
                     button.disabled = false;
-                    button.textContent = 'Stop Codex';
+                    button.textContent = 'Stop ' + discussAgentLabel();
                     renderDiscussError(error.message);
                 });
         }

@@ -1009,3 +1009,93 @@ def test_beatmap_settings_load_and_save(tmp_path):
     assert cfg_reset.beatmap.tension_rubric == ""
     assert reset["book"]["prompt"] == DEFAULT_BEATMAP_PROMPT
     assert reset["book"]["tension_rubric"] == DEFAULT_BEATMAP_TENSION_RUBRIC
+
+
+def test_beatmap_supports_agy_generation_and_settings(tmp_path: Path):
+    from proseview.discuss import DiscussManager
+
+    scene_rel = "ch01/01-test.md"
+    scene_file = tmp_path / "manuscript" / scene_rel
+    scene_file.parent.mkdir(parents=True)
+    scene_file.write_text(SAMPLE_SCENE, encoding="utf-8")
+
+    dm = DiscussManager(tmp_path)
+    saved = dm.save_beatmap_settings({"book": {"agent": "agy", "model": "gemini-4-argon"}})
+    assert saved["book"]["agent"] == "agy"
+    assert Config.load(tmp_path).beatmap.agent == "agy"
+
+    payload = json.dumps({
+        "overall_scene_summary": "Alice and Ben argue over a burned letter.",
+        "scene_opening_tension": 35,
+        "scene_peak_tension": 75,
+        "scene_ending_tension": 65,
+        "beats": [
+            {
+                "order": 1,
+                "title": "Spilled Tea",
+                "summary": "Alice pushes the cup and defends herself.",
+                "estimated_tension": 45,
+                "is_turning_point": False,
+                "characters_present": ["Alice", "Ben"],
+                "emotional_shift": "tense -> guarded",
+                "pacing_note": "measured",
+                "moments": [
+                    {
+                        "order": 1,
+                        "type": "action",
+                        "actor": "Alice",
+                        "target": "Ben",
+                        "action_or_beat": "Pushes the teacup across the table.",
+                        "emotional_tag": "strained",
+                        "tension_level": 40,
+                        "exact_quote": "Alice pushed the cup towards him.",
+                    }
+                ],
+            }
+        ],
+    })
+
+    calls = {"turn": None, "discarded": []}
+
+    class _FakeClient:
+        def request(self, method, params):
+            if method == "thread/start":
+                return {"thread": {"id": "agy-bm-1"}}
+            if method == "turn/start":
+                calls["turn"] = params
+                one_off = manager._one_offs.get("agy:agy-bm-1")
+                if one_off is not None:
+                    one_off.status = "completed"
+                    one_off.text = payload
+                    one_off.done.set()
+                return {}
+            return {}
+
+        def discard_ephemeral_thread(self, thread_id):
+            calls["discarded"].append(thread_id)
+
+    class StubDiscussManager:
+        def __init__(self):
+            self._client = _FakeClient()
+            self._one_offs = {}
+
+        def _resolve_runner(self, agent):
+            assert agent == "agy"
+            return object()
+
+        def _client_for(self, agent):
+            assert agent == "agy"
+            return self._client
+
+        def _thread_key(self, agent, thread_id):
+            return f"{agent}:{thread_id}"
+
+    manager = StubDiscussManager()
+    res = generate_scene_beatmap(tmp_path, scene_rel, agent="agy", discuss_manager=manager)
+    assert res["ok"] is True
+    assert res["beatmap"]["agent_used"] == "agy"
+    assert res["beatmap"]["beats"][0]["title"] == "Spilled Tea"
+    assert calls["turn"]["mayWrite"] is False
+    assert calls["turn"]["model"] == "gemini-4-argon"
+    assert calls["turn"]["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+    assert calls["discarded"] == ["agy-bm-1"]

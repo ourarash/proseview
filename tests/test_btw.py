@@ -12,7 +12,7 @@ from proseview.codex_app_server import CodexRequestError
 from proseview.discuss import ContextError, DiscussManager
 
 from .test_highlight_suggestions import _repo
-from .transport_fakes import ClaudeFakeClient, CodexFakeClient
+from .transport_fakes import AgyFakeClient, ClaudeFakeClient, CodexFakeClient
 
 
 @pytest.fixture(autouse=True)
@@ -387,5 +387,45 @@ def test_btw_passes_prior_turns_from_same_side_tab_without_touching_main_message
         assert "Twenty-four in Chapter 2." in codex.prompts[-1]
         assert "And what about Chapter 3?" in codex.prompts[-1]
         assert manager.get_snapshot(cid)["messages"] == []
+    finally:
+        manager.close()
+
+
+def test_btw_runs_seeded_ephemeral_turn_on_agy(tmp_path: Path):
+    clients: dict[str, object] = {}
+
+    def factory(callback, agent):
+        if agent == "agy":
+            client = AgyFakeClient(callback)
+        elif agent == "claude":
+            client = ClaudeFakeClient(callback)
+        else:
+            client = CodexFakeClient(callback)
+        clients[agent] = client
+        return client
+
+    manager = DiscussManager(_repo(tmp_path), client_factory=factory)
+    try:
+        doc = {"kind": "scene", "path": "one.md"}
+        cid = manager.open(doc, agent="agy")["conversation_id"]
+        manager.submit(cid, client_request_id="main-1", question="Main turn first", document=doc)
+        wait_for(lambda: any(m.get("role") == "assistant" for m in manager.get_snapshot(cid)["messages"]))
+
+        res = manager.side_question(
+            cid,
+            client_request_id="btw-agy-1",
+            question="/btw What happened earlier?",
+            document=doc,
+        )
+        assert res["agent"] == "agy"
+        completed = wait_for(
+            lambda: next(
+                (data for name, data in _events(manager, cid) if name == "side_question.completed" and data.get("side_question_id") == res["side_question_id"]),
+                None,
+            )
+        )
+        assert completed["mode"] == "seeded"
+        assert completed["text"]
+        assert len(manager.get_snapshot(cid)["messages"]) == 2
     finally:
         manager.close()

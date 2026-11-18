@@ -101,30 +101,30 @@ def test_group_auto_targeting_and_at_all_mention(page, server):
     pane = page.locator("#sceneGroupPane")
     target = pane.locator("#groupTargetSelect")
 
-    # 1. Fresh group: initially target is 'both'
-    assert target.input_value() == "both"
+    # 1. Fresh group: initially target is 'all'
+    assert target.input_value() == "all"
     assert not target.is_disabled()
 
-    # 2. Typing @all sets target to 'both' and disables target with hint
+    # 2. Typing @all sets target to 'all' and disables target with hint
     input_box = pane.locator("#groupInput")
     input_box.fill("@all hello editors")
-    assert target.input_value() == "both"
+    assert target.input_value() == "all"
     assert target.is_disabled()
     assert "Replies:" in pane.locator("#groupMentionHint").inner_text()
 
-    # 3. Clearing input restores enabled state and 'both'
-    input_box.fill("Initial message to both")
+    # 3. Clearing input restores enabled state and 'all'
+    input_box.fill("Initial message to all")
     assert not target.is_disabled()
-    assert target.input_value() == "both"
+    assert target.input_value() == "all"
 
-    # Send message to both
+    # Send message to all
     pane.locator("#groupSendBtn").click()
     _group_idle(page)
 
-    # 4. Critics have replied. Last critic was seat 2 (Claude)
-    # Target now defaults to last replying critic (critic2)
+    # 4. Critics have replied. Last critic was seat 3 (Agy)
+    # Target now defaults to last replying critic (critic3)
     last_seat = page.evaluate("() => _groupLastCriticSeat(_groupActiveSession)")
-    assert last_seat in (1, 2)
+    assert last_seat in (1, 2, 3)
     assert target.input_value() == f"critic{last_seat}"
     assert not target.is_disabled()
 
@@ -132,11 +132,11 @@ def test_group_auto_targeting_and_at_all_mention(page, server):
     input_box.fill("Follow-up question")
     assert page.evaluate("() => groupRequestedSeats(document.getElementById('groupInput').value)") == [last_seat]
 
-    # 6. Typing @all routes to [1, 2]
-    input_box.fill("@all what do you both think?")
-    assert target.input_value() == "both"
+    # 6. Typing @all routes to [1, 2, 3]
+    input_box.fill("@all what do all of you think?")
+    assert target.input_value() == "all"
     assert target.is_disabled()
-    assert page.evaluate("() => groupRequestedSeats(document.getElementById('groupInput').value)") == [1, 2]
+    assert page.evaluate("() => groupRequestedSeats(document.getElementById('groupInput').value)") == [1, 2, 3]
 
 
 def test_group_target_menu_and_mentions_show_agent_names(page, server):
@@ -146,18 +146,19 @@ def test_group_target_menu_and_mentions_show_agent_names(page, server):
     target = pane.locator("#groupTargetSelect")
     page.wait_for_selector("#groupTargetSelect option", state="attached")
 
-    # 1. Menu options show agent names (Claude / Codex)
+    # 1. Menu options show agent names (Codex / Claude / Agy)
     options = target.locator("option").all_text_contents()
     assert options == [
-        "Group (Both: Codex, Claude)",
+        "Group (All 3: Codex, Claude, Agy)",
         "Story Editor (Codex) only",
         "Voice Editor (Claude) only",
+        "Continuity Editor (Agy) only",
     ]
 
-    # 2. Mentioning @all shows both agents in hint
+    # 2. Mentioning @all shows all three agents in hint
     input_box = pane.locator("#groupInput")
     input_box.fill("@all please check this")
-    assert pane.locator("#groupMentionHint").inner_text() == "Replies: Story Editor (Codex), Voice Editor (Claude)"
+    assert pane.locator("#groupMentionHint").inner_text() == "Replies: Story Editor (Codex), Voice Editor (Claude), Continuity Editor (Agy)"
 
     # 3. Mentioning a specific editor shows their agent in hint
     input_box.fill("@VoiceEditor check voice")
@@ -166,11 +167,17 @@ def test_group_target_menu_and_mentions_show_agent_names(page, server):
     input_box.fill("@StoryEditor check story")
     assert pane.locator("#groupMentionHint").inner_text() == "Replies: Story Editor (Codex)"
 
+    input_box.fill("@ContinuityEditor check continuity")
+    assert pane.locator("#groupMentionHint").inner_text() == "Replies: Continuity Editor (Agy)"
+
     input_box.fill("@claude check voice")
     assert pane.locator("#groupMentionHint").inner_text() == "Replies: Voice Editor (Claude)"
 
     input_box.fill("@codex check story")
     assert pane.locator("#groupMentionHint").inner_text() == "Replies: Story Editor (Codex)"
+
+    input_box.fill("@agy check continuity")
+    assert pane.locator("#groupMentionHint").inner_text() == "Replies: Continuity Editor (Agy)"
 
     # 4. Mention autocomplete menu offers agent handles and shows agent names
     input_box.fill("")
@@ -180,9 +187,10 @@ def test_group_target_menu_and_mentions_show_agent_names(page, server):
     menu.wait_for()
     option_texts = menu.locator(".group-mention-option").all_text_contents()
     # Check that option names and handles reflect the agent
-    assert any("All editors" in t and "Codex" in t and "Claude" in t and "@all" in t for t in option_texts)
+    assert any("All editors" in t and "Codex" in t and "Claude" in t and "Agy" in t and "@all" in t for t in option_texts)
     assert any("Story Editor" in t and "Codex" in t and "@StoryEditor" in t for t in option_texts)
     assert any("Voice Editor" in t and "Claude" in t and "@VoiceEditor" in t for t in option_texts)
+    assert any("Continuity Editor" in t and "Agy" in t and "@ContinuityEditor" in t for t in option_texts)
 
     # 5. Selecting Voice Editor mention inserts @VoiceEditor and sets target
     voice_btn = menu.locator(".group-mention-option").filter(has_text="Voice Editor").first

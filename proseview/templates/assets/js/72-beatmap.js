@@ -63,8 +63,18 @@
         return m + ':' + (rem < 10 ? '0' : '') + rem;
     }
 
+    var BEATMAP_AGENTS = [
+        {value: 'claude', label: 'Claude CLI'},
+        {value: 'codex', label: 'Codex CLI'},
+        {value: 'agy', label: 'Agy CLI'}
+    ];
+    function beatMapAgentOptionsHtml() {
+        return BEATMAP_AGENTS.map(function(opt) {
+            return '<option value="' + opt.value + '"' + (_beatMapAgent === opt.value ? ' selected' : '') + '>' + opt.label + '</option>';
+        }).join('');
+    }
     function getGenerationStageInfo(elapsedSec, status, agent) {
-        var agentName = (agent === 'codex' ? 'Codex CLI' : 'Claude CLI');
+        var agentName = (agent === 'codex' ? 'Codex CLI' : (agent === 'agy' ? 'Agy CLI' : 'Claude CLI'));
         var wordCount = (status && status.word_count) ? status.word_count : 0;
         var totalParas = (status && status.total_paragraphs) ? status.total_paragraphs : 0;
         var draftLen = (status && typeof status.draft_length === 'number') ? status.draft_length : 0;
@@ -303,7 +313,7 @@
             _beatMapPlacement = savedPlacement;
         }
         var savedAgent = localStorage.getItem('proseview_beatmap_agent');
-        if (savedAgent === 'claude' || savedAgent === 'codex') {
+        if (savedAgent === 'claude' || savedAgent === 'codex' || savedAgent === 'agy') {
             _beatMapAgent = savedAgent;
         }
     } catch (e) { }
@@ -364,7 +374,7 @@
                     // The picker names the agent that made this map, so
                     // Update asks the same one.
                     var maker = String(data.beatmap.agent_used || '').toLowerCase();
-                    if (maker === 'claude' || maker === 'codex') _beatMapAgent = maker;
+                    if (maker === 'claude' || maker === 'codex' || maker === 'agy') _beatMapAgent = maker;
                 } else {
                     _beatMapData = null;
                     _beatMapStale = false;
@@ -1063,8 +1073,7 @@
             '<div class="strip-controls-right">' +
             '<div style="display:inline-flex; align-items:center; gap:6px;">' +
             '<select id="stripAgentSelect" class="beatmap-agent-picker" style="font-size:11px; padding:2px 6px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-            '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
-            '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
+            beatMapAgentOptionsHtml() +
             '</select>' +
             '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripGenerateBtn" style="font-size:11px; padding:3px 10px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
             (isGeneratingCurrent
@@ -1160,8 +1169,7 @@
         '</div>' +
         '<div style="display:inline-flex; align-items:center; background:var(--surface-field); border:1px solid var(--border); border-radius:4px; padding:1px 6px; gap:4px;">' +
         '<select id="stripActiveAgent" class="beat-agent-select"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-        '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
-        '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
+        beatMapAgentOptionsHtml() +
         '</select>' +
         '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripUpdateBtn" style="border:0; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
         (isGeneratingCurrent
@@ -1456,8 +1464,7 @@ function renderSceneBeatMapPane() {
             '</div>' +
             '<div class="beatmap-action-group">' +
             '<select id="paneAgentSelect" class="beatmap-agent-picker"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-            '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
-            '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
+            beatMapAgentOptionsHtml() +
             '</select>' +
             '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneGenerateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
             (isGeneratingCurrent
@@ -1522,8 +1529,7 @@ function renderSceneBeatMapPane() {
         '<div style="display:inline-flex; align-items:center; gap:4px; font-size:11px;">' +
         '<span style="color:var(--text-muted);">Agent:</span>' +
         '<select id="paneActiveAgent" class="beat-agent-select" style="background:var(--surface-field); border:1px solid var(--border); border-radius:3px; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
-        '<option value="claude"' + (_beatMapAgent === 'claude' ? ' selected' : '') + '>Claude CLI</option>' +
-        '<option value="codex"' + (_beatMapAgent === 'codex' ? ' selected' : '') + '>Codex CLI</option>' +
+        beatMapAgentOptionsHtml() +
         '</select>' +
         '</div>' +
         '<div style="display:inline-flex; align-items:center; gap:6px;">' +

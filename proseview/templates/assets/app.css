@@ -14493,6 +14493,7 @@
         html[data-static-snapshot] #utilityTabHistory,
         html[data-static-snapshot] #utilityTabCodex,
         html[data-static-snapshot] #utilityTabClaude,
+        html[data-static-snapshot] #utilityTabAgy,
         html[data-static-snapshot] #settingsOpenBtn,
         html[data-static-snapshot] .ledger-open-btn,
         html[data-static-snapshot] #selectionPill,
@@ -16161,6 +16162,10 @@
             --group-accent: #b45309;
         }
 
+        .group-turn-card.is-critic-3 {
+            --group-accent: #047857;
+        }
+
         [data-theme="dark"] .group-turn-card.is-critic-1,
         [data-theme="hopscotch"] .group-turn-card.is-critic-1,
         [data-theme="graphite-dark"] .group-turn-card.is-critic-1 {
@@ -16171,6 +16176,12 @@
         [data-theme="hopscotch"] .group-turn-card.is-critic-2,
         [data-theme="graphite-dark"] .group-turn-card.is-critic-2 {
             --group-accent: #fbbf24;
+        }
+
+        [data-theme="dark"] .group-turn-card.is-critic-3,
+        [data-theme="hopscotch"] .group-turn-card.is-critic-3,
+        [data-theme="graphite-dark"] .group-turn-card.is-critic-3 {
+            --group-accent: #34d399;
         }
 
         .group-turn-card.is-user {
@@ -16235,6 +16246,17 @@
         [data-theme="hopscotch"] .group-critic-badge.is-critic-2,
         [data-theme="graphite-dark"] .group-critic-badge.is-critic-2 {
             color: #fbbf24;
+        }
+
+        .group-critic-badge.is-critic-3 {
+            background: rgba(16, 185, 129, 0.15);
+            color: #047857;
+        }
+
+        [data-theme="dark"] .group-critic-badge.is-critic-3,
+        [data-theme="hopscotch"] .group-critic-badge.is-critic-3,
+        [data-theme="graphite-dark"] .group-critic-badge.is-critic-3 {
+            color: #34d399;
         }
 
         .group-critic-badge.is-user {
@@ -19239,8 +19261,20 @@
 
         .group-fork-models {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 12px;
+        }
+
+        .group-room-size-toggle {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .group-room-size-btn.is-active {
+            background: var(--primary);
+            color: var(--primary-foreground, #fff);
+            border-color: var(--primary);
         }
 
         .group-fork-model {

@@ -280,9 +280,10 @@ function continueManagedGroupToFive(session) {
     if (doneCount < 2 || doneCount >= 5) return;
     var extra = [];
     for (var idx = doneCount; idx < 5; idx++) {
+        var seatCount = (session.participants && session.participants.length) || 3;
         var step = typeof window._rmPresetStepTemplate === 'function'
-            ? window._rmPresetStepTemplate(session.presetId, idx)
-            : {seat: idx % 2 + 1, prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'};
+            ? window._rmPresetStepTemplate(session.presetId, idx, seatCount)
+            : {seat: (idx % seatCount) + 1, prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'};
         extra.push({seat: step.seat, prompt: step.prompt, attachments: discussMentionsIn(step.prompt)});
     }
     var lastRecap = (session.turns || []).slice().reverse().find(function(turn) {

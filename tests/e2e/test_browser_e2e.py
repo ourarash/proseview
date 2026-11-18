@@ -7623,7 +7623,7 @@ def test_leaving_a_scene_keeps_the_dock_open(page: Page, shared_server: Prosevie
     for tab in ("#utilityTabAnalysis", "#utilityTabHistory", "#utilityTabGroup", "#utilityTabBeats"):
         assert page.locator(tab).is_disabled(), tab
         assert page.get_attribute(tab, "aria-disabled") == "true", tab
-    for tab in ("#utilityTabCodex", "#utilityTabClaude"):
+    for tab in ("#utilityTabCodex", "#utilityTabClaude", "#utilityTabAgy"):
         assert page.locator(tab).is_enabled(), tab
     # The old scene's numbers are not left behind.
     assert page.locator("#sceneAnalysisPane").is_hidden()
@@ -7722,7 +7722,7 @@ def test_dock_resize_bar_sits_on_the_seam_not_inside_the_dock(
 def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
     page: Page, server: ProseviewServer
 ):
-    """The utility tabs use compact padding and responsive spacing so that all 6
+    """The utility tabs use compact padding and responsive spacing so that all 7
     tabs, conversation actions, and the close button fit cleanly without pushing
     controls off-screen even at narrower dock widths."""
     open_scene(page, server)
@@ -7760,8 +7760,8 @@ def test_utility_dock_tabs_fit_compactly_without_pushing_actions_off(
             dataTip: el.getAttribute('data-tip') || '',
         }));
     }""")
-    assert len(tab_tooltips) == 6
-    assert [t["text"] for t in tab_tooltips] == ["Analysis", "History", "Beats", "Codex", "Claude", "Group"]
+    assert len(tab_tooltips) == 7
+    assert [t["text"] for t in tab_tooltips] == ["Analysis", "History", "Beats", "Codex", "Claude", "Agy", "Group"]
     for tab in tab_tooltips:
         assert len(tab["title"]) > 10, f"Tab {tab['id']} missing descriptive title: {tab}"
         assert tab["title"] == tab["dataTip"]

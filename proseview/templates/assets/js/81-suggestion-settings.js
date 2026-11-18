@@ -7,7 +7,12 @@
         // setting; Try it saves first, then runs a sample suggestion.
         var _sg = null;
         var _sgDirty = false;
-        var SG_AGENTS = [{id: 'codex', label: 'Codex'}, {id: 'claude', label: 'Claude'}];
+        var SG_AGENTS = [{id: 'codex', label: 'Codex'}, {id: 'claude', label: 'Claude'}, {id: 'agy', label: 'Agy'}];
+        var GROUP_AGENTS = SG_AGENTS;
+        function _groupAgentLabel(id) {
+            var hit = GROUP_AGENTS.find(function(a) { return a.id === id; });
+            return hit ? hit.label : 'Codex';
+        }
         var SG_KIND_LABELS = {
             'dialogue_tags.fancy': 'Dialogue Tags: other than said or asked',
             'dialogue_tags.adverb': 'Dialogue Tags: adverb on a tag',
@@ -319,7 +324,7 @@
                 _rmDirty = false;
                 renderGroupSettings();
                 if (typeof syncGroupSettingsState === 'function') syncGroupSettingsState(_rm);
-                SG_AGENTS.forEach(function(agent) {
+                GROUP_AGENTS.forEach(function(agent) {
                     if (_rm.catalogs[agent.id]) return;
                     _sgPost('/api/discuss/models', {agent: agent.id}).then(function(res) {
                         _rm.catalogs[agent.id] = res.catalog;
@@ -401,17 +406,18 @@
         }
 
         function _rmProfileOptions() {
-            return _rm.library.profiles.map(function(p) { return {value: p.id, label: p.name + ' · ' + (p.agent === 'claude' ? 'Claude' : 'Codex')}; });
+            return _rm.library.profiles.map(function(p) { return {value: p.id, label: p.name + ' · ' + _groupAgentLabel(p.agent)}; });
         }
 
-        function _rmPairFields(container, pair, prefix) {
-            pair.forEach(function(id, index) {
+        function _rmRosterFields(container, roster, prefix) {
+            roster.forEach(function(id, index) {
                 var label = _sgEl('label', 'group-library-field');
                 label.appendChild(_sgEl('span', 'settings-label', prefix.replace(/^Preset \d+ /, '') + ' ' + (index + 1)));
                 var select = _rmSelect(_rmProfileOptions(), id,
                     function(v) {
-                        if (v === pair[1 - index]) pair[1 - index] = pair[index];
-                        pair[index] = v;
+                        var existing = roster.findIndex(function(other, oi) { return oi !== index && other === v; });
+                        if (existing >= 0) roster[existing] = roster[index];
+                        roster[index] = v;
                         renderGroupSettings();
                     }, prefix + ' ' + (index + 1));
                 label.appendChild(select);
@@ -419,23 +425,38 @@
             });
         }
 
-        function _rmPresetStepTemplate(presetId, index) {
+        function _rmResizeRoster(roster, count, library) {
+            if (roster.length > count) {
+                return roster.slice(0, count);
+            }
+            var next = roster.slice();
+            while (next.length < count) {
+                var candidate = (library.profiles || []).find(function(p) { return !next.includes(p.id); });
+                if (!candidate) break;
+                next.push(candidate.id);
+            }
+            return next;
+        }
+
+        function _rmPresetStepTemplate(presetId, index, seatCount) {
             var defaults = (_rm && _rm.defaults) || (typeof _groupSettings !== 'undefined' && _groupSettings && _groupSettings.defaults) || {};
             var templates = (defaults.step_templates || {})[presetId] || [];
-            if (index < templates.length && templates[index]) {
+            var mod = Math.max(2, Number(seatCount) || 3);
+            if (index < templates.length && templates[index] && templates[index].seat <= mod) {
                 return {seat: templates[index].seat, prompt: templates[index].prompt};
             }
             return {
-                seat: index % 2 + 1,
+                seat: (index % mod) + 1,
                 prompt: 'Respond to the latest proposal. Agree, push back, or offer a concrete alternative.'
             };
         }
         window._rmPresetStepTemplate = _rmPresetStepTemplate;
 
         function _rmResizeInvitations(preset, count) {
+            var seatCount = (preset.profiles && preset.profiles.length) || 3;
             preset.invitations = preset.invitations.slice(0, count);
             while (preset.invitations.length < count) {
-                preset.invitations.push(_rmPresetStepTemplate(preset.id, preset.invitations.length));
+                preset.invitations.push(_rmPresetStepTemplate(preset.id, preset.invitations.length, seatCount));
             }
         }
 
@@ -446,21 +467,36 @@
             body.replaceChildren();
             var library = _rm.library;
             body.appendChild(_sgEl('p', 'settings-note', 'Profiles and presets are reusable across books on this computer. Each Group keeps its participants as they were when the conversation started. Blank model and effort choices inherit the agent’s individual chat settings.'));
-            body.appendChild(_sgEl('p', 'suggestion-subhead', 'Default participants'));
+            body.appendChild(_sgEl('p', 'suggestion-subhead', 'Default room size & participants'));
+            var sizeRow = _sgEl('div', 'group-room-size-toggle');
+            var curSize = (library.default_profiles || []).length === 2 ? 2 : 3;
+            [2, 3].forEach(function(count) {
+                var btn = _sgEl('button', 'settings-plain-btn group-room-size-btn' + (curSize === count ? ' is-active' : ''), count + ' agents');
+                btn.type = 'button';
+                btn.disabled = count === 3 && library.profiles.length < 3;
+                btn.setAttribute('aria-pressed', curSize === count ? 'true' : 'false');
+                btn.onclick = function() {
+                    if (curSize === count) return;
+                    library.default_profiles = _rmResizeRoster(library.default_profiles, count, library);
+                    _rmChanged(); renderGroupSettings();
+                };
+                sizeRow.appendChild(btn);
+            });
+            body.appendChild(sizeRow);
             var defaults = _sgEl('div', 'group-library-pair');
-            _rmPairFields(defaults, library.default_profiles, 'Default participant');
+            _rmRosterFields(defaults, library.default_profiles, 'Default participant');
             body.appendChild(defaults);
             body.appendChild(_sgEl('p', 'suggestion-subhead', 'Agent profiles'));
             library.profiles.forEach(function(profile, index) {
                 var card = _sgEl('details', 'group-library-card');
                 var prefix = 'Profile ' + (index + 1);
-                card.appendChild(_sgEl('summary', '', profile.name + ' · ' + (profile.agent === 'claude' ? 'Claude' : 'Codex')));
+                card.appendChild(_sgEl('summary', '', profile.name + ' · ' + _groupAgentLabel(profile.agent)));
                 _rmField(card, prefix + ' name', profile.name, function(v) { profile.name = v; }, false, 60);
                 _rmField(card, prefix + ' specialty', profile.specialty, function(v) { profile.specialty = v; }, true);
                 _rmField(card, prefix + ' style', profile.style, function(v) { profile.style = v; }, true);
                 var provider = _sgEl('label', 'group-library-field');
                 provider.appendChild(_sgEl('span', 'settings-label', 'Provider'));
-                provider.appendChild(_rmSelect(SG_AGENTS.map(function(a) { return {value: a.id, label: a.label}; }), profile.agent,
+                provider.appendChild(_rmSelect(GROUP_AGENTS.map(function(a) { return {value: a.id, label: a.label}; }), profile.agent,
                     function(v) { profile.agent = v; profile.model = ''; profile.effort = ''; renderGroupSettings(); }, prefix + ' provider'));
                 card.appendChild(provider);
                 var catalog = (_rm.catalogs || {})[profile.agent] || {};
@@ -478,7 +514,7 @@
                 card.appendChild(effort);
                 var used = library.default_profiles.includes(profile.id) || library.presets.some(function(p) { return p.profiles.includes(profile.id); });
                 var remove = _sgEl('button', 'settings-plain-btn', 'Delete profile');
-                remove.type = 'button'; remove.disabled = used || library.profiles.length <= 2;
+                remove.type = 'button'; remove.disabled = used || library.profiles.length <= Math.max(2, library.default_profiles.length);
                 remove.title = used ? 'Choose another profile in defaults and presets before deleting this one.' : '';
                 remove.onclick = function() { library.profiles.splice(index, 1); _rmChanged(); renderGroupSettings(); };
                 card.appendChild(remove);
@@ -493,31 +529,47 @@
             };
             body.appendChild(addProfile);
             body.appendChild(_sgEl('p', 'suggestion-subhead', 'Discussion presets'));
-            body.appendChild(_sgEl('p', 'settings-note', 'A preset posts invitations to the two participants. Either participant can pass. An optional recap is one extra invitation to the selected participant; the conversation stays open afterward.'));
+            body.appendChild(_sgEl('p', 'settings-note', 'A preset posts invitations to the participating editors (2 or 3). Any participant can pass. An optional recap is one extra invitation to the selected participant; the conversation stays open afterward.'));
             library.presets.forEach(function(preset, index) {
                 var card = _sgEl('details', 'group-library-card');
                 var prefix = 'Preset ' + (index + 1);
                 card.appendChild(_sgEl('summary', '', preset.name + ' · ' + preset.invitations.length + ' invitations'));
                 _rmField(card, prefix + ' name', preset.name, function(v) { preset.name = v; }, false, 100);
                 _rmField(card, prefix + ' description', preset.description, function(v) { preset.description = v; }, true, 500);
-                _rmPairFields(card, preset.profiles, prefix + ' participant');
+                var presetSizeWrap = _sgEl('label', 'group-library-field');
+                presetSizeWrap.appendChild(_sgEl('span', 'settings-label', 'Participants'));
+                presetSizeWrap.appendChild(_rmSelect(
+                    library.profiles.length >= 3 ? [{value: '2', label: '2 agents'}, {value: '3', label: '3 agents'}] : [{value: '2', label: '2 agents'}],
+                    preset.profiles.length,
+                    function(v) {
+                        var nextCount = Number(v);
+                        preset.profiles = _rmResizeRoster(preset.profiles, nextCount, library);
+                        preset.invitations.forEach(function(s) { if (s.seat > nextCount) s.seat = nextCount; });
+                        if (preset.recap > nextCount) preset.recap = nextCount;
+                        renderGroupSettings();
+                    },
+                    prefix + ' room size'
+                ));
+                card.appendChild(presetSizeWrap);
+                _rmRosterFields(card, preset.profiles, prefix + ' participant');
                 var count = _sgEl('label', 'group-library-field');
                 count.appendChild(_sgEl('span', 'settings-label', 'Invitations'));
                 count.appendChild(_rmSelect(Array.from({length: 11}, function(_, i) { return {value: String(i + 2), label: String(i + 2)}; }), preset.invitations.length,
                     function(v) { _rmResizeInvitations(preset, Number(v)); renderGroupSettings(); }, prefix + ' invitations'));
                 card.appendChild(count);
                 var names = preset.profiles.map(function(id) { return library.profiles.find(function(p) { return p.id === id; }).name; });
+                var seatChoices = names.map(function(name, idx) { return {value: String(idx + 1), label: name}; });
                 preset.invitations.forEach(function(step, stepIndex) {
                     var label = prefix + ' invitation ' + (stepIndex + 1);
                     var wrap = _sgEl('div', 'group-library-step');
-                    wrap.appendChild(_rmSelect([{value: '1', label: names[0]}, {value: '2', label: names[1]}], step.seat,
+                    wrap.appendChild(_rmSelect(seatChoices, step.seat,
                         function(v) { step.seat = Number(v); }, label + ' recipient'));
                     _rmField(wrap, label, step.prompt, function(v) { step.prompt = v; }, true);
                     card.appendChild(wrap);
                 });
                 var recap = _sgEl('label', 'group-library-field');
                 recap.appendChild(_sgEl('span', 'settings-label', 'Optional recap'));
-                recap.appendChild(_rmSelect([{value: '0', label: 'No recap'}, {value: '1', label: names[0]}, {value: '2', label: names[1]}], preset.recap,
+                recap.appendChild(_rmSelect([{value: '0', label: 'No recap'}].concat(seatChoices), preset.recap,
                     function(v) { preset.recap = Number(v); }, prefix + ' recap'));
                 card.appendChild(recap);
                 card.appendChild(createGroupPositionsOption(preset, function(checked) {
@@ -529,9 +581,15 @@
             });
             var addPreset = _sgEl('button', 'settings-plain-btn', '+ Add preset'); addPreset.type = 'button'; addPreset.disabled = library.presets.length >= 32;
             addPreset.onclick = function() {
+                var starter = [
+                    {seat: 1, prompt: 'Identify the 1–2 most important friction points in this scene. Quote lines and propose concrete fixes.'},
+                    {seat: 2, prompt: 'Respond specifically to the first editor’s notes. Agree, refine, or offer a punchier alternative.'}
+                ];
+                if (library.default_profiles.length >= 3) {
+                    starter.push({seat: 3, prompt: 'Audit the scene and proposals for timeline continuity, blocking logic, and concrete detail.'});
+                }
                 library.presets.push({id: 'preset-' + Date.now(), name: 'New discussion', description: '', profiles: library.default_profiles.slice(), recap: 0,
-                    invitations: [{seat: 1, prompt: 'Identify the 1–2 most important friction points in this scene. Quote lines and propose concrete fixes.'},
-                                  {seat: 2, prompt: 'Respond specifically to the first editor’s notes. Agree, refine, or offer a punchier alternative.'}]});
+                    invitations: starter});
                 _rmChanged(); renderGroupSettings();
                 var cards = body.querySelectorAll('.group-library-card'); cards[cards.length - 1].open = true;
             };
@@ -653,7 +711,7 @@
 
             body.appendChild(_sgEl('p', 'suggestion-subhead', 'In this book (.proseview.yaml)'));
             var agentSel = _sgSelect(
-                [{value: 'codex', label: 'Codex'}, {value: 'claude', label: 'Claude'}],
+                [{value: 'codex', label: 'Codex'}, {value: 'claude', label: 'Claude'}, {value: 'agy', label: 'Agy'}],
                 book.agent || 'codex',
                 function(v) { book.agent = v; },
                 'Default Discuss agent'
@@ -662,8 +720,9 @@
 
             var codexFiles = ((_ds.instruction_files || {}).codex || []).join(', ') || 'none';
             var claudeFiles = ((_ds.instruction_files || {}).claude || []).join(', ') || 'none';
+            var agyFiles = ((_ds.instruction_files || {}).agy || []).join(', ') || 'none';
             var instrSummary = _sgEl('span', 'settings-unit',
-                'Codex reads: ' + codexFiles + ' · Claude reads: ' + claudeFiles);
+                'Codex reads: ' + codexFiles + ' · Claude reads: ' + claudeFiles + ' · Agy reads: ' + agyFiles);
 
             var rows = [
                 ['Default agent', 'Which tab opens first in the Discuss dock.', agentSel],

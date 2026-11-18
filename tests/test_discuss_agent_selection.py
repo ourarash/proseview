@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from proseview.agy_acp_client import AgyAcpClient, sanitize_agy_message
 from proseview.claude_agent_client import ClaudeAgentClient, sanitize_claude_message
 from proseview.codex_app_server import CodexAppServer
 from proseview.config import ConfigError, DiscussConfig
@@ -101,6 +102,7 @@ def test_each_agent_builds_its_own_transport(tmp_path):
     try:
         assert isinstance(manager._build_client("codex"), CodexAppServer)
         assert isinstance(manager._build_client("claude"), ClaudeAgentClient)
+        assert isinstance(manager._build_client("agy"), AgyAcpClient)
     finally:
         manager.close()
 
@@ -109,7 +111,9 @@ def test_each_transport_carries_its_own_translator():
     # Codex has no translator of its own; the module-level one is the default.
     assert getattr(CodexAppServer, "translate", None) is None
     assert ClaudeAgentClient.translate is sanitize_claude_message
+    assert AgyAcpClient.translate is sanitize_agy_message
     assert sanitize_agent_message is not sanitize_claude_message
+    assert sanitize_agent_message is not sanitize_agy_message
 
 
 def test_unknown_agent_is_rejected(tmp_path):
@@ -238,8 +242,8 @@ def test_agents_reports_both_with_availability(tmp_path):
     manager = DiscussManager(_repo(tmp_path), client_factory=_FakeClient)
     try:
         rows = manager.agents()
-        assert [row["id"] for row in rows] == ["codex", "claude"]
-        assert [row["label"] for row in rows] == ["Codex", "Claude"]
+        assert [row["id"] for row in rows] == ["codex", "claude", "agy"]
+        assert [row["label"] for row in rows] == ["Codex", "Claude", "Agy"]
         assert all("available" in row and "reason" in row for row in rows)
     finally:
         manager.close()

@@ -822,6 +822,167 @@ for line in sys.stdin:
         encoding="utf-8",
     )
     _make_runnable(bin_dir, "codex")
+
+    agy = bin_dir / "agy"
+    agy.write_text(
+        """#!/usr/bin/env python3
+import json, os, pathlib, sys, threading
+
+state_path = pathlib.Path.cwd() / '.proseview' / 'fake-agy-session-state.json'
+record = pathlib.Path(os.environ['HOME']) / 'fake-agy-received.jsonl'
+
+def load_state():
+    try:
+        return json.loads(state_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {'next': 0, 'sessions': {}}
+
+def save_state(state):
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state), encoding='utf-8')
+
+write_lock = threading.Lock()
+def emit(obj):
+    with write_lock:
+        print(json.dumps(obj), flush=True)
+
+state = load_state()
+cancel_events = {}
+
+MODELS = [
+    {'modelId': 'gemini-4-argon-low', 'name': 'Gemini 4 Argon (Low)'},
+    {'modelId': 'gemini-4-argon-medium', 'name': 'Gemini 4 Argon (Medium)'},
+    {'modelId': 'gemini-4-argon-high', 'name': 'Gemini 4 Argon (High)'},
+    {'modelId': 'gemini-4-hydrogen-xhigh', 'name': 'Gemini 4 Hydrogen (XHigh)'},
+]
+CONFIG_OPTIONS = [
+    {
+        'id': 'model',
+        'currentValue': 'gemini-4-argon',
+        'options': [
+            {'value': 'gemini-4-argon', 'name': 'Gemini 4 Argon'},
+            {'value': 'gemini-4-hydrogen', 'name': 'Gemini 4 Hydrogen'},
+        ],
+    },
+    {
+        'id': 'thought_level',
+        'currentValue': 'medium',
+        'options': [{'value': 'low'}, {'value': 'medium'}, {'value': 'high'}],
+    },
+]
+
+def run_prompt(rid, sid, prompt):
+    ev = threading.Event()
+    cancel_events[sid] = ev
+    record.parent.mkdir(parents=True, exist_ok=True)
+    with record.open('a', encoding='utf-8') as fh:
+        fh.write(json.dumps({'sessionId': sid, 'prompt': prompt}) + '\\n')
+    sess = state['sessions'].setdefault(sid, {'history': [], 'model': 'gemini-4-argon-medium'})
+    sess['history'].append({'role': 'user', 'text': prompt})
+    emit({'jsonrpc': '2.0', 'method': 'session/update', 'params': {'sessionId': sid, 'update': {'sessionUpdate': 'agent_thought_chunk', 'content': {'type': 'text', 'text': 'PRIVATE AGY THOUGHT'}}}})
+    if 'HOLD_FOR_STOP' in prompt:
+        ev.wait(timeout=15)
+        cancel_events.pop(sid, None)
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'stopReason': 'cancelled'}})
+        return
+    if 'REQUIRED JSON OUTPUT SCHEMA' in prompt and '"alternatives"' in prompt:
+        raw_alt = json.dumps({
+            'kind': 'alternatives',
+            'summary': 'Three Agy rewrites.',
+            'alternatives': [
+                {'text': 'Agy tightened rewrite one.', 'rationale': 'Sharper verb.'},
+                {'text': 'Agy tightened rewrite two.', 'rationale': 'Fewer glue words.'},
+                {'text': 'Agy tightened rewrite three.', 'rationale': 'Direct focus.'},
+            ],
+        })
+        answer = 'Here are three rewrites:\\n\\n```json\\n' + raw_alt + '\\n```'
+    elif 'overall_scene_summary' in prompt and '"beats"' in prompt:
+        answer = json.dumps({
+            'overall_scene_summary': 'Beat map extracted by Agy.',
+            'scene_opening_tension': 30,
+            'scene_peak_tension': 75,
+            'scene_ending_tension': 55,
+            'beats': [{
+                'order': 1,
+                'title': 'Agy Opening Beat',
+                'summary': 'Setup at the safe.',
+                'estimated_tension': 45,
+                'is_turning_point': False,
+                'characters_present': ['She'],
+                'emotional_shift': 'calm -> tense',
+                'pacing_note': 'steady',
+                'moments': [{
+                    'order': 1,
+                    'type': 'action',
+                    'actor': 'She',
+                    'target': '',
+                    'action_or_beat': 'Recalls the four digits.',
+                    'emotional_tag': 'guarded',
+                    'tension_level': 45,
+                    'exact_quote': 'She had used the same four digits since spring.',
+                }],
+            }],
+        })
+    elif 'agreed' in prompt and 'GROUP' in prompt.upper():
+        answer = json.dumps({
+            'agreed': [{'title': 'Agy moderator item', 'line': '18', 'original': '', 'replacement': '', 'why': 'Clearer arc.', 'proposed_by': 'Critic 1', 'accepted': True}],
+            'open': [],
+        })
+    else:
+        last_line = [ln.strip() for ln in prompt.splitlines() if ln.strip()][-1] if prompt.strip() else 'hello'
+        answer = 'Fake Agy reply: ' + last_line[:80]
+    emit({'jsonrpc': '2.0', 'method': 'session/update', 'params': {'sessionId': sid, 'update': {'sessionUpdate': 'agent_message_chunk', 'content': {'type': 'text', 'text': answer[:16]}}}})
+    emit({'jsonrpc': '2.0', 'method': 'session/update', 'params': {'sessionId': sid, 'update': {'sessionUpdate': 'agent_message_chunk', 'content': {'type': 'text', 'text': answer[16:]}}}})
+    sess['history'].append({'role': 'assistant', 'text': answer})
+    save_state(state)
+    cancel_events.pop(sid, None)
+    emit({'jsonrpc': '2.0', 'id': rid, 'result': {'stopReason': 'end_turn'}})
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    msg = json.loads(line)
+    method = msg.get('method')
+    rid = msg.get('id')
+    params = msg.get('params') or {}
+    if method == 'initialize':
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'protocolVersion': 1, 'agentInfo': {'name': 'Fake Agy ACP', 'version': '1.5.10'}, 'agentCapabilities': {'loadSession': True, 'sessionCapabilities': {'resume': {}, 'load': {}, 'list': {}, 'close': {}}, '_meta': {'antigravity': {'systemPrompt': {'append': True}}}}}})
+    elif method == 'session/list':
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'sessions': [{'sessionId': k} for k in state['sessions']]}})
+    elif method == 'session/new':
+        state['next'] += 1
+        sid = f"agy-e2e-{state['next']}"
+        state['sessions'][sid] = {'history': [], 'model': 'gemini-4-argon-medium'}
+        save_state(state)
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'sessionId': sid, 'modes': {'currentModeId': 'accept-edits', 'availableModes': [{'id': 'default'}, {'id': 'accept-edits'}]}, 'models': {'currentModelId': 'gemini-4-argon-medium', 'availableModels': MODELS}, 'configOptions': CONFIG_OPTIONS}})
+    elif method in ('session/set_mode', 'session/set_model', 'session/set_config_option', 'session/close'):
+        if method == 'session/set_model' and params.get('sessionId') in state['sessions']:
+            state['sessions'][params['sessionId']]['model'] = params.get('modelId') or ''
+            save_state(state)
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'configOptions': CONFIG_OPTIONS} if method == 'session/set_config_option' else {}})
+    elif method in ('session/load', 'session/resume'):
+        sid = params.get('sessionId', '')
+        if sid not in state['sessions']:
+            emit({'jsonrpc': '2.0', 'id': rid, 'error': {'code': -32004, 'message': 'session not found'}})
+            continue
+        if method == 'session/load':
+            for row in state['sessions'][sid]['history']:
+                ut = 'user_message_chunk' if row['role'] == 'user' else 'agent_message_chunk'
+                emit({'jsonrpc': '2.0', 'method': 'session/update', 'params': {'sessionId': sid, 'update': {'sessionUpdate': ut, 'content': {'type': 'text', 'text': row['text']}}}})
+        emit({'jsonrpc': '2.0', 'id': rid, 'result': {'sessionId': sid, 'modes': {'currentModeId': 'default', 'availableModes': [{'id': 'default'}]}, 'models': {'currentModelId': 'gemini-4-argon-medium', 'availableModels': MODELS}, 'configOptions': CONFIG_OPTIONS}})
+    elif method == 'session/prompt':
+        sid = params.get('sessionId', '')
+        prompt = ''.join(p.get('text', '') for p in (params.get('prompt') or []) if isinstance(p, dict))
+        threading.Thread(target=run_prompt, args=(rid, sid, prompt), daemon=True).start()
+    elif method == 'session/cancel':
+        ev = cancel_events.get(params.get('sessionId', ''))
+        if ev:
+            ev.set()
+""",
+        encoding="utf-8",
+    )
+    _make_runnable(bin_dir, "agy")
     return bin_dir
 
 

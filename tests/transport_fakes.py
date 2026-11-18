@@ -17,6 +17,7 @@ import json
 import threading
 import time
 
+from proseview.agy_acp_client import AgyRequestError, sanitize_agy_message
 from proseview.claude_agent_client import ClaudeRequestError, sanitize_claude_message
 from proseview.codex_app_server import CodexRequestError
 
@@ -481,6 +482,208 @@ class ClaudeFakeClient:
         self.alive = False
 
 
+class AgyFakeClient:
+    """Drives the same manager behaviour over the Agy ACP wire shape."""
+
+    translate = staticmethod(sanitize_agy_message)
+
+    def __init__(self, callback, agent: str = "agy"):
+        self.agent = agent
+        self.callback = callback
+        self.alive = True
+        self.next_thread = 0
+        self.next_turn = 0
+        self.prompts: list[str] = []
+        self.turn_params: list[dict] = []
+        self.responses: list[tuple[object, dict]] = []
+        self.interrupts: list[dict] = []
+        self.approvals: list[dict] = []
+        self.finish_delay = 0.04
+        self.hold_next_turn = False
+        self.reject_turn_starts = False
+        self.interrupt_error: BaseException | None = None
+        self.capabilities = {
+            "reasoning_summary": False,
+            "thread_fork": False,
+            "approval_decisions": {
+                "command": ["accept", "acceptForSession", "decline", "cancel"],
+                "fileChange": ["accept", "acceptForSession", "decline", "cancel"],
+            },
+        }
+        self.model_default = {
+            "model": "gemini-4-argon",
+            "effort": "medium",
+            "source": "Agy CLI settings (~/.gemini/antigravity-cli/settings.json)",
+        }
+        self.threads: dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    def inspect_capabilities(self):
+        return {"stable_discuss_protocol": True}
+
+    def probe_capabilities(self):
+        return {"stable_discuss_protocol": True}
+
+    def start(self):
+        return None
+
+    def _structured_answer(self, params, turn_id):
+        schema = params.get("outputSchema") or {}
+        kind = (((schema.get("properties") or {}).get("kind") or {}).get("enum") or [None])[0]
+        if kind == "alternatives":
+            count = schema["properties"]["alternatives"]["maxItems"]
+            choices = [
+                {"text": "Revised document.", "rationale": "Removes repetition."},
+                {"text": "A revised document.", "rationale": "Changes the rhythm."},
+                {"text": "Document, revised.", "rationale": "Leads with the subject."},
+            ]
+            return json.dumps({
+                "kind": "alternatives",
+                "summary": "A tighter beat.",
+                "alternatives": choices[:count],
+            })
+        if kind == "critique":
+            return json.dumps({"kind": "critique", "findings": [{
+                "observation": "The opening is abstract.",
+                "evidence": "First document.",
+                "why_it_matters": "The image is hard to picture.",
+                "next_step": "Use one concrete detail.",
+            }]})
+        if "agreed" in (schema.get("properties") or {}):
+            return json.dumps(GROUP_MODERATOR_ANSWER)
+        return f"Answer {turn_id}"
+
+    def request(self, method, params, *, timeout=None):
+        if method == "skills/list":
+            return {"skills": []}
+        if method == "model/list":
+            return {
+                "data": [
+                    {
+                        "id": "gemini-4-argon",
+                        "displayName": "Gemini 4 Argon",
+                        "description": "Balanced Gemini 4 model.",
+                        "supportedReasoningEfforts": [
+                            {"reasoningEffort": effort, "description": f"{effort} reasoning"}
+                            for effort in ("low", "medium", "high")
+                        ],
+                        "defaultReasoningEffort": "medium",
+                        "isDefault": True,
+                    },
+                    {
+                        "id": "gemini-4-hydrogen",
+                        "displayName": "Gemini 4 Hydrogen",
+                        "description": "Deepest Gemini 4 model.",
+                        "supportedReasoningEfforts": [
+                            {"reasoningEffort": effort, "description": f"{effort} reasoning"}
+                            for effort in ("low", "medium", "high", "xhigh")
+                        ],
+                        "defaultReasoningEffort": "medium",
+                        "isDefault": False,
+                    },
+                ],
+                "default": dict(self.model_default),
+            }
+        if method == "thread/resume":
+            if params["threadId"] not in self.threads:
+                raise AgyRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            return {"thread": self.threads[params["threadId"]]}
+        if method == "thread/read":
+            thread = self.threads.get(params["threadId"])
+            if thread is None:
+                raise AgyRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            return {"thread": thread, "turns": thread.get("turns") or []}
+        if method == "thread/start":
+            self.thread_start_params = getattr(self, "thread_start_params", []) + [dict(params)]
+            self.next_thread += 1
+            thread = {"id": f"agy-thread-{self.next_thread}", "turns": []}
+            self.threads[thread["id"]] = thread
+            return {"thread": thread}
+        if method == "turn/start":
+            if self.reject_turn_starts or params["threadId"] not in self.threads:
+                raise AgyRequestError(f"thread not found: {params['threadId']}", code=-32004)
+            self.next_turn += 1
+            turn_id = f"agy-turn-{self.next_turn}"
+            thread_id = params["threadId"]
+            self.prompts.append(params["input"][0]["text"])
+            self.turn_params.append(dict(params))
+            if self.hold_next_turn:
+                self.hold_next_turn = False
+                return {"turn": {"id": turn_id, "status": "inProgress"}}
+
+            def finish():
+                common = {"sessionId": thread_id, "threadId": thread_id, "turnId": turn_id}
+                self.callback({
+                    "method": "session/update",
+                    "params": {
+                        **common,
+                        "update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "RAW SECRET"}},
+                    },
+                })
+                self.callback({
+                    "method": "session/progress",
+                    "params": {**common, "text": "Reading context"},
+                })
+                answer = self._structured_answer(params, turn_id)
+                self.callback({
+                    "method": "session/update",
+                    "params": {
+                        **common,
+                        "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": answer}},
+                    },
+                })
+                self.callback({
+                    "method": "session/assistant_message",
+                    "params": {**common, "itemId": f"answer-{turn_id}", "phase": "final_answer", "text": answer},
+                })
+                self.callback({
+                    "method": "session/prompt/completed",
+                    "params": {**common, "status": "completed", "error": ""},
+                })
+
+            threading.Timer(self.finish_delay, finish).start()
+            return {"turn": {"id": turn_id, "status": "inProgress"}}
+        if method == "turn/interrupt":
+            self.interrupts.append(dict(params))
+            if self.interrupt_error is not None:
+                raise self.interrupt_error
+            return {}
+        if method == "thread/fork":
+            raise AgyRequestError(f"method not found: {method}", code=-32601)
+        raise AssertionError(method)
+
+    def ask_approval(self, thread_id, turn_id, request_id="approval-1"):
+        message = {
+            "id": request_id,
+            "method": "item/commandExecution/requestApproval",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "itemId": "tool-1",
+                "command": "rm -rf /",
+                "cwd": ".",
+                "reason": "Agy wants to use run_command.",
+                "availableDecisions": ["accept", "acceptForSession", "decline", "cancel"],
+            },
+        }
+        self.approvals.append(message)
+        self.callback(message)
+        return request_id
+
+    def respond(self, request_id, result):
+        self.responses.append((request_id, result))
+
+    def respond_error(self, request_id, message, code=-32601):
+        self.responses.append((request_id, {"error": message}))
+
+    def close(self):
+        self.alive = False
+
+
 def fake_factory(callback, agent):
     """Give the manager the double matching the agent it asked for."""
-    return ClaudeFakeClient(callback) if agent == "claude" else CodexFakeClient(callback)
+    if agent == "claude":
+        return ClaudeFakeClient(callback)
+    if agent == "agy":
+        return AgyFakeClient(callback)
+    return CodexFakeClient(callback)

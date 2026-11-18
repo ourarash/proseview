@@ -801,6 +801,7 @@ def test_writers_group_previews_explicit_invitations_and_optional_recap(page: Pa
     pane = page.locator("#sceneGroupPane")
     _wait_until(lambda: pane.locator('.group-starter-card:not([data-preset="second_opinion"])').count() == 4)
     assert pane.locator('.group-starter-card[data-preset="deepen_and_layer"]').is_visible()
+    pane.get_by_role("button", name="2 agents", exact=True).click()
     assert "Story Editor · Codex" in pane.locator("#groupHeaderSummary").inner_text()
     pane.locator("#groupSwapAgentsBtn").click()
     assert "Story Editor · Claude ↔ Voice Editor · Codex" in pane.locator("#groupHeaderSummary").inner_text()
@@ -847,7 +848,7 @@ def test_group_profiles_presets_and_snapshot_names_survive_reload(page: Page, se
     cards.nth(0).locator("summary").click()
     page.get_by_role("textbox", name="Profile 1 name", exact=True).fill("Plot & Stakes <b>")
     page.get_by_role("textbox", name="Profile 1 style", exact=True).fill("Curious and direct")
-    cards.nth(2).locator("summary").click()
+    cards.nth(3).locator("summary").click()
     page.get_by_role("combobox", name="Preset 1 invitations", exact=True).select_option("2")
     page.get_by_role("combobox", name="Preset 1 recap", exact=True).select_option("0")
     page.get_by_role("textbox", name="Preset 1 invitation 1", exact=True).fill("Look at the opening with fresh eyes.")
@@ -894,6 +895,7 @@ def test_group_pass_is_quiet_and_does_not_cancel_the_next_invitation(page: Page,
     open_scene(page, server, SCENE_REL)
     page.evaluate("showScenePanelTab('group')")
     pane = page.locator("#sceneGroupPane")
+    pane.get_by_role("button", name="2 agents", exact=True).click()
     pane.locator("#groupInput").fill("Anything to add? GROUP_PASS_CODEX" + (" GROUP_PASS_CLAUDE" if both_pass else ""))
     pane.locator("#groupSendBtn").click()
     _group_idle(page)
@@ -922,13 +924,14 @@ def test_group_settings_can_create_profiles_and_presets_and_preview_a_different_
     page.click("#groupSettingsBtn")
     page.wait_for_selector("#settingsPanelGroup:not([hidden]) .group-library-card")
     page.get_by_role("button", name="+ Add profile", exact=True).click()
-    page.get_by_role("textbox", name="Profile 3 name", exact=True).fill("First Reader")
-    page.get_by_role("textbox", name="Profile 3 specialty", exact=True).fill("Reader expectations and unanswered questions")
-    page.get_by_role("combobox", name="Profile 3 provider", exact=True).select_option("claude")
-    profile_id = page.evaluate("_rm.library.profiles[2].id")
+    page.get_by_role("textbox", name="Profile 4 name", exact=True).fill("First Reader")
+    page.get_by_role("textbox", name="Profile 4 specialty", exact=True).fill("Reader expectations and unanswered questions")
+    page.get_by_role("combobox", name="Profile 4 provider", exact=True).select_option("claude")
+    profile_id = page.evaluate("_rm.library.profiles[3].id")
     preset_prefix = f"Preset {page.evaluate('_rm.library.presets.length + 1')}"
     page.get_by_role("button", name="+ Add preset", exact=True).click()
     page.get_by_role("textbox", name=f"{preset_prefix} name", exact=True).fill("Fresh reader discussion")
+    page.get_by_role("combobox", name=f"{preset_prefix} room size", exact=True).select_option("2")
     page.get_by_role("combobox", name=f"{preset_prefix} participant 1", exact=True).select_option(profile_id)
     page.get_by_role("combobox", name=f"{preset_prefix} participant 2", exact=True).select_option("story-editor")
     page.get_by_role("combobox", name=f"{preset_prefix} invitations", exact=True).select_option("2")
@@ -1452,7 +1455,7 @@ def test_group_preset_runs_remaining_invitations_after_reload(page: Page, server
         pane.locator(".group-preset-invitation").first.wait_for()
     _group_idle(page)
     state = page.evaluate("_groupSessionFor(_groupCurrentScenePath()).runtime")
-    assert [step["seat"] for step in state["steps"]] == [1, 2, 1, 2]
+    assert [step["seat"] for step in state["steps"]] == [1, 2, 3, 2]
     assert all(step["state"] == "completed" for step in state["steps"])
     assert pane.locator(".group-preset-invitation").count() == 4
     assert pane.locator(".group-turn-tag").last.inner_text() == "Recap"

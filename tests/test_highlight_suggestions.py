@@ -27,7 +27,7 @@ from proseview.suggestions import (
     render_prompt,
 )
 
-from .transport_fakes import ClaudeFakeClient, CodexFakeClient
+from .transport_fakes import AgyFakeClient, ClaudeFakeClient, CodexFakeClient
 
 
 @pytest.fixture(autouse=True)
@@ -55,14 +55,19 @@ def _repo(tmp_path: Path) -> Path:
     return root
 
 
-@pytest.fixture(params=["codex", "claude"])
+@pytest.fixture(params=["codex", "claude", "agy"])
 def agent(request):
     return request.param
 
 
 def _manager(root: Path, clients: list):
     def factory(callback, agent="codex"):
-        client = (ClaudeFakeClient if agent == "claude" else CodexFakeClient)(callback, agent)
+        if agent == "claude":
+            client = ClaudeFakeClient(callback, agent)
+        elif agent == "agy":
+            client = AgyFakeClient(callback, agent)
+        else:
+            client = CodexFakeClient(callback, agent)
         clients.append(client)
         return client
     return DiscussManager(root, client_factory=factory)
@@ -154,6 +159,34 @@ def test_claude_reads_its_project_instructions_as_the_chat_does(tmp_path: Path):
     assert start["tools"] == ["Read", "Grep", "Glob"]
     assert "House rules" not in start["developerInstructions"], "Claude loads it; Prosview does not paste it"
     assert result["used"]["instruction_files"] == ["CLAUDE.md", "AGENTS.md"]
+
+
+def test_agy_suggestion_settings_and_instructions(tmp_path: Path):
+    root = _repo(tmp_path)
+    (root / "GEMINI.md").write_text("# Agy rules\n", encoding="utf-8")
+    clients: list = []
+    manager = _manager(root, clients)
+    try:
+        shown = manager.suggestion_settings()
+        assert shown["app"]["agy"] == {"model": "", "effort": "", "tools": "read", "mcp_on": []}
+        assert shown["mcp"]["agy"] == []
+
+        saved = manager.save_suggestion_settings({
+            "app": {"agy": {"model": "gemini-4-argon", "effort": "low", "tools": "web", "mcp_on": ["ignored"]}},
+        })
+        assert saved["app"]["agy"]["model"] == "gemini-4-argon"
+        assert saved["app"]["agy"]["mcp_on"] == ["ignored"]
+
+        res = _suggest(manager, "agy")
+    finally:
+        manager.close()
+    assert res["used"]["agent"] == "agy"
+    assert res["used"]["model"] == "gemini-4-argon"
+    assert res["used"]["mcp_servers"] == []
+    assert "GEMINI.md" in res["used"]["instruction_files"]
+    start = clients[0].thread_start_params[0]
+    assert start["ephemeral"] is True
+    assert "Agy rules" not in start["developerInstructions"]
 
 
 def test_instructions_switched_off_reach_neither_agent(tmp_path: Path):
@@ -406,6 +439,7 @@ def test_history_names_a_save_that_applied_or_undid_a_suggestion():
 
     assert _suggestion_save_source({"check": "Sticky Sentences", "agent": "codex"}) == "Suggestion: Sticky Sentences (Codex)"
     assert _suggestion_save_source({"check": "Echoes", "agent": "claude"}) == "Suggestion: Echoes (Claude)"
+    assert _suggestion_save_source({"check": "Echoes", "agent": "agy"}) == "Suggestion: Echoes (Agy)"
     assert _suggestion_save_source({"check": "Echoes", "undone": True}) == "Suggestion undone: Echoes"
     # Only checked parts reach History, which shows them as text.
     assert _suggestion_save_source({"check": "<img src=x onerror=alert(1)>", "agent": "codex"}) == "Manual Save"
@@ -499,7 +533,7 @@ def test_writers_group_debate_passes_transcript_between_critics_and_the_moderato
         assert t1["total_turns"] == 3, "three turns unless Settings say otherwise"
         codex = next(c for c in clients if isinstance(c, CodexFakeClient))
         opening = codex.prompts[-1]
-        assert "Critic 1 of two" in opening and "SESSION BRIEF:" in opening
+        assert "Critic 1 of 3" in opening and "SESSION BRIEF:" in opening
         assert "most useful concerns" in opening
         assert "up to 3" not in opening
         assert "Quote the exact line" in opening, "the Quick critique skill is the opening turn's method"
@@ -783,23 +817,23 @@ def test_group_mention_handles_identify_seats_even_with_duplicate_names_and_agen
     app = GroupComputerSettings()
     book = GroupConfig(critic1_name="Story Editor", critic2_name="StoryEditor")
     participants = group_participants(book, app)
-    assert [p["handle"] for p in participants] == ["StoryEditor1", "StoryEditor2"]
-    assert [p["seat"] for p in participants] == [1, 2]
-    assert [p["agent"] for p in participants] == ["codex", "claude"]
+    assert [p["handle"] for p in participants] == ["StoryEditor1", "StoryEditor2", "ContinuityEditor"]
+    assert [p["seat"] for p in participants] == [1, 2, 3]
+    assert [p["agent"] for p in participants] == ["codex", "claude", "agy"]
     prompt = render_group_prompt(book, app, seat=2, turn_index=1, total_turns=1,
                                 history=[{"role": "user", "text": "@StoryEditor2 what do you think?"}])
     assert '"handle": "StoryEditor2"' in prompt and '"seat": 2' in prompt
     resumed = render_group_followup(turn_index=2, total_turns=2, new_entries=[], participants=participants, seat=2)
     assert '"handle": "StoryEditor2"' in resumed and "You are Critic 2" in resumed
     summary = render_group_moderator_prompt(scene_path="one.md", history=[], participants=participants)
-    assert '"handle": "StoryEditor2"' in summary
+    assert '"handle": "StoryEditor2"' in summary and '"handle": "ContinuityEditor"' in summary
     app.critic2.agent = "codex"
     assert all("codex" not in p["aliases"] for p in group_participants(book, app)), "shared provider names must not silently pick a seat"
-    assert [p["handle"] for p in group_participants(GroupConfig(critic1_name="!!!", critic2_name="???"), app)] == ["Editor1", "Editor2"]
+    assert [p["handle"] for p in group_participants(GroupConfig(critic1_name="!!!", critic2_name="???", critic3_name="***"), app)] == ["Editor1", "Editor2", "Editor3"]
     manager = _manager(_repo(tmp_path), [])
     try:
         settings = manager.group_settings()
-        assert [p["handle"] for p in settings["participants"]] == ["StoryEditor", "VoiceEditor"]
+        assert [p["handle"] for p in settings["participants"]] == ["StoryEditor", "VoiceEditor", "ContinuityEditor"]
     finally:
         manager.close()
 
@@ -856,7 +890,7 @@ def test_group_summary_preserves_a_complete_unapplied_insert_instead_of_only_its
     assert '"He let a guy on with a bicycle."' in prompt
 
 
-@pytest.mark.parametrize("agent", ["codex", "claude"])
+@pytest.mark.parametrize("agent", ["codex", "claude", "agy"])
 def test_group_editors_use_regular_tools_and_approvals_without_replacing_individual_chat(tmp_path: Path, agent: str):
     from proseview.config import GroupConfig
     from proseview.suggestions import GroupComputerSettings, render_group_prompt

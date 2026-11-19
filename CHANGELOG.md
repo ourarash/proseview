@@ -5,7 +5,54 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-19
+
 ### Added
+
+- **Scene reviews.** Opening an agent's tab on a scene offers four reviews:
+  **Quick critique**, **Deepen & layer**, **Craft review** through a writing
+  book (McKee's *Story*, Coyne's *The Story Grid*, Cron's *Story Genius*,
+  Snyder's *Save the Cat!*, King's *On Writing* or Lamott's *Bird by Bird*),
+  and **Comedy review**. Run one with its defaults, or Customize it: review
+  this scene, its neighbours, the chapter or any selection; choose the lanes
+  to look at, how many findings to get (remembered for each review and
+  book), whether to list what already works, and whether to check the draft
+  against planned beats. Each finding quotes the passage (**Before**), says
+  what goes wrong for the reader (**Why**) and gives a replacement to paste
+  (**After**). An optional open critique lets the agent choose its own form.
+- **Compare and apply.** **Compare** beside a quoted suggestion opens the
+  passage as it stands next to the suggested text, with the changed words
+  marked. Tick the findings you want, add a note to any of them, and
+  **Prepare request** writes "Apply items 1, 3." with your notes; a finding
+  shows **Applied** once the saved text matches.
+- **The Group.** One conversation with two or three agents, each on Codex,
+  Claude or Antigravity, in the roles of a Story Editor, a Voice Editor and a
+  Continuity Editor. They read the same scene and answer one another; ask
+  them all or `@mention` one. Presets run set workflows, and recaps list the
+  agreed edits as Before and After, the choices left to you, and what was
+  withdrawn. Profiles and conversations are kept between sessions.
+- **Send to Group.** Fork any finished chat into the Group, with the whole
+  conversation, or only the last few exchanges and an optional summary of
+  the rest. **Second opinion & recap** has the others weigh in, the first
+  agent answer them, and a recap close it.
+- **Antigravity.** Agy, the Antigravity CLI, joins Codex and Claude as a
+  third agent, in its own tab and in the Group, Beat Map, highlight
+  suggestions and side questions, under your own sign-in.
+- **Beat Map.** Your agent maps a scene's beats on an estimated tension line
+  and lists its moments by kind (dialogue, action, inner thought, silent
+  reaction); click a moment to jump to its paragraph. It is made only when
+  you ask, saved with the book, and marked out of date when the scene
+  changes.
+- **Side questions, Send now and message recall.** `/btw` asks a side
+  question in its own tab without disturbing the main chat; **Send now**
+  steers or interrupts a turn already running; the arrow keys bring back
+  messages you sent.
+- **Install the dashboard as an app** in Chrome or Edge. It opens in its own
+  window, and says so plainly when Proseview is not running.
+- **A5 and font sizes in export.** PDF and Word exports offer A5, and PDF font
+  sizes can be set from the CLI, saved layouts and the print preview.
+- **Chapter and book word counts** beside the scene's, while reading and
+  editing.
 
 - **Privacy screen.** Hold Cmd (Ctrl off a Mac) and tap J twice to cover
   the page at once with a plain budget spreadsheet in the page's theme; the
@@ -160,6 +207,17 @@ section here becomes the release notes on GitHub.
 
 ### Changed
 
+- **The Writers' Room is now the Group**, and its tab sits after the agent
+  tabs, with Beats before them.
+- **Plain messages when no agent can run.** The sample book shows the agent
+  tabs and the Group, each saying that no agent was detected and how to
+  install Proseview, instead of an error. Beat Map's buttons are disabled
+  with a reason when no agent is detected, and an agent that is missing is
+  greyed out in its picker.
+- **No automatic related-file suggestions.** Mention files with `@` instead.
+- **A newer installed Claude CLI is preferred** over the copy bundled with the
+  SDK.
+
 - **Highlight marks load with their scene.** The dashboard no longer
   carries every scene's marks; each scene's are fetched when it opens (from
   files beside a published snapshot), which roughly halves the page.
@@ -210,6 +268,10 @@ section here becomes the release notes on GitHub.
   the scene as a PDF.
 
 ### Fixed
+
+- **Send to Group waits for a restored chat.** Opening a source chat from
+  the Group left Send to Group enabled on the previous chat until the restore
+  finished, and forking it then opened a dialog that could not be confirmed.
 
 - A check that found nothing in a scene was grayed out, which looked
   disabled though it still turns on. Its name now looks like every other

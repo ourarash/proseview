@@ -1,6 +1,10 @@
         // ── Project conversations with document-aware turns ──────────────
         var _discussConversationId = null;
         var _discussSnapshot = null;
+        // The document key of a conversation still being opened or restored.
+        // Until it arrives, the id and snapshot above belong to the previous
+        // chat, so nothing may act on them (Send to Group would fork it).
+        var _discussOpeningKey = '';
         // Where a login started from the expired-login notice has got to:
         // '' (not started), 'waiting' (Terminal is open) or 'done'. Kept out
         // here because the notice is redrawn with every snapshot.
@@ -669,6 +673,8 @@
             }
             renderDiscussContext();
             var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
+            _discussOpeningKey = key;
+            if (typeof syncDiscussGroupFork === 'function') syncDiscussGroupFork();
             discussApi('/api/discuss/conversations/open', openBody).then(function(data) {
                 if (!options.threadId) return data;
                 return discussApi('/api/discuss/conversations/' + encodeURIComponent(data.conversation_id) + '/history/' + encodeURIComponent(options.threadId) + '/open', {}).then(function(restored) {
@@ -677,6 +683,7 @@
                 });
             }).then(function(data) {
                 if (_discussDocumentKey !== key) return;
+                if (_discussOpeningKey === key) _discussOpeningKey = '';
                 _discussConversationId = data.conversation_id;
                 _discussSnapshot = data.snapshot;
                 renderDiscussSnapshot();
@@ -707,6 +714,8 @@
                 else if (options.sendInstruction) chooseDiscussInstruction(options.sendInstruction);
                 else input.focus();
             }).catch(function(error) {
+                if (_discussOpeningKey === key) _discussOpeningKey = '';
+                if (typeof syncDiscussGroupFork === 'function') syncDiscussGroupFork();
                 _discussOpenFailed = true;
                 
                 var msg = error.message || '';

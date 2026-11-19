@@ -1,5 +1,6 @@
 """Conversation context choices through the real setup, server and transports."""
 import json
+import time
 
 import pytest
 
@@ -71,7 +72,11 @@ def test_recent_only_is_remembered_and_does_not_replay_old_context(page, server)
     prompt = turn['params']['input'][0]['text']
     assert 'OLDER_GOAL_ONLY' not in prompt
     assert 'CURRENT FILE' in prompt and '| ' in prompt
+    # A slow restore (as on CI) must not leave Send to Group live on the old
+    # chat: forking it opened a dialog that could never be confirmed.
+    page.route('**/history/**/open', lambda route: (time.sleep(1.5), route.continue_()))
     pane.get_by_role('button', name='Source chat ↗').click()
+    assert page.locator('#discussGroupFork').is_disabled()
     page.locator('#discussGroupFork:not([disabled])').wait_for()
     page.locator('#discussGroupFork').click()
     page.locator('#groupForkConfirm:not([disabled])').wait_for()

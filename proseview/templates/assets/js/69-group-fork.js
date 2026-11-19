@@ -143,7 +143,7 @@ function syncDiscussGroupFork() {
         send.parentElement.insertBefore(button, send);
     }
     var s = _discussSnapshot || {}, active = _groupActiveSession;
-    button.disabled = !_discussConversationId || !!s.active_request_id || !!s.active_turn_id || (s.queue || []).length > 0
+    button.disabled = !_discussConversationId || !!_discussOpeningKey || !!s.active_request_id || !!s.active_turn_id || (s.queue || []).length > 0
         || (s.approvals || []).some(function(p) { return p.status === 'pending' || p.status === 'resolving'; })
         || !!(active && (active.busy || (active.outbox || []).length))
         || !(s.messages || []).some(function(m) { return m.role === 'assistant'; }) && !(s.tasks || []).some(function(t) { return t.result; });
@@ -179,7 +179,7 @@ function groupForkPayload(state) {
         positions_table: ((_groupSettings.library.presets.find(function(p) { return p.id === state.workflow; }) || {}).positions_table), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})};
 }
 function openDiscussGroupFork() {
-    if (!_discussConversationId || document.getElementById('discussGroupFork').disabled) return;
+    if (!_discussConversationId || _discussOpeningKey || document.getElementById('discussGroupFork').disabled) return;
     var dialog = document.getElementById('discussGroupForkDialog');
     if (!dialog) {
         dialog = document.createElement('dialog'); dialog.id = 'discussGroupForkDialog'; dialog.className = 'group-fork-dialog';

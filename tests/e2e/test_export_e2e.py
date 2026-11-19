@@ -24,7 +24,7 @@ from playwright.sync_api import Page, expect  # noqa: E402
 
 from proseview.epub_check import structural_problems  # noqa: E402
 
-from .conftest import REPO_ROOT, ProseviewServer, _start_server, _stop_server  # noqa: E402
+from .conftest import REPO_ROOT, ProseviewServer, _start_server, _close_open_pages, _stop_server  # noqa: E402
 
 pytestmark = pytest.mark.e2e_browser
 
@@ -40,6 +40,7 @@ def demo_book_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterat
     try:
         yield server
     finally:
+        _close_open_pages()
         _stop_server(server)
 
 

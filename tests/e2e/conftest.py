@@ -1443,6 +1443,7 @@ def bare_server(bare_repo: Path, agent_bin: Path, fake_home: Path) -> Iterator[P
     try:
         yield srv
     finally:
+        _close_open_pages()
         _stop_server(srv)
 
 
@@ -1453,6 +1454,10 @@ def server(repo: Path, agent_bin: Path, fake_home: Path) -> Iterator[ProseviewSe
     try:
         yield srv
     finally:
+        # A test asks for `page` before `server`, so pytest would stop the
+        # server first. A request the page still had in flight then failed
+        # with 503 and was reported as the test's server error.
+        _close_open_pages()
         _stop_server(srv)
         # serve() removes its runtime file on clean shutdown; a leftover file
         # means teardown did not run and later CLI calls could target a corpse.
@@ -1529,6 +1534,16 @@ _CONSOLE_NOISE = (
 )
 
 
+#: Contexts of the `page` fixtures still open, closed by a per-test server
+#: before it stops.
+_OPEN_PAGE_CONTEXTS: list = []
+
+
+def _close_open_pages() -> None:
+    while _OPEN_PAGE_CONTEXTS:
+        _OPEN_PAGE_CONTEXTS.pop().close()
+
+
 @pytest.fixture
 def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
     """A page wired to the esm cache that fails the test on any JS or server error.
@@ -1553,6 +1568,7 @@ def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
     # lands while a test's server shuts down then reads as a server error.
     # No test here is about the worker, so keep it out.
     context = browser.new_context(viewport={"width": 1500, "height": 1200}, service_workers="block")
+    _OPEN_PAGE_CONTEXTS.append(context)
     pg = context.new_page()
     _install_esm_cache(pg)
 
@@ -1580,7 +1596,9 @@ def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
     try:
         yield pg
     finally:
-        context.close()
+        if context in _OPEN_PAGE_CONTEXTS:
+            _OPEN_PAGE_CONTEXTS.remove(context)
+            context.close()
 
     assert not errors, "uncaught JavaScript errors:\n" + "\n".join(errors)
     assert not server_errors, "server returned 5xx:\n" + "\n".join(server_errors)

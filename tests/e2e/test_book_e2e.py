@@ -25,7 +25,7 @@ pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
 
 from playwright.sync_api import Page, expect  # noqa: E402
 
-from .conftest import REPO_ROOT, ProseviewServer, _start_server, _stop_server  # noqa: E402
+from .conftest import REPO_ROOT, ProseviewServer, _start_server, _close_open_pages, _stop_server  # noqa: E402
 
 pytestmark = pytest.mark.e2e_browser
 
@@ -41,6 +41,7 @@ def book_server(tmp_path: Path, agent_bin: Path, fake_home: Path) -> Iterator[Pr
     try:
         yield server
     finally:
+        _close_open_pages()
         _stop_server(server)
 
 

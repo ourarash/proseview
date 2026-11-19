@@ -1548,7 +1548,11 @@ def page(browser: Browser, request: pytest.FixtureRequest) -> Iterator[Page]:
     http_marker = request.node.get_closest_marker("allow_http_errors")
     allowed_http = tuple(http_marker.args) if http_marker else ()
 
-    context = browser.new_context(viewport={"width": 1500, "height": 1200})
+    # The app's service worker answers a navigation it cannot reach with its
+    # own "Proseview is not running" page and status 503. A navigation that
+    # lands while a test's server shuts down then reads as a server error.
+    # No test here is about the worker, so keep it out.
+    context = browser.new_context(viewport={"width": 1500, "height": 1200}, service_workers="block")
     pg = context.new_page()
     _install_esm_cache(pg)
 

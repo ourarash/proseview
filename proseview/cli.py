@@ -92,11 +92,12 @@ images:
 """
 
 
-def _add_serve_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--root", type=Path, default=Path.cwd(),
-        help="Path to the novel repo (default: current directory).",
-    )
+def _add_serve_args(parser: argparse.ArgumentParser, *, root: bool = True) -> None:
+    if root:
+        parser.add_argument(
+            "--root", type=Path, default=None,
+            help="Path to the book (default: a book in the current folder, else the last book opened).",
+        )
     parser.add_argument(
         "--port", type=int, default=DEFAULT_PORT,
         help=f"Port to listen on (default: {DEFAULT_PORT}).",
@@ -125,6 +126,25 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Start the local HTTP server.",
     )
     _add_serve_args(serve_p)
+
+    open_p = sub.add_parser(
+        "open", help="Open a book folder, chosen in a folder picker if no path is given.",
+        description="Open a book and remember it, so plain `proseview` opens it next time.",
+    )
+    open_p.add_argument("path", nargs="?", type=Path, help="The book's folder (default: choose one).")
+    _add_serve_args(open_p, root=False)
+    open_p.add_argument("--no-serve", dest="serve", action="store_false", default=True,
+                        help="Only remember the book; do not start Proseview.")
+
+    new_p = sub.add_parser(
+        "new", help="Start a new book with its first scene.",
+        description="Create a book folder with its first chapter and scene, and remember it.",
+    )
+    new_p.add_argument("path", nargs="?", type=Path,
+                       help="Where to create it (default: Documents/Proseview/MyNovel).")
+    _add_serve_args(new_p, root=False)
+    new_p.add_argument("--no-serve", dest="serve", action="store_false", default=True,
+                       help="Only create and remember the book; do not start Proseview.")
 
     init_p = sub.add_parser(
         "init", help="Write a starter .proseview.yaml in the target repo.",
@@ -784,10 +804,67 @@ def privacy_password(args: argparse.Namespace) -> int:
     return 0
 
 
+_SUBCOMMANDS = ("serve", "open", "new", "init", "roster", "export", "snapshot",
+                "privacy-password", "propose", "proposal")
+
+
+def _book_shorthand(argv: list[str]) -> list[str]:
+    """`proseview ~/Writing/My Book` reads as `proseview --root ~/Writing/My Book`."""
+    if argv and not argv[0].startswith("-") and argv[0] not in _SUBCOMMANDS \
+            and Path(argv[0]).expanduser().is_dir():
+        return ["--root", argv[0], *argv[1:]]
+    return argv
+
+
+def _resolve_book(args: argparse.Namespace) -> Path | None:
+    from . import books
+
+    if args.cmd == "new":
+        root = (args.path or books.default_new_book()).expanduser()
+        if root.exists() and not root.is_dir():
+            sys.stderr.write(f"{root} is a file, not a folder.\n")
+            return None
+        if books.seed_book(root):
+            sys.stdout.write(f"Started a new book in {root}\n")
+        elif not books.looks_like_book(root):
+            sys.stdout.write(f"{root} already has files; opening it as it is.\n")
+        books.remember_book(root)
+        return root.resolve()
+    if args.cmd == "open":
+        root = args.path.expanduser() if args.path else books.choose_folder()
+        if root is None:
+            sys.stderr.write("No folder chosen. Run `proseview open PATH` with your book's folder.\n")
+            return None
+        if not root.is_dir():
+            sys.stderr.write(f"{root} is not a folder.\n")
+            return None
+        books.remember_book(root)
+        return root.resolve()
+    if args.root is not None:
+        root = args.root.expanduser()
+        if books.looks_like_book(root):
+            books.remember_book(root)
+        return root.resolve()
+    root = books.default_root()
+    if root is None:
+        sys.stdout.write("Choose your book's folder in the window that opens...\n")
+        root = books.choose_folder()
+        if root is None:
+            sys.stderr.write(
+                "No book chosen. Run `proseview open` to choose its folder, "
+                "or `proseview new` to start one.\n"
+            )
+            return None
+        books.remember_book(root)
+    elif books.looks_like_book(root) and root != Path.cwd().resolve():
+        sys.stdout.write(f"Opening {root.name} ({root}). Run `proseview open` to choose another book.\n")
+    return root.resolve()
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    args = parse_args(argv)
+    args = parse_args(_book_shorthand(list(argv)))
 
     if args.cmd == "init":
         return init_repo(args.root, force=args.force)
@@ -807,9 +884,14 @@ def main(argv: list[str] | None = None) -> int:
     # Default: serve.
     if args.interval <= 0:
         raise SystemExit("--interval must be greater than zero")
+    root = _resolve_book(args)
+    if root is None:
+        return 1
+    if not getattr(args, "serve", True):
+        return 0
     try:
         serve(
-            args.root.resolve(),
+            root,
             port=args.port,
             watch_interval=args.interval,
             open_browser=args.open_browser,

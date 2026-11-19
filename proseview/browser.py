@@ -18,6 +18,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from .books import FIRST_SCENE, seed_book  # noqa: F401 - FIRST_SCENE is re-exported
 from .config import Config
 from .discuss import DiscussManager
 from .export_dashboard import ExportJobs
@@ -28,31 +29,13 @@ from .server import _make_handler
 ROOT = Path("/my-novel")
 SESSION = "browser"
 
-#: The scene a new book starts with: enough to show where writing happens and
-#: how the rest of the book grows.
-FIRST_SCENE = """\
----
-title: First scene
----
-
-This is the first scene of your book. Press **E** to write in it, and
-**Cmd-S** (Ctrl-S) to save.
-
-Add scenes and chapters with **+** in the Files sidebar: a folder inside
-`manuscript` is a chapter, and each Markdown file in it is a scene.
-"""
-
 _cache: dict[str, Any] = {"html": None, "analysis": None}
 _events: list[str] = []
 
 
 def seed(root: Path = ROOT) -> None:
     """Give an empty book its first chapter and scene."""
-    if root.is_dir() and any(root.iterdir()):
-        return
-    scene = root / "manuscript" / "ch01" / "01-first-scene.md"
-    scene.parent.mkdir(parents=True, exist_ok=True)
-    scene.write_text(FIRST_SCENE, encoding="utf-8")
+    seed_book(root)
 
 
 def _get_html() -> str:

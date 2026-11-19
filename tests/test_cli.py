@@ -15,9 +15,15 @@ from proseview import cli  # noqa: E402
 from proseview.server import DEFAULT_PORT  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _own_state(tmp_path: Path, monkeypatch):
+    """Keep the remembered book in this test's folder, not the user's."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+
+
 def test_parse_args_defaults():
     args = cli.parse_args([])
-    assert args.root == Path.cwd()
+    assert args.root is None  # Chosen when serving: see test_books.py.
     assert args.port == DEFAULT_PORT
     assert args.interval == 2.0
     assert args.open_browser is True

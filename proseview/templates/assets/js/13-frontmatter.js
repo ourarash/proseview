@@ -201,7 +201,7 @@
 
         // A quiet line above the frontmatter that folds it away and back.
         // One choice for every file, remembered in this browser.
-        function _fmFrame(text, content, actions, footer) {
+        function _fmFrame(text, content, actions) {
             var frame = document.createElement('div');
             frame.className = 'fm';
             var toggle = document.createElement('button');
@@ -230,7 +230,6 @@
             } else {
                 frame.append(toggle, content);
             }
-            if (footer) frame.appendChild(footer);
             return frame;
         }
 
@@ -240,7 +239,7 @@
             pre.className = 'fm-block';
             pre.setAttribute('aria-label', 'Frontmatter');
             fillFrontmatterHighlight(pre, text, options);
-            return _fmFrame(text, pre, actions, options && options.footer);
+            return _fmFrame(text, pre, actions);
         }
 
         // The edit box for *text*; *onInput* runs on every change. A text box

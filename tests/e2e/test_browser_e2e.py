@@ -4267,16 +4267,19 @@ def test_guarded_browser_back_preserves_history_direction(
     assert "Discarded history draft." not in _editor_text(page)
 
 
-def test_dirty_related_document_navigation_keeps_its_exact_destination(
+def test_dirty_sidebar_document_navigation_keeps_its_exact_destination(
     page: Page,
     server: ProseviewServer,
 ):
     open_scene(page, server)
-    target = page.evaluate("Object.keys(repoFileByPath)[0]")
+    file_item = page.get_by_role("tree", name="Repository files").locator(
+        ".file-link[data-path]:not([data-scene-path]):visible"
+    ).first
+    target = file_item.get_attribute("data-path")
     assert target
     enter_edit_mode(page)
-    append_to_paragraph(page, "The loft smelled of cold coffee", " Related-route draft.")
-    page.evaluate("path => openRelatedDoc(path)", target)
+    append_to_paragraph(page, "The loft smelled of cold coffee", " Sidebar-route draft.")
+    file_item.click()
     dialog = page.get_by_role("dialog", name="Unsaved changes")
     dialog.get_by_role("button", name="Discard").click()
     page.wait_for_function("() => document.documentElement.dataset.view === 'file'")
@@ -7879,11 +7882,10 @@ def test_frontmatter_character_links_and_todo_checkboxes_work_in_place(
     assert "Tighten the ledger count" not in scene.read_text(encoding="utf-8")
 
 
-def test_frontmatter_related_docs_open_from_footer_and_collapse_with_it(
+def test_scene_frontmatter_omits_suggested_files_and_notes_open_from_sidebar(
     page: Page, server: ProseviewServer
 ):
-    """Related docs live in the collapsible frontmatter footer so they stay
-    clickable on the scene without needing a separate Scene tab."""
+    """Matching notes remain normal files without an automatic scene footer."""
     (server.root / "plans" / "opening-ledger-notes.md").write_text(
         "# Opening Ledger Notes\n\nOpening Ledger notes for the first scene.\n",
         encoding="utf-8",
@@ -7891,22 +7893,17 @@ def test_frontmatter_related_docs_open_from_footer_and_collapse_with_it(
     server.restart()
 
     open_scene(page, server, SCENE_REL)
-    fm_related = page.locator("#sceneFrontmatter .fm-related")
+    assert page.locator("#sceneFrontmatter .fm-related").count() == 0
     toggle = page.locator("#sceneFrontmatter .fm-toggle")
     if toggle.get_attribute("aria-expanded") == "false":
         toggle.click()
-    assert fm_related.is_visible()
-
-    related_link = fm_related.locator(".related-doc-link", has_text="opening-ledger-notes.md")
-    assert related_link.count() == 1
-
-    # Collapsing Frontmatter hides the related docs footer along with the YAML.
+    assert page.locator("#sceneFrontmatter .fm-block").is_visible()
     toggle.click()
-    assert fm_related.is_hidden()
+    assert page.locator("#sceneFrontmatter .fm-block").is_hidden()
     toggle.click()
-    assert fm_related.is_visible()
+    assert page.locator("#sceneFrontmatter .fm-block").is_visible()
 
-    related_link.click()
+    page.locator('#sidebarTree .file-link[data-path="plans/opening-ledger-notes.md"]').click()
     page.wait_for_selector("#file-preview-panel", state="visible")
     assert "Opening Ledger notes for the first scene." in page.locator("#filePreviewBody").inner_text()
 

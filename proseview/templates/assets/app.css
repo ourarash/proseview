@@ -2349,62 +2349,6 @@
             justify-content: space-between;
         }
 
-        .related-doc-list {
-            list-style: disc;
-            padding-left: 18px;
-            margin: 6px 0 0 0;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .related-doc-item {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: 11px;
-            line-height: 1.5;
-        }
-
-        .related-doc-link {
-            background: transparent;
-            border: none;
-            padding: 0;
-            margin: 0;
-            text-align: left;
-            cursor: pointer;
-            color: var(--primary);
-            font: inherit;
-            word-break: break-all;
-        }
-
-        .related-doc-link:hover {
-            text-decoration: underline;
-        }
-
-        .related-doc-editor-icon {
-            color: var(--text-muted);
-            font-size: 13px;
-            text-decoration: none;
-            flex-shrink: 0;
-            line-height: 1;
-        }
-
-        .related-doc-editor-icon:hover {
-            color: var(--primary);
-        }
-
-        .related-doc-empty {
-            padding: 12px;
-            background: var(--surface-card);
-            border: 1px dashed var(--border-strong);
-            border-radius: 10px;
-            color: var(--text-muted);
-            font-size: 12px;
-            line-height: 1.5;
-        }
-
         /* Shown instead of the story rows when a scene has no frontmatter at
            all, so an unused feature reads as optional rather than broken. */
         .scene-card-fm-empty {
@@ -5735,45 +5679,6 @@
             vertical-align: middle;
             cursor: pointer;
             accent-color: var(--primary);
-        }
-
-        .fm-related {
-            display: flex;
-            align-items: baseline;
-            flex-wrap: wrap;
-            gap: 6px 12px;
-            margin-top: 8px;
-            padding: 0 2px;
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
-        .fm-bare .fm-related {
-            margin-top: 0;
-        }
-
-        .fm-related-label {
-            font-size: 11px;
-            letter-spacing: .04em;
-            opacity: .75;
-            flex-shrink: 0;
-        }
-
-        .fm-related-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px 12px;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-
-        .fm-related-item {
-            display: inline-flex;
-            align-items: baseline;
-            gap: 4px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            font-size: 11.5px;
         }
 
         #sceneFrontmatter,

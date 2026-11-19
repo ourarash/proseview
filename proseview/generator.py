@@ -48,7 +48,6 @@ from .lexical import (
     text_dialogue_spans,
     top_repeated_content_words,
 )
-from .related import find_related
 from .repo import (
     build_repository_tree, build_sidebar_tree, build_tree, lists_whole_folder, read_repo_text, recent_changes,
 )
@@ -559,7 +558,6 @@ def build_scene_data(
     scenes: list[SceneStats],
     root: Path,
     cfg: Config,
-    tree_nodes: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """Build the JSON payload consumed by ``/data.json`` and embedded in the
     initial HTML.
@@ -569,7 +567,7 @@ def build_scene_data(
     - ``contents``: ``{display_path: prose_text}`` for the embedded ProseMirror
       editor and the highlight overlays.
     - ``meta``: ``{display_path: scene_meta_dict}`` for the scene header,
-      stats grid, todos, notes, and related docs.
+      stats grid, todos, and notes.
     - ``highlightsByPath``: ``{display_path: {paragraphs, highlights}}`` for
       the highlight passes.
 
@@ -577,9 +575,6 @@ def build_scene_data(
     so a client can hot-refresh the open scene by fetching ``/data.json``
     without a full page reload.
     """
-    if tree_nodes is None:
-        tree_nodes = build_tree(root, cfg)
-
     manuscript_prefix = cfg.manuscript_subdir + "/"
 
     def clean_path(path: Path) -> str:
@@ -661,7 +656,6 @@ def build_scene_data(
                 if scene.words else 0
             ),
             "char_mentions": _compute_char_mentions(scene),
-            "related_docs": find_related(scene, cfg, tree_nodes),
             "mattr": scene.mattr,
             "mtld": scene.mtld,
             "todos": scene.todos,
@@ -1010,7 +1004,7 @@ def render_html_report(
         text = path.as_posix()
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
-    scene_data = build_scene_data(scenes, root, cfg, tree_nodes)
+    scene_data = build_scene_data(scenes, root, cfg)
     scene_content_map = scene_data["contents"]
     highlights_map = scene_data["highlightsByPath"]
     scene_meta_map = scene_data["meta"]

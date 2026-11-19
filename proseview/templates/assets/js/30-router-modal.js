@@ -155,16 +155,6 @@
             return true;
         }
 
-        function openRelatedDoc(path) {
-            if (guardDirtySceneNavigation()) {
-                showUnsavedDialog({onContinue: function() { openRelatedDoc(path); }});
-                return false;
-            }
-            if (!closeSceneModal({route: false})) return false;
-            previewRepoFile(path);
-            return true;
-        }
-
         function updateModal(preserveScroll) {
             const p = paths[curIdx], m = meta[p], b = document.getElementById('modalBody'), a = document.getElementById('modalAlerts'), s = document.getElementById('modalStats');
             const modalTitle = document.getElementById('modalTitle');

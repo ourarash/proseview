@@ -803,41 +803,6 @@
             return wrap;
         }
 
-        function _buildSceneFrontmatterRelated(m) {
-            var relatedDocs = m && Array.isArray(m.related_docs) ? m.related_docs : [];
-            if (!relatedDocs.length) return null;
-            var wrap = document.createElement('div');
-            wrap.className = 'fm-related';
-            var label = document.createElement('span');
-            label.className = 'fm-related-label';
-            label.textContent = 'Related';
-            var list = document.createElement('ul');
-            list.className = 'fm-related-list';
-            relatedDocs.forEach(function(doc) {
-                var li = document.createElement('li');
-                li.className = 'fm-related-item';
-                var btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'related-doc-link';
-                btn.dataset.path = doc.path || '';
-                btn.textContent = doc.path || '';
-                if (doc.preview_text) btn.title = doc.preview_text;
-                btn.addEventListener('click', function() {
-                    if (typeof openRelatedDoc === 'function') openRelatedDoc(btn.dataset.path);
-                });
-                var ext = document.createElement('a');
-                ext.className = 'related-doc-editor-icon';
-                ext.href = typeof buildEditorUrl === 'function' ? buildEditorUrl(doc.abs_path || '') : '#';
-                ext.target = '_blank';
-                ext.title = 'Open in ' + (typeof editorLabel !== 'undefined' ? editorLabel : 'editor');
-                ext.textContent = '\u2197';
-                li.append(btn, ext);
-                list.appendChild(li);
-            });
-            wrap.append(label, list);
-            return wrap;
-        }
-
         function _buildSceneFrontmatterOptions(p, m) {
             var charMentions = (m && m.char_mentions) || {};
             return {
@@ -853,8 +818,7 @@
                     if (typeof completeFmTodo === 'function' && m) {
                         completeFmTodo(cb, m.abs_path, todoText, m.mtime);
                     }
-                },
-                footer: _buildSceneFrontmatterRelated(m)
+                }
             };
         }
 
@@ -897,8 +861,6 @@
                 addBtn.title = 'Add starter YAML frontmatter keys (characters, where, when, goal, conflict, outcome)';
                 addBtn.textContent = '+ Add frontmatter';
                 bare.appendChild(addBtn);
-                var related = _buildSceneFrontmatterRelated(m);
-                if (related) bare.appendChild(related);
                 host.appendChild(bare);
             }
         }

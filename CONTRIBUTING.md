@@ -85,7 +85,6 @@ proseview/
 ├── lexical.py             MATTR / MTLD / shape analysis
 ├── highlights.py          nine prose-pass detectors
 ├── repo.py                file-tree builder
-├── related.py             related-doc heuristic
 ├── history.py             git-history-driven goals + velocity
 ├── watch.py               polling file watcher
 ├── editor.py              vscode/cursor/zed/positron URL builder

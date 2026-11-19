@@ -517,27 +517,6 @@ def test_dashboard_embeds_discuss_selection_presets_as_safe_json():
     assert "<\\\\/script>" in assignment.split(";", 1)[0]
 
 
-def test_dashboard_scene_meta_embeds_related_docs_and_modal_sidebar(tmp_path: Path):
-    repo = tmp_path / "repo"
-    shutil.copytree(FIXTURE, repo)
-    (repo / "plans" / "opening-ledger-notes.md").write_text(
-        "# Opening Ledger Notes\n\nOpening Ledger needs a stronger opening beat.\n",
-        encoding="utf-8",
-    )
-
-    html = build_dashboard(repo, Config.load(repo))
-    meta_json = _extract_js_literal(html, "meta")
-    meta = json.loads(meta_json)
-    opening = meta["ch01/01-opening.md"]
-
-    assert "related_docs" in opening
-    assert opening["related_docs"][0]["path"] == "plans/opening-ledger-notes.md"
-    assert opening["related_docs"][0]["score"] == 3
-    assert "fm-related" in html
-    assert "related-doc-link" in html
-    assert "function openRelatedDoc(path)" in html
-
-
 def test_dashboard_embeds_non_manuscript_folders_in_tree():
     html = build_dashboard(FIXTURE, Config.load(FIXTURE))
     tree_json = _extract_js_literal(html, "repoTree")

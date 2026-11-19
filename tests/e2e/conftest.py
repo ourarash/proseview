@@ -1479,7 +1479,10 @@ def browser() -> Iterator[Browser]:
 
 
 #: Vendored ProseMirror modules, cached in-process across the whole session.
-_VENDOR_MODULE_CACHE: dict[str, bytes] = {}
+_VENDOR_MODULE_CACHE: dict[str, bytes] = {
+    '/vendor/pm/' + path.name: path.read_bytes()
+    for path in (REPO_ROOT / 'proseview' / 'templates' / 'vendor' / 'pm').glob('*.js')
+}
 
 
 def _install_esm_cache(page: Page) -> None:
@@ -1491,7 +1494,8 @@ def _install_esm_cache(page: Page) -> None:
     in unrelated tests.
 
     Keyed by path rather than URL: each test gets its own server on its own
-    port, and the bytes are identical across them.
+    port, and the bytes are identical across them. Preload the checked-in files
+    so the first page also avoids the burst of requests to a temporary server.
 
     (Named for the esm.sh cache it replaced, which became dead the moment
     ProseMirror stopped being fetched from a CDN.)

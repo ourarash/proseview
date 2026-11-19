@@ -80,6 +80,7 @@ def test_agy_beatmap_generation_and_settings_roundtrip(page: Page, server: Prose
     # Settings -> Beat Map persists Agy selection.
     page.evaluate("openBeatMapSettings()")
     page.wait_for_selector("#settingsPanelBeatmap:not([hidden])")
+    page.wait_for_function("() => ['claude', 'codex', 'agy'].every(agent => Object.hasOwn(_bmCatalogs, agent))")
     agent_select = page.locator("#beatmapSettingsBody select").first
     agent_select.wait_for()
     assert agent_select.locator("option[value='agy']").count() == 1

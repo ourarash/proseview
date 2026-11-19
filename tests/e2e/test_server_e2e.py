@@ -1281,6 +1281,10 @@ def test_stylesheet_and_vendored_assets_are_served(shared_server: ProseviewServe
     chart = shared_server.get("/vendor/chart.js")
     assert chart.status == 200 and len(chart.body) > 1000
 
+    model = shared_server.get("/vendor/pm/prosemirror-model.js")
+    source = Path(__file__).resolve().parents[2] / "proseview/templates/vendor/pm/prosemirror-model.js"
+    assert model.status == 200 and model.body == source.read_bytes()
+
 
 def test_repo_file_returns_a_preview_node(shared_server: ProseviewServer):
     payload = shared_server.get_json("/repo-file?path=plans/book-plan.md")

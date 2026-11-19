@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A newer push to the same branch or pull request makes an older run moot;
+# stop it rather than let three full runs queue for the same runners.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: pytest (${{ matrix.os }}, Python ${{ matrix.python-version }})

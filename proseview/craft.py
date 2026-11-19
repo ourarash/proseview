@@ -74,11 +74,11 @@ def review_contract(
             "Choose whatever issues matter most—structural, dramatic, character, or prose—without "
             "collapsing distinct points together.",
             "Anchor observations with exact quotes (italic blockquote, no ellipses) and a clickable link "
-            "on the line below each quote, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18), "
+            "on the line below each quote, such as [03-the-harbor.md · Lines 18–20](manuscript/ch02/03-the-harbor.md#L18-L20), "
             "using each quoted scene's own file name and path.",
             "Whenever a change can be written directly as prose, give a drop-in **Before:** / **After:** rewrite: "
             "**Before:** (italic blockquote + link below) and **After:** Replace "
-            "[03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18): "
+            "[03-the-harbor.md · Lines 18–20](manuscript/ch02/03-the-harbor.md#L18-L20): "
             "(or **After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):) "
             "as a plain blockquote; for larger cuts or restructures, a brief direction is fine.",
         ]
@@ -100,9 +100,9 @@ def review_contract(
             "- A **Lane: <name> — <why>** line, using a selected lane's exact name "
             "(**Lanes:** with two names if it spans both).\n"
             "- **Before:** on its own line, then the passage quoted exactly in an italic blockquote, "
-            "with its link on the line below it, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18).\n"
+            "with its link on the line below it, such as [03-the-harbor.md · Lines 18–20](manuscript/ch02/03-the-harbor.md#L18-L20).\n"
             "- **Why:** the specific weakness or missed opportunity, and what the change improves for the reader.\n"
-            "- **After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):, then the replacement "
+            "- **After:** Replace [03-the-harbor.md · Lines 18–20](manuscript/ch02/03-the-harbor.md#L18-L20):, then the replacement "
             "in a plain blockquote, ready to paste. For an addition, cite the insertion point instead: "
             "**After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):. For a cut, show how "
             "the passage reads after it.\n"

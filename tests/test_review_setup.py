@@ -231,7 +231,7 @@ def test_every_review_card_asks_for_pasteable_fixes_in_the_format_the_app_reads(
     # The citation checker reads a quote's link from the line below it; the
     # renderer labels a rewrite from its "Replace [link]:" lead-in.
     for part in ('**Lane: <name> — <why>**', '**Before:** on its own line', 'with its link on the line below it',
-                 '**Why:**', '**After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):',
+                 '**Why:**', '**After:** Replace [03-the-harbor.md · Lines 18–20](manuscript/ch02/03-the-harbor.md#L18-L20):',
                  "the quoted scene's own file name",
                  'in a plain blockquote, ready to paste', '**After:** Insert after', 'this format governs the output'):
         assert part in contract

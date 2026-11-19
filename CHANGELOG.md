@@ -5,8 +5,23 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
+## 0.5.1 — 2026-11-19
+
 ### Added
 
+- **A one-line installer.** On macOS or Linux,
+  `curl -LsSf https://ourarash.github.io/proseview/install.sh | sh`; on
+  Windows, `irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex`.
+  Nothing needs to be installed first: it gets uv, which brings its own
+  Python, installs Proseview, asks where your book is (or starts one in
+  Documents/Proseview/MyNovel), adds a Proseview icon to the Desktop and
+  opens the book. Running it again updates Proseview.
+- **Proseview remembers your book.** Plain `proseview` (and the Desktop icon)
+  opens the last book you used; a book in the current folder still opens
+  first. `proseview open` chooses a book in the system's folder picker,
+  `proseview new` starts one with its first scene, and
+  `proseview ~/path/to/book` opens a folder without `--root`. With no book
+  to open, Proseview asks for one instead of opening your home folder.
 - **Reviews ask before reading an existing chat.** Running a review in a chat
   that already has messages asks whether to start a new conversation, since
   earlier reviews and requests would shape what it finds. **Run in this

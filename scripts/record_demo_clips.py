@@ -353,8 +353,131 @@ def flow_beatmap(page, base, docs):
             beat(page, 2000)
 
 
+def flow_review(page, base, docs):
+    """A scene review: Quick critique on Codex, from findings to applied edits.
+
+    Requires `codex` signed in on this machine. The review and the edit are
+    real, so both waits are long; main() plays them fast. Compare shows one
+    suggestion against the passage; two findings are ticked, one gets a note,
+    Prepare request fills the composer, and Codex applies them on the
+    throwaway copy of the demo book.
+    """
+    page.add_init_script("localStorage.setItem('proseview-frontmatter-collapsed','true')")
+    page.add_init_script("""
+        new MutationObserver(() => document.querySelectorAll('.discuss-notice').forEach(n => {
+            if (/requirements layers/.test(n.textContent)) n.remove();
+        })).observe(document.documentElement, {childList: true, subtree: true});
+    """)
+    open_scene(page, base, SCENE)
+    page.evaluate("() => setSidebarOpen(false)")
+    beat(page, 900)
+    page.evaluate("() => showDiscussAgentTab('codex')")
+    page.wait_for_selector("#discussSend:not([disabled])", timeout=30000)
+    beat(page, 1200)
+    # A new chat already shows the review cards; otherwise open them.
+    run = page.get_by_role("button", name="Run Quick critique with defaults", exact=True)
+    if not run.is_visible():
+        page.click("#discussCraftButton")
+    run.wait_for(state="visible")
+    run.hover()
+    beat(page, 1800)
+    REVIEW_MARKS["send"] = time.monotonic() - ROOM_MARKS["start"]
+    run.click()
+    # Wait for the finished review: the turn is done and its findings carry
+    # Compare buttons. Codex's first "Thought" message is not the answer.
+    page.wait_for_function(
+        """() => {
+            const status = document.getElementById('discussTurnStatus');
+            const state = status ? status.dataset.state : '';
+            return (state === 'done' || state === 'idle')
+                && document.querySelectorAll('#discussLog .discuss-quote-compare').length >= 2;
+        }""",
+        timeout=900000, polling=1000,
+    )
+    REVIEW_MARKS["done"] = time.monotonic() - ROOM_MARKS["start"]
+    beat(page, 1200)
+    # Read down through the findings.
+    heading = page.locator("#discussLog h3").first
+    if heading.count():
+        heading.scroll_into_view_if_needed()
+        page.evaluate("() => { const h = document.querySelector('#discussLog h3'); if (h) h.scrollIntoView({block: 'start'}); }")
+    beat(page, 2600)
+    for _ in range(3):
+        page.mouse.move(1050, 400)
+        page.mouse.wheel(0, 200)
+        beat(page, 1500)
+    # Compare one suggestion with the passage as it stands.
+    compare = page.locator("#discussLog .discuss-quote-compare")
+    if compare.count() > 1:
+        compare.nth(1).scroll_into_view_if_needed()
+        beat(page, 700)
+        compare.nth(1).hover()
+        beat(page, 600)
+        compare.nth(1).click()
+        beat(page, 3200)
+        page.keyboard.press("Escape")
+        beat(page, 900)
+    # Select two findings, note one, and ask Codex to apply them.
+    picks = page.locator("#discussLog .edit-selection-control input")
+    for i in range(min(2, picks.count())):
+        picks.nth(i).scroll_into_view_if_needed()
+        beat(page, 600)
+        picks.nth(i).check()
+        beat(page, 1200)
+        if i == 0:
+            note = page.locator("#discussLog .edit-selection-add-note").first
+            if note.count():
+                note.click()
+                field = page.locator("#discussLog .edit-selection-note-host textarea").first
+                field.wait_for(state="visible")
+                field.type("Keep it as short as Alice would say it.", delay=35)
+                beat(page, 1000)
+    prepare = page.locator(".edit-selection-prepare").first
+    prepare.wait_for(state="visible")
+    prepare.hover()
+    beat(page, 800)
+    prepare.click()
+    beat(page, 2200)  # The composer now reads "Apply items ..." with the note.
+    REVIEW_MARKS["apply"] = time.monotonic() - ROOM_MARKS["start"]
+    page.click("#discussSend")
+    deadline = time.monotonic() + 900
+    while time.monotonic() < deadline:
+        accept = page.get_by_role("button", name="Accept once", exact=True)
+        if accept.count() and accept.first.is_visible():
+            accept.first.click()
+        if page.evaluate("""() => {
+                const status = document.getElementById('discussTurnStatus');
+                const state = status ? status.dataset.state : '';
+                return (state === 'done' || state === 'idle')
+                    && !!document.querySelector('#discussLog .discuss-review');
+            }"""):
+            break
+        page.wait_for_timeout(1000)
+    REVIEW_MARKS["applied"] = time.monotonic() - ROOM_MARKS["start"]
+    beat(page, 800)
+    # The saved edit: its card, with Undo all and Looks good.
+    card = page.locator("#discussLog .discuss-review").last
+    if card.count():
+        card.scroll_into_view_if_needed()
+        beat(page, 2600)
+        card.get_by_role("button", name="Looks good").hover()
+        beat(page, 1600)
+    # Back up to the findings, now marked Applied.
+    applied = page.locator("#discussLog .edit-selection-item-heading").first
+    if applied.count():
+        page.evaluate("""() => { const h = document.querySelector('#discussLog .edit-selection-item-heading');
+            if (h) h.scrollIntoView({block: 'center', behavior: 'smooth'}); }""")
+        beat(page, 3000)
+
+#: Times in the review clip, in seconds from the start of the recording.
+REVIEW_MARKS: dict[str, float] = {}
+
+
 def flow_room(page, base, docs):
-    """The Writers' Room: one question, and both editors answer in one conversation.
+    """The Group: editors on different agents debate one question in one conversation.
+
+    Uses the Group editors saved on the recording machine (two or three, each
+    on Codex, Claude or Agy); the clip waits for every one of them.
 
     Requires `codex` and `claude` signed in on this machine. The answers are
     real, so the clip is long while they think; main() speeds that part up.
@@ -368,32 +491,38 @@ def flow_room(page, base, docs):
     open_scene(page, base, SCENE)
     page.evaluate("() => setSidebarOpen(false)")
     beat(page, 900)
-    page.evaluate("() => showScenePanelTab('room')")
-    page.wait_for_selector("#roomInput", state="visible", timeout=30000)
+    page.evaluate("() => showScenePanelTab('group')")
+    page.wait_for_selector("#groupInput", state="visible", timeout=30000)
     beat(page, 1600)
-    page.click("#roomInput")
-    page.keyboard.type("In two or three sentences: does the opening hook work?", delay=40)
+    page.click("#groupInput")
+    page.keyboard.type("Should Alice's Latitude-and-Longitude musing stay or go? Two sentences each, "
+                       "and push back on each other.", delay=35)
     beat(page, 700)
     ROOM_MARKS["send"] = time.monotonic() - ROOM_MARKS["start"]
     page.keyboard.press("Enter")
     page.wait_for_function(
-        """() => { const s = _roomSessionsByScene[_roomCurrentScenePath()];
-            return s && s.turns.filter(t => t.role === 'critic').length >= 2 && !s.busy
+        """() => { const s = _groupSessionsByScene[_groupCurrentScenePath()];
+            const seats = (s && s.participants && s.participants.length) || 2;
+            return s && s.turns.filter(t => t.role === 'critic').length >= seats && !s.busy
                 && !s.queue.length && (!s.runtime || ['idle', 'review'].includes(s.runtime.status)); }""",
         timeout=600000,
     )
     ROOM_MARKS["done"] = time.monotonic() - ROOM_MARKS["start"]
     beat(page, 1200)
-    # Read both answers: back up to the question, then down through them.
-    page.evaluate("""() => { const el = document.querySelector('#sceneRoomPane .room-log, #roomLog')
-        || document.querySelector('#sceneRoomPane [class*=scroll]'); if (el) el.scrollTop = 0; }""")
-    beat(page, 2000)
-    for _ in range(6):
-        page.mouse.move(1050, 380)
-        page.mouse.wheel(0, 220)
+    # Read the debate: back up to the question, then down through every answer.
+    body = "document.getElementById('groupBody')"
+    page.evaluate(f"""() => {{ const el = {body}; const q = el && [...el.querySelectorAll('*')]
+        .find(n => n.children.length === 0 && /stay or go/.test(n.textContent));
+        if (q) q.scrollIntoView({{block: 'start'}}); else if (el) el.scrollTop = 0; }}""")
+    beat(page, 2200)
+    for _ in range(12):
+        done = page.evaluate(f"""() => {{ const el = {body}; if (!el) return true;
+            el.scrollBy({{top: 150, behavior: 'smooth'}});
+            return el.scrollTop + el.clientHeight >= el.scrollHeight - 4; }}""")
         beat(page, 1300)
+        if done:
+            break
     beat(page, 1500)
-
 
 #: Times in the room clip, in seconds from the start of the recording.
 ROOM_MARKS: dict[str, float] = {}
@@ -407,22 +536,26 @@ FLOWS = {
     "demo-agents": flow_agents,
     "demo-beatmap": flow_beatmap,
     "demo-room": flow_room,
+    "demo-review": flow_review,
 }
 #: Clips that need a signed-in agent, left out of a plain run.
-AGENT_CLIPS = {"demo-agents", "demo-room"}
+AGENT_CLIPS = {"demo-agents", "demo-room", "demo-review"}
 
 
-def speed_up(webm: Path, start: float, end: float, factor: int = 12) -> Path:
-    """Play the stretch between start and end seconds `factor` times faster."""
-    if end - start < 3:
+def speed_up(webm: Path, start: float, end: float, factor: int = 12,
+             more: tuple[tuple[float, float], ...] = ()) -> Path:
+    """Play the stretch between start and end seconds (and any `more`) `factor` times faster."""
+    spans = [(a, b) for a, b in [(start, end), *more] if b - a >= 3]
+    if not spans:
         return webm
     out = webm.with_name("trimmed.mp4")
-    graph = (
-        f"[0:v]trim=0:{start},setpts=PTS-STARTPTS[a];"
-        f"[0:v]trim={start}:{end},setpts=(PTS-STARTPTS)/{factor}[b];"
-        f"[0:v]trim={end},setpts=PTS-STARTPTS[c];"
-        "[a][b][c]concat=n=3:v=1:a=0[v]"
-    )
+    parts, cursor = [], 0.0
+    for a, b in sorted(spans):
+        parts += [f"trim={cursor}:{a},setpts=PTS-STARTPTS", f"trim={a}:{b},setpts=(PTS-STARTPTS)/{factor}"]
+        cursor = b
+    parts.append(f"trim={cursor},setpts=PTS-STARTPTS")
+    graph = "".join(f"[0:v]{part}[p{i}];" for i, part in enumerate(parts))
+    graph += "".join(f"[p{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[v]"
     subprocess.run(["ffmpeg", "-y", "-i", str(webm), "-filter_complex", graph, "-map", "[v]",
                     "-an", str(out)], check=True, capture_output=True)
     return out
@@ -470,6 +603,10 @@ def main(argv: list[str]) -> int:
         if name == "demo-room" and "done" in ROOM_MARKS:
             # The editors take a while to think; play that stretch fast.
             webm = speed_up(webm, ROOM_MARKS["send"] + 2.5, ROOM_MARKS["done"] - 1.5)
+        if name == "demo-review" and "done" in REVIEW_MARKS:
+            # A review takes minutes; show only that it is working.
+            more = ((REVIEW_MARKS["apply"] + 3, REVIEW_MARKS["applied"] - 1),) if "applied" in REVIEW_MARKS else ()
+            webm = speed_up(webm, REVIEW_MARKS["send"] + 3, REVIEW_MARKS["done"] - 1, factor=60, more=more)
         to_gif(webm, dest / f"{name}.gif")
     return 0
 

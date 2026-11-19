@@ -123,19 +123,33 @@ it as a folder to carry on in the installed app.
 ### Working with an agent (optional)
 
 Proseview has no AI model of its own and needs no API keys. It drives the
-Codex or Claude command-line tools already installed and signed in on your
-computer, so your agent works under your own account and its own privacy
-terms. Proseview itself sends nothing anywhere.
+Codex, Claude, or Agy (Antigravity) command-line tools already installed and
+signed in on your computer, so your agent works under your own account and its
+own privacy terms. Proseview itself sends nothing anywhere.
 
 Nothing runs until you ask:
 
-- **The Group.** One conversation with two editors (by default, a
-  **Story Editor** for plot and pacing and a **Voice Editor** for tone and
-  style) who discuss your book with you and with each other. `@mention` one to
-  ask just them.
-- **Codex and Claude tabs.** One tab per agent in the side panel, each with
-  its own conversation. Mention files with `@` or select prose to ask about
-  it.
+- **The Group: editors that debate.** Two or three editors in one
+  conversation, each on its own agent: Codex, Claude, or Agy. A **Story
+  Editor** and a **Voice Editor** by default; add a **Continuity Editor** for
+  three. They read the same scene and answer each other, agreeing, pushing
+  back, or passing, so different models check each other's notes. `@mention` one to ask just them.
+  A recap lists what they agreed on, the choices left to you, and each edit as
+  Before and After. **Send to Group** takes any finished chat there for a
+  second opinion.
+- **Scene reviews.** Run a review on a scene, its neighbors, or a whole
+  chapter: **Quick critique**, **Deepen & layer**, **Craft review** through a
+  writing book (McKee, Coyne, Cron, Snyder, King, or Lamott), or **Comedy
+  review**. Each finding quotes the passage (**Before**), says what goes wrong
+  for the reader (**Why**), and gives a replacement you can paste (**After**).
+  Choose the lanes to look at and how many findings to get.
+- **Compare and apply.** **Compare** shows a suggestion against the passage as
+  it stands now. Tick the findings you want, add a note to any of them, and
+  ask the agent to apply them.
+- **Codex, Claude, and Agy tabs.** One tab per agent in the side panel, each
+  with its own conversation. Agy is the Antigravity CLI, which brings Gemini
+  models. Mention files with `@` or select prose to ask
+  about it.
 - **Edits you can see.** An edit an agent makes is saved and shown in a card
   with the diff, **Undo all** and **Looks good**.
 - **Continuity checks.** Ask whether a passage fits the rest of the book, and
@@ -201,16 +215,25 @@ kind. Click a moment and the page shows its paragraph.
 
 ![The Beats tab beside the opening scene: a tension line across five beats, the first beat open to its moments, and the chosen moment's sentence marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-beatmap.gif)
 
+### Scene reviews
+
+Run a review from the agent's tab. Each finding quotes the passage, says why
+it matters, and gives a replacement you can paste; **Compare** shows it
+against the scene as it stands.
+
+![A Quick critique on Codex: findings with the quoted passage, the reason, and a replacement, then Compare showing one suggestion against the current passage, and a finding ticked to apply](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-review.gif)
+
 ### Group
 
-Ask the group a question and both editors answer in one conversation, each
-from their own side of the book.
+Editors on different agents debate one question in one conversation: here
+the Story Editor on Codex, the Voice Editor on Claude, and the Continuity
+Editor on Agy, each answering the others.
 
-![The Group tab: a question about the opening scene, answered first by the Story Editor on Claude and then by the Voice Editor on Codex](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
+![The Group tab: the Story Editor on Codex, the Voice Editor on Claude and the Continuity Editor on Agy debating whether a passage in the opening scene should stay](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
 
 ### Agents
 
-Codex and Claude each keep their own conversation. Opening another file does
+Codex, Claude, and Agy each keep their own conversation. Opening another file does
 not reset either one; the next question simply says which file you are in.
 
 ![The Codex and Claude tabs answering the same question about a scene in separate conversations, with each answer staying in its own tab](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-agents.gif)

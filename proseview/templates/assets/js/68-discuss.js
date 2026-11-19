@@ -3942,6 +3942,9 @@
         function refreshScenePassList(path) {
             const list = document.getElementById('scenePassList');
             if (!list || (typeof paths !== 'undefined' && paths[curIdx] !== path)) return;
+            // The details toggle event may still be queued when marks arrive.
+            const more = list.querySelector('#scenePassMore');
+            if (more) scenePassMoreOpen = more.open;
             list.replaceWith(_scenePassList(path));
             if (typeof syncAllBtn === 'function') syncAllBtn();
         }

@@ -1099,6 +1099,7 @@ def test_discuss_detects_a_server_restart_and_recovers_by_reload(
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     draft = "What do you think about this scene?"
     page.fill("#discussInput", draft)
+    page.evaluate("async () => { await loadDiscussSkillList(); }")
 
     server.restart()
 
@@ -3296,7 +3297,10 @@ def test_every_highlight_pass_marks_the_prose(page: Page, shared_server: Prosevi
     toggle = page.locator(f"#pass-row-{pass_name}")
     if pass_name in MORE_PASSES:
         assert not toggle.is_visible(), "the off-by-default checks start folded away"
-        page.click("#scenePassMore > summary")
+        # Marks may arrive and redraw the list before the toggle event fires.
+        page.locator("#scenePassMore > summary").evaluate(
+            "el => { el.click(); refreshScenePassList(paths[curIdx]); }"
+        )
     toggle.wait_for(state="visible")
     toggle.click()
 

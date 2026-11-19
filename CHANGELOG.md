@@ -269,6 +269,9 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- **Built-in skills are recognized with Windows line endings.** A copy
+  Proseview had installed, saved with CRLF by a Windows checkout or editor,
+  was kept as your own skill instead of following the packaged prompt.
 - **Send to Group waits for a restored chat.** Opening a source chat from
   the Group left Send to Group enabled on the previous chat until the restore
   finished, and forking it then opened a dialog that could not be confirmed.

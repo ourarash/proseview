@@ -898,6 +898,10 @@ class GroupHistoryStore:
         with self._lock:
             sessions = self._sessions(self._load())
         rows = [s for s in sessions if isinstance(s, dict) and (not scene or s.get("scene") == scene)]
+        # A save moves its session to the end, so stored order is recency.
+        # Reversed first, the stable sort keeps the later save ahead when two
+        # share a timestamp, as saves within one clock tick do on Windows.
+        rows.reverse()
         rows.sort(key=lambda s: s.get("updated_at") or 0, reverse=True)
         return [
             {

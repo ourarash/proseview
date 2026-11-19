@@ -375,3 +375,16 @@ def test_two_vs_three_seat_workflows_moderator_and_config_roundtrip(tmp_path):
         assert session["plans"][0]["open"][0]["critic3"] == "Keep if October fixed"
     finally:
         manager.close()
+
+
+def test_book_history_puts_the_later_save_first_when_timestamps_tie(tmp_path, monkeypatch):
+    """Two saves in one clock tick (common on Windows) still list newest first."""
+    import proseview.suggestions as suggestions
+    monkeypatch.setattr(suggestions.time, "time", lambda: 1000.0)
+    manager = _manager(_repo(tmp_path), [])
+    try:
+        for key, scene, text in [("first", "one.md", "First question."), ("second", "two.md", "Second question.")]:
+            manager.group_history({"action": "save", "session": {"id": key, "scene": scene, "title": "Conversation", "turns": [{"role": "user", "text": text}]}})
+        assert [row["id"] for row in manager.group_history({"action": "list"})["sessions"]] == ["second", "first"]
+    finally:
+        manager.close()

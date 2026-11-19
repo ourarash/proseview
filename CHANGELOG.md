@@ -269,6 +269,8 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- **Group history lists the newest conversation first on Windows.** Two
+  saves within one tick of the Windows clock could list in the wrong order.
 - **Built-in skills are recognized with Windows line endings.** A copy
   Proseview had installed, saved with CRLF by a Windows checkout or editor,
   was kept as your own skill instead of following the packaged prompt.

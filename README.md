@@ -219,9 +219,11 @@ kind. Click a moment and the page shows its paragraph.
 
 Run a review from the agent's tab. Each finding quotes the passage, says why
 it matters, and gives a replacement you can paste; **Compare** shows it
-against the scene as it stands.
+against the scene as it stands. Tick the findings you want, add a note,
+and **Prepare request** asks the agent to apply them; the saved edit comes
+back as a card you can undo.
 
-![A Quick critique on Codex: findings with the quoted passage, the reason, and a replacement, then Compare showing one suggestion against the current passage, and a finding ticked to apply](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-review.gif)
+![A Quick critique on Codex: findings with the quoted passage, the reason and a replacement; Compare showing one suggestion against the current passage; two findings ticked, one with a note; Prepare request filling in "Apply items 1, 2"; and Codex's saved edit with Undo all and Looks good](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-review.gif)
 
 ### Group
 

@@ -462,12 +462,8 @@ def flow_review(page, base, docs):
         beat(page, 2600)
         card.get_by_role("button", name="Looks good").hover()
         beat(page, 1600)
-    # Back up to the findings, now marked Applied.
-    applied = page.locator("#discussLog .edit-selection-item-heading").first
-    if applied.count():
-        page.evaluate("""() => { const h = document.querySelector('#discussLog .edit-selection-item-heading');
-            if (h) h.scrollIntoView({block: 'center', behavior: 'smooth'}); }""")
-        beat(page, 3000)
+    # End on the card. A finding Codex reworded (say, for a note) stays
+    # "Requested" rather than "Applied", which reads as a failure in a clip.
 
 #: Times in the review clip, in seconds from the start of the recording.
 REVIEW_MARKS: dict[str, float] = {}

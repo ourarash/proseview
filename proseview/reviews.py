@@ -60,23 +60,23 @@ def comedy_review_options(
             [item for item in guide["goals"] if item["id"] in goal_ids])
 
 
-def review_self_check(action_id: str, *, big_picture: bool = False) -> str:
+def review_self_check(action_id: str, *, open_critique: bool = False) -> str:
     """The final review check, including when the writer supplies their own guide."""
     if action_id == "craft_lamott":
         questions = [
             "Have I considered the whole selection through the selected review and lanes?",
             "Is the single assignment useful, manageable, and clear about where to start?",
         ]
-    elif big_picture:
+    elif open_critique:
         questions = [
-            "Have I focused on big-picture structure and what most holds the selection back, rather than sentence polish?",
-            "Did I combine overlapping points and keep findings within the configured limit?",
+            "Have I focused on what matters most for this selection?",
+            "Did I keep distinct points separate within the configured limit?",
             "Is every quote exact and linked on the line below it, using each scene's own file name and path?",
         ]
     else:
         questions = [
             "Have I considered the whole selection through the selected review and lanes?",
-            "Did I combine overlapping findings and retain worthwhile findings within the configured limit?",
+            "Did I avoid duplicate findings—without merging distinct points—and retain worthwhile findings within the configured limit?",
             "Does every finding end in complete, pasteable edits?",
         ]
     return ("Before returning feedback, check silently:\n\n"
@@ -88,15 +88,15 @@ def scene_review_contract(
     action_id: str, lanes: list[dict], *, scene_count: int, check_plan: bool,
     comedy_styles: list[str] | None = None, comedy_goal: str | None = None,
     comedy_goals: list[str] | None = None, max_findings: int = DEFAULT_MAX_FINDINGS,
-    include_keep: bool = False, big_picture: bool = False,
+    include_keep: bool = False, open_critique: bool = False,
 ) -> str:
     if action_id.startswith("craft_"):
         return craft_review_contract(action_id, focus=lanes[0]["id"] if len(lanes) == 1 else "",
                                      scene_count=scene_count, check_plan=check_plan,
                                      lane_ids=[lane["id"] for lane in lanes], max_findings=max_findings,
-                                     include_keep=include_keep, big_picture=big_picture)
+                                     include_keep=include_keep, open_critique=open_critique)
     shared = {"scene_count": scene_count, "max_findings": max_findings, "check_plan": check_plan,
-              "big_picture": big_picture}
+              "open_critique": open_critique}
     lines: list[str] = []
     if action_id == "comedy_review":
         styles, goals = comedy_review_options(comedy_styles, comedy_goal, goals=comedy_goals)
@@ -107,11 +107,14 @@ def scene_review_contract(
         lines.extend([
             review_contract(
                 **shared, include_keep=include_keep,
-                goal="Find where the comedy in this {scope} most needs work or has the best new "
-                     "chance, and write each {item} as text the writer can paste.",
-                big_picture_goal="Give high-level feedback on the comedy in this {scope} — what most weakens it "
-                                 "or where the strongest structural chances lie (up to {max_findings} points, "
-                                 "most important first).",
+                goal=(
+                    "Give feedback on the comedy in this {scope}—what works, what misses, "
+                    "or where the best chances are (up to {max_findings} distinct points, "
+                    "most important first)."
+                    if open_critique else
+                    "Find where the comedy in this {scope} most needs work or has the best new "
+                    "chance, and write each {item} as text the writer can paste."
+                ),
             ),
             "Selected comedy review goals: " + "; ".join(goal["label"] for goal in goals) + ". "
             "The limit covers all selected goals together. Under each heading, label the finding "
@@ -125,7 +128,7 @@ def scene_review_contract(
         lines.extend("Selected comic style: " + style["label"] + ". " + style["prompt"] for style in styles)
     elif action_id == "deepen_and_layer":
         lines.extend([
-            # Deepen offers opportunities, not faults, so it has no Keep list or big-picture mode.
+            # Deepen offers opportunities, not faults, so it has no Keep list or open critique mode.
             review_contract(scene_count=scene_count, max_findings=max_findings, check_plan=check_plan,
                             include_keep=False, item="opportunity",
                             goal="Find the moments in this {scope} that most need deepening, and write "
@@ -137,7 +140,7 @@ def scene_review_contract(
     guide = review_guide(action_id) or {}
     total_lanes = len(guide.get("lanes", [])) or len(lanes)
     lines.append(selected_lanes_instruction(
-        lanes, total_lanes=total_lanes, big_picture=big_picture and action_id != "deepen_and_layer",
+        lanes, total_lanes=total_lanes, open_critique=open_critique and action_id != "deepen_and_layer",
     ))
     sources = {source["id"]: source["label"].replace(" · ", ", ") for source in guide.get("sources", [])}
     rows = []

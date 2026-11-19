@@ -5,10 +5,6 @@ description: Keep readers moving through clear stakes, engaging exposition, and 
 
 Review the supplied scene(s) using selected principles from Blake Snyder's *Save the Cat!*.
 
-Apply selected scene-level techniques at the prose's genre and pace, without
-imposing a full-story beat sheet. Quiet closure, summary, and restrained
-behavior can serve the scene; judge their effect rather than prescribing
-cliffhangers or alternating emotional signs.
-
-For each finding, quote the passage, explain the issue, and write a pasteable
-revision. Do not modify files.
+Use Save the Cat's scene techniques to fit the draft's genre and pace, without
+forcing a movie beat sheet onto prose. Don't demand a cliffhanger or force a
+scene to flip from positive to negative if quiet closure or summary works better.

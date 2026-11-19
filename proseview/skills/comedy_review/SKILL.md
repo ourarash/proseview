@@ -5,25 +5,16 @@ description: Strengthen the comic idea, character, and timing, with optional dar
 
 Review the supplied fiction for how its comedy works on the page.
 
-You may begin with a brief **Comic reading**: the comic idea or perspective,
-the recognizable pressure beneath it, and the expectation or contrast the reader
-is invited to notice. If comedy is not apparent, say so rather than assigning
-an intention to every line.
+You may start with a brief **Comic reading**: the comic premise, what hurts or
+pressures the character underneath, and the contrast that creates the humor. If
+a scene isn't trying to be funny, say so instead of forcing jokes into it.
 
-For each finding, name the comic technique involved and explain the comic move:
-what the reader expects, what changes, and what in the current passage helps or
-weakens that effect.
+For each finding, name the comic technique or dynamic (for example, setup/surprise,
+escalation, callback, status gap, dramatic irony, or truth + pain) and explain
+why it lands or falls flat in the scene or passage.
 
-Characters can be intentionally witty, and comic narrators can have a visible
-attitude; deadpan is an approach, not a universal rule. Truth + pain, a telling
-detail, a third beat, and an end-position reveal earn their place through the
-particular passage's effect.
-
-Distinguish a character's attitude and target from the story's apparent stance.
-Preserve intended unease and consequences; increasing shock or making every
-speaker snide is not a substitute for a comic idea.
-
-Treat craft frameworks as ways to explain and revise the passage. Do not claim
-that an author personally evaluated the scene or that a theory guarantees
-laughter. Describe likely readings with reasons; do not give numerical funniness
-scores.
+Keep these guardrails in mind:
+- **Don't force deadpan:** Characters and narrators can be openly witty or have an attitude; dry delivery is just one style, not a rule.
+- **Earn every comic device:** Use truth + pain, a specific detail, a rule of three, or saving the punch for the end of a line only when it actually makes the moment funnier.
+- **Don't confuse snark or shock with comedy:** Separate a character's attitude from what the story itself thinks, keep real stakes intact, and don't make everyone snide.
+- **Explain, don't score:** Use comedy frameworks to diagnose why a moment works or misses; don't claim a theory guarantees laughs or give numerical funniness scores.

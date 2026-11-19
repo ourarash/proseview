@@ -313,57 +313,112 @@ def test_review_self_check_follows_builtin_and_writer_owned_guides(tmp_path, mon
 
 @pytest.mark.parametrize('action', ['craft_mckee', 'quick_critique', 'comedy_review'])
 @pytest.mark.parametrize('scene_count', [1, 3])
-def test_big_picture_contract_relaxes_rewrites_and_preserves_lane_focus(action, scene_count):
+def test_open_critique_contract_relaxes_rewrites_and_preserves_lane_focus(action, scene_count):
     all_lanes = selected_review_lanes(action, None)
-    wide = scene_review_contract(action, all_lanes, scene_count=scene_count, check_plan=False, big_picture=True)
-    assert 'Give high-level feedback' in wide
-    assert 'rather than sentence-level polish' in wide
-    assert 'When you suggest a concrete rewrite' in wide
+    wide = scene_review_contract(action, all_lanes, scene_count=scene_count, check_plan=False, open_critique=True)
+    assert ('Give feedback on the comedy' if action == 'comedy_review' else 'Give feedback on what would most improve') in wide
+    assert 'high-level' not in wide and 'big-picture' not in wide
+    assert 'Whenever a change can be written directly as prose' in wide
+    assert 'for larger cuts or restructures, a brief direction is fine' in wide
     assert 'as text the writer can paste' not in wide
     assert 'Stay within the selected lanes' not in wide
-    assert 'Draw freely on the wider structural principles' in wide
+    assert 'Draw freely on the whole editorial lens' in wide
+    assert 'Principle:' not in wide
+    assert 'without collapsing distinct points together' in wide
 
-    narrowed = scene_review_contract(action, all_lanes[:2], scene_count=scene_count, check_plan=False, big_picture=True)
-    assert 'Pay particular attention to the selected lanes:' in narrowed
-    assert 'Connect wider structural issues' in narrowed
+    single = scene_review_contract(action, all_lanes[:1], scene_count=scene_count, check_plan=False, open_critique=True)
+    assert f'Focus on the selected lane: {lane_name(all_lanes[0])}.' in single
+    assert 'bring in anything else' not in single
+
+    narrowed = scene_review_contract(action, all_lanes[:2], scene_count=scene_count, check_plan=False, open_critique=True)
+    assert 'Focus on the selected lanes:' in narrowed
+    assert 'bring in anything else' not in narrowed
     assert 'Stay within the selected lanes' not in narrowed
+    assert 'Principle:' not in narrowed
 
 
 @pytest.mark.parametrize(('action', 'shown'), [
     ('quick_critique', True), ('comedy_review', True), ('craft_mckee', True),
     ('deepen_and_layer', False), ('craft_lamott', False),
 ])
-@pytest.mark.parametrize('big_picture', [None, True])
-def test_big_picture_choice_reaches_prompt_receipt_and_context_inspector(tmp_path: Path, monkeypatch, action, shown, big_picture):
+@pytest.mark.parametrize('open_critique', [None, True])
+def test_open_critique_choice_reaches_prompt_receipt_and_context_inspector(tmp_path: Path, monkeypatch, action, shown, open_critique):
     manager, cid, clients, _ = _manager(tmp_path, monkeypatch)
     try:
-        manager.submit(cid, client_request_id='bp', question='', action_id=action,
-                       action_scope='scene', scenes=['scene.md'], review_big_picture=big_picture)
+        manager.submit(cid, client_request_id='oc', question='', action_id=action,
+                       action_scope='scene', scenes=['scene.md'], review_open_critique=open_critique)
         deadline = time.monotonic() + 3
         while not clients[0].prompts and time.monotonic() < deadline:
             time.sleep(.01)
         prompt = clients[0].prompts[0]
         message = [m for m in manager.get_snapshot(cid)['messages'] if m['role'] == 'user'][-1]
         if not shown:
-            assert 'Format: big-picture critique' not in message['text']
-            assert message['context_sent']['big_picture'] is None
+            assert 'Format: open critique' not in message['text']
+            assert message['context_sent']['open_critique'] is None
             return
-        expected = bool(big_picture)
-        assert ('Give high-level feedback' in prompt) is expected
-        assert ('rather than sentence polish?' in prompt) is expected
-        assert ('Format: big-picture critique (Before/After optional)' in message['text']) is expected
-        assert message['context_sent']['big_picture'] is expected
+        expected = bool(open_critique)
+        assert ('Choose whatever issues matter most' in prompt) is expected
+        assert ('Have I focused on what matters most for this selection?' in prompt) is expected
+        assert ('Format: open critique' in message['text']) is expected
+        assert message['context_sent']['open_critique'] is expected
     finally:
         manager.close()
 
 
 @pytest.mark.parametrize('value', ['on', 1, 'true'])
-def test_an_invalid_big_picture_choice_is_refused_before_a_model_request(tmp_path: Path, monkeypatch, value):
+def test_an_invalid_open_critique_choice_is_refused_before_a_model_request(tmp_path: Path, monkeypatch, value):
     manager, cid, clients, _ = _manager(tmp_path, monkeypatch)
     try:
         with pytest.raises(ContextError):
-            manager.submit(cid, client_request_id='bad-bp', question='', action_id='craft_mckee',
-                           action_scope='scene', scenes=['scene.md'], review_big_picture=value)
+            manager.submit(cid, client_request_id='bad-oc', question='', action_id='craft_mckee',
+                           action_scope='scene', scenes=['scene.md'], review_open_critique=value)
         assert not clients[0].prompts
+    finally:
+        manager.close()
+
+
+def test_review_prompt_drops_clashing_scene_md_example_and_merge_wording(tmp_path: Path, monkeypatch):
+    manager, cid, clients, custom_skill = _manager(tmp_path, monkeypatch)
+    custom_skill.unlink()
+    try:
+        manager.submit(cid, client_request_id='clean-prompt', question='', action_id='craft_mckee',
+                       action_scope='scene', scenes=['scene.md'])
+        deadline = time.monotonic() + 3
+        while not clients[0].prompts and time.monotonic() < deadline:
+            time.sleep(.01)
+        prompt = clients[0].prompts[0]
+        assert 'scene.md · Line 12' not in prompt
+        assert 'combine overlapping' not in prompt
+        assert 'avoid duplicate findings—without merging distinct points' in prompt
+        assert 'write a pasteable' not in default_skill_body('craft_mckee')
+    finally:
+        manager.close()
+
+
+def test_multi_scene_review_skips_heading_only_scenes_and_flags_them_in_receipt(tmp_path: Path, monkeypatch):
+    manager, cid, clients, _ = _manager(tmp_path, monkeypatch)
+    try:
+        (manager.root / 'manuscript' / 'stub.md').write_text('---\ntitle: Day 58\n---\n# Day 58\n')
+        manager.submit(cid, client_request_id='skip-empty', question='', action_id='craft_coyne',
+                       action_scope='scenes', scenes=['scene.md', 'z-next.md', 'stub.md'])
+        deadline = time.monotonic() + 3
+        while not clients[0].prompts and time.monotonic() < deadline:
+            time.sleep(.01)
+        prompt = clients[0].prompts[0]
+        message = [m for m in manager.get_snapshot(cid)['messages'] if m['role'] == 'user'][-1]
+        assert 'Coyne · The Story Grid · 2 scenes' in message['text']
+        assert 'Skipped (no prose yet): manuscript/stub.md' in message['text']
+        assert 'Scenes analyzed (2): manuscript/scene.md, manuscript/z-next.md.' in prompt
+        assert '3. manuscript/stub.md — Day 58 (no prose yet; omitted from review)' in prompt
+        assert message['context_sent']['documents'] == ['manuscript/scene.md', 'manuscript/z-next.md']
+
+        # A single empty scene (e.g. Bird by Bird) stays included.
+        manager.submit(cid, client_request_id='single-empty', question='', action_id='craft_lamott',
+                       action_scope='scene', scenes=['stub.md'])
+        deadline = time.monotonic() + 3
+        while len(clients[0].prompts) < 2 and time.monotonic() < deadline:
+            time.sleep(.01)
+        single_prompt = clients[0].prompts[1]
+        assert 'Scenes analyzed (1): manuscript/stub.md.' in single_prompt
     finally:
         manager.close()

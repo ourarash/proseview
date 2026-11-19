@@ -60,6 +60,49 @@ def test_main_cards_run_immediately_with_all_lanes_and_book_defaults(page: Page,
         assert 'comedy_styles' not in req and 'comedy_goals' not in req
 
 
+@pytest.mark.parametrize(('label', 'lane_count'), [
+    ('Quick critique', 4),
+    ('Deepen & layer', 4),
+    ('Craft review', 5),
+    ('Comedy review', 10),
+])
+def test_all_lanes_toggles_every_lane_off_and_on_with_mouse_and_keyboard(page: Page, server: ProseviewServer, label, lane_count):
+    requests = []
+    page.on('request', lambda request: requests.append(request.post_data_json)
+            if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
+    open_review(page, server, label)
+    page.locator('#discussReviewFocusTrigger').click()
+    popover = page.locator('#discussReviewFocusPopover')
+    all_lanes = popover.locator('#discussReviewLane-all')
+    checked_lanes = popover.locator('.discuss-craft-focus-option-pick:not(#discussReviewLane-all)[aria-checked="true"]')
+    expect(all_lanes).to_have_attribute('aria-checked', 'true')
+    expect(checked_lanes).to_have_count(lane_count)
+
+    all_lanes.click()
+    expect(all_lanes).to_have_attribute('aria-checked', 'false')
+    expect(checked_lanes).to_have_count(0)
+    expect(page.locator('.discuss-craft-focus-trigger-text')).to_have_text('Choose at least one lane')
+    expect(page.locator('#discussSend')).to_be_disabled()
+    expect(all_lanes).to_be_focused()
+
+    page.keyboard.press('Space')
+    expect(all_lanes).to_have_attribute('aria-checked', 'true')
+    expect(checked_lanes).to_have_count(lane_count)
+    expect(page.locator('#discussSend')).to_be_enabled()
+
+    checked_lanes.first.click()
+    expect(all_lanes).to_have_attribute('aria-checked', 'false')
+    expect(checked_lanes).to_have_count(lane_count - 1)
+    all_lanes.click()
+    expect(all_lanes).to_have_attribute('aria-checked', 'true')
+    expect(checked_lanes).to_have_count(lane_count)
+    page.keyboard.press('Escape')
+    page.locator('#discussReviewFocusTrigger').click()
+    expect(all_lanes).to_have_attribute('aria-checked', 'true')
+    expect(checked_lanes).to_have_count(lane_count)
+    assert requests == []
+
+
 @pytest.mark.parametrize(('label', 'first_lane', 'lane_count'), [
     ('Quick critique', 'logic', 4),
     ('Deepen & layer', 'subtext', 4),
@@ -463,18 +506,26 @@ def test_bird_by_bird_explains_it_has_no_priority_cap(page: Page, server: Prosev
     assert 'one small drafting assignment' in page.locator('.discuss-review-limit').inner_text()
 
 
-def test_big_picture_critique_is_off_by_default_remembered_and_left_out_of_run_now(page: Page, server: ProseviewServer):
+def test_open_critique_is_off_by_default_remembered_and_left_out_of_run_now(page: Page, server: ProseviewServer):
     requests = []
     page.on('request', lambda request: requests.append(request.post_data_json)
             if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
     open_review(page, server, 'Deepen & layer')
-    assert not page.locator('#discussReviewBigPicture').count()
+    assert not page.locator('#discussReviewOpenCritique').count()
     customize_review(page, 'Craft review')
     page.locator('#discussReviewBook-craft_mckee').click()
-    bp = page.locator('#discussReviewBigPicture')
-    assert not bp.is_checked()
-    bp.check()
-    assert 'Big-picture' in page.locator('#discussTaskMode').inner_text()
+    oc = page.locator('#discussReviewOpenCritique')
+    assert not oc.is_checked()
+    page.locator('#discussReviewOpenCritiqueInfo').click()
+    popover = page.locator('#discussReviewInfoPopover')
+    expect(popover).to_be_visible()
+    assert 'Rigid template and strict rules' in popover.inner_text()
+    assert 'Model chooses level and structure' in popover.inner_text()
+    assert not oc.is_checked()
+    page.keyboard.press('Escape')
+    expect(popover).not_to_be_attached()
+    oc.check()
+    assert 'Open critique' in page.locator('#discussTaskMode').inner_text()
     page.locator('#discussReviewFocusTrigger').click()
     page.locator('#discussReviewLanesClear').click()
     page.locator('#discussReviewLane-want').click()
@@ -482,17 +533,17 @@ def test_big_picture_critique_is_off_by_default_remembered_and_left_out_of_run_n
     page.keyboard.press('Escape')
     page.locator('#discussSend').click()
     wait_for_discuss_answer(page, 'Fake answer')
-    assert requests[-1]['review_big_picture'] is True
+    assert requests[-1]['review_open_critique'] is True
     assert requests[-1]['review_lanes'] == ['want', 'subtext']
-    assert 'Format: big-picture critique (Before/After optional)' in page.locator('.discuss-craft-request-summary').last.inner_text()
+    assert 'Format: open critique' in page.locator('.discuss-craft-request-summary').last.inner_text()
     wait_for_discuss_idle(page)
     # The card's Run now keeps the default.
     page.locator('#discussCraftButton').click()
     page.get_by_role('button', name='Run Craft review with defaults', exact=True).click()
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
-    assert requests[-1]['review_big_picture'] is False
-    assert 'Format: big-picture critique' not in page.locator('.discuss-craft-request-summary').last.inner_text()
+    assert requests[-1]['review_open_critique'] is False
+    assert 'Format: open critique' not in page.locator('.discuss-craft-request-summary').last.inner_text()
     wait_for_discuss_idle(page)
     page.reload()
     page.wait_for_function("() => typeof _discussCraftState === 'object'")
-    assert page.evaluate('_discussCraftState.bigPicture') is True
+    assert page.evaluate('_discussCraftState.openCritique') is True

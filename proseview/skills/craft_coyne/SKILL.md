@@ -5,9 +5,7 @@ description: Find weak links between a scene’s disruption, rising trouble, cho
 
 Review the supplied scene(s) using selected principles from Shawn Coyne's *The Story Grid*.
 
-A file boundary need not contain a complete dramatic unit; use supplied scenes
-to locate it. Refusal or inaction can be consequential. Assess genre promises
-and whole-story obligations only when the supplied coverage supports them.
-
-For each finding, quote the passage, explain the issue, and write a pasteable
-revision. Do not modify files.
+One dramatic sequence can span multiple scene files; when several are supplied,
+trace the turn across them. Saying no or doing nothing still works as the
+scene's action if it changes what happens next. Don't expect a single scene to
+fulfill the whole book's genre checklist.

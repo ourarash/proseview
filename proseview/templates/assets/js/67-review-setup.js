@@ -28,18 +28,18 @@
         function _readReviewIncludeKeepPref() {
             try { return localStorage.getItem(DISCUSS_INCLUDE_KEEP_PREF) === 'on'; } catch (e) { return false; }
         }
-        // Big-picture critique drops mandatory Before/After rewrites and widens
-        // lane framing so structural flaws surface first. Off unless enabled.
-        const DISCUSS_BIG_PICTURE_PREF = 'proseview-review-big-picture';
-        function _readReviewBigPicturePref() {
-            try { return localStorage.getItem(DISCUSS_BIG_PICTURE_PREF) === 'on'; } catch (e) { return false; }
+        // Open critique lets the reviewer choose what matters most without the
+        // rigid lane-by-lane template. Off unless enabled.
+        const DISCUSS_OPEN_CRITIQUE_PREF = 'proseview-review-open-critique';
+        function _readReviewOpenCritiquePref() {
+            try { return localStorage.getItem(DISCUSS_OPEN_CRITIQUE_PREF) === 'on'; } catch (e) { return false; }
         }
         // Deepen offers opportunities only, and Bird by Bird's keep/assignment
         // format is the review itself.
         function discussReviewHasKeepChoice(id) {
             return id !== 'deepen_and_layer' && id !== 'craft_lamott';
         }
-        function discussReviewHasBigPictureChoice(id) {
+        function discussReviewHasOpenCritiqueChoice(id) {
             return id !== 'deepen_and_layer' && id !== 'craft_lamott';
         }
 
@@ -99,46 +99,77 @@
             container.appendChild(discussPassGroup(DISCUSS_SCENE_PASSES, runDiscussScenePass));
         }
 
+        var _discussReviewInfoTriggerId = '';
+
+        function _addReviewInfoRow(rows, label, value, explanation) {
+            var row = elementWith('discuss-review-info-row');
+            var term = document.createElement('dt'); term.textContent = label;
+            var detail = document.createElement('dd');
+            detail.appendChild(document.createTextNode(value));
+            if (explanation) detail.appendChild(elementWith('discuss-review-info-note', explanation));
+            row.append(term, detail); rows.appendChild(row);
+        }
+
         function closeDiscussReviewInfo(restoreFocus) {
             var popover = document.getElementById('discussReviewInfoPopover');
             if (popover) popover.remove();
-            var trigger = document.getElementById('discussReviewInfoTrigger');
+            var trigger = _discussReviewInfoTriggerId ? document.getElementById(_discussReviewInfoTriggerId) : null;
             if (trigger) {
                 trigger.setAttribute('aria-expanded', 'false');
                 if (restoreFocus) trigger.focus({preventScroll: true});
             }
+            _discussReviewInfoTriggerId = '';
         }
 
         function renderDiscussReviewInfoContents(body, error) {
             body.replaceChildren();
             var rows = document.createElement('dl');
             var loaded = !!window._discussContextDefaults;
-            function addRow(label, value, explanation) {
-                var row = elementWith('discuss-review-info-row');
-                var term = document.createElement('dt'); term.textContent = label;
-                var detail = document.createElement('dd');
-                detail.appendChild(document.createTextNode(value));
-                if (explanation) detail.appendChild(elementWith('discuss-review-info-note', explanation));
-                row.append(term, detail); rows.appendChild(row);
-            }
             function flag(key) { return loaded ? (_discussDefaultFlag(key) ? 'Included' : 'Not included') : (error ? 'Unavailable' : 'Loading…'); }
-            addRow('Scene', 'The current scene, in full.');
-            addRow('Feedback', 'Every lane for the chosen review.');
-            addRow('Saved story notes', 'Included when available.', 'Story facts and purpose saved for this scene.');
-            addRow('Scene details', flag('includeFrontmatter'), 'Fields such as goal, conflict, and outcome.');
-            addRow('Nearby scenes', flag('includeAdjacent'), 'Short excerpts from the scenes immediately before and after.');
-            addRow('Revision priorities', 'Up to ' + DISCUSS_DEFAULT_MAX_FINDINGS, 'Most important first. Change the number in Customize.');
-            addRow('Keep list', 'Off', 'To list moments that work apart from the priorities, turn on “Show what to keep” in Customize.');
-            addRow('Check planned events', 'Off', 'Notes provide background. To check for missing events, turn on “Check my notes for planned beats” in Customize.');
+            _addReviewInfoRow(rows, 'Scene', 'The current scene, in full.');
+            _addReviewInfoRow(rows, 'Feedback', 'Every lane for the chosen review.');
+            _addReviewInfoRow(rows, 'Saved story notes', 'Included when available.', 'Story facts and purpose saved for this scene.');
+            _addReviewInfoRow(rows, 'Scene details', flag('includeFrontmatter'), 'Fields such as goal, conflict, and outcome.');
+            _addReviewInfoRow(rows, 'Nearby scenes', flag('includeAdjacent'), 'Short excerpts from the scenes immediately before and after.');
+            _addReviewInfoRow(rows, 'Revision priorities', 'Up to ' + DISCUSS_DEFAULT_MAX_FINDINGS, 'Most important first. Change the number in Customize.');
+            _addReviewInfoRow(rows, 'Keep list', 'Off', 'To list moments that work apart from the priorities, turn on “Show what to keep” in Customize.');
+            _addReviewInfoRow(rows, 'Check planned events', 'Off', 'Notes provide background. To check for missing events, turn on “Check my notes for planned beats” in Customize.');
             body.append(rows, elementWith('discuss-review-info-note', error
                 ? 'Could not load Discuss settings. Close and reopen this information to retry.'
                 : 'Scene details and nearby excerpts follow Settings → Discuss.'));
         }
 
+        function renderOpenCritiqueInfoContents(body) {
+            body.replaceChildren();
+            var rows = document.createElement('dl');
+            _addReviewInfoRow(
+                rows,
+                'Default (unchecked)',
+                'Rigid template and strict rules',
+                'Every finding must follow Lane → Before → Why → After with a pasteable rewrite, stay strictly inside the selected lanes, and include long principle essays.'
+            );
+            _addReviewInfoRow(
+                rows,
+                'Open critique (checked)',
+                'Model chooses level and structure',
+                'Picks whatever issues matter most (structure, character, or prose), keeps distinct points separate, treats selected lanes as a focus rather than a fence, and omits the long principle essays.'
+            );
+            _addReviewInfoRow(
+                rows,
+                'Rewrites & citations',
+                'Drop-in Before/After when prose fits',
+                'Anchors points with exact quoted lines and links, gives Before/After rewrites for localized prose changes, and allows brief directions for large cuts or restructures.'
+            );
+            body.append(rows, elementWith(
+                'discuss-review-info-note',
+                'Leave unchecked for the original structured review; check it when you want freer, less constrained feedback.'
+            ));
+        }
+
         function positionDiscussReviewInfo() {
             var popover = document.getElementById('discussReviewInfoPopover');
             if (!popover) return;
-            var trigger = document.getElementById('discussReviewInfoTrigger');
+            var trigger = _discussReviewInfoTriggerId ? document.getElementById(_discussReviewInfoTriggerId) : null;
             var log = document.getElementById('discussLog');
             if (!trigger || !trigger.getClientRects().length || !log) { closeDiscussReviewInfo(); return; }
             var rect = trigger.getBoundingClientRect();
@@ -153,30 +184,56 @@
             popover.style.top = (opensUp ? rect.top - popover.offsetHeight - 6 : rect.bottom + 6) + 'px';
         }
 
-        function toggleDiscussReviewInfo() {
-            if (document.getElementById('discussReviewInfoPopover')) { closeDiscussReviewInfo(true); return; }
-            var trigger = document.getElementById('discussReviewInfoTrigger');
+        function openDiscussReviewInfoPopover(triggerId, titleText, closeAriaLabel, renderContents) {
+            if (document.getElementById('discussReviewInfoPopover')) {
+                var same = _discussReviewInfoTriggerId === triggerId;
+                closeDiscussReviewInfo(same);
+                if (same) return null;
+            }
+            var trigger = document.getElementById(triggerId);
+            if (!trigger) return null;
+            _discussReviewInfoTriggerId = triggerId;
             var popover = elementWith('discuss-review-info-popover');
             popover.id = 'discussReviewInfoPopover';
             popover.setAttribute('role', 'dialog');
             popover.setAttribute('aria-labelledby', 'discussReviewInfoTitle');
             var head = elementWith('discuss-review-info-head');
             var title = document.createElement('strong');
-            title.id = 'discussReviewInfoTitle'; title.textContent = 'What this review receives';
+            title.id = 'discussReviewInfoTitle'; title.textContent = titleText;
             var close = document.createElement('button'); close.type = 'button'; close.textContent = '×';
-            close.setAttribute('aria-label', 'Close quick review information');
+            close.setAttribute('aria-label', closeAriaLabel);
             close.onclick = function() { closeDiscussReviewInfo(true); };
             head.append(title, close);
             var body = elementWith('discuss-review-info-body');
-            renderDiscussReviewInfoContents(body);
+            renderContents(body);
             popover.append(head, body); document.body.appendChild(popover);
             trigger.setAttribute('aria-expanded', 'true');
             positionDiscussReviewInfo(); close.focus({preventScroll: true});
+            return {popover: popover, body: body};
+        }
+
+        function toggleDiscussReviewInfo() {
+            var opened = openDiscussReviewInfoPopover(
+                'discussReviewInfoTrigger',
+                'What this review receives',
+                'Close quick review information',
+                renderDiscussReviewInfoContents
+            );
+            if (!opened) return;
             _ensureDiscussContextDefaults().then(function() {
-                if (popover.isConnected) { renderDiscussReviewInfoContents(body); positionDiscussReviewInfo(); }
+                if (opened.popover.isConnected) { renderDiscussReviewInfoContents(opened.body); positionDiscussReviewInfo(); }
             }).catch(function() {
-                if (popover.isConnected) { renderDiscussReviewInfoContents(body, true); positionDiscussReviewInfo(); }
+                if (opened.popover.isConnected) { renderDiscussReviewInfoContents(opened.body, true); positionDiscussReviewInfo(); }
             });
+        }
+
+        function toggleOpenCritiqueInfo() {
+            openDiscussReviewInfoPopover(
+                'discussReviewOpenCritiqueInfo',
+                'Open critique vs. default template',
+                'Close open critique information',
+                renderOpenCritiqueInfoContents
+            );
         }
 
         function toggleDiscussReviewCards() {
@@ -537,8 +594,8 @@
             var row = elementWith('discuss-review-limit-row');
             row.append(label, input, elementWith('discuss-review-limit-noun', noun));
             box.append(row, help);
-            function addReviewOptionToggle(className, id, helpId, titleText, helpText, checked, onChange) {
-                var toggle = document.createElement('label');
+            function addReviewOptionToggle(className, id, helpId, titleText, helpText, checked, onChange, infoConfig) {
+                var toggle = document.createElement(infoConfig ? 'div' : 'label');
                 toggle.className = className;
                 var toggleInput = document.createElement('input');
                 toggleInput.type = 'checkbox'; toggleInput.id = id;
@@ -547,9 +604,23 @@
                 toggleInput.onchange = function() { onChange(toggleInput.checked); };
                 var copy = elementWith('discuss-review-note-copy');
                 var title = document.createElement('strong'); title.textContent = titleText;
+                if (infoConfig) {
+                    var headRow = elementWith('discuss-review-option-head');
+                    var titleLabel = document.createElement('label');
+                    titleLabel.htmlFor = id;
+                    titleLabel.appendChild(title);
+                    var infoBtn = reviewInfoButton(infoConfig.label, 'discuss-review-info-trigger discuss-review-option-info', infoConfig.onclick);
+                    infoBtn.id = infoConfig.id;
+                    infoBtn.setAttribute('aria-controls', 'discussReviewInfoPopover');
+                    infoBtn.setAttribute('aria-expanded', _discussReviewInfoTriggerId === infoConfig.id && document.getElementById('discussReviewInfoPopover') ? 'true' : 'false');
+                    headRow.append(titleLabel, infoBtn);
+                    copy.appendChild(headRow);
+                } else {
+                    copy.appendChild(title);
+                }
                 var toggleHelp = elementWith('discuss-craft-context-help', helpText);
                 toggleHelp.id = helpId;
-                copy.append(title, toggleHelp);
+                copy.appendChild(toggleHelp);
                 toggle.append(toggleInput, copy);
                 box.appendChild(toggle);
             }
@@ -568,18 +639,23 @@
                     }
                 );
             }
-            if (discussReviewHasBigPictureChoice(guide.id)) {
+            if (discussReviewHasOpenCritiqueChoice(guide.id)) {
                 addReviewOptionToggle(
-                    'discuss-review-big-picture-toggle',
-                    'discussReviewBigPicture',
-                    'discussReviewBigPictureHelp',
-                    'Big-picture critique',
-                    'Focus on structure and dramatic movement; use Before/After only when suggesting a rewrite.',
-                    _discussCraftState.bigPicture,
+                    'discuss-review-open-critique-toggle',
+                    'discussReviewOpenCritique',
+                    'discussReviewOpenCritiqueHelp',
+                    'Open critique',
+                    'Let the model decide what matters most—structure, character, or prose—without the rigid template.',
+                    _discussCraftState.openCritique,
                     function(on) {
-                        _discussCraftState.bigPicture = on;
-                        try { localStorage.setItem(DISCUSS_BIG_PICTURE_PREF, on ? 'on' : 'off'); } catch (e) {}
+                        _discussCraftState.openCritique = on;
+                        try { localStorage.setItem(DISCUSS_OPEN_CRITIQUE_PREF, on ? 'on' : 'off'); } catch (e) {}
                         renderDiscussTaskMode();
+                    },
+                    {
+                        id: 'discussReviewOpenCritiqueInfo',
+                        label: 'How Open critique differs from the default template',
+                        onclick: toggleOpenCritiqueInfo
                     }
                 );
             }
@@ -677,7 +753,7 @@
                 if (next) next.focus({preventScroll: true});
             }
             addOption('', 'All lanes', 'Review every lane in ' + guide.book + '.', selected.length === guide.lanes.length, function() {
-                update(guide.lanes.map(function(lane) { return lane.id; }), 'discussReviewLane-all');
+                update(selected.length === guide.lanes.length ? [] : guide.lanes.map(function(lane) { return lane.id; }), 'discussReviewLane-all');
             });
             guide.lanes.forEach(function(lane) {
                 var checked = selected.some(function(item) { return item.id === lane.id; });
@@ -873,7 +949,7 @@
         document.addEventListener('scroll', positionDiscussReviewFocusPopover, true);
 
         document.addEventListener('mousedown', function(event) {
-            if (!event.target.closest('#discussReviewInfoTrigger, #discussReviewInfoPopover')) closeDiscussReviewInfo();
+            if (!event.target.closest('#discussReviewInfoTrigger, #discussReviewOpenCritiqueInfo, #discussReviewInfoPopover')) closeDiscussReviewInfo();
         });
         document.addEventListener('keydown', function(event) {
             if (!document.getElementById('discussReviewInfoPopover')) return;

@@ -39,16 +39,16 @@ and a one-sentence reason. Keep items are not revision priorities. Omit the head
 nothing clearly earns it."""
 
 
-def selected_lanes_instruction(selected_lanes: list[dict], *, total_lanes: int, big_picture: bool = False) -> str:
+def selected_lanes_instruction(selected_lanes: list[dict], *, total_lanes: int, open_critique: bool = False) -> str:
     """How strictly the review sticks to the chosen lanes."""
     names = "; ".join(lane_name(lane) for lane in selected_lanes)
-    if not big_picture:
+    if not open_critique:
         return f"Selected lanes: {names}. Stay within the selected lanes."
     if len(selected_lanes) < total_lanes:
-        return (f"Pay particular attention to the selected lanes: {names}. "
-                "Connect wider structural issues from this editorial lens to them where relevant.")
+        noun = "lane" if len(selected_lanes) == 1 else "lanes"
+        return f"Focus on the selected {noun}: {names}."
     return (f"Selected lanes: {names}. "
-            "Draw freely on the wider structural principles of this editorial lens as well.")
+            "Draw freely on the whole editorial lens.")
 
 
 # Reviews got short and minor when this contract was 1,400 words of rules, most
@@ -58,30 +58,29 @@ def selected_lanes_instruction(selected_lanes: list[dict], *, total_lanes: int, 
 # reviews shows it is missing. See plans/review-prompt-rewrite.md.
 def review_contract(
     *, scene_count: int, max_findings: int, check_plan: bool, include_keep: bool,
-    goal: str = "", item: str = "finding", big_picture: bool = False,
-    big_picture_goal: str = "",
+    goal: str = "", item: str = "finding", open_critique: bool = False,
 ) -> str:
     """The shared goal, output format, and rules for a review card."""
     scope = "scene" if scene_count == 1 else "selection of scenes"
-    if big_picture:
+    if open_critique:
         goal_line = (
-            big_picture_goal or "Give high-level feedback on what most holds this {scope} back, "
-            "using the editorial lens (up to {max_findings} points, most important first)."
+            goal or "Give feedback on what would most improve this {scope}, "
+            "using the editorial lens (up to {max_findings} distinct points, most important first)."
         ).format(scope=scope, max_findings=max_findings, item=item)
         lines = [
-            "The review guide supplies the editorial lens; this format governs the output. "
-            "If they conflict on format or scope, follow these instructions.",
+            "The review guide below supplies the editorial lens; these instructions govern only "
+            "citations, the cap, and edits.",
             goal_line,
-            "Focus on big-picture structure, scene turns, escalation, opposition, setup/payoff, "
-            "and dramatic movement rather than sentence-level polish or phrasing templates.",
+            "Choose whatever issues matter most—structural, dramatic, character, or prose—without "
+            "collapsing distinct points together.",
             "Anchor observations with exact quotes (italic blockquote, no ellipses) and a clickable link "
             "on the line below each quote, such as [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18), "
             "using each quoted scene's own file name and path.",
-            "When you suggest a concrete rewrite, show **Before:** (italic blockquote + link below) and "
-            "**After:** Replace [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18): "
+            "Whenever a change can be written directly as prose, give a drop-in **Before:** / **After:** rewrite: "
+            "**Before:** (italic blockquote + link below) and **After:** Replace "
+            "[03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18): "
             "(or **After:** Insert after [03-the-harbor.md · Line 18](manuscript/ch02/03-the-harbor.md#L18):) "
-            "as a plain blockquote; when a point is structural (cutting a sagging stretch, reordering beats, "
-            "adding an obstacle), a brief direction is enough.",
+            "as a plain blockquote; for larger cuts or restructures, a brief direction is fine.",
         ]
         voice_rule = "Suggested text keeps the scene's voice. Mark any new story fact as a possibility."
     else:
@@ -147,7 +146,7 @@ Assess this gap against the writer's stated plan; a note is not a rule from the 
 def craft_review_contract(
     action_id: str, *, focus: str = "", scene_count: int = 1, check_plan: bool = False,
     lane_ids: list[str] | None = None, max_findings: int = DEFAULT_MAX_FINDINGS,
-    include_keep: bool = False, big_picture: bool = False,
+    include_keep: bool = False, open_critique: bool = False,
 ) -> str:
     guide = craft_guide(action_id)
     if not guide:
@@ -174,10 +173,15 @@ def craft_review_contract(
     else:
         lines = [review_contract(scene_count=scene_count, max_findings=max_findings,
                                  check_plan=check_plan, include_keep=include_keep,
-                                 big_picture=big_picture)]
+                                 open_critique=open_critique)]
         lines.append(selected_lanes_instruction(selected_lanes, total_lanes=len(guide["lanes"]),
-                                                big_picture=big_picture))
-    lines.append(f"Selected book: {guide['book']}\nSelected book principles:")
-    for lane in selected_lanes:
-        lines.append(f"- {lane_name(lane)} — {lane['brief']}\nPrinciple: {lane['summary']}")
+                                                open_critique=open_critique))
+    if open_critique and action_id != "craft_lamott":
+        lines.append(f"Selected book: {guide['book']} ({guide['author']})\nSelected lane briefs:")
+        for lane in selected_lanes:
+            lines.append(f"- {lane_name(lane)} — {lane['brief']}")
+    else:
+        lines.append(f"Selected book: {guide['book']}\nSelected book principles:")
+        for lane in selected_lanes:
+            lines.append(f"- {lane_name(lane)} — {lane['brief']}\nPrinciple: {lane['summary']}")
     return "\n\n".join(lines)

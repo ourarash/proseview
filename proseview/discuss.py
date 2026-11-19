@@ -1836,12 +1836,12 @@ def _review_include_keep(value: Any) -> bool:
     return value
 
 
-def _review_big_picture(value: Any) -> bool:
-    """Whether a review runs in big-picture mode without mandatory Before/After rewrites."""
+def _review_open_critique(value: Any) -> bool:
+    """Whether a review runs in open critique mode without the fixed template."""
     if value is None:
         return False
     if not isinstance(value, bool):
-        raise ContextError("the Big-picture choice must be on or off")
+        raise ContextError("the Open critique choice must be on or off")
     return value
 
 
@@ -3145,6 +3145,7 @@ class DiscussManager:
         action_id: str,
         live_target: Path | None = None,
         live_content: str | None = None,
+        empty_paths: set[Path] | None = None,
     ) -> str:
         """Assemble ordered scene manifest, frontmatter, and style hits for multi-scene passes."""
         lines = ["Selected scenes in order:"]
@@ -3158,7 +3159,8 @@ class DiscussManager:
             )
             fm, body = split_frontmatter(raw)
             title = str((fm or {}).get("title") or "").strip() if isinstance(fm, dict) else ""
-            lines.append(f"{idx}. {rel}" + (f" — {title}" if title else ""))
+            suffix = " (no prose yet; omitted from review)" if empty_paths and path in empty_paths else ""
+            lines.append(f"{idx}. {rel}" + (f" — {title}" if title else "") + suffix)
             if action_id == "style_consistency":
                 prose, _note = _scene_pass_body(raw)
                 for row in style_observations(prose, repeat_terms=self._repeat_terms(prose)):
@@ -3198,7 +3200,7 @@ class DiscussManager:
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
         review_include_keep: Any = None,
-        review_big_picture: Any = None,
+        review_open_critique: Any = None,
         include_frontmatter: bool = True,
         include_adjacent: bool = True,
     ) -> tuple[str, str, str, list[dict[str, str]], list[str] | None]:
@@ -3247,11 +3249,26 @@ class DiscussManager:
             if selection or selection_range or selection_snapshot or selection_source:
                 raise ContextError("a scene pass reads full scenes and takes no selection")
             multi_paths = self._resolve_scene_paths([document["path"]])
+        analyzed_paths = list(multi_paths or [])
+        skipped_empty: list[Path] = []
         if is_review:
-            count = len(multi_paths) if multi_paths is not None else 1
+            live_target = self.context._document_target(document).resolve()
+            if multi_paths and len(multi_paths) > 1:
+                drafted: list[Path] = []
+                empty: list[Path] = []
+                for path in multi_paths:
+                    raw = live_content if live_content is not None and path == live_target else read_repo_text(path)
+                    if _scene_pass_body(raw)[0].strip():
+                        drafted.append(path)
+                    else:
+                        empty.append(path)
+                if drafted and empty:
+                    analyzed_paths = drafted
+                    skipped_empty = empty
+            count = len(analyzed_paths) if analyzed_paths else 1
             max_findings = _review_max_findings(review_max_findings)
             include_keep = _review_include_keep(review_include_keep)
-            big_picture = _review_big_picture(review_big_picture) if _keeps_list(action_id) else False
+            open_critique = _review_open_critique(review_open_critique) if _keeps_list(action_id) else False
             try:
                 lanes = selected_review_lanes(action_id, review_lanes, focus=focus)
                 if action_id == "comedy_review":
@@ -3281,6 +3298,10 @@ class DiscussManager:
                     context_rows.append((path.relative_to(self.root).as_posix(), value))
             prefix = "Craft review · " if is_craft else ""
             receipt = f"{prefix}{spec['label']} · {count} {'scene' if count == 1 else 'scenes'}"
+            if skipped_empty:
+                receipt += "\n\nSkipped (no prose yet): " + ", ".join(
+                    path.relative_to(self.root).as_posix() for path in skipped_empty
+                )
             if focus:
                 focused_lane = next((lane for lane in lanes if focus in (
                     lane["id"], lane["title"], craft_lane_name(lane),
@@ -3292,8 +3313,8 @@ class DiscussManager:
                 receipt += f"\n\n{noun}: up to {max_findings}"
             if _keeps_list(action_id):
                 receipt += "\n\nKeep: " + ("list what to preserve" if include_keep else "off")
-                if big_picture:
-                    receipt += "\n\nFormat: big-picture critique (Before/After optional)"
+                if open_critique:
+                    receipt += "\n\nFormat: open critique"
             if action_id == "comedy_review":
                 receipt += "\n\nComic styles: " + (", ".join(style["label"] for style in comic_styles) or "Follow the draft")
                 receipt += "\n\nReview goals: " + ", ".join(goal["label"] for goal in comic_goals)
@@ -3315,7 +3336,7 @@ class DiscussManager:
                 action_id, lanes, scene_count=count, check_plan=craft_check_plan,
                 comedy_styles=comedy_styles, comedy_goal=comedy_goal, comedy_goals=comedy_goals,
                 max_findings=max_findings, include_keep=include_keep and _keeps_list(action_id),
-                big_picture=big_picture,
+                open_critique=open_critique,
             )
             question = receipt + f"\n\n{divider}:\n" + contract + "\n\nReview guide:\n" + question
         elif custom and action_id != "update_frontmatter":
@@ -3324,18 +3345,20 @@ class DiscussManager:
         if multi_paths is not None and (len(multi_paths) > 1 or is_review):
             live_target = self.context._document_target(document).resolve()
             man_dir = resolve_manuscript_dir(self.root, self.context.cfg.manuscript_subdir).resolve()
+            active_paths = analyzed_paths if is_review else multi_paths
             extra_attachments = [
                 {"kind": "file", "path": path.relative_to(self.root).as_posix()}
-                for path in multi_paths
+                for path in active_paths
             ]
             notes = self._multi_scene_notes(
                 multi_paths,
                 action_id=action_id,
                 live_target=live_target,
                 live_content=live_content,
+                empty_paths=set(skipped_empty) if skipped_empty else None,
             )
-            if is_review and len(multi_paths) == 1:
-                target = multi_paths[0]
+            if is_review and len(active_paths) == 1:
+                target = active_paths[0]
                 raw = live_content if target == live_target and live_content is not None else read_repo_text(target)
                 adj = self._adjacent_scene_notes(
                     target,
@@ -3347,23 +3370,22 @@ class DiscussManager:
                 notes = "\n\n".join(part for part in (notes, adj) if part)
             rel_list = ", ".join(item["path"] for item in extra_attachments)
             citation_hint = (
-                "such as [scene.md · Line 12](manuscript/scene.md#L12). "
-                "Numeric prefixes label source lines; omit them when quoting the prose. "
+                ". Numeric prefixes label source lines; omit them when quoting the prose. "
                 "Cite only supplied numbered source lines. Adjacent excerpts are context only; "
                 "unselected scenes may bridge gaps between selected scenes.)"
-                if is_review else "such as `manuscript/scene.md · Line 12`.)"
+                if is_review else ", such as `manuscript/scene.md · Line 12`.)"
             )
             question += (
                 f"\n\n(Scenes analyzed ({len(extra_attachments)}): {rel_list}. "
                 "Analyze the attached scenes in order. When citing lines or suggesting "
-                "replacements, include each scene's repository-relative path and line number, "
+                "replacements, include each scene's repository-relative path and line number"
                 + citation_hint
             )
             if is_review:
-                question += "\n\n" + review_self_check(action_id, big_picture=big_picture)
+                question += "\n\n" + review_self_check(action_id, open_critique=open_critique)
             beatmap_paths = [
                 path.relative_to(man_dir).as_posix()
-                for path in multi_paths
+                for path in active_paths
                 if path.is_relative_to(man_dir)
             ]
             return question, "", notes, extra_attachments, beatmap_paths
@@ -4189,7 +4211,7 @@ class DiscussManager:
         comedy_goals: list[str] | None = None,
         review_max_findings: Any = None,
         review_include_keep: Any = None,
-        review_big_picture: Any = None,
+        review_open_critique: Any = None,
         skill: dict[str, Any] | None = None,
         retry_of_task_id: str = "",
         verify_of_task_id: str = "",
@@ -4327,7 +4349,7 @@ class DiscussManager:
                 comedy_goals=comedy_goals,
                 review_max_findings=review_max_findings,
                 review_include_keep=review_include_keep,
-                review_big_picture=review_big_picture,
+                review_open_critique=review_open_critique,
                 include_frontmatter=eff_frontmatter,
                 include_adjacent=eff_adjacent,
             )
@@ -4419,8 +4441,8 @@ class DiscussManager:
                           if review_guide(action_id) and not selection and action_id != "craft_lamott" else None),
             include_keep=(_review_include_keep(review_include_keep)
                           if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
-            big_picture=(_review_big_picture(review_big_picture)
-                         if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
+            open_critique=(_review_open_critique(review_open_critique)
+                           if review_guide(action_id) and not selection and _keeps_list(action_id) else None),
         )
         # A pass that exists to report stays sandboxed read-only. Everything
         # else may write, because the writer asked for something to be done and
@@ -5997,7 +6019,7 @@ class DiscussManager:
         check_plan: bool | None = None,
         max_findings: int | None = None,
         include_keep: bool | None = None,
-        big_picture: bool | None = None,
+        open_critique: bool | None = None,
     ) -> dict[str, Any]:
         skill_prompt = ""
         if action_id and (action_id in ACTION_DEFINITIONS or action_id in REPOSITORY_ACTION_DEFINITIONS):
@@ -6019,8 +6041,8 @@ class DiscussManager:
             "max_findings": max_findings,
             # Whether the review lists moments to keep; other turns omit it.
             "include_keep": include_keep,
-            # Whether the review runs in big-picture mode; other turns omit it.
-            "big_picture": big_picture,
+            # Whether the review runs in open critique mode; other turns omit it.
+            "open_critique": open_critique,
             "notes": _bounded_text(notes, 8000) if notes else "",
             "documents": list(documents),
             "selection": _bounded_text(selection, 4000) if selection else "",

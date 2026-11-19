@@ -6306,12 +6306,36 @@
         }
 
         .discuss-review-keep-toggle,
-        .discuss-review-big-picture-toggle {
+        .discuss-review-open-critique-toggle {
             display: flex;
             align-items: flex-start;
             gap: 8px;
             margin-top: 10px;
             cursor: pointer;
+        }
+
+        .discuss-review-open-critique-toggle {
+            cursor: default;
+        }
+
+        .discuss-review-open-critique-toggle input {
+            cursor: pointer;
+        }
+
+        .discuss-review-option-head {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .discuss-review-option-head label {
+            cursor: pointer;
+        }
+
+        .discuss-review-option-info {
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
         }
 
         .discuss-craft-focus-box {

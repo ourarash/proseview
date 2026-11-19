@@ -429,12 +429,13 @@ def test_guide_returns_focus_to_its_info_button_after_close_and_escape(page: Pag
         expect(info).to_be_focused()
 
 
-@pytest.mark.parametrize(('label', 'noun'), [
-    ('Quick critique', 'revision priorities'),
-    ('Deepen & layer', 'opportunities'),
-    ('Comedy review', 'revision priorities'),
+@pytest.mark.parametrize(('label', 'guide', 'noun', 'other'), [
+    ('Quick critique', 'quick_critique', 'revision priorities', 'Comedy review'),
+    ('Deepen & layer', 'deepen_and_layer', 'opportunities', 'Quick critique'),
+    ('Comedy review', 'comedy_review', 'revision priorities', 'Quick critique'),
 ])
-def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, server: ProseviewServer, label, noun):
+def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, server: ProseviewServer,
+                                                                 label, guide, noun, other):
     requests = []
     page.on('request', lambda request: requests.append(request.post_data_json)
             if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
@@ -464,11 +465,16 @@ def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, serv
     page.get_by_role('button', name='Run ' + label + ' with defaults', exact=True).click()
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
     assert requests[-1]['review_max_findings'] == 5
-    # The writer's cap survives a reload.
+    # The cap belongs to this card only: a large chapter-review cap must not
+    # carry over to another card.
     wait_for_discuss_idle(page)
+    page.locator('#discussCraftButton').click()
+    customize_review(page, other)
+    assert page.locator('#discussReviewMaxFindings').input_value() == '5'
+    # The writer's cap survives a reload.
     page.reload()
     page.wait_for_function("() => typeof _discussCraftState === 'object'")
-    assert page.evaluate('_discussCraftState.maxFindings') == 2
+    assert page.evaluate('id => discussReviewMaxFindings(id)', guide) == 2
 
 
 def test_show_what_to_keep_is_off_by_default_remembered_and_left_out_of_run_now(page: Page, server: ProseviewServer):

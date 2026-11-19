@@ -7,19 +7,40 @@
             {id: 'comedy_review', label: 'Comedy review', tabLabel: 'Comedy', run: 'Run comedy review'}
         ];
 
-        // One cap on revision priorities for every review card. Customize
-        // changes it, and the choice is remembered; a card's Run now keeps the
+        // A cap on revision priorities, remembered for each review guide (each
+        // pass and craft book) like its lanes, so a chapter review's large cap
+        // does not carry over to another card. A card's Run now keeps the
         // default. Bird by Bird keeps one assignment.
         const DISCUSS_DEFAULT_MAX_FINDINGS = 5;
         const DISCUSS_MAX_FINDINGS_LIMIT = 20;
-        const DISCUSS_MAX_FINDINGS_PREF = 'proseview-review-max-findings';
+        const DISCUSS_MAX_FINDINGS_PREF = 'proseview-review-max-findings-by-guide';
+
+        function _validReviewMaxFindings(value) {
+            return Number.isInteger(value) && value >= 1 && value <= DISCUSS_MAX_FINDINGS_LIMIT;
+        }
 
         function _readReviewMaxFindingsPref() {
+            var caps = Object.create(null);
             try {
-                var saved = Number(localStorage.getItem(DISCUSS_MAX_FINDINGS_PREF));
-                if (Number.isInteger(saved) && saved >= 1 && saved <= DISCUSS_MAX_FINDINGS_LIMIT) return saved;
+                // The old single cap applied to every card; start each guide fresh.
+                localStorage.removeItem('proseview-review-max-findings');
+                var saved = JSON.parse(localStorage.getItem(DISCUSS_MAX_FINDINGS_PREF) || '{}');
+                Object.keys(saved || {}).forEach(function(id) {
+                    if (_validReviewMaxFindings(saved[id])) caps[id] = saved[id];
+                });
             } catch (e) {}
-            return DISCUSS_DEFAULT_MAX_FINDINGS;
+            return caps;
+        }
+
+        function discussReviewMaxFindings(guideId) {
+            var value = _discussCraftState.maxFindings[guideId];
+            return _validReviewMaxFindings(value) ? value : DISCUSS_DEFAULT_MAX_FINDINGS;
+        }
+
+        function setDiscussReviewMaxFindings(guideId, value) {
+            if (value === DISCUSS_DEFAULT_MAX_FINDINGS) delete _discussCraftState.maxFindings[guideId];
+            else _discussCraftState.maxFindings[guideId] = value;
+            try { localStorage.setItem(DISCUSS_MAX_FINDINGS_PREF, JSON.stringify(_discussCraftState.maxFindings)); } catch (e) {}
         }
 
         // A separate Keep list of what works. Off unless the writer turns it on
@@ -572,7 +593,7 @@
             var input = document.createElement('input');
             input.type = 'number'; input.id = 'discussReviewMaxFindings';
             input.min = '1'; input.max = String(DISCUSS_MAX_FINDINGS_LIMIT); input.step = '1';
-            input.value = String(_discussCraftState.maxFindings);
+            input.value = String(discussReviewMaxFindings(guide.id));
             input.setAttribute('aria-describedby', 'discussReviewMaxFindingsHelp');
             var helpText = 'Most important first. The review gives fewer when fewer earn their place. Default '
                 + DISCUSS_DEFAULT_MAX_FINDINGS + ', most ' + DISCUSS_MAX_FINDINGS_LIMIT + '.';
@@ -583,8 +604,7 @@
                 var value = isFinite(typed) && input.value !== '' ? typed : DISCUSS_DEFAULT_MAX_FINDINGS;
                 value = Math.min(DISCUSS_MAX_FINDINGS_LIMIT, Math.max(1, value));
                 input.value = String(value);
-                _discussCraftState.maxFindings = value;
-                try { localStorage.setItem(DISCUSS_MAX_FINDINGS_PREF, String(value)); } catch (e) {}
+                setDiscussReviewMaxFindings(guide.id, value);
                 renderDiscussTaskMode();
                 // Say so when the number typed is not the number that will be used.
                 help.textContent = typed > DISCUSS_MAX_FINDINGS_LIMIT

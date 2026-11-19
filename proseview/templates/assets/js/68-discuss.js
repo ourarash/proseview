@@ -45,8 +45,8 @@
             // Off unless the writer asks: notes go stale quietly, and a planned
             // beat they dropped should not lead every review.
             checkPlan: false,
-            // How many revision priorities a custom review may give, remembered
-            // across reloads. The cards' Run now always uses the default.
+            // How many revision priorities a custom review may give, by guide id,
+            // remembered across reloads. The cards' Run now always uses the default.
             maxFindings: _readReviewMaxFindingsPref(),
             // Whether a custom review lists moments to keep, remembered across
             // reloads. Run now leaves it off.
@@ -8847,7 +8847,7 @@ function loadDiscussDiffMode(mode) {
                     + ' · Full prose · Frontmatter ' + (fmOn ? 'on' : 'off')
                     + (adjOn ? ' · ±1 excerpts' : '')
                     + (_discussCraftState.checkPlan ? ' · Plan check' : '')
-                    + (craftLens.id === 'craft_lamott' ? '' : ' · Up to ' + _discussCraftState.maxFindings
+                    + (craftLens.id === 'craft_lamott' ? '' : ' · Up to ' + discussReviewMaxFindings(craftLens.id)
                         + (craftLens.id === 'deepen_and_layer' ? ' opportunities' : ' priorities'))
                     + (_discussCraftState.includeKeep && discussReviewHasKeepChoice(craftLens.id) ? ' · Keep list' : '')
                     + (_discussCraftState.openCritique && discussReviewHasOpenCritiqueChoice(craftLens.id) ? ' · Open critique' : '');
@@ -10530,7 +10530,7 @@ function loadDiscussDiffMode(mode) {
                 craft_focus: defaults ? '' : (discussCraftFocus() || {}).id || '',
                 craft_context: '',
                 craft_check_plan: !defaults && !!_discussCraftState.checkPlan,
-                review_max_findings: defaults ? DISCUSS_DEFAULT_MAX_FINDINGS : _discussCraftState.maxFindings,
+                review_max_findings: defaults ? DISCUSS_DEFAULT_MAX_FINDINGS : discussReviewMaxFindings(lens.id),
                 review_include_keep: !defaults && !!_discussCraftState.includeKeep,
                 review_open_critique: !defaults && !!_discussCraftState.openCritique,
                 craft_lanes: lanes.map(discussCraftLaneName),

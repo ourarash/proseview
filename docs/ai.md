@@ -169,7 +169,8 @@ Three places where AI shows up, all opt-in:
    the scene, or the selection, works as a whole through the selected lanes.
    Before returning feedback, the agent silently checks coverage, overlapping
    findings, and complete edits. Customize sets how many findings a
-   review may give (5 by default, up to 20) and remembers it; a card's Run now
+   review may give (5 by default, up to 20) and remembers it for that review
+   type or book; a card's Run now
    uses 5. **Show what to keep**, off by default and also remembered, adds one or
    two moments that already work. Bird by Bird keeps its single assignment.
 

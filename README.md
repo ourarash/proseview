@@ -19,10 +19,19 @@ You read and edit each scene in clean book typography instead of looking at raw 
 
 Everything runs locally on your machine: no account, no subscription, no database, and no telemetry. AI is optional and off until you ask; without it, Proseview is still a complete writing studio that works offline.
 
+**macOS or Linux** (in Terminal):
+
 ```bash
-pipx install proseview
-proseview --root /path/to/your/novel
+curl -LsSf https://ourarash.github.io/proseview/install.sh | sh
 ```
+
+**Windows** (in PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex
+```
+
+Nothing needs to be installed first. [Quick start →](#quick-start)
 
 ![The Proseview dashboard with the file sidebar open on chapter one's scenes: a Progress card with the words against the goal, today's words, words a day, the writing streak, words per chapter and days to finish, above the scene list](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
@@ -258,16 +267,42 @@ Wonderland* (public domain), split into 39 scenes across 12 chapters. See
 
 ## Quick start
 
-Requires Python 3.11+ on macOS, Linux or Windows.
+On macOS or Linux, paste this into Terminal (on a Mac, press Cmd-Space and
+type Terminal):
 
 ```bash
-pipx install proseview
-proseview --root /path/to/your/novel
+curl -LsSf https://ourarash.github.io/proseview/install.sh | sh
 ```
 
-A browser tab opens at `http://localhost:7842`; press Ctrl-C to stop. If you
-want to use Claude in the side panel, install the `[claude]` extra instead:
-`pipx install "proseview[claude]"`.
+On Windows, paste this into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex
+```
+
+Nothing needs to be installed first, and no administrator password is asked
+for. The installer gets [uv](https://docs.astral.sh/uv/), which brings its own
+Python, and installs Proseview with it. It then asks where your book is: press
+Enter to start a new one in `Documents/Proseview/MyNovel`, or drag your book's
+folder into the window. It adds a **Proseview** icon to your Desktop (and the
+Start menu on Windows) and opens the book. Run the same line again to update.
+
+After that, double-click **Proseview**, or run `proseview`, to open the last
+book you used; a book in the current folder opens instead. A browser tab opens
+at `http://localhost:7842`; keep the window open while you write, and close it
+or press Ctrl-C to stop.
+
+| To | Run |
+| :--- | :--- |
+| Open your last book | `proseview` |
+| Choose another book in a folder picker | `proseview open` |
+| Open a particular folder | `proseview ~/Writing/My Book` |
+| Start a new book | `proseview new` (or `proseview new ~/Writing/Next`) |
+
+**Already use Python 3.11+?** `pipx install proseview` works too, and
+`uv tool upgrade proseview` or `pipx upgrade proseview` updates it. For Claude
+in the side panel, install `"proseview[claude]"` instead. Setting up Codex,
+Claude or Antigravity is described in [Working with AI](docs/ai.md).
 
 Proseview's book features read a `manuscript/` folder with one folder per
 chapter and one Markdown file per scene. Frontmatter is optional. Point it at a
@@ -314,7 +349,9 @@ browser) and download ready-made EPUB, PDF and Word files. `--title`,
 
 | Command | Description |
 | :--- | :--- |
-| `proseview serve` | Start the local dashboard server (default) |
+| `proseview serve` | Start the local dashboard server (default); opens the last book |
+| `proseview open` | Choose a book's folder (or pass one) and open it |
+| `proseview new` | Start a new book with its first scene |
 | `proseview export` | Compile the manuscript into an EPUB, PDF, or Word document |
 | `proseview snapshot` | Write a read-only copy of the dashboard as static files |
 | `proseview roster` | Suggest character names found in the manuscript prose |

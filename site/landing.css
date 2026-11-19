@@ -327,6 +327,22 @@ kbd {
 }
 .card .install + .button { margin-top: 10px; }
 
+.os-tabs { display: flex; gap: 4px; margin: 4px 0 12px; border-bottom: 1px solid var(--line); }
+.os-tabs button {
+  font: 600 14px var(--sans);
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.os-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.os-panel .step { margin: 0 0 10px; color: var(--muted); font-size: 15px; }
+.os-panel kbd { font: 13px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; }
+.card .os-panel + .os-panel + ul { margin-top: 14px; }
+
 /* FAQ */
 
 .faq { max-width: 780px !important; }

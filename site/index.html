@@ -39,7 +39,7 @@
     <a class="button primary" href="#get-started">Install Proseview</a>
     <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
-  <p class="fine">In a terminal: <code>pipx install proseview</code></p>
+  <p class="fine">One line in Terminal or PowerShell installs it. <a href="#get-started">How →</a></p>
   <ul class="badges" aria-label="Promises">
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Every draft backed up with git</li>
@@ -227,20 +227,31 @@
   <div class="cards single">
     <article class="card">
       <h3>On your computer</h3>
-      <p class="tag">macOS, Linux and Windows · Python 3.11+</p>
+      <p class="tag">macOS, Windows and Linux · nothing to install first</p>
+      <div class="os-tabs" role="tablist" aria-label="Your computer">
+        <button type="button" role="tab" id="osTabMac" aria-controls="osPanelMac" aria-selected="true" data-os="mac">Mac or Linux</button>
+        <button type="button" role="tab" id="osTabWin" aria-controls="osPanelWin" aria-selected="false" data-os="win" tabindex="-1">Windows</button>
+      </div>
+      <div class="os-panel" id="osPanelMac" role="tabpanel" aria-labelledby="osTabMac">
+        <p class="step">Open <strong>Terminal</strong> (on a Mac, press <kbd>Cmd</kbd>-<kbd>Space</kbd> and type Terminal), paste this line and press Return:</p>
+        <div class="install">
+          <code id="installMac">curl -LsSf https://ourarash.github.io/proseview/install.sh | sh</code>
+          <button type="button" data-copy="installMac">Copy</button>
+        </div>
+      </div>
+      <div class="os-panel" id="osPanelWin" role="tabpanel" aria-labelledby="osTabWin" hidden>
+        <p class="step">Open <strong>PowerShell</strong> (press the Windows key and type PowerShell), paste this line and press Enter:</p>
+        <div class="install">
+          <code id="installWin">irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex</code>
+          <button type="button" data-copy="installWin">Copy</button>
+        </div>
+      </div>
       <ul>
-        <li>Works on your own folders, beside git, Obsidian or any editor.</li>
-        <li>Everything, including print-ready PDFs and the optional Codex, Claude and Antigravity panel.</li>
+        <li>It asks where your book is: press Enter to start a new one, or drag in your book's folder.</li>
+        <li>It puts a Proseview icon on your Desktop. Double-click it to open your book; your files stay on your computer.</li>
+        <li>Run the same line again to update.</li>
       </ul>
-      <div class="install">
-        <code id="installCmd">pipx install proseview</code>
-        <button type="button" data-copy="installCmd">Copy</button>
-      </div>
-      <div class="install">
-        <code id="runCmd">proseview --root ~/my-novel</code>
-        <button type="button" data-copy="runCmd">Copy</button>
-      </div>
-      <p class="fine">For the Claude tab, install <code>"proseview[claude]"</code> instead. Codex and Antigravity need nothing extra.</p>
+      <p class="fine">Already use Python? <code>pipx install proseview</code>, then <code>proseview</code> in your book's folder.</p>
       <a class="button" href="https://github.com/ourarash/proseview#quick-start">Read the quick start</a>
     </article>
   </div>
@@ -295,6 +306,26 @@
 </footer>
 
 <script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.os-tabs [role=tab]'));
+  function show(os) {
+    tabs.forEach(function (tab) {
+      var on = tab.dataset.os === os;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      document.getElementById(tab.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { show(tab.dataset.os); });
+    tab.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      var next = tabs[(i + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      show(next.dataset.os); next.focus();
+    });
+  });
+  if (/Win/.test(navigator.platform || navigator.userAgent)) show('win');
+})();
 document.querySelectorAll('[data-copy]').forEach(function (button) {
   button.addEventListener('click', function () {
     var text = document.getElementById(button.dataset.copy).textContent;

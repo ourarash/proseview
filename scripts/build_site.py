@@ -98,7 +98,7 @@ def build_write(out: Path, pyodide: Path) -> None:
 
 def build_landing(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    for name in ("index.html", "landing.css"):
+    for name in ("index.html", "landing.css", "install.sh"):
         shutil.copyfile(SITE / name, out / name)
     (out / "images").mkdir(exist_ok=True)
     for name in LANDING_IMAGES:

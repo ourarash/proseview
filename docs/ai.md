@@ -240,6 +240,12 @@ Three places where AI shows up, all opt-in:
    pipx inject proseview claude-agent-sdk
    ```
 
+   If you installed Proseview with the one-line installer, add it with uv:
+
+   ```bash
+   uv tool install --upgrade "proseview[claude]"
+   ```
+
    Claude runs here as it does in the Claude Code VS Code extension: it loads
    your user, project, and local Claude settings (permission rules,
    `CLAUDE.md`, skills, MCP servers), uses Claude Code's own system prompt

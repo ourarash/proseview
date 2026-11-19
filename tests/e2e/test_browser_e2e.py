@@ -8362,9 +8362,27 @@ def test_a_new_conversation_leaves_the_edits_and_drops_their_review(page: Page, 
     _review_card(page)
     wait_for_discuss_idle(page)
 
+    # Deliver a review refresh after the reset has already cleared the card.
+    page.evaluate("""() => {
+        const api = discussApi;
+        let hold = true;
+        discussApi = function(path, body) {
+            const result = api(path, body);
+            if (hold && path.endsWith('/changes')) {
+                hold = false;
+                return result.then(data => new Promise(resolve => {
+                    window.releaseOldReview = () => resolve(data);
+                }));
+            }
+            return result;
+        };
+        refreshDiscussReview();
+    }""")
+    page.wait_for_function("() => typeof window.releaseOldReview === 'function'")
     page.click("#discussNewConversation")
     page.click("#discussNewConversationConfirm")
     page.wait_for_selector("#discussNewConversationDialog", state="hidden")
+    page.evaluate("async () => { window.releaseOldReview(); await new Promise(requestAnimationFrame); }")
     page.wait_for_function("() => !document.querySelector('.discuss-review')")
     # Leaving the conversation keeps what it did.
     assert CHANGED_SENTENCE in scene.read_text(encoding="utf-8")

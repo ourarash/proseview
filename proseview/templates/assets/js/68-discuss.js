@@ -4027,6 +4027,7 @@
                     }
                     if (type === 'turn.started' || type === 'conversation.reset') _discussStreamText = '';
                     if (type === 'conversation.reset') {
+                        _discussReviewRequest++;
                         _discussReview = [];
                         _discussReviewKeep = {};
                         _clearBtwTabs(cid);
@@ -8040,6 +8041,8 @@ function loadDiscussDiffMode(mode) {
         // offered is what actually happened -- not what the agent said it did.
 
         var _discussReview = null;
+        // A response from before a reset must not restore the previous review.
+        var _discussReviewRequest = 0;
         var _discussReviewMode = 'side-by-side';
         var _discussReviewUnreviewable = [];
         var _discussReviewKeep = {};
@@ -8053,10 +8056,11 @@ function loadDiscussDiffMode(mode) {
         function refreshDiscussReview(options) {
             if (!_discussConversationId) return;
             var conversationId = _discussConversationId;
+            var request = ++_discussReviewRequest;
             discussApi('/api/discuss/conversations/' + encodeURIComponent(conversationId) + '/changes',
                        {mode: _discussReviewMode})
                 .then(function(res) {
-                    if (conversationId !== _discussConversationId) return;
+                    if (conversationId !== _discussConversationId || request !== _discussReviewRequest) return;
                     _discussReview = res.files || [];
                     _discussReviewUnreviewable = res.unreviewable || [];
                     // Anything no longer on offer forgets its ticks, so a file
@@ -9551,6 +9555,7 @@ function loadDiscussDiffMode(mode) {
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
                 .then(function(data) {
                     resetChatHistoryCursor(_discussAgent);
+                    _discussReviewRequest++;
                     _discussReview = []; _discussReviewKeep = {};
                     _discussSnapshot = data.snapshot;
                     _discussSelection = '';

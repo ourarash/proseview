@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import itertools
 import time
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from proseview.discuss import DiscussManager
 
 from .test_highlight_suggestions import _repo
 from .transport_fakes import ClaudeFakeClient, CodexFakeClient
+
+# A counter, not the clock: Windows' monotonic clock can repeat within a
+# tick, and a reused request id is treated as a retry of the first request.
+_REQUEST_IDS = itertools.count(1)
 
 
 @pytest.fixture(autouse=True)
@@ -178,7 +183,7 @@ def _group_cmd(manager: DiscussManager, action: str = "state", key: str = "send-
     return manager.group_command({
         "action": action,
         "group_id": key,
-        "request_id": kw.pop("request_id", f"req-{time.monotonic_ns()}"),
+        "request_id": kw.pop("request_id", f"req-{next(_REQUEST_IDS)}"),
         **kw,
     })
 

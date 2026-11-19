@@ -156,7 +156,7 @@ def test_new_comedy_builtin_stays_in_app_and_writer_takeover_is_preserved(tmp_pa
     manager.close()
     owned = root / '.proseview/skills/comedy_review/SKILL.md'
     owned.parent.mkdir(parents=True)
-    owned.write_text('---\nname: comedy_review\n---\n\nFocus on this writer’s comic voice.\n')
+    owned.write_text('---\nname: comedy_review\n---\n\nFocus on this writer’s comic voice.\n', encoding='utf-8')
     manager = DiscussManager(root, client_factory=lambda callback, _agent=None: CodexFakeClient(callback))
     try:
         assert owned.exists()

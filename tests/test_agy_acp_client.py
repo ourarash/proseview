@@ -552,7 +552,7 @@ for line in sys.stdin:
         ),
         encoding="utf-8",
     )
-    _runnable(exe)
+    exe = _runnable(exe)
 
     received: list[dict] = []
     client = AgyAcpClient(executable=str(exe), cwd=tmp_path, on_message=received.append)

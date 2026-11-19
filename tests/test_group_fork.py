@@ -1,6 +1,7 @@
 """Native Group forks preserve source sessions and export portable context once."""
 import copy
 import json
+import itertools
 import time
 
 import pytest
@@ -9,6 +10,9 @@ from proseview.discuss import ContextError
 from proseview.group import PROSE_EDIT_FORMAT, extract_stances, positions_table, visible_reply
 from proseview.group_fork import materialize, split_prompt
 from tests.test_highlight_suggestions import _manager, _repo
+
+# A counter, not the clock: Windows' monotonic clock can repeat within a tick.
+_IDS = itertools.count(1)
 
 
 @pytest.fixture(autouse=True)
@@ -42,8 +46,8 @@ def state(manager, key):
 
 
 def send(manager, key, text, seats=None):
-    return manager.group_command({'action': 'submit', 'group_id': key, 'request_id': str(time.monotonic_ns()),
-                                  'message_id': str(time.monotonic_ns()), 'text': text,
+    return manager.group_command({'action': 'submit', 'group_id': key, 'request_id': f'request-{next(_IDS)}',
+                                  'message_id': f'message-{next(_IDS)}', 'text': text,
                                   **({'seats': seats} if seats is not None else {})})
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 import threading
 import urllib.error
@@ -31,7 +32,8 @@ def test_password_is_stored_as_a_salted_hash_for_this_user_only(state_home: Path
     assert "hunter2" not in text
     record = json.loads(text)
     assert record["algorithm"] == "pbkdf2_sha256" and record["salt"] and record["hash"]
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name != "nt":  # Windows has no owner-only mode bits to set.
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert privacy.has_password()
     assert privacy.check_password("hunter2")
     assert not privacy.check_password("hunter3")

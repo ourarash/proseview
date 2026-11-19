@@ -1,12 +1,17 @@
 """Durable Group queues and review snapshots, independent of a browser lifetime."""
 import copy
 import threading
+import itertools
 import time
 
 import pytest
 
 from proseview.discuss import ContextError
 from tests.test_highlight_suggestions import _manager, _repo
+
+# A counter, not the clock: Windows' monotonic clock can repeat within a
+# tick, and a reused request id is treated as a retry of the first request.
+_REQUEST_IDS = itertools.count(1)
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +36,7 @@ def initial(manager, key="durable-group"):
 
 
 def command(manager, action="state", key="durable-group", **kw):
-    return manager.group_command({"action": action, "group_id": key, "request_id": kw.pop("request_id", f"request-{time.monotonic_ns()}"), **kw})
+    return manager.group_command({"action": action, "group_id": key, "request_id": kw.pop("request_id", f"request-{next(_REQUEST_IDS)}"), **kw})
 
 
 def reply(kwargs, text="A useful reply."):

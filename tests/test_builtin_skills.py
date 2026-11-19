@@ -129,3 +129,18 @@ def test_lookup_precedence_and_packaged_defaults_in_settings(tmp_path, monkeypat
     assert settings['defaults']['skill_prompts']['quick_critique'] == default_skill_body('quick_critique')
     assert action_instruction(root, 'quick_critique') == 'YAML wins.'
     manager.close()
+
+
+def test_an_untouched_copy_with_windows_line_endings_is_still_recognized(tmp_path, monkeypatch):
+    """A Windows checkout or editor writes CRLF without changing the skill."""
+    root = _book(tmp_path, monkeypatch)
+    folder = root / '.proseview/skills/quick_critique'
+    shutil.copytree(DEFAULT_SKILLS_DIR / 'quick_critique', folder)
+    for path in folder.rglob('*'):
+        if path.is_file():
+            path.write_bytes(path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
+    manager = _manager(root)
+    try:
+        assert not folder.exists()
+    finally:
+        manager.close()

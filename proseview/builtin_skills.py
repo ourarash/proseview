@@ -12,6 +12,16 @@ from .scenes import split_frontmatter
 SKILLS_DIR = Path(__file__).parent / "skills"
 
 
+
+def _lf(data: bytes) -> bytes:
+    """Line endings as shipped. A Windows checkout or editor that wrote CRLF
+    has not changed a skill, so it must still be recognized as untouched."""
+    return data.replace(b"\r\n", b"\n")
+
+
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(_lf(data)).hexdigest()
+
 def migrate_builtin_copies(root: Path, skills_path: str, offered: list[str]) -> None:
     """Migrate one legacy directory. Callers record completion outside the book.
 
@@ -40,11 +50,11 @@ def migrate_builtin_copies(root: Path, skills_path: str, offered: list[str]) -> 
         if any(p.is_symlink() or p.relative_to(target).as_posix() not in ("SKILL.md", "agents/openai.yaml") for p in files):
             continue
         companion = target / "agents/openai.yaml"
-        if companion.is_file() and hashlib.sha256(companion.read_bytes()).hexdigest() not in known.get("agents/openai.yaml", []):
+        if companion.is_file() and _digest(companion.read_bytes()) not in known.get("agents/openai.yaml", []):
             continue
-        raw = prompt.read_bytes()
+        raw = _lf(prompt.read_bytes())
         current = SKILLS_DIR / name / "SKILL.md"
-        untouched = hashlib.sha256(raw).hexdigest() in known["SKILL.md"] or raw == current.read_bytes()
+        untouched = _digest(raw) in known["SKILL.md"] or raw == _lf(current.read_bytes())
         if not untouched:
             # An unrecorded SKILL.md without the shipped companion is a skill
             # the writer created, rather than evidence of automatic installation.

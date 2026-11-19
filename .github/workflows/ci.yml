@@ -84,3 +84,13 @@ jobs:
       - run: pip install -e ".[e2e]"
       - run: python -m playwright install --with-deps chromium
       - run: pytest -m e2e_browser -q
+
+  changelog:
+    name: changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # The check compares history since CHANGELOG.md last changed.
+      - name: Warn when CHANGELOG.md is behind the code
+        run: sh .github/changelog-check.sh

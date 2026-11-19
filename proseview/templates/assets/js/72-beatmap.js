@@ -68,9 +68,46 @@
         {value: 'codex', label: 'Codex CLI'},
         {value: 'agy', label: 'Agy CLI'}
     ];
+    // A map needs an agent that can run. The sample book and shared
+    // snapshots have none; installed, an agent the app did not detect is
+    // offered greyed out, and with none at all the buttons say why instead
+    // of starting a run that can only fail.
+    var _beatMapAvailabilityRequested = false;
+    function beatMapAgentAvailable(value) {
+        if (window.PROSEVIEW_STATIC) return false;
+        var rows = (typeof _discussAgentAvailability === 'object' && _discussAgentAvailability) || {};
+        return !rows[value] || rows[value].available !== false;
+    }
+    function beatMapNoAgent() {
+        return !BEATMAP_AGENTS.some(function(opt) { return beatMapAgentAvailable(opt.value); });
+    }
+    function beatMapNoAgentText() {
+        return window.PROSEVIEW_STATIC
+            ? 'Beat Map runs in the installed app with Codex, Claude or Agy. This copy of the book runs in your browser, where no agent was detected.'
+            : 'Beat Map needs Codex, Claude or Agy installed and signed in on this computer. None was detected.';
+    }
+    function beatMapDisabledAttr(isGenerating) {
+        return isGenerating || beatMapNoAgent() ? ' disabled' : '';
+    }
+    function beatMapEnsureAvailability() {
+        if (window.PROSEVIEW_STATIC || _beatMapAvailabilityRequested || typeof loadDiscussAgentAvailability !== 'function') return;
+        if (typeof _discussAgentAvailability === 'object' && Object.keys(_discussAgentAvailability).length) return;
+        _beatMapAvailabilityRequested = true;
+        loadDiscussAgentAvailability().then(function() {
+            if (!beatMapNoAgent() && beatMapAgentAvailable(_beatMapAgent)) return;
+            renderSceneBeatMapPane();
+            renderHorizontalStrip();
+        });
+    }
     function beatMapAgentOptionsHtml() {
+        if (!beatMapAgentAvailable(_beatMapAgent)) {
+            var first = BEATMAP_AGENTS.find(function(opt) { return beatMapAgentAvailable(opt.value); });
+            if (first) _beatMapAgent = first.value;
+        }
         return BEATMAP_AGENTS.map(function(opt) {
-            return '<option value="' + opt.value + '"' + (_beatMapAgent === opt.value ? ' selected' : '') + '>' + opt.label + '</option>';
+            var ok = beatMapAgentAvailable(opt.value);
+            return '<option value="' + opt.value + '"' + (_beatMapAgent === opt.value ? ' selected' : '') + (ok ? '' : ' disabled') + '>'
+                + opt.label + (ok ? '' : ' (not detected)') + '</option>';
         }).join('');
     }
     function getGenerationStageInfo(elapsedSec, status, agent) {
@@ -1072,10 +1109,10 @@
             '</div>' +
             '<div class="strip-controls-right">' +
             '<div style="display:inline-flex; align-items:center; gap:6px;">' +
-            '<select id="stripAgentSelect" class="beatmap-agent-picker" style="font-size:11px; padding:2px 6px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            '<select id="stripAgentSelect" class="beatmap-agent-picker" style="font-size:11px; padding:2px 6px;"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
             beatMapAgentOptionsHtml() +
             '</select>' +
-            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripGenerateBtn" style="font-size:11px; padding:3px 10px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripGenerateBtn" style="font-size:11px; padding:3px 10px;"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
             (isGeneratingCurrent
                 ? '<span class="beatmap-spinner"></span> Generating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
                 : '↻ Generate Beat Map') +
@@ -1108,7 +1145,9 @@
                   '</svg>' +
                   '<div style="font-size:11px; color:var(--text-muted); line-height:1.4;">' +
                   '<strong style="color:var(--text-main); font-size:11.5px; display:block; margin-bottom:2px;">Visual Beat Progression</strong>' +
-                  'Click <strong>↻ Generate Beat Map</strong> to extract narrative beats, tension curve, and sequential dialogue moments for this scene.' +
+                  (beatMapNoAgent()
+                      ? '<span class="beatmap-no-agent">' + escHtml(beatMapNoAgentText()) + '</span>'
+                      : 'Click <strong>↻ Generate Beat Map</strong> to extract narrative beats, tension curve, and sequential dialogue moments for this scene.') +
                   '</div>' +
                   '</div>') +
             '</div>' +
@@ -1168,10 +1207,10 @@
         '<button type="button" class="stepper-btn" id="stepperNext" title="Next moment">&gt;</button>' +
         '</div>' +
         '<div style="display:inline-flex; align-items:center; background:var(--surface-field); border:1px solid var(--border); border-radius:4px; padding:1px 6px; gap:4px;">' +
-        '<select id="stripActiveAgent" class="beat-agent-select"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        '<select id="stripActiveAgent" class="beat-agent-select"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
         beatMapAgentOptionsHtml() +
         '</select>' +
-        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripUpdateBtn" style="border:0; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="stripUpdateBtn" style="border:0; padding:2px 4px;"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
         (isGeneratingCurrent
             ? '<span class="beatmap-spinner subtle"></span> Updating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
             : '↻ Update') +
@@ -1395,6 +1434,7 @@
 function renderSceneBeatMapPane() {
     var pane = document.getElementById('sceneBeatMapPane');
     if (!pane) return;
+    beatMapEnsureAvailability();
     if (!_beatMapCurrentScene && typeof paths !== 'undefined' && typeof curIdx !== 'undefined' && paths[curIdx]) {
         _beatMapCurrentScene = paths[curIdx];
     }
@@ -1463,16 +1503,18 @@ function renderSceneBeatMapPane() {
             '<div class="beatmap-ghost-row"><span>BEAT 3 &bull; Turning point</span><span style="color:var(--primary, #dd635f); font-weight:700;">Tension 95%</span></div>' +
             '</div>' +
             '<div class="beatmap-action-group">' +
-            '<select id="paneAgentSelect" class="beatmap-agent-picker"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            '<select id="paneAgentSelect" class="beatmap-agent-picker"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
             beatMapAgentOptionsHtml() +
             '</select>' +
-            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneGenerateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+            '<button type="button" class="beatmap-generate-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneGenerateBtn"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
             (isGeneratingCurrent
                 ? '<span class="beatmap-spinner"></span> Generating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
                 : '↻ Generate Beat Map') +
             '</button>' +
             '</div>' +
-            '<div class="beatmap-empty-footnote">Generated on demand &bull; Stored locally with revision hash</div>' +
+            (beatMapNoAgent() && !isGeneratingCurrent
+                ? '<div class="beatmap-empty-footnote beatmap-no-agent" role="note">' + escHtml(beatMapNoAgentText()) + '</div>'
+                : '<div class="beatmap-empty-footnote">Generated on demand &bull; Stored locally with revision hash</div>') +
             '</div>' +
             '</div>';
 
@@ -1528,12 +1570,12 @@ function renderSceneBeatMapPane() {
         '<div style="padding:6px 14px; border-bottom:1px solid var(--border); background:var(--bg-app); display:flex; justify-content:space-between; align-items:center;">' +
         '<div style="display:inline-flex; align-items:center; gap:4px; font-size:11px;">' +
         '<span style="color:var(--text-muted);">Agent:</span>' +
-        '<select id="paneActiveAgent" class="beat-agent-select" style="background:var(--surface-field); border:1px solid var(--border); border-radius:3px; padding:2px 4px;"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        '<select id="paneActiveAgent" class="beat-agent-select" style="background:var(--surface-field); border:1px solid var(--border); border-radius:3px; padding:2px 4px;"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
         beatMapAgentOptionsHtml() +
         '</select>' +
         '</div>' +
         '<div style="display:inline-flex; align-items:center; gap:6px;">' +
-        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneUpdateBtn"' + (isGeneratingCurrent ? ' disabled' : '') + '>' +
+        '<button type="button" class="strip-btn' + (isGeneratingCurrent ? ' is-generating' : '') + '" id="paneUpdateBtn"' + beatMapDisabledAttr(isGeneratingCurrent) + '>' +
         (isGeneratingCurrent
             ? '<span class="beatmap-spinner subtle"></span> Updating… <span class="beatmap-btn-elapsed">' + formatElapsed(elapsedSec) + '</span>'
             : '↻ Update') +

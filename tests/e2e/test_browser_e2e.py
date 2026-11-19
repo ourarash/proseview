@@ -8706,7 +8706,6 @@ def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, 
 
     assert page.locator(".static-snapshot-note").is_visible()
     assert page.locator("#sceneEditBtn").is_hidden()
-    assert page.locator("#utilityTabCodex").is_hidden()
     assert page.locator("#utilityTabHistory").is_hidden()
     page.locator("#sceneProseHost").click()
     page.keyboard.press("e")
@@ -8736,6 +8735,37 @@ def test_a_snapshot_reads_from_its_own_folder_and_offers_no_editing(page: Page, 
     assert not outside, f"requests left the project path: {outside}"
 
 
+def test_the_demo_says_agents_run_in_the_installed_app(page: Page, demo_site: str):
+    """The agent tabs, the Group and Beat Map are shown in the demo, and each
+    says no agent was detected and how to get one, instead of an error or a
+    button that can only fail."""
+    page.goto(demo_site + f"#/scene/{SCENE_REL}", wait_until="load")
+    page.wait_for_selector("#sceneProseHost .ProseMirror")
+    page.evaluate("() => toggleScenePanel(null)")
+    for tab in ("#utilityTabCodex", "#utilityTabClaude", "#utilityTabAgy"):
+        assert page.locator(tab).is_visible()
+
+    page.click("#utilityTabCodex")
+    state = page.locator("#discussLog .discuss-agents-unavailable")
+    state.wait_for()
+    assert "Codex was not detected" in state.inner_text()
+    assert "pipx install proseview" in state.inner_text()
+    assert page.locator("#discussComposerArea").is_hidden()
+
+    page.click("#utilityTabGroup")
+    group = page.locator("#sceneGroupPane .discuss-agents-unavailable")
+    group.wait_for()
+    assert "No agents detected" in group.inner_text()
+    assert "Could not load" not in page.locator("#sceneGroupPane").inner_text()
+
+    page.click("#utilityTabBeats")
+    generate = page.locator("#paneGenerateBtn")
+    generate.wait_for()
+    assert generate.is_disabled()
+    assert page.locator("#paneAgentSelect").is_disabled()
+    assert "no agent was detected" in page.locator("#sceneBeatMapPane .beatmap-no-agent").inner_text()
+
+
 def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, demo_site: str):
     """The hosted demo shows edit mode, and a save goes nowhere.
 
@@ -8749,7 +8779,6 @@ def test_the_demo_lets_a_visitor_edit_and_save_without_uploading(page: Page, dem
     page.goto(demo_site + f"#/scene/{SCENE_REL}", wait_until="load")
     page.wait_for_selector("#sceneProseHost .ProseMirror")
     assert "edits stay in this tab" in page.locator(".static-snapshot-note").inner_text()
-    assert page.locator("#utilityTabCodex").is_hidden()
 
     enter_edit_mode(page)
     # The note steps aside while editing; it once sat on top of Save.

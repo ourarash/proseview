@@ -433,3 +433,40 @@ def test_beatmap_settings_modal_ui(page: Page, server: ProseviewServer, tmp_path
     # Check settings reloaded from server reflect the custom prompt
     res = server.get_json("/api/discuss/beatmap-settings")
     assert res["settings"]["book"]["prompt"] == "Custom Author Instructions: ensure climax is mapped."
+
+
+def test_beatmap_says_why_it_cannot_run_when_no_agent_is_detected(page: Page, server: ProseviewServer):
+    """With no agent installed, Generate is disabled and the pane says so,
+    rather than starting a run that can only fail."""
+    page.route("**/api/discuss/agents", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body='{"ok": true, "agents": ['
+             '{"id": "codex", "label": "Codex", "available": false, "reason": "not installed"},'
+             '{"id": "claude", "label": "Claude", "available": false, "reason": "not installed"},'
+             '{"id": "agy", "label": "Agy", "available": false, "reason": "not installed"}]}'))
+    open_scene(page, server, SCENE_REL)
+    page.click("#sceneModal .discuss-open-btn")
+    page.click("#utilityTabBeats")
+    page.wait_for_selector("#sceneBeatMapPane .beatmap-no-agent")
+    assert page.locator("#paneGenerateBtn").is_disabled()
+    assert page.locator("#paneAgentSelect").is_disabled()
+    assert "None was detected" in page.locator("#sceneBeatMapPane .beatmap-no-agent").inner_text()
+    assert page.locator("#paneAgentSelect option[value=codex]").inner_text().endswith("(not detected)")
+
+
+def test_beatmap_skips_an_agent_that_is_not_detected(page: Page, server: ProseviewServer):
+    """One missing agent is greyed out and the picker moves to one that runs."""
+    page.add_init_script("localStorage.setItem('proseview_beatmap_agent', 'claude')")
+    page.route("**/api/discuss/agents", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body='{"ok": true, "agents": ['
+             '{"id": "codex", "label": "Codex", "available": true},'
+             '{"id": "claude", "label": "Claude", "available": false, "reason": "not installed"},'
+             '{"id": "agy", "label": "Agy", "available": false, "reason": "not installed"}]}'))
+    open_scene(page, server, SCENE_REL)
+    page.click("#sceneModal .discuss-open-btn")
+    page.click("#utilityTabBeats")
+    page.wait_for_function("() => document.querySelector('#paneAgentSelect')?.value === 'codex'")
+    assert page.locator("#paneGenerateBtn").is_enabled()
+    assert page.locator("#paneAgentSelect option[value=claude]").is_disabled()
+    assert page.locator("#sceneBeatMapPane .beatmap-no-agent").count() == 0

@@ -717,6 +717,14 @@
                 if (_discussOpeningKey === key) _discussOpeningKey = '';
                 if (typeof syncDiscussGroupFork === 'function') syncDiscussGroupFork();
                 _discussOpenFailed = true;
+                if (window.PROSEVIEW_STATIC) {
+                    setDiscussConnection('Not available here', '');
+                    var staticLog = document.getElementById('discussLog');
+                    staticLog.replaceChildren(discussAgentsUnavailableState(discussAgentLabel()));
+                    document.getElementById('discussComposerArea').hidden = true;
+                    document.getElementById('discussAnnouncement').textContent = discussAgentLabel() + ' runs in the installed app.';
+                    return;
+                }
                 
                 var msg = error.message || '';
                 var label = discussAgentLabel();
@@ -2855,6 +2863,10 @@
             const path = _groupCurrentScenePath();
             if (!path) {
                 pane.replaceChildren(_scenePanelEmpty('Open a scene to run the Group.'));
+                return;
+            }
+            if (window.PROSEVIEW_STATIC) {
+                pane.replaceChildren(discussAgentsUnavailableState('group'));
                 return;
             }
             if (!_groupSettings) {
@@ -6867,6 +6879,34 @@
         // What a tab shows when its agent cannot run here: why, and the
         // commands that fix it. Built as nodes, not markup: the reason is an
         // error string and must never be interpolated into innerHTML.
+        // The sample book and shared snapshots run in the browser with no
+        // Proseview server behind them, so no agent can answer there. Say what
+        // the feature does and how to get it, rather than reporting a failure.
+        function discussAgentsUnavailableState(feature) {
+            var group = feature === 'group';
+            var empty = elementWith('discuss-empty-state discuss-agents-unavailable');
+            empty.appendChild(elementWith('discuss-empty-icon', group ? '💬' : '🤖'));
+            var heading = document.createElement('h3');
+            heading.textContent = group ? 'No agents detected' : feature + ' was not detected';
+            empty.appendChild(heading);
+            empty.appendChild(elementWith('discuss-empty-blurb', group
+                ? 'In the Group, two or three agents read the scene and debate it in one conversation, then recap the edits they agree on.'
+                : 'Ask about a scene, run a review that quotes each passage and suggests a replacement, and apply the edits you pick.'));
+            empty.appendChild(elementWith('discuss-empty-blurb',
+                'This copy of the book runs in your browser, where no agent can run. Install Proseview on your computer and ' + (group ? 'the Group uses' : 'it uses') + ' the Codex, Claude or Antigravity you already sign in to.'));
+            var code = document.createElement('pre');
+            code.className = 'discuss-empty-steps';
+            code.textContent = 'pipx install proseview\nproseview --root ~/my-novel';
+            empty.appendChild(code);
+            var more = document.createElement('a');
+            more.href = 'https://ourarash.github.io/proseview/#' + (group ? 'group' : 'reviews');
+            more.target = '_blank';
+            more.rel = 'noopener';
+            more.textContent = group ? 'See the agents debate' : 'See a review in action';
+            empty.appendChild(more);
+            return empty;
+        }
+
         function discussNotInstalledState(label, reasonText) {
             var empty = elementWith('discuss-empty-state');
             empty.appendChild(elementWith('discuss-empty-icon', '🤖'));

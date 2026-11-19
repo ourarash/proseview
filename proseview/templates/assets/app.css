@@ -14505,9 +14505,10 @@
 
         /* ── Static snapshot ─────────────────────────────────────────────
            `proseview snapshot` publishes the page with no server behind it.
-           Anything that writes, talks to an agent, or reads history needs
-           one, so those controls are not offered at all. The demo keeps edit
-           mode, whose saves stay in the visitor's tab. */
+           Anything that writes or reads history needs one, so those
+           controls are not offered at all. The agent tabs, the Group and
+           Beat Map stay, and say they run in the installed app. The demo
+           keeps edit mode, whose saves stay in the visitor's tab. */
         html[data-static-snapshot="read-only"] #sceneEditBtn,
         html[data-static-snapshot="read-only"] #sceneEditBar,
         html[data-static-snapshot] #modalEditorBtn,
@@ -14516,9 +14517,6 @@
         html[data-static-snapshot] .editor-btn,
         html[data-static-snapshot] .sidebar-create-wrap,
         html[data-static-snapshot] #utilityTabHistory,
-        html[data-static-snapshot] #utilityTabCodex,
-        html[data-static-snapshot] #utilityTabClaude,
-        html[data-static-snapshot] #utilityTabAgy,
         html[data-static-snapshot] #settingsOpenBtn,
         html[data-static-snapshot] .ledger-open-btn,
         html[data-static-snapshot] #selectionPill,
@@ -18507,6 +18505,8 @@
             }
         }
 
+        .beatmap-no-agent { color: var(--text-main); }
+        .beatmap-empty-footnote.beatmap-no-agent { color: var(--text-main); max-width: 34em; margin-inline: auto; line-height: 1.5; font-size: 12px; }
         .beatmap-empty-footnote {
             font-size: 10px;
             color: var(--text-muted);

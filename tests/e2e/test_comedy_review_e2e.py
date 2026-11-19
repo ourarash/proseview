@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import pytest
-from playwright.sync_api import Page, expect
 
-from .conftest import ProseviewServer
-from .test_browser_e2e import wait_for_discuss_answer
-from .test_review_setup_e2e import customize_review, open_review
+pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
+
+from playwright.sync_api import Page, expect  # noqa: E402
+
+from .conftest import ProseviewServer  # noqa: E402
+from .test_browser_e2e import wait_for_discuss_answer  # noqa: E402
+from .test_review_setup_e2e import customize_review, open_review  # noqa: E402
 
 pytestmark = pytest.mark.e2e_browser
 

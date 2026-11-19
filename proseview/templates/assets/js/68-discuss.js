@@ -58,6 +58,9 @@
             // Whether a custom review runs in open critique mode without the fixed
             // template, remembered across reloads.
             openCritique: _readReviewOpenCritiquePref(),
+            // What a review does in a chat that already has messages: 'ask',
+            // 'new' (start a new conversation) or 'same'. Remembered per browser.
+            reviewChat: _readReviewChatPref(),
             storyContexts: Object.create(null),
             storyContextLoaded: Object.create(null),
             storyContextVersions: Object.create(null),
@@ -9586,6 +9589,108 @@ function loadDiscussDiffMode(mode) {
             cancel.focus();
         }
 
+        // Local state a fresh conversation must not inherit. A review that
+        // starts its own conversation keeps its setup (scenes, lanes and the
+        // instructions typed in the composer), since it is about to send them.
+        function resetDiscussForNewConversation(snapshot, keepReviewSetup) {
+            resetChatHistoryCursor(_discussAgent);
+            _discussReviewRequest++;
+            _discussReview = []; _discussReviewKeep = {};
+            _discussSnapshot = snapshot;
+            _discussSelection = '';
+            _discussSelectionRange = null;
+            _discussSelectionSnapshot = null;
+            _discussSelectionSourceTaskId = null;
+            _discussLiveDocument = null;
+            _discussPendingAction = null;
+            _discussRepositoryAction = null;
+            if (!keepReviewSetup) leaveDiscussReviewSetup();
+            _discussCraftState.cardsOpen = false;
+            _discussRetryOfTaskId = null;
+            _discussSelectedSkill = null;
+            _discussAutoRun = false;
+            _discussAttachments = [];
+            _discussIncludeCurrentDocument = false;
+            _discussDraftDocument = null;
+            saveDiscussDraft();
+            closeDiscussContextPicker();
+            renderDiscussContext();
+            renderDiscussTaskMode();
+            renderDiscussSnapshot();
+        }
+
+        // A review run in a chat that already has messages reads them too:
+        // earlier reviews and requests shape what it finds. Ask first, or do
+        // what the writer chose to remember, before sending it.
+        function discussChatHasMessages() {
+            var s = _discussSnapshot || {};
+            return (s.messages || []).length > 0 || (s.tasks || []).length > 0;
+        }
+
+        function discussChatIsBusy() {
+            var s = _discussSnapshot || {};
+            return !!(s.active_turn_id || s.active_request_id || (s.queue || []).length);
+        }
+
+        function startDiscussReviewInNewConversation(options) {
+            if (discussChatIsBusy()) {
+                renderDiscussError('Stop or wait for the current reply before starting a new conversation for this review.');
+                return Promise.resolve();
+            }
+            document.getElementById('discussAnnouncement').textContent = 'Starting a new conversation for this review';
+            return discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
+                .then(function(data) {
+                    resetDiscussForNewConversation(data.snapshot, true);
+                    runDiscussCraftReview(Object.assign({}, options || {}, {chatChosen: true}));
+                })
+                .catch(function(error) { renderDiscussError(error.message); });
+        }
+
+        function openDiscussReviewChatDialog(options) {
+            var dialog = document.getElementById('discussReviewChatDialog');
+            if (!dialog) {
+                dialog = document.createElement('dialog');
+                dialog.id = 'discussReviewChatDialog';
+                dialog.className = 'discuss-context-picker discuss-confirm-dialog';
+                dialog.setAttribute('aria-labelledby', 'discussReviewChatTitle');
+                dialog.setAttribute('aria-describedby', 'discussReviewChatDescription');
+                document.body.appendChild(dialog);
+            }
+            var busy = discussChatIsBusy();
+            dialog.innerHTML = '';
+            var form = document.createElement('form'); form.method = 'dialog';
+            var head = elementWith('discuss-picker-header');
+            var title = document.createElement('h2'); title.id = 'discussReviewChatTitle';
+            title.textContent = 'Start a new conversation for this review?';
+            head.appendChild(title);
+            var description = document.createElement('p'); description.id = 'discussReviewChatDescription';
+            description.textContent = 'This chat already has messages, and a review run here reads them too: earlier reviews and requests can shape what it finds. A new conversation keeps it independent. You can reopen this chat later from History.';
+            form.append(head, description);
+            if (busy) form.appendChild(elementWith('discuss-pending-status', 'A reply is still running. Stop it or wait for it to finish to start a new conversation; a review run in this chat will wait its turn.'));
+            var remember = document.createElement('label'); remember.className = 'discuss-review-chat-remember';
+            var rememberInput = document.createElement('input'); rememberInput.type = 'checkbox'; rememberInput.id = 'discussReviewChatRemember';
+            remember.append(rememberInput, document.createTextNode(' Remember my choice (change it in Customize)'));
+            form.appendChild(remember);
+            var actions = elementWith('discuss-picker-actions');
+            var cancel = document.createElement('button'); cancel.type = 'submit'; cancel.value = 'cancel'; cancel.className = 'discuss-secondary'; cancel.textContent = 'Cancel';
+            var same = document.createElement('button'); same.type = 'button'; same.id = 'discussReviewChatSame'; same.className = 'discuss-secondary'; same.textContent = 'Run in this chat';
+            var fresh = document.createElement('button'); fresh.type = 'button'; fresh.id = 'discussReviewChatNew'; fresh.className = 'discuss-primary'; fresh.textContent = 'Start new conversation';
+            fresh.disabled = busy;
+            actions.append(cancel, same, fresh);
+            form.appendChild(actions);
+            dialog.appendChild(form);
+            function choose(choice) {
+                if (rememberInput.checked) setDiscussReviewChatPref(choice);
+                dialog.close(choice);
+                if (choice === 'new') startDiscussReviewInNewConversation(options);
+                else runDiscussCraftReview(Object.assign({}, options || {}, {chatChosen: true}));
+            }
+            same.onclick = function() { choose('same'); };
+            fresh.onclick = function() { choose('new'); };
+            dialog.showModal();
+            (busy ? same : fresh).focus();
+        }
+
         function confirmNewDiscussConversation(event) {
             event.preventDefault();
             if (!_discussConversationId) return;
@@ -9606,30 +9711,7 @@ function loadDiscussDiffMode(mode) {
             }, 1200);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/new', {})
                 .then(function(data) {
-                    resetChatHistoryCursor(_discussAgent);
-                    _discussReviewRequest++;
-                    _discussReview = []; _discussReviewKeep = {};
-                    _discussSnapshot = data.snapshot;
-                    _discussSelection = '';
-                    _discussSelectionRange = null;
-                    _discussSelectionSnapshot = null;
-                    _discussSelectionSourceTaskId = null;
-                    _discussLiveDocument = null;
-                    _discussPendingAction = null;
-                    _discussRepositoryAction = null;
-                    leaveDiscussReviewSetup();
-                    _discussCraftState.cardsOpen = false;
-                    _discussRetryOfTaskId = null;
-                    _discussSelectedSkill = null;
-                    _discussAutoRun = false;
-                    _discussAttachments = [];
-                    _discussIncludeCurrentDocument = false;
-                    if (!_discussRepositoryAction) _discussDraftDocument = null;
-                    saveDiscussDraft();
-                    closeDiscussContextPicker();
-                    renderDiscussContext();
-                    renderDiscussTaskMode();
-                    renderDiscussSnapshot();
+                    resetDiscussForNewConversation(data.snapshot, false);
                     dialog.close('confirmed');
                     document.getElementById('discussAnnouncement').textContent = 'New conversation started';
                     document.getElementById('discussInput').focus();
@@ -10548,6 +10630,11 @@ function loadDiscussDiffMode(mode) {
             if (modeId === 'comedy_review' && !defaults && !_discussCraftState.comedyGoals.length) {
                 renderDiscussError('Choose at least one comedy review goal.');
                 return;
+            }
+            if (!(options && options.chatChosen) && discussChatHasMessages()) {
+                var chatChoice = _discussCraftState.reviewChat;
+                if (chatChoice === 'new') { startDiscussReviewInNewConversation(options); return; }
+                if (chatChoice !== 'same') { openDiscussReviewChatDialog(options); return; }
             }
             var contexts = {};
             selectedScenes.forEach(function(path) {

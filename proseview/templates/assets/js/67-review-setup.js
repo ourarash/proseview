@@ -55,6 +55,19 @@
         function _readReviewOpenCritiquePref() {
             try { return localStorage.getItem(DISCUSS_OPEN_CRITIQUE_PREF) === 'on'; } catch (e) { return false; }
         }
+        // Where a review runs when the chat already has messages; see
+        // openDiscussReviewChatDialog. 'ask' until the writer remembers a choice.
+        const DISCUSS_REVIEW_CHAT_PREF = 'proseview-review-chat';
+        function _readReviewChatPref() {
+            try {
+                var saved = localStorage.getItem(DISCUSS_REVIEW_CHAT_PREF);
+                return saved === 'new' || saved === 'same' ? saved : 'ask';
+            } catch (e) { return 'ask'; }
+        }
+        function setDiscussReviewChatPref(choice) {
+            _discussCraftState.reviewChat = choice === 'new' || choice === 'same' ? choice : 'ask';
+            try { localStorage.setItem(DISCUSS_REVIEW_CHAT_PREF, _discussCraftState.reviewChat); } catch (e) {}
+        }
         // Deepen offers opportunities only, and Bird by Bird's keep/assignment
         // format is the review itself.
         function discussReviewHasKeepChoice(id) {
@@ -679,6 +692,20 @@
                     }
                 );
             }
+            var chatRow = elementWith('discuss-review-chat-row');
+            var chatLabel = document.createElement('label');
+            chatLabel.htmlFor = 'discussReviewChatChoice';
+            chatLabel.textContent = 'If this chat already has messages';
+            var chatSelect = document.createElement('select');
+            chatSelect.id = 'discussReviewChatChoice';
+            [['ask', 'Ask first'], ['new', 'Start a new conversation'], ['same', 'Run in this chat']].forEach(function(option) {
+                var el = document.createElement('option'); el.value = option[0]; el.textContent = option[1];
+                el.selected = _discussCraftState.reviewChat === option[0];
+                chatSelect.appendChild(el);
+            });
+            chatSelect.onchange = function() { setDiscussReviewChatPref(chatSelect.value); };
+            chatRow.append(chatLabel, chatSelect);
+            box.appendChild(chatRow);
             return box;
         }
 

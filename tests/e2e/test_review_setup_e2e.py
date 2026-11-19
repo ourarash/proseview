@@ -12,6 +12,14 @@ from .test_browser_e2e import open_scene, open_discuss, wait_for_discuss_answer,
 pytestmark = pytest.mark.e2e_browser
 
 
+def choose_review_chat(page: Page, choice: str) -> None:
+    """Answer the question a review asks when the chat already has messages."""
+    dialog = page.get_by_role('dialog', name='Start a new conversation for this review?', exact=True)
+    expect(dialog).to_be_visible()
+    dialog.get_by_role('button', name=choice, exact=True).click()
+    expect(dialog).to_be_hidden()
+
+
 def open_review(page: Page, server: ProseviewServer, label='Quick critique'):
     open_scene(page, server)
     open_discuss(page)
@@ -200,6 +208,7 @@ def test_review_cards_can_run_another_review_in_the_same_chat(page: Page, server
     expect(page.get_by_role('dialog', name='What this review receives', exact=True)).to_be_visible()
     page.keyboard.press('Escape')
     page.get_by_role('button', name='Run Comedy review with defaults', exact=True).click()
+    choose_review_chat(page, 'Run in this chat')
     expect(page.locator('.discuss-message.user')).to_have_count(2)
     assert [req['action_id'] for req in requests] == ['quick_critique', 'comedy_review']
     assert requests[1]['scenes'] == ['ch01/01-opening.md']
@@ -466,6 +475,7 @@ def test_customize_changes_the_priority_cap_for_one_review_only(page: Page, serv
     # The card's Run now keeps the shared default.
     page.locator('#discussCraftButton').click()
     page.get_by_role('button', name='Run ' + label + ' with defaults', exact=True).click()
+    choose_review_chat(page, 'Run in this chat')
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
     assert requests[-1]['review_max_findings'] == 5
     # The cap belongs to this card only: a large chapter-review cap must not
@@ -499,6 +509,7 @@ def test_show_what_to_keep_is_off_by_default_remembered_and_left_out_of_run_now(
     # The card's Run now keeps the default.
     page.locator('#discussCraftButton').click()
     page.get_by_role('button', name='Run Quick critique with defaults', exact=True).click()
+    choose_review_chat(page, 'Run in this chat')
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
     assert requests[-1]['review_include_keep'] is False
     assert 'Keep: off' in page.locator('.discuss-craft-request-summary').last.inner_text()
@@ -549,6 +560,7 @@ def test_open_critique_is_off_by_default_remembered_and_left_out_of_run_now(page
     # The card's Run now keeps the default.
     page.locator('#discussCraftButton').click()
     page.get_by_role('button', name='Run Craft review with defaults', exact=True).click()
+    choose_review_chat(page, 'Run in this chat')
     page.wait_for_function("n => document.querySelectorAll('.discuss-craft-request-summary').length >= n", arg=2)
     assert requests[-1]['review_open_critique'] is False
     assert 'Format: open critique' not in page.locator('.discuss-craft-request-summary').last.inner_text()
@@ -556,3 +568,52 @@ def test_open_critique_is_off_by_default_remembered_and_left_out_of_run_now(page
     page.reload()
     page.wait_for_function("() => typeof _discussCraftState === 'object'")
     assert page.evaluate('_discussCraftState.openCritique') is True
+
+
+def test_a_review_in_a_chat_with_messages_can_start_a_new_conversation(page: Page, server: ProseviewServer):
+    """Earlier messages would shape the review, so it asks first; starting
+    fresh keeps the earlier chat in History and sends only the review."""
+    requests = []
+    page.on('request', lambda request: requests.append(request.post_data_json)
+            if '/api/discuss/conversations/' in request.url and request.url.endswith('/questions') else None)
+    open_scene(page, server)
+    open_discuss(page)
+    page.get_by_role('button', name='Run Quick critique with defaults', exact=True).click()
+    wait_for_discuss_answer(page, 'Fake answer')
+    wait_for_discuss_idle(page)
+    first_thread = page.evaluate('_discussSnapshot.thread_id')
+    page.locator('#discussCraftButton').click()
+    page.get_by_role('button', name='Run Comedy review with defaults', exact=True).click()
+    choose_review_chat(page, 'Start new conversation')
+    page.wait_for_function('t => _discussSnapshot && _discussSnapshot.thread_id !== t', arg=first_thread)
+    wait_for_discuss_answer(page, 'Fake answer')
+    expect(page.locator('.discuss-message.user')).to_have_count(1)
+    assert [req['action_id'] for req in requests] == ['quick_critique', 'comedy_review']
+
+
+def test_a_remembered_review_chat_choice_skips_the_question_and_can_be_changed(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    page.get_by_role('button', name='Run Quick critique with defaults', exact=True).click()
+    wait_for_discuss_answer(page, 'Fake answer')
+    wait_for_discuss_idle(page)
+    page.locator('#discussCraftButton').click()
+    page.get_by_role('button', name='Run Comedy review with defaults', exact=True).click()
+    dialog = page.get_by_role('dialog', name='Start a new conversation for this review?', exact=True)
+    dialog.get_by_label('Remember my choice (change it in Customize)').check()
+    dialog.get_by_role('button', name='Run in this chat', exact=True).click()
+    expect(page.locator('.discuss-message.user')).to_have_count(2)
+    wait_for_discuss_idle(page)
+    # Remembered: the next review runs here without asking.
+    page.locator('#discussCraftButton').click()
+    page.get_by_role('button', name='Run Deepen & layer with defaults', exact=True).click()
+    expect(page.locator('.discuss-message.user')).to_have_count(3)
+    assert not dialog.is_visible()
+    wait_for_discuss_idle(page)
+    # Customize shows the choice and changes it back.
+    page.locator('#discussCraftButton').click()
+    customize_review(page, 'Quick critique')
+    choice = page.locator('#discussReviewChatChoice')
+    assert choice.input_value() == 'same'
+    choice.select_option('ask')
+    assert page.evaluate("localStorage.getItem('proseview-review-chat')") == 'ask'

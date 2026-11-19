@@ -6305,6 +6305,9 @@
             outline-offset: 1px;
         }
 
+        .discuss-review-chat-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+        .discuss-review-chat-row select { font: inherit; color: var(--text-main); background: var(--surface-field, transparent); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+        .discuss-review-chat-remember { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin: 4px 0 12px; }
         .discuss-review-keep-toggle,
         .discuss-review-open-critique-toggle {
             display: flex;

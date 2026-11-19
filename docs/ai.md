@@ -152,6 +152,12 @@ Three places where AI shows up, all opt-in:
    Comedy includes each lane's sources. Detailed checklists and examples stay
    in the guides.
 
+   In a chat that already has messages, a review first asks whether to start
+   a new conversation: earlier reviews and requests in the chat would shape
+   what it finds. **Run in this chat** keeps them. **Remember my choice**
+   skips the question, and Customize's **If this chat already has messages**
+   setting changes it later.
+
    Scene selection, context toggles, and one-time instructions carry across review
    types. Lane choices are remembered separately for each review type and book.
    Story facts and purpose are saved per scene and reused across review types and

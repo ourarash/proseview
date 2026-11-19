@@ -5,6 +5,14 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
+### Added
+
+- **Reviews ask before reading an existing chat.** Running a review in a chat
+  that already has messages asks whether to start a new conversation, since
+  earlier reviews and requests would shape what it finds. **Run in this
+  chat** keeps the old behaviour, and a remembered choice can be changed
+  under Customize.
+
 ## 0.5.0 — 2026-11-19
 
 ### Added

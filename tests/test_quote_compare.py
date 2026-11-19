@@ -35,6 +35,14 @@ def test_line_citation_selects_the_whole_paragraph_for_a_standalone_rewrite():
     assert result['before'] == 'The room was quiet. She kept the key. The door stayed shut.'
 
 
+def test_standalone_insertions_use_the_cited_anchor_even_when_the_new_text_exists_elsewhere():
+    text = SCENE + '\nShe listened.\n'
+    result = compare_passage(text, 'She listened.', line=7, kind='insert-after', prefer_line=True)
+    assert result['before'] == 'The room was quiet. She kept the key. The door stayed shut.'
+    assert result['after'].endswith('\n\nShe listened.')
+    assert not result['matches']
+
+
 def test_duplicate_quotes_require_an_unambiguous_source_citation():
     scene = 'She waited.\n\nShe waited.\n'
     with pytest.raises(ValueError, match='more than once'):

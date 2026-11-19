@@ -47,7 +47,12 @@ function groupInstallScroll(body, session) {
             if (anchor && anchor.getClientRects().length) body.scrollTop += anchor.getBoundingClientRect().top - groupScrollViewportTop(body) - saved.offset;
             else body.scrollTop = saved.top || 0;
         }
-        requestAnimationFrame(function() { body._groupRestoring = false; });
+        requestAnimationFrame(function() {
+            body._groupRestoring = false;
+            // A focus/jump can scroll during restoration, when the scroll
+            // event is deliberately ignored. Commit the position once settled.
+            groupRememberScroll(body);
+        });
     }
     body._groupRestoreScroll = restore;
     body.addEventListener('scroll', function() { groupRememberScroll(body); }, {passive: true});

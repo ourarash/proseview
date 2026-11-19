@@ -3038,7 +3038,7 @@
                         if (uMeta) uHead.appendChild(uMeta);
                         uCard.appendChild(uHead);
                         var uBody = elementWith('group-turn-body discuss-message');
-                        renderDiscussMarkdown(uBody, turn.text);
+                        if (!editSelectionRenderReceipt(uBody, turn.text, turn.scene || session.originScene || path)) renderDiscussMarkdown(uBody, turn.text);
                         highlightChatMentions(uBody, session.participants);
                         uCard.appendChild(uBody);
                         addCopyButton(uCard, function() { return turn.text; }, 'Copy message');
@@ -3079,6 +3079,7 @@
                         card.classList.add('group-recap-message');
                         groupDecorateRecap(textWrap, session, turn, turnIdx);
                     }
+                    editSelectionRegisterMessage(textWrap, {scope: editSelectionGroupScope(session), speaker: _groupSpeakerName(turn.seat, turn.agent), source: turn.step_id || String(turnIdx), reviewText: turn.text});
                     if (turn.inherited) card.classList.add('group-inherited-message');
                     if (turn.model_inferred) head.appendChild(elementWith('group-turn-model', 'model inferred'));
                     if (turn.tag === 'Recap' && (turn.preset_kind ? turn.preset_kind !== 'workflow' : session.presetId !== 'second_opinion')) card.insertBefore(elementWith('group-plan-title', 'Revision plan'), textWrap);
@@ -3152,6 +3153,7 @@
             queueMicrotask(function() { groupHydrateRecapReviews(session); });
             body.dataset.scene = path;
             groupInstallScroll(body, session);
+            if (!session.busy) editSelectionVerify(editSelectionGroupScope(session), 'group:' + (session.runtime && session.runtime.revision || session.turns.length));
             if (_groupLatestPlan(session)) _syncGroupApplyButton(session);
             if (session.managed) groupRuntimePoll(session);
             if (inputFocus) {
@@ -5046,6 +5048,7 @@
             if (!quoteEl) return;
             var baseScenePath = (ctx && ctx.scenePath) || _discussCurrentScenePath();
             quoteEl._discussCompareLead = prevEl ? prevEl.textContent.trim() : '';
+            quoteEl._discussCompareSourceKnown = !!(prevEl && prevEl.querySelector('a[data-prosview-path]'));
             quoteEl.classList.add('discuss-clickable-quote');
             quoteEl.title = 'Click to jump to this passage in the scene';
             quoteEl.setAttribute('tabindex', '0');
@@ -5793,7 +5796,12 @@
                 var node;
                 if (token.type === 'space') return;
                 if (token.type === 'text' || token.type === 'escape') {
-                    if (token.tokens) appendMarkdownTokens(parent, token.tokens, ctx);
+                    if (token.tokens && parent.tagName === 'LI') {
+                        // List paragraphs carry Before/After labels too. Keep
+                        // them intact so quote actions can read the whole label.
+                        var paragraph = document.createElement('p');
+                        appendMarkdownTokens(paragraph, token.tokens, ctx); parent.appendChild(paragraph);
+                    } else if (token.tokens) appendMarkdownTokens(parent, token.tokens, ctx);
                     else parent.appendChild(document.createTextNode(decodeMarkdownText(token.text || token.raw || '')));
                     return;
                 }
@@ -5930,6 +5938,7 @@
                 }
                 else { parent.appendChild(document.createTextNode(token.raw || token.text || '')); return; }
                 if (token.type === 'list') {
+                    if (token.ordered && token.start != null) node.start = token.start;
                     (token.items || []).forEach(function(item) { appendMarkdownTokens(node, [item], ctx); });
                 } else if (token.type !== 'code' && token.type !== 'codespan'
                            && token.type !== 'br' && token.type !== 'hr') {
@@ -7061,9 +7070,12 @@
                 }
                 wrap.appendChild(head);
                 var messageKey = String(message.client_request_id || message.id || mIdx);
-                if (!isUser || !renderDiscussCraftRequest(wrap, message.text, messageKey, expandedCraftPrompts.has(messageKey))) {
+                if (isUser && editSelectionRenderReceipt(wrap, message.text, (message.document || snapshot.document || {}).path)) {
+                    // The full Markdown stays in history; its passages are collapsed here.
+                } else if (!isUser || !renderDiscussCraftRequest(wrap, message.text, messageKey, expandedCraftPrompts.has(messageKey))) {
                     renderDiscussMarkdown(wrap, message.text);
                 }
+                if (!isUser && !isThought) editSelectionRegisterMessage(wrap, {scope: editSelectionChatScope(), speaker: agentName, source: message.turn_id || messageKey, reviewText: message.text});
                 if (wasStopped) {
                     wrap.classList.add('is-stopped');
                     var stoppedNote = elementWith('discuss-stopped-note',
@@ -7220,6 +7232,9 @@
             renderDiscussTurnStatus(snapshot);
             syncDiscussSendEmpty();
             renderBtwSplit();
+            editSelectionReconcile(editSelectionChatScope(), messages.filter(function(message) { return message.role === 'user'; }).map(function(message) { return message.client_request_id; }));
+            editSelectionMountChat();
+            if (!snapshot.active_turn_id && !snapshot.active_request_id) editSelectionVerify(editSelectionChatScope(), 'chat:' + messages.length + ':' + finished + ':' + JSON.stringify((_discussReview || []).map(function(file) { return [file.path, file.fingerprint]; })));
             restoreDiscussScroll(log, scrollState);
             if (reviewFocusId) {
                 var reviewControl = document.getElementById(reviewFocusId);
@@ -9640,7 +9655,12 @@ function loadDiscussDiffMode(mode) {
             else button.textContent = 'Sending…';
             document.getElementById('discussAnnouncement').textContent = immediate ? 'Sending now…' : 'Sending question…';
             var authored = question;
-            var fullQuestion = _discussWithSelection(authored);
+            var selectedScope = editSelectionChatScope();
+            var selectedRequest = editSelectionOutgoing(selectedScope, authored);
+            if (!selectedRequest) { button.disabled = false; if (sendNow) sendNow.disabled = false; renderDiscussTaskMode(); return; }
+            authored = selectedRequest.authored;
+            var fullQuestion = _discussWithSelection(selectedRequest.text);
+            editSelectionQueue(selectedScope, requestId, selectedRequest.edits);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
                 client_request_id: requestId,
                 question: fullQuestion,
@@ -9660,6 +9680,7 @@ function loadDiscussDiffMode(mode) {
                     return named ? {name: named.name, path: named.path} : null;
                 })()
             }).then(function(data) {
+                editSelectionAccepted(selectedScope, requestId);
                 _discussAttachments = [];
                 rememberDiscussInstruction(authored);
                 recordChatMessageHistory(_discussAgent, authored);

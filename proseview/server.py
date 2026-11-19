@@ -3095,7 +3095,7 @@ class _Handler(BaseHTTPRequestHandler):
                         result = compare_passage(saved, str(body.get("quote") or ""),
                             original=str(body.get("original") or ""), line=int(body.get("line") or 0) or None,
                             end_line=int(body.get("end_line") or 0) or None, live=live, live_line_offset=live_offset,
-                            kind=str(body.get("kind") or "replace"))
+                            kind=str(body.get("kind") or "replace"), prefer_line=body.get("prefer_line") is True)
                     except ValueError as exc:
                         self._send_json({"ok": True, "unavailable": str(exc)})
                         return

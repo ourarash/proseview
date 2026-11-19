@@ -373,6 +373,7 @@ function createGroupComposer(session) {
         syncGroupInputState();
     });
     paintGroupMentions(input, mirror); renderGroupQuickSend(quick, session);
+    editSelectionMount(editSelectionGroupScope(session), composer, input, quick, session);
     return composer;
 }
 

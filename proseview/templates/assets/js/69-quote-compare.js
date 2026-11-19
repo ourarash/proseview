@@ -11,6 +11,10 @@ function decorateDiscussQuoteActions(wrap, quote, ctx) {
         quote._discussCompareOriginal = previous._discussCompareOriginal || extractDiscussQuoteText(previous);
     }
     if (/Insert\s+(after|before)/i.test(lead)) quote._discussCompareKind = /Insert\s+before/i.test(lead) ? 'insert-before' : 'insert-after';
+    quote._discussExplicitEdit = /^(?:After\s*:|Replace\b|Insert\s+(?:after|before)\b)/i.test(lead);
+    var namedSources = lead.match(/[^\s`<>()\[\]]+\.md\b/g) || [];
+    if (namedSources.some(function(path) { return !resolveProsviewFileReference(path); })
+        && !(quote._discussCompareSourceKnown)) quote._discussExplicitEdit = false;
     if (ctx) ctx.lastCompareQuote = quote;
     var header = quote.querySelector('.discuss-quote-header');
     if (!header) {
@@ -33,6 +37,7 @@ function openDiscussQuoteComparison(quote, button) {
     var replacement = extractDiscussQuoteText(quote);
     var comparison = {request: {document: target, quote: /^\[Cut (?:this )?passage\]$/i.test(replacement) ? '' : replacement,
         original: quote._discussCompareOriginal || '', kind: quote._discussCompareKind || 'replace',
+        prefer_line: !!quote._discussExplicitEdit && !quote._discussCompareOriginal,
         line: Number(quote.dataset.targetLine) || null, end_line: Number(quote.dataset.targetEndLine) || null,
         live_document: discussLiveDocumentFor(target)},
         label: quote._discussCompareOriginal || !quote.querySelector('em') ? 'Suggested text' : 'Quoted text'};

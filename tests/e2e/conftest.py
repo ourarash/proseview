@@ -704,6 +704,21 @@ for line in sys.stdin:
                 'And in `plans/structure-notes.md`:\\n\\n'
                 '> Prose after the rule.'
             )
+        if 'SHOW_EDIT_SELECTIONS' in prompt:
+            answer = (
+                '### 3. Make the code change explicit\\n\\n**Type: Strengthen existing humor**\\n\\n**Before:**\\n\\n'
+                '> *She had used the same four digits since spring.*\\n\\n'
+                '[Opening · Line 18](manuscript/ch01/01-opening.md#L18)\\n\\n'
+                '**After:** Replace [Opening · Line 18](manuscript/ch01/01-opening.md#L18):\\n\\n'
+                '> She had changed the four digits at the start of spring.'
+            )
+        if 'SHOW_INSTRUCTION_SELECTIONS' in prompt:
+            answer = (
+                '### 13. Unclear speaker\\n\\n'
+                '> *She had used the same four digits since spring.*\\n\\n'
+                '[Opening · Line 18](manuscript/ch01/01-opening.md#L18)\\n\\n'
+                'Merge it into the paragraph at [line 17](manuscript/ch01/01-opening.md#L17), or add a speaker tag.'
+            )
         if "in a Group on the manuscript scene" in prompt:
             answer = '### 1. Weather opening\\n\\n> *The weather was grey.*\\n\\nCut it and open on the safe combination.\\n\\n> She had used the same four digits since spring.'
         schema = params.get('outputSchema') or {}

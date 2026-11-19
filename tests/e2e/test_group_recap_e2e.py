@@ -157,7 +157,7 @@ def test_group_reading_position_survives_reload_background_renders_and_history_s
     card.get_by_role('button', name='Expand full edit', exact=True).click()
     # Read the middle of a long message, rather than its beginning or bottom.
     card.locator('blockquote').nth(1).locator('p').nth(4).evaluate("el=>el.scrollIntoView({block:'start'})")
-    page.wait_for_function("() => { const b=document.getElementById('groupBody'); return b._groupScrollState.anchor && !b._groupScrollState.atBottom; }")
+    page.wait_for_function("() => { const b=document.getElementById('groupBody'); return b._groupScrollState.anchor && !b._groupScrollState.atBottom && Math.abs(b._groupScrollState.top-b.scrollTop)<2; }")
     state = page.evaluate("document.getElementById('groupBody')._groupScrollState")
     assert state['top'] > 0
     page.evaluate("() => { _groupActiveSession.turns[0].text += 'More earlier discussion. '.repeat(300); renderSceneGroupPane(); }")

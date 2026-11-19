@@ -67,6 +67,7 @@ function groupRuntimeApply(session, state, options) {
             seen.add(step.message_id); return true;
         }).map(function(step) { return {id: step.message_id, text: step.text}; });
         var acknowledged = state.acknowledged_requests || [];
+        editSelectionReconcile(editSelectionGroupScope(session), acknowledged);
         var oldOutboxLength = (session.outbox || []).length;
         session.outbox = (session.outbox || []).filter(function(body) { return !acknowledged.includes(body.request_id); });
         if (oldOutboxLength > session.outbox.length) session.sendError = '';
@@ -202,9 +203,13 @@ function submitManagedGroupMessage(options) {
     var text = input ? input.value.trim() : _groupDraftInput.trim();
     if (!scene || !text) return;
     var immediate = !!(options && options.mode === 'now');
-    var body = groupRuntimeEnvelope(session, 'submit', {message_id: _groupNewId(), scene: scene, text: _groupWithSelection(text), authored: text,
+    var selectedScope = editSelectionGroupScope(session), selectedRequest = editSelectionOutgoing(selectedScope, text);
+    if (!selectedRequest) return;
+    text = selectedRequest.authored;
+    var body = groupRuntimeEnvelope(session, 'submit', {message_id: _groupNewId(), scene: scene, text: _groupWithSelection(selectedRequest.text), authored: text,
         created_at: Date.now() / 1000, immediate: immediate,
         seats: groupRequestedSeats(text, session), attachments: discussMentionsIn(text), review_choices: groupReviewChoices(session), live_document: discussLiveDocumentFor({kind: 'scene', path: scene})});
+    editSelectionQueue(selectedScope, body.request_id, selectedRequest.edits);
     if (!session.outbox) session.outbox = [];
     session.outbox.push(body);
     if (session.managed) groupRuntimePoll(session, true);

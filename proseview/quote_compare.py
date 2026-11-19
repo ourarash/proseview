@@ -98,13 +98,13 @@ def _map_live_span(saved: str, live: str, span: tuple[int, int]) -> tuple[int, i
 
 def compare_passage(saved: str, quote: str, *, original: str = "", line: int | None = None,
                     end_line: int | None = None, live: str | None = None,
-                    live_line_offset: int = 0, kind: str = "replace") -> dict:
+                    live_line_offset: int = 0, kind: str = "replace", prefer_line: bool = False) -> dict:
     """Resolve a quote or its Before passage, never a guessed nearby paragraph."""
     current, rows = _document(live if live is not None else saved, live_line_offset if live is not None else 0)
-    span = _locate(current, original or quote, rows, line)
+    span = None if prefer_line else _locate(current, original or quote, rows, line)
     if span is None and original:
         span = _locate(current, quote, rows, line)
-    if span is None and live is not None:
+    if span is None and live is not None and not prefer_line:
         baseline, saved_rows = _document(saved)
         previous = _locate(baseline, original or quote, saved_rows, line)
         if previous:

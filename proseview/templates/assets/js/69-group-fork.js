@@ -394,6 +394,7 @@ async function runGroupFork(state) {
         if (!data.ok || !data.group) throw new Error(data.error || 'Could not fork the conversation');
         try { localStorage.setItem('proseview-group-fork-context', JSON.stringify(state.contextOptions)); } catch (error) {}
         var group = data.group, scene = group.scene;
+        editSelectionTransferToGroup(group.id);
         if (_groupActiveSession) _saveGroupSession(_groupActiveSession);
         if (_groupSessionsByScene[scene] && _groupSessionsByScene[scene] !== _groupActiveSession) _saveGroupSession(_groupSessionsByScene[scene]);
         var session = {id: group.id, scene: scene, turns: [], plans: [], participants: group.participants, participantsChosen: true, providerChosen: true};

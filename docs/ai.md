@@ -41,6 +41,34 @@ Three places where AI shows up, all opt-in:
    (including unsaved edits) or file with the quoted suggestion. Split and
    Inline views emphasize changed words. Matching quotes and missing or
    ambiguous passages get an explanation. Comparing does not apply edits.
+   A checkbox beside each review-item heading selects the whole recommendation,
+   including connected replacements, moves, merges, cuts, or other instructions.
+   Quote blocks keep Compare and Copy. Instruction-only selections show their
+   quoted passage and suggested action in the selection review.
+   A compact tray lets you revisit your selections, compare their passages,
+   or prepare a message. Its count and first five chips refer to distinct
+   review items; **+N more** opens the full selection review. Connected edits
+   under one item share a number and a note; the expanded review also shows
+   the number of individual edits when it differs from the item count.
+   **Add note**, beside a selected heading, opens a small instruction field.
+   Notes save as you type. Click a saved note's text to change it, or edit it
+   from the selection review. Notes survive deselection, reloads, and transfer
+   to Group. **Prepare request** fills an empty composer with
+   a short “Apply items 1, 3, 5.” draft using the review's original numbers;
+   unnumbered suggestions use their titles. Notes appear as plain instructions
+   such as “For item 4: Use ‘my home’ instead of ‘my house’.” **Update request**
+   refreshes generated note lines while preserving other writing and note lines
+   you rewrote directly in the message. Sending also includes current notes.
+   When the review is already in the chat, Send passes your instruction without
+   repeating its Before/After blocks. Earlier reviews get a short title reference
+   when needed; proposal text is included only if the receiving chat lacks it.
+   Group apply requests go to one editor. Selections survive
+   reloads and transfer with **Send to Group**. **Requested** means the request
+   was accepted; **Applied** is shown only when the saved replacement matches.
+   Overlapping replacements prompt a wording choice for the default apply
+   request; your own instructions can instead ask the editor to discuss or
+   combine them. Insertions can be selected alongside replacements at their
+   anchor. A missing source is marked **Check source** and is not included.
    Group remembers your reading position per conversation across reloads,
    history switches, and background updates. New replies follow the bottom
    only when you were already reading there.

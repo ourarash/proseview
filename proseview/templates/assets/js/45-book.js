@@ -107,7 +107,21 @@
                     var prose = document.createElement('div');
                     prose.className = 'book-prose';
                     renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p)});
-                    section.append(open, prose);
+                    var sceneMeta = (typeof meta === 'object' && meta) ? meta[p] : null;
+                    var sceneLbl = sceneMeta && sceneMeta.label ? String(sceneMeta.label).trim() : '';
+                    var labelColor = (sceneLbl && typeof labelColorCssExpr === 'function')
+                        ? labelColorCssExpr(sceneMeta.label_slot) : '';
+                    if (sceneLbl && labelColor) {
+                        section.dataset.label = sceneLbl;
+                        var labelDot = document.createElement('span');
+                        labelDot.className = 'book-label-dot';
+                        labelDot.style.setProperty('--label-color', labelColor);
+                        labelDot.title = 'Label: ' + sceneLbl;
+                        labelDot.setAttribute('aria-hidden', 'true');
+                        section.append(labelDot, open, prose);
+                    } else {
+                        section.append(open, prose);
+                    }
                     wrap.appendChild(section);
                     _bookSections.push(section);
                 });
@@ -122,6 +136,31 @@
             var editBtn = document.getElementById('bookEditBtn');
             if (editBtn) editBtn.hidden = !canEdit;
             _bookRenderToc(chapters);
+        }
+
+        function syncBookLabels() {
+            var body = document.getElementById('bookBody');
+            if (!body || typeof meta !== 'object' || !meta) return;
+            body.querySelectorAll('.book-scene[data-path]').forEach(function(section) {
+                var oldDot = section.querySelector(':scope > .book-label-dot');
+                if (oldDot) oldDot.remove();
+                var p = section.dataset.path || '';
+                var sceneMeta = meta[p] || null;
+                var sceneLbl = sceneMeta && sceneMeta.label ? String(sceneMeta.label).trim() : '';
+                var labelColor = (sceneLbl && typeof labelColorCssExpr === 'function')
+                    ? labelColorCssExpr(sceneMeta.label_slot) : '';
+                if (sceneLbl && labelColor) {
+                    section.dataset.label = sceneLbl;
+                    var labelDot = document.createElement('span');
+                    labelDot.className = 'book-label-dot';
+                    labelDot.style.setProperty('--label-color', labelColor);
+                    labelDot.title = 'Label: ' + sceneLbl;
+                    labelDot.setAttribute('aria-hidden', 'true');
+                    section.insertBefore(labelDot, section.firstChild);
+                } else {
+                    delete section.dataset.label;
+                }
+            });
         }
 
         // The chapter list behind the middle of the navigator.

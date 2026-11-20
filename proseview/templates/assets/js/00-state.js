@@ -346,3 +346,676 @@ let currentTab = 'overview';
         // own save would otherwise cause.
         var _pendingSelfReloads = 0;
         var _pendingSelfReloadTimer = null;
+
+        var LABEL_MODE_STORAGE_KEY = 'proseview-label-colors';
+        var LABEL_MODES = ['subtle', 'rows', 'off'];
+        var DEFAULT_LABEL_MODE = 'subtle';
+        var LABEL_COLOR_NAMES = ['blue', 'orange', 'teal', 'amber', 'pink', 'green', 'purple', 'red'];
+
+        function _labelColorTitle(idxOrName) {
+            var s = typeof idxOrName === 'number' ? (LABEL_COLOR_NAMES[idxOrName] || '') : String(idxOrName || '');
+            return s ? (s.charAt(0).toUpperCase() + s.slice(1)) : '';
+        }
+
+        function labelColorDisplayName(slot, isConfigured) {
+            var base = '';
+            if (typeof slot === 'number' && slot >= 0 && slot < LABEL_COLOR_NAMES.length) {
+                base = _labelColorTitle(slot);
+            } else if (typeof slot === 'string' && slot.indexOf('#') === 0) {
+                base = slot.toLowerCase();
+            } else if (slot === 'other') {
+                base = 'Neutral';
+            }
+            if (!base) return 'Auto';
+            return isConfigured ? base : ('Auto · ' + base);
+        }
+
+        function currentLabelColorMode() {
+            var mode = document.documentElement.dataset.labelMode;
+            return LABEL_MODES.indexOf(mode) >= 0 ? mode : DEFAULT_LABEL_MODE;
+        }
+
+        function syncLabelColorMode() {
+            var mode = currentLabelColorMode();
+            document.documentElement.dataset.labelMode = mode;
+            var select = document.getElementById('setting_label_mode');
+            if (select) select.value = mode;
+        }
+
+        function selectLabelColorMode(mode) {
+            if (LABEL_MODES.indexOf(mode) < 0) return;
+            document.documentElement.dataset.labelMode = mode;
+            try { localStorage.setItem(LABEL_MODE_STORAGE_KEY, mode); } catch (err) {}
+            syncLabelColorMode();
+        }
+
+        function labelColorCssExpr(slot) {
+            if (slot === 'other') return 'var(--accent-neutral)';
+            if (typeof slot === 'number' && slot >= 0 && slot < 8) return 'var(--story-c' + slot + ')';
+            if (typeof slot === 'string' && /^[0-7]$/.test(slot)) return 'var(--story-c' + slot + ')';
+            if (typeof slot === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(slot)) return slot;
+            return '';
+        }
+
+        function _resolveSlotHex(slot) {
+            if (typeof slot === 'string' && /^#[0-9a-f]{6}$/i.test(slot)) return slot.toLowerCase();
+            var idx = (typeof slot === 'number' && slot >= 0 && slot < 8) ? slot
+                : (typeof slot === 'string' && /^[0-7]$/.test(slot) ? Number(slot) : -1);
+            var val = idx >= 0
+                ? getComputedStyle(document.documentElement).getPropertyValue('--story-c' + idx).trim()
+                : '';
+            if (/^#[0-9a-f]{6}$/i.test(val)) return val.toLowerCase();
+            if (/^#[0-9a-f]{3}$/i.test(val)) {
+                return '#' + val[1] + val[1] + val[2] + val[2] + val[3] + val[3];
+            }
+            return '#2a78d6';
+        }
+
+        function recomputeClientLabelSlots() {
+            if (typeof paths === 'undefined' || typeof meta === 'undefined') return;
+            var configured = {};
+            var used = {};
+            var prevCatalog = (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.label_catalog))
+                ? storyModel.label_catalog : [];
+            prevCatalog.forEach(function(entry) {
+                if (!entry || !entry.configured || !entry.label) return;
+                if (typeof entry.slot === 'number' && entry.slot >= 0 && entry.slot < 8) {
+                    configured[entry.label] = entry.slot;
+                    used[entry.slot] = true;
+                } else if (typeof entry.slot === 'string' && entry.slot.indexOf('#') === 0) {
+                    configured[entry.label] = entry.slot;
+                }
+            });
+            var slotByLabel = Object.assign({}, configured);
+            var counts = {};
+            var ordered = [];
+            paths.forEach(function(p) {
+                var m = meta[p];
+                var lbl = m && m.label ? String(m.label).trim() : '';
+                if (!lbl) return;
+                counts[lbl] = (counts[lbl] || 0) + 1;
+                if (ordered.indexOf(lbl) < 0) ordered.push(lbl);
+                if (!Object.prototype.hasOwnProperty.call(slotByLabel, lbl)) {
+                    var assigned = 'other';
+                    for (var i = 0; i < 8; i++) {
+                        if (!used[i]) {
+                            assigned = i;
+                            used[i] = true;
+                            break;
+                        }
+                    }
+                    slotByLabel[lbl] = assigned;
+                }
+            });
+            Object.keys(configured).forEach(function(name) {
+                if (ordered.indexOf(name) < 0) ordered.push(name);
+            });
+            paths.forEach(function(p) {
+                var m = meta[p];
+                if (!m) return;
+                var lbl = m.label ? String(m.label).trim() : '';
+                m.label_slot = lbl ? slotByLabel[lbl] : null;
+            });
+            if (typeof storyModel === 'object' && storyModel) {
+                storyModel.label_catalog = ordered.map(function(lbl) {
+                    return {
+                        label: lbl,
+                        slot: slotByLabel[lbl],
+                        count: counts[lbl] || 0,
+                        configured: Object.prototype.hasOwnProperty.call(configured, lbl)
+                    };
+                });
+                storyModel.labels = ordered.slice();
+                storyModel.has_labels = paths.some(function(p) { return !!(meta[p] && meta[p].label); });
+                if (Array.isArray(storyModel.scenes)) {
+                    storyModel.scenes.forEach(function(s) {
+                        var m = meta[s.path];
+                        if (!m) return;
+                        s.label = m.label || '';
+                        s.label_slot = m.label_slot;
+                    });
+                }
+            }
+        }
+
+        function syncAllLabelSurfaces(activeScenePath) {
+            if (typeof syncSidebarLabels === 'function') syncSidebarLabels();
+            if (typeof syncOverviewTableLabels === 'function') syncOverviewTableLabels();
+            if (typeof syncOverviewLabelFilter === 'function') syncOverviewLabelFilter();
+            if (typeof syncBookLabels === 'function') syncBookLabels();
+            var grid = document.getElementById('sceneCardsGrid');
+            if (grid && grid.childNodes.length && typeof window.renderOverviewSceneCards === 'function') {
+                window.renderOverviewSceneCards();
+            }
+            if (typeof refreshTimelineTab === 'function') refreshTimelineTab();
+            if (typeof renderSettingsLabelColors === 'function') renderSettingsLabelColors();
+            if (activeScenePath && typeof renderSceneFrontmatter === 'function'
+                && typeof paths !== 'undefined' && typeof curIdx === 'number' && paths[curIdx] === activeScenePath) {
+                renderSceneFrontmatter(activeScenePath);
+            }
+        }
+
+        function saveLabelColorChoice(labelName, colorTokenOrHex, onDone) {
+            var clean = String(labelName || '').trim();
+            if (!clean) return;
+            var payloadVal = colorTokenOrHex ? String(colorTokenOrHex).trim() : null;
+            _pendingSelfReloads++;
+            if (_pendingSelfReloadTimer) clearTimeout(_pendingSelfReloadTimer);
+            _pendingSelfReloadTimer = setTimeout(function() {
+                _pendingSelfReloads = 0;
+                _pendingSelfReloadTimer = null;
+            }, 4000);
+
+            var bodyObj = { label_color: {} };
+            bodyObj.label_color[clean] = payloadVal;
+            fetch('/api/settings', {
+                method: 'PATCH',
+                headers: pvHeaders(),
+                body: JSON.stringify(bodyObj)
+            }).then(function(r) {
+                return r.json();
+            }).then(function(data) {
+                if (!data || data.ok === false) {
+                    throw new Error((data && data.error) || 'Could not update label color');
+                }
+                if (Array.isArray(data.label_catalog) && typeof storyModel === 'object' && storyModel) {
+                    storyModel.label_catalog = data.label_catalog;
+                } else if (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.label_catalog)) {
+                    var entry = storyModel.label_catalog.find(function(e) { return e && e.label === clean; });
+                    if (entry) {
+                        var low = payloadVal ? payloadVal.toLowerCase() : '';
+                        var namedIdx = LABEL_COLOR_NAMES.indexOf(low);
+                        if (!payloadVal) {
+                            entry.configured = false;
+                            delete entry.slot;
+                        } else if (namedIdx >= 0) {
+                            entry.configured = true;
+                            entry.slot = namedIdx;
+                        } else if (/^c([0-7])$/.test(low)) {
+                            entry.configured = true;
+                            entry.slot = Number(low.slice(1));
+                        } else {
+                            entry.configured = true;
+                            entry.slot = low;
+                        }
+                    }
+                }
+                recomputeClientLabelSlots();
+                var openPath = (document.documentElement.dataset.view === 'scene'
+                    && typeof paths !== 'undefined' && typeof curIdx === 'number' && curIdx >= 0)
+                    ? paths[curIdx] : null;
+                syncAllLabelSurfaces(openPath);
+                if (typeof onDone === 'function') onDone();
+            }).catch(function(err) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Color update failed: ' + ((err && err.message) || 'unknown error'), true);
+                }
+            });
+        }
+
+        function buildLabelColorPickerStrip(labelName, currentSlot, isConfigured, onUpdated) {
+            var strip = document.createElement('div');
+            strip.className = 'label-color-strip';
+            strip.addEventListener('click', function(ev) { ev.stopPropagation(); });
+
+            for (var i = 0; i < 8; i++) {
+                (function(idx) {
+                    var colorName = LABEL_COLOR_NAMES[idx] || ('c' + idx);
+                    var colorTitle = _labelColorTitle(colorName);
+                    var sw = document.createElement('button');
+                    sw.type = 'button';
+                    sw.className = 'label-color-swatch' + (currentSlot === idx ? ' is-active' : '');
+                    sw.style.setProperty('--swatch-color', 'var(--story-c' + idx + ')');
+                    sw.title = colorTitle;
+                    sw.setAttribute('aria-label', 'Set ' + labelName + ' color to ' + colorName);
+                    sw.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        saveLabelColorChoice(labelName, colorName, onUpdated);
+                    });
+                    strip.appendChild(sw);
+                })(i);
+            }
+
+            var isCustomHex = typeof currentSlot === 'string' && currentSlot.indexOf('#') === 0;
+            var wellWrap = document.createElement('label');
+            wellWrap.className = 'label-color-well-wrap' + (isCustomHex ? ' is-active' : '');
+            wellWrap.title = 'Pick any custom color';
+            var wheel = document.createElement('span');
+            wheel.className = 'label-color-wheel';
+            wheel.setAttribute('aria-hidden', 'true');
+            if (isCustomHex) wheel.style.background = currentSlot;
+            var wellText = document.createElement('span');
+            wellText.className = 'label-color-custom-text';
+            wellText.textContent = 'Custom\u2026';
+            var well = document.createElement('input');
+            well.type = 'color';
+            well.className = 'label-color-well';
+            well.value = _resolveSlotHex(currentSlot);
+            well.setAttribute('aria-label', 'Custom color for ' + labelName);
+            well.addEventListener('click', function(ev) { ev.stopPropagation(); });
+            well.addEventListener('change', function(ev) {
+                ev.stopPropagation();
+                saveLabelColorChoice(labelName, well.value, onUpdated);
+            });
+            wellWrap.append(wheel, wellText, well);
+            strip.appendChild(wellWrap);
+
+            if (isConfigured) {
+                var reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = 'label-color-auto-btn';
+                reset.textContent = 'Auto';
+                reset.title = 'Reset to automatic color';
+                reset.addEventListener('click', function(ev) {
+                    ev.stopPropagation();
+                    saveLabelColorChoice(labelName, null, onUpdated);
+                });
+                strip.appendChild(reset);
+            }
+
+            return strip;
+        }
+
+        function _applyServerLabelMutation(payload, refreshScenesFromDisk) {
+            if (typeof _pmEditMode !== 'undefined' && _pmEditMode && typeof _pmDirty !== 'undefined' && _pmDirty && refreshScenesFromDisk) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Save or cancel your open scene edits before renaming or removing a label.', true);
+                }
+                return Promise.resolve(false);
+            }
+            _pendingSelfReloads++;
+            if (_pendingSelfReloadTimer) clearTimeout(_pendingSelfReloadTimer);
+            _pendingSelfReloadTimer = setTimeout(function() {
+                _pendingSelfReloads = 0;
+                _pendingSelfReloadTimer = null;
+            }, 4000);
+
+            return fetch('/api/settings', {
+                method: 'PATCH',
+                headers: pvHeaders(),
+                body: JSON.stringify(payload)
+            }).then(function(r) {
+                return r.json();
+            }).then(function(data) {
+                if (!data || data.ok === false) {
+                    throw new Error((data && data.error) || 'Could not update labels');
+                }
+                if (Array.isArray(data.label_catalog) && typeof storyModel === 'object' && storyModel) {
+                    storyModel.label_catalog = data.label_catalog;
+                }
+                if (!refreshScenesFromDisk) {
+                    recomputeClientLabelSlots();
+                    var openPath = (document.documentElement.dataset.view === 'scene'
+                        && typeof paths !== 'undefined' && typeof curIdx === 'number' && curIdx >= 0)
+                        ? paths[curIdx] : null;
+                    syncAllLabelSurfaces(openPath);
+                    return true;
+                }
+                return fetch('/data.json', { cache: 'no-store' }).then(function(r) {
+                    return r.ok ? r.json() : null;
+                }).then(function(fresh) {
+                    if (fresh && fresh.meta && typeof meta === 'object' && meta) {
+                        Object.keys(fresh.meta).forEach(function(p) {
+                            meta[p] = fresh.meta[p];
+                        });
+                    }
+                    recomputeClientLabelSlots();
+                    var openPath = (document.documentElement.dataset.view === 'scene'
+                        && typeof paths !== 'undefined' && typeof curIdx === 'number' && curIdx >= 0)
+                        ? paths[curIdx] : null;
+                    syncAllLabelSurfaces(openPath);
+                    return true;
+                });
+            }).catch(function(err) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Label update failed: ' + ((err && err.message) || 'unknown error'), true);
+                }
+                return false;
+            });
+        }
+
+        var _settingsLabelUiState = { renaming: null, confirmingRemove: null };
+
+        function renderSettingsLabelColors() {
+            var row = document.getElementById('settingsLabelPaletteRow');
+            var list = document.getElementById('settingsLabelPaletteList');
+            if (!row || !list) return;
+            row.hidden = false;
+            var catalog = (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.label_catalog))
+                ? storyModel.label_catalog : [];
+            list.replaceChildren();
+
+            catalog.forEach(function(entry) {
+                if (!entry || !entry.label) return;
+                var item = document.createElement('div');
+                item.className = 'settings-label-palette-item';
+                item.dataset.labelName = entry.label;
+
+                if (_settingsLabelUiState.renaming === entry.label) {
+                    var renameForm = document.createElement('form');
+                    renameForm.className = 'settings-label-rename-form';
+                    var rInput = document.createElement('input');
+                    rInput.type = 'text';
+                    rInput.className = 'settings-input settings-label-rename-input';
+                    rInput.value = entry.label;
+                    rInput.maxLength = 48;
+                    rInput.setAttribute('aria-label', 'Rename label ' + entry.label);
+                    var rSave = document.createElement('button');
+                    rSave.type = 'submit';
+                    rSave.className = 'settings-plain-btn';
+                    rSave.textContent = 'Save';
+                    var rCancel = document.createElement('button');
+                    rCancel.type = 'button';
+                    rCancel.className = 'settings-plain-btn';
+                    rCancel.textContent = 'Cancel';
+                    rCancel.addEventListener('click', function() {
+                        _settingsLabelUiState.renaming = null;
+                        renderSettingsLabelColors();
+                    });
+                    renameForm.addEventListener('submit', function(ev) {
+                        ev.preventDefault();
+                        var nextName = rInput.value.trim();
+                        if (!nextName || nextName === entry.label) {
+                            _settingsLabelUiState.renaming = null;
+                            renderSettingsLabelColors();
+                            return;
+                        }
+                        rSave.disabled = true;
+                        _applyServerLabelMutation(
+                            { label_rename: { old: entry.label, new: nextName } },
+                            true
+                        ).then(function(ok) {
+                            _settingsLabelUiState.renaming = null;
+                            if (ok && typeof sidebarShowToast === 'function') {
+                                sidebarShowToast('Renamed label to \u201c' + nextName + '\u201d');
+                            }
+                            renderSettingsLabelColors();
+                        });
+                    });
+                    renameForm.append(rInput, rSave, rCancel);
+                    item.appendChild(renameForm);
+                    setTimeout(function() { rInput.focus(); rInput.select(); }, 0);
+                } else {
+                    var header = document.createElement('div');
+                    header.className = 'settings-label-palette-head';
+                    var dot = document.createElement('span');
+                    dot.className = 'scene-label-dot';
+                    var colorExpr = labelColorCssExpr(entry.slot);
+                    if (colorExpr) dot.style.setProperty('--label-color', colorExpr);
+                    var name = document.createElement('span');
+                    name.className = 'settings-label-palette-name';
+                    name.textContent = entry.label;
+                    var colorChip = document.createElement('span');
+                    colorChip.className = 'settings-label-palette-color';
+                    colorChip.textContent = labelColorDisplayName(entry.slot, !!entry.configured);
+                    var count = document.createElement('span');
+                    count.className = 'settings-label-palette-count';
+                    count.textContent = String(entry.count || 0) + (entry.count === 1 ? ' scene' : ' scenes');
+
+                    var actions = document.createElement('span');
+                    actions.className = 'settings-label-actions';
+
+                    if (_settingsLabelUiState.confirmingRemove === entry.label) {
+                        var confirmBtn = document.createElement('button');
+                        confirmBtn.type = 'button';
+                        confirmBtn.className = 'settings-danger-btn settings-label-action-btn';
+                        confirmBtn.textContent = 'Confirm remove';
+                        confirmBtn.addEventListener('click', function() {
+                            confirmBtn.disabled = true;
+                            _applyServerLabelMutation(
+                                { label_remove: { name: entry.label } },
+                                (entry.count || 0) > 0
+                            ).then(function(ok) {
+                                _settingsLabelUiState.confirmingRemove = null;
+                                if (ok && typeof sidebarShowToast === 'function') {
+                                    sidebarShowToast('Removed label \u201c' + entry.label + '\u201d');
+                                }
+                                renderSettingsLabelColors();
+                            });
+                        });
+                        var cancelRmBtn = document.createElement('button');
+                        cancelRmBtn.type = 'button';
+                        cancelRmBtn.className = 'settings-plain-btn settings-label-action-btn';
+                        cancelRmBtn.textContent = 'Cancel';
+                        cancelRmBtn.addEventListener('click', function() {
+                            _settingsLabelUiState.confirmingRemove = null;
+                            renderSettingsLabelColors();
+                        });
+                        actions.append(confirmBtn, cancelRmBtn);
+                    } else {
+                        var renBtn = document.createElement('button');
+                        renBtn.type = 'button';
+                        renBtn.className = 'settings-plain-btn settings-label-action-btn';
+                        renBtn.textContent = 'Rename';
+                        renBtn.addEventListener('click', function() {
+                            _settingsLabelUiState.confirmingRemove = null;
+                            _settingsLabelUiState.renaming = entry.label;
+                            renderSettingsLabelColors();
+                        });
+                        var rmBtn = document.createElement('button');
+                        rmBtn.type = 'button';
+                        rmBtn.className = 'settings-danger-btn settings-label-action-btn';
+                        rmBtn.textContent = 'Remove';
+                        rmBtn.addEventListener('click', function() {
+                            if ((entry.count || 0) > 0) {
+                                _settingsLabelUiState.renaming = null;
+                                _settingsLabelUiState.confirmingRemove = entry.label;
+                                renderSettingsLabelColors();
+                                return;
+                            }
+                            rmBtn.disabled = true;
+                            _applyServerLabelMutation({ label_remove: { name: entry.label } }, false).then(function(ok) {
+                                if (ok && typeof sidebarShowToast === 'function') {
+                                    sidebarShowToast('Removed label \u201c' + entry.label + '\u201d');
+                                }
+                                renderSettingsLabelColors();
+                            });
+                        });
+                        actions.append(renBtn, rmBtn);
+                    }
+
+                    header.append(dot, name, colorChip, count, actions);
+                    item.appendChild(header);
+                }
+
+                item.appendChild(buildLabelColorPickerStrip(entry.label, entry.slot, !!entry.configured));
+                list.appendChild(item);
+            });
+
+            var addForm = document.createElement('form');
+            addForm.className = 'settings-label-add-form';
+            var addInput = document.createElement('input');
+            addInput.type = 'text';
+            addInput.className = 'settings-input settings-label-add-input';
+            addInput.placeholder = 'New label name\u2026';
+            addInput.maxLength = 48;
+            addInput.setAttribute('aria-label', 'New label name');
+            var addBtn = document.createElement('button');
+            addBtn.type = 'submit';
+            addBtn.className = 'settings-plain-btn';
+            addBtn.textContent = '+ Add label';
+            addForm.append(addInput, addBtn);
+            addForm.addEventListener('submit', function(ev) {
+                ev.preventDefault();
+                var lblName = addInput.value.trim();
+                if (!lblName) return;
+                addBtn.disabled = true;
+                _applyServerLabelMutation({ label_add: { name: lblName } }, false).then(function(ok) {
+                    addBtn.disabled = false;
+                    if (ok) {
+                        addInput.value = '';
+                        if (typeof sidebarShowToast === 'function') {
+                            sidebarShowToast('Added label \u201c' + lblName + '\u201d');
+                        }
+                    }
+                    renderSettingsLabelColors();
+                });
+            });
+            list.appendChild(addForm);
+        }
+
+        function buildSceneLabelMenuPanel(opts) {
+            var container = opts.container;
+            if (!container) return;
+            var currentLabel = opts.currentLabel || '';
+            var canChangeColor = !(typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT)
+                && !(window.PROSEVIEW_STATIC && !window.PROSEVIEW_STATIC_EDITS);
+            var expandedColorFor = null;
+
+            function render(showNewInput) {
+                container.replaceChildren();
+                var catalog = (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.label_catalog))
+                    ? storyModel.label_catalog : [];
+
+                if (opts.titleText) {
+                    var title = document.createElement('div');
+                    title.className = 'scene-label-popover-title';
+                    title.textContent = opts.titleText;
+                    container.appendChild(title);
+                }
+
+                catalog.forEach(function(entry) {
+                    if (!entry || !entry.label) return;
+                    var rowWrap = document.createElement('div');
+                    rowWrap.className = 'scene-label-row-wrap';
+
+                    var row = document.createElement('div');
+                    row.className = 'scene-label-item-row' + (entry.label === currentLabel ? ' is-selected' : '');
+
+                    var itemColor = labelColorCssExpr(entry.slot);
+                    if (canChangeColor) {
+                        var colorBtn = document.createElement('button');
+                        colorBtn.type = 'button';
+                        colorBtn.className = 'scene-label-swatch-btn';
+                        colorBtn.title = 'Change color for ' + entry.label;
+                        colorBtn.setAttribute('aria-label', 'Change color for ' + entry.label);
+                        colorBtn.setAttribute('aria-expanded', expandedColorFor === entry.label ? 'true' : 'false');
+                        var sDot = document.createElement('span');
+                        sDot.className = 'scene-label-dot';
+                        if (itemColor) sDot.style.setProperty('--label-color', itemColor);
+                        colorBtn.appendChild(sDot);
+                        colorBtn.addEventListener('click', function(ev) {
+                            ev.stopPropagation();
+                            expandedColorFor = expandedColorFor === entry.label ? null : entry.label;
+                            render(false);
+                        });
+                        row.appendChild(colorBtn);
+                    }
+
+                    var item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'scene-label-item' + (entry.label === currentLabel ? ' is-selected' : '');
+                    item.setAttribute('role', 'menuitem');
+                    if (!canChangeColor && itemColor) {
+                        var iDot = document.createElement('span');
+                        iDot.className = 'scene-label-dot';
+                        iDot.style.setProperty('--label-color', itemColor);
+                        iDot.setAttribute('aria-hidden', 'true');
+                        item.appendChild(iDot);
+                    }
+                    var nameSpan = document.createElement('span');
+                    nameSpan.className = 'scene-label-item-name';
+                    nameSpan.textContent = entry.label;
+                    var countSpan = document.createElement('span');
+                    countSpan.className = 'scene-label-item-count';
+                    countSpan.textContent = String(entry.count || 0);
+                    item.append(nameSpan, countSpan);
+                    item.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        if (typeof opts.onSelect === 'function') opts.onSelect(entry.label);
+                    });
+                    row.appendChild(item);
+                    rowWrap.appendChild(row);
+
+                    if (canChangeColor && expandedColorFor === entry.label) {
+                        rowWrap.appendChild(buildLabelColorPickerStrip(entry.label, entry.slot, !!entry.configured, function() {
+                            render(false);
+                            if (typeof opts.onAfterColorChange === 'function') opts.onAfterColorChange();
+                        }));
+                    }
+                    container.appendChild(rowWrap);
+                });
+
+                if (catalog.length) {
+                    var sep = document.createElement('div');
+                    sep.className = 'scene-label-sep';
+                    container.appendChild(sep);
+                }
+
+                if (showNewInput) {
+                    var form = document.createElement('form');
+                    form.className = 'scene-label-new-form';
+                    var input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'scene-label-new-input';
+                    input.placeholder = 'Label name…';
+                    input.maxLength = 48;
+                    input.setAttribute('aria-label', 'New label name');
+                    var addBtn = document.createElement('button');
+                    addBtn.type = 'submit';
+                    addBtn.className = 'scene-label-new-submit';
+                    addBtn.textContent = 'Add';
+                    form.append(input, addBtn);
+                    form.addEventListener('submit', function(ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        var val = input.value.trim();
+                        if (!val) return;
+                        if (typeof opts.onSelect === 'function') opts.onSelect(val);
+                    });
+                    input.addEventListener('click', function(ev) { ev.stopPropagation(); });
+                    input.addEventListener('keydown', function(ev) {
+                        if (ev.key === 'Escape') {
+                            ev.stopPropagation();
+                            if (typeof opts.onCancel === 'function') opts.onCancel();
+                        }
+                    });
+                    container.appendChild(form);
+                    setTimeout(function() { input.focus(); }, 0);
+                } else {
+                    var newBtn = document.createElement('button');
+                    newBtn.type = 'button';
+                    newBtn.className = 'scene-label-item';
+                    newBtn.setAttribute('role', 'menuitem');
+                    newBtn.textContent = '+ New\u2026';
+                    newBtn.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        expandedColorFor = null;
+                        render(true);
+                    });
+                    container.appendChild(newBtn);
+                }
+
+                if (currentLabel) {
+                    var clearBtn = document.createElement('button');
+                    clearBtn.type = 'button';
+                    clearBtn.className = 'scene-label-item is-clear';
+                    clearBtn.setAttribute('role', 'menuitem');
+                    clearBtn.textContent = 'Clear';
+                    clearBtn.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        if (typeof opts.onSelect === 'function') opts.onSelect('');
+                    });
+                    container.appendChild(clearBtn);
+                }
+
+                if (canChangeColor && typeof openAppearanceSettings === 'function') {
+                    var manageSep = document.createElement('div');
+                    manageSep.className = 'scene-label-sep';
+                    var manageBtn = document.createElement('button');
+                    manageBtn.type = 'button';
+                    manageBtn.className = 'scene-label-item is-manage';
+                    manageBtn.setAttribute('role', 'menuitem');
+                    manageBtn.textContent = 'Manage labels\u2026';
+                    manageBtn.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        if (typeof opts.onClose === 'function') opts.onClose();
+                        else if (typeof opts.onCancel === 'function') opts.onCancel();
+                        openAppearanceSettings();
+                    });
+                    container.append(manageSep, manageBtn);
+                }
+            }
+
+            render(false);
+        }

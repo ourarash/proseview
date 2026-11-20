@@ -227,6 +227,32 @@
             return label;
         }
 
+        function applySidebarNodeLabel(el, scenePath) {
+            if (!el) return;
+            var m = (typeof meta === 'object' && meta && scenePath) ? meta[scenePath] : null;
+            var lbl = m && m.label ? String(m.label).trim() : '';
+            var colorExpr = (lbl && typeof labelColorCssExpr === 'function') ? labelColorCssExpr(m.label_slot) : '';
+            if (lbl && colorExpr) {
+                el.dataset.labelColor = '1';
+                el.dataset.label = lbl;
+                el.style.setProperty('--label-color', colorExpr);
+                el.title = scenePath + ' · ' + lbl;
+            } else {
+                delete el.dataset.labelColor;
+                delete el.dataset.label;
+                el.style.removeProperty('--label-color');
+                if (scenePath) el.removeAttribute('title');
+            }
+        }
+
+        function syncSidebarLabels() {
+            var tree = document.getElementById('sidebarTree');
+            if (!tree) return;
+            tree.querySelectorAll('.file-link[data-scene-path]').forEach(function(a) {
+                applySidebarNodeLabel(a, a.dataset.scenePath || '');
+            });
+        }
+
         function buildSidebarItem(node, depth) {
             const li = document.createElement('li');
             li.setAttribute('role', 'none');
@@ -246,6 +272,7 @@
                     a.dataset.scenePath = node.scene_path || '';
                     a.appendChild(sidebarIcon('scene', 'sidebar-scene-icon'));
                     a.appendChild(sidebarLabel(node.name));
+                    applySidebarNodeLabel(a, node.scene_path || '');
                     // openSceneModal reveals the scene in the sidebar itself.
                     a.onclick = () => sidebarOpenScene(node);
                 } else {

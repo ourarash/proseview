@@ -178,6 +178,67 @@
             });
         }
 
+        function sidebarOpenContextLabelMenu(node, menu, anchor, point) {
+            var scenePath = node.scene_path;
+            function showPanel() {
+                var m = (typeof meta === 'object' && meta) ? meta[scenePath] : null;
+                var currentLabel = (m && m.label) ? String(m.label).trim() : '';
+                menu.innerHTML = '';
+
+                var backBtn = document.createElement('button');
+                backBtn.type = 'button';
+                backBtn.className = 'sidebar-context-label-back';
+                backBtn.setAttribute('role', 'menuitem');
+                backBtn.textContent = '\u2190 Back';
+                backBtn.addEventListener('click', function(ev) {
+                    ev.stopPropagation();
+                    sidebarOpenNodeMenu(node, anchor, point);
+                });
+                menu.appendChild(backBtn);
+                menu.appendChild(document.createElement('hr'));
+
+                var panel = document.createElement('div');
+                panel.className = 'sidebar-context-label-panel';
+                if (typeof buildSceneLabelMenuPanel === 'function') {
+                    buildSceneLabelMenuPanel({
+                        container: panel,
+                        titleText: 'Scene label',
+                        currentLabel: currentLabel,
+                        onSelect: function(selectedLabel) {
+                            sidebarCloseMenus(false);
+                            if (typeof saveSceneLabelOnDisk === 'function') {
+                                saveSceneLabelOnDisk(scenePath, selectedLabel);
+                            }
+                        },
+                        onCancel: function() { sidebarOpenNodeMenu(node, anchor, point); },
+                        onClose: function() { sidebarCloseMenus(false); }
+                    });
+                }
+                menu.appendChild(panel);
+                var x = point ? point.x : anchor.getBoundingClientRect().right - 8;
+                var y = point ? point.y : anchor.getBoundingClientRect().bottom;
+                sidebarPositionContextMenu(menu, x, y);
+                sidebarFocusMenu(panel);
+            }
+
+            if (typeof meta === 'object' && meta && meta[scenePath]) {
+                showPanel();
+                return;
+            }
+            fetch('/scene-data?path=' + encodeURIComponent(scenePath), { cache: 'no-store' })
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (data && data.meta && data.meta[scenePath] && typeof meta === 'object' && meta) {
+                        meta[scenePath] = data.meta[scenePath];
+                        if (data.contents && data.contents[scenePath] !== undefined && typeof contents === 'object') {
+                            contents[scenePath] = data.contents[scenePath];
+                        }
+                    }
+                    showPanel();
+                })
+                .catch(function() { showPanel(); });
+        }
+
         function sidebarOpenNodeMenu(node, anchor, point) {
             var menu = document.getElementById('sidebarContextMenu');
             if (!menu) return;
@@ -192,6 +253,36 @@
                 menu.appendChild(sidebarMenuButton('Copy URL', 'copy-url', function() {
                     sidebarCopyNodeUrl(node, anchor);
                 }));
+                if (node.is_scene && node.scene_path && !(window.PROSEVIEW_STATIC && !window.PROSEVIEW_STATIC_EDITS)) {
+                    var sceneMeta = (typeof meta === 'object' && meta) ? meta[node.scene_path] : null;
+                    var currentLbl = sceneMeta && sceneMeta.label ? String(sceneMeta.label).trim() : '';
+                    var labelBtn = document.createElement('button');
+                    labelBtn.type = 'button';
+                    labelBtn.role = 'menuitem';
+                    labelBtn.className = 'sidebar-context-label-trigger';
+                    labelBtn.dataset.action = 'scene-label';
+                    var dotColor = (currentLbl && typeof labelColorCssExpr === 'function')
+                        ? labelColorCssExpr(sceneMeta && sceneMeta.label_slot) : '';
+                    if (currentLbl && dotColor) {
+                        var dot = document.createElement('span');
+                        dot.className = 'scene-label-dot';
+                        dot.style.setProperty('--label-color', dotColor);
+                        dot.setAttribute('aria-hidden', 'true');
+                        labelBtn.appendChild(dot);
+                    }
+                    var lblText = document.createElement('span');
+                    lblText.textContent = currentLbl ? ('Label: ' + currentLbl) : 'Label\u2026';
+                    var arrow = document.createElement('span');
+                    arrow.className = 'sidebar-context-label-arrow';
+                    arrow.setAttribute('aria-hidden', 'true');
+                    arrow.textContent = '\u25b8';
+                    labelBtn.append(lblText, arrow);
+                    labelBtn.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        sidebarOpenContextLabelMenu(node, menu, anchor, point);
+                    });
+                    menu.appendChild(labelBtn);
+                }
                 menu.appendChild(document.createElement('hr'));
             } else {
                 menu.appendChild(sidebarMenuButton('New file here', 'new-file', function() {
@@ -537,6 +628,7 @@
             });
             document.addEventListener('keydown', function(event) {
                 var menu = event.target.closest && event.target.closest('.sidebar-action-menu');
+                if (event.target && event.target.tagName === 'INPUT') return;
                 if (event.key === 'Escape' && menu) {
                     event.preventDefault();
                     sidebarCloseMenus(true);

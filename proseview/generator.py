@@ -51,7 +51,7 @@ from .lexical import (
 from .repo import (
     build_repository_tree, build_sidebar_tree, build_tree, lists_whole_folder, read_repo_text, recent_changes,
 )
-from .story import story_payload
+from .story import resolve_label_catalog, story_payload
 from .scenes import (
     BaselineStats,
     SceneStats,
@@ -628,10 +628,13 @@ def build_scene_data(
                                                   stopwords=_scene_stopwords(content_stopwords, s.frontmatter))
         for s in scenes
     }
+    label_slots, _label_catalog = resolve_label_catalog(scenes, cfg)
     meta = {
         clean_path(scene.path): {
             "title": scene.title,
             "chapter": scene.chapter,
+            "label": scene.label,
+            "label_slot": label_slots.get(scene.label) if scene.label else None,
             "repeats": scene.repetition_examples,
             "avg_sent": scene.avg_sentence_words,
             "sent_stdev": scene.sent_len_stdev,
@@ -715,6 +718,7 @@ def _scene_table_body(
         return text[len(manuscript_prefix):] if text.startswith(manuscript_prefix) else text
 
     span = 7 if analysis else 2
+    label_slots, _ = resolve_label_catalog(display_scenes, cfg)
     body = ""
     last_chapter = None
     # The Overview also shows how far into the book each row ends: the words
@@ -763,6 +767,26 @@ def _scene_table_body(
 
         fm_dict = scene.frontmatter if isinstance(scene.frontmatter, dict) else {}
         missing_beats = 0 if (fm_dict.get("goal") or fm_dict.get("conflict")) else 1
+        label_text = scene.label
+        label_slot = label_slots.get(label_text) if label_text else None
+        if label_text and label_slot is not None:
+            if isinstance(label_slot, str) and label_slot.startswith("#"):
+                label_color = label_slot
+            elif label_slot == "other":
+                label_color = "var(--accent-neutral)"
+            else:
+                label_color = f"var(--story-c{label_slot})"
+            label_dot = (
+                f'<span class="table-label-dot" style="--label-color:{label_color}" '
+                f'title="Label: {html.escape(label_text, quote=True)}" aria-hidden="true"></span>'
+            )
+            label_badge = (
+                f'<span class="badge label-pill" style="--label-color:{label_color}">'
+                f'{html.escape(label_text)}</span> '
+            )
+        else:
+            label_dot = ""
+            label_badge = ""
         style_attrs = (
             f'data-dlg="{scene.dialogue_pct}" data-sent="{scene.avg_sentence_words}" '
             f'data-rep="{scene.repetition_score}" data-review="{1 if outlier else 0}" '
@@ -771,12 +795,13 @@ def _scene_table_body(
         body += (
             f'<tr class="scene-row" {style_attrs}'
             f'data-words="{scene.words}" data-missing-beats="{missing_beats}" '
-            f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}">'
+            f'data-todos="{todo_count}" data-notes="{note_count}" data-status="{status_slug}" '
+            f'data-label="{html.escape(label_text, quote=True)}">'
 
-            f'<td><button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
+            f'<td>{label_dot}<button type="button" class="scene-table-link" data-scene-path="{display_path_attr}" '
             f'title="{display_path_attr}" '
             f'onclick="openSceneModal(this.dataset.scenePath)">{html.escape(scene.title or display_path)}</button>'
-            f'<span class="scene-row-tags">{alert_badge}{status_badge}{todo_badge}{note_badge}</span></td>'
+            f'<span class="scene-row-tags">{alert_badge}{status_badge}{label_badge}{todo_badge}{note_badge}</span></td>'
             f'<td class="num-col">{scene.words:,}</td>'
         )
         if not analysis:
@@ -837,6 +862,15 @@ def _analysis_findings(scenes: list[SceneStats], cfg: Config, clean_path) -> lis
                    "in its scenes' frontmatter if they are different chapters.",
             "filter": "",
             "scenes": [],
+        })
+    list_labeled = [s for s in scenes if s.label_is_list]
+    if list_labeled:
+        key_name = cfg.story.label_field
+        findings.append({
+            "text": f"{plural(len(list_labeled), 'scene writes', 'scenes write')} {key_name}: as a list.",
+            "tip": "Each scene carries one label. Proseview uses the first item in the list and leaves your frontmatter untouched.",
+            "filter": "",
+            "scenes": names(list_labeled),
         })
     repeating = [s for s in measured if scene_is_outlier(s, cfg)]
     findings.append({
@@ -1062,6 +1096,8 @@ def render_html_report(
     # comes from; Settings shows and edits the same values.
     bands = lexical_bands(cfg, root)
 
+    story_model_payload = story_payload(scenes, cfg)
+
     context = {
         "app_css": _load_app_css(),
         "app_js": _load_app_js(),
@@ -1118,7 +1154,8 @@ def render_html_report(
             }
         ),
         "skills_json": _js_json(_load_skills(root, cfg.skills_dir)),
-        "story_json": _js_json(story_payload(scenes, cfg)),
+        "story_json": _js_json(story_model_payload),
+        "label_catalog": story_model_payload["label_catalog"],
         "session_token_json": json.dumps(session_token),
         "static_snapshot": static_snapshot,
         "snapshot_meta": snapshot_meta,

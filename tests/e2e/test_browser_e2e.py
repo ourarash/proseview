@@ -4315,8 +4315,9 @@ def test_dashboard_appearance_listboxes_are_keyboard_operable_and_persist(
 ):
     open_dashboard(page, server)
     assert page.get_by_role("button", name="Pick reading font").count() == 0
-    # The theme is chosen in Settings, out of the dashboard's way.
+    # The theme is chosen in Settings -> Appearance, out of the dashboard's way.
     page.locator("#settingsOpenBtn").click()
+    page.locator("#settingsTabAppearance").click()
     theme = page.locator("#themeToggle")
     theme.focus()
     page.keyboard.press("Enter")

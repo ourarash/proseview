@@ -51,6 +51,17 @@
             document.documentElement.dataset.font = font;
         })();
         (function() {
+            const allowed = ['subtle', 'rows', 'off'];
+            let mode = 'subtle';
+            try {
+                const stored = localStorage.getItem('proseview-label-colors');
+                if (allowed.indexOf(stored) >= 0) mode = stored;
+            } catch (err) {
+                mode = 'subtle';
+            }
+            document.documentElement.dataset.labelMode = mode;
+        })();
+        (function() {
             // Open by default, except on a phone, where the file list would
             // take over half the screen. Either way an explicit choice wins.
             try {
@@ -440,8 +451,8 @@
                 <button type="button" class="scene-view-btn" id="sceneViewCardsBtn" data-scene-view="cards" onclick="setOverviewSceneView('cards')" aria-pressed="false" data-tip="Cards view: see each scene's POV, place, and Goal / Conflict / Outcome from YAML frontmatter.">Cards</button>
             </div>
             <label class="sr-only" for="issueFilter">Show</label>
-            <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()" title="Filter scenes by TODOs, notes, short stub drafts (< 200 words), missing Goal/Conflict in frontmatter, or status">
-                <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option value="stubs" title="Scenes with fewer than 200 words of prose that still need drafting">Short drafts / stubs (&lt; 200 words)</option><option value="missing-beats" title="Scenes without goal: or conflict: set in their YAML frontmatter">Missing Goal or Conflict in frontmatter</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>
+            <select id="issueFilter" class="issue-filter" onchange="applyIssueFilter()" title="Filter scenes by TODOs, notes, short stub drafts (< 200 words), missing Goal/Conflict in frontmatter, status, or label">
+                <option value="all">All scenes</option><option value="todos">With TODOs</option><option value="notes">With notes</option><option value="stubs" title="Scenes with fewer than 200 words of prose that still need drafting">Short drafts / stubs (&lt; 200 words)</option><option value="missing-beats" title="Scenes without goal: or conflict: set in their YAML frontmatter">Missing Goal or Conflict in frontmatter</option><option disabled>──────</option><option value="status-draft">Draft</option><option value="status-revision">In revision</option><option value="status-done">Done</option><option value="status-unknown">No status</option>{% if label_catalog %}<option disabled>──────</option>{% for entry in label_catalog %}<option value="label:{{ entry.label }}">Label: {{ entry.label }} ({{ entry.count }})</option>{% endfor %}<option value="label:__none__">No label</option>{% endif %}
             </select></div></div>
             <table id="sceneTable"><thead><tr><th aria-sort="none"><button type="button" class="table-sort-button" onclick="sortTable(0)" aria-label="Sort by Scene">Scene</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(1)" aria-label="Sort by Words">Words</button></th><th aria-sort="none" class="num-col"><button type="button" class="table-sort-button" onclick="sortTable(2)" aria-label="Sort by Running total" title="Words in the book up to and including this row.">Running total</button></th></tr></thead><tbody>
                 {{ table_body | safe }}
@@ -665,6 +676,7 @@
             </div>
             <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                 <button type="button" role="tab" id="settingsTabGeneral" class="settings-tab" aria-selected="true" aria-controls="settingsPanelGeneral" onclick="selectSettingsTab('general')">General</button>
+                <button type="button" role="tab" id="settingsTabAppearance" class="settings-tab" aria-selected="false" aria-controls="settingsPanelAppearance" tabindex="-1" onclick="selectSettingsTab('appearance')">Appearance</button>
                 <button type="button" role="tab" id="settingsTabSuggestions" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSuggestions" tabindex="-1" onclick="selectSettingsTab('suggestions')">Suggestions</button>
                 <button type="button" role="tab" id="settingsTabGroup" class="settings-tab" aria-selected="false" aria-controls="settingsPanelGroup" tabindex="-1" onclick="selectSettingsTab('group')">Group</button>
                 <button type="button" role="tab" id="settingsTabBeatmap" class="settings-tab" aria-selected="false" aria-controls="settingsPanelBeatmap" tabindex="-1" onclick="selectSettingsTab('beatmap')">Beat Map</button>
@@ -701,28 +713,6 @@
             <div id="settingVarietyCustom" class="settings-variety-custom"{% if bands.preset != 'custom' %} hidden{% endif %}>
                 <span class="settings-variety-line">Variety from <input type="number" id="setting_mattr_low" class="settings-input" aria-label="Variety from" min="0" max="1" step="0.01" value="{{ '%g' % bands.mattr[0] }}" oninput="editVariety()"> to <input type="number" id="setting_mattr_high" class="settings-input" aria-label="Variety to" min="0" max="1" step="0.01" value="{{ '%g' % bands.mattr[1] }}" oninput="editVariety()"></span>
                 <span class="settings-variety-line">MTLD from <input type="number" id="setting_mtld_low" class="settings-input" aria-label="MTLD from" min="1" max="1000" step="1" value="{{ '%g' % bands.mtld[0] }}" oninput="editVariety()"> to <input type="number" id="setting_mtld_high" class="settings-input" aria-label="MTLD to" min="1" max="1000" step="1" value="{{ '%g' % bands.mtld[1] }}" oninput="editVariety()"></span>
-            </div>
-
-            <h3 class="settings-section">Appearance</h3>
-            <div class="settings-row">
-                <span class="settings-label">Color theme<span class="info-tip" tabindex="0" role="img" aria-label="How Proseview looks on this computer. Saved in this browser, not in your book." data-tip="How Proseview looks on this computer. Saved in this browser, not in your book.">i</span></span>
-                <span class="settings-field">
-                    <div id="themeMenu" class="theme-menu">
-                        <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
-                            <span class="theme-toggle-kicker">Theme</span>
-                            <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
-                            <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
-                        </button>
-                        <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
-                            <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
-                        </ul>
-                    </div>
-                </span>
             </div>
 
             {% if not static_snapshot %}
@@ -769,6 +759,44 @@
                     <span class="settings-field"><span id="setting_backup_size" class="settings-unit">…</span> <button type="button" class="settings-danger-btn" onclick="clearAllBackups()">Clear all backups…</button></span>
                 </div>
             </details>
+            </div>
+            <div id="settingsPanelAppearance" role="tabpanel" aria-labelledby="settingsTabAppearance" hidden>
+                <div class="settings-row">
+                    <span class="settings-label">Color theme<span class="info-tip" tabindex="0" role="img" aria-label="How Proseview looks on this computer. Saved in this browser, not in your book." data-tip="How Proseview looks on this computer. Saved in this browser, not in your book.">i</span></span>
+                    <span class="settings-field">
+                        <div id="themeMenu" class="theme-menu">
+                            <button id="themeToggle" class="theme-toggle" type="button" onclick="toggleThemeMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="Pick color theme">
+                                <span class="theme-toggle-kicker">Theme</span>
+                                <span id="themeToggleLabel" class="theme-toggle-label">Light</span>
+                                <span class="font-menu-chevron" aria-hidden="true">&#9662;</span>
+                            </button>
+                            <ul id="themeMenuList" class="theme-menu-list" role="listbox" aria-label="Color theme">
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="light" onmouseenter="previewTheme('light')" onclick="selectTheme('light')">Light</li>
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="dark" onmouseenter="previewTheme('dark')" onclick="selectTheme('dark')">Dark</li>
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="docsify" onmouseenter="previewTheme('docsify')" onclick="selectTheme('docsify')">Docsify</li>
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="hopscotch" onmouseenter="previewTheme('hopscotch')" onclick="selectTheme('hopscotch')">Hopscotch</li>
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-light" onmouseenter="previewTheme('graphite-light')" onclick="selectTheme('graphite-light')">Graphite Light</li>
+                                <li class="theme-menu-item" role="option" tabindex="-1" data-theme-value="graphite-dark" onmouseenter="previewTheme('graphite-dark')" onclick="selectTheme('graphite-dark')">Graphite Dark</li>
+                            </ul>
+                        </div>
+                    </span>
+                </div>
+                <div class="settings-row">
+                    <label for="setting_label_mode">Label colors<span class="info-tip" tabindex="0" role="img" aria-label="Show scene label colors as tinted sidebar icons, table and Read-the-book dots, and 3px card edges (or add a soft sidebar row wash). Saved in this browser, not in your book." data-tip="Show scene label colors as tinted sidebar icons, table and Read-the-book dots, and 3px card edges (or add a soft sidebar row wash). Saved in this browser, not in your book.">i</span></label>
+                    <span class="settings-field">
+                        <select id="setting_label_mode" class="settings-input" onchange="selectLabelColorMode(this.value)">
+                            <option value="subtle">Subtle (default)</option>
+                            <option value="rows">Soft sidebar rows</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </span>
+                </div>
+                {% if not static_snapshot %}
+                <div class="settings-row settings-label-palette-row" id="settingsLabelPaletteRow">
+                    <span class="settings-label">Labels<span class="info-tip" tabindex="0" role="img" aria-label="Add, rename, remove, or pick colors for your labels. Saved in .proseview.yaml (renaming or removing also updates matching scene frontmatter)." data-tip="Add, rename, remove, or pick colors for your labels. Saved in .proseview.yaml (renaming or removing also updates matching scene frontmatter).">i</span></span>
+                    <div id="settingsLabelPaletteList" class="settings-label-palette-list"></div>
+                </div>
+                {% endif %}
             </div>
             <div id="settingsPanelSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" hidden>
                 <p class="settings-note">What Suggest on a highlight asks Codex, Claude, or Agy, what they can see and use, and the model they use. Model, tools and MCP servers are kept on this computer; files and prompts are saved in your book's <code>.proseview.yaml</code>.</p>

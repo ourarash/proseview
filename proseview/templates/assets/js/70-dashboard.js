@@ -5,6 +5,7 @@
 
         syncThemeToggle();
         syncFontToggle();
+        syncLabelColorMode();
         syncModalFontSize();
         document.addEventListener('scroll', scheduleScrollSave, true);
         window.addEventListener('beforeunload', saveActiveScrollPosition);
@@ -868,6 +869,15 @@
                         body.appendChild(prose);
                         renderSafeMarkdown(prose, parts.body, {basePath: node.path});
                     }
+                } else if ((lname.endsWith('.yaml') || lname.endsWith('.yml')) && typeof fillFrontmatterHighlight === 'function') {
+                    var yamlWrap = document.createElement('div');
+                    yamlWrap.className = 'fm yaml-file-view';
+                    var yamlPre = document.createElement('pre');
+                    yamlPre.className = 'fm-block';
+                    yamlPre.setAttribute('aria-label', 'YAML of ' + node.path);
+                    fillFrontmatterHighlight(yamlPre, node.body, { highlightYamlColors: true });
+                    yamlWrap.appendChild(yamlPre);
+                    body.replaceChildren(yamlWrap);
                 } else {
                     body.innerHTML = '';
                     const pre = document.createElement('pre');

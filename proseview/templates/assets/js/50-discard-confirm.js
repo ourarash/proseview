@@ -173,6 +173,11 @@
             const notes = parseInt(r.dataset.notes || '0', 10);
             const words = parseInt(r.dataset.words || '0', 10);
             const missingBeats = r.dataset.missingBeats === '1';
+            if (f.startsWith('label:')) {
+                const wanted = f.slice(6);
+                const actual = r.dataset.label || '';
+                return wanted === '__none__' ? !actual : actual === wanted;
+            }
             return f === 'all'
                 || (f === 'repetition' && rp > 25)
                 || (f === 'clipped' && s < 8.5)
@@ -183,6 +188,80 @@
                 || (f === 'stubs' && words < 200)
                 || (f === 'missing-beats' && missingBeats)
                 || (f.startsWith('status-') && r.dataset.status === f.slice(7));
+        }
+
+        function syncOverviewLabelFilter() {
+            const sel = document.getElementById('issueFilter');
+            if (!sel || typeof storyModel !== 'object' || !storyModel) return;
+            const current = sel.value || 'all';
+            const catalog = Array.isArray(storyModel.label_catalog) ? storyModel.label_catalog : [];
+            // Rebuild only the trailing label optgroup/section after status-unknown.
+            const options = Array.from(sel.options);
+            const baseEnd = options.findIndex(o => o.value === 'status-unknown');
+            if (baseEnd < 0) return;
+            while (sel.options.length > baseEnd + 1) {
+                sel.remove(baseEnd + 1);
+            }
+            if (catalog.length) {
+                const sep = document.createElement('option');
+                sep.disabled = true;
+                sep.textContent = '──────';
+                sel.appendChild(sep);
+                catalog.forEach(function(entry) {
+                    const opt = document.createElement('option');
+                    opt.value = 'label:' + entry.label;
+                    opt.textContent = 'Label: ' + entry.label + ' (' + entry.count + ')';
+                    sel.appendChild(opt);
+                });
+                const noneOpt = document.createElement('option');
+                noneOpt.value = 'label:__none__';
+                noneOpt.textContent = 'No label';
+                sel.appendChild(noneOpt);
+            }
+            if (Array.from(sel.options).some(o => o.value === current)) {
+                sel.value = current;
+            } else {
+                sel.value = 'all';
+            }
+        }
+
+        function syncOverviewTableLabels() {
+            if (typeof meta !== 'object' || !meta) return;
+            document.querySelectorAll('#sceneTable .scene-row').forEach(function(row) {
+                const link = row.querySelector('.scene-table-link');
+                const p = link && link.dataset.scenePath;
+                if (!p || !meta[p]) return;
+                const m = meta[p];
+                const lbl = m.label ? String(m.label).trim() : '';
+                const colorExpr = (lbl && typeof labelColorCssExpr === 'function') ? labelColorCssExpr(m.label_slot) : '';
+                row.dataset.label = lbl;
+                const cell = link.parentElement;
+                if (!cell) return;
+                const oldDot = cell.querySelector('.table-label-dot');
+                if (oldDot) oldDot.remove();
+                const tags = cell.querySelector('.scene-row-tags');
+                if (tags) {
+                    const oldPill = tags.querySelector('.label-pill');
+                    if (oldPill) oldPill.remove();
+                }
+                if (lbl && colorExpr) {
+                    const dot = document.createElement('span');
+                    dot.className = 'table-label-dot';
+                    dot.style.setProperty('--label-color', colorExpr);
+                    dot.title = 'Label: ' + lbl;
+                    dot.setAttribute('aria-hidden', 'true');
+                    cell.insertBefore(dot, link);
+                    if (tags) {
+                        const pill = document.createElement('span');
+                        pill.className = 'badge label-pill';
+                        pill.style.setProperty('--label-color', colorExpr);
+                        pill.textContent = lbl;
+                        const todoOrNote = tags.querySelector('.todo-badge, .note-badge');
+                        if (todoOrNote) tags.insertBefore(pill, todoOrNote);
+                        else tags.appendChild(pill);
+                    }
+                }
+            });
         }
 
         function applyIssueFilter() {
@@ -219,6 +298,13 @@
                 card.dataset.notes = String(notes);
                 card.dataset.words = String(words);
                 card.dataset.missingBeats = missingBeats;
+                const lbl = m.label ? String(m.label).trim() : '';
+                const colorExpr = (lbl && typeof labelColorCssExpr === 'function') ? labelColorCssExpr(m.label_slot) : '';
+                card.dataset.label = lbl;
+                if (lbl && colorExpr) {
+                    card.dataset.labelColor = '1';
+                    card.style.setProperty('--label-color', colorExpr);
+                }
 
                 const head = document.createElement('div');
                 head.className = 'scene-overview-card-head';
@@ -269,6 +355,15 @@
 
                 const foot = document.createElement('div');
                 foot.className = 'scene-overview-card-foot';
+                if (lbl && colorExpr) {
+                    const lp = document.createElement('span');
+                    lp.className = 'badge label-pill';
+                    lp.style.setProperty('--label-color', colorExpr);
+                    const dot = document.createElement('span');
+                    dot.className = 'label-pill-dot';
+                    lp.append(dot, document.createTextNode(lbl));
+                    foot.appendChild(lp);
+                }
                 if (m.status) {
                     const st = document.createElement('span');
                     st.className = 'scene-status status-' + m.status;

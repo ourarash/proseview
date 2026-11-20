@@ -94,6 +94,13 @@ through and ignored. Every field is optional.
 - `status` (string) color-coded status badge. Conventional values:
   `draft`, `revision`, `done`. Anything else renders as a generic chip;
   missing means `unknown`.
+- `label` (string) one editorial label per scene (such as a POV, subplot, or
+  scene type). Shows as a tinted sidebar icon, an Overview table dot and 3px
+  card edge, and a *Read the book* dot, and can be set from the label dropdown
+  in reading mode. If written as a YAML list, Proseview uses the first item and
+  flags it in **What stands out**. You can point `story.label_field` in
+  `.proseview.yaml` at an existing field such as `pov` or `thread` instead; see
+  [docs/configuration.md](configuration.md#scene-labels).
 
 #### Scene context
 

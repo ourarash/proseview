@@ -92,10 +92,9 @@ def test_a_file_changed_on_disk_is_not_overwritten_unless_asked(book: Path):
     (".proseview/notes.md", PermissionError),
     (".git/notes.md", PermissionError),
     ("plans/book-plan.txt", PermissionError),
-    (".proseview.yaml", PermissionError),
     ("story-bible/nobody.md", FileNotFoundError),
 ])
-def test_only_existing_markdown_inside_the_book_can_be_saved(book: Path, target: str, error: type):
+def test_only_existing_markdown_or_yaml_inside_the_book_can_be_saved(book: Path, target: str, error: type):
     (book / "plans" / "book-plan.txt").write_text("not markdown", encoding="utf-8")
     with pytest.raises(error):
         resolve_note_write_target(target, str(book))
@@ -182,3 +181,36 @@ def test_route_needs_the_page_session(server, book: Path):
     before = (book / NOTE).read_text(encoding="utf-8")
     code, _ = server({"path": NOTE, "content": "x", "open_mtime": (book / NOTE).stat().st_mtime}, token="nope")
     assert code == 403 and (book / NOTE).read_text(encoding="utf-8") == before
+
+
+def test_route_saves_and_validates_proseview_yaml_and_other_yaml_files(server, book: Path):
+    cfg_path = book / ".proseview.yaml"
+    before = cfg_path.read_text(encoding="utf-8")
+    mtime = cfg_path.stat().st_mtime
+
+    # Syntax errors and invalid Proseview config values are rejected with 400 before touching disk.
+    bad_syntax, syntax_data = server({"path": ".proseview.yaml", "content": "target_words: [1, 2\n", "open_mtime": mtime})
+    assert bad_syntax == 400 and "Invalid YAML" in syntax_data["error"]
+    assert cfg_path.read_text(encoding="utf-8") == before
+
+    bad_cfg, cfg_data = server({
+        "path": ".proseview.yaml",
+        "content": before + "\nlabels:\n  palette:\n    Main: not-a-color\n",
+        "open_mtime": mtime,
+    })
+    assert bad_cfg == 400 and "labels.palette" in cfg_data["error"]
+    assert cfg_path.read_text(encoding="utf-8") == before
+
+    # Valid .proseview.yaml edits write verbatim (preserving comments), trigger full invalidation, and back up.
+    new_yaml = before + "\n# Label colors\nlabels:\n  palette:\n    Main Plot: c0\n"
+    ok_code, ok_data = server({"path": ".proseview.yaml", "content": new_yaml, "open_mtime": mtime})
+    assert ok_code == 200 and ok_data["ok"] is True
+    assert cfg_path.read_text(encoding="utf-8") == new_yaml
+    assert server.invalidated[-1] == ()
+
+    # Other repo .yaml files can also be saved cleanly without enforcing Proseview's config schema.
+    extra = book / "plans" / "beat-tags.yaml"
+    extra.write_text("- setup\n- payoff\n", encoding="utf-8")
+    code_y, data_y = server({"path": "plans/beat-tags.yaml", "content": "- hook\n- twist\n", "open_mtime": extra.stat().st_mtime})
+    assert code_y == 200 and data_y["ok"] is True
+    assert extra.read_text(encoding="utf-8") == "- hook\n- twist\n"

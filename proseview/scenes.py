@@ -8,6 +8,7 @@ generator and later milestones consume.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import statistics
@@ -79,6 +80,10 @@ class SceneStats:
     #: The ``chapter:`` value as written, when another folder says the same:
     #: ``chapter`` then names the folder too. Empty otherwise.
     chapter_shared: str = ""
+    #: Scalar label read from ``cfg.story.label_field`` (first item when a list).
+    label: str = ""
+    #: True when the frontmatter field was written as a YAML list.
+    label_is_list: bool = False
 
 
 @dataclass(frozen=True)
@@ -262,6 +267,59 @@ def replace_frontmatter(raw: str, text: str) -> str:
     return block + body if match else block + "\n" + body
 
 
+_PLAIN_YAML_SCALAR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _./()-]*$")
+_YAML_RESERVED_WORDS = frozenset({"true", "false", "null", "yes", "no", "on", "off"})
+
+
+def _format_yaml_scalar(value: str) -> str:
+    clean = value.strip()
+    if not clean:
+        return ""
+    if (
+        _PLAIN_YAML_SCALAR_RE.match(clean)
+        and clean.lower() not in _YAML_RESERVED_WORDS
+        and ": " not in clean
+        and " #" not in clean
+    ):
+        return clean
+    return json.dumps(clean)
+
+
+def update_frontmatter_scalar(raw: str, field_name: str, new_value: str) -> str:
+    """Return *raw* with scalar *field_name* updated or removed in YAML frontmatter.
+
+    Preserves existing frontmatter comments, key order, and unrelated fields.
+    When *new_value* is blank, removes *field_name* (and drops the ``---``
+    block if nothing remains).
+    """
+    clean = str(new_value or "").strip()
+    formatted = f"{field_name}: {_format_yaml_scalar(clean)}" if clean else ""
+    existing = frontmatter_text(raw)
+    if existing is None or not existing.strip():
+        return replace_frontmatter(raw, formatted)
+
+    key_re = re.compile(rf"^{re.escape(field_name)}\s*:")
+    lines = existing.splitlines()
+    out: list[str] = []
+    found = False
+    i = 0
+    while i < len(lines):
+        if key_re.match(lines[i]):
+            found = True
+            if formatted:
+                out.append(formatted)
+            i += 1
+            while i < len(lines) and re.match(r"^\s+-\s+", lines[i]):
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    if not found and formatted:
+        out.append(formatted)
+    next_fm = "\n".join(out).strip("\n")
+    return replace_frontmatter(raw, next_fm)
+
+
 def split_frontmatter(text: str) -> tuple[dict[str, object], str]:
     match = FRONTMATTER_RE.match(text)
     if not match:
@@ -360,6 +418,22 @@ def scene_chapter(path: Path, manuscript_dir: Path) -> str:
 _EMPTY_LEXICAL = LexicalStats(tokens=0, types=0, ttr=0.0, mattr=0.0, mtld=0.0)
 
 
+def _extract_scene_label(fm: object, label_field: str) -> tuple[str, bool]:
+    """Return ``(scalar_label, is_list)`` for *label_field* in frontmatter."""
+    if not isinstance(fm, dict):
+        return "", False
+    raw_val = fm.get(label_field)
+    if raw_val is None or isinstance(raw_val, bool):
+        return "", False
+    if isinstance(raw_val, (list, tuple)):
+        items = [str(item).strip() for item in raw_val if item is not None and not isinstance(item, bool) and str(item).strip()]
+        if not items:
+            return "", False
+        return items[0], True
+    text = str(raw_val).strip()
+    return text, False
+
+
 def collect_scene_stats(
     root: Path,
     manuscript_subdir: str | Config = "manuscript",
@@ -377,10 +451,12 @@ def collect_scene_stats(
     highlight pass are built from it, and both are wanted on every scene the
     reader opens.
     """
+    label_field = "label"
     if isinstance(manuscript_subdir, Config):
         cfg = manuscript_subdir
         manuscript_subdir = cfg.manuscript_subdir
         characters_dir = cfg.characters_dir
+        label_field = cfg.story.label_field
     man_dir = resolve_manuscript_dir(root, manuscript_subdir)
     sw = build_content_stopwords(root, characters_dir)
     scenes: list[SceneStats] = []
@@ -437,6 +513,8 @@ def collect_scene_stats(
         if not ch:
             ch = folder_chapters.get(p.parent, scene_chapter(p, man_dir))
 
+        scene_label, label_is_list = _extract_scene_label(fm, label_field)
+
         scenes.append(SceneStats(
             p.relative_to(root), ch,
             _unquote(str(fm.get("title", p.stem.replace("-", " ").title())).strip()),
@@ -454,6 +532,8 @@ def collect_scene_stats(
             st["repetition_examples"], st["top_dialogue"], flavor,
             loc, fm, scan_todos(fm, txt, txt_line_offset), scan_notes(fm, txt, txt_line_offset), txt_line_offset,
             fm_text,
+            label=scene_label,
+            label_is_list=label_is_list,
         ))
     separate_shared_chapters(scenes)
     return scenes

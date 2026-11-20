@@ -65,11 +65,22 @@ discuss:
     - Make this more direct.
     - Check the point of view.
 
-# Which frontmatter keys the Timeline reads. Defaults shown; point them at
-# your own convention instead of renaming fields across the manuscript.
+# Which frontmatter keys the Timeline and scene labels read. Defaults shown;
+# point them at your own convention instead of renaming fields across the
+# manuscript.
 story:
   thread_field: thread
   day_field: day
+  label_field: label
+
+# Optional color assignments for scene labels (`c0` through `c7`, matching the
+# eight Story tab colors). Unlisted labels automatically take the next unused
+# color in the order they first appear in your book.
+labels:
+  palette:
+    Main Plot: c0
+    Subplot B: c2
+    Flashback: c3
 
 # Background colours for callouts (> [!letter] Title boxes), per type: one
 # hex colour, or one per screen theme with `default` and `print`. See
@@ -81,6 +92,16 @@ callouts:
 
 Every key has a sensible default. Missing optional folders are skipped, but the
 configured manuscript directory is required.
+
+## Scene labels
+
+Each scene can carry one label in its YAML frontmatter (by default `label: Main Plot`).
+Your Markdown files only store the label name, never color codes:
+
+- **`label:`** — sets a single label for the scene (or pick it from the dropdown in reading mode). If written as a YAML list, Proseview uses the first item and adds a note in **Analysis → What stands out**.
+- **`story.label_field`** — defaults to `label`. Point it at an existing key such as `pov` or `thread` if you already track labels there.
+- **`labels.palette`** — optionally maps label names to one of the 8 Story theme colors (`blue`, `orange`, `teal`, `amber`, `pink`, `green`, `purple`, `red` — legacy `c0`–`c7` aliases also work) or a custom `#hex` color (such as `"#4f7cac"`), editable from **Settings → Appearance → Labels** or directly here. You can also add, rename, or remove labels in **Settings → Appearance → Labels** (renaming or removing updates matching scene `.md` frontmatter and `.proseview.yaml`). Any invalid color raises a configuration error. Labels omitted from `palette` take the next unused color in the order they first appear in the manuscript (and any labels past eight fall back to neutral gray).
+- **Display toggle** — **Settings → Appearance → Label colors** switches between **Subtle** (default: tinted sidebar icons, table dots, 3px card edges, and *Read the book* dots), **Soft sidebar rows** (adds a muted row wash in the file tree), and **Off**.
 
 ## Group profiles and conversation
 

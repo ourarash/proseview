@@ -168,6 +168,8 @@ function openSettings() {
     const dialog = document.getElementById('settingsDialog');
     if (!dialog || dialog.open) return;
     _showVarietyInfo();
+    if (typeof syncLabelColorMode === 'function') syncLabelColorMode();
+    if (typeof renderSettingsLabelColors === 'function') renderSettingsLabelColors();
     dialog.showModal();
     updateBackupStats();
 }

@@ -750,10 +750,274 @@
             return match[1] === currentYear ? (month + ' ' + day) : (month + ' ' + day + ', ' + match[1]);
         }
 
+        function _sceneLabelField() {
+            return (typeof storyModel === 'object' && storyModel && storyModel.label_field)
+                ? storyModel.label_field : 'label';
+        }
+
+        function _formatYamlScalar(value) {
+            var s = String(value || '').trim();
+            if (!s) return '';
+            if (/^[A-Za-z0-9][A-Za-z0-9 _./()-]*$/.test(s)
+                && !/^(true|false|null|yes|no|on|off)$/i.test(s)
+                && s.indexOf(': ') < 0 && s.indexOf(' #') < 0) {
+                return s;
+            }
+            return JSON.stringify(s);
+        }
+
+        function updateYamlScalarField(fmText, fieldName, newValue) {
+            var clean = String(newValue || '').trim();
+            var formatted = clean ? fieldName + ': ' + _formatYamlScalar(clean) : '';
+            if (fmText === null || fmText === undefined || !String(fmText).trim()) {
+                return formatted;
+            }
+            var escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var keyRe = new RegExp('^' + escaped + '\\s*:');
+            var lines = String(fmText).split('\n');
+            var out = [];
+            var found = false;
+            for (var i = 0; i < lines.length; i++) {
+                if (keyRe.test(lines[i])) {
+                    found = true;
+                    if (formatted) out.push(formatted);
+                    while (i + 1 < lines.length && /^\s+-\s+/.test(lines[i + 1])) i++;
+                    continue;
+                }
+                out.push(lines[i]);
+            }
+            if (!found && formatted) out.push(formatted);
+            return out.join('\n').replace(/^\n+|\n+$/g, '');
+        }
+
+        function _stripInlineYamlComment(raw) {
+            var s = String(raw || '').trim();
+            if (!s) return '';
+            if (s[0] === '"' || s[0] === "'") {
+                var q = s[0];
+                for (var i = 1; i < s.length; i++) {
+                    if (q === '"' && s[i] === '\\') { i++; continue; }
+                    if (s[i] === q) return s.slice(1, i).trim();
+                }
+                return s.slice(1).trim();
+            }
+            return s.replace(/\s+#.*$/, '').trim();
+        }
+
+        function _extractScalarFromFmText(fmText, fieldName) {
+            if (!fmText) return '';
+            var escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var keyRe = new RegExp('^' + escaped + '\\s*:\\s*(.*)$');
+            var lines = String(fmText).split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                var m = keyRe.exec(lines[i]);
+                if (!m) continue;
+                var rawVal = m[1].trim();
+                if (rawVal.startsWith('[')) {
+                    var closeIdx = rawVal.indexOf(']');
+                    var inner = closeIdx >= 0 ? rawVal.slice(1, closeIdx) : rawVal.slice(1);
+                    return _stripInlineYamlComment(inner.split(',')[0] || '');
+                }
+                var val = _stripInlineYamlComment(rawVal);
+                if (!val && i + 1 < lines.length && /^\s+-\s+(.*)$/.test(lines[i + 1])) {
+                    val = _stripInlineYamlComment(lines[i + 1].replace(/^\s+-\s+/, ''));
+                }
+                return val;
+            }
+            return '';
+        }
+
+        function saveSceneLabelOnDisk(p, newLabel, triggerBtn, onDone) {
+            if (_pmSaveInFlight) return;
+            if (_pmEditMode && typeof paths !== 'undefined' && typeof curIdx === 'number' && paths[curIdx] === p) {
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Save or cancel your open edits in this scene before changing its label.', true);
+                }
+                return;
+            }
+            var m = meta[p];
+            if (!m || !m.abs_path) return;
+            var fieldName = _sceneLabelField();
+            var nextFm = updateYamlScalarField(m.frontmatter_text, fieldName, newLabel);
+            var clean = String(newLabel || '').trim();
+            if (triggerBtn) triggerBtn.disabled = true;
+
+            // Register newly created labels in .proseview.yaml before writing the scene file so clearing it keeps the label available.
+            var catalogNow = (typeof storyModel === 'object' && storyModel && Array.isArray(storyModel.label_catalog))
+                ? storyModel.label_catalog : [];
+            var isKnownLabel = !clean || catalogNow.some(function(entry) { return entry && entry.label === clean; });
+            var canPersistSetting = !(typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT)
+                && !window.PROSEVIEW_STATIC && typeof _applyServerLabelMutation === 'function';
+            var ensureRegistered = (!isKnownLabel && canPersistSetting)
+                ? _applyServerLabelMutation({ label_add: { name: clean } }, false).catch(function() { return false; })
+                : Promise.resolve(true);
+
+            ensureRegistered.then(function() {
+                _pendingSelfReloads++;
+                if (_pendingSelfReloadTimer) clearTimeout(_pendingSelfReloadTimer);
+                _pendingSelfReloadTimer = setTimeout(function() {
+                    _pendingSelfReloads = 0;
+                    _pendingSelfReloadTimer = null;
+                }, 4000);
+
+                return fetch('/save-scene', {
+                    method: 'POST',
+                    headers: pvHeaders(),
+                    body: JSON.stringify({
+                        abs_path: m.abs_path,
+                        content: null,
+                        open_mtime: m.mtime,
+                        frontmatter: nextFm
+                    })
+                });
+            }).then(function(r) {
+                if (r.status === 409) {
+                    throw new Error('File changed on disk — refresh before setting label.');
+                }
+                return r.json();
+            }).then(function(data) {
+                if (!data || !data.ok) {
+                    throw new Error((data && data.error) || 'Could not update label.');
+                }
+                m.frontmatter_text = nextFm.trim() ? nextFm.trim() : null;
+                if (data.mtime) m.mtime = data.mtime;
+                if (data.revision) m.revision = data.revision;
+                m.label = clean;
+                m.fm = m.fm || {};
+                if (clean) m.fm[fieldName] = clean;
+                else delete m.fm[fieldName];
+                if (typeof recomputeClientLabelSlots === 'function') recomputeClientLabelSlots();
+                var openPath = (document.documentElement.dataset.view === 'scene'
+                    && typeof paths !== 'undefined' && typeof curIdx === 'number' && curIdx >= 0)
+                    ? paths[curIdx] : null;
+                if (typeof syncAllLabelSurfaces === 'function') {
+                    syncAllLabelSurfaces(openPath === p ? p : null);
+                }
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast(clean ? ('Label set to \u201c' + clean + '\u201d') : 'Label cleared');
+                }
+                if (typeof onDone === 'function') onDone();
+            }).catch(function(err) {
+                if (triggerBtn) triggerBtn.disabled = false;
+                if (typeof sidebarShowToast === 'function') {
+                    sidebarShowToast('Label update failed: ' + (err && err.message || 'unknown error'), true);
+                }
+            });
+        }
+
+        function _attachSceneLabelPopover(p, m, wrap, btn) {
+            var currentLabel = (m && m.label) ? String(m.label).trim() : '';
+            var menu = document.createElement('div');
+            menu.className = 'scene-label-popover';
+            menu.setAttribute('role', 'menu');
+            menu.hidden = true;
+
+            var docHandler = null;
+            function closeMenu(restoreFocus) {
+                if (menu.hidden) return;
+                menu.hidden = true;
+                btn.setAttribute('aria-expanded', 'false');
+                if (docHandler) {
+                    document.removeEventListener('mousedown', docHandler, true);
+                    docHandler = null;
+                }
+                if (restoreFocus && btn.isConnected) btn.focus({preventScroll: true});
+            }
+
+            btn.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                if (!menu.hidden) {
+                    closeMenu(false);
+                    return;
+                }
+                if (typeof buildSceneLabelMenuPanel === 'function') {
+                    buildSceneLabelMenuPanel({
+                        container: menu,
+                        titleText: 'Scene label',
+                        currentLabel: currentLabel,
+                        onSelect: function(selectedLabel) {
+                            closeMenu(false);
+                            saveSceneLabelOnDisk(p, selectedLabel, btn);
+                        },
+                        onAfterColorChange: function() {
+                            // Re-tint the open trigger dot if this scene uses the recolored label.
+                            var updated = meta[p];
+                            var dotEl = btn.querySelector('.scene-label-dot, .fm-label-dot');
+                            if (dotEl && updated) {
+                                var nextColor = labelColorCssExpr(updated.label_slot);
+                                if (nextColor) dotEl.style.setProperty('--label-color', nextColor);
+                            }
+                        },
+                        onCancel: function() { closeMenu(true); },
+                        onClose: function() { closeMenu(false); }
+                    });
+                }
+                menu.hidden = false;
+                btn.setAttribute('aria-expanded', 'true');
+                docHandler = function(e) {
+                    if (!wrap.contains(e.target)) closeMenu(false);
+                };
+                document.addEventListener('mousedown', docHandler, true);
+            });
+
+            menu.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Escape') {
+                    ev.stopPropagation();
+                    closeMenu(true);
+                }
+            });
+
+            wrap.appendChild(menu);
+        }
+
+        function _canEditSceneLabelInline() {
+            return !_pmEditMode
+                && !(typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT)
+                && !(window.PROSEVIEW_STATIC && !window.PROSEVIEW_STATIC_EDITS);
+        }
+
+        function _buildSceneLabelPicker(p, m) {
+            if (!_canEditSceneLabelInline()) return null;
+            var currentLabel = (m && m.label) ? String(m.label).trim() : '';
+            var colorExpr = (currentLabel && typeof labelColorCssExpr === 'function')
+                ? labelColorCssExpr(m && m.label_slot) : '';
+
+            var wrap = document.createElement('div');
+            wrap.className = 'scene-label-picker';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'scene-label-picker-btn' + (currentLabel ? '' : ' is-empty');
+            btn.setAttribute('aria-haspopup', 'menu');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.title = currentLabel ? ('Scene label: ' + currentLabel + ' (click to change)') : 'Set scene label';
+
+            if (currentLabel && colorExpr) {
+                var dot = document.createElement('span');
+                dot.className = 'scene-label-dot';
+                dot.style.setProperty('--label-color', colorExpr);
+                dot.setAttribute('aria-hidden', 'true');
+                btn.appendChild(dot);
+            }
+            var txt = document.createElement('span');
+            txt.textContent = currentLabel || '+ Label';
+            var caret = document.createElement('span');
+            caret.className = 'scene-label-caret';
+            caret.setAttribute('aria-hidden', 'true');
+            caret.textContent = '▾';
+            btn.append(txt, caret);
+
+            wrap.appendChild(btn);
+            _attachSceneLabelPopover(p, m, wrap, btn);
+            return wrap;
+        }
+
         function _buildSceneFrontmatterActions(p) {
             if (typeof IS_STATIC_SNAPSHOT !== 'undefined' && IS_STATIC_SNAPSHOT) return null;
             var wrap = document.createElement('div');
             wrap.className = 'fm-head-actions';
+            var labelPicker = _buildSceneLabelPicker(p, meta[p] || null);
+            if (labelPicker) wrap.appendChild(labelPicker);
 
             var fm = (meta[p] && meta[p].fm) || {};
             var rawUpdated = fm.frontmatter_updated ? String(fm.frontmatter_updated).trim() : '';
@@ -805,7 +1069,14 @@
 
         function _buildSceneFrontmatterOptions(p, m) {
             var charMentions = (m && m.char_mentions) || {};
+            var labelColor = (m && m.label && typeof labelColorCssExpr === 'function')
+                ? labelColorCssExpr(m.label_slot) : '';
             return {
+                labelField: _sceneLabelField(),
+                labelColor: labelColor,
+                onLabel: _canEditSceneLabelInline() ? function(wrap, btn) {
+                    _attachSceneLabelPopover(p, m, wrap, btn);
+                } : null,
                 charMentions: charMentions,
                 canLinkCharacter: function(name) {
                     var slug = String(name || '').toLowerCase().replace(/\s+/g, '-');
@@ -861,6 +1132,8 @@
                 addBtn.title = 'Add starter YAML frontmatter keys (characters, where, when, goal, conflict, outcome)';
                 addBtn.textContent = '+ Add frontmatter';
                 bare.appendChild(addBtn);
+                var bareLabelPicker = _buildSceneLabelPicker(p, m);
+                if (bareLabelPicker) bare.appendChild(bareLabelPicker);
                 host.appendChild(bare);
             }
         }
@@ -957,6 +1230,9 @@
                 }
                 if (frontmatter !== null && meta[p]) {
                     meta[p].frontmatter_text = frontmatter.replace(/^\n+|\n+$/g, '') || null;
+                    meta[p].label = _extractScalarFromFmText(meta[p].frontmatter_text, _sceneLabelField());
+                    if (typeof recomputeClientLabelSlots === 'function') recomputeClientLabelSlots();
+                    if (typeof syncAllLabelSurfaces === 'function') syncAllLabelSurfaces(null);
                     _pmFrontmatterDraft = null;
                     _dashboardStale = true;
                 }

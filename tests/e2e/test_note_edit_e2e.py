@@ -231,7 +231,7 @@ def test_images_and_other_files_beside_the_scenes_can_be_opened(page: Page, note
     # E on a file that cannot be edited says so, quietly.
     page.locator("#filePreviewBody").click()
     page.keyboard.press("e")
-    expect(page.locator("#sidebarFileToast")).to_have_text("Only Markdown files can be edited in Proseview.")
+    expect(page.locator("#sidebarFileToast")).to_have_text("Only Markdown and YAML files can be edited in Proseview.")
     expect(page.locator("#fileEditBar")).to_be_hidden()
 
     # They are listed beside the scenes, and none of them became a scene.
@@ -406,3 +406,45 @@ def test_a_frontmatter_change_shows_on_the_dashboard_on_the_way_back(page: Page,
     page.wait_for_load_state("load")
     row = page.locator("#sceneTable tr:has(.scene-table-link[data-scene-path$='01-down-the-rabbit-hole.md'])").first
     expect(row).to_contain_text("revision")
+
+
+def test_proseview_yaml_is_highlighted_and_editable_in_place(page: Page, notes_server: ProseviewServer):
+    cfg_path = notes_server.root / ".proseview.yaml"
+    page.goto(notes_server.url("/#/file/.proseview.yaml"))
+
+    yaml_view = page.locator("#filePreviewBody .yaml-file-view .fm-block")
+    expect(yaml_view).to_be_visible()
+    assert yaml_view.locator(".fm-key").count() >= 1
+    expect(page.get_by_role("button", name="Edit", exact=True)).to_be_visible()
+
+    # Enter edit mode: transparent textarea sits over highlighted YAML tokens.
+    page.get_by_role("button", name="Edit", exact=True).click()
+    editor = page.locator("#filePreviewBody .yaml-edit textarea.fm-editor")
+    expect(editor).to_be_visible()
+    assert page.locator("#filePreviewBody .yaml-edit pre.fm-under .fm-key").count() >= 1
+
+    # Invalid config rejects cleanly inline without saving to disk.
+    before = cfg_path.read_text(encoding="utf-8")
+    editor.fill(before + "\nlabels:\n  palette:\n    Test: bogus-color\n")
+    page.keyboard.press("ControlOrMeta+s")
+    err = page.locator("#filePreviewBody .yaml-edit .fm-error")
+    expect(err).to_be_visible()
+    expect(err).to_contain_text("labels.palette")
+    assert cfg_path.read_text(encoding="utf-8") == before
+
+    # Valid edit saves cleanly with human color name, keeps comments, shows inline color swatch,
+    # and reloads so Settings -> Appearance -> Labels immediately sees the new config.
+    updated = before.rstrip("\n") + "\n# Custom palette\nlabels:\n  palette:\n    Main Plot: blue\n"
+    editor.fill(updated)
+    page.keyboard.press("ControlOrMeta+s")
+    expect(page.locator("#fileEditBar")).to_be_hidden()
+    expect(
+        page.locator("#filePreviewBody .yaml-file-view .fm-comment", has_text="# Custom palette")
+    ).to_be_visible()
+    expect(page.locator("#filePreviewBody .yaml-file-view .fm-label-dot")).to_be_visible()
+    assert cfg_path.read_text(encoding="utf-8") == updated
+
+    page.evaluate("() => openAppearanceSettings()")
+    expect(
+        page.locator('#settingsLabelPaletteList .settings-label-palette-item[data-label-name="Main Plot"]')
+    ).to_be_visible()

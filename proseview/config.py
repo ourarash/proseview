@@ -13,6 +13,7 @@ the stdlib-only parser keeps v1 single-file-ish.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -202,6 +203,28 @@ class StoryConfig:
 
     thread_field: str = "thread"
     day_field: str = "day"
+    label_field: str = "label"
+
+
+#: Human-readable color names for ``labels.palette``, matching ``--story-c0``..``--story-c7``.
+LABEL_COLORS: tuple[str, ...] = ("blue", "orange", "teal", "amber", "pink", "green", "purple", "red")
+#: Legacy alias tokens ``c0``..``c7`` accepted alongside :data:`LABEL_COLORS`.
+LABEL_SLOTS: tuple[str, ...] = tuple(f"c{i}" for i in range(8))
+#: Mapping from color name or legacy slot token to Story color slot index ``0..7``.
+LABEL_COLOR_TO_SLOT: dict[str, int] = {
+    **{name: idx for idx, name in enumerate(LABEL_COLORS)},
+    **{slot: idx for idx, slot in enumerate(LABEL_SLOTS)},
+}
+
+
+@dataclass(frozen=True)
+class LabelsConfig:
+    """Optional ``labels:`` block in ``.proseview.yaml``."""
+
+    palette: tuple[tuple[str, str], ...] = ()
+
+    def slot_for(self, label: str) -> str | None:
+        return dict(self.palette).get(label)
 
 
 #: Accepted values for ``export.format``: what the dashboard made last.
@@ -295,6 +318,7 @@ class Config:
     group: GroupConfig = field(default_factory=GroupConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     story: StoryConfig = field(default_factory=StoryConfig)
+    labels: LabelsConfig = field(default_factory=LabelsConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
     max_backups: int = 50
     #: Background colours per callout type (see :mod:`proseview.callouts`).
@@ -374,6 +398,7 @@ class Config:
             group=_coerce_group(raw.get("group")),
             images=_coerce_images(raw.get("images")),
             story=_coerce_story(raw.get("story")),
+            labels=_coerce_labels(raw.get("labels")),
             export=_coerce_export(raw.get("export")),
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
             callouts=_coerce_callouts(raw.get("callouts")),
@@ -510,6 +535,19 @@ class Config:
         elif "beatmap" in data:
             del data["beatmap"]
 
+        if self.labels.palette:
+            labels_block = data.get("labels")
+            if not isinstance(labels_block, dict):
+                labels_block = {}
+            labels_block["palette"] = dict(self.labels.palette)
+            data["labels"] = labels_block
+        elif isinstance(data.get("labels"), dict):
+            data["labels"].pop("palette", None)
+            if not data["labels"]:
+                del data["labels"]
+        elif "labels" in data:
+            del data["labels"]
+
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f)
 
@@ -632,7 +670,7 @@ def _config_field_names() -> tuple[str, ...]:
         "manuscript_path", "characters_path", "skills_path",
         "target_words", "daily_target",
         "genre", "mattr_band", "mtld_band", "chapter_pattern",
-        "characters", "locations", "editor", "repo_tab", "story", "images",
+        "characters", "locations", "editor", "repo_tab", "story", "labels", "images",
         "discuss", "suggestions", "group", "export", "max_backups", "callouts",
         "beatmap",
     )
@@ -969,10 +1007,65 @@ def _coerce_story(v: Any) -> StoryConfig:
         raise ConfigError(f"'story' must be a mapping, got {type(v).__name__}: {v!r}")
     thread_field = v.get("thread_field")
     day_field = v.get("day_field")
+    label_field = v.get("label_field")
     return StoryConfig(
-        thread_field=_coerce_str(thread_field, "story.thread_field") if thread_field else defaults.thread_field,
-        day_field=_coerce_str(day_field, "story.day_field") if day_field else defaults.day_field,
+        thread_field=_coerce_str(thread_field, "story.thread_field").strip() or defaults.thread_field if thread_field is not None else defaults.thread_field,
+        day_field=_coerce_str(day_field, "story.day_field").strip() or defaults.day_field if day_field is not None else defaults.day_field,
+        label_field=_coerce_str(label_field, "story.label_field").strip() or defaults.label_field if label_field is not None else defaults.label_field,
     )
+
+
+_LABEL_HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def label_color_slot(token: str) -> int | None:
+    """Return Story color slot ``0..7`` for a named color or ``c0``..``c7`` token."""
+    return LABEL_COLOR_TO_SLOT.get(str(token or "").strip().lower())
+
+
+def normalize_label_color(val: Any, name: str = "color") -> str:
+    """Validate and normalize a ``labels.palette`` value to a named color or ``#rrggbb``."""
+    names_hint = ", ".join(LABEL_COLORS)
+    if not isinstance(val, str):
+        raise ConfigError(
+            f"labels.palette.{name} must be a color name ({names_hint}), c0..c7, or #hex, got {val!r}"
+        )
+    token = val.strip()
+    slot = LABEL_COLOR_TO_SLOT.get(token.lower())
+    if slot is not None:
+        return LABEL_COLORS[slot]
+    if _LABEL_HEX_RE.match(token):
+        hex_body = token[1:].lower()
+        if len(hex_body) == 3:
+            hex_body = "".join(ch * 2 for ch in hex_body)
+        return "#" + hex_body
+    raise ConfigError(
+        f"labels.palette.{name} must be a color name ({names_hint}), c0..c7, or #hex, got {val!r}"
+    )
+
+
+def _coerce_labels(v: Any) -> LabelsConfig:
+    if v is None:
+        return LabelsConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'labels' must be a mapping, got {type(v).__name__}: {v!r}")
+    unknown = set(v) - {"palette"}
+    if unknown:
+        raise ConfigError(f"unknown key(s) in 'labels': {sorted(unknown)}")
+    raw_palette = v.get("palette")
+    if raw_palette is None:
+        return LabelsConfig()
+    if not isinstance(raw_palette, dict):
+        raise ConfigError(f"'labels.palette' must be a mapping, got {type(raw_palette).__name__}: {raw_palette!r}")
+    entries: list[tuple[str, str]] = []
+    for key, val in raw_palette.items():
+        if key is None or isinstance(key, bool):
+            raise ConfigError("labels.palette keys must be non-empty strings")
+        name = str(key).strip()
+        if not name:
+            raise ConfigError("labels.palette keys must be non-empty strings")
+        entries.append((name, normalize_label_color(val, name)))
+    return LabelsConfig(palette=tuple(entries))
 
 
 def _coerce_export(v: Any) -> ExportConfig:

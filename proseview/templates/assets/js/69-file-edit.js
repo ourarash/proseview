@@ -25,9 +25,13 @@
         // a file named in the URL while the page is still loading.
         function fileEditActive() { return typeof fileEdit !== 'undefined' && !!fileEdit && !!fileEdit.path; }
 
+        function _isYamlRepoFile(nameOrPath) {
+            return /\.(ya?ml)$/i.test(String(nameOrPath || ''));
+        }
+
         function fileEditAllowed(node) {
             if (!node || !node.is_text || node.too_large || node.body === null || node.not_utf8) return false;
-            if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return false;
+            if (!/\.(md|markdown|ya?ml)$/i.test(node.name || node.path || '')) return false;
             return !window.PROSEVIEW_STATIC || !!window.PROSEVIEW_STATIC_EDITS;
         }
 
@@ -38,7 +42,7 @@
             var path = typeof sidebarCurrentPath === 'function' ? sidebarCurrentPath() : '';
             var node = path && typeof repoFileByPath !== 'undefined' ? repoFileByPath[path] : null;
             if (!node) return '';
-            if (!/\.(md|markdown)$/i.test(node.name || node.path || '')) return 'Only Markdown files can be edited in Proseview.';
+            if (!/\.(md|markdown|ya?ml)$/i.test(node.name || node.path || '')) return 'Only Markdown and YAML files can be edited in Proseview.';
             if (node.too_large) return 'This file is too large to edit in Proseview.';
             if (node.not_utf8) return 'This file is not saved as UTF-8, so Proseview shows it but does not edit it.';
             return '';
@@ -202,75 +206,21 @@
         // nor the scroll.
         function mountFileEditor(node, options) {
             var quiet = !!(options && options.quiet);
-            var parts = splitNoteHeader(node.body);
             var body = document.getElementById('filePreviewBody');
-            var reason = fileEditPlainReason(parts.body);
-            fileEdit.path = node.path;
-            fileEdit.frontmatter = parts.header;
-            fileEdit.frontmatterDraft = null;
-            fileEdit.mtime = node.mtime;
-            fileEdit.original = parts.body;
-            fileEdit.mode = reason ? 'source' : 'rich';
-            body.replaceChildren();
-            body.classList.add('is-editing');
-            var fmHost = document.createElement('div');
-            fmHost.id = 'fileFrontmatter';
-            body.appendChild(fmHost);
-            renderFileFrontmatter();
-
-            if (fileEdit.mode === 'rich') {
-                var PM = window._PM;
-                var host = document.createElement('div');
-                host.className = 'file-edit-host';
-                body.appendChild(host);
-                var plugins = [
-                    buildCalloutTitlePlugin(PM),
-                    PM.history(),
-                    PM.keymap(Object.assign({}, PM.baseKeymap, {
-                        'Mod-z': PM.undo, 'Mod-y': PM.redo, 'Mod-Shift-z': PM.redo,
-                        'Mod-b': PM.toggleMark(PM.mySchema.marks.strong),
-                        'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
-                        'Mod-s': function() { saveFileEdit(false); return true; },
-                        'Escape': function() { cancelFileEdit(); return true; },
-                    })),
-                ];
-                if (PM.inputRules && PM.wrappingInputRule) {
-                    plugins.push(PM.inputRules({rules: [
-                        PM.wrappingInputRule(/^\s*([-+*])\s$/, PM.mdSchema.nodes.bullet_list, {tight: true}),
-                        PM.wrappingInputRule(/^(\d+)\.\s$/, PM.mdSchema.nodes.ordered_list, function(m) { return {order: +m[1], tight: true}; }),
-                    ]}));
-                }
-                var doc = fileEditParser(PM).parse(parts.body);
-                fileEdit.sourceBlocks = markdownSourceBlocks(fileEditTokenizer(PM), parts.body, doc, fileEditSerializer(PM));
-                fileEdit.view = new PM.EditorView(host, {
-                    state: PM.EditorState.create({doc: doc, plugins: plugins}),
-                    dispatchTransaction: function(tr) {
-                        fileEdit.view.updateState(fileEdit.view.state.apply(tr));
-                        if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
-                    },
-                    nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView, callout: createCalloutNodeView},
-                });
-                if (fileEdit.lastCaret && fileEdit.lastCaret.path === node.path) {
-                    var at = doc.resolve(Math.max(0, Math.min(fileEdit.lastCaret.pos, doc.content.size)));
-                    var caret = fileEdit.view.state.tr.setSelection(PM.TextSelection.near(at));
-                    fileEdit.view.dispatch(quiet ? caret : caret.scrollIntoView());
-                }
-                if (!quiet) fileEdit.view.focus();
-            } else {
-                var note = document.createElement('p');
-                note.className = 'file-edit-note';
-                note.textContent = 'This file opens as plain Markdown because ' + reason
-                    + ', so it is saved exactly as you type it.';
-                var area = document.createElement('textarea');
-                area.className = 'file-edit-source';
-                area.value = parts.body;
-                area.setAttribute('aria-label', 'Markdown of ' + node.path);
-                area.spellcheck = true;
-                area.addEventListener('input', function() {
+            if (_isYamlRepoFile(node.path)) {
+                fileEdit.path = node.path;
+                fileEdit.frontmatter = '';
+                fileEdit.frontmatterDraft = null;
+                fileEdit.mtime = node.mtime;
+                fileEdit.original = node.body;
+                fileEdit.mode = 'yaml';
+                body.replaceChildren();
+                body.classList.add('is-editing');
+                var yamlEd = frontmatterEditor(node.body, function() {
                     if (!fileEdit.dirty) fileEditSetDirty(true);
-                    fileEditAutosize(area);
-                });
-                area.addEventListener('keydown', function(event) {
+                }, {plain: true, ariaLabel: 'YAML of ' + node.path, indentWithTab: true});
+                var yamlArea = yamlEd.querySelector('textarea');
+                yamlArea.addEventListener('keydown', function(event) {
                     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
                         event.preventDefault();
                         saveFileEdit(false);
@@ -279,11 +229,92 @@
                         cancelFileEdit();
                     }
                 });
-                body.appendChild(note);
-                body.appendChild(area);
-                fileEdit.textarea = area;
-                fileEditAutosize(area);
-                if (!quiet) area.focus();
+                body.appendChild(yamlEd);
+                fileEdit.textarea = yamlArea;
+                if (!quiet) yamlArea.focus();
+            } else {
+                var parts = splitNoteHeader(node.body);
+                var reason = fileEditPlainReason(parts.body);
+                fileEdit.path = node.path;
+                fileEdit.frontmatter = parts.header;
+                fileEdit.frontmatterDraft = null;
+                fileEdit.mtime = node.mtime;
+                fileEdit.original = parts.body;
+                fileEdit.mode = reason ? 'source' : 'rich';
+                body.replaceChildren();
+                body.classList.add('is-editing');
+                var fmHost = document.createElement('div');
+                fmHost.id = 'fileFrontmatter';
+                body.appendChild(fmHost);
+                renderFileFrontmatter();
+
+                if (fileEdit.mode === 'rich') {
+                    var PM = window._PM;
+                    var host = document.createElement('div');
+                    host.className = 'file-edit-host';
+                    body.appendChild(host);
+                    var plugins = [
+                        buildCalloutTitlePlugin(PM),
+                        PM.history(),
+                        PM.keymap(Object.assign({}, PM.baseKeymap, {
+                            'Mod-z': PM.undo, 'Mod-y': PM.redo, 'Mod-Shift-z': PM.redo,
+                            'Mod-b': PM.toggleMark(PM.mySchema.marks.strong),
+                            'Mod-i': PM.toggleMark(PM.mySchema.marks.em),
+                            'Mod-s': function() { saveFileEdit(false); return true; },
+                            'Escape': function() { cancelFileEdit(); return true; },
+                        })),
+                    ];
+                    if (PM.inputRules && PM.wrappingInputRule) {
+                        plugins.push(PM.inputRules({rules: [
+                            PM.wrappingInputRule(/^\s*([-+*])\s$/, PM.mdSchema.nodes.bullet_list, {tight: true}),
+                            PM.wrappingInputRule(/^(\d+)\.\s$/, PM.mdSchema.nodes.ordered_list, function(m) { return {order: +m[1], tight: true}; }),
+                        ]}));
+                    }
+                    var doc = fileEditParser(PM).parse(parts.body);
+                    fileEdit.sourceBlocks = markdownSourceBlocks(fileEditTokenizer(PM), parts.body, doc, fileEditSerializer(PM));
+                    fileEdit.view = new PM.EditorView(host, {
+                        state: PM.EditorState.create({doc: doc, plugins: plugins}),
+                        dispatchTransaction: function(tr) {
+                            fileEdit.view.updateState(fileEdit.view.state.apply(tr));
+                            if (tr.docChanged && !fileEdit.dirty) fileEditSetDirty(true);
+                        },
+                        nodeViews: {annotation: PM.createAnnotationNodeView, raw_block: fileEditRawBlockView, callout: createCalloutNodeView},
+                    });
+                    if (fileEdit.lastCaret && fileEdit.lastCaret.path === node.path) {
+                        var at = doc.resolve(Math.max(0, Math.min(fileEdit.lastCaret.pos, doc.content.size)));
+                        var caret = fileEdit.view.state.tr.setSelection(PM.TextSelection.near(at));
+                        fileEdit.view.dispatch(quiet ? caret : caret.scrollIntoView());
+                    }
+                    if (!quiet) fileEdit.view.focus();
+                } else {
+                    var note = document.createElement('p');
+                    note.className = 'file-edit-note';
+                    note.textContent = 'This file opens as plain Markdown because ' + reason
+                        + ', so it is saved exactly as you type it.';
+                    var area = document.createElement('textarea');
+                    area.className = 'file-edit-source';
+                    area.value = parts.body;
+                    area.setAttribute('aria-label', 'Markdown of ' + node.path);
+                    area.spellcheck = true;
+                    area.addEventListener('input', function() {
+                        if (!fileEdit.dirty) fileEditSetDirty(true);
+                        fileEditAutosize(area);
+                    });
+                    area.addEventListener('keydown', function(event) {
+                        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                            event.preventDefault();
+                            saveFileEdit(false);
+                        } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelFileEdit();
+                        }
+                    });
+                    body.appendChild(note);
+                    body.appendChild(area);
+                    fileEdit.textarea = area;
+                    fileEditAutosize(area);
+                    if (!quiet) area.focus();
+                }
             }
             document.getElementById('fileEditBar').hidden = false;
             document.getElementById('fileEditConflict').hidden = true;
@@ -413,7 +444,11 @@
             var content = fileEditContent();
             var frontmatter = fileEdit.frontmatterDraft !== null && fileEdit.frontmatterDraft !== frontmatterInner(fileEdit.frontmatter)
                 ? fileEdit.frontmatterDraft : null;
-            showFrontmatterError(document.getElementById('fileFrontmatter'), '');
+            var isYamlMode = fileEdit.mode === 'yaml';
+            var errorHost = isYamlMode
+                ? document.querySelector('#filePreviewBody .yaml-edit')
+                : document.getElementById('fileFrontmatter');
+            showFrontmatterError(errorHost, '');
             fileEdit.saving = true;
             document.getElementById('fileEditSave').disabled = true;
             fileEditStatus('Saving…');
@@ -437,23 +472,34 @@
                 if (!result.data.ok) {
                     fileEditSetDirty(true);
                     var message = result.data.error || 'something went wrong';
-                    if (/frontmatter/i.test(message)) showFrontmatterError(document.getElementById('fileFrontmatter'), message);
+                    if (isYamlMode || /frontmatter/i.test(message)) showFrontmatterError(errorHost, message);
                     fileEditStatus('Not saved: ' + message);
                     return;
                 }
-                var header = fileEdit.frontmatter;
-                if (frontmatter !== null) {
-                    _dashboardStale = true;
-                    var inner = frontmatter.replace(/^\n+|\n+$/g, '');
-                    header = inner ? '---\n' + inner + '\n---\n' : '';
+                var raw;
+                if (isYamlMode) {
+                    if (path === '.proseview.yaml') _dashboardStale = true;
+                    raw = content.trim() ? content.replace(/\n+$/, '') + '\n' : '';
+                } else {
+                    var header = fileEdit.frontmatter;
+                    if (frontmatter !== null) {
+                        _dashboardStale = true;
+                        var inner = frontmatter.replace(/^\n+|\n+$/g, '');
+                        header = inner ? '---\n' + inner + '\n---\n' : '';
+                    }
+                    raw = header ? header + '\n' + content.replace(/\n+$/, '') + '\n' : content.replace(/\n+$/, '') + '\n';
                 }
-                var raw = header ? header + '\n' + content.replace(/\n+$/, '') + '\n' : content.replace(/\n+$/, '') + '\n';
                 var cached = (typeof repoFileByPath !== 'undefined' && repoFileByPath[path]) || {path: path, name: path.split('/').pop()};
                 cached.body = raw;
                 cached.mtime = result.data.mtime;
                 cached.size = new Blob([raw]).size;
                 if (typeof repoFileByPath !== 'undefined') repoFileByPath[path] = cached;
                 unmountFileEditor();
+                if (path === '.proseview.yaml') {
+                    if (typeof sidebarStoreFlash === 'function') sidebarStoreFlash('Saved ' + path + '.');
+                    location.reload();
+                    return;
+                }
                 renderRepoFile(cached, {route: false});
                 if (typeof sidebarShowToast === 'function') sidebarShowToast('Saved ' + path + '.');
             }).catch(function() {

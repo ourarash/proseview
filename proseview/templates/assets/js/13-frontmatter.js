@@ -101,6 +101,74 @@
             target.appendChild(_fmValue(text));
         }
 
+        var _YAML_NAMED_COLORS = {
+            blue: 'var(--story-c0)',
+            orange: 'var(--story-c1)',
+            teal: 'var(--story-c2)',
+            amber: 'var(--story-c3)',
+            pink: 'var(--story-c4)',
+            green: 'var(--story-c5)',
+            purple: 'var(--story-c6)',
+            red: 'var(--story-c7)',
+            c0: 'var(--story-c0)',
+            c1: 'var(--story-c1)',
+            c2: 'var(--story-c2)',
+            c3: 'var(--story-c3)',
+            c4: 'var(--story-c4)',
+            c5: 'var(--story-c5)',
+            c6: 'var(--story-c6)',
+            c7: 'var(--story-c7)'
+        };
+
+        function _fmYamlColorExpr(raw) {
+            var comment = /^([^"'#]*?)(\s+#.*)$/.exec(raw);
+            var body = comment ? comment[1] : raw;
+            var parts = _fmUnquote(body);
+            var tok = (parts.name || '').trim().toLowerCase();
+            if (_YAML_NAMED_COLORS[tok]) return _YAML_NAMED_COLORS[tok];
+            if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(tok)) return tok;
+            return '';
+        }
+
+        function _fmAppendLabelValue(target, text, options) {
+            var comment = /^([^"'#]*?)(\s+#.*)$/.exec(text);
+            var body = comment ? comment[1] : text;
+            var parts = _fmUnquote(body);
+            if (parts.name && options && typeof options.onLabel === 'function') {
+                if (parts.before) target.appendChild(_fmSpan('fm-string', parts.before));
+                var wrap = document.createElement('span');
+                wrap.className = 'fm-label-wrap';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'fm-char-link fm-label-link';
+                btn.setAttribute('aria-haspopup', 'menu');
+                btn.setAttribute('aria-expanded', 'false');
+                btn.title = 'Scene label: ' + parts.name + ' (click to change)';
+                if (options.labelColor) {
+                    var dot = document.createElement('span');
+                    dot.className = 'fm-label-dot';
+                    dot.style.setProperty('--label-color', options.labelColor);
+                    dot.setAttribute('aria-hidden', 'true');
+                    btn.appendChild(dot);
+                }
+                btn.appendChild(document.createTextNode(parts.name));
+                wrap.appendChild(btn);
+                options.onLabel(wrap, btn);
+                target.appendChild(wrap);
+                if (parts.after) target.appendChild(_fmSpan('fm-string', parts.after));
+                if (comment) target.appendChild(_fmSpan('fm-comment', comment[2]));
+                return;
+            }
+            if (options && options.labelColor) {
+                var plainDot = document.createElement('span');
+                plainDot.className = 'fm-label-dot';
+                plainDot.style.setProperty('--label-color', options.labelColor);
+                plainDot.setAttribute('aria-hidden', 'true');
+                target.appendChild(plainDot);
+            }
+            target.appendChild(_fmValue(text));
+        }
+
         // Fill *pre* with *text* (the lines between the --- fences), coloured.
         // When *options* is given (scene reading mode), character names become
         // clickable bio links and frontmatter TODO list items get checkboxes.
@@ -132,7 +200,17 @@
                             _fmAppendCharValue(pre, field[6], options);
                         } else if (!field[2] && options && options.onCharacter && activeKey === 'pov') {
                             _fmAppendPovValue(pre, field[6], options);
+                        } else if (!field[2] && options && options.labelField && activeKey === String(options.labelField).toLowerCase()) {
+                            _fmAppendLabelValue(pre, field[6], options);
                         } else {
+                            var yamlDotColor = options && options.highlightYamlColors ? _fmYamlColorExpr(field[6]) : '';
+                            if (yamlDotColor) {
+                                var yamlDot = document.createElement('span');
+                                yamlDot.className = 'fm-label-dot';
+                                yamlDot.style.setProperty('--label-color', yamlDotColor);
+                                yamlDot.setAttribute('aria-hidden', 'true');
+                                pre.appendChild(yamlDot);
+                            }
                             pre.appendChild(_fmValue(field[6]));
                         }
                     }
@@ -245,9 +323,10 @@
         // The edit box for *text*; *onInput* runs on every change. A text box
         // with clear text over the highlighted copy of what it holds, so the
         // colours stay while typing.
-        function frontmatterEditor(text, onInput) {
+        function frontmatterEditor(text, onInput, options) {
+            options = options || {};
             var wrap = document.createElement('div');
-            wrap.className = 'fm-edit';
+            wrap.className = options.plain ? 'fm fm-edit yaml-edit' : 'fm-edit';
             var area = document.createElement('div');
             area.className = 'fm-edit-area';
             var under = document.createElement('pre');
@@ -257,20 +336,32 @@
             box.className = 'fm-editor';
             box.value = String(text || '');
             box.spellcheck = false;
-            box.setAttribute('aria-label', 'Frontmatter (YAML)');
+            box.setAttribute('aria-label', options.ariaLabel || 'Frontmatter (YAML)');
             var paint = function() {
                 // The trailing space keeps a last empty line its height.
                 fillFrontmatterHighlight(under, box.value + ' ');
             };
             box.addEventListener('input', function() { paint(); if (onInput) onInput(box.value); });
             box.addEventListener('scroll', function() { under.scrollTop = box.scrollTop; });
+            if (options.indentWithTab) {
+                box.addEventListener('keydown', function(event) {
+                    if (event.key !== 'Tab' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+                    event.preventDefault();
+                    var start = box.selectionStart;
+                    var end = box.selectionEnd;
+                    box.value = box.value.slice(0, start) + '  ' + box.value.slice(end);
+                    box.setSelectionRange(start + 2, start + 2);
+                    paint();
+                    if (onInput) onInput(box.value);
+                });
+            }
             paint();
             area.append(under, box);
             var error = document.createElement('p');
             error.className = 'fm-error';
             error.setAttribute('role', 'alert');
             error.hidden = true;
-            wrap.append(_fmFrame(function() { return box.value; }, area), error);
+            wrap.append(options.plain ? area : _fmFrame(function() { return box.value; }, area), error);
             return wrap;
         }
 

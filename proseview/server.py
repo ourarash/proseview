@@ -29,7 +29,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Any
 
-from .config import GENRE_MTLD_BANDS, Config, book_config_keys, lexical_bands, validated_band
+from .config import GENRE_MTLD_BANDS, LABEL_COLORS, Config, LabelsConfig, _parse_yaml, book_config_keys, lexical_bands, normalize_label_color, validated_band
 from .agy_acp_client import AgyAuthError, AgyProtocolError, AgyUnavailableError
 from .claude_agent_client import ClaudeProtocolError, ClaudeUnavailableError, claude_logged_in, open_login_terminal
 from .codex_app_server import CodexAuthError, CodexProtocolError, CodexUnavailableError
@@ -66,8 +66,16 @@ from .repo import (
     trash_repository_entry,
 )
 from .scenes import (
-    collect_scene_stats, extract_scene_text, replace_frontmatter, resolve_manuscript_dir, split_frontmatter,
+    _extract_scene_label,
+    collect_scene_stats,
+    extract_scene_text,
+    iter_scene_paths,
+    replace_frontmatter,
+    resolve_manuscript_dir,
+    split_frontmatter,
+    update_frontmatter_scalar,
 )
+from .story import resolve_label_catalog
 from .watch import watch as _watch
 from urllib.parse import unquote, urlparse, parse_qs
 import time as _time
@@ -1025,7 +1033,7 @@ def compose_scene_raw(raw: str, content: str) -> str:
 
 def save_scene_content(
     abs_path: str,
-    content: str,
+    content: str | None,
     open_mtime: float,
     repo_root: str,
     manuscript_subdir: str = "manuscript",
@@ -1033,8 +1041,10 @@ def save_scene_content(
     overwrite: bool = False,
     frontmatter: str | None = None,
 ) -> None:
-    """Atomically replace the prose body of a scene file.
+    """Atomically replace the prose body and/or frontmatter of a scene file.
 
+    When *content* is ``None``, the existing prose body and heading are left
+    untouched (used when updating frontmatter alone from reading mode).
     *frontmatter*, when given, replaces the frontmatter block too, exactly as
     typed (see :func:`replace_frontmatter`); otherwise it is kept as it is.
 
@@ -1046,6 +1056,8 @@ def save_scene_content(
     through the same backup, so the discarded disk copy stays restorable from
     scene history.
     """
+    if content is None and frontmatter is None:
+        raise ValueError("Nothing to save: provide content or frontmatter")
     resolved = resolve_scene_write_target(abs_path, repo_root, manuscript_subdir)
 
     if not overwrite:
@@ -1055,7 +1067,7 @@ def save_scene_content(
 
     require_utf8_file(resolved)
     raw = read_repo_text(resolved)
-    new_raw = compose_scene_raw(raw, content)
+    new_raw = compose_scene_raw(raw, content) if content is not None else raw
     if frontmatter is not None:
         new_raw = replace_frontmatter(new_raw, frontmatter)
 
@@ -1066,8 +1078,28 @@ def save_scene_content(
 
 
 
-#: What the dashboard may edit outside the manuscript: Markdown notes.
+#: What the dashboard may edit outside the manuscript: Markdown notes and YAML files.
 NOTE_SUFFIXES = frozenset({".md", ".markdown"})
+YAML_SUFFIXES = frozenset({".yaml", ".yml"})
+EDITABLE_REPO_SUFFIXES = NOTE_SUFFIXES | YAML_SUFFIXES
+
+
+def _validate_yaml_content(target: Path, repo_root: Path, new_raw: str) -> None:
+    """Validate arbitrary YAML syntax, and config schema when saving ``.proseview.yaml``."""
+    import yaml
+
+    try:
+        loaded = yaml.safe_load(new_raw) if new_raw.strip() else {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML: {exc}") from exc
+
+    config_path = (repo_root.resolve() / ".proseview.yaml").resolve()
+    if target.resolve() == config_path:
+        if loaded is None:
+            loaded = {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"Invalid .proseview.yaml: top-level YAML must be a mapping, got {type(loaded).__name__}")
+        Config._from_raw(_parse_yaml(new_raw), source=target)
 
 
 def split_note_header(raw: str) -> tuple[str, str]:
@@ -1086,19 +1118,19 @@ def split_note_header(raw: str) -> tuple[str, str]:
 
 
 def resolve_note_write_target(path: str, repo_root: str) -> Path:
-    """The Markdown note *path* (relative to the book) names, or why it cannot be saved.
+    """The editable Markdown or YAML file *path* (relative to the book), or why it cannot be saved.
 
-    Only an existing ``.md`` file inside the book qualifies, reached without
-    ``..``, hidden or tooling folders, or symlinks (the same rule as every
-    other file route), so nothing outside the book can be written.
+    Only an existing Markdown or YAML file inside the book qualifies, reached
+    without ``..``, hidden or tooling folders, or symlinks (the same rule as
+    every other file route), so nothing outside the book can be written.
     """
     root = Path(repo_root).resolve()
     try:
         target = resolve_visible_repository_path(root, path)
     except ValueError as exc:
         raise PermissionError(str(exc)) from exc
-    if target.suffix.lower() not in NOTE_SUFFIXES:
-        raise PermissionError("Only Markdown files can be edited in the dashboard")
+    if target.suffix.lower() not in EDITABLE_REPO_SUFFIXES:
+        raise PermissionError("Only Markdown and YAML files can be edited in the dashboard")
     if not target.is_file():
         raise FileNotFoundError(f"No such file: {path}")
     return target
@@ -1112,22 +1144,26 @@ def save_note_content(
     overwrite: bool = False,
     frontmatter: str | None = None,
 ) -> tuple[Path, float]:
-    """Replace a Markdown note's body, keeping its frontmatter; return the file and its new mtime.
+    """Replace an editable repo file (Markdown or YAML), returning the path and new mtime.
 
     The same guards as a scene save: a file changed on disk since the editor
-    opened is refused (unless *overwrite*), and the version replaced goes to
-    the file's history first.
+    opened is refused (unless *overwrite*), YAML files are syntax/config
+    checked before writing, and the replaced version goes to file history first.
     """
     resolved = resolve_note_write_target(path, repo_root)
     if not overwrite and abs(resolved.stat().st_mtime - open_mtime) > 0.01:
         raise _FileConflictError("File was modified since editor opened")
     require_utf8_file(resolved)
     raw = read_repo_text(resolved)
-    header, _ = split_note_header(raw)
-    body = content.rstrip("\n") + "\n"
-    new_raw = f"{header}\n{body}" if header else body
-    if frontmatter is not None:
-        new_raw = replace_frontmatter(new_raw, frontmatter)
+    if resolved.suffix.lower() in YAML_SUFFIXES:
+        new_raw = content.rstrip("\n") + "\n" if content.strip() else ""
+        _validate_yaml_content(resolved, Path(repo_root), new_raw)
+    else:
+        header, _ = split_note_header(raw)
+        body = content.rstrip("\n") + "\n"
+        new_raw = f"{header}\n{body}" if header else body
+        if frontmatter is not None:
+            new_raw = replace_frontmatter(new_raw, frontmatter)
     _create_file_backup(resolved, raw, new_raw, "Manual Save", repo_root)
     _atomic_write_text(resolved, new_raw)
     return resolved, resolved.stat().st_mtime
@@ -1489,6 +1525,39 @@ def add_frontmatter_scaffold(abs_path: str, open_mtime: float | None = None) -> 
     print(f"[{stamp}] added frontmatter scaffold to {path.name}")
 
 
+def _rewrite_manuscript_label(root: Path, cfg: Config, old_label: str, new_label: str) -> int:
+    """Update or clear *old_label* across every matching scene in the manuscript."""
+    man_dir = resolve_manuscript_dir(root, cfg.manuscript_subdir)
+    if not man_dir.exists() or not man_dir.is_dir():
+        return 0
+    field_name = cfg.story.label_field
+    source = f"Label renamed to {new_label}" if new_label else f"Label removed: {old_label}"
+    updated = 0
+    for path in iter_scene_paths(man_dir):
+        raw = read_repo_text(path)
+        fm, _body = split_frontmatter(raw)
+        current, _is_list = _extract_scene_label(fm, field_name)
+        if current != old_label:
+            continue
+        new_raw = update_frontmatter_scalar(raw, field_name, new_label)
+        if new_raw == raw:
+            continue
+        require_utf8_file(path)
+        _create_file_backup(path, raw, new_raw, source, str(root))
+        _atomic_write_text(path, new_raw)
+        updated += 1
+    return updated
+
+
+def _next_unused_label_slot(scenes: list, cfg: Config) -> str:
+    slots, _catalog = resolve_label_catalog(scenes, cfg)
+    used = {v for v in slots.values() if isinstance(v, int)}
+    for idx in range(len(LABEL_COLORS)):
+        if idx not in used:
+            return LABEL_COLORS[idx]
+    return LABEL_COLORS[0]
+
+
 class _Handler(BaseHTTPRequestHandler):
     """Bound HTTP handler; concrete attributes injected by :func:`_make_handler`."""
 
@@ -1687,7 +1756,10 @@ class _Handler(BaseHTTPRequestHandler):
                 relative, content, open_mtime, self.repo_root, overwrite=bool(body.get("overwrite")),
                 frontmatter=frontmatter if isinstance(frontmatter, str) else None,
             )
-            self.invalidate("content", (relative,))
+            if target.resolve() == (Path(self.repo_root).resolve() / ".proseview.yaml").resolve():
+                self.invalidate()
+            else:
+                self.invalidate("content", (relative,))
             self._send_json({"ok": True, "path": relative, "mtime": mtime})
         except _FileConflictError:
             self._send_json({"ok": False, "conflict": True, "error": "The file changed on disk since you opened it"}, 409)
@@ -2205,6 +2277,64 @@ class _Handler(BaseHTTPRequestHandler):
                         kwargs[k] = validated_band(k, v)
                 elif k == "manuscript_path":
                     kwargs[k] = _validated_manuscript_path(root, v)
+                elif k == "label_color":
+                    if not isinstance(v, dict):
+                        raise ValueError("label_color must be a mapping of label name to color")
+                    palette_map = dict(cfg.labels.palette)
+                    for lbl_name, raw_color in v.items():
+                        clean_name = str(lbl_name or "").strip()
+                        if not clean_name:
+                            raise ValueError("label name cannot be empty")
+                        if raw_color is None or str(raw_color).strip() == "":
+                            palette_map.pop(clean_name, None)
+                        else:
+                            palette_map[clean_name] = normalize_label_color(raw_color, clean_name)
+                    kwargs["labels"] = LabelsConfig(palette=tuple(palette_map.items()))
+                elif k == "label_add":
+                    if not isinstance(v, dict):
+                        raise ValueError("label_add must be an object with name and optional color")
+                    clean_name = str(v.get("name") or "").strip()
+                    if not clean_name or "\n" in clean_name or "\r" in clean_name:
+                        raise ValueError("Label name cannot be empty or multi-line")
+                    palette_map = dict(cfg.labels.palette)
+                    scenes_now = collect_scene_stats(root, cfg, lexical=False)
+                    existing_names = set(palette_map) | {s.label for s in scenes_now if s.label}
+                    if clean_name in existing_names:
+                        raise ValueError(f"Label '{clean_name}' already exists")
+                    raw_color = v.get("color")
+                    color_val = (
+                        normalize_label_color(raw_color, clean_name)
+                        if raw_color is not None and str(raw_color).strip()
+                        else _next_unused_label_slot(scenes_now, cfg)
+                    )
+                    palette_map[clean_name] = color_val
+                    kwargs["labels"] = LabelsConfig(palette=tuple(palette_map.items()))
+                elif k == "label_rename":
+                    if not isinstance(v, dict):
+                        raise ValueError("label_rename must be an object with old and new")
+                    old_name = str(v.get("old") or "").strip()
+                    new_name = str(v.get("new") or "").strip()
+                    if not old_name or not new_name or "\n" in new_name or "\r" in new_name:
+                        raise ValueError("Both old and new single-line label names are required")
+                    if old_name != new_name:
+                        palette_map = dict(cfg.labels.palette)
+                        if old_name in palette_map:
+                            old_color = palette_map.pop(old_name)
+                            if new_name not in palette_map:
+                                palette_map[new_name] = old_color
+                            kwargs["labels"] = LabelsConfig(palette=tuple(palette_map.items()))
+                        _rewrite_manuscript_label(root, cfg, old_name, new_name)
+                elif k == "label_remove":
+                    if not isinstance(v, dict):
+                        raise ValueError("label_remove must be an object with name")
+                    target_name = str(v.get("name") or "").strip()
+                    if not target_name:
+                        raise ValueError("Label name cannot be empty")
+                    palette_map = dict(cfg.labels.palette)
+                    if target_name in palette_map:
+                        palette_map.pop(target_name, None)
+                        kwargs["labels"] = LabelsConfig(palette=tuple(palette_map.items()))
+                    _rewrite_manuscript_label(root, cfg, target_name, "")
 
             # Word variety's presets are genres: one picked saves the genre
             # and no ranges. An MTLD band the book never set follows its
@@ -2218,9 +2348,17 @@ class _Handler(BaseHTTPRequestHandler):
 
             new_cfg = cfg.with_overrides(**kwargs)
             new_cfg.save(root, unset=unset)
-            
+
             self.invalidate()
-            self._send_json({"ok": True, "lexical_bands": lexical_bands(new_cfg, root)})
+            _, updated_catalog = resolve_label_catalog(
+                collect_scene_stats(root, new_cfg, lexical=False),
+                new_cfg,
+            )
+            self._send_json({
+                "ok": True,
+                "lexical_bands": lexical_bands(new_cfg, root),
+                "label_catalog": updated_catalog,
+            })
         except Exception as exc:
             self._send_json({"ok": False, "error": str(exc)}, 400)
 
@@ -3510,9 +3648,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # diff, so the stale baseline they opened with is moot.
                 overwrite = bool(body.get("overwrite"))
                 source = "Overwrote Disk Version" if overwrite else _suggestion_save_source(body.get("suggestion"))
+                raw_content = body.get("content")
                 save_scene_content(
                     body["abs_path"],
-                    body["content"],
+                    raw_content if isinstance(raw_content, str) else None,
                     float(body.get("open_mtime") or 0) if overwrite else float(body["open_mtime"]),
                     self.repo_root,
                     Config.load(Path(self.repo_root)).manuscript_subdir,

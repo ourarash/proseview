@@ -264,8 +264,8 @@
             });
         }
 
-        // Settings has five tabs: General, Suggestions, Group, Beat Map, and Discuss.
-        var SETTINGS_TABS = ['general', 'suggestions', 'group', 'beatmap', 'discuss'];
+        // Settings has six tabs: General, Appearance, Suggestions, Group, Beat Map, and Discuss.
+        var SETTINGS_TABS = ['general', 'appearance', 'suggestions', 'group', 'beatmap', 'discuss'];
 
         function selectSettingsTab(name) {
             SETTINGS_TABS.forEach(function(tab) {
@@ -279,10 +279,21 @@
                 }
                 if (panel) panel.hidden = !on;
             });
+            if (name === 'appearance' && typeof renderSettingsLabelColors === 'function') renderSettingsLabelColors();
             if (name === 'suggestions' && !_sg) loadSuggestionSettings();
             if (name === 'group' && !_rm) loadGroupSettings();
             if (name === 'beatmap' && typeof loadBeatMapSettings === 'function' && !_bmSettings) loadBeatMapSettings();
             if (name === 'discuss' && !_ds) loadDiscussSettings();
+        }
+
+        // Opens Settings directly on the Appearance tab (color theme, label colors, and labels).
+        function openAppearanceSettings() {
+            var dlg = document.getElementById('settingsDialog');
+            if (dlg && dlg.parentElement !== document.body) document.body.appendChild(dlg);
+            if (typeof openSettings === 'function') openSettings();
+            selectSettingsTab('appearance');
+            var tab = document.getElementById('settingsTabAppearance');
+            if (tab) tab.focus({preventScroll: true});
         }
 
         // The card's gear: Settings, opened on the Suggestions tab.

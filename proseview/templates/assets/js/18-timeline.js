@@ -5,6 +5,7 @@
 
         const STORY_HUES = 8;
         var _timelineBuilt = false;
+        var _timelineShapeColorBy = 'chapter';
 
         function _storyEsc(s) {
             return String(s == null ? '' : s)
@@ -32,6 +33,7 @@
             const bits = [_storyEsc(_storyChapterLabel(scene.chapter))];
             if (scene.day != null) bits.push(_storyEsc(storyModel.day_field + ' ' + scene.day));
             if (scene.thread) bits.push(_storyEsc(scene.thread));
+            if (scene.label && scene.label !== scene.thread) bits.push(_storyEsc(scene.label));
             bits.push(scene.words.toLocaleString() + ' words');
             let html = '<b>' + _storyEsc(scene.title || scene.path) + '</b>'
                 + '<em>' + bits.join(' · ') + '</em>';
@@ -93,28 +95,49 @@
             return '<p class="story-empty">' + message + '</p>';
         }
 
+        function _shapeSegmentColor(scene, chapterIndex) {
+            if (_timelineShapeColorBy === 'label' && storyModel.has_labels) {
+                if (!scene.label) return 'var(--border-strong)';
+                return (typeof labelColorCssExpr === 'function' ? labelColorCssExpr(scene.label_slot) : '') || 'var(--border-strong)';
+            }
+            return 'var(--story-c' + (chapterIndex[scene.chapter] % STORY_HUES) + ')';
+        }
+
+        function setTimelineShapeColorBy(mode) {
+            _timelineShapeColorBy = mode === 'label' ? 'label' : 'chapter';
+            refreshTimelineTab();
+        }
+
         // ── Layer 1: shape ──────────────────────────────────────────────
         function _renderShape(chapterIndex) {
             const scenes = storyModel.scenes;
             if (!scenes.length) return _storyEmpty('No scenes yet.');
             const total = storyModel.total_words || 1;
             const max = Math.max.apply(null, scenes.map(s => s.words)) || 1;
+            const byLabel = _timelineShapeColorBy === 'label' && !!storyModel.has_labels;
 
             const strip = scenes.map(s =>
                 '<div class="story-seg" style="flex:' + Math.max(s.words, 1)
-                + ';background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"'
+                + ';background:' + _shapeSegmentColor(s, chapterIndex) + '"'
                 + ' data-scene="' + s.index + '" data-timeline-view="proportion"></div>').join('');
 
             const bars = scenes.map(s =>
                 '<div class="story-barwrap" data-scene="' + s.index + '" data-timeline-view="words">'
                 + '<div class="story-bar" style="height:' + (100 * s.words / max).toFixed(2) + '%;'
-                + 'background:var(--story-c' + (chapterIndex[s.chapter] % STORY_HUES) + ')"></div></div>').join('');
+                + 'background:' + _shapeSegmentColor(s, chapterIndex) + '"></div></div>').join('');
 
             const ticks = storyModel.bands.map(b =>
                 '<div class="story-tick" style="flex:' + b.scenes + '"><span>' + _storyEsc(_storyChapterLabel(b.chapter))
                 + (b.day_span ? ' · ' + _storyEsc(b.day_span) : '') + '</span></div>').join('');
 
-            return '<h3 class="story-h">Proportion of the book</h3>'
+            const toggle = storyModel.has_labels
+                ? '<div class="story-color-toggle" role="group" aria-label="Color timeline by">'
+                  + '<button type="button" class="story-color-btn' + (!byLabel ? ' is-active' : '') + '" onclick="setTimelineShapeColorBy(\'chapter\')" aria-pressed="' + (!byLabel ? 'true' : 'false') + '">Color by: Chapter</button>'
+                  + '<button type="button" class="story-color-btn' + (byLabel ? ' is-active' : '') + '" onclick="setTimelineShapeColorBy(\'label\')" aria-pressed="' + (byLabel ? 'true' : 'false') + '">Label</button>'
+                  + '</div>'
+                : '';
+
+            return '<div class="story-h-row"><h3 class="story-h">Proportion of the book</h3>' + toggle + '</div>'
                 + '<div class="story-strip">' + strip + '</div>'
                 + '<h3 class="story-h">Words per scene</h3>'
                 + '<div class="story-chart">' + bars + '</div>'

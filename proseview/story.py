@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config import Config
+from .config import Config, label_color_slot
 from .scenes import SceneStats
 
 #: Threads render in the order first met in the manuscript, capped so the
@@ -49,6 +49,7 @@ class StoryScene:
     goal: str = ""
     conflict: str = ""
     outcome: str = ""
+    label: str = ""
 
     @property
     def blurb(self) -> str:
@@ -223,6 +224,7 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
                 goal=str(fm.get("goal", "") or "").strip(),
                 conflict=str(fm.get("conflict", "") or "").strip(),
                 outcome=str(fm.get("outcome", "") or "").strip(),
+                label=scene.label,
             )
         )
 
@@ -275,9 +277,68 @@ def build_story_model(scenes: list[SceneStats], cfg: Config) -> StoryModel:
     )
 
 
+def resolve_label_catalog(
+    scenes: list[SceneStats],
+    cfg: Config,
+) -> tuple[dict[str, int | str], list[dict[str, Any]]]:
+    """Resolve scene labels to Story tab slots ``0..7``, custom ``#hex``, or ``"other"``.
+
+    Configured labels in ``cfg.labels.palette`` reserve their ``c0``..``c7``
+    slots (or use their custom ``#rrggbb`` color directly). Any label missing
+    from the palette takes the lowest unused slot ``0..7`` in first-seen
+    manuscript order, with no hash fallback. Beyond eight automatic slots,
+    additional unmapped labels map to ``"other"``.
+    """
+    palette: dict[str, int | str] = {}
+    used_slots: set[int] = set()
+    for name, token in cfg.labels.palette:
+        slot = label_color_slot(token)
+        if slot is not None:
+            palette[name] = slot
+            used_slots.add(slot)
+        elif isinstance(token, str) and token.startswith("#"):
+            palette[name] = token
+
+    slot_by_label: dict[str, int | str] = dict(palette)
+    counts: dict[str, int] = {}
+    ordered: list[str] = []
+
+    for scene in scenes:
+        lbl = (scene.label or "").strip()
+        if not lbl:
+            continue
+        counts[lbl] = counts.get(lbl, 0) + 1
+        if lbl not in ordered:
+            ordered.append(lbl)
+        if lbl not in slot_by_label:
+            assigned: int | str = "other"
+            for candidate in range(MAX_THREADS):
+                if candidate not in used_slots:
+                    assigned = candidate
+                    used_slots.add(candidate)
+                    break
+            slot_by_label[lbl] = assigned
+
+    for name in palette:
+        if name not in ordered:
+            ordered.append(name)
+
+    catalog = [
+        {
+            "label": lbl,
+            "slot": slot_by_label[lbl],
+            "count": counts.get(lbl, 0),
+            "configured": lbl in palette,
+        }
+        for lbl in ordered
+    ]
+    return slot_by_label, catalog
+
+
 def story_payload(scenes: list[SceneStats], cfg: Config) -> dict[str, Any]:
     """JSON-safe model for the browser."""
     model = build_story_model(scenes, cfg)
+    label_slots, label_catalog = resolve_label_catalog(scenes, cfg)
     return {
         "scenes": [
             {
@@ -287,6 +348,8 @@ def story_payload(scenes: list[SceneStats], cfg: Config) -> dict[str, Any]:
                 "summary": s.summary, "goal": s.goal,
                 "conflict": s.conflict, "outcome": s.outcome,
                 "blurb": s.blurb,
+                "label": s.label,
+                "label_slot": label_slots.get(s.label) if s.label else None,
             }
             for s in model.scenes
         ],
@@ -304,6 +367,10 @@ def story_payload(scenes: list[SceneStats], cfg: Config) -> dict[str, Any]:
         "chronological": [s.index for s in model.chronological()],
         "thread_field": cfg.story.thread_field,
         "day_field": cfg.story.day_field,
+        "label_field": cfg.story.label_field,
+        "labels": [entry["label"] for entry in label_catalog],
+        "label_catalog": label_catalog,
+        "has_labels": any(s.label for s in model.scenes),
     }
 
 

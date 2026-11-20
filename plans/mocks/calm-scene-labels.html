@@ -1,0 +1,2246 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proseview · Calm Scene Labels — clickable proposal</title>
+<style>
+:root {
+  color-scheme: light;
+  --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --primary: #2563eb;
+  --accent-neutral: #71717a;
+  --bg-app: #f8fafc;
+  --surface-card: #ffffff;
+  --surface-muted: #f1f5f9;
+  --surface-soft: #eff6ff;
+  --surface-field: #ffffff;
+  --surface-warn: #fef3c7;
+  --surface-success: #dcfce7;
+  --surface-danger: #fef2f2;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --text-soft: #475569;
+  --text-reading: #334155;
+  --text-inverse: #ffffff;
+  --text-warning: #92400e;
+  --text-success: #166534;
+  --text-danger: #991b1b;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-pop: 0 12px 32px rgba(15, 23, 42, 0.14);
+  --button-hover: #eff6ff;
+  --story-c0: #2a78d6;
+  --story-c1: #eb6834;
+  --story-c2: #1baf7a;
+  --story-c3: #eda100;
+  --story-c4: #e87ba4;
+  --story-c5: #008300;
+  --story-c6: #4a3aa7;
+  --story-c7: #e34948;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #60a5fa;
+  --accent-neutral: #94a3b8;
+  --bg-app: #020617;
+  --surface-card: #0f172a;
+  --surface-muted: #162033;
+  --surface-soft: #15243c;
+  --surface-field: #111827;
+  --surface-warn: #3b2a13;
+  --surface-success: #0f2d23;
+  --surface-danger: #3b1419;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-soft: #cbd5e1;
+  --text-reading: #cbd5e1;
+  --text-inverse: #eff6ff;
+  --text-warning: #fcd34d;
+  --text-success: #86efac;
+  --text-danger: #fca5a5;
+  --border: #233149;
+  --border-strong: #334155;
+  --shadow-card: 0 4px 16px rgba(2, 6, 23, 0.45);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --button-hover: #172554;
+  --story-c0: #3987e5;
+  --story-c1: #d95926;
+  --story-c2: #199e70;
+  --story-c3: #c98500;
+  --story-c4: #d55181;
+  --story-c5: #008300;
+  --story-c6: #9085e9;
+  --story-c7: #e66767;
+}
+
+[data-theme="hopscotch"] {
+  color-scheme: dark;
+  --primary: #3987e5;
+  --accent-neutral: #9894a8;
+  --bg-app: #231f28;
+  --surface-card: #2c2733;
+  --surface-muted: #352f3d;
+  --surface-soft: #3a3245;
+  --surface-field: #26222c;
+  --surface-warn: #453520;
+  --surface-success: #1f3930;
+  --surface-danger: #422229;
+  --text-main: #ebe8f0;
+  --text-muted: #a69fb2;
+  --text-soft: #d5cfde;
+  --text-reading: #dcd6e5;
+  --text-inverse: #ffffff;
+  --text-warning: #fcd34d;
+  --text-success: #86efac;
+  --text-danger: #fca5a5;
+  --border: #433c4d;
+  --border-strong: #574e64;
+  --shadow-card: 0 4px 16px rgba(10, 8, 14, 0.45);
+  --shadow-pop: 0 16px 40px rgba(10, 8, 14, 0.6);
+  --button-hover: #3f364b;
+  --story-c0: #3987e5;
+  --story-c1: #d95926;
+  --story-c2: #199e70;
+  --story-c3: #c98500;
+  --story-c4: #d55181;
+  --story-c5: #008300;
+  --story-c6: #9085e9;
+  --story-c7: #e66767;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-main);
+  font: 13px/1.55 var(--font-ui);
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-card);
+  padding: 5px 10px;
+}
+button:hover:not(:disabled) { background: var(--button-hover); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* Prototype top bar */
+.proto-bar {
+  min-height: 48px;
+  background: #172033;
+  color: #e2e8f0;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #27344d;
+}
+.proto-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #93b4e0;
+}
+.proto-title { font-size: 13px; font-weight: 600; margin-right: 8px; }
+.proto-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.proto-bar button {
+  background: #222f47;
+  border: 1px solid #334563;
+  color: #e2e8f0;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+.proto-bar button:hover { background: #2d3e5c; }
+.proto-bar button.is-active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Workspace shell */
+.shell {
+  height: calc(100dvh - 48px);
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--surface-card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar-head {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-book {
+  font: 600 15px/1.25 var(--font-reading);
+  letter-spacing: -0.01em;
+}
+.sidebar-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sidebar-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 8px 18px;
+}
+.tree-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 8px 10px 4px;
+}
+.tree-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.tree-children { padding-left: 12px; }
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-main);
+  text-align: left;
+}
+.tree-item:hover { background: var(--surface-muted); }
+.tree-item.active {
+  background: var(--surface-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+.tree-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.tree-item[data-label-color] .tree-icon {
+  color: var(--label-color);
+  fill: color-mix(in srgb, var(--label-color) 18%, transparent);
+}
+html[data-label-mode="rows"] .tree-item[data-label-color]:not(.active) {
+  background: color-mix(in srgb, var(--label-color) 15%, transparent);
+  margin-bottom: 2px;
+}
+html[data-label-mode="rows"] .tree-item[data-label-color]:not(.active):hover {
+  background: color-mix(in srgb, var(--label-color) 24%, transparent);
+}
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table-label-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+html[data-label-mode="off"] .table-label-dot,
+html[data-label-mode="off"] .label-pill,
+html[data-label-mode="off"] .fm-label-dot,
+html[data-label-mode="off"] .label-dot-off,
+html[data-label-mode="off"] .book-label-cue {
+  display: none !important;
+}
+html[data-label-mode="off"] .tree-item[data-label-color] .tree-icon {
+  color: var(--text-muted);
+  fill: none;
+}
+html[data-label-mode="off"] .tree-item.active .tree-icon {
+  color: var(--primary);
+}
+html[data-label-mode="off"] .scene-overview-card {
+  border-left-color: var(--border) !important;
+}
+
+/* Read the book (Scrivenings Titles cue) */
+.book-sheet {
+  max-width: 680px;
+  margin: 0 auto;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 34px 42px;
+  box-shadow: var(--shadow-card);
+}
+.book-chapter-title {
+  font: 600 13px/1.4 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 28px 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.book-chapter-title:first-child { margin-top: 0; }
+.book-break {
+  text-align: center;
+  color: var(--text-muted);
+  letter-spacing: 0.3em;
+  margin: 22px 0 16px;
+  font-size: 13px;
+}
+.book-scene-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.book-scene-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.book-scene-open {
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+}
+
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Main panel */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.topbar {
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 48px;
+}
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  align-self: stretch;
+}
+.tab-btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  position: relative;
+}
+.tab-btn:hover { background: transparent; color: var(--text-main); }
+.tab-btn.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+.tab-btn.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--primary);
+}
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 28px 48px;
+}
+.container { max-width: 1080px; margin: 0 auto; }
+
+/* Card & overview controls */
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+}
+.overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.card-title { margin: 0; font-size: 16px; font-weight: 650; }
+.overview-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  padding: 5px 11px;
+  color: var(--text-soft);
+}
+.segmented button.is-active {
+  background: var(--surface-card);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.issue-filter {
+  border: 1px solid var(--border);
+  background: var(--surface-field);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* Legend strip */
+.label-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text-soft);
+}
+.legend-chip.is-active {
+  border-color: var(--primary);
+  background: var(--surface-soft);
+  color: var(--text-main);
+  font-weight: 600;
+}
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Overview Table: dot in row, no 3px row border */
+.scene-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.scene-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.scene-table th.num, .scene-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ch-row td {
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-soft);
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border);
+}
+.scene-row td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.scene-row:hover { background: var(--surface-muted); }
+.scene-title-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.scene-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 550;
+  color: var(--text-main);
+  text-align: left;
+}
+.scene-link:hover { background: transparent; color: var(--primary); text-decoration: underline; }
+.row-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Badges & quiet label pill */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+.status-revision {
+  text-transform: uppercase;
+  background: var(--surface-warn);
+  color: var(--text-warning);
+}
+.status-done {
+  text-transform: uppercase;
+  background: var(--surface-success);
+  color: var(--text-success);
+}
+.label-pill {
+  font-size: 11px;
+  font-weight: 550;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text-main);
+}
+.label-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Cards Grid: 3px left edge stripe */
+.scene-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
+  gap: 12px;
+}
+.scene-overview-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-card);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.scene-overview-card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
+.scene-overview-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.scene-overview-card-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+  color: var(--text-main);
+}
+.scene-overview-card-title:hover { background: transparent; color: var(--primary); }
+.scene-overview-card-words {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.scene-overview-card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.scene-overview-card-beats {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.beat-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 6px;
+}
+.beat-row dt { color: var(--text-muted); font-size: 11px; }
+.beat-row dd {
+  margin: 0;
+  color: var(--text-reading);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scene-overview-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+/* Scene View */
+.scene-shell {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.scene-header-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.scene-literary-title {
+  font: 500 28px/1.2 var(--font-reading);
+  margin: 0 0 4px;
+}
+.scene-tech-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.scene-technical-path { font-family: var(--font-mono); font-size: 11px; }
+.scene-mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+.btn-primary:hover:not(:disabled) { opacity: 0.92; background: var(--primary); }
+
+/* Label picker dropdown (Reading mode only) */
+.label-picker-wrap { position: relative; display: inline-block; }
+.label-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text-soft);
+}
+.label-picker-btn.is-empty {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.label-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 215px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+  padding: 6px;
+}
+.label-pop-title {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 8px 6px;
+}
+.label-pop-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+}
+.label-pop-item:hover { background: var(--surface-muted); }
+.label-pop-item.is-selected { background: var(--surface-soft); font-weight: 600; }
+.label-pop-count { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.label-pop-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+.label-pop-new-form {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+.label-pop-new-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-field);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.label-pop-new-form button {
+  font-size: 11px;
+  padding: 4px 9px;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* YAML frontmatter block above prose */
+.fm-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 14px;
+  margin-bottom: 22px;
+  font: 12px/1.65 var(--font-mono);
+}
+.fm-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.fm-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.fm-key { color: var(--primary); }
+.fm-colon { color: var(--text-muted); }
+.fm-val { color: var(--text-main); }
+.fm-comment { color: var(--text-muted); font-style: italic; }
+.fm-label-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.fm-textarea {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-field);
+  padding: 8px 10px;
+  font: 12px/1.6 var(--font-mono);
+  resize: vertical;
+}
+
+/* Prose sheet */
+.prose-sheet {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px 38px;
+  box-shadow: var(--shadow-card);
+}
+.prose-body {
+  font: 17px/1.85 var(--font-reading);
+  color: var(--text-reading);
+}
+.prose-body p { margin: 0 0 18px; }
+.prose-body p:last-child { margin-bottom: 0; }
+.prose-textarea {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-field);
+  padding: 14px 16px;
+  font: 16px/1.8 var(--font-reading);
+  color: var(--text-reading);
+  resize: vertical;
+}
+.save-banner {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Analysis -> What stands out */
+.findings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.finding-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface-card);
+}
+.finding-item.is-note {
+  background: var(--surface-warn);
+  border-color: color-mix(in srgb, var(--text-warning) 25%, transparent);
+}
+.finding-text { font-weight: 600; margin: 0 0 4px; }
+.finding-tip { font-size: 12px; color: var(--text-soft); margin: 0 0 8px; }
+.finding-scenes { display: flex; gap: 6px; flex-wrap: wrap; }
+.finding-scene-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* Timeline tab */
+.story-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.story-h {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  font-weight: 650;
+}
+.story-strip {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.story-seg {
+  cursor: pointer;
+  min-width: 4px;
+  transition: opacity 0.12s ease;
+}
+.story-seg:hover { opacity: 0.8; }
+.story-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 2px;
+}
+.story-barwrap {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+}
+.story-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+}
+.story-barwrap:hover .story-bar { opacity: 0.8; }
+.story-ticks {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  margin-bottom: 24px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.story-tick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-lane-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.story-lane-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.story-lane-name i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.story-lane-name span { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+.story-lane {
+  display: grid;
+  gap: 3px;
+  height: 18px;
+}
+.story-slot {
+  border-radius: 3px;
+  background: var(--surface-muted);
+}
+.story-slot.on { cursor: pointer; }
+.story-slot.on:hover { opacity: 0.82; }
+
+/* Config inspector */
+.yaml-doc {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.yaml-doc pre {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font: 12px/1.65 var(--font-mono);
+  overflow: auto;
+}
+.config-test-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  font-size: 12px;
+}
+.config-error {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-danger);
+  color: var(--text-danger);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Settings dialog (Appearance -> Label colors On/Off) */
+dialog {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--text-main);
+  width: min(500px, calc(100vw - 28px));
+  box-shadow: var(--shadow-pop);
+}
+dialog::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+.dialog-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dialog-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.dialog-body { padding: 16px 18px 20px; }
+.settings-section {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-child { border-bottom: 0; }
+.settings-hint { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.switch-input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  z-index: 40;
+}
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .prose-sheet { padding: 22px 20px; }
+}
+</style>
+</head>
+<body>
+
+<header class="proto-bar">
+  <div>
+    <span class="proto-eyebrow">Clickable proposal</span>
+    <span class="proto-title">Proseview · Calm Scene Labels</span>
+  </div>
+  <div class="proto-controls">
+    <button type="button" data-nav="overview" class="is-active">Overview</button>
+    <button type="button" data-nav="analysis">What stands out</button>
+    <button type="button" data-nav="scene">Scene</button>
+    <button type="button" data-nav="book">Read the book</button>
+    <button type="button" data-nav="timeline">Timeline</button>
+    <button type="button" id="resetBtn">Reset demo</button>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Manuscript files">
+    <div class="sidebar-head">
+      <div>
+        <div class="sidebar-book">The Glass Pier</div>
+        <div class="sidebar-sub">9 scenes · 6,410 words</div>
+      </div>
+    </div>
+    <div class="sidebar-tree" id="sidebarTree"></div>
+    <div class="sidebar-foot">
+      <span>Showing manuscript</span>
+      <span id="sidebarLabelCount"></span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="tabs" role="tablist" aria-label="Workspace views">
+        <button type="button" role="tab" class="tab-btn active" data-tab="overview">Overview</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="analysis">Analysis</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="scene">Scene</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="book">Read the book</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="timeline">Timeline</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="config">.proseview.yaml</button>
+      </div>
+      <div class="topbar-right">
+        <button type="button" id="openSettingsBtn" class="icon-btn" title="Settings (Appearance → Label colors &amp; Theme)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="container">
+        <!-- OVERVIEW TAB -->
+        <section id="panel-overview">
+          <div class="card">
+            <div class="overview-head">
+              <h2 class="card-title">Scenes</h2>
+              <div class="overview-tools">
+                <div class="segmented" role="group" aria-label="Overview scene layout">
+                  <button type="button" id="viewTableBtn">Table</button>
+                  <button type="button" id="viewCardsBtn" class="is-active">Cards</button>
+                </div>
+                <select id="issueFilter" class="issue-filter" aria-label="Filter scenes"></select>
+              </div>
+            </div>
+            <div class="label-legend" id="labelLegend"></div>
+            <table class="scene-table" id="sceneTable" hidden>
+              <thead>
+                <tr>
+                  <th>Scene</th>
+                  <th class="num">Words</th>
+                  <th class="num">Running</th>
+                </tr>
+              </thead>
+              <tbody id="sceneTableBody"></tbody>
+            </table>
+            <div class="scene-cards-grid" id="sceneCardsGrid"></div>
+          </div>
+        </section>
+
+        <!-- ANALYSIS TAB (What stands out) -->
+        <section id="panel-analysis" hidden>
+          <div class="card">
+            <div class="overview-head">
+              <h2 class="card-title">What stands out</h2>
+            </div>
+            <ul class="findings-list" id="analysisFindings"></ul>
+          </div>
+        </section>
+
+        <!-- SCENE TAB -->
+        <section id="panel-scene" hidden>
+          <div class="scene-shell" id="sceneShell"></div>
+        </section>
+
+        <!-- READ THE BOOK TAB -->
+        <section id="panel-book" hidden>
+          <div class="book-sheet" id="bookSheet"></div>
+        </section>
+
+        <!-- TIMELINE TAB -->
+        <section id="panel-timeline" hidden>
+          <div class="card" id="timelineCard"></div>
+        </section>
+
+        <!-- CONFIG TAB -->
+        <section id="panel-config" hidden>
+          <div class="yaml-doc">
+            <h2 class="card-title" style="margin-bottom:8px">.proseview.yaml</h2>
+            <p style="margin:0 0 12px;color:var(--text-muted);font-size:12px;">
+              Assign colors to labels here using the 8 Story tab colors (<code>c0</code>–<code>c7</code>). Your scene files only store the label name (like <code>label: Subplot B</code>). Any label you leave out here automatically gets the next unused color the first time it appears in your book.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:11px;color:var(--text-soft);">
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c0)"></span><code>c0</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c1)"></span><code>c1</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c2)"></span><code>c2</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c3)"></span><code>c3</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c4)"></span><code>c4</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c5)"></span><code>c5</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c6)"></span><code>c6</code></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span class="legend-dot" style="background:var(--story-c7)"></span><code>c7</code></span>
+            </div>
+            <pre id="configYamlPreview"></pre>
+            <div class="config-test-box">
+              <strong>Palette validator check:</strong>
+              <span style="color:var(--text-muted);margin-left:6px;">Try testing a value in <code>labels.palette</code>:</span>
+              <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+                <input type="text" id="paletteTestInput" value="#3b82f6" style="border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-field);padding:4px 8px;font-family:var(--font-mono);font-size:12px;width:140px;">
+                <button type="button" id="paletteTestBtn">Validate palette value</button>
+              </div>
+              <div id="paletteTestResult"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Settings Dialog (Appearance -> Color theme + Label colors On/Off) -->
+<dialog id="settingsDialog" aria-labelledby="settingsTitle">
+  <div class="dialog-head">
+    <h2 id="settingsTitle">Settings · General</h2>
+    <button type="button" id="closeSettingsBtn" aria-label="Close settings">&times;</button>
+  </div>
+  <div class="dialog-body">
+    <h3 class="settings-section">Appearance</h3>
+    <div class="settings-row">
+      <div>
+        <strong>Color theme</strong>
+        <span class="settings-hint">Saved in this browser, not in your book.</span>
+      </div>
+      <select id="themeSelect" class="issue-filter" aria-label="Color theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="hopscotch">Hopscotch</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <label for="labelModeSelect"><strong>Label colors</strong></label>
+        <span class="settings-hint">Tinted sidebar icons, table &amp; Read-the-book dots, and 3px card edges (or add a soft sidebar row wash). Saved in this browser.</span>
+      </div>
+      <select id="labelModeSelect" class="issue-filter" aria-label="Label colors">
+        <option value="subtle">Subtle (default)</option>
+        <option value="rows">Soft sidebar rows</option>
+        <option value="off">Off</option>
+      </select>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script>
+'use strict';
+
+// Accepted palette values: c0..c7 only.
+const CONFIG_PALETTE = {
+  'Main Plot': 'c0',
+  'Subplot B': 'c2',
+  'Flashback': 'c3'
+};
+
+function parsePaletteSlot(token) {
+  const m = /^c([0-7])$/.exec(String(token || '').trim());
+  if (!m) {
+    throw new Error(`ConfigError: labels.palette values must be c0..c7, got ${JSON.stringify(token)}`);
+  }
+  return parseInt(m[1], 10);
+}
+
+const INITIAL_SCENES = [
+  {
+    id: 'ch01/01-foghorn.md',
+    chapter: 'Chapter 1 · Harbor',
+    title: 'The Foghorn at Low Tide',
+    words: 820,
+    status: 'done',
+    pov: 'Mara',
+    where: 'North Pier',
+    when: 'Day 1 · Dawn',
+    goal: 'Recover the customs ledger before the tide turns',
+    conflict: 'The harbor master changed the lock overnight',
+    outcome: 'No, and she spots fresh bootprints on the planks',
+    labelRaw: 'Main Plot',
+    frontmatter: 'pov: Mara\nstatus: done\nwhere: North Pier\nwhen: Day 1 · Dawn\n# Keep the dock quiet\nlabel: Main Plot\ngoal: Recover the customs ledger before the tide turns\nconflict: The harbor master changed the lock overnight\noutcome: No, and she spots fresh bootprints on the planks',
+    prose: [
+      'Before the ferry bell sounded, the pilings along North Pier smelled of wet cedar and rust.',
+      'Mara crouched beside the customs shed, testing the padlock with her thumb. Brass, newly oiled. Someone had been inside since midnight.',
+      'Across the basin, a single lamp flickered in the watchhouse window—too high for a lantern, too steady for a match.'
+    ]
+  },
+  {
+    id: 'ch01/02-last-ferry.md',
+    chapter: 'Chapter 1 · Harbor',
+    title: 'The Last Ferry Ticket',
+    words: 940,
+    status: 'revision',
+    pov: 'Tomas',
+    where: 'Kitchen',
+    when: 'Day 1 · Morning',
+    goal: 'Convince Mara to stay until the inquiry closes',
+    conflict: 'She already has a ticket folded inside her coat',
+    outcome: 'No, and he gives her his spare key anyway',
+    labelRaw: 'Subplot B',
+    frontmatter: 'pov: Tomas\nstatus: revision\nwhere: Kitchen\nwhen: Day 1 · Morning\nlabel: Subplot B\ngoal: Convince Mara to stay until the inquiry closes\nconflict: She already has a ticket folded inside her coat\noutcome: No, and he gives her his spare key anyway',
+    prose: [
+      'The kettle clicked off. Neither of them moved to pour it.',
+      '“If I miss the last ferry, they’ll search the house,” Mara said, keeping one hand on the doorframe.',
+      'Tomas looked at the pale square on the wall where the barometer had hung. He set his cup down very carefully and slid the spare brass key across the oilcloth.'
+    ]
+  },
+  {
+    id: 'ch01/03-winter-letters.md',
+    chapter: 'Chapter 1 · Harbor',
+    title: 'Letters in the Tin Box',
+    words: 610,
+    status: 'draft',
+    pov: 'Mara',
+    where: 'Old Boathouse',
+    when: 'Seven years earlier',
+    goal: 'Hide her father’s shipping receipts before the audit',
+    conflict: 'The ink hasn’t dried on the final manifest',
+    outcome: 'Yes, but Tomas sees where she buries the tin',
+    labelRaw: ['Flashback', 'Mara'],
+    frontmatter: 'pov: Mara\nstatus: draft\nwhere: Old Boathouse\nwhen: Seven years earlier\nlabel: [Flashback, Mara]\ngoal: Hide her father’s shipping receipts before the audit\nconflict: The ink hasn’t dried on the final manifest\noutcome: Yes, but Tomas sees where she buries the tin',
+    prose: [
+      'Seven winters back, the boathouse roof still leaked over the workbench.',
+      'She pressed the folded receipts into the biscuit tin until the lid clicked shut, unaware of the shadow watching from the loft.'
+    ]
+  },
+  {
+    id: 'ch02/01-glass-corridor.md',
+    chapter: 'Chapter 2 · Crossing',
+    title: 'The Glass Corridor',
+    words: 780,
+    status: 'revision',
+    pov: 'Mara',
+    where: 'Ferry Upper Deck',
+    when: 'Day 1 · Noon',
+    goal: 'Cross to the mainland unrecognized',
+    conflict: 'An inspector is checking passenger manifests at the rail',
+    outcome: 'Yes, but she drops her father’s compass on the stair',
+    labelRaw: 'Main Plot',
+    frontmatter: 'pov: Mara\nstatus: revision\nwhere: Ferry Upper Deck\nwhen: Day 1 · Noon\nlabel: Main Plot\ngoal: Cross to the mainland unrecognized\nconflict: An inspector is checking passenger manifests at the rail\noutcome: Yes, but she drops her father’s compass on the stair',
+    prose: [
+      'Salt spray fogged the upper corridor until the islands vanished behind frosted glass.',
+      'Mara kept her collar turned up while the inspector worked his way down the bench row, tapping each ticket with a silver punch.'
+    ]
+  },
+  {
+    id: 'ch02/02-inspector-ledger.md',
+    chapter: 'Chapter 2 · Crossing',
+    title: 'The Inspector’s Margin Notes',
+    words: 690,
+    status: 'draft',
+    pov: 'Inspector Vale',
+    where: 'Customs Office',
+    when: 'Day 1 · Afternoon',
+    goal: 'Trace who paid the dock fee in gold coin',
+    conflict: 'Two pages have been cleanly razored from the register',
+    outcome: 'No, and he recognizes Tomas’s handwriting on the stub',
+    labelRaw: 'Investigation',
+    frontmatter: 'pov: Inspector Vale\nstatus: draft\nwhere: Customs Office\nwhen: Day 1 · Afternoon\nlabel: Investigation\ngoal: Trace who paid the dock fee in gold coin\nconflict: Two pages have been cleanly razored from the register\noutcome: No, and he recognizes Tomas’s handwriting on the stub',
+    prose: [
+      'Vale held the binding up to the desk lamp. Whoever cut the ledger had used a shoemaker’s knife—one clean stroke against a steel rule.',
+      'Only the stub remained, three digits written in the slanted script he had seen on every ferry receipt for ten years.'
+    ]
+  },
+  {
+    id: 'ch02/03-rain-at-st-anne.md',
+    chapter: 'Chapter 2 · Crossing',
+    title: 'Rain at St. Anne’s Quay',
+    words: 540,
+    status: 'draft',
+    pov: 'Tomas',
+    where: 'St. Anne’s Quay',
+    when: 'Day 1 · Dusk',
+    goal: 'Warn the lighthouse keeper before Vale arrives',
+    conflict: 'The causeway gate is chained for storm tide',
+    outcome: 'Yes, at the cost of soaking the signal log',
+    labelRaw: '',
+    frontmatter: null,
+    prose: [
+      'This scene intentionally has no YAML frontmatter block yet.',
+      'Try choosing a label from the dropdown above in reading mode — Proseview creates the frontmatter block cleanly without touching your prose.'
+    ]
+  },
+  {
+    id: 'ch03/01-salt-archive.md',
+    chapter: 'Chapter 3 · Reckoning',
+    title: 'The Salt Archive',
+    words: 720,
+    status: 'done',
+    pov: 'Mara',
+    where: 'Municipal Vault',
+    when: 'Day 2 · Morning',
+    goal: 'Match the ledger stamp to a mainland berth',
+    conflict: 'The clerk insists the vault only opens with a warrant',
+    outcome: 'Yes, after she trades Tomas’s brass key for ten minutes inside',
+    labelRaw: 'Main Plot',
+    frontmatter: 'pov: Mara\nstatus: done\nwhere: Municipal Vault\nwhen: Day 2 · Morning\nlabel: Main Plot\ngoal: Match the ledger stamp to a mainland berth\nconflict: The clerk insists the vault only opens with a warrant\noutcome: Yes, after she trades Tomas’s brass key for ten minutes inside',
+    prose: [
+      'The vault smelled of damp limestone and dried kelp.',
+      'Along the third shelf, wrapped in brown twine, lay the missing port manifests from seven autumns past.'
+    ]
+  },
+  {
+    id: 'ch03/02-burned-quay.md',
+    chapter: 'Chapter 3 · Reckoning',
+    title: 'Ashes Under the Pier',
+    words: 660,
+    status: 'revision',
+    pov: 'Mara',
+    where: 'North Pier',
+    when: 'Seven years earlier',
+    goal: 'Pull her brother clear of the coal shed',
+    conflict: 'Smoke hides the ladder back to the seawall',
+    outcome: 'Yes, but the customs barge drifts out on the ebb',
+    labelRaw: 'Flashback',
+    frontmatter: 'pov: Mara\nstatus: revision\nwhere: North Pier\nwhen: Seven years earlier\nlabel: Flashback\ngoal: Pull her brother clear of the coal shed\nconflict: Smoke hides the ladder back to the seawall\noutcome: Yes, but the customs barge drifts out on the ebb',
+    prose: [
+      'Embers hissed as they hit the tide line.',
+      'Tomas coughed into her sleeve while the barge groaned free of its mooring rope.'
+    ]
+  },
+  {
+    id: 'ch03/03-harbor-bells.md',
+    chapter: 'Chapter 3 · Reckoning',
+    title: 'Before the Harbor Bells',
+    words: 650,
+    status: 'draft',
+    pov: 'Tomas',
+    where: 'Kitchen',
+    when: 'Day 2 · Night',
+    goal: 'Meet Mara at the south breakwater before Vale’s launch',
+    conflict: 'Vale is waiting on the front porch',
+    outcome: 'No, and Tomas decides to stall him until dawn',
+    labelRaw: 'Subplot B',
+    frontmatter: 'pov: Tomas\nstatus: draft\nwhere: Kitchen\nwhen: Day 2 · Night\nlabel: Subplot B\ngoal: Meet Mara at the south breakwater before Vale’s launch\nconflict: Vale is waiting on the front porch\noutcome: No, and Tomas decides to stall him until dawn',
+    prose: [
+      'Footsteps crossed the gravel outside, unhurried and deliberate.',
+      'Tomas blew out the kitchen lamp, waited two heartbeats, and opened the front door before Vale could knock.'
+    ]
+  }
+];
+
+let state = {
+  scenes: structuredClone(INITIAL_SCENES),
+  activeTab: 'overview',
+  overviewMode: 'cards',
+  filter: 'all',
+  activeSceneId: 'ch01/02-last-ferry.md',
+  sceneEditing: false,
+  labelMode: 'subtle',
+  timelineColorBy: 'label',
+  popoverOpen: false,
+  addingNewLabel: false
+};
+
+// Effective scalar label + list flag
+function sceneLabelInfo(scene) {
+  if (Array.isArray(scene.labelRaw)) {
+    const first = String(scene.labelRaw[0] || '').trim();
+    return { label: first, isList: true };
+  }
+  return { label: String(scene.labelRaw || '').trim(), isList: false };
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function computeLabelCatalog() {
+  const slotByLabel = {};
+  const counts = {};
+  const usedSlots = new Set();
+
+  state.scenes.forEach(s => {
+    const { label } = sceneLabelInfo(s);
+    if (!label) return;
+    counts[label] = (counts[label] || 0) + 1;
+    if (Object.prototype.hasOwnProperty.call(CONFIG_PALETTE, label)) {
+      const slot = parsePaletteSlot(CONFIG_PALETTE[label]);
+      slotByLabel[label] = slot;
+      usedSlots.add(slot);
+    }
+  });
+
+  const ordered = [];
+  state.scenes.forEach(s => {
+    const { label } = sceneLabelInfo(s);
+    if (!label || ordered.includes(label)) return;
+    ordered.push(label);
+    if (!Object.prototype.hasOwnProperty.call(slotByLabel, label)) {
+      let assigned = 'other';
+      for (let i = 0; i < 8; i++) {
+        if (!usedSlots.has(i)) {
+          assigned = i;
+          usedSlots.add(i);
+          break;
+        }
+      }
+      slotByLabel[label] = assigned;
+    }
+  });
+
+  return { ordered, slotByLabel, counts };
+}
+
+function slotColorExpr(slot) {
+  if (slot === 'other') return 'var(--accent-neutral)';
+  if (typeof slot === 'number') return 'var(--story-c' + slot + ')';
+  return 'transparent';
+}
+
+function pillStyle(slot) {
+  const c = slotColorExpr(slot);
+  return `background: color-mix(in srgb, ${c} 12%, transparent); border-color: color-mix(in srgb, ${c} 28%, transparent);`;
+}
+
+function updateFrontmatterLabel(fmText, newLabel) {
+  const clean = (newLabel || '').trim();
+  if (fmText == null) {
+    return clean ? 'label: ' + clean : null;
+  }
+  const lines = fmText.split('\n');
+  let found = false;
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*label\s*:/i.test(line)) {
+      found = true;
+      if (clean) out.push('label: ' + clean);
+      // Skip any indented YAML list items beneath label:
+      while (i + 1 < lines.length && /^\s+-\s+/.test(lines[i + 1])) i++;
+      continue;
+    }
+    out.push(line);
+  }
+  if (!found && clean) {
+    out.push('label: ' + clean);
+  }
+  const joined = out.join('\n').replace(/^\n+|\n+$/g, '');
+  return joined ? joined : null;
+}
+
+function parseLabelFromFrontmatter(fmText) {
+  if (!fmText) return '';
+  const lines = fmText.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^\s*label\s*:\s*(.*)$/i.exec(lines[i]);
+    if (!m) continue;
+    const val = m[1].trim();
+    if (val.startsWith('[') && val.endsWith(']')) {
+      return val.slice(1, -1).split(',').map(x => x.trim()).filter(Boolean);
+    }
+    if (!val) {
+      const items = [];
+      while (i + 1 < lines.length && /^\s+-\s+(.*)$/.test(lines[i + 1])) {
+        items.push(lines[++i].replace(/^\s+-\s+/, '').trim());
+      }
+      return items.length ? items : '';
+    }
+    return val;
+  }
+  return '';
+}
+
+function setSceneLabel(sceneId, newLabel) {
+  const scene = state.scenes.find(s => s.id === sceneId);
+  if (!scene) return;
+  const clean = (newLabel || '').trim();
+  scene.labelRaw = clean;
+  scene.frontmatter = updateFrontmatterLabel(scene.frontmatter, clean);
+  state.popoverOpen = false;
+  state.addingNewLabel = false;
+  renderAll();
+  showToast(clean ? `Saved label: "${clean}" via /save-scene` : `Cleared label in ${scene.id}`);
+}
+
+function renderSidebar(catalog) {
+  const tree = document.getElementById('sidebarTree');
+  const byChapter = [];
+  const map = new Map();
+  state.scenes.forEach(s => {
+    if (!map.has(s.chapter)) {
+      const group = { chapter: s.chapter, items: [] };
+      map.set(s.chapter, group);
+      byChapter.push(group);
+    }
+    map.get(s.chapter).items.push(s);
+  });
+
+  let html = '<div class="tree-group-label">manuscript</div>';
+  byChapter.forEach(g => {
+    html += `<div class="tree-folder"><svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 8h17v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 8V6.5a2 2 0 0 1 2-2h4l2.2 3.5"/></svg><span>${esc(g.chapter)}</span></div><div class="tree-children">`;
+    g.items.forEach(s => {
+      const active = state.activeTab === 'scene' && state.activeSceneId === s.id;
+      const { label } = sceneLabelInfo(s);
+      const slot = label ? catalog.slotByLabel[label] : null;
+      const colorAttr = label ? ` data-label-color="1" style="--label-color:${slotColorExpr(slot)}"` : '';
+      html += `<button type="button" class="tree-item ${active ? 'active' : ''}"${colorAttr} data-open-scene="${esc(s.id)}" title="${esc(s.id)}${label ? ' · ' + esc(label) : ''}">
+        <svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h7l5 5v12a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 6 3.5z"/><path d="M13 3.5v5h5"/><path d="M8.5 13h7M8.5 16.5h4.5"/></svg>
+        <span class="tree-name">${esc(s.title)}</span>
+      </button>`;
+    });
+    html += '</div>';
+  });
+
+  html += `<div class="tree-group-label">configuration</div>
+    <button type="button" class="tree-item ${state.activeTab === 'config' ? 'active' : ''}" id="openConfigBtn">
+      <svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h7l5 5v12a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 6 3.5z"/><path d="M13 3.5v5h5"/></svg>
+      <span class="tree-name">.proseview.yaml</span>
+    </button>`;
+
+  tree.innerHTML = html;
+  const labeledCount = state.scenes.filter(s => sceneLabelInfo(s).label).length;
+  document.getElementById('sidebarLabelCount').textContent = `${labeledCount}/${state.scenes.length} labeled`;
+}
+
+function sceneMatchesFilter(s) {
+  const f = state.filter;
+  const { label } = sceneLabelInfo(s);
+  if (f === 'all') return true;
+  if (f === 'unlabeled') return !label;
+  if (f.startsWith('status:')) return s.status === f.slice(7);
+  if (f.startsWith('label:')) return label === f.slice(6);
+  return true;
+}
+
+function renderOverview(catalog) {
+  const filterEl = document.getElementById('issueFilter');
+  const labelOptions = catalog.ordered.map(lbl =>
+    `<option value="label:${esc(lbl)}">Label: ${esc(lbl)} (${catalog.counts[lbl]})</option>`
+  ).join('');
+  filterEl.innerHTML = `
+    <option value="all">All scenes</option>
+    <option value="status:draft">Status: Draft</option>
+    <option value="status:revision">Status: In revision</option>
+    <option value="status:done">Status: Done</option>
+    <option disabled>──────────</option>
+    ${labelOptions}
+    <option value="unlabeled">Unlabeled scenes</option>
+  `;
+  filterEl.value = state.filter;
+
+  const legend = document.getElementById('labelLegend');
+  if (state.labelMode !== 'off' && catalog.ordered.length) {
+    legend.hidden = false;
+    legend.innerHTML = catalog.ordered.map(lbl => {
+      const slot = catalog.slotByLabel[lbl];
+      const active = state.filter === 'label:' + lbl;
+      const inConfig = Object.prototype.hasOwnProperty.call(CONFIG_PALETTE, lbl);
+      return `<button type="button" class="legend-chip ${active ? 'is-active' : ''}" data-filter-label="${esc(lbl)}" title="${inConfig ? 'Configured in .proseview.yaml' : 'Assigned by first-seen order'}">
+        <span class="legend-dot label-dot-off" style="background:${slotColorExpr(slot)}"></span>
+        <span>${esc(lbl)}</span>
+        <span style="color:var(--text-muted)">${catalog.counts[lbl]}</span>
+      </button>`;
+    }).join('');
+  } else {
+    legend.hidden = true;
+  }
+
+  const showCards = state.overviewMode === 'cards';
+  document.getElementById('sceneTable').hidden = showCards;
+  document.getElementById('sceneCardsGrid').hidden = !showCards;
+  document.getElementById('viewTableBtn').classList.toggle('is-active', !showCards);
+  document.getElementById('viewCardsBtn').classList.toggle('is-active', showCards);
+
+  const visibleScenes = state.scenes.filter(sceneMatchesFilter);
+
+  // Overview Table: dot in row, no 3px border on <tr>
+  const tbody = document.getElementById('sceneTableBody');
+  let rowsHtml = '';
+  let lastCh = null;
+  let running = 0;
+  visibleScenes.forEach(s => {
+    if (s.chapter !== lastCh && state.filter === 'all') {
+      const chWords = state.scenes.filter(x => x.chapter === s.chapter).reduce((n, x) => n + x.words, 0);
+      rowsHtml += `<tr class="ch-row"><td>${esc(s.chapter)}</td><td class="num">${chWords.toLocaleString()}</td><td class="num">${(running + chWords).toLocaleString()}</td></tr>`;
+      lastCh = s.chapter;
+    }
+    running += s.words;
+    const { label } = sceneLabelInfo(s);
+    const slot = label ? catalog.slotByLabel[label] : null;
+    const rowDot = label
+      ? `<span class="table-label-dot" style="background:${slotColorExpr(slot)}" title="Label: ${esc(label)}"></span>`
+      : '';
+    const statusBadge = s.status !== 'draft' ? `<span class="badge status-${esc(s.status)}">${esc(s.status)}</span>` : '';
+    const labelPill = label
+      ? `<span class="badge label-pill" style="${pillStyle(slot)}">${esc(label)}</span>`
+      : '';
+    rowsHtml += `<tr class="scene-row">
+      <td>
+        <span class="scene-title-cell">
+          ${rowDot}
+          <button type="button" class="scene-link" data-open-scene="${esc(s.id)}">${esc(s.title)}</button>
+          <span class="row-tags">${statusBadge}${labelPill}</span>
+        </span>
+      </td>
+      <td class="num">${s.words.toLocaleString()}</td>
+      <td class="num">${running.toLocaleString()}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = rowsHtml || `<tr><td colspan="3" style="color:var(--text-muted);padding:20px 12px;">No scenes match this filter.</td></tr>`;
+
+  // Cards Grid: 3px left edge stripe
+  const grid = document.getElementById('sceneCardsGrid');
+  grid.innerHTML = visibleScenes.map(s => {
+    const { label } = sceneLabelInfo(s);
+    const slot = label ? catalog.slotByLabel[label] : null;
+    const edge = label ? `border-left-color:${slotColorExpr(slot)};` : '';
+    const statusBadge = s.status ? `<span class="badge status-${esc(s.status)}" style="${s.status === 'draft' ? 'background:var(--surface-muted);color:var(--text-muted);text-transform:uppercase;' : ''}">${esc(s.status)}</span>` : '';
+    const labelPill = label
+      ? `<span class="badge label-pill" style="${pillStyle(slot)}"><span class="label-pill-dot" style="background:${slotColorExpr(slot)}"></span>${esc(label)}</span>`
+      : '';
+    return `<article class="scene-overview-card" style="${edge}">
+      <div class="scene-overview-card-head">
+        <button type="button" class="scene-overview-card-title" data-open-scene="${esc(s.id)}">${esc(s.title)}</button>
+        <span class="scene-overview-card-words">${s.words.toLocaleString()}w</span>
+      </div>
+      <div class="scene-overview-card-sub">${esc([s.chapter, s.pov ? 'POV: ' + s.pov : '', s.where, s.when].filter(Boolean).join(' · '))}</div>
+      <dl class="scene-overview-card-beats">
+        <div class="beat-row"><dt>Goal</dt><dd>${esc(s.goal)}</dd></div>
+        <div class="beat-row"><dt>Conflict</dt><dd>${esc(s.conflict)}</dd></div>
+        <div class="beat-row"><dt>Outcome</dt><dd>${esc(s.outcome)}</dd></div>
+      </dl>
+      <div class="scene-overview-card-foot">${labelPill}${statusBadge}</div>
+    </article>`;
+  }).join('') || `<p style="color:var(--text-muted);margin:8px 0;">No scenes match this filter.</p>`;
+}
+
+function renderAnalysis() {
+  const listScenes = state.scenes.filter(s => sceneLabelInfo(s).isList);
+  const findings = [];
+
+  if (listScenes.length) {
+    findings.push({
+      isNote: true,
+      text: `${listScenes.length === 1 ? '1 scene writes' : listScenes.length + ' scenes write'} label: as a list.`,
+      tip: 'Each scene carries one label. Proseview uses the first item in the list and leaves your frontmatter untouched.',
+      scenes: listScenes
+    });
+  } else {
+    findings.push({
+      isNote: false,
+      text: 'All labeled scenes carry a single label value.',
+      tip: 'Writing label: as a YAML list falls back to its first item and surfaces a note here.',
+      scenes: []
+    });
+  }
+
+  findings.push({
+    isNote: false,
+    text: 'No scene repeats words more than the usual range in Settings → Word variety.',
+    tip: 'Measured by word variety across prose.',
+    scenes: []
+  });
+
+  const ul = document.getElementById('analysisFindings');
+  ul.innerHTML = findings.map(f => `
+    <li class="finding-item ${f.isNote ? 'is-note' : ''}">
+      <p class="finding-text">${esc(f.text)}</p>
+      <p class="finding-tip">${esc(f.tip)}</p>
+      ${f.scenes.length ? `<div class="finding-scenes">${f.scenes.map(s =>
+        `<button type="button" class="finding-scene-btn" data-open-scene="${esc(s.id)}">${esc(s.title)} (${esc(sceneLabelInfo(s).label)})</button>`
+      ).join('')}</div>` : ''}
+    </li>
+  `).join('');
+}
+
+function renderFrontmatterHighlighted(fmText, catalog) {
+  if (!fmText) {
+    return '<span style="color:var(--text-muted);font-style:italic;">No YAML frontmatter in this file yet. Picking a label above creates it.</span>';
+  }
+  return fmText.split('\n').map(line => {
+    if (/^\s*#/.test(line)) return `<span class="fm-comment">${esc(line)}</span>`;
+    const m = /^(\s*)([^:\s]+)(:)(\s*)(.*)$/.exec(line);
+    if (!m) return esc(line);
+    const key = m[2];
+    const val = m[5];
+    let dotHtml = '';
+    if (key.toLowerCase() === 'label' && val.trim()) {
+      const first = val.trim().startsWith('[')
+        ? val.trim().slice(1, -1).split(',')[0].trim()
+        : val.trim();
+      const slot = catalog.slotByLabel[first];
+      if (slot !== undefined) {
+        dotHtml = `<span class="fm-label-dot" style="background:${slotColorExpr(slot)}"></span>`;
+      }
+    }
+    return `${esc(m[1])}<span class="fm-key">${esc(key)}</span><span class="fm-colon">:</span>${esc(m[4])}${dotHtml}<span class="fm-val">${esc(val)}</span>`;
+  }).join('\n');
+}
+
+function renderScene(catalog) {
+  const s = state.scenes.find(x => x.id === state.activeSceneId) || state.scenes[0];
+  const shell = document.getElementById('sceneShell');
+  const { label, isList } = sceneLabelInfo(s);
+  const slot = label ? catalog.slotByLabel[label] : null;
+
+  // Reading-mode-only label dropdown
+  let pickerHtml = '';
+  if (!state.sceneEditing) {
+    const trigger = label
+      ? `<button type="button" class="label-picker-btn" id="labelPickerBtn" aria-expanded="${state.popoverOpen}">
+          <span class="legend-dot label-dot-off" style="background:${slotColorExpr(slot)}"></span>
+          <span>${esc(label)}${isList ? ' (1st)' : ''}</span>
+          <span style="color:var(--text-muted);font-size:10px">▾</span>
+        </button>`
+      : `<button type="button" class="label-picker-btn is-empty" id="labelPickerBtn" aria-expanded="${state.popoverOpen}">
+          <span>+ Label</span>
+          <span style="font-size:10px">▾</span>
+        </button>`;
+
+    let popoverHtml = '';
+    if (state.popoverOpen) {
+      const itemsHtml = catalog.ordered.map(lbl => {
+        const itemSlot = catalog.slotByLabel[lbl];
+        const selected = label === lbl;
+        return `<button type="button" class="label-pop-item ${selected ? 'is-selected' : ''}" data-pick-label="${esc(lbl)}">
+          <span class="legend-dot label-dot-off" style="background:${slotColorExpr(itemSlot)}"></span>
+          <span>${esc(lbl)}</span>
+          <span class="label-pop-count">${catalog.counts[lbl]}</span>
+        </button>`;
+      }).join('');
+
+      const newRow = state.addingNewLabel
+        ? `<form class="label-pop-new-form" id="newLabelForm">
+            <input type="text" id="newLabelInput" placeholder="Label name…" maxlength="32" autofocus>
+            <button type="submit">Add</button>
+          </form>`
+        : `<button type="button" class="label-pop-item" id="newLabelTrigger"><span>＋ New…</span></button>`;
+
+      const clearRow = label
+        ? `<button type="button" class="label-pop-item" id="clearLabelBtn" style="color:var(--text-muted)"><span>× Clear</span></button>`
+        : '';
+
+      popoverHtml = `<div class="label-popover" role="menu">
+        <div class="label-pop-title">Scene label</div>
+        ${itemsHtml}
+        <div class="label-pop-sep"></div>
+        ${newRow}
+        ${clearRow}
+      </div>`;
+    }
+
+    pickerHtml = `<div class="label-picker-wrap">${trigger}${popoverHtml}</div>`;
+  }
+
+  const modeActions = state.sceneEditing
+    ? `<button type="button" id="cancelEditBtn">Cancel</button><button type="button" id="saveEditBtn" class="btn-primary">Save</button>`
+    : `<button type="button" id="enterEditBtn">Edit scene (E)</button>`;
+
+  const fmBlock = state.sceneEditing
+    ? `<div class="fm-card">
+        <div class="fm-card-head">
+          <span>YAML Frontmatter (editable directly in edit mode)</span>
+          <span>#sceneFrontmatter</span>
+        </div>
+        <textarea id="fmEditArea" class="fm-textarea" placeholder="label: Subplot B">${esc(s.frontmatter || '')}</textarea>
+      </div>`
+    : `<div class="fm-card">
+        <div class="fm-card-head">
+          <span>YAML Frontmatter (pure Markdown on disk)</span>
+          <span>${s.frontmatter ? '--- … ---' : 'none'}</span>
+        </div>
+        <pre class="fm-pre">${renderFrontmatterHighlighted(s.frontmatter, catalog)}</pre>
+      </div>`;
+
+  const proseBlock = state.sceneEditing
+    ? `<textarea id="proseEditArea" class="prose-textarea">${esc(s.prose.join('\n\n'))}</textarea>`
+    : `<article class="prose-sheet"><div class="prose-body">${s.prose.map(p => `<p>${esc(p)}</p>`).join('')}</div></article>`;
+
+  const bannerText = state.sceneEditing
+    ? 'Edit mode: the label dropdown is hidden because you can edit YAML frontmatter directly above.'
+    : 'Reading mode: changing the label dropdown saves directly through Proseview’s existing <code>/save-scene</code> endpoint (preserving comments and creating history backups).';
+
+  shell.innerHTML = `
+    <div class="scene-header-bar">
+      <div>
+        <h1 class="scene-literary-title">${esc(s.title)}</h1>
+        <div class="scene-tech-row">
+          <span class="scene-technical-path">${esc(s.id)}</span>
+          ${pickerHtml}
+          <span>${s.words.toLocaleString()} words</span>
+        </div>
+      </div>
+      <div class="scene-mode-actions">${modeActions}</div>
+    </div>
+    ${fmBlock}
+    ${proseBlock}
+    <div class="save-banner">${bannerText}</div>
+  `;
+}
+
+function renderTimeline(catalog) {
+  const card = document.getElementById('timelineCard');
+  const totalWords = state.scenes.reduce((n, s) => n + s.words, 0) || 1;
+  const maxWords = Math.max(...state.scenes.map(s => s.words), 1);
+
+  const chapters = [];
+  state.scenes.forEach(s => { if (!chapters.includes(s.chapter)) chapters.push(s.chapter); });
+
+  function segColor(s) {
+    if (state.timelineColorBy === 'label') {
+      const { label } = sceneLabelInfo(s);
+      if (!label) return 'var(--border-strong)';
+      return slotColorExpr(catalog.slotByLabel[label]);
+    }
+    return 'var(--story-c' + (chapters.indexOf(s.chapter) % 8) + ')';
+  }
+
+  const strip = state.scenes.map(s => {
+    const { label } = sceneLabelInfo(s);
+    return `<div class="story-seg" style="flex:${s.words};background:${segColor(s)}" data-open-scene="${esc(s.id)}" title="${esc(s.title)} · ${label || 'Unlabeled'} (${s.words}w)"></div>`;
+  }).join('');
+
+  const bars = state.scenes.map(s =>
+    `<div class="story-barwrap" data-open-scene="${esc(s.id)}" title="${esc(s.title)} · ${s.words} words">
+      <div class="story-bar" style="height:${(100 * s.words / maxWords).toFixed(1)}%;background:${segColor(s)}"></div>
+    </div>`
+  ).join('');
+
+  const ticks = chapters.map(ch => {
+    const count = state.scenes.filter(s => s.chapter === ch).length;
+    return `<div class="story-tick" style="flex:${count}">${esc(ch)}</div>`;
+  }).join('');
+
+  const cols = `repeat(${state.scenes.length}, 1fr)`;
+  const lanes = catalog.ordered.map(lbl => {
+    const slot = catalog.slotByLabel[lbl];
+    const cells = state.scenes.map(s => {
+      const on = sceneLabelInfo(s).label === lbl;
+      return `<div class="story-slot ${on ? 'on' : ''}" ${on ? `data-open-scene="${esc(s.id)}" style="background:${slotColorExpr(slot)}" title="${esc(s.title)}"` : ''}></div>`;
+    }).join('');
+    return `<div class="story-lane-row">
+      <div class="story-lane-name"><i style="background:${slotColorExpr(slot)}"></i>${esc(lbl)}<span>${catalog.counts[lbl]}</span></div>
+      <div class="story-lane" style="grid-template-columns:${cols}">${cells}</div>
+    </div>`;
+  }).join('');
+
+  const unlabeled = state.scenes.filter(s => !sceneLabelInfo(s).label).length;
+  const unlabeledLane = unlabeled ? `<div class="story-lane-row">
+    <div class="story-lane-name"><i style="background:transparent;border:1px dashed var(--border-strong)"></i>unlabeled<span>${unlabeled}</span></div>
+    <div class="story-lane" style="grid-template-columns:${cols}">${state.scenes.map(s => !sceneLabelInfo(s).label
+      ? `<div class="story-slot on" data-open-scene="${esc(s.id)}" style="background:transparent;border:1px dashed var(--border-strong)" title="${esc(s.title)}"></div>`
+      : '<div class="story-slot"></div>').join('')}</div>
+  </div>` : '';
+
+  card.innerHTML = `
+    <div class="story-head">
+      <h2 class="card-title">Manuscript shape &amp; labels</h2>
+      <div class="segmented" role="group" aria-label="Color timeline by">
+        <button type="button" data-tl-color="chapter" class="${state.timelineColorBy === 'chapter' ? 'is-active' : ''}">Color by: Chapter</button>
+        <button type="button" data-tl-color="label" class="${state.timelineColorBy === 'label' ? 'is-active' : ''}">Label</button>
+      </div>
+    </div>
+    <h3 class="story-h">Proportion of the book (${totalWords.toLocaleString()} words)</h3>
+    <div class="story-strip">${strip}</div>
+    <h3 class="story-h">Words per scene</h3>
+    <div class="story-chart">${bars}</div>
+    <div class="story-ticks">${ticks}</div>
+    <h3 class="story-h">Labels across scenes (click any block to open scene)</h3>
+    ${lanes}
+    ${unlabeledLane}
+  `;
+}
+
+function renderConfig(catalog) {
+  const unmapped = catalog.ordered.filter(l => !Object.prototype.hasOwnProperty.call(CONFIG_PALETTE, l));
+  const comments = unmapped.length
+    ? `\n# Unlisted labels in first-seen order:\n${unmapped.map(l => `#   ${l} -> c${catalog.slotByLabel[l]}`).join('\n')}`
+    : '';
+  document.getElementById('configYamlPreview').textContent =
+`story:
+  thread_field: thread
+  day_field: day
+  label_field: label   # default; or point at pov, thread, etc.
+
+labels:
+  palette:             # c0..c7 only
+    Main Plot: c0
+    Subplot B: c2
+    Flashback: c3${comments}`;
+}
+
+function renderBook(catalog) {
+  const sheet = document.getElementById('bookSheet');
+  let html = '';
+  let lastCh = null;
+  state.scenes.forEach((s, idx) => {
+    if (s.chapter !== lastCh) {
+      html += `<div class="book-chapter-title">${esc(s.chapter)}</div>`;
+      lastCh = s.chapter;
+    } else if (idx > 0) {
+      html += `<div class="book-break" role="separator">* * *</div>`;
+    }
+    const { label } = sceneLabelInfo(s);
+    const slot = label ? catalog.slotByLabel[label] : null;
+    const cue = label
+      ? `<span class="book-label-cue" style="display:inline-flex;align-items:center;gap:6px;"><span class="legend-dot" style="background:${slotColorExpr(slot)}"></span><span class="badge label-pill" style="${pillStyle(slot)}">${esc(label)}</span></span>`
+      : '';
+    html += `<section class="book-scene">
+      <div class="book-scene-head">
+        <div class="book-scene-meta">
+          <strong style="color:var(--text-main);font-size:13px;">${esc(s.title)}</strong>
+          ${cue}
+        </div>
+        <button type="button" class="book-scene-open" data-open-scene="${esc(s.id)}">Open</button>
+      </div>
+      <div class="prose-body">${s.prose.map(p => `<p>${esc(p)}</p>`).join('')}</div>
+    </section>`;
+  });
+  sheet.innerHTML = html;
+}
+
+function renderAll() {
+  document.documentElement.dataset.labelMode = state.labelMode;
+  document.getElementById('labelModeSelect').value = state.labelMode;
+
+  const catalog = computeLabelCatalog();
+
+  ['overview', 'analysis', 'scene', 'book', 'timeline', 'config'].forEach(tab => {
+    document.getElementById('panel-' + tab).hidden = state.activeTab !== tab;
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+  });
+  document.querySelectorAll('.proto-controls [data-nav]').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.nav === state.activeTab);
+  });
+
+  renderSidebar(catalog);
+  renderOverview(catalog);
+  renderAnalysis();
+  renderScene(catalog);
+  renderBook(catalog);
+  renderTimeline(catalog);
+  renderConfig(catalog);
+}
+
+// Event delegation
+document.addEventListener('click', e => {
+  const nav = e.target.closest('[data-nav]');
+  if (nav) {
+    state.activeTab = nav.dataset.nav;
+    state.popoverOpen = false;
+    state.sceneEditing = false;
+    renderAll();
+    return;
+  }
+
+  const tab = e.target.closest('.tab-btn');
+  if (tab) {
+    state.activeTab = tab.dataset.tab;
+    state.popoverOpen = false;
+    state.sceneEditing = false;
+    renderAll();
+    return;
+  }
+
+  if (e.target.closest('#openConfigBtn')) {
+    state.activeTab = 'config';
+    state.popoverOpen = false;
+    state.sceneEditing = false;
+    renderAll();
+    return;
+  }
+
+  if (e.target.closest('#openSettingsBtn')) {
+    document.getElementById('settingsDialog').showModal();
+    return;
+  }
+  if (e.target.closest('#closeSettingsBtn')) {
+    document.getElementById('settingsDialog').close();
+    return;
+  }
+
+  const openScene = e.target.closest('[data-open-scene]');
+  if (openScene) {
+    state.activeSceneId = openScene.dataset.openScene;
+    state.activeTab = 'scene';
+    state.sceneEditing = false;
+    state.popoverOpen = false;
+    state.addingNewLabel = false;
+    renderAll();
+    return;
+  }
+
+  if (e.target.closest('#viewTableBtn')) {
+    state.overviewMode = 'table';
+    renderAll();
+    return;
+  }
+  if (e.target.closest('#viewCardsBtn')) {
+    state.overviewMode = 'cards';
+    renderAll();
+    return;
+  }
+
+  const legendChip = e.target.closest('[data-filter-label]');
+  if (legendChip) {
+    const val = 'label:' + legendChip.dataset.filterLabel;
+    state.filter = state.filter === val ? 'all' : val;
+    renderAll();
+    return;
+  }
+
+  const tlBtn = e.target.closest('[data-tl-color]');
+  if (tlBtn) {
+    state.timelineColorBy = tlBtn.dataset.tlColor;
+    renderAll();
+    return;
+  }
+
+  if (e.target.closest('#enterEditBtn')) {
+    state.sceneEditing = true;
+    state.popoverOpen = false;
+    renderAll();
+    return;
+  }
+  if (e.target.closest('#cancelEditBtn')) {
+    state.sceneEditing = false;
+    renderAll();
+    return;
+  }
+  if (e.target.closest('#saveEditBtn')) {
+    const scene = state.scenes.find(x => x.id === state.activeSceneId);
+    if (scene) {
+      const fmVal = document.getElementById('fmEditArea').value.trim();
+      const proseVal = document.getElementById('proseEditArea').value.trim();
+      scene.frontmatter = fmVal || null;
+      scene.labelRaw = parseLabelFromFrontmatter(scene.frontmatter);
+      scene.prose = proseVal ? proseVal.split(/\n\s*\n/) : [''];
+      state.sceneEditing = false;
+      renderAll();
+      showToast(`Saved ${scene.id} via /save-scene`);
+    }
+    return;
+  }
+
+  if (e.target.closest('#labelPickerBtn')) {
+    state.popoverOpen = !state.popoverOpen;
+    state.addingNewLabel = false;
+    renderAll();
+    return;
+  }
+
+  const pick = e.target.closest('[data-pick-label]');
+  if (pick) {
+    setSceneLabel(state.activeSceneId, pick.dataset.pickLabel);
+    return;
+  }
+
+  if (e.target.closest('#newLabelTrigger')) {
+    state.addingNewLabel = true;
+    renderAll();
+    const input = document.getElementById('newLabelInput');
+    if (input) input.focus();
+    return;
+  }
+
+  if (e.target.closest('#clearLabelBtn')) {
+    setSceneLabel(state.activeSceneId, '');
+    return;
+  }
+
+  if (e.target.closest('#paletteTestBtn')) {
+    const val = document.getElementById('paletteTestInput').value;
+    const out = document.getElementById('paletteTestResult');
+    try {
+      const slot = parsePaletteSlot(val);
+      out.innerHTML = `<div style="margin-top:8px;color:var(--text-success);font-size:12px;">Valid: maps to <code>--story-c${slot}</code> <span class="legend-dot" style="display:inline-block;background:var(--story-c${slot});margin-left:4px;"></span></div>`;
+    } catch (err) {
+      out.innerHTML = `<div class="config-error">${esc(err.message)}</div>`;
+    }
+    return;
+  }
+
+  if (state.popoverOpen && !e.target.closest('.label-picker-wrap')) {
+    state.popoverOpen = false;
+    state.addingNewLabel = false;
+    renderAll();
+  }
+});
+
+document.addEventListener('submit', e => {
+  if (e.target.id === 'newLabelForm') {
+    e.preventDefault();
+    const val = document.getElementById('newLabelInput').value.trim();
+    if (val) setSceneLabel(state.activeSceneId, val);
+  }
+});
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'issueFilter') {
+    state.filter = e.target.value;
+    renderAll();
+  } else if (e.target.id === 'labelModeSelect') {
+    state.labelMode = e.target.value;
+    renderAll();
+  } else if (e.target.id === 'themeSelect') {
+    document.documentElement.dataset.theme = e.target.value;
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  state = {
+    scenes: structuredClone(INITIAL_SCENES),
+    activeTab: 'overview',
+    overviewMode: 'cards',
+    filter: 'all',
+    activeSceneId: 'ch01/02-last-ferry.md',
+    sceneEditing: false,
+    labelMode: 'subtle',
+    timelineColorBy: 'label',
+    popoverOpen: false,
+    addingNewLabel: false
+  };
+  document.documentElement.dataset.theme = 'light';
+  document.getElementById('themeSelect').value = 'light';
+  renderAll();
+  showToast('Demo manuscript reset');
+});
+
+renderAll();
+</script>
+</body>
+</html>

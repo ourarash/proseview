@@ -2720,12 +2720,22 @@ class DiscussManager:
                 changed_document = conversation.document != normalized
                 conversation.document = dict(normalized)
                 already_live = conversation.connection != "Unavailable"
+                active_work = self._conversation_busy(conversation) or (
+                    conversation.worker is not None and conversation.worker.is_alive()
+                )
             if changed_document and already_live:
                 conversation.publish("context.changed", {"document": dict(normalized)})
+                return conversation.snapshot()
+            if already_live and active_work:
                 return conversation.snapshot()
         candidate: str | None = None
         with conversation.restore_lock:
             with conversation.lock:
+                active_work = self._conversation_busy(conversation) or (
+                    conversation.worker is not None and conversation.worker.is_alive()
+                )
+                if conversation.connection != "Unavailable" and active_work:
+                    return conversation.snapshot()
                 conversation.connection = "Restoring conversation"
                 conversation.unavailable_reason = ""
                 restore_cursor = conversation.events.latest_id
@@ -5331,6 +5341,9 @@ class DiscussManager:
         row = self._history_row(conversation, thread_id)
         documents = self._history_documents(row)
         source_document = documents[0] if len(documents) == 1 else None
+        with conversation.lock:
+            if conversation.thread_id == thread_id and self._conversation_busy(conversation):
+                raise ContextError("conversation is busy; wait for the active turn to finish before exporting")
         result = self._read_thread_history(self._client_for(conversation.agent), thread_id)
         thread = result.get("thread") if isinstance(result.get("thread"), dict) else {}
         if str(thread.get("id") or "") != thread_id:

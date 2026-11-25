@@ -343,6 +343,7 @@ class _Session:
         self.turn_id: str = ""
         self.may_write: bool = False
         self.busy: bool = False
+        self.cancel_requested: bool = False
         self.model: str = ""
         self.effort: str = ""
         self.session_grants: set[str] = set()
@@ -932,6 +933,12 @@ class AgyAcpClient:
             raise AgyRequestError("thread not found", code=-32004)
         cwd = str(params.get("cwd") or self.cwd)
         with self._state_lock:
+            existing = self._sessions.get(session_id)
+            if existing is not None and existing.busy:
+                raise AgyRequestError(
+                    "Agy session is busy; cannot reload while a turn is running",
+                    code=-32002,
+                )
             self._replay_buffers[session_id] = []
         try:
             result = self._acp_request(
@@ -1029,6 +1036,7 @@ class AgyAcpClient:
             session.turn_id = turn_id
             session.may_write = bool(params.get("mayWrite"))
             session.busy = True
+            session.cancel_requested = False
             session.text_parts = []
             session.had_tool_since_text = False
             session.expects_structured = expects_structured
@@ -1102,7 +1110,14 @@ class AgyAcpClient:
             )
             stop_reason = str(result.get("stopReason") or "end_turn")
             if stop_reason == "cancelled":
-                status = "interrupted"
+                with self._state_lock:
+                    user_cancelled = session.cancel_requested
+                if user_cancelled:
+                    status = "interrupted"
+                else:
+                    status = "failed"
+                    error_text = "Agy cancelled the turn before finishing."
+                    self._emit("session/error", {**common, "message": error_text})
             else:
                 with self._state_lock:
                     final_text = "".join(session.text_parts).strip()
@@ -1132,6 +1147,7 @@ class AgyAcpClient:
             with self._state_lock:
                 session.busy = False
                 session.turn_id = ""
+                session.cancel_requested = False
                 session.text_parts.clear()
             self._emit("session/prompt/completed", {**common, "status": status, "error": error_text})
 
@@ -1140,8 +1156,10 @@ class AgyAcpClient:
         if not session_id:
             raise AgyRequestError("thread not found", code=-32004)
         with self._state_lock:
-            if session_id not in self._sessions:
+            session = self._sessions.get(session_id)
+            if session is None:
                 raise AgyRequestError("thread not found", code=-32004)
+            session.cancel_requested = True
         self._acp_notify("session/cancel", {"sessionId": session_id})
         return {}
 

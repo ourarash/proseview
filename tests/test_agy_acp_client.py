@@ -44,6 +44,7 @@ def _fake_agy(
     authenticated: bool = True,
     malformed: bool = False,
     cancel_on_prompt: bool = False,
+    unsolicited_cancel: bool = False,
     structured_fence: bool = False,
     prompt_delay: float = 0.0,
 ) -> Path:
@@ -190,6 +191,9 @@ for line in sys.stdin:
                 "method": "session/update",
                 "params": {{"sessionId": sid, "update": {{"sessionUpdate": "agent_thought_chunk", "content": {{"type": "text", "text": "RAW SECRET"}}}}}},
             }}), flush=True)
+            continue
+        if {unsolicited_cancel!r}:
+            print(json.dumps({{"jsonrpc": "2.0", "id": rid, "result": {{"stopReason": "cancelled"}}}}), flush=True)
             continue
         if {prompt_delay!r} > 0:
             time.sleep({prompt_delay!r})
@@ -597,3 +601,53 @@ def test_extract_json_text_handles_prose_wrappers_and_fences():
 
     raw_json = '{"ok": true}'
     assert _extract_json_text(raw_json) == '{"ok": true}'
+
+
+def test_thread_read_refuses_to_reload_busy_session(tmp_path: Path):
+    received: list[dict] = []
+    client = AgyAcpClient(
+        executable=str(_fake_agy(tmp_path, cancel_on_prompt=True)),
+        cwd=tmp_path,
+        on_message=received.append,
+    )
+    try:
+        client.start()
+        sid = client.request("thread/start", {})["thread"]["id"]
+        turn_id = client.request("turn/start", {"threadId": sid, "input": [{"type": "text", "text": "Working"}]})["turn"]["id"]
+        time.sleep(0.05)
+
+        with pytest.raises(AgyRequestError, match="busy") as exc:
+            client.request("thread/read", {"threadId": sid})
+        assert exc.value.code == -32002
+
+        calls = [json.loads(line) for line in (tmp_path / "acp_calls.jsonl").read_text(encoding="utf-8").splitlines()]
+        assert not any(c.get("method") == "session/load" for c in calls)
+
+        # Turn must still be alive until explicitly interrupted.
+        assert not any(m.get("method") == "session/prompt/completed" for m in received)
+        client.request("turn/interrupt", {"threadId": sid, "turnId": turn_id})
+        _wait_until(lambda: any(m.get("method") == "session/prompt/completed" for m in received))
+        completed = next(m for m in received if m.get("method") == "session/prompt/completed")
+        assert completed["params"]["status"] == "interrupted"
+    finally:
+        client.close()
+
+
+def test_unsolicited_cancelled_stop_reason_reports_failed_not_interrupted(tmp_path: Path):
+    received: list[dict] = []
+    client = AgyAcpClient(
+        executable=str(_fake_agy(tmp_path, unsolicited_cancel=True)),
+        cwd=tmp_path,
+        on_message=received.append,
+    )
+    try:
+        client.start()
+        sid = client.request("thread/start", {})["thread"]["id"]
+        client.request("turn/start", {"threadId": sid, "input": [{"type": "text", "text": "Hello"}]})
+        _wait_until(lambda: any(m.get("method") == "session/prompt/completed" for m in received))
+        completed = next(m for m in received if m.get("method") == "session/prompt/completed")
+        assert completed["params"]["status"] == "failed"
+        assert "cancelled" in completed["params"]["error"].lower()
+        assert any(m.get("method") == "session/error" for m in received)
+    finally:
+        client.close()

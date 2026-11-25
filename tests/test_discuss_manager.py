@@ -1197,10 +1197,24 @@ def test_open_does_not_replace_local_messages_while_work_is_active(tmp_path: Pat
     ]
     conversation.active_turn_id = "turn-active"
     conversation.active_done = threading.Event()
+    original_request = clients[0].request
+    read_calls: list[str] = []
+
+    def guarded_request(method: str, params=None, **kwargs):
+        if method == "thread/read":
+            read_calls.append(str((params or {}).get("threadId") or ""))
+        return original_request(method, params, **kwargs)
+
+    clients[0].request = guarded_request  # type: ignore[method-assign]
 
     reopened = manager.open(document)
 
+    assert read_calls == []
+    assert reopened["connection"] == "Live"
     assert [message["text"] for message in reopened["messages"]] == ["Older question", "Queued question"]
+    with pytest.raises(ContextError, match="busy"):
+        manager.export_conversation(conversation_id, thread_id)
+    assert read_calls == []
     conversation.active_done.set()
     conversation.active_done = None
     conversation.active_turn_id = None

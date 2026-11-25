@@ -133,21 +133,64 @@ function groupPositionsCard(session, turn) {
     box.appendChild(groupForkElement('p', 'settings-note', 'Only explicit final positions are shown. A blank cell means no stance was recorded.'));
     return box;
 }
-function syncDiscussGroupFork() {
-    var send = document.getElementById('discussSend');
-    if (!send) return;
-    var button = document.getElementById('discussGroupFork');
-    if (!button) {
-        button = document.createElement('button'); button.type = 'button'; button.id = 'discussGroupFork';
-        button.className = 'discuss-secondary'; button.textContent = 'Send to Group'; button.onclick = openDiscussGroupFork;
-        send.parentElement.insertBefore(button, send);
+var _discussSendMenuOpen = false;
+function toggleDiscussSendMenu() {
+    if (_discussSendMenuOpen) {
+        closeDiscussSendMenu();
+        return;
     }
+    if (typeof closeDiscussModelPicker === 'function') closeDiscussModelPicker();
+    if (typeof closeDiscussPromptContextPicker === 'function') closeDiscussPromptContextPicker();
+    if (typeof closeDiscussContextPicker === 'function') closeDiscussContextPicker();
+    syncDiscussGroupFork();
+    var menu = document.getElementById('discussSendMenu');
+    var btn = document.getElementById('discussSendMoreBtn');
+    if (!menu || !btn) return;
+    _discussSendMenuOpen = true;
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    var first = menu.querySelector('.discuss-send-menu-item:not([hidden]):not(:disabled)') || menu.querySelector('.discuss-send-menu-item:not([hidden])');
+    if (first) first.focus({preventScroll: true});
+}
+function closeDiscussSendMenu(options) {
+    if (!_discussSendMenuOpen) return;
+    _discussSendMenuOpen = false;
+    var menu = document.getElementById('discussSendMenu');
+    var btn = document.getElementById('discussSendMoreBtn');
+    if (menu) menu.hidden = true;
+    if (btn) {
+        btn.setAttribute('aria-expanded', 'false');
+        if (options && options.focus && !btn.hidden) btn.focus({preventScroll: true});
+    }
+}
+document.addEventListener('mousedown', function(event) {
+    if (!_discussSendMenuOpen) return;
+    if (event.target.closest && event.target.closest('#discussSendMenu, #discussSendMoreBtn')) return;
+    closeDiscussSendMenu();
+});
+document.addEventListener('keydown', function(event) {
+    if (!_discussSendMenuOpen || event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeDiscussSendMenu({focus: true});
+});
+function syncDiscussGroupFork() {
+    var button = document.getElementById('discussGroupFork');
+    if (!button) return;
     var s = _discussSnapshot || {}, active = _groupActiveSession;
-    button.disabled = !_discussConversationId || !!_discussOpeningKey || !!s.active_request_id || !!s.active_turn_id || (s.queue || []).length > 0
+    var busy = !!_discussOpeningKey || !!s.active_request_id || !!s.active_turn_id || (s.queue || []).length > 0
         || (s.approvals || []).some(function(p) { return p.status === 'pending' || p.status === 'resolving'; })
-        || !!(active && (active.busy || (active.outbox || []).length))
-        || !(s.messages || []).some(function(m) { return m.role === 'assistant'; }) && !(s.tasks || []).some(function(t) { return t.result; });
+        || !!(active && (active.busy || (active.outbox || []).length));
+    var hasAnswer = (s.messages || []).some(function(m) { return m.role === 'assistant'; })
+        || (s.tasks || []).some(function(t) { return t.result; });
+    button.disabled = !_discussConversationId || busy || !hasAnswer;
     button.title = button.disabled ? 'Finish running work and approvals, and wait for an answer before forking' : 'Continue this conversation with two or three assistants';
+    var desc = document.getElementById('discussGroupForkDesc');
+    if (desc) {
+        desc.textContent = !button.disabled
+            ? 'Continue this conversation with 2–3 assistants'
+            : (busy ? 'Wait for running work and approvals to finish' : 'Available after the first assistant reply');
+    }
     var key = _discussConversationId + ':' + (s.thread_id || '');
     if (_discussConversationId && !_groupForkLinks[key]) {
         _groupForkLinks[key] = [];
@@ -160,12 +203,22 @@ function syncDiscussGroupFork() {
 function syncDiscussGroupForkLink(key) {
     var s = _discussSnapshot || {};
     if (key !== _discussConversationId + ':' + (s.thread_id || '')) return;
-    var existing = document.getElementById('discussForkGroupLink'); if (existing) existing.remove();
-    var rows = _groupForkLinks[key] || [], parent = document.getElementById('discussGroupFork');
-    if (!rows.length || !parent) return;
-    var button = document.createElement('button'); button.type = 'button'; button.id = 'discussForkGroupLink'; button.className = 'discuss-secondary'; button.textContent = 'Open Group ↗';
-    button.onclick = function() { openGroupHistorySession(rows[0].scene, rows[0].id).then(function() { showScenePanelTab('group'); }); };
-    parent.parentElement.insertBefore(button, parent);
+    var linkBtn = document.getElementById('discussForkGroupLink');
+    var moreBtn = document.getElementById('discussSendMoreBtn');
+    if (!linkBtn) return;
+    var rows = _groupForkLinks[key] || [];
+    if (!rows.length) {
+        linkBtn.hidden = true;
+        linkBtn.onclick = null;
+        if (moreBtn) moreBtn.removeAttribute('data-has-group');
+        return;
+    }
+    linkBtn.hidden = false;
+    linkBtn.onclick = function() {
+        closeDiscussSendMenu();
+        openGroupHistorySession(rows[0].scene, rows[0].id).then(function() { showScenePanelTab('group'); });
+    };
+    if (moreBtn) moreBtn.setAttribute('data-has-group', 'true');
 }
 function openGroupForkSource(source) {
     if (_discussEventSource) { _discussEventSource.close(); _discussEventSource = null; }

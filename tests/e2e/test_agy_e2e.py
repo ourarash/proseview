@@ -154,7 +154,8 @@ def test_three_agent_group_room_toggle_and_send_to_group_with_efforts(page: Page
     _open_discuss_agent(page, "codex")
     page.fill("#discussInput", "Should Perkins confess on line 17?")
     page.click("#discussSend")
-    page.wait_for_selector("#discussGroupFork:not([disabled])", timeout=15000)
+    page.wait_for_selector("#discussGroupFork:not([disabled])", state="attached", timeout=15000)
+    page.locator("#discussSendMoreBtn").click()
     page.locator("#discussGroupFork").click()
 
     fork_dialog = page.locator("#discussGroupForkDialog")

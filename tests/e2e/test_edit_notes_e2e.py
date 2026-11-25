@@ -168,6 +168,8 @@ def test_individual_notes_survive_rerenders_transfer_to_group_and_send_with_a_cu
     host = add_note(item_for(checkbox), 'Keep the word same.')
     page.evaluate('renderDiscussSnapshot()')
     expect(note_host(item_for(checkbox)).get_by_role('button', name='Change note for item 3', exact=True)).to_contain_text('Keep the word same.')
+    page.locator('#discussGroupFork:not([disabled])').wait_for(state='attached')
+    page.locator('#discussSendMoreBtn').click()
     page.locator('#discussGroupFork:not([disabled])').click()
     page.locator('#groupForkConfirm:not([disabled])').click()
     pane = page.locator('#sceneGroupPane')

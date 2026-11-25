@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip('playwright.sync_api')
 from .conftest import SCENE_REL
 from .test_browser_e2e import open_scene
-from .test_group_fork_e2e import answer
+from .test_group_fork_e2e import answer, open_send_menu
 from .test_highlight_card_e2e import _group_idle
 
 pytestmark = pytest.mark.e2e_browser
@@ -20,6 +20,7 @@ def source_history(page, server, agent='codex'):
         page.locator('#discussInput').fill(question)
         page.locator('#discussInput').press('Enter')
         page.wait_for_function('question => { const s = _discussSnapshot, users = s.messages.filter(m => m.role === "user"), replies = s.messages.filter(m => m.role === "assistant"); return !s.active_request_id && !s.active_turn_id && !s.queue.length && users.at(-1)?.text === question && replies.at(-1)?.client_request_id === users.at(-1)?.client_request_id; }', arg=question)
+    open_send_menu(page)
     page.locator('#discussGroupFork').click()
     page.locator('#groupForkConfirm:not([disabled])').wait_for()
     return page.locator('#discussGroupForkDialog')
@@ -77,7 +78,8 @@ def test_recent_only_is_remembered_and_does_not_replay_old_context(page, server)
     page.route('**/history/**/open', lambda route: (time.sleep(1.5), route.continue_()))
     pane.get_by_role('button', name='Source chat ↗').click()
     assert page.locator('#discussGroupFork').is_disabled()
-    page.locator('#discussGroupFork:not([disabled])').wait_for()
+    page.locator('#discussGroupFork:not([disabled])').wait_for(state='attached')
+    open_send_menu(page)
     page.locator('#discussGroupFork').click()
     page.locator('#groupForkConfirm:not([disabled])').wait_for()
     assert setup.get_by_role('radio', name='Recent exchanges', exact=True).is_checked()

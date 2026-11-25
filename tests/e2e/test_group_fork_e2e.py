@@ -12,12 +12,18 @@ from .test_highlight_card_e2e import _group_idle
 pytestmark = pytest.mark.e2e_browser
 
 
+def open_send_menu(page):
+    if page.locator('#discussSendMenu').is_hidden():
+        page.locator('#discussSendMoreBtn').click()
+    page.locator('#discussSendMenu').wait_for(state='visible')
+
+
 def answer(page, agent):
     _open_discuss_agent(page, agent)
     page.locator('#discussInput').fill('Please discuss the quiet ending.')
     page.locator('#discussInput').press('Enter')
     page.wait_for_function('() => !_discussSnapshot.active_request_id && !_discussSnapshot.active_turn_id && _discussSnapshot.messages.some(m => m.role === "assistant")')
-    page.locator('#discussGroupFork:not([disabled])').wait_for()
+    page.locator('#discussGroupFork:not([disabled])').wait_for(state='attached')
 
 
 @pytest.mark.parametrize('agent', ['codex', 'claude', 'agy'])
@@ -28,6 +34,7 @@ def test_manual_fork_preserves_source_and_routes_untagged_group_messages(page, s
     source_thread = page.evaluate('_discussSnapshot.thread_id')
     posts = []
     page.on('request', lambda req: posts.append(req.post_data_json) if req.url.endswith('/api/discuss/group-run') and req.method == 'POST' else None)
+    open_send_menu(page)
     page.locator('#discussGroupFork').click()
     setup = page.locator('#discussGroupForkDialog')
     setup.locator('#groupForkConfirm:not([disabled])').wait_for()
@@ -73,7 +80,9 @@ def test_manual_fork_preserves_source_and_routes_untagged_group_messages(page, s
     page.wait_for_function('() => !!_discussConversationId && !_discussSnapshot.active_request_id && !document.querySelector("#discussLog").hidden')
     assert page.evaluate('_discussSnapshot.messages.length') == original_count
     assert page.evaluate('_discussSnapshot.thread_id') == source_thread
-    page.locator('#discussForkGroupLink').wait_for()
+    page.locator('#discussSendMoreBtn[data-has-group="true"]').wait_for()
+    open_send_menu(page)
+    page.locator('#discussForkGroupLink').wait_for(state='visible')
     page.locator('#discussForkGroupLink').click()
     pane.wait_for(state='visible')
     group_id = page.evaluate('_groupActiveSession.id')
@@ -94,6 +103,7 @@ def test_second_opinion_is_shared_and_starts_only_the_selected_workflow(page, se
     flow.wait_for()
     assert flow.is_disabled(), 'An empty Group has no answer to assess'
     answer(page, 'codex')
+    open_send_menu(page)
     page.locator('#discussGroupFork').click()
     setup = page.locator('#discussGroupForkDialog')
     setup.locator('[data-preset="second_opinion"]').wait_for()

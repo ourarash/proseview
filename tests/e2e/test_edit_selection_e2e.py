@@ -158,6 +158,8 @@ def test_individual_review_selections_transfer_to_group_and_the_individual_reque
     page.locator('#discussInput').fill('Apply 3, but retain the word same.')
     tray.get_by_role('button', name='Prepare request', exact=True).click()
     expect(page.locator('#discussInput')).to_have_value('Apply 3, but retain the word same.')
+    page.locator('#discussGroupFork:not([disabled])').wait_for(state='attached')
+    page.locator('#discussSendMoreBtn').click()
     page.locator('#discussGroupFork:not([disabled])').click()
     page.locator('#groupForkConfirm:not([disabled])').click()
     pane=page.locator('#sceneGroupPane')

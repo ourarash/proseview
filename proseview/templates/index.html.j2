@@ -951,7 +951,26 @@
                     <div id="discussSees" class="discuss-sees-slot"></div>
                     <div class="discuss-send-actions">
                         <button id="discussSendNow" type="button" class="discuss-send-now" onclick="sendDiscussQuestion({mode: 'now'})" title="Send now (⌘/Ctrl+Enter)" hidden>Send now</button>
-                        <button id="discussSend" type="button" onclick="sendDiscussQuestion()" title="Send (Enter) · Shift+Enter for a new line">Send</button>
+                        <div class="discuss-send-split">
+                            <button id="discussSend" type="button" onclick="sendDiscussQuestion()" title="Send (Enter) · Shift+Enter for a new line">Send</button>
+                            <button id="discussSendMoreBtn" type="button" class="discuss-send-more-btn" onclick="toggleDiscussSendMenu()" aria-label="More send options" aria-haspopup="menu" aria-expanded="false" aria-controls="discussSendMenu" title="Send to Group and more"><span class="discuss-send-more-caret" aria-hidden="true">&#9662;</span></button>
+                        </div>
+                        <div id="discussSendMenu" class="discuss-send-menu" role="menu" aria-label="More send options" hidden>
+                            <button id="discussGroupFork" type="button" class="discuss-send-menu-item" role="menuitem" onclick="closeDiscussSendMenu();openDiscussGroupFork()" disabled>
+                                <span class="discuss-send-menu-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                                <span class="discuss-send-menu-copy">
+                                    <strong>Send to Group…</strong>
+                                    <small id="discussGroupForkDesc">Continue this conversation with 2–3 assistants</small>
+                                </span>
+                            </button>
+                            <button id="discussForkGroupLink" type="button" class="discuss-send-menu-item is-link" role="menuitem" hidden>
+                                <span class="discuss-send-menu-icon" aria-hidden="true">&#8599;</span>
+                                <span class="discuss-send-menu-copy">
+                                    <strong>Open Group</strong>
+                                    <small>Jump to the linked Group conversation</small>
+                                </span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>

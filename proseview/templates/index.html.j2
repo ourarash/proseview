@@ -739,6 +739,19 @@
                 </span>
             </form>
             {% endif %}
+            <div class="settings-row" id="privacyIdleRow">
+                <label for="privacyIdleSelect">Cover when idle<span class="info-tip" tabindex="0" role="img" aria-label="Covers the page with the privacy screen automatically after this long with no activity. Uncover it with Cmd + J J (Ctrl + J J on Windows and Linux). Saved on this computer, not in your book." data-tip="Covers the page with the privacy screen automatically after this long with no activity. Uncover it with Cmd + J J (Ctrl + J J on Windows and Linux). Saved on this computer, not in your book.">i</span></label>
+                <span class="settings-field">
+                    <select id="privacyIdleSelect" class="settings-input" onchange="privacySetIdleMinutes(this.value)">
+                        <option value="0">Off</option>
+                        <option value="1">1 minute</option>
+                        <option value="5">5 minutes</option>
+                        <option value="10">10 minutes</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                    </select>
+                </span>
+            </div>
 
             <details class="settings-advanced">
                 <summary>Advanced</summary>

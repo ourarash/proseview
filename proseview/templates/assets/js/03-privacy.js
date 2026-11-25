@@ -8,6 +8,8 @@
         // `proseview privacy-password`), uncovering asks for it and the
         // server checks it.
         var PRIVACY_TAP_MS = 500;
+        var PRIVACY_MINUTE_MS = 60000;
+        var PRIVACY_ACTIVITY_SYNC_MS = 5000;
         var PRIVACY_TITLE = 'Budget';
         var PRIVACY_MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
         var _privacyLastTap = -Infinity;
@@ -15,16 +17,139 @@
         var _privacyPassword = false;
         var _privacySaved = null;
         var _privacyTitleWatch = null;
+        var _privacyIdleMinutes = 0;
+        var _privacyIdleTimer = null;
+        var _privacyLastActivity = Date.now();
+        var _privacyLastActivitySync = 0;
         // With no server to remember it (a static snapshot, or the book
         // running in a browser tab), this browser keeps the covered flag.
         var _privacyLocal = !!window.PROSEVIEW_STATIC;
         var PRIVACY_LOCAL_KEY = 'proseview-privacy:' + location.pathname;
+        var PRIVACY_IDLE_KEY = 'proseview-privacy-idle:' + location.pathname;
+        var PRIVACY_ACTIVITY_KEY = 'proseview-privacy-activity:' + location.pathname;
 
         function privacyRememberLocally(covered) {
             try {
                 if (covered) localStorage.setItem(PRIVACY_LOCAL_KEY, 'covered');
                 else localStorage.removeItem(PRIVACY_LOCAL_KEY);
             } catch (err) { /* storage refused: the tab still covers */ }
+        }
+
+        function privacyParseIdleMinutes(value) {
+            var n = Number(value);
+            if (!isFinite(n) || n <= 0) return 0;
+            return Math.min(1440, Math.floor(n));
+        }
+
+        function privacyReadLocalIdleMinutes() {
+            try {
+                return privacyParseIdleMinutes(localStorage.getItem(PRIVACY_IDLE_KEY));
+            } catch (err) {
+                return 0;
+            }
+        }
+
+        function privacyRememberLocalIdleMinutes(minutes) {
+            try {
+                if (minutes > 0) localStorage.setItem(PRIVACY_IDLE_KEY, String(minutes));
+                else localStorage.removeItem(PRIVACY_IDLE_KEY);
+            } catch (err) { /* storage refused */ }
+        }
+
+        function privacyReadLastActivity() {
+            var best = _privacyLastActivity;
+            try {
+                var raw = Number(localStorage.getItem(PRIVACY_ACTIVITY_KEY));
+                if (isFinite(raw) && raw > best) best = raw;
+            } catch (err) { /* storage refused */ }
+            return best;
+        }
+
+        function privacyWriteLastActivity(now, force) {
+            _privacyLastActivity = now;
+            if (!force && now - _privacyLastActivitySync < PRIVACY_ACTIVITY_SYNC_MS) return;
+            _privacyLastActivitySync = now;
+            try {
+                localStorage.setItem(PRIVACY_ACTIVITY_KEY, String(now));
+            } catch (err) { /* storage refused */ }
+        }
+
+        function privacyClearIdleTimer() {
+            if (_privacyIdleTimer) {
+                clearTimeout(_privacyIdleTimer);
+                _privacyIdleTimer = null;
+            }
+        }
+
+        function privacyCheckIdle() {
+            privacyClearIdleTimer();
+            if (_privacyShown || !(_privacyIdleMinutes > 0)) return false;
+            var timeoutMs = _privacyIdleMinutes * PRIVACY_MINUTE_MS;
+            var last = privacyReadLastActivity();
+            var elapsed = Date.now() - last;
+            if (elapsed >= timeoutMs) {
+                privacyCover(false);
+                return true;
+            }
+            var remaining = Math.max(100, timeoutMs - elapsed);
+            _privacyIdleTimer = setTimeout(privacyCheckIdle, remaining);
+            return false;
+        }
+
+        function privacyRecordActivity() {
+            if (_privacyShown) return;
+            var now = Date.now();
+            if (_privacyIdleMinutes > 0) {
+                var timeoutMs = _privacyIdleMinutes * PRIVACY_MINUTE_MS;
+                if (now - _privacyLastActivity >= timeoutMs && now - privacyReadLastActivity() >= timeoutMs) {
+                    privacyCover(false);
+                    return;
+                }
+            }
+            privacyWriteLastActivity(now, false);
+            if (_privacyIdleMinutes > 0 && !_privacyIdleTimer) {
+                privacyCheckIdle();
+            }
+        }
+
+        function privacySyncIdleSelect(minutes) {
+            var select = document.getElementById('privacyIdleSelect');
+            if (!select) return;
+            var val = String(minutes);
+            if (!select.querySelector('option[value="' + val + '"]')) {
+                var opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = minutes === 1 ? '1 minute' : minutes + ' minutes';
+                select.appendChild(opt);
+            }
+            select.value = val;
+        }
+
+        function privacyApplyIdleMinutes(minutes, resetActivity) {
+            _privacyIdleMinutes = privacyParseIdleMinutes(minutes);
+            privacySyncIdleSelect(_privacyIdleMinutes);
+            if (resetActivity && !_privacyShown) {
+                privacyWriteLastActivity(Date.now(), true);
+            }
+            if (_privacyIdleMinutes > 0) privacyCheckIdle();
+            else privacyClearIdleTimer();
+        }
+
+        function privacySetIdleMinutes(value) {
+            var minutes = privacyParseIdleMinutes(value);
+            if (_privacyLocal) {
+                privacyRememberLocalIdleMinutes(minutes);
+                privacyApplyIdleMinutes(minutes, true);
+                return;
+            }
+            privacyPost('/api/privacy/idle', {idle_minutes: minutes}).then(function(state) {
+                if (state && state.ok) {
+                    if (!_privacyShown) privacyWriteLastActivity(Date.now(), true);
+                    privacySettingsShow(state);
+                } else {
+                    privacySyncIdleSelect(_privacyIdleMinutes);
+                }
+            });
         }
 
         function privacyIsShortcut(e) {
@@ -74,6 +199,7 @@
             // whole page behind it inert, out of reach of Tab and clicks.
             if (!screen.open) screen.showModal();
             _privacyShown = true;
+            privacyClearIdleTimer();
             document.title = PRIVACY_TITLE;
             if (icon) icon.setAttribute('href', window.PROSEVIEW_PRIVACY_ICON);
             // The page may retitle itself meanwhile (an agent at work, say);
@@ -127,6 +253,8 @@
                 selection.removeAllRanges();
                 saved.ranges.forEach(function(range) { selection.addRange(range); });
             }
+            privacyWriteLastActivity(Date.now(), true);
+            if (_privacyIdleMinutes > 0) privacyCheckIdle();
         }
 
         function privacyOpenBox() {
@@ -170,13 +298,19 @@
             }
         }
 
-        // Another tab covered or uncovered the screen.
-        function privacyFollowServer(locked, password) {
-            if (locked) {
-                _privacyPassword = !!password;
-                privacyCover(true);
-            } else {
-                privacyUncover();
+        // Another tab covered/uncovered the screen, or changed the idle timeout.
+        function privacyFollowServer(payload) {
+            if (!payload || typeof payload !== 'object') return;
+            if (typeof payload.idle_minutes === 'number') {
+                privacyApplyIdleMinutes(payload.idle_minutes, true);
+            }
+            if (typeof payload.locked === 'boolean') {
+                if (payload.locked) {
+                    _privacyPassword = !!payload.password;
+                    privacyCover(true);
+                } else {
+                    privacyUncover();
+                }
             }
         }
 
@@ -189,6 +323,11 @@
         function privacySettingsShow(state) {
             _privacyPassword = !!state.password;
             if (state.available === false) _privacyLocal = true;
+            if (_privacyLocal) {
+                privacyApplyIdleMinutes(privacyReadLocalIdleMinutes(), false);
+            } else if (typeof state.idle_minutes === 'number') {
+                privacyApplyIdleMinutes(state.idle_minutes, false);
+            }
             var row = document.getElementById('privacySettingsRow');
             if (!row) return;
             row.hidden = !state.available;
@@ -267,7 +406,10 @@
                 }
                 return;
             }
-            if (!_privacyShown) return;
+            if (!_privacyShown) {
+                privacyRecordActivity();
+                return;
+            }
             // Covered: the page behind hears no keys, and Esc, Tab, Space or
             // the arrows do nothing. Only the password box takes typing.
             e.stopImmediatePropagation();
@@ -291,12 +433,37 @@
             var screen = document.getElementById('privacyScreen');
             if (!screen) return;
             screen.addEventListener('cancel', function(e) { e.preventDefault(); });
+            ['pointerdown', 'pointermove', 'wheel', 'scroll', 'touchstart', 'input'].forEach(function(type) {
+                window.addEventListener(type, privacyRecordActivity, {capture: true, passive: true});
+            });
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') privacyCheckIdle();
+            });
+            window.addEventListener('focus', function() {
+                privacyCheckIdle();
+            });
+            window.addEventListener('storage', function(e) {
+                if (e.key === PRIVACY_ACTIVITY_KEY && e.newValue) {
+                    var ts = Number(e.newValue);
+                    if (isFinite(ts) && ts > _privacyLastActivity) _privacyLastActivity = ts;
+                } else if (_privacyLocal && e.key === PRIVACY_IDLE_KEY) {
+                    privacyApplyIdleMinutes(privacyParseIdleMinutes(e.newValue), true);
+                }
+            });
             if (document.documentElement.dataset.privacy === 'locked') {
                 _privacyPassword = document.documentElement.dataset.privacyPassword === '1';
                 privacyCover(true);
+            } else {
+                privacyWriteLastActivity(Date.now(), true);
             }
-            if (window.PROSEVIEW_STATIC) return;
+            if (window.PROSEVIEW_STATIC) {
+                privacyApplyIdleMinutes(privacyReadLocalIdleMinutes(), false);
+                return;
+            }
             fetch('/api/privacy').then(function(response) { return response.json(); }).then(function(state) {
-                if (state && state.ok) privacySettingsShow(state);
+                if (state && state.ok) {
+                    privacySettingsShow(state);
+                    if (state.locked && !_privacyShown) privacyCover(true);
+                }
             }).catch(function() {});
         })();

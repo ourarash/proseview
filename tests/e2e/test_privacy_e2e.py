@@ -70,10 +70,10 @@ def _set_password(server: ProseviewServer, password: str | None) -> None:
 
 
 def _reset(server: ProseviewServer) -> None:
-    """No password and nothing covered: the flag outlives the server."""
+    """No password, no idle timeout, and nothing covered: flags outlive the server."""
     code = (
-        "from proseview.privacy import clear_password, covered_path;"
-        "clear_password(); covered_path().unlink(missing_ok=True)"
+        "from proseview.privacy import clear_password, covered_path, settings_path;"
+        "clear_password(); covered_path().unlink(missing_ok=True); settings_path().unlink(missing_ok=True)"
     )
     subprocess.run([sys.executable, "-c", code], env=server.env, check=True)
 
@@ -286,3 +286,75 @@ def test_settings_sets_changes_and_removes_the_password(page: Page, server: Pros
         page.wait_for_function("() => document.getElementById('privacyPasswordStatus').textContent === 'Password: none'")
     finally:
         _set_password(server, None)
+
+
+def test_idle_timeout_covers_after_inactivity_and_resets_on_activity(page: Page, server: ProseviewServer):
+    page.goto(server.base_url, wait_until="load")
+    # Speed up the minute unit so real setTimeout and Date.now() run in sub-second time.
+    page.evaluate("PRIVACY_MINUTE_MS = 80; PRIVACY_ACTIVITY_SYNC_MS = 0;")
+    page.evaluate("openSettings()")
+    select = page.locator("#privacyIdleSelect")
+    select.wait_for(state="visible")
+    assert select.input_value() == "0"
+
+    with page.expect_response("**/api/privacy/idle"):
+        select.select_option("5")  # 5 * 80ms = 400ms
+    page.evaluate("closeSettings()")
+
+    # Activity before the timeout elapses resets the countdown.
+    page.wait_for_timeout(200)
+    assert page.evaluate(UNCOVERED)
+    page.keyboard.press("ArrowDown")
+    page.wait_for_timeout(220)
+    assert page.evaluate(UNCOVERED)
+
+    # Letting the full 400ms pass without activity covers the screen and persists the lock.
+    with page.expect_response("**/api/privacy/lock"):
+        page.wait_for_function(COVERED, timeout=3000)
+    assert page.title() == "Budget"
+
+    # Uncovering starts a fresh countdown and keeps the configured timeout.
+    with page.expect_response("**/api/privacy/unlock"):
+        _double_tap_held(page)
+    page.wait_for_function(UNCOVERED)
+    with page.expect_response("**/api/privacy/lock"):
+        page.wait_for_function(COVERED, timeout=3000)
+
+    # Uncover and verify the setting survives a full reload.
+    with page.expect_response("**/api/privacy/unlock"):
+        _double_tap_held(page)
+    page.wait_for_function(UNCOVERED)
+    page.reload(wait_until="load")
+    page.wait_for_function("() => document.getElementById('privacyIdleSelect').value === '5'")
+
+
+def test_idle_timeout_syncs_across_tabs_and_respects_other_tab_activity(page: Page, server: ProseviewServer):
+    page.goto(server.base_url, wait_until="load")
+    page.evaluate("PRIVACY_MINUTE_MS = 80; PRIVACY_ACTIVITY_SYNC_MS = 0;")
+
+    other = page.context.new_page()
+    try:
+        other.goto(server.base_url, wait_until="load")
+        other.wait_for_function("() => document.getElementById('privacyIdleSelect') !== null")
+        other.evaluate("PRIVACY_MINUTE_MS = 80; PRIVACY_ACTIVITY_SYNC_MS = 0;")
+
+        # Changing the idle timeout in one tab updates the other via SSE.
+        page.evaluate("openSettings()")
+        with page.expect_response("**/api/privacy/idle"):
+            page.locator("#privacyIdleSelect").select_option("5")  # 400ms
+        page.evaluate("closeSettings()")
+        other.wait_for_function("() => document.getElementById('privacyIdleSelect').value === '5'")
+
+        # Repeated activity in the second tab keeps the first tab from locking
+        # past its original 400ms deadline.
+        for _ in range(3):
+            page.wait_for_timeout(180)
+            other.keyboard.press("ArrowDown")
+        assert page.evaluate(UNCOVERED)
+        assert other.evaluate(UNCOVERED)
+
+        # Once both tabs stay idle for the full timeout, both cover together.
+        page.wait_for_function(COVERED, timeout=3000)
+        other.wait_for_function(COVERED, timeout=3000)
+    finally:
+        other.close()

@@ -61,18 +61,40 @@ def test_an_empty_password_is_refused():
 
 def test_a_covered_screen_is_remembered_with_or_without_a_password(state_home: Path):
     lock = privacy.PrivacyLock()
-    assert lock.lock() == {"available": True, "password": False, "locked": True}
+    assert lock.lock() == {"available": True, "password": False, "locked": True, "idle_minutes": 0}
     assert (state_home / "proseview" / "privacy-covered").is_file()
     # No password: anyone uncovers it, as the shortcut does.
     assert lock.unlock("") is True
     assert lock.state()["locked"] is False
 
     privacy.set_password("pw")
-    assert lock.lock() == {"available": True, "password": True, "locked": True}
+    assert lock.lock() == {"available": True, "password": True, "locked": True, "idle_minutes": 0}
     assert lock.unlock("wrong") is False
     assert lock.state()["locked"] is True
     assert lock.unlock("pw") is True
-    assert lock.state() == {"available": True, "password": True, "locked": False}
+    assert lock.state() == {"available": True, "password": True, "locked": False, "idle_minutes": 0}
+
+
+def test_idle_timeout_is_persisted_separately_from_the_password(state_home: Path):
+    assert privacy.get_idle_minutes() == 0
+    path = privacy.set_idle_minutes(10)
+    assert path == state_home / "proseview" / "privacy-settings.json"
+    assert privacy.get_idle_minutes() == 10
+    assert not privacy.has_password()
+
+    # Setting and clearing a password leaves the idle timeout intact.
+    privacy.set_password("pw")
+    assert privacy.get_idle_minutes() == 10
+    privacy.clear_password()
+    assert privacy.get_idle_minutes() == 10
+
+    # Restarted PrivacyLock picks up the persisted timeout.
+    assert privacy.PrivacyLock().state()["idle_minutes"] == 10
+    assert privacy.PrivacyLock().set_idle_minutes(0)["idle_minutes"] == 0
+
+    for bad in (-1, True, False, "five", 1441, None):
+        with pytest.raises(ValueError):
+            privacy.parse_idle_minutes(bad)
 
 
 def test_a_restarted_server_still_finds_the_screen_covered():
@@ -98,11 +120,14 @@ def test_changing_or_removing_needs_the_current_password():
 
 def test_inside_a_browser_tab_there_is_no_password():
     privacy.set_password("pw")
+    privacy.set_idle_minutes(5)
     lock = privacy.PrivacyLock(available=False)
-    assert lock.lock() == {"available": False, "password": False, "locked": False}
+    assert lock.lock() == {"available": False, "password": False, "locked": False, "idle_minutes": 0}
     assert not privacy.covered_path().exists()
     assert lock.change_password("pw", "new") is False
     assert privacy.check_password("pw")
+    assert lock.set_idle_minutes(15) == {"available": False, "password": False, "locked": False, "idle_minutes": 0}
+    assert privacy.get_idle_minutes() == 5
 
 
 def test_cli_sets_and_clears_the_password(monkeypatch: pytest.MonkeyPatch, capsys):
@@ -151,7 +176,7 @@ def server():
 
 
 def test_route_without_a_password_still_keeps_a_reload_covered(server):
-    state = {"ok": True, "available": True, "password": False, "locked": False}
+    state = {"ok": True, "available": True, "password": False, "locked": False, "idle_minutes": 0}
     assert server("/api/privacy") == (200, state)
     assert server("/api/privacy/lock", {}) == (200, {**state, "locked": True})
     assert server.events == [{"type": "privacy", "locked": True, "password": False}]
@@ -161,6 +186,23 @@ def test_route_without_a_password_still_keeps_a_reload_covered(server):
     assert server.events[-1] == {"type": "privacy", "locked": False}
     _, html = server("/")
     assert b"data-privacy" not in html
+
+
+def test_route_sets_and_broadcasts_idle_timeout(server):
+    assert server("/api/privacy/idle", {"idle_minutes": 5}, token="nope")[0] == 403
+    assert server("/api/privacy")[1]["idle_minutes"] == 0
+
+    assert server("/api/privacy/idle", {"idle_minutes": -5})[0] == 400
+    assert server("/api/privacy/idle", {"idle_minutes": "bad"})[0] == 400
+
+    status, body = server("/api/privacy/idle", {"idle_minutes": 5})
+    assert status == 200 and body["idle_minutes"] == 5
+    assert server.events[-1] == {"type": "privacy", "idle_minutes": 5}
+    assert server("/api/privacy")[1]["idle_minutes"] == 5
+
+    status, body = server("/api/privacy/idle", {"idle_minutes": 0})
+    assert status == 200 and body["idle_minutes"] == 0
+    assert server.events[-1] == {"type": "privacy", "idle_minutes": 0}
 
 
 def test_route_needs_the_session_token(server):
@@ -210,13 +252,22 @@ def test_route_sets_changes_and_removes_the_password_from_settings(server):
 def test_browser_mode_has_no_password_route():
     from proseview import browser
 
-    # Even with a password on this computer, the in-browser book has none.
+    # Even with a password or idle timeout on this computer, the in-browser book has none.
     privacy.set_password("pw")
+    privacy.set_idle_minutes(10)
     reply = browser.request("GET", "/api/privacy")
-    assert json.loads(reply["body"]) == {"ok": True, "available": False, "password": False, "locked": False}
+    assert json.loads(reply["body"]) == {
+        "ok": True, "available": False, "password": False, "locked": False, "idle_minutes": 0,
+    }
     reply = browser.request(
         "POST", "/api/privacy/password", json.dumps({"current": "pw", "password": "x"}).encode(),
         {"Content-Type": "application/json", "X-Proseview-Session": browser.SESSION},
     )
     assert reply["status"] == 404
     assert privacy.check_password("pw")
+    reply = browser.request(
+        "POST", "/api/privacy/idle", json.dumps({"idle_minutes": 5}).encode(),
+        {"Content-Type": "application/json", "X-Proseview-Session": browser.SESSION},
+    )
+    assert reply["status"] == 404
+    assert privacy.get_idle_minutes() == 10

@@ -25,14 +25,66 @@ from typing import Any
 from .discuss import _state_path
 
 ITERATIONS = 200_000
+MAX_IDLE_MINUTES = 1440
 
 
 def password_path() -> Path:
     return _state_path().with_name("privacy.json")
 
 
+def settings_path() -> Path:
+    return _state_path().with_name("privacy-settings.json")
+
+
 def covered_path() -> Path:
     return _state_path().with_name("privacy-covered")
+
+
+def parse_idle_minutes(value: Any) -> int:
+    """Return a non-negative integer number of minutes (0 means off)."""
+    if isinstance(value, bool):
+        raise ValueError("idle_minutes must be an integer")
+    if isinstance(value, int):
+        minutes = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        minutes = int(value.strip())
+    else:
+        raise ValueError("idle_minutes must be a non-negative integer")
+    if minutes < 0 or minutes > MAX_IDLE_MINUTES:
+        raise ValueError(f"idle_minutes must be between 0 and {MAX_IDLE_MINUTES}")
+    return minutes
+
+
+def _read_settings() -> dict[str, Any]:
+    try:
+        data = json.loads(settings_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def get_idle_minutes() -> int:
+    """Minutes of inactivity before covering the screen, or 0 when off."""
+    raw = _read_settings().get("idle_minutes", 0)
+    try:
+        return parse_idle_minutes(raw)
+    except ValueError:
+        return 0
+
+
+def set_idle_minutes(minutes: int) -> Path:
+    """Persist the inactivity timeout in the user folder, never in the book."""
+    clean = parse_idle_minutes(minutes)
+    data = _read_settings()
+    data["idle_minutes"] = clean
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+    os.replace(tmp, path)
+    return path
 
 
 def _read() -> dict[str, Any] | None:
@@ -112,15 +164,26 @@ class PrivacyLock:
     def _covered(self) -> bool:
         return self.available and covered_path().is_file()
 
-    def state(self) -> dict[str, bool]:
+    def idle_minutes(self) -> int:
+        return get_idle_minutes() if self.available else 0
+
+    def state(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "available": self.available,
                 "password": self.available and has_password(),
                 "locked": self._covered(),
+                "idle_minutes": self.idle_minutes(),
             }
 
-    def lock(self) -> dict[str, bool]:
+    def set_idle_minutes(self, minutes: int) -> dict[str, Any]:
+        clean = parse_idle_minutes(minutes)
+        if self.available:
+            with self._lock:
+                set_idle_minutes(clean)
+        return self.state()
+
+    def lock(self) -> dict[str, Any]:
         if self.available:
             with self._lock:
                 path = covered_path()

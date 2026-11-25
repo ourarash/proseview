@@ -232,8 +232,12 @@ stored, in your user folder (`~/Library/Application Support/Proseview` on
 macOS, `$XDG_STATE_HOME/proseview` or `~/.local/state/proseview` elsewhere).
 With a password set, `Mod-J J` on the spreadsheet shows a small password box;
 Enter with the right one uncovers the page and a wrong one leaves it covered.
-The covered state is a small `privacy-covered` file in the same folder. It keeps the
+The covered state is a small `privacy-covered` file in the same folder. To
+cover the page automatically after inactivity, choose a timeout under **Cover
+when idle** in Settings (off by default); that preference is saved in
+`privacy-settings.json` in the same user folder, never in the book, and
+activity in any open Proseview tab keeps the timer reset. It keeps the
 page from a glance over your shoulder; it does not encrypt anything, and
 anyone at the computer can still open the files. A read-only snapshot and the
-in-browser `/write/` book have the spreadsheet, remembered by that browser,
-but no password.
+in-browser `/write/` book have the spreadsheet and idle timer, remembered by
+that browser, but no password.

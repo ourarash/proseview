@@ -42,7 +42,7 @@ from .export_dashboard import (
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import Block, changed_blocks, classify_whitespace_change, split_lines
 from .patches import Hunk, parse_hunks
-from .privacy import PrivacyLock
+from .privacy import PrivacyLock, parse_idle_minutes
 from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
     build_scene_data, scene_highlights,
@@ -1619,6 +1619,19 @@ class _Handler(BaseHTTPRequestHandler):
         except ContextError as exc:
             self._send_json({"ok": False, "error": str(exc)}, 400)
             return
+        if path == "/api/privacy/idle":
+            if not self.privacy.available:
+                self._send_json({"ok": False, "error": "not available here"}, 404)
+                return
+            try:
+                minutes = parse_idle_minutes(body.get("idle_minutes"))
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            state = self.privacy.set_idle_minutes(minutes)
+            self.publish_event({"type": "privacy", "idle_minutes": state["idle_minutes"]})
+            self._send_json({"ok": True, **state})
+            return
         if path == "/api/privacy/password":
             if not self.privacy.available:
                 self._send_json({"ok": False, "error": "no password here"}, 404)
@@ -2949,7 +2962,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/files/reveal":
             self._handle_file_reveal()
             return
-        if path in {"/api/privacy/lock", "/api/privacy/unlock", "/api/privacy/password"}:
+        if path in {"/api/privacy/lock", "/api/privacy/unlock", "/api/privacy/password", "/api/privacy/idle"}:
             self._handle_privacy(path)
             return
         if path.startswith("/api/export/"):

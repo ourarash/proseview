@@ -3255,3 +3255,286 @@ def test_update_frontmatter_action_uses_prose_as_source_of_truth_and_preserves_s
         assert user_msg["context_sent"]["include_adjacent"] is False
     finally:
         manager.close()
+
+
+def test_prompt_context_beatmap_off_by_default_and_deduplicated(tmp_path: Path, monkeypatch) -> None:
+    from proseview.beatmap import generate_scene_beatmap, patch_scene_beatmap
+    from proseview.config import Config
+
+    root = tmp_path / "book"
+    (root / "manuscript").mkdir(parents=True)
+    (root / "manuscript" / "01-prev.md").write_text(
+        "# Earlier\n\nPatel closed the shutter before the rain started.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "02-mid.md").write_text(
+        "---\ntitle: The Ask\ngoal: Recover the ledger\n---\n# The Ask\n\n"
+        "Nima stepped up to the bar and set down his keys.\n\n"
+        "\"We need to talk,\" he said quietly.\n\n"
+        "Roksana studied his hands before answering.\n",
+        encoding="utf-8",
+    )
+    (root / "manuscript" / "03-next.md").write_text(
+        "# After\n\nDawn broke cold over the alley.\n",
+        encoding="utf-8",
+    )
+    generate_scene_beatmap(root, "02-mid.md")
+
+    assert Config.load(root).discuss.include_beatmap is False
+
+    monkeypatch.setattr("proseview.discuss._state_path", lambda: tmp_path / "state" / "discuss.json")
+    clients: list[_FakeClient] = []
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_FakeClient(callback)) or clients[-1],
+    )
+    try:
+        cid = manager.open({"kind": "scene", "path": "02-mid.md"})["conversation_id"]
+
+        def turn_finished(prompt_count: int) -> bool:
+            snapshot = manager.get_snapshot(cid)
+            # The turn ID clears before request cleanup finishes; resets must
+            # wait for the whole request and its queue to be idle.
+            return (
+                len(clients[0].prompts) >= prompt_count
+                and not snapshot["active_turn_id"]
+                and not snapshot["active_request_id"]
+                and not snapshot["queue"]
+            )
+
+        # Preview shows all 4 items available and not yet in thread.
+        preview0 = manager.context_preview(cid, document={"kind": "scene", "path": "02-mid.md"})
+        for key in ("beatmap", "full_scene", "frontmatter", "adjacent"):
+            assert preview0["items"][key]["available"] is True
+            assert preview0["items"][key]["bytes"] > 0
+            assert preview0["items"][key]["in_thread"] is False
+
+        # Turn 1: lean default (no prompt_context) omits beat map, full scene, frontmatter, adjacent.
+        manager.submit(
+            cid,
+            client_request_id="pc-lean-1",
+            question="Tighten line 1.",
+            document={"kind": "scene", "path": "02-mid.md"},
+        )
+        _wait_for(lambda: turn_finished(1))
+        p1 = clients[0].prompts[0]
+        assert "BEGIN SCENE BEAT MAP" not in p1
+        assert "BEGIN UNTRUSTED DOCUMENT" not in p1
+        assert "Recover the ledger" not in p1
+        assert "Patel closed the shutter" not in p1
+
+        # Turn 2: opt into all 4 optional context blocks -> included once.
+        all_on = {"beatmap": True, "full_scene": True, "frontmatter": True, "adjacent": True}
+        manager.submit(
+            cid,
+            client_request_id="pc-all-2",
+            question="Check pacing.",
+            document={"kind": "scene", "path": "02-mid.md"},
+            prompt_context=all_on,
+        )
+        _wait_for(lambda: turn_finished(2))
+        p2 = clients[0].prompts[1]
+        assert "BEGIN SCENE BEAT MAP" in p2
+        assert 'BEGIN UNTRUSTED DOCUMENT "manuscript/02-mid.md"' in p2
+        assert "Recover the ledger" in p2
+        assert "Patel closed the shutter" in p2
+        assert "Dawn broke cold over the alley." in p2
+        msg2 = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"][-1]
+        assert msg2["context_sent"]["prompt_context"] == {
+            "beatmap": "included",
+            "full_scene": "included",
+            "frontmatter": "included",
+            "adjacent": "included",
+        }
+
+        # Preview now reports all 4 items as already in_thread.
+        preview1 = manager.context_preview(cid, document={"kind": "scene", "path": "02-mid.md"})
+        for key in ("beatmap", "full_scene", "frontmatter", "adjacent"):
+            assert preview1["items"][key]["in_thread"] is True
+
+        # Turn 3: follow-up with same toggles -> deduplicated (not repeated in prompt!).
+        manager.submit(
+            cid,
+            client_request_id="pc-dedup-3",
+            question="Apply item 2.",
+            document={"kind": "scene", "path": "02-mid.md"},
+            prompt_context=all_on,
+        )
+        _wait_for(lambda: turn_finished(3))
+        p3 = clients[0].prompts[2]
+        assert "BEGIN SCENE BEAT MAP" not in p3
+        assert "BEGIN UNTRUSTED DOCUMENT" not in p3
+        assert "Recover the ledger" not in p3
+        assert "Patel closed the shutter" not in p3
+        msg3 = [m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "user"][-1]
+        assert msg3["context_sent"]["prompt_context"] == {
+            "beatmap": "in_thread",
+            "full_scene": "in_thread",
+            "frontmatter": "in_thread",
+            "adjacent": "in_thread",
+        }
+        assert msg3["context_sent"]["beatmap_in_thread"] is True
+
+        # Patch beat map -> only beat map re-sends on Turn 4; others remain deduplicated.
+        patch_scene_beatmap(root, "02-mid.md", {"beat_order": 1, "patch": {"title": "UPDATED_BEAT_TITLE"}})
+        preview2 = manager.context_preview(cid, document={"kind": "scene", "path": "02-mid.md"})
+        assert preview2["items"]["beatmap"]["in_thread"] is False
+        assert preview2["items"]["full_scene"]["in_thread"] is True
+
+        manager.submit(
+            cid,
+            client_request_id="pc-updated-4",
+            question="Re-check beat 1.",
+            document={"kind": "scene", "path": "02-mid.md"},
+            prompt_context=all_on,
+        )
+        _wait_for(lambda: turn_finished(4))
+        p4 = clients[0].prompts[3]
+        assert "UPDATED_BEAT_TITLE" in p4
+        assert "BEGIN UNTRUSTED DOCUMENT" not in p4
+        assert "Recover the ledger" not in p4
+
+        # New conversation clears dedup hashes so enabled items send again.
+        manager.new_conversation(cid)
+        preview3 = manager.context_preview(cid, document={"kind": "scene", "path": "02-mid.md"})
+        assert preview3["items"]["beatmap"]["in_thread"] is False
+    finally:
+        manager.close()
+
+
+def test_token_usage_and_cost_tracking_across_transports(tmp_path: Path, monkeypatch) -> None:
+    from proseview.claude_agent_client import _extract_claude_usage, sanitize_claude_message
+    from proseview.discuss import sanitize_agent_message
+
+    # 1. Claude usage extraction (including last-step context fill & API-equivalent USD cost).
+    extracted = _extract_claude_usage(
+        {
+            "input_tokens": 12,
+            "cache_read_input_tokens": 48_000,
+            "cache_creation_input_tokens": 1_200,
+            "output_tokens": 310,
+            "output_tokens_details": {"thinking_tokens": 90},
+        },
+        cost_usd=0.0412,
+        model_usage={"claude-opus": {"contextWindow": 200_000}},
+        last_step_context_tokens=49_212,
+    )
+    assert extracted is not None
+    assert extracted["context_tokens"] == 49_212
+    assert extracted["context_window"] == 200_000
+    assert extracted["output_tokens"] == 310
+    assert extracted["reasoning_tokens"] == 90
+    assert extracted["cost_usd"] == 0.0412
+    assert extracted["estimated"] is False
+
+    # 2. Claude translator forwards usage on turn/completed.
+    ev = sanitize_claude_message({
+        "method": "turn/completed",
+        "params": {"threadId": "t1", "turnId": "turn-1", "status": "completed", "usage": extracted},
+    })
+    assert len(ev) == 1 and ev[0]["usage"]["cost_usd"] == 0.0412
+
+    # 3. Codex translator normalizes thread/tokenUsage/updated.
+    codex_ev = sanitize_agent_message({
+        "method": "thread/tokenUsage/updated",
+        "params": {
+            "threadId": "t1",
+            "turnId": "turn-1",
+            "tokenUsage": {
+                "modelContextWindow": 258_400,
+                "last": {
+                    "inputTokens": 20_500,
+                    "cachedInputTokens": 18_000,
+                    "outputTokens": 420,
+                    "reasoningOutputTokens": 110,
+                },
+            },
+        },
+    })
+    assert len(codex_ev) == 1 and codex_ev[0]["type"] == "token.usage"
+    assert codex_ev[0]["usage"]["cache_read_tokens"] == 18_000
+    assert codex_ev[0]["usage"]["input_tokens"] == 2_500
+    assert codex_ev[0]["usage"]["context_tokens"] == 20_500
+    assert codex_ev[0]["usage"]["context_window"] == 258_400
+
+    # 4. End-to-end manager accounting: user prompt_tokens + assistant usage + thread totals + reset.
+    root = tmp_path / "book"
+    (root / "manuscript").mkdir(parents=True)
+    (root / "manuscript" / "01-scene.md").write_text("# One\n\nA quiet paragraph.\n", encoding="utf-8")
+    monkeypatch.setattr("proseview.discuss._state_path", lambda: tmp_path / "state" / "discuss.json")
+
+    class _UsageClient(_FakeClient):
+        def request(self, method: str, params: dict[str, Any] | None = None, *, timeout: float = 30.0) -> dict[str, Any]:
+            if method == "turn/start":
+                self.prompts.append((params or {})["input"][0]["text"])
+                self.turn_params.append(dict(params or {}))
+                n = len(self.prompts)
+                turn_id = f"turn-{n}"
+                tid = (params or {}).get("threadId") or self.thread_id
+                def _emit() -> None:
+                    self.callback({
+                        "method": "thread/tokenUsage/updated",
+                        "params": {
+                            "threadId": tid,
+                            "turnId": turn_id,
+                            "tokenUsage": {
+                                "modelContextWindow": 200_000,
+                                "last": {
+                                    "input_tokens": 50,
+                                    "cache_read_tokens": 12_000 * n,
+                                    "cache_write_tokens": 300,
+                                    "output_tokens": 200,
+                                    "cost_usd": 0.03,
+                                },
+                            },
+                        },
+                    })
+                    self.callback({
+                        "method": "item/completed",
+                        "params": {
+                            "threadId": tid,
+                            "turnId": turn_id,
+                            "item": {"id": f"msg-{n}", "type": "agentMessage", "phase": "final_answer", "text": "Sharper line."},
+                        },
+                    })
+                    self.callback({
+                        "method": "turn/completed",
+                        "params": {"threadId": tid, "turn": {"id": turn_id, "status": "completed"}},
+                    })
+                threading.Timer(0.01, _emit).start()
+                return {"turn": {"id": turn_id}}
+            return super().request(method, params, timeout=timeout)
+
+    clients: list[_UsageClient] = []
+    manager = DiscussManager(
+        root,
+        client_factory=lambda callback, _agent=None: clients.append(_UsageClient(callback)) or clients[-1],
+    )
+    try:
+        cid = manager.open({"kind": "scene", "path": "01-scene.md"})["conversation_id"]
+        for i in (1, 2):
+            manager.submit(cid, client_request_id=f"u-{i}", question=f"Edit line {i}.", document={"kind": "scene", "path": "01-scene.md"})
+            _wait_for(lambda n=i: len([m for m in manager.get_snapshot(cid)["messages"] if m["role"] == "assistant"]) >= n
+                      and not manager.get_snapshot(cid)["active_turn_id"]
+                      and not manager.get_snapshot(cid)["active_request_id"]
+                      and not manager.get_snapshot(cid)["queue"])
+        snap = manager.get_snapshot(cid)
+        user_msgs = [m for m in snap["messages"] if m["role"] == "user"]
+        asst_msgs = [m for m in snap["messages"] if m["role"] == "assistant"]
+        assert user_msgs[-1]["context_sent"]["prompt_tokens"]["total"] > 0
+        assert asst_msgs[-1]["usage"]["output_tokens"] == 200
+        assert asst_msgs[-1]["usage"]["cost_usd"] == 0.03
+        assert snap["usage"]["context_tokens"] == 24_350
+        assert snap["usage"]["context_window"] == 200_000
+        assert snap["usage"]["total_cost_usd"] == 0.06
+        assert snap["usage"]["total_output_tokens"] == 400
+
+        preview = manager.context_preview(cid, document={"kind": "scene", "path": "01-scene.md"})
+        assert preview["open_file_tokens"] > 0
+        assert preview["items"]["full_scene"]["tokens"] > 0
+        assert preview["thread_usage"]["total_cost_usd"] == 0.06
+
+        manager.new_conversation(cid)
+        assert manager.get_snapshot(cid)["usage"] == {}
+    finally:
+        manager.close()

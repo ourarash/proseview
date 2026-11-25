@@ -165,6 +165,7 @@
             _addReviewInfoRow(rows, 'Saved story notes', 'Included when available.', 'Story facts and purpose saved for this scene.');
             _addReviewInfoRow(rows, 'Scene details', flag('includeFrontmatter'), 'Fields such as goal, conflict, and outcome.');
             _addReviewInfoRow(rows, 'Nearby scenes', flag('includeAdjacent'), 'Short excerpts from the scenes immediately before and after.');
+            _addReviewInfoRow(rows, 'Scene beat map', flag('includeBeatmap'), 'Cached scene beat map structure and tension curve (off by default).');
             _addReviewInfoRow(rows, 'Revision priorities', 'Up to ' + DISCUSS_DEFAULT_MAX_FINDINGS, 'Most important first. Change the number in Customize.');
             _addReviewInfoRow(rows, 'Keep list', 'Off', 'To list moments that work apart from the priorities, turn on “Show what to keep” in Customize.');
             _addReviewInfoRow(rows, 'Check planned events', 'Off', 'Notes provide background. To check for missing events, turn on “Check my notes for planned beats” in Customize.');
@@ -849,6 +850,7 @@
             }
             toggle('discussReviewFrontmatter', 'Scene frontmatter', 'Include goals, conflicts, outcomes, and other scene metadata.', effectiveDiscussFrontmatter(), function(on) { _discussCraftState.includeFrontmatter = on; });
             toggle('discussReviewAdjacent', '±1 scene excerpts', selectedScenes.length === 1 ? 'Closing and opening paragraphs, supplied as background.' : 'Available for a single-scene review. Selected scenes are already supplied in full.', selectedScenes.length === 1 && effectiveDiscussAdjacent(), function(on) { _discussCraftState.includeAdjacent = on; }, selectedScenes.length !== 1);
+            toggle('discussReviewBeatmap', 'Scene beat map', 'Off by default. Include the cached beat map structure and tension curve for selected scenes.', effectiveDiscussBeatmap(), function(on) { _discussCraftState.includeBeatmap = on; });
             toggle('discussReviewCheckPlan', 'Check my notes for planned beats', 'Off: notes are background only. On: compare the draft with beats in your frontmatter, beat map, or TODO notes.', _discussCraftState.checkPlan, function(on) { _discussCraftState.checkPlan = on; });
             wrap.appendChild(row);
             var path = _discussCraftState.contextScenePath;

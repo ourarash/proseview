@@ -92,9 +92,13 @@ Three places where AI shows up, all opt-in:
 
    Every question tells the agent where you are, the way the editor
    extensions do: which file is open, and your selection if it is in the
-   panel. A quiet line at the top of the panel names that file. The agent
-   reads the file from the project when it needs to; the text itself goes
-   along only when it has unsaved edits, which are not on disk to be read.
+   panel. Click the open filename in the composer footer to open **Prompt
+   context** and optionally attach the scene beat map, full scene text,
+   story notes & frontmatter, or ±1 neighboring excerpts (all off by default,
+   scoped to the current thread, and sent once per thread unless changed).
+   The agent reads the file from the project when it needs to; the text itself
+   goes along automatically only when it has unsaved edits, which are not on
+   disk to be read.
    Press `@` to mention other files and folders: they stay in the question as
    `@path` chips and send the path, not the file. Selection tasks and their
    follow-ups stay anchored to the passage you selected.

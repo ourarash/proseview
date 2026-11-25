@@ -922,6 +922,21 @@
                     <div class="discuss-context-menu-header"><strong id="discussContextHeading">Files and folders</strong><span>Type to search</span></div>
                     <div id="discussContextOptions" class="discuss-context-options" role="listbox" aria-label="Repository context suggestions"></div>
                 </div>
+                <div id="discussPromptContextPicker" class="discuss-prompt-context-picker" role="dialog" aria-label="Prompt context" hidden>
+                    <div class="discuss-prompt-context-head">
+                        <div class="discuss-prompt-context-head-row">
+                            <strong>Prompt context</strong>
+                            <span id="discussPromptContextScope">This thread</span>
+                        </div>
+                        <div id="discussPromptContextMeter" class="discuss-prompt-context-meter" hidden><div id="discussPromptContextMeterBar" class="discuss-prompt-context-meter-bar"></div></div>
+                    </div>
+                    <div id="discussPromptContextAuto" class="discuss-prompt-context-auto"></div>
+                    <div id="discussPromptContextList" class="discuss-prompt-context-list"></div>
+                    <div class="discuss-prompt-context-foot">
+                        <button id="discussPromptContextSaveDefault" type="button" class="discuss-prompt-context-foot-btn" onclick="saveDiscussPromptContextDefault()">Save as default</button>
+                        <button id="discussPromptContextResetLean" type="button" class="discuss-prompt-context-foot-btn" onclick="resetDiscussPromptContextLean()">Reset to lean</button>
+                    </div>
+                </div>
                 <div id="discussSelectionChip" class="discuss-selection-chip" hidden></div>
                 <div id="discussTaskMode" class="discuss-task-mode" hidden></div>
                 <div id="discussSkillsPicker" class="discuss-skills-picker" hidden></div>
@@ -975,6 +990,7 @@
                 </div>
                 <div id="discussAnnouncement" class="sr-only" aria-live="polite"></div>
             </div>
+            <div id="discussUsagePopover" class="discuss-usage-popover" role="dialog" aria-label="Token usage breakdown" hidden></div>
         </div>
         <div id="btwResizeHandle" class="btw-resize-handle" role="separator" tabindex="0" aria-label="Resize side question panel" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="560" aria-valuenow="340" hidden></div>
         <section id="btwSplitPane" class="btw-split-pane" aria-label="Side questions" hidden>

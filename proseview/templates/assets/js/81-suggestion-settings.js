@@ -745,6 +745,10 @@
                 ['Adjacent scenes', 'Attach closing/opening excerpts from ±1 neighboring scenes.',
                     _dsCheckbox(book.include_adjacent_scenes, 'Include ±1 adjacent scene excerpts in scene & Craft passes', function(v) {
                         book.include_adjacent_scenes = v;
+                    })],
+                ['Scene beat map', 'Attach cached scene beat map in reviews and Group chat (off by default).',
+                    _dsCheckbox(book.include_beatmap === true, 'Include scene beat map by default in reviews and Group chat', function(v) {
+                        book.include_beatmap = v;
                     })]
             ];
             rows.forEach(function(r) {

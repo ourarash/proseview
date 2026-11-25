@@ -46,6 +46,7 @@
             scenePath: '',
             includeFrontmatter: null,
             includeAdjacent: null,
+            includeBeatmap: null,
             // Off unless the writer asks: notes go stale quietly, and a planned
             // beat they dropped should not lead every review.
             checkPlan: false,
@@ -72,7 +73,8 @@
         var _discussContextDefaultsLoading = null;
         function _discussDefaultFlag(key) {
             var bag = window._discussContextDefaults;
-            return bag && typeof bag[key] === 'boolean' ? bag[key] : true;
+            if (bag && typeof bag[key] === 'boolean') return bag[key];
+            return key === 'includeBeatmap' ? false : true;
         }
         function effectiveDiscussFrontmatter() {
             return _discussCraftState.includeFrontmatter === null
@@ -84,6 +86,11 @@
                 ? _discussDefaultFlag('includeAdjacent')
                 : !!_discussCraftState.includeAdjacent;
         }
+        function effectiveDiscussBeatmap() {
+            return _discussCraftState.includeBeatmap === null
+                ? _discussDefaultFlag('includeBeatmap')
+                : !!_discussCraftState.includeBeatmap;
+        }
         function _ensureDiscussContextDefaults() {
             if (window._discussContextDefaults) return Promise.resolve();
             if (_discussContextDefaultsLoading) return _discussContextDefaultsLoading;
@@ -91,7 +98,8 @@
                 var book = (data && data.settings && data.settings.book) || {};
                 window._discussContextDefaults = {
                     includeFrontmatter: book.include_frontmatter !== false,
-                    includeAdjacent: book.include_adjacent_scenes !== false
+                    includeAdjacent: book.include_adjacent_scenes !== false,
+                    includeBeatmap: book.include_beatmap === true
                 };
                 if (_discussCraftState.active) {
                     renderDiscussTaskMode();
@@ -608,6 +616,8 @@
         function openDiscuss(trigger, options) {
             options = options || {};
             closeDiscussModelPicker();
+            closeDiscussPromptContextPicker();
+            if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
             var doc = options.document || discussDocument() || _discussDockDocument;
             if (!doc) {
                 if (trigger && typeof sidebarShowToast === 'function') {
@@ -801,6 +811,10 @@
             _saveDiscussAgentLocal();
             if (typeof _flushBtwDraft === 'function') _flushBtwDraft();
             closeDiscussContextPicker();
+            closeDiscussPromptContextPicker();
+            closeDiscussModelPicker();
+            closeDiscussUsagePopover();
+            if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
             var panel = document.getElementById('discussPanel');
             panel.hidden = true;
             document.body.classList.remove('discuss-open');
@@ -4069,7 +4083,7 @@
             });
             ['connection', 'conversation.reset', 'turn.queued', 'turn.steered', 'turn.cancelled', 'turn.preparing', 'turn.started', 'turn.completed', 'turn.idle', 'response.completed', 'progress.delta',
              'plan.updated', 'activity.updated', 'approval.requested', 'approval.resolved', 'approval.expired', 'task.ready', 'task.failed',
-             'task.updated', 'tasks.cleared', 'notice.dismissed', 'model.changed', 'warning', 'error'].forEach(function(type) {
+             'task.updated', 'tasks.cleared', 'notice.dismissed', 'model.changed', 'token.usage', 'warning', 'error'].forEach(function(type) {
                 source.addEventListener(type, function(event) {
                     if (type === 'connection') {
                         var detail = JSON.parse(event.data);
@@ -4081,6 +4095,11 @@
                         _discussReview = [];
                         _discussReviewKeep = {};
                         _clearBtwTabs(cid);
+                        _resetDiscussPromptContextForNewThread(cid);
+                    }
+                    if (type === 'turn.queued' || type === 'turn.steered' || type === 'turn.completed') {
+                        _discussPromptContextPreview = null;
+                        if (_discussPromptContextOpen) loadDiscussPromptContextPreview();
                     }
                     // A new question accepts what the last turn changed: the edits are
                     // already saved, and the server has already let go of their review.
@@ -7206,6 +7225,7 @@
                 _clearDiscussFrontmatterSync();
             }
             setDiscussConnection(snapshot.connection || 'Live', snapshot.unavailable_reason || '');
+            renderDiscussThreadUsage(snapshot);
             var log = document.getElementById('discussLog');
             var continuityTools = log.querySelector('.discuss-continuity-tools');
             var continuityToolsOpen = !!(continuityTools && continuityTools.open);
@@ -7346,6 +7366,8 @@
                 var mTime = message.created_at || (snapshot.conversation && snapshot.conversation.created_at ? (snapshot.conversation.created_at + mIdx * 60) : 0);
                 var meta = _buildMessageMeta(mTime, message.duration_ms);
                 if (meta) head.appendChild(meta);
+                var usageChip = _buildMessageUsageChip(message, isUser, isThought, snapshot);
+                if (usageChip) head.appendChild(usageChip);
                 if (isUser && message.context_sent) {
                     var ctxBtn = document.createElement('button');
                     ctxBtn.type = 'button';
@@ -8650,6 +8672,521 @@ function loadDiscussDiffMode(mode) {
             document.getElementById('discussNewActivity').hidden = true;
         }
 
+        // ── Prompt Context Popover (Option 1: composer footer trigger) ──────
+        var DISCUSS_PROMPT_CONTEXT_DEFAULTS_PREF = 'proseview-discuss-prompt-context-defaults';
+        var DISCUSS_PROMPT_CONTEXT_ITEMS = [
+            {
+                key: 'beatmap',
+                label: 'Scene beat map',
+                desc: 'Structure, tension & beats · sent once if changed'
+            },
+            {
+                key: 'full_scene',
+                label: 'Full scene text',
+                desc: 'Inline whole file upfront instead of reading'
+            },
+            {
+                key: 'frontmatter',
+                label: 'Story notes & frontmatter',
+                desc: 'POV, purpose, annotations & planned beats'
+            },
+            {
+                key: 'adjacent',
+                label: 'Neighboring scenes (±1)',
+                desc: 'Short excerpts from previous and next scenes'
+            }
+        ];
+        var _discussPromptContextOpen = false;
+        var _discussPromptContextByThread = Object.create(null);
+        var _discussPromptContextPreview = null;
+        var _discussPromptContextPreviewSeq = 0;
+        var _discussPromptContextPreviewLoading = false;
+        var _discussPromptContextSaveTimer = null;
+
+        function _normalizePromptContext(raw) {
+            raw = raw && typeof raw === 'object' ? raw : {};
+            return {
+                beatmap: raw.beatmap === true,
+                full_scene: raw.full_scene === true,
+                frontmatter: raw.frontmatter === true,
+                adjacent: raw.adjacent === true
+            };
+        }
+
+        function readDiscussPromptContextDefaults() {
+            try {
+                var saved = JSON.parse(localStorage.getItem(DISCUSS_PROMPT_CONTEXT_DEFAULTS_PREF) || 'null');
+                if (saved && typeof saved === 'object') return _normalizePromptContext(saved);
+            } catch (e) {}
+            return _normalizePromptContext(null);
+        }
+
+        function _discussPromptContextThreadKey(cidOverride) {
+            var cid = cidOverride || _discussConversationId || _discussAgent || 'default';
+            var tid = (_discussSnapshot && _discussSnapshot.thread_id) ? String(_discussSnapshot.thread_id) : '';
+            var pendingKey = cid + ':new';
+            if (tid) {
+                var fullKey = cid + ':' + tid;
+                if (!_discussPromptContextByThread[fullKey] && _discussPromptContextByThread[pendingKey]) {
+                    _discussPromptContextByThread[fullKey] = _discussPromptContextByThread[pendingKey];
+                    delete _discussPromptContextByThread[pendingKey];
+                }
+                return fullKey;
+            }
+            return pendingKey;
+        }
+
+        function discussPromptContextState() {
+            var key = _discussPromptContextThreadKey();
+            if (!_discussPromptContextByThread[key]) {
+                _discussPromptContextByThread[key] = readDiscussPromptContextDefaults();
+            }
+            return _discussPromptContextByThread[key];
+        }
+
+        function discussPromptContextActiveCount() {
+            var state = discussPromptContextState();
+            var count = 0;
+            DISCUSS_PROMPT_CONTEXT_ITEMS.forEach(function(item) {
+                if (state[item.key]) count++;
+            });
+            return count;
+        }
+
+        function _resetDiscussPromptContextForNewThread(cid) {
+            delete _discussPromptContextByThread[(cid || _discussConversationId || _discussAgent || 'default') + ':new'];
+            _discussPromptContextPreview = null;
+            closeDiscussPromptContextPicker();
+            renderDiscussContext();
+        }
+
+        function _formatPromptContextBytes(bytes) {
+            var n = Number(bytes || 0);
+            if (!n || n <= 0) return '0 KB';
+            if (n < 1024) return Math.max(0.1, Math.round((n / 1024) * 10) / 10).toFixed(1) + ' KB';
+            return (n / 1024).toFixed(1) + ' KB';
+        }
+
+        function _formatTokensCompact(tokens) {
+            var n = Math.round(Number(tokens || 0));
+            if (!n || n <= 0) return '0';
+            if (n < 1000) return String(n);
+            if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            if (n < 1000000) return Math.round(n / 1000) + 'k';
+            return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+        }
+
+        function _formatUsdCost(val) {
+            if (typeof val !== 'number' || !isFinite(val) || val < 0) return '';
+            if (val > 0 && val < 0.005) return '<$0.01';
+            return '$' + val.toFixed(2);
+        }
+
+        function _threadUsageInfo(snapshot) {
+            var u = (snapshot && snapshot.usage) || (_discussPromptContextPreview && _discussPromptContextPreview.thread_usage) || null;
+            if (!u || typeof u !== 'object') return null;
+            var ctx = Number(u.context_tokens || 0);
+            var cw = Number(u.context_window || 0);
+            var cost = typeof u.total_cost_usd === 'number' ? u.total_cost_usd : null;
+            var pct = (ctx > 0 && cw > 0) ? Math.min(100, Math.round((ctx / cw) * 100)) : null;
+            var heavy = pct !== null ? pct >= 75 : false;
+            return {contextTokens: ctx, contextWindow: cw, totalCostUsd: cost, pct: pct, heavy: heavy};
+        }
+
+        function renderDiscussThreadUsage() {
+            // Thread usage lives inside the Prompt Context popover (and shows a
+            // quiet warning pill on the filename trigger only at >= 75% fill)
+            // so the 49px tab bar stays uncluttered.
+            renderDiscussContext();
+            if (_discussPromptContextOpen) renderDiscussPromptContextPicker();
+        }
+
+        var _discussUsagePopoverTrigger = null;
+
+        function closeDiscussUsagePopover(options) {
+            var pop = document.getElementById('discussUsagePopover');
+            if (!pop || pop.hidden) return;
+            pop.hidden = true;
+            var prev = _discussUsagePopoverTrigger;
+            _discussUsagePopoverTrigger = null;
+            if (prev) {
+                prev.setAttribute('aria-expanded', 'false');
+                if (options && options.focus && prev.isConnected) prev.focus({preventScroll: true});
+            }
+        }
+
+        function openDiscussUsagePopover(trigger, payload) {
+            var pop = document.getElementById('discussUsagePopover');
+            if (!pop || !trigger || !payload) return;
+            if (!pop.hidden && _discussUsagePopoverTrigger === trigger) {
+                closeDiscussUsagePopover();
+                return;
+            }
+            closeDiscussUsagePopover();
+            closeDiscussPromptContextPicker();
+            closeDiscussModelPicker();
+            if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
+
+            pop.replaceChildren();
+            var head = elementWith('discuss-usage-popover-head');
+            var title = document.createElement('strong');
+            title.textContent = payload.title || 'Token usage';
+            var closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'discuss-usage-popover-close';
+            closeBtn.setAttribute('aria-label', 'Close usage breakdown');
+            closeBtn.textContent = '×';
+            closeBtn.onclick = function() { closeDiscussUsagePopover({focus: true}); };
+            head.append(title, closeBtn);
+
+            var rowsEl = elementWith('discuss-usage-popover-rows');
+            (payload.rows || []).forEach(function(pair) {
+                var row = elementWith('discuss-usage-popover-row');
+                var k = document.createElement('span');
+                k.textContent = pair[0];
+                var v = document.createElement('strong');
+                v.textContent = pair[1];
+                if (pair[2]) v.className = pair[2];
+                row.append(k, v);
+                rowsEl.appendChild(row);
+            });
+            pop.append(head, rowsEl);
+            if (payload.foot) {
+                pop.appendChild(elementWith('discuss-usage-popover-foot', payload.foot));
+            }
+
+            pop.hidden = false;
+            _discussUsagePopoverTrigger = trigger;
+            trigger.setAttribute('aria-expanded', 'true');
+
+            // Position cleanly relative to the trigger inside viewport bounds.
+            var rect = trigger.getBoundingClientRect();
+            var popRect = pop.getBoundingClientRect();
+            var left = Math.min(window.innerWidth - popRect.width - 12, Math.max(12, rect.left));
+            var top = rect.bottom + 6;
+            if (top + popRect.height > window.innerHeight - 12) {
+                top = Math.max(12, rect.top - popRect.height - 6);
+            }
+            pop.style.left = Math.round(left) + 'px';
+            pop.style.top = Math.round(top) + 'px';
+        }
+
+        function _buildMessageUsageChip(message, isUser, isThought, snapshot) {
+            if (isThought || !message) return null;
+            if (isUser) {
+                var ctx = message.context_sent || null;
+                var pt = (ctx && ctx.prompt_tokens) || message.prompt_tokens || null;
+                var total = pt && typeof pt.total === 'number' ? pt.total : (ctx && typeof ctx.estimated_tokens === 'number' ? ctx.estimated_tokens : 0);
+                if (!total || total <= 0) return null;
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'discuss-usage-chip';
+                btn.setAttribute('aria-haspopup', 'dialog');
+                btn.setAttribute('aria-expanded', 'false');
+                btn.textContent = '~' + _formatTokensCompact(total) + ' tok';
+                btn.title = 'Estimated prompt size: ~' + total.toLocaleString() + ' tokens (click for breakdown)';
+                btn.onclick = function(event) {
+                    event.stopPropagation();
+                    var rows = [];
+                    if (pt && pt.question > 0) rows.push(['Your message', '~' + pt.question.toLocaleString() + ' tok']);
+                    if (pt && pt.selection > 0) rows.push(['Selected text', '~' + pt.selection.toLocaleString() + ' tok']);
+                    if (pt && pt.beatmap > 0) rows.push(['Scene beat map', '~' + pt.beatmap.toLocaleString() + ' tok']);
+                    else if (ctx && ctx.beatmap_in_thread) rows.push(['Scene beat map', 'In thread ✓', 'is-in-thread']);
+                    if (pt && pt.documents > 0) rows.push(['Attached files', '~' + pt.documents.toLocaleString() + ' tok']);
+                    if (pt && pt.notes > 0) rows.push(['Notes & excerpts', '~' + pt.notes.toLocaleString() + ' tok']);
+                    rows.push(['Total prompt', '~' + total.toLocaleString() + ' tok']);
+                    openDiscussUsagePopover(btn, {
+                        title: 'Prompt sent',
+                        rows: rows,
+                        foot: 'Estimated at ~4 chars/token. Context items already sent in this thread are not repeated.'
+                    });
+                };
+                return btn;
+            }
+            var u = message.usage;
+            if (!u || typeof u !== 'object') return null;
+            var outTok = Number(u.output_tokens || 0);
+            var ctxTok = Number(u.context_tokens || 0);
+            var cost = typeof u.cost_usd === 'number' ? u.cost_usd : null;
+            if (!outTok && !ctxTok && cost === null) return null;
+            var estPrefix = u.estimated ? '~' : '';
+            var labelParts = [];
+            if (outTok > 0) labelParts.push(estPrefix + _formatTokensCompact(outTok) + ' tok');
+            var costStr = _formatUsdCost(cost);
+            if (costStr) labelParts.push(costStr);
+            if (!labelParts.length && ctxTok > 0) labelParts.push(_formatTokensCompact(ctxTok) + ' ctx');
+            var btnA = document.createElement('button');
+            btnA.type = 'button';
+            btnA.className = 'discuss-usage-chip';
+            btnA.setAttribute('aria-haspopup', 'dialog');
+            btnA.setAttribute('aria-expanded', 'false');
+            btnA.textContent = labelParts.join(' · ');
+            btnA.title = 'Click for token & cost breakdown';
+            btnA.onclick = function(event) {
+                event.stopPropagation();
+                var rows = [];
+                if (u.cache_read_tokens > 0) rows.push(['Cached context', Number(u.cache_read_tokens).toLocaleString() + ' tok']);
+                var freshIn = Number(u.input_tokens || 0) + Number(u.cache_write_tokens || 0);
+                if (freshIn > 0) rows.push([u.cache_write_tokens > 0 ? 'New input / write' : 'New input', freshIn.toLocaleString() + ' tok']);
+                if (outTok > 0) rows.push(['Output', (u.estimated ? '~' : '') + outTok.toLocaleString() + ' tok']);
+                if (u.reasoning_tokens > 0) rows.push(['Reasoning', Number(u.reasoning_tokens).toLocaleString() + ' tok']);
+                if (ctxTok > 0) rows.push(['Context fill', ctxTok.toLocaleString() + ' tok']);
+                if (costStr) rows.push(['Turn est. (API)', costStr]);
+                var threadCost = typeof u.thread_cost_usd === 'number'
+                    ? u.thread_cost_usd
+                    : (snapshot && snapshot.usage && typeof snapshot.usage.total_cost_usd === 'number' ? snapshot.usage.total_cost_usd : null);
+                var threadCostStr = _formatUsdCost(threadCost);
+                if (threadCostStr) rows.push(['Thread total', threadCostStr]);
+                openDiscussUsagePopover(btnA, {
+                    title: discussAgentLabel() + ' · Turn usage',
+                    rows: rows,
+                    foot: u.estimated
+                        ? 'Estimated from reply length (~4 chars/token) because this transport did not report exact usage.'
+                        : (costStr
+                            ? 'Reported by ' + discussAgentLabel() + ' CLI. On a subscription plan, cost reflects API-equivalent quota weight.'
+                            : 'Reported directly by ' + discussAgentLabel() + '.')
+                });
+            };
+            return btnA;
+        }
+
+        document.addEventListener('mousedown', function(event) {
+            var pop = document.getElementById('discussUsagePopover');
+            if (!pop || pop.hidden) return;
+            if (event.target.closest && event.target.closest('#discussUsagePopover, .discuss-usage-chip')) return;
+            closeDiscussUsagePopover();
+        });
+
+        document.addEventListener('keydown', function(event) {
+            var pop = document.getElementById('discussUsagePopover');
+            if (!pop || pop.hidden || event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeDiscussUsagePopover({focus: true});
+        });
+
+        function loadDiscussPromptContextPreview() {
+            var doc = discussTurnDocument();
+            if (!_discussConversationId || !doc) {
+                _discussPromptContextPreview = null;
+                _discussPromptContextPreviewLoading = false;
+                if (_discussPromptContextOpen) renderDiscussPromptContextPicker();
+                return;
+            }
+            var seq = ++_discussPromptContextPreviewSeq;
+            _discussPromptContextPreviewLoading = true;
+            if (_discussPromptContextOpen) renderDiscussPromptContextPicker();
+            discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/context-preview', {
+                document: doc,
+                live_document: _discussLiveDocument || discussLiveDocumentFor(doc)
+            }).then(function(data) {
+                if (seq !== _discussPromptContextPreviewSeq) return;
+                _discussPromptContextPreview = data || null;
+                _discussPromptContextPreviewLoading = false;
+                if (_discussPromptContextOpen) renderDiscussPromptContextPicker();
+                renderDiscussContext();
+            }).catch(function() {
+                if (seq !== _discussPromptContextPreviewSeq) return;
+                _discussPromptContextPreviewLoading = false;
+                if (_discussPromptContextOpen) renderDiscussPromptContextPicker();
+            });
+        }
+
+        function renderDiscussPromptContextPicker() {
+            var picker = document.getElementById('discussPromptContextPicker');
+            var scopeEl = document.getElementById('discussPromptContextScope');
+            var meterEl = document.getElementById('discussPromptContextMeter');
+            var meterBarEl = document.getElementById('discussPromptContextMeterBar');
+            var autoEl = document.getElementById('discussPromptContextAuto');
+            var listEl = document.getElementById('discussPromptContextList');
+            var resetBtn = document.getElementById('discussPromptContextResetLean');
+            if (!picker || !autoEl || !listEl) return;
+            var doc = discussTurnDocument();
+            var state = discussPromptContextState();
+            var preview = _discussPromptContextPreview;
+            var previewItems = (preview && preview.items) || {};
+            var isScene = doc && doc.kind === 'scene';
+
+            var threadInfo = _threadUsageInfo(_discussSnapshot);
+            if (scopeEl) {
+                if (threadInfo && (threadInfo.contextTokens > 0 || threadInfo.totalCostUsd !== null)) {
+                    var sParts = [];
+                    if (threadInfo.contextTokens > 0) {
+                        var ctxLabel = _formatTokensCompact(threadInfo.contextTokens)
+                            + (threadInfo.contextWindow > 0 ? ' / ' + _formatTokensCompact(threadInfo.contextWindow) + ' (' + threadInfo.pct + '%)' : ' tok');
+                        sParts.push(ctxLabel);
+                    }
+                    var tCost = _formatUsdCost(threadInfo.totalCostUsd);
+                    if (tCost) sParts.push(tCost);
+                    scopeEl.textContent = sParts.join(' · ');
+                    scopeEl.classList.toggle('is-heavy', !!threadInfo.heavy);
+                } else {
+                    scopeEl.textContent = 'This thread';
+                    scopeEl.classList.remove('is-heavy');
+                }
+            }
+            if (meterEl && meterBarEl) {
+                if (threadInfo && threadInfo.pct !== null && threadInfo.contextTokens > 0) {
+                    meterEl.hidden = false;
+                    meterBarEl.style.width = Math.max(2, threadInfo.pct) + '%';
+                    meterBarEl.classList.toggle('is-heavy', !!threadInfo.heavy);
+                } else {
+                    meterEl.hidden = true;
+                }
+            }
+
+            var hasUnsaved = !!(preview && preview.has_unsaved);
+            autoEl.replaceChildren();
+            var autoRow = elementWith('discuss-prompt-context-auto-row');
+            var autoTitle = document.createElement('strong');
+            autoTitle.textContent = doc
+                ? (hasUnsaved ? 'Unsaved draft · ' : 'File path only · ') + doc.path
+                : 'File path only';
+            autoTitle.title = doc ? doc.path : '';
+            var openTok = preview && typeof preview.open_file_tokens === 'number' && preview.open_file_tokens > 0
+                ? '~' + _formatTokensCompact(preview.open_file_tokens) + ' tok'
+                : 'Always on';
+            var autoTag = elementWith('discuss-prompt-context-meta', hasUnsaved ? 'Auto-attached' : openTok);
+            autoRow.append(autoTitle, autoTag);
+            var autoNote = elementWith('discuss-prompt-context-auto-note',
+                hasUnsaved
+                    ? 'Your unsaved edits are sent automatically since they are not on disk yet.'
+                    : 'Sends only the filename, not its contents. ' + discussAgentLabel() + ' reads the file on demand; unsaved edits attach automatically.'
+            );
+            autoEl.append(autoRow, autoNote);
+
+            listEl.replaceChildren();
+            DISCUSS_PROMPT_CONTEXT_ITEMS.forEach(function(item) {
+                var info = previewItems[item.key] || null;
+                var checked = !!state[item.key];
+                var sceneOnlyBlocked = !isScene && item.key !== 'full_scene';
+                var unavailable = sceneOnlyBlocked || (info && !info.available);
+                var row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'discuss-prompt-context-row';
+                row.setAttribute('role', 'switch');
+                row.setAttribute('aria-checked', checked && !unavailable ? 'true' : 'false');
+                row.dataset.contextKey = item.key;
+                if (unavailable && !checked) row.disabled = true;
+
+                var copy = elementWith('discuss-prompt-context-copy');
+                var titleRow = elementWith('discuss-prompt-context-title');
+                titleRow.appendChild(document.createTextNode(item.label));
+
+                var metaText = '';
+                var metaClass = 'discuss-prompt-context-meta';
+                if (sceneOnlyBlocked) {
+                    metaText = 'Scene only';
+                } else if (_discussPromptContextPreviewLoading && !info) {
+                    metaText = '…';
+                } else if (info) {
+                    if (!info.available) {
+                        metaText = info.reason || 'Unavailable';
+                    } else if (checked && info.in_thread) {
+                        metaText = 'In thread ✓';
+                        metaClass += ' is-in-thread';
+                    } else {
+                        var estTok = typeof info.tokens === 'number' && info.tokens > 0
+                            ? info.tokens
+                            : Math.max(1, Math.round(Number(info.bytes || 0) / 4));
+                        metaText = '~' + _formatTokensCompact(estTok) + ' tok';
+                        row.title = '~' + estTok.toLocaleString() + ' tokens (~' + _formatPromptContextBytes(info.bytes) + ')';
+                        if (info.stale) {
+                            metaText += ' · outdated';
+                            metaClass += ' is-stale';
+                        }
+                    }
+                }
+                if (metaText) titleRow.appendChild(elementWith(metaClass, metaText));
+                copy.append(titleRow, elementWith('discuss-prompt-context-desc', item.desc));
+
+                var sw = elementWith('discuss-prompt-context-switch');
+                sw.setAttribute('aria-hidden', 'true');
+                row.append(copy, sw);
+                row.onclick = function() {
+                    state[item.key] = !state[item.key];
+                    renderDiscussContext();
+                    renderDiscussPromptContextPicker();
+                };
+                listEl.appendChild(row);
+            });
+
+            if (resetBtn) {
+                resetBtn.disabled = discussPromptContextActiveCount() === 0;
+            }
+        }
+
+        function toggleDiscussPromptContextPicker() {
+            if (_discussPromptContextOpen) {
+                closeDiscussPromptContextPicker();
+                return;
+            }
+            closeDiscussModelPicker();
+            closeDiscussContextPicker();
+            closeDiscussUsagePopover();
+            if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
+            _discussPromptContextOpen = true;
+            var picker = document.getElementById('discussPromptContextPicker');
+            if (picker) picker.hidden = false;
+            renderDiscussContext();
+            renderDiscussPromptContextPicker();
+            loadDiscussPromptContextPreview();
+            var first = picker && picker.querySelector('.discuss-prompt-context-row:not(:disabled)');
+            if (first) first.focus({preventScroll: true});
+        }
+
+        function closeDiscussPromptContextPicker(options) {
+            if (!_discussPromptContextOpen) return;
+            _discussPromptContextOpen = false;
+            var picker = document.getElementById('discussPromptContextPicker');
+            if (picker) picker.hidden = true;
+            renderDiscussContext();
+            if (options && options.focus) {
+                var trigger = document.getElementById('discussPromptContextTrigger');
+                if (trigger) trigger.focus({preventScroll: true});
+            }
+        }
+
+        function saveDiscussPromptContextDefault() {
+            var state = _normalizePromptContext(discussPromptContextState());
+            try {
+                localStorage.setItem(DISCUSS_PROMPT_CONTEXT_DEFAULTS_PREF, JSON.stringify(state));
+            } catch (e) {}
+            var btn = document.getElementById('discussPromptContextSaveDefault');
+            if (btn) {
+                btn.textContent = 'Saved as default ✓';
+                clearTimeout(_discussPromptContextSaveTimer);
+                _discussPromptContextSaveTimer = setTimeout(function() {
+                    var current = document.getElementById('discussPromptContextSaveDefault');
+                    if (current) current.textContent = 'Save as default';
+                }, 1500);
+            }
+            var announce = document.getElementById('discussAnnouncement');
+            if (announce) announce.textContent = 'Prompt context saved as default for new threads';
+        }
+
+        function resetDiscussPromptContextLean() {
+            var state = discussPromptContextState();
+            DISCUSS_PROMPT_CONTEXT_ITEMS.forEach(function(item) { state[item.key] = false; });
+            renderDiscussContext();
+            renderDiscussPromptContextPicker();
+            var announce = document.getElementById('discussAnnouncement');
+            if (announce) announce.textContent = 'Prompt context reset to lean defaults';
+        }
+
+        document.addEventListener('mousedown', function(event) {
+            if (!_discussPromptContextOpen) return;
+            if (event.target.closest && event.target.closest('#discussPromptContextPicker, #discussSees')) return;
+            closeDiscussPromptContextPicker();
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (!_discussPromptContextOpen || event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeDiscussPromptContextPicker({focus: true});
+        });
+
         function renderDiscussContext() {
             var context = document.getElementById('discussContext'); context.replaceChildren();
             var seesSlot = document.getElementById('discussSees'); seesSlot.replaceChildren();
@@ -8670,25 +9207,68 @@ function loadDiscussDiffMode(mode) {
                 };
                 current.appendChild(removeCurrent); context.appendChild(current);
             } else if (doc && !_discussRepositoryAction) {
-                // What an editor extension calls IDE context: the agent is told
-                // which file is open and reads it from the project itself.
-                // Over the dashboard nothing is open, so name the document the
-                // conversation is still about rather than claim it is open.
-                // It sits in the send row's spare space as just the path; the
-                // sentence it stands for is still read out and kept in the text.
+                // Quiet clickable filename trigger in the composer footer:
+                // shows the open file path at rest, and opens the upward
+                // Prompt Context popover to customize what goes to the prompt.
                 var away = !_discussDraftDocument && !discussDocument();
-                var sees = elementWith('discuss-sees');
-                if (away) {
-                    sees.textContent = (doc.kind === 'file' ? 'Last file: ' : 'Last scene: ') + doc.path;
-                } else {
-                    sees.appendChild(Object.assign(document.createElement('span'),
-                        {className: 'sr-only', textContent: discussAgentLabel() + ' knows you are in '}));
-                    sees.appendChild(document.createTextNode(doc.path));
+                var activeCount = discussPromptContextActiveCount();
+                var state = discussPromptContextState();
+                var enabledLabels = DISCUSS_PROMPT_CONTEXT_ITEMS
+                    .filter(function(item) { return !!state[item.key]; })
+                    .map(function(item) { return item.label; });
+                var trigger = document.createElement('button');
+                trigger.type = 'button';
+                trigger.id = 'discussPromptContextTrigger';
+                trigger.className = 'discuss-sees discuss-sees-trigger';
+                trigger.setAttribute('aria-haspopup', 'dialog');
+                trigger.setAttribute('aria-controls', 'discussPromptContextPicker');
+                trigger.setAttribute('aria-expanded', _discussPromptContextOpen ? 'true' : 'false');
+                trigger.onclick = toggleDiscussPromptContextPicker;
+
+                var sr = document.createElement('span');
+                sr.className = 'sr-only';
+                sr.textContent = 'Prompt context: ' + (away ? '' : discussAgentLabel() + ' knows you are in ');
+                trigger.appendChild(sr);
+
+                var nameEl = elementWith('discuss-sees-name',
+                    away ? ((doc.kind === 'file' ? 'Last file: ' : 'Last scene: ') + doc.path) : doc.path
+                );
+                trigger.appendChild(nameEl);
+
+                if (activeCount > 0) {
+                    var badge = elementWith('discuss-sees-badge', '+' + activeCount);
+                    badge.setAttribute('aria-label', activeCount + ' extra prompt context items enabled');
+                    trigger.appendChild(badge);
                 }
-                sees.title = (away ? '' : discussAgentLabel() + ' knows you are in ' + doc.path + '. ')
-                    + 'Each question says which file is open; ' + discussAgentLabel()
-                    + ' reads it from the project when the question needs it. Type @ to mention other files.';
-                seesSlot.appendChild(sees);
+
+                var threadInfo = _threadUsageInfo(_discussSnapshot);
+                if (threadInfo && threadInfo.heavy && threadInfo.pct !== null) {
+                    var heavyBadge = elementWith('discuss-sees-badge is-heavy', threadInfo.pct + '%');
+                    heavyBadge.setAttribute('aria-label', 'Thread context ' + threadInfo.pct + '% full');
+                    trigger.appendChild(heavyBadge);
+                }
+
+                var caret = elementWith('discuss-sees-caret', _discussPromptContextOpen ? '▴' : '▾');
+                caret.setAttribute('aria-hidden', 'true');
+                trigger.appendChild(caret);
+
+                var tipExtra = '';
+                if (threadInfo && (threadInfo.contextTokens > 0 || threadInfo.totalCostUsd !== null)) {
+                    var uParts = [];
+                    if (threadInfo.contextTokens > 0) {
+                        uParts.push(_formatTokensCompact(threadInfo.contextTokens)
+                            + (threadInfo.contextWindow > 0 ? ' / ' + _formatTokensCompact(threadInfo.contextWindow) + ' (' + threadInfo.pct + '%)' : ' ctx'));
+                    }
+                    var uCost = _formatUsdCost(threadInfo.totalCostUsd);
+                    if (uCost) uParts.push(uCost);
+                    if (uParts.length) tipExtra = ' · Thread: ' + uParts.join(' · ');
+                }
+                trigger.title = 'Prompt context · '
+                    + (enabledLabels.length
+                        ? 'Including ' + enabledLabels.join(', ')
+                        : 'File path only · Beat map off')
+                    + tipExtra + ' (click to customize)';
+                seesSlot.appendChild(trigger);
             }
             var selection = document.getElementById('discussSelectionChip');
             selection.hidden = !_discussSelection;
@@ -9480,6 +10060,9 @@ function loadDiscussDiffMode(mode) {
                 closeDiscussModelPicker();
                 return;
             }
+            closeDiscussPromptContextPicker();
+            closeDiscussUsagePopover();
+            if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
             var catalog = discussModelCatalog();
             if (!catalog || _discussModelBusy) return;
             _discussModelNote = '';
@@ -9896,6 +10479,7 @@ function loadDiscussDiffMode(mode) {
             _discussIncludeCurrentDocument = false;
             _discussDraftDocument = null;
             saveDiscussDraft();
+            _resetDiscussPromptContextForNewThread(_discussConversationId);
             closeDiscussContextPicker();
             renderDiscussContext();
             renderDiscussTaskMode();
@@ -10095,6 +10679,7 @@ function loadDiscussDiffMode(mode) {
                     return authored.indexOf('@' + item.path) < 0;
                 })),
                 include_current_document: _discussIncludeCurrentDocument,
+                prompt_context: _normalizePromptContext(discussPromptContextState()),
                 immediate: immediate,
                 // A $skill typed in the question is the skill the turn runs.
                 skill: _discussSelectedSkill || (function() {
@@ -10113,6 +10698,9 @@ function loadDiscussDiffMode(mode) {
                 }
                 saveDiscussDraft(); _discussSelectedSkill = null;
                 var restoredLegacyDraft = activateLegacyDiscussDraft(discussDocument(), _discussAgent);
+                _discussPromptContextPreview = null;
+                closeDiscussPromptContextPicker();
+                if (typeof closeDiscussSendMenu === 'function') closeDiscussSendMenu();
                 closeDiscussContextPicker(); renderDiscussContext(); renderDiscussTaskMode(); scheduleDiscussSnapshot();
                 var verb = data && data.status === 'steered' ? 'Sent now.' : immediate ? 'Sending now.' : 'Question queued.';
                 document.getElementById('discussAnnouncement').textContent = restoredLegacyDraft
@@ -10798,9 +11386,21 @@ function loadDiscussDiffMode(mode) {
                 var pill = elementWith('discuss-context-sent-pill' + (on ? ' is-on' : ''), label);
                 pills.appendChild(pill);
             }
-            addPill('Frontmatter: ' + (ctx.include_frontmatter ? 'On' : 'Off'), !!ctx.include_frontmatter);
-            addPill('±1 Excerpts: ' + (ctx.include_adjacent ? 'On' : 'Off'), !!ctx.include_adjacent);
-            addPill('Beat Map: ' + (ctx.beatmap_included ? 'Included' : 'None'), !!ctx.beatmap_included);
+            var pc = ctx.prompt_context || null;
+            var fmState = pc ? pc.frontmatter : (ctx.include_frontmatter ? 'included' : 'off');
+            var adjState = pc ? pc.adjacent : (ctx.include_adjacent ? 'included' : 'off');
+            var bmState = pc ? pc.beatmap : (ctx.beatmap_included ? 'included' : (ctx.beatmap_in_thread ? 'in_thread' : 'off'));
+            function stateLabel(state, onWord) {
+                if (state === 'included') return onWord || 'Included';
+                if (state === 'in_thread') return 'In thread';
+                return 'Off';
+            }
+            addPill('Frontmatter: ' + stateLabel(fmState, 'On'), fmState === 'included');
+            addPill('±1 Excerpts: ' + stateLabel(adjState, 'On'), adjState === 'included');
+            addPill('Beat Map: ' + stateLabel(bmState, 'Included'), bmState === 'included');
+            if (pc && pc.full_scene && pc.full_scene !== 'off') {
+                addPill('Full scene: ' + stateLabel(pc.full_scene, 'Included'), pc.full_scene === 'included');
+            }
             if (ctx.include_keep === true || ctx.include_keep === false) {
                 addPill('Keep list: ' + (ctx.include_keep ? 'On' : 'Off'), ctx.include_keep);
             }
@@ -10963,7 +11563,8 @@ function loadDiscussDiffMode(mode) {
                 attachments: [],
                 include_current_document: false,
                 include_frontmatter: effectiveDiscussFrontmatter(),
-                include_adjacent: selectedScenes.length === 1 && effectiveDiscussAdjacent()
+                include_adjacent: selectedScenes.length === 1 && effectiveDiscussAdjacent(),
+                include_beatmap: effectiveDiscussBeatmap()
             };
             syncDiscussSendEmpty();
             // The first quick run may happen before Settings has been opened.
@@ -10973,6 +11574,7 @@ function loadDiscussDiffMode(mode) {
                 if (defaults) {
                     payload.include_frontmatter = _discussDefaultFlag('includeFrontmatter');
                     payload.include_adjacent = _discussDefaultFlag('includeAdjacent');
+                    payload.include_beatmap = _discussDefaultFlag('includeBeatmap');
                 }
                 return discussApi(endpoint, payload);
             }).then(function() {
@@ -11021,7 +11623,8 @@ function loadDiscussDiffMode(mode) {
                 attachments: [],
                 include_current_document: false,
                 include_frontmatter: isFrontmatterUpdate ? false : effectiveDiscussFrontmatter(),
-                include_adjacent: isFrontmatterUpdate ? false : effectiveDiscussAdjacent()
+                include_adjacent: isFrontmatterUpdate ? false : effectiveDiscussAdjacent(),
+                include_beatmap: isFrontmatterUpdate ? false : effectiveDiscussBeatmap()
             }).then(function() {
                 document.getElementById('discussAnnouncement').textContent = isFrontmatterUpdate
                     ? 'Updating frontmatter from drafted prose. You can adjust any field or undo all afterwards.'

@@ -259,6 +259,69 @@ def _auth_failed_message(message: Any) -> bool:
     )
 
 
+def _extract_claude_usage(
+    raw: Any,
+    *,
+    cost_usd: Any = None,
+    model_usage: Any = None,
+    last_step_context_tokens: int = 0,
+) -> dict[str, Any] | None:
+    """Normalize Claude SDK token usage and API-equivalent cost."""
+    data = raw if isinstance(raw, dict) else {}
+
+    def _int(val: Any) -> int:
+        try:
+            n = int(val)
+            return n if n >= 0 else 0
+        except (TypeError, ValueError):
+            return 0
+
+    inp = _int(data.get("input_tokens"))
+    cache_read = _int(data.get("cache_read_input_tokens"))
+    cache_write = _int(data.get("cache_creation_input_tokens"))
+    out = _int(data.get("output_tokens"))
+    out_details = data.get("output_tokens_details")
+    reasoning = _int(out_details.get("thinking_tokens")) if isinstance(out_details, dict) else 0
+    ctx_window: int | None = None
+    if isinstance(model_usage, dict):
+        for entry in model_usage.values():
+            if not isinstance(entry, dict):
+                continue
+            cw = _int(entry.get("contextWindow") or entry.get("context_window"))
+            if cw > 0:
+                ctx_window = cw
+            if not any((inp, cache_read, cache_write, out)):
+                inp += _int(entry.get("inputTokens") or entry.get("input_tokens"))
+                cache_read += _int(entry.get("cacheReadInputTokens") or entry.get("cache_read_input_tokens"))
+                cache_write += _int(entry.get("cacheCreationInputTokens") or entry.get("cache_creation_input_tokens"))
+                out += _int(entry.get("outputTokens") or entry.get("output_tokens"))
+    parsed_cost: float | None = None
+    if cost_usd is not None:
+        try:
+            c = float(cost_usd)
+            if c >= 0:
+                parsed_cost = round(c, 6)
+        except (TypeError, ValueError):
+            pass
+    if not any((inp, cache_read, cache_write, out, last_step_context_tokens)) and parsed_cost is None:
+        return None
+    context_tokens = last_step_context_tokens if last_step_context_tokens > 0 else (inp + cache_read + cache_write)
+    result: dict[str, Any] = {
+        "input_tokens": inp,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "output_tokens": out,
+        "reasoning_tokens": reasoning,
+        "context_tokens": context_tokens,
+        "estimated": False,
+    }
+    if ctx_window:
+        result["context_window"] = ctx_window
+    if parsed_cost is not None:
+        result["cost_usd"] = parsed_cost
+    return result
+
+
 def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
     """Translate one Claude transport notification into Prosview events.
 
@@ -299,13 +362,16 @@ def sanitize_claude_message(message: dict[str, Any]) -> list[dict[str, Any]]:
             event["stopped"] = SAFEGUARDS_STOP
         return [event]
     if method in {"turn/started", "turn/completed"}:
-        return [{
+        event: dict[str, Any] = {
             "type": "turn.started" if method.endswith("started") else "turn.completed",
             "thread_id": params.get("threadId"),
             "turn_id": params.get("turnId"),
             "status": params.get("status"),
             "error": _bounded(params.get("error")),
-        }]
+        }
+        if isinstance(params.get("usage"), dict):
+            event["usage"] = dict(params["usage"])
+        return [event]
     if method in {"tool/started", "tool/completed"}:
         tool = str(params.get("tool") or "")
         activity: dict[str, Any] = {
@@ -985,11 +1051,27 @@ class ClaudeAgentClient:
         status = "completed"
         error_text = ""
         auth_failed = False
+        turn_usage: dict[str, Any] | None = None
+        last_step_context_tokens = 0
         try:
             async for message in client.receive_response():
                 if _auth_failed_message(message):
                     auth_failed = True
                     continue
+                msg_type = type(message).__name__
+                if msg_type == "AssistantMessage":
+                    step_usage = getattr(message, "usage", None)
+                    if isinstance(step_usage, dict):
+                        try:
+                            step_ctx = (
+                                int(step_usage.get("input_tokens") or 0)
+                                + int(step_usage.get("cache_read_input_tokens") or 0)
+                                + int(step_usage.get("cache_creation_input_tokens") or 0)
+                            )
+                            if step_ctx > 0:
+                                last_step_context_tokens = step_ctx
+                        except (TypeError, ValueError):
+                            pass
                 for method, params in self._translate_sdk_message(
                     message,
                     common,
@@ -1000,7 +1082,7 @@ class ClaudeAgentClient:
                 session_id = getattr(message, "session_id", None)
                 if session_id:
                     session.session_id = str(session_id)
-                if type(message).__name__ == "ResultMessage":
+                if msg_type == "ResultMessage":
                     if session.forked and session.session_id:
                         # The source is used exactly once. Reconnects must
                         # resume the child's history, including its first turn.
@@ -1011,6 +1093,12 @@ class ClaudeAgentClient:
                         payload = self._structured_payload(message)
                         if payload:
                             self._emit("assistant/message", {**common, "text": payload})
+                    turn_usage = _extract_claude_usage(
+                        getattr(message, "usage", None),
+                        cost_usd=getattr(message, "total_cost_usd", None),
+                        model_usage=getattr(message, "model_usage", None),
+                        last_step_context_tokens=last_step_context_tokens,
+                    )
                     status, error_text = self._turn_outcome(message)
         except Exception as exc:  # noqa: BLE001
             status = "failed"
@@ -1029,7 +1117,10 @@ class ClaudeAgentClient:
             session.busy = False
             session.turn_id = ""
             session.last_used = time.monotonic()
-            self._emit("turn/completed", {**common, "status": status, "error": error_text})
+            done_params: dict[str, Any] = {**common, "status": status, "error": error_text}
+            if turn_usage:
+                done_params["usage"] = turn_usage
+            self._emit("turn/completed", done_params)
 
     @staticmethod
     def _turn_outcome(message: Any) -> tuple[str, str]:
@@ -1229,6 +1320,10 @@ class ClaudeAgentClient:
                     item["model"] = str(payload["model"])
                 if isinstance(payload, dict) and payload.get("stop_reason") == "refusal":
                     item["stopped"] = SAFEGUARDS_STOP
+                if isinstance(payload, dict) and isinstance(payload.get("usage"), dict):
+                    restored_usage = _extract_claude_usage(payload["usage"])
+                    if restored_usage:
+                        item["usage"] = restored_usage
                 current["items"].append(item)
         return {"thread": {"id": session_id, "turns": turns}, "turns": turns}
 

@@ -7666,15 +7666,15 @@ def test_dock_over_the_dashboard_names_the_last_scene(
     page.click("#sceneModal .scene-back-btn")
     page.wait_for_selector("#sceneModal", state="hidden")
     page.wait_for_function(
-        "(rel) => document.querySelector('#discussSees .discuss-sees')"
+        "(rel) => document.querySelector('#discussSees .discuss-sees-name')"
         "?.textContent === 'Last scene: ' + rel",
         arg=SCENE_REL,
     )
 
     open_scene(page, shared_server, ANNOTATED_SCENE_REL)
     page.wait_for_function(
-        "(rel) => document.querySelector('#discussSees .discuss-sees')"
-        "?.textContent.endsWith('knows you are in ' + rel)",
+        "(rel) => document.querySelector('#discussSees .discuss-sees-name')"
+        "?.textContent === rel",
         arg=ANNOTATED_SCENE_REL,
     )
     page.click("#discussClose")

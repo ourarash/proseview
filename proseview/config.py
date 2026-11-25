@@ -95,6 +95,8 @@ class DiscussConfig:
     include_frontmatter: bool = True
     #: Whether scene passes / craft reviews attach +/-1 adjacent scene excerpts.
     include_adjacent_scenes: bool = True
+    #: Whether Discuss turns/reviews attach the scene beat map by default.
+    include_beatmap: bool = False
     #: Custom override for Discuss DEVELOPER_INSTRUCTIONS; empty uses Proseview's default.
     developer_instructions: str = ""
     #: Per-skill prompt overrides for built-in Discuss/Craft skills, as (action_id, text).
@@ -465,6 +467,7 @@ class Config:
             ("agent", self.discuss.agent),
             ("include_frontmatter", self.discuss.include_frontmatter),
             ("include_adjacent_scenes", self.discuss.include_adjacent_scenes),
+            ("include_beatmap", self.discuss.include_beatmap),
             ("developer_instructions", self.discuss.developer_instructions),
             ("skill_prompts", dict(self.discuss.skill_prompts)),
         ):
@@ -854,7 +857,7 @@ def _coerce_discuss(v: Any) -> DiscussConfig:
         raise ConfigError(
             "'discuss.agent' must be one of " + ", ".join(DISCUSS_AGENTS) + f", got {agent!r}"
         )
-    for key in ("include_frontmatter", "include_adjacent_scenes"):
+    for key in ("include_frontmatter", "include_adjacent_scenes", "include_beatmap"):
         if key in v and not isinstance(v[key], bool):
             raise ConfigError(f"'discuss.{key}' must be true or false")
     developer_instructions = v.get("developer_instructions", "") or ""
@@ -873,6 +876,7 @@ def _coerce_discuss(v: Any) -> DiscussConfig:
         agent=agent.strip().lower(),
         include_frontmatter=v.get("include_frontmatter", defaults.include_frontmatter),
         include_adjacent_scenes=v.get("include_adjacent_scenes", defaults.include_adjacent_scenes),
+        include_beatmap=v.get("include_beatmap", defaults.include_beatmap),
         developer_instructions=developer_instructions,
         skill_prompts=tuple(sorted(skill_prompts)),
     )

@@ -3188,6 +3188,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": True, "context": context})
                     return
                 question_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/questions", path)
+                context_preview_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/context-preview", path)
                 proposal_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/proposal", path)
                 refactor_proposal_match = re.fullmatch(
                     r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/findings/([^/]+)/proposal", path
@@ -3253,6 +3254,14 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": True, **result, "unsaved": live is not None,
                                      "path": str(document.get("path") or ""), "kind": document.get("kind")})
                     return
+                if context_preview_match:
+                    preview = self.discuss_manager.context_preview(
+                        context_preview_match.group(1),
+                        document=body.get("document") if isinstance(body.get("document"), dict) else None,
+                        live_document=body.get("live_document") if isinstance(body.get("live_document"), dict) else None,
+                    )
+                    self._send_json({"ok": True, **preview})
+                    return
                 if question_match:
                     result = self.discuss_manager.submit(
                         question_match.group(1),
@@ -3288,6 +3297,8 @@ class _Handler(BaseHTTPRequestHandler):
                         immediate=bool(body.get("immediate")) or body.get("mode") == "now",
                         include_frontmatter=body.get("include_frontmatter") if isinstance(body.get("include_frontmatter"), bool) else None,
                         include_adjacent=body.get("include_adjacent") if isinstance(body.get("include_adjacent"), bool) else None,
+                        include_beatmap=body.get("include_beatmap") if isinstance(body.get("include_beatmap"), bool) else None,
+                        prompt_context=body.get("prompt_context") if isinstance(body.get("prompt_context"), dict) else None,
                     )
                     self._send_json({"ok": True, **result}, 202)
                     return

@@ -349,9 +349,17 @@ def test_discuss_context_builder_includes_beatmap(tmp_path: Path):
     generate_scene_beatmap(tmp_path, scene_rel)
 
     builder = ContextBuilder(tmp_path)
+    # Off by default: beat map is omitted unless opted in
+    lean_bundle = builder.build_mentions(
+        {"kind": "scene", "path": scene_rel},
+        "What is the dramatic peak in this scene?",
+    )
+    assert "BEGIN SCENE BEAT MAP" not in lean_bundle.prompt
+
     bundle = builder.build_mentions(
         {"kind": "scene", "path": scene_rel},
         "What is the dramatic peak in this scene?",
+        include_beatmap=True,
     )
     assert "BEGIN SCENE BEAT MAP" in bundle.prompt
     assert "END SCENE BEAT MAP" in bundle.prompt
@@ -363,10 +371,11 @@ def test_discuss_context_builder_includes_beatmap(tmp_path: Path):
         {"beat_order": 2, "patch": {"title": "The Grand Crisis"}},
     )
 
-    # Next turn immediately reads the updated beat map
+    # Next turn immediately reads the updated beat map when opted in
     bundle2 = builder.build_mentions(
         {"kind": "scene", "path": scene_rel},
         "How is the scene structured?",
+        include_beatmap=True,
     )
     assert "The Grand Crisis" in bundle2.prompt
 

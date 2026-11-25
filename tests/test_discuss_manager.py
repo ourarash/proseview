@@ -2759,6 +2759,18 @@ def test_instructions_let_the_agent_delete_and_move_files_with_the_shell() -> No
     assert "never with a shell command" not in text
 
 
+def test_instructions_teach_proseview_manuscript_conventions() -> None:
+    for text in (
+        DiscussManager.DEVELOPER_INSTRUCTIONS,
+        DiscussManager.SIDE_DEVELOPER_INSTRUCTIONS,
+    ):
+        assert "<!-- TODO: ... -->" in text
+        assert "<!-- NOTE: ... -->" in text
+        assert "<!-- NOTE[tag]: ... -->" in text
+        assert "`todos:`" in text
+        assert "> [!type]" in text
+
+
 def test_a_notice_keeps_the_command_that_fixes_it(tmp_path: Path):
     from proseview.claude_agent_client import LOGIN_COMMAND, LOGIN_EXPIRED, sanitize_claude_message
 

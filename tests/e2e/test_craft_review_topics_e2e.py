@@ -237,6 +237,84 @@ def test_keep_citations_after_quotes_and_long_lead_ins_label_the_right_passage(p
     assert quotes.nth(3).get_attribute('data-target-line') == '26'
 
 
+def test_numbered_items_reset_quote_target_and_resolve_unique_chapter_scene_shorthand(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    markdown = '\n'.join([
+        '**1. Current scene, line 18:**',
+        '',
+        '> "A rewrite in the open scene."',
+        '',
+        '**2. ch01/02, [around line 3](#L3): replace *"By then I had already spent weeks rehearsing ordinary sentences... trying not to show it"* with:**',
+        '',
+        '> "Two years in LA, and I could order at any bar without rehearsing."',
+        '',
+        '**3. ch01/02, line 5**',
+        '',
+        '> "I have been here two years."',
+        '',
+        '**4. Nonexistent ch99/99 mention**',
+        '',
+        'Nothing links for ch99/99.',
+    ])
+    page.evaluate("""text => {
+        const parent = document.createElement('div');
+        parent.id = 'shorthandCitationCheck';
+        renderDiscussMarkdown(parent, text, 'ch01/01-opening.md');
+        document.getElementById('discussLog').appendChild(parent);
+    }""", markdown)
+    quotes = page.locator('#shorthandCitationCheck blockquote')
+    assert quotes.nth(0).get_attribute('data-target-path') == 'ch01/01-opening.md'
+    assert quotes.nth(0).get_attribute('data-target-line') == '18'
+    assert quotes.nth(1).get_attribute('data-target-path') == 'ch01/02-walk.md'
+    assert quotes.nth(1).get_attribute('data-target-line') == '3'
+    assert quotes.nth(2).get_attribute('data-target-path') == 'ch01/02-walk.md'
+    assert quotes.nth(2).get_attribute('data-target-line') == '5'
+    around_link = page.locator('#shorthandCitationCheck a', has_text='around line 3')
+    assert around_link.get_attribute('data-prosview-path') == 'ch01/02-walk.md'
+    assert around_link.get_attribute('data-prosview-line') == '3'
+    assert page.locator('#shorthandCitationCheck a', has_text='ch01/02').count() == 2
+    assert page.locator('#shorthandCitationCheck a', has_text='ch99/99').count() == 0
+
+
+def test_options_list_inherits_intro_line_target_without_leaking_past_list(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    markdown = '\n'.join([
+        f'He should answer the real question directly ([L18](manuscript/ch01/01-opening.md#L18)).',
+        '',
+        '**Options**',
+        '',
+        '1. **Direct version**:',
+        '',
+        '   > "Real, fake. Who decides?"',
+        '',
+        '2. **Expanded across the next line** ([line 20](manuscript/ch01/01-opening.md#L20)):',
+        '',
+        '   > "Real, fake. Who decides? Everyone here plays a part."',
+        '',
+        '3. **Shorter cut**:',
+        '',
+        '   > "Who decides what is real?"',
+        '',
+        'Separate closing thought:',
+        '',
+        '> "Unanchored example quote."',
+    ])
+    page.evaluate("""text => {
+        const parent = document.createElement('div');
+        parent.id = 'optionsTargetCheck';
+        renderDiscussMarkdown(parent, text, 'ch01/01-opening.md');
+        document.getElementById('discussLog').appendChild(parent);
+    }""", markdown)
+    quotes = page.locator('#optionsTargetCheck blockquote')
+    assert quotes.nth(0).get_attribute('data-target-path') == 'ch01/01-opening.md'
+    assert quotes.nth(0).get_attribute('data-target-line') == '18'
+    assert quotes.nth(1).get_attribute('data-target-line') == '20'
+    assert quotes.nth(2).get_attribute('data-target-line') == '18'
+    assert quotes.nth(3).get_attribute('data-target-line') in (None, '')
+
+
 def test_update_from_scene_button_opens_discuss_sends_update_frontmatter_and_keeps_chat_open(page: Page, server: ProseviewServer):
     requests = []
     page.on('request', lambda request: requests.append(request.post_data_json)

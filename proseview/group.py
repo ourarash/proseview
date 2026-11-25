@@ -188,6 +188,8 @@ PROSE_EDIT_FORMAT = (
     "Write **After:** Replace [file · Lines N–M](path#LN-LM): (or Insert after [file · Line N](path#LN):), "
     "then the complete replacement in a plain blockquote. For a cut, show how the surrounding passage reads "
     "afterward. Never abbreviate either passage. Every reference names its actual file; avoid bare line numbers. "
+    "When offering multiple options or alternatives for the same passage, put the clickable file-and-line Markdown link "
+    "on every option's blockquote too. "
 )
 
 RECAP_GUIDANCE = (

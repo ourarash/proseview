@@ -5113,6 +5113,12 @@
             border-radius: 4px;
         }
 
+        .para-flash-hold {
+            background-color: rgba(99, 102, 241, 0.32);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.45);
+            border-radius: 4px;
+        }
+
         html {
             --utility-dock-w: clamp(340px, 28vw, 540px);
             --btw-split-w: 290px;
@@ -7874,7 +7880,9 @@
         .discuss-message blockquote.is-edit-selected { outline: 1px solid color-mix(in srgb, var(--primary) 45%, transparent); background: color-mix(in srgb, var(--primary) 10%, transparent); }
         .edit-selection-item { min-width: 0; scroll-margin-top: 48px; }
         .edit-selection-item-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-        .edit-selection-item-heading > :is(h1, h2, h3, h4, h5, h6, p, strong) { flex: 1; min-width: 0; }
+        .edit-selection-item-heading > :is(h1, h2, h3, h4, h5, h6, p, strong, .edit-selection-item-label) { flex: 1; min-width: 0; }
+        .edit-selection-item-label { font: 11px/1.4 Inter, system-ui, sans-serif; color: var(--text-muted); }
+        .edit-selection-item.is-quote-only > .edit-selection-item-heading { margin-bottom: 4px; }
         .edit-selection-item-heading .edit-selection-control { flex: 0 0 auto; padding: 3px 0; }
         .edit-selection-item-heading .edit-selection-control input { width: 14px; height: 14px; }
         .edit-selection-item-heading .edit-selection-add-note { flex: 0 0 auto; }
@@ -10910,7 +10918,8 @@
             white-space: nowrap;
         }
 
-        .modal-content.line-numbers .ProseMirror>[data-line].para-flash::before {
+        .modal-content.line-numbers .ProseMirror>[data-line].para-flash::before,
+        .modal-content.line-numbers .ProseMirror>[data-line].para-flash-hold::before {
             color: var(--primary, #58a6ff);
             opacity: 1;
             font-weight: 600;

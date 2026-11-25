@@ -81,13 +81,36 @@ function editSelectionConflicts(scope) {
     });
     return conflicts;
 }
+var EDIT_SELECTION_OPTION_RE = /^(?:option|version|alternative|variant)\s+(?:\d+|[a-z]\b)/i;
+function editSelectionHasSavedRecord(store, quote) {
+    if (!store || !store.records || !quote.dataset.targetPath) return false;
+    var proposed = extractDiscussQuoteText(quote), kind = quote._discussCompareKind || 'replace';
+    if (/^\[Cut (?:this )?passage\]$/i.test(proposed)) { proposed = ''; kind = 'cut'; }
+    var path = quote.dataset.targetPath, targetKind = quote.dataset.targetKind || 'scene';
+    var sig = JSON.stringify([targetKind, path, kind, '', proposed, quote.dataset.targetLine, quote.dataset.targetEndLine]);
+    return !!store.records[editSelectionHash(sig)];
+}
+function editSelectionIsLabelParagraph(node) {
+    if (!node || node.tagName !== 'P') return false;
+    var first = node.firstElementChild;
+    if (!first || first.tagName !== 'STRONG') return false;
+    var text = node.textContent.trim(), strongText = first.textContent.trim();
+    if (!text || !strongText || text.length > 140) return false;
+    if (/^(?:Before|After|Why|Type|Lane|Note|Notes|Reason|Context|Example|Current|Original)\s*(?::|$)/i.test(text)) return false;
+    var wholeBold = node.children.length === 1 && text === strongText;
+    var optionLead = node.firstChild === first && EDIT_SELECTION_OPTION_RE.test(strongText);
+    if (!wholeBold && !optionLead) return false;
+    if (wholeBold && !optionLead && /[.?!]$/.test(text) && !/^(?:(?:edit|item|suggestion|finding)\s+)?\d+/i.test(text)) return false;
+    return true;
+}
 function editSelectionItem(quote) {
     var section = quote.closest('.edit-selection-item');
     if (section && section._editSelectionItem) return section._editSelectionItem;
     var card = quote.closest('.group-edit-card');
     var message = quote.closest('.group-turn-body, .chat-message-card, .discuss-message') || quote.parentElement;
-    var headings = Array.from(message.querySelectorAll('h1,h2,h3,h4,h5,h6,strong')).filter(function(node) {
-        return !node.closest('blockquote') && node.compareDocumentPosition(quote) & Node.DOCUMENT_POSITION_FOLLOWING
+    var headings = Array.from(message.querySelectorAll('h1,h2,h3,h4,h5,h6,p')).filter(function(node) {
+        if (node.tagName === 'P' && !editSelectionIsLabelParagraph(node)) return false;
+        return !node.closest('blockquote, .edit-selection-item') && node.compareDocumentPosition(quote) & Node.DOCUMENT_POSITION_FOLLOWING
             && !/^(?:Before|After|Why|Type|Lane)\s*(?::|$)/i.test(node.textContent.trim());
     });
     var numbered = /^(?:(?:edit|item|suggestion|finding)\s+)?(\d+)(?:[.):]\s*|\s+[—–-]\s*|$)(.*)$/i;
@@ -114,7 +137,7 @@ function editSelectionItem(quote) {
         var first = item.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > strong') || item;
         return {number: number, title: first.textContent.trim().split('\n')[0].slice(0, 120), heading: first};
     }
-    heading = heading || headings.filter(function(node) { return /^H\d$/.test(node.tagName); }).pop() || headings.pop();
+    heading = heading || headings.pop();
     return {number: null, title: heading ? heading.textContent.trim() : extractDiscussQuoteText(quote).slice(0, 90), heading: heading};
 }
 function editSelectionItemName(row) { return row.number == null ? '“' + row.title + '”' : String(row.number); }
@@ -134,7 +157,9 @@ function editSelectionWrapItem(heading, item) {
         while (node) {
             var next = node.nextElementSibling;
             section.appendChild(node);
-            if (!next || next.matches('.edit-selection-item') || /^H\d$/.test(next.tagName) && Number(next.tagName[1]) <= level) break;
+            if (!next || next.matches('.edit-selection-item')
+                || /^H\d$/.test(next.tagName) && Number(next.tagName[1]) <= level
+                || level === 6 && editSelectionIsLabelParagraph(next)) break;
             node = next;
         }
     }
@@ -143,7 +168,7 @@ function editSelectionWrapItem(heading, item) {
     section._editSelectionHeading = heading;
     return section;
 }
-function editSelectionPrepareItems(parent) {
+function editSelectionPrepareItems(parent, store) {
     if (parent._editSelectionItemsPrepared) return;
     parent._editSelectionItemsPrepared = true;
     parent.querySelectorAll('.group-edit-card').forEach(function(card) {
@@ -174,24 +199,46 @@ function editSelectionPrepareItems(parent) {
         item.classList.add('edit-selection-item'); item._editSelectionHeading = heading;
         item._editSelectionItem = {number: number, title: heading.textContent.trim().split('\n')[0].slice(0, 120), heading: heading};
     });
-    // Unnumbered suggestions with concrete edits keep their original title.
-    parent.querySelectorAll('blockquote').forEach(function(quote) {
+    // Unnumbered suggestions and standalone line-targeted rewrites keep their original title.
+    Array.from(parent.querySelectorAll('blockquote')).reverse().forEach(function(quote) {
         if (quote.closest('.edit-selection-item, .is-withdrawn') || !quote.dataset.targetPath) return;
-        if (!quote._discussCompareOriginal && !quote._discussExplicitEdit) return;
+        var anchored = !!(quote._discussCompareOriginal || quote._discussExplicitEdit || quote._discussProposedEdit);
+        var unanchored = !!quote._discussUnanchoredProposal;
+        var saved = !anchored && !unanchored && !!quote._discussPlainQuote && editSelectionHasSavedRecord(store, quote);
+        if (!anchored && !unanchored && !saved && !quote._discussPlainQuote) return;
         var item = editSelectionItem(quote), heading = item.heading;
-        if (!heading) {
-            heading = editSelectionTag('h3', item.title);
-            quote.parentElement.before(heading); item.heading = heading;
+        if (!anchored && !unanchored && !saved) {
+            if (!heading || !EDIT_SELECTION_OPTION_RE.test(heading.textContent.trim())) return;
         }
-        editSelectionWrapItem(heading, item);
+        if (heading) {
+            editSelectionWrapItem(heading, item);
+            return;
+        }
+        if (!anchored && !saved) return;
+        var wrap = quote.closest('.md-copy-block') || quote;
+        var line = Number(quote.dataset.targetLine) || 0;
+        var endLine = Number(quote.dataset.targetEndLine) || line;
+        var lineLabel = line ? ('Line ' + line + (endLine > line ? '–' + endLine : '')) : '';
+        heading = editSelectionTag('span', 'Suggested rewrite' + (lineLabel ? ' · ' + lineLabel : ''));
+        heading.className = 'edit-selection-item-label';
+        var section = document.createElement('section');
+        section.className = 'edit-selection-item is-quote-only';
+        wrap.before(section);
+        section.append(heading, wrap);
+        section._editSelectionItem = item;
+        section._editSelectionHeading = heading;
+        item.heading = heading;
     });
 }
 function editSelectionInstruction(section, item, reviewText) {
     var clone = section.cloneNode(true);
     if (/^(P|STRONG)$/.test(section._editSelectionHeading.tagName) && clone.firstElementChild) clone.firstElementChild.remove();
     clone.querySelectorAll('h1,h2,h3,h4,h5,h6,blockquote,.group-edit-heading,.discuss-quote-actions,.md-copy-btn,.group-edit-actions').forEach(function(node) { node.remove(); });
-    var paragraphs = Array.from(clone.querySelectorAll('p,li,pre')).filter(function(node) { return !node.querySelector('p,li,pre'); });
+    var paragraphs = Array.from(clone.querySelectorAll('p,li,pre,tbody tr')).filter(function(node) { return !node.querySelector('p,li,pre,tbody tr'); });
     var instruction = paragraphs.map(function(node) {
+        if (node.tagName === 'TR') {
+            return Array.from(node.querySelectorAll('th,td')).map(function(cell) { return cell.textContent.trim(); }).filter(Boolean).join(': ');
+        }
         var text = node.textContent.trim(), links = Array.from(node.querySelectorAll('a'));
         if (links.length && links.map(function(link) { return link.textContent; }).join(' ').trim() === text) return '';
         return /^Before\s*:\s*$/i.test(text) ? '' : text;
@@ -214,8 +261,8 @@ function editSelectionInstruction(section, item, reviewText) {
     return {text: instruction, markdown: start >= 0 ? lines.slice(start, end).join('\n').trim() : ''};
 }
 function editSelectionRegisterMessage(parent, context) {
-    editSelectionPrepareItems(parent);
     var store = editSelectionStore(context.scope), changed = false;
+    editSelectionPrepareItems(parent, store);
     var reviewKey = context.reviewText ? editSelectionHash(context.reviewText) : context.source;
     parent.querySelectorAll('.edit-selection-item').forEach(function(section) {
         if (section.closest('.is-withdrawn') || section._editSelectionWidget) return;
@@ -243,7 +290,7 @@ function editSelectionRegisterMessage(parent, context) {
         section.querySelectorAll('blockquote').forEach(function(quote) {
             if (quote.closest('.edit-selection-item') !== section || !quote.dataset.targetPath) return;
             var before = quote._discussCompareOriginal || '', after = extractDiscussQuoteText(quote);
-            var standalone = !before && quote._discussExplicitEdit && Number(quote.dataset.targetLine) > 0;
+            var standalone = !before && (quote._discussExplicitEdit || quote._discussProposedEdit) && Number(quote.dataset.targetLine) > 0;
             if (!before && !standalone) return;
             var kind = quote._discussCompareKind || 'replace';
             if (/^\[Cut (?:this )?passage\]$/i.test(after)) { after = ''; kind = 'cut'; }
@@ -256,6 +303,42 @@ function editSelectionRegisterMessage(parent, context) {
         });
         if (!keys.length) {
             var instruction = editSelectionInstruction(section, item, context.reviewText);
+            var proposals = Array.from(section.querySelectorAll('blockquote')).filter(function(quote) {
+                if (quote.closest('.edit-selection-item') !== section || !quote.dataset.targetPath) return false;
+                if (quote._discussUnanchoredProposal) return true;
+                if (!quote._discussPlainQuote) return false;
+                return !instruction.text || editSelectionHasSavedRecord(store, quote);
+            });
+            if (proposals.length) {
+                proposals.forEach(function(quote) {
+                    var proposed = extractDiscussQuoteText(quote);
+                    if (!proposed) return;
+                    var path = quote.dataset.targetPath || '', targetKind = quote.dataset.targetKind || 'scene';
+                    var line = Number(quote.dataset.targetLine) || 0;
+                    if (line > 0) {
+                        var kind = quote._discussCompareKind || 'replace';
+                        if (/^\[Cut (?:this )?passage\]$/i.test(proposed)) { proposed = ''; kind = 'cut'; }
+                        var signature = JSON.stringify([targetKind, path, kind, '', proposed, quote.dataset.targetLine, quote.dataset.targetEndLine]);
+                        var row = register(signature, {path: path, targetKind: targetKind, line: line,
+                            endLine: Number(quote.dataset.targetEndLine) || null, before: '', after: proposed, kind: kind, sourceReady: false});
+                        if (row.before) quote._discussCompareOriginal = row.before;
+                        quotes.push({quote: quote, key: row.key});
+                        return;
+                    }
+                    var row = register(JSON.stringify([reviewKey, item.number, item.title, 'proposal', targetKind, path, proposed]), {
+                        kind: 'instruction', instructionText: proposed,
+                        instructionMarkdown: instruction.markdown || proposed.split('\n').map(function(line) { return line ? '> ' + line : '>'; }).join('\n'),
+                        instructionRefs: Array.from(section.querySelectorAll('a[data-prosview-path]')).map(function(link) {
+                            return {kind: link.dataset.prosviewKind || 'scene', path: link.dataset.prosviewPath, line: Number(link.dataset.prosviewLine) || null,
+                                endLine: Number(link.dataset.prosviewEndLine) || null, label: link.textContent};
+                        }),
+                        before: '', after: proposed, sourceReady: true,
+                        path: path, targetKind: targetKind, line: null, endLine: null});
+                    quotes.push({quote: quote, key: row.key});
+                });
+            }
+        }
+        if (!keys.length) {
             if (!instruction.text) return;
             var evidence = section.querySelector('blockquote[data-target-path]'), link = section.querySelector('a[data-prosview-path]');
             var data = evidence && evidence.dataset || {}, target = link && link.dataset || {};
@@ -367,8 +450,7 @@ function editSelectionPaintNotes(scope) {
         button.classList.toggle('has-note', !!note);
         if (row) button.title = row.title + (note ? ' · Note: ' + note : '');
     });
-    var status = component.root.querySelector('.edit-selection-note-status');
-    if (status) status.textContent = editSelectionNotesPending(scope) ? 'Notes changed · Update request' : '';
+    editSelectionSyncTrayAction(scope);
 }
 function editSelectionOpenNote(scope, row, host, location) {
     var store = editSelectionStore(scope);
@@ -415,7 +497,7 @@ function editSelectionRenderNote(scope, row, host, location) {
         input.onselect = input.onkeyup = rememberCaret;
         input.oninput = function() {
             store.notes[key] = input.value; rememberCaret();
-            editSelectionSave(scope); editSelectionPaintNotes(scope);
+            editSelectionUpdateDraft(scope); editSelectionSave(scope); editSelectionPaintNotes(scope);
         };
         input.onkeydown = function(event) {
             if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); editSelectionCloseNote(scope, host); }
@@ -424,7 +506,7 @@ function editSelectionRenderNote(scope, row, host, location) {
         var foot = elementWith('edit-selection-note-editor-footer');
         foot.appendChild(editSelectionTag('span', 'Saved automatically'));
         foot.appendChild(editSelectionButton('Remove note', '', function() {
-            delete store.notes[key]; editSelectionSave(scope); editSelectionCloseNote(scope, host);
+            delete store.notes[key]; editSelectionUpdateDraft(scope); editSelectionSave(scope); editSelectionCloseNote(scope, host);
         }));
         foot.appendChild(editSelectionButton('Done', '', function() { editSelectionCloseNote(scope, host); }));
         field.append(label, input, foot); host.appendChild(field);
@@ -443,10 +525,31 @@ function editSelectionRenderNote(scope, row, host, location) {
         host.appendChild(editSelectionButton('Add note', 'edit-selection-add-note', function() { editSelectionOpenNote(scope, row, host, location); }));
     }
 }
+function editSelectionSyncTrayAction(scope) {
+    var component = _editSelectionComposers.get(scope);
+    if (!component) return;
+    var action = component.root.querySelector('.edit-selection-prepare');
+    if (!action) return;
+    var store = editSelectionStore(scope), rows = editSelectionRecords(scope), conflicts = editSelectionConflicts(scope);
+    var resolving = rows.some(function(row) { return row.sourceReady === false; });
+    var needsChoice = conflicts.size && !editSelectionHasCustomInstructions(scope, component.input.value);
+    var needsInsert = !store.prepared && !!component.input.value.trim();
+    if (needsChoice) {
+        action.textContent = 'Choose wording'; action.hidden = false; action.disabled = resolving;
+    } else if (needsInsert) {
+        action.textContent = 'Add to draft'; action.hidden = false; action.disabled = resolving;
+    } else if (resolving) {
+        action.textContent = 'Reading source…'; action.hidden = false; action.disabled = true;
+    } else {
+        action.hidden = true;
+    }
+}
 function editSelectionMount(scope, container, input, quick, session) {
+    var ready = (!session || !!(session.turns && session.turns.length))
+        && editSelectionRecords(scope).every(function(row) { return row.itemVersion === 2; });
     var old = _editSelectionComposers.get(scope);
     if (old && old.container === container && container.contains(old.root)) {
-        if (editSelectionRecords(scope).every(function(row) { return row.itemVersion === 2; })) editSelectionUpdateDraft(scope);
+        if (ready) editSelectionUpdateDraft(scope);
         editSelectionPaint(scope); return;
     }
     var root = elementWith('edit-selection-composer');
@@ -456,15 +559,11 @@ function editSelectionMount(scope, container, input, quick, session) {
     var component = {scope: scope, container: container, root: root, input: input, quick: quick, session: session || null};
     _editSelectionComposers.set(scope, component);
     if (input._editSelectionInputListener) input.removeEventListener('input', input._editSelectionInputListener);
-    input._editSelectionInputListener = function() {
-        var action = root.querySelector('.edit-selection-prepare');
-        if (action) action.textContent = editSelectionConflicts(scope).size && !editSelectionHasCustomInstructions(scope, input.value)
-            ? 'Choose wording' : editSelectionStore(scope).prepared ? 'Update request' : 'Prepare request';
-    };
+    input._editSelectionInputListener = function() { editSelectionSyncTrayAction(scope); };
     input.addEventListener('input', input._editSelectionInputListener);
     // Wait for restored messages to migrate old item numbers before changing a
     // saved generated draft; changing it sooner can cancel history restoration.
-    if (editSelectionRecords(scope).every(function(row) { return row.itemVersion === 2; })) editSelectionUpdateDraft(scope);
+    if (ready) editSelectionUpdateDraft(scope);
     if (editSelectionStore(scope).prepared) editSelectionSave(scope);
     editSelectionPaint(scope);
 }
@@ -529,7 +628,7 @@ function editSelectionPaint(scope) {
                     var evidence = document.createElement('p'); evidence.append(editSelectionTag('b', 'Passage '), editSelectionTag('em', row.before)); passage.appendChild(evidence);
                 }
                 var action = document.createElement('p'); action.className = 'edit-selection-instruction';
-                action.append(editSelectionTag('b', 'Suggested action '), document.createTextNode(row.instructionText)); passage.appendChild(action);
+                action.append(editSelectionTag('b', row.after ? 'Proposed wording ' : 'Suggested action '), document.createTextNode(row.instructionText)); passage.appendChild(action);
                 var seen = new Set([JSON.stringify([row.path, row.line])]);
                 (row.instructionRefs || []).forEach(function(ref) {
                     var key = JSON.stringify([ref.path, ref.line]); if (seen.has(key)) return; seen.add(key);
@@ -568,16 +667,10 @@ function editSelectionPaint(scope) {
     }
     tray.appendChild(ids);
     tray.appendChild(editSelectionButton('Clear', 'edit-selection-clear', function() { rows.forEach(function(row) { row.selected = false; }); store.noteEditor = null; editSelectionUpdateDraft(scope); editSelectionSave(scope); editSelectionPaint(scope); }));
-    var prepare = editSelectionButton(conflicts.size && !editSelectionHasCustomInstructions(scope, component.input.value) ? 'Choose wording' : store.prepared ? 'Update request' : 'Prepare request', 'edit-selection-prepare', function() { editSelectionPrepare(scope); });
-    prepare.disabled = rows.some(function(row) { return row.sourceReady === false; }); tray.appendChild(prepare);
+    var prepare = editSelectionButton('', 'edit-selection-prepare', function() { editSelectionPrepare(scope); });
+    tray.appendChild(prepare);
     root.appendChild(tray);
-    if (store.prepared) {
-        var included = elementWith('edit-selection-included');
-        included.appendChild(editSelectionButton(countText + ' included · Review', '', function() { store.open = !store.open; editSelectionPaint(scope); }));
-        var status = elementWith('edit-selection-note-status'); status.setAttribute('aria-live', 'polite'); included.appendChild(status);
-        var detach = editSelectionButton('×', '', function() { editSelectionDetach(scope); editSelectionPaint(scope); });
-        detach.setAttribute('aria-label', 'Remove included edits'); included.appendChild(detach); root.appendChild(included);
-    }
+    editSelectionSyncTrayAction(scope);
     component.painting = false;
     list.scrollTop = scrollTop;
     editSelectionPaintNotes(scope);
@@ -591,7 +684,7 @@ function editSelectionDetach(scope) {
     if (store.prepared && component) {
         var text = editSelectionReplaceBlock(component.input.value, store.prepared.generated, '');
         Object.values(store.prepared.notes || {}).forEach(function(line) { text = editSelectionReplaceBlock(text, line, ''); });
-        editSelectionSetInput(component, text.trim());
+        editSelectionSetInput(component, text.replace(/\n{3,}/g, '\n\n').trim());
     }
     store.prepared = null; editSelectionSave(scope);
 }
@@ -629,30 +722,44 @@ function editSelectionReplaceBlock(text, previous, next) {
     var index = editSelectionBlockIndex(text, previous);
     return index < 0 ? text : text.slice(0, index) + next + text.slice(index + previous.length);
 }
-function editSelectionPreparedValue(scope, text) {
+function editSelectionNotePrefix(line) {
+    var colon = String(line || '').indexOf(':');
+    return colon > 0 ? line.slice(0, colon + 1) : '';
+}
+function editSelectionPreparedValue(scope, text, options) {
     var store = editSelectionStore(scope), previous = store.prepared || {}, rows = editSelectionRecords(scope);
-    var generated = editSelectionRequestLine(rows), automatic = !text.trim() || editSelectionBlockIndex(text, previous.generated) >= 0;
+    var generated = editSelectionRequestLine(rows);
+    var appendGenerated = !!(options && options.appendGenerated);
+    var automatic = !text.trim() || editSelectionBlockIndex(text, previous.generated) >= 0 || appendGenerated;
     var value = !text.trim() ? generated : editSelectionReplaceBlock(text, previous.generated, generated);
+    if (appendGenerated && editSelectionBlockIndex(value, generated) < 0) value = value.trimEnd() + '\n\n' + generated;
     var nextNotes = editSelectionNoteLines(scope, rows), managed = {};
+    var preserveDeleted = !!(options && options.preserveDeletedNotes);
     Object.entries(previous.notes || {}).forEach(function(entry) {
         var key = entry[0], line = entry[1];
-        if (editSelectionBlockIndex(value, line) >= 0) value = editSelectionReplaceBlock(value, line, nextNotes[key] || '');
-        // A note line edited directly in chat belongs to the writer. Preserve it.
-        else if (nextNotes[key]) managed[key] = line;
+        if (editSelectionBlockIndex(value, line) >= 0) {
+            value = editSelectionReplaceBlock(value, line, nextNotes[key] || '');
+            if (nextNotes[key]) managed[key] = nextNotes[key];
+        } else if (nextNotes[key]) {
+            var prefix = editSelectionNotePrefix(line);
+            // A note line edited directly in chat belongs to the writer. Preserve it.
+            if (prefix && value.indexOf(prefix) >= 0) managed[key] = line;
+            else if (preserveDeleted) managed[key] = line;
+        }
     });
     Object.entries(nextNotes).forEach(function(entry) {
         if (managed[entry[0]]) return;
         if (editSelectionBlockIndex(value, entry[1]) < 0) value = value.trimEnd() + '\n\n' + entry[1];
         managed[entry[0]] = entry[1];
     });
-    return {value: value.trim(), prepared: {generated: automatic ? generated : '', keys: rows.map(function(row) { return row.key; }), notes: managed, noteValues: nextNotes}};
+    return {value: value.replace(/\n{3,}/g, '\n\n').trim(), prepared: {generated: automatic ? generated : '', keys: rows.map(function(row) { return row.key; }), notes: managed, noteValues: nextNotes}};
 }
 function editSelectionPrepare(scope) {
     var store = editSelectionStore(scope), component = _editSelectionComposers.get(scope), rows = editSelectionRecords(scope);
     if (!component || !rows.length) return;
     if (rows.some(function(row) { return row.sourceReady === false; })) return;
     if (editSelectionConflicts(scope).size && !editSelectionHasCustomInstructions(scope, component.input.value)) { store.open = true; editSelectionPaint(scope); return; }
-    var draft = editSelectionPreparedValue(scope, component.input.value);
+    var draft = editSelectionPreparedValue(scope, component.input.value, {appendGenerated: !store.prepared && !!component.input.value.trim()});
     store.prepared = draft.prepared; store.open = false;
     if (component.session) {
         var target = component.container.querySelector('#groupTargetSelect');
@@ -662,23 +769,23 @@ function editSelectionPrepare(scope) {
 }
 function editSelectionUpdateDraft(scope) {
     var store = editSelectionStore(scope), component = _editSelectionComposers.get(scope);
-    if (!store.prepared || !component) return;
+    if (!component) return;
     var rows = editSelectionRecords(scope);
+    if (!rows.length) {
+        if (store.prepared) editSelectionDetach(scope);
+        return;
+    }
     if (rows.some(function(row) { return row.sourceReady === false; })) return;
-    if (!rows.length) { editSelectionDetach(scope); return; }
-    var generated = editSelectionRequestLine(rows);
-    var automatic = editSelectionBlockIndex(component.input.value, store.prepared.generated) >= 0;
-    var value = editSelectionReplaceBlock(component.input.value, store.prepared.generated, generated);
-    var selected = new Set(editSelectionGroups(rows).map(function(group) { return group.key; }));
-    Object.keys(store.prepared.notes || {}).forEach(function(key) {
-        if (!selected.has(key)) {
-            value = editSelectionReplaceBlock(value, store.prepared.notes[key], '').trim();
-            delete store.prepared.notes[key];
-            if (store.prepared.noteValues) delete store.prepared.noteValues[key];
-        }
-    });
-    store.prepared.generated = automatic ? generated : ''; store.prepared.keys = rows.map(function(row) { return row.key; });
-    if (component.input.value !== value) editSelectionSetInput(component, value);
+    var text = component.input.value;
+    if (!store.prepared && text.trim()) return;
+    var wasPrepared = !!store.prepared;
+    var draft = editSelectionPreparedValue(scope, text, {preserveDeletedNotes: true});
+    store.prepared = draft.prepared;
+    if (!wasPrepared && component.session) {
+        var target = component.container.querySelector('#groupTargetSelect');
+        if (target && !/^critic\d+$/.test(target.value)) { target.value = 'critic1'; target.dispatchEvent(new Event('change')); }
+    }
+    if (component.input.value !== draft.value) editSelectionSetInput(component, draft.value);
 }
 function editSelectionMarkdown(rows) {
     return rows.map(function(row) {

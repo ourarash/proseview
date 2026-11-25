@@ -55,9 +55,7 @@ def test_selections_review_compare_and_prepare_do_not_send_or_apply_and_survive_
     expect(page.locator('#discussDiffModalContent td.diff_sub')).to_contain_text(OPENED_SENTENCE)
     page.keyboard.press('Escape')
     tray.get_by_role('button', name='Close selected items', exact=True).click()
-    tray.get_by_role('button', name='Prepare request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value('Apply items 1, 2.')
-    expect(tray.locator('.edit-selection-included')).to_contain_text('2 items included')
     assert pane.locator('#groupTargetSelect').input_value()=='critic1'
     assert submissions==[]
     assert server.scene_path().read_text()==before
@@ -82,7 +80,6 @@ def test_group_custom_instructions_are_sent_without_repeating_proposals_in_share
     pane.get_by_role('checkbox', name='Select item 2:', exact=False).check()
     text='Apply 1 as proposed. For 2, keep the word apology and make it shorter.'
     pane.locator('#groupInput').fill(text)
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value(text)
     submitted=[]
     page.on('request', lambda r: submitted.append(r.post_data_json) if r.url.endswith('/api/discuss/group-run') and r.post_data_json.get('action')=='submit' else None)
@@ -101,7 +98,7 @@ def test_group_custom_instructions_are_sent_without_repeating_proposals_in_share
 def test_overlapping_wordings_require_a_choice_and_custom_draft_changes_are_not_rewritten(page, server):
     pane=seed_selections(page, server)
     pane.get_by_role('checkbox', name='Select item 1:', exact=False).check()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
+    expect(pane.locator('#groupInput')).to_have_value('Apply item 1.')
     pane.get_by_role('checkbox', name='Select item 3:', exact=False).check()
     pane.get_by_role('button', name='Choose wording', exact=True).click()
     expect(pane.locator('.edit-selection-conflict')).to_contain_text('overlapping passages')
@@ -121,7 +118,7 @@ def test_custom_notes_survive_removing_and_clearing_prepared_selections(page, se
     pane=seed_selections(page,server)
     pane.get_by_role('checkbox',name='Select item 1:',exact=False).check()
     pane.get_by_role('checkbox',name='Select item 2:',exact=False).check()
-    pane.get_by_role('button',name='Prepare request',exact=True).click()
+    expect(pane.locator('#groupInput')).to_have_value('Apply items 1, 2.')
     text='Apply 1 with a quieter ending. For 2, keep the word apology.'
     pane.locator('#groupInput').fill(text)
     pane.locator('.edit-selection-count').click()
@@ -135,7 +132,6 @@ def test_requested_is_separate_from_a_verified_applied_replacement(page, server)
     pane=seed_selections(page, server)
     pane.get_by_role('checkbox', name='Select item 1:', exact=False).check()
     pane.locator('#groupInput').fill('SELECT_FILE_CHANGE Apply 1.')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     pane.locator('#groupSendBtn').click()
     _group_idle(page)
     expect(pane.locator('.edit-selection-item-heading').first).to_contain_text('Applied')
@@ -155,8 +151,8 @@ def test_individual_review_selections_transfer_to_group_and_the_individual_reque
     checkbox.check()
     tray=page.locator('#discussComposerArea .edit-selection-composer')
     expect(tray.locator('.edit-selection-count')).to_contain_text('1 item selected')
+    expect(page.locator('#discussInput')).to_have_value('Apply item 3.')
     page.locator('#discussInput').fill('Apply 3, but retain the word same.')
-    tray.get_by_role('button', name='Prepare request', exact=True).click()
     expect(page.locator('#discussInput')).to_have_value('Apply 3, but retain the word same.')
     page.locator('#discussGroupFork:not([disabled])').wait_for(state='attached')
     page.locator('#discussSendMoreBtn').click()
@@ -185,7 +181,6 @@ def test_individual_send_uses_original_numbers_without_changing_the_writers_inst
     checkbox.check()
     text='Apply item 3, but keep the word same. Explain item 5 before changing it.'
     page.locator('#discussInput').fill(text)
-    page.locator('#discussComposerArea').get_by_role('button', name='Prepare request', exact=True).click()
     sent=[]
     page.on('request', lambda r: sent.append(r.post_data_json) if '/questions' in r.url and r.method=='POST' else None)
     page.locator('#discussSend').click()
@@ -212,8 +207,7 @@ def test_explicit_edits_without_a_before_quote_are_selectable_and_keep_their_ope
     checkbox=pane.get_by_role('checkbox',name='Select item 1:',exact=False)
     expect(checkbox).to_be_visible()
     checkbox.check()
-    prepare=pane.get_by_role('button',name='Prepare request',exact=True)
-    expect(prepare).to_be_enabled()
+    expect(pane.locator('#groupInput')).to_have_value('Apply item 1.')
     pane.locator('.edit-selection-count').click()
     expect(pane.locator('.edit-selection-review-item p em')).to_contain_text(OPENED_SENTENCE)
     pane.locator('.edit-selection-review-item').get_by_role('button',name='Compare passage',exact=True).click()
@@ -222,7 +216,6 @@ def test_explicit_edits_without_a_before_quote_are_selectable_and_keep_their_ope
         assert page.locator('#discussDiffModalContent del.diff-delete').count()==0
     page.keyboard.press('Escape')
     pane.get_by_role('button',name='Close selected items',exact=True).click()
-    prepare.click()
     if operation=='Insert after':
         page.screenshot(path=str(tmp_path/'selected-insertion.png'))
     sent=[]
@@ -253,9 +246,6 @@ def test_an_insertion_and_a_replacement_at_its_anchor_can_be_selected_together(p
     pane=seed_selections(page,server,insertion=True)
     pane.get_by_role('checkbox',name='Select item 1:',exact=False).check()
     pane.get_by_role('checkbox',name='Select item 4:',exact=False).check()
-    prepare=pane.get_by_role('button',name='Prepare request',exact=True)
-    expect(prepare).to_be_enabled()
-    prepare.click()
     expect(pane.locator('#groupInput')).to_have_value('Apply items 1, 4.')
     pane.locator('.edit-selection-count').click()
     expect(pane.locator('.edit-selection-conflict')).to_have_count(0)
@@ -296,9 +286,6 @@ def test_original_numbers_survive_skipped_items_and_inserts_and_send_only_the_in
     expect(pane.get_by_role('checkbox')).to_have_count(3)
     for number in [start + 4, start, start + 2]:
         pane.get_by_role('checkbox', name=f'Select item {number}:', exact=False).check()
-    prepare = pane.get_by_role('button', name='Prepare request', exact=True)
-    expect(prepare).to_be_enabled()
-    prepare.click()
     instruction = f'Apply items {start}, {start + 2}, {start + 4}.'
     expect(pane.locator('#groupInput')).to_have_value(instruction)
     pane.locator('.edit-selection-count').click()
@@ -314,7 +301,6 @@ def test_original_numbers_survive_skipped_items_and_inserts_and_send_only_the_in
 def test_unnumbered_suggestions_are_referred_to_by_title(page, server):
     pane = show_reviews(page, server, ['### 1. Keep the hesitation\n\nThis beat works.\n\n' + edit_markdown('Make the code change explicit', OPENED_SENTENCE, CHANGED_SENTENCE, 18)])
     pane.get_by_role('checkbox', name='Select item: Make the code change explicit', exact=True).check()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value('Apply item “Make the code change explicit”.')
     scope = page.evaluate('editSelectionGroupScope(_groupActiveSession)')
     outgoing = page.evaluate('(scope) => editSelectionOutgoing(scope, document.querySelector("#groupInput").value)', scope)
@@ -329,7 +315,6 @@ def test_older_reviews_get_a_short_reference_when_item_numbers_repeat(page, serv
     ])
     pane.get_by_role('checkbox', name='Select item 1:', exact=False).first.check()
     pane.get_by_role('checkbox', name='Select item 1:', exact=False).last.check()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value('Apply items 1 (“Make the code change explicit”), 1 (“Simplify the entrance”).')
     outgoing = page.evaluate('editSelectionOutgoing(editSelectionGroupScope(_groupActiveSession), document.querySelector("#groupInput").value)')
     assert 'Selected items from earlier reviews:' in outgoing['text']
@@ -342,7 +327,7 @@ def test_only_proposals_missing_from_the_receiving_history_are_included(page, se
     pane = seed_selections(page, server)
     pane.get_by_role('checkbox', name='Select item 1:', exact=False).check()
     pane.get_by_role('checkbox', name='Select item 2:', exact=False).check()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
+    expect(pane.locator('#groupInput')).to_have_value('Apply items 1, 2.')
     outgoing = page.evaluate('''replacement => {
         const scope = editSelectionGroupScope(_groupActiveSession);
         const component = _editSelectionComposers.get(scope);
@@ -362,7 +347,7 @@ def test_saved_selections_migrate_to_original_numbers_and_update_only_generated_
         edit_markdown('1. Make the code change explicit', OPENED_SENTENCE, CHANGED_SENTENCE, 18)
         + edit_markdown('5. Add the code detail', OPENED_SENTENCE, 'She had reset the code in March.', 18)])
     pane.get_by_role('checkbox', name='Select item 5:', exact=False).check()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
+    expect(pane.locator('#groupInput')).to_have_value('Apply item 5.')
     page.evaluate('''() => {
         const scope = editSelectionGroupScope(_groupActiveSession), store = editSelectionStore(scope);
         Object.values(store.records).forEach((row, i) => { delete row.itemVersion; row.number = i + 1; row.title = 'Type: Comic opportunity'; });
@@ -377,3 +362,15 @@ def test_saved_selections_migrate_to_original_numbers_and_update_only_generated_
     expect(pane.locator('#groupInput')).to_have_value('Apply 5 with a quieter ending.' if custom else 'Apply item 5.')
     pane.locator('.edit-selection-count').click()
     expect(pane.locator('.edit-selection-review-title')).to_contain_text('5. Add the code detail')
+
+
+def test_checking_items_does_not_clobber_existing_draft_and_offers_add_to_draft(page, server):
+    pane = seed_selections(page, server)
+    pane.locator('#groupInput').fill('Keep the quiet tone.')
+    pane.get_by_role('checkbox', name='Select item 1:', exact=False).check()
+    expect(pane.locator('#groupInput')).to_have_value('Keep the quiet tone.')
+    add_btn = pane.get_by_role('button', name='Add to draft', exact=True)
+    expect(add_btn).to_be_visible()
+    add_btn.click()
+    expect(pane.locator('#groupInput')).to_have_value('Keep the quiet tone.\n\nApply item 1.')
+    expect(add_btn).to_be_hidden()

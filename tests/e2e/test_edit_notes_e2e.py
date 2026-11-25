@@ -45,7 +45,6 @@ def test_notes_update_the_request_preserve_other_writing_and_stay_out_of_quote_c
     expect(page.locator('#discussDiffModalContent')).to_contain_text(CHANGED_SENTENCE)
     expect(page.locator('#discussDiffModalContent')).not_to_contain_text(note)
     page.keyboard.press('Escape')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     initial = 'Apply items 1, 2.\n\nFor item 1: ' + note
     expect(pane.locator('#groupInput')).to_have_value(initial)
     pane.locator('#groupInput').fill('Keep the quiet tone.\n\n' + initial)
@@ -54,11 +53,8 @@ def test_notes_update_the_request_preserve_other_writing_and_stay_out_of_quote_c
     revised = 'Keep “same” and use “spring” instead of “March”.'
     host.get_by_role('textbox').fill(revised)
     host.get_by_role('button', name='Done', exact=True).click()
-    expect(pane.locator('.edit-selection-note-status')).to_have_text('Notes changed · Update request')
-    pane.get_by_role('button', name='Update request', exact=True).click()
     expected = 'Keep the quiet tone.\n\nApply items 1, 2.\n\nFor item 1: ' + revised
     expect(pane.locator('#groupInput')).to_have_value(expected)
-    expect(pane.locator('.edit-selection-note-status')).to_be_empty()
     page.screenshot(path=str(tmp_path / 'edit-notes-implemented.png'))
 
     sent = []
@@ -113,12 +109,9 @@ def test_notes_can_be_changed_and_removed_directly_in_the_selection_review(page,
     review.get_by_role('textbox').fill('Keep the word apology.')
     review.get_by_role('button', name='Done', exact=True).click()
     expect(review.get_by_role('button', name='Change note for item 2', exact=True)).to_contain_text('Keep the word apology.')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value('Apply item 2.\n\nFor item 2: Keep the word apology.')
-    pane.locator('.edit-selection-count').click()
     review.get_by_role('button', name='Change note for item 2', exact=True).click()
     review.get_by_role('button', name='Remove note', exact=True).click()
-    pane.get_by_role('button', name='Update request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value('Apply item 2.')
     expect(item_for(checkbox).get_by_role('button', name='Add note', exact=True)).to_be_visible()
     expect(pane.locator('.edit-selection-ids .has-note')).to_have_count(0)
@@ -129,13 +122,11 @@ def test_updating_notes_preserves_a_note_line_rewritten_directly_in_chat(page, s
     checkbox = pane.get_by_role('checkbox', name='Select item 1:', exact=False)
     checkbox.check()
     host = add_note(item_for(checkbox), 'Keep the original wording of the first clause.')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     text = 'Apply item 1 with my revised ending.\n\nFor item 1: Discuss the ending before changing it.'
     pane.locator('#groupInput').fill(text)
     host.get_by_role('button', name='Change note for item 1', exact=True).click()
     host.get_by_role('textbox').fill('Make the first clause shorter.')
     host.get_by_role('button', name='Done', exact=True).click()
-    pane.get_by_role('button', name='Update request', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value(text)
     pane.get_by_role('button', name='Clear', exact=True).click()
     expect(pane.locator('#groupInput')).to_have_value(text)
@@ -146,7 +137,6 @@ def test_notes_are_sent_even_when_the_writer_does_not_click_update_request_again
     checkbox = pane.get_by_role('checkbox', name='Select item 1:', exact=False)
     checkbox.check()
     host = add_note(item_for(checkbox), 'Keep the first clause.')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     host.get_by_role('button', name='Change note for item 1', exact=True).click()
     host.get_by_role('textbox').fill('Discuss this item before applying it.')
     host.get_by_role('button', name='Done', exact=True).click()
@@ -239,11 +229,9 @@ def test_overflow_counts_items_once_and_connected_edits_share_one_note(page, ser
     expect(panel.locator('.edit-selection-review-edit')).to_have_count(16)
     expect(panel.get_by_role('button', name=f'Change note for item {repeated_item}', exact=True)).to_have_count(1)
     panel.get_by_role('button', name='Close selected items', exact=True).click()
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     draft = pane.locator('#groupInput').input_value()
     assert draft.startswith('Apply items ' + ', '.join(map(str, numbers)) + '.')
     assert draft.count('For item ' + str(repeated_item) + ': Keep these changes together.') == 1
-    expect(pane.locator('.edit-selection-included')).to_contain_text('14 items included')
     assert pane.locator('.edit-selection-composer').evaluate('element => element.getBoundingClientRect().right <= innerWidth + 1')
     page.screenshot(path=str(tmp_path / 'selected-items-with-notes.png'))
 
@@ -261,7 +249,6 @@ def test_equal_numbers_in_different_reviews_have_separate_notes_and_counts(page,
     expect(item_for(second).get_by_role('button', name='Add note', exact=True)).to_be_visible()
     add_note(item_for(second), 'Keep apology.')
     expect(pane.locator('.edit-selection-count')).to_contain_text('2 items selected')
-    pane.get_by_role('button', name='Prepare request', exact=True).click()
     draft = pane.locator('#groupInput').input_value()
     assert 'For item 1 (“Make the code change explicit”): Keep same.' in draft
     assert 'For item 1 (“Simplify the entrance”): Keep apology.' in draft

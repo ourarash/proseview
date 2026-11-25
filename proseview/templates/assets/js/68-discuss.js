@@ -2608,16 +2608,39 @@
             var parts = String(text || '').split(/(```[\s\S]*?```|~~~[\s\S]*?~~~|\[[^\]]*\]\([^)]*\)|`[^`]*`)/);
             return parts.map(function(part, idx) {
                 if (idx % 2 === 1) {
-                    var citation = part.match(/^`([^`\n]+\.md)\s*[·,:]\s*lines?\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?`$/i);
+                    var citation = part.match(/^`([^`\n]+\.md|ch0*\d+\/0*\d+)\s*[·,:]\s*(?:around\s+)?lines?\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?`$/i);
+                    if (citation) {
+                        var citTarget = resolveProsviewFileReference(citation[1]);
+                        return citTarget ? link(part.slice(1, -1), citTarget.path, citation[2], citation[3]) : part;
+                    }
+                    var codeShort = part.match(/^`(ch0*\d+\/0*\d+)`$/i);
+                    if (codeShort) {
+                        var csTarget = resolveProsviewShorthandScene(codeShort[1]);
+                        if (csTarget) { activeSource = csTarget.path; return '[' + codeShort[1] + '](<' + csTarget.path + '>)'; }
+                    }
                     var namedLink = part.match(/\]\(<?([^#\n]+?\.md)(?:#|:\d|>?\))/);
                     if (namedLink) activeSource = namedLink[1];
-                    return citation ? link(part.slice(1, -1), citation[1], citation[2], citation[3]) : part;
+                    else if (activeSource && /\]\(#L?\d+(?:[-–—]L?\d+)?\)$/i.test(part)) {
+                        var bareHash = part.match(/^(\[[^\]]*\]\()#(L?\d+(?:[-–—]L?\d+)?)\)$/i);
+                        if (bareHash) return bareHash[1] + '<' + activeSource + '#' + bareHash[2] + '>)';
+                    }
+                    return part;
                 }
-                var precedingPath = idx > 0 && parts[idx - 1].match(/^`([^`\n]+\.md)`$/);
+                var precedingPath = idx > 0 && parts[idx - 1].match(/^`([^`\n]+\.md|ch0*\d+\/0*\d+)`$/i);
                 return part.split(/(\n)/).map(function(line, lineIndex) {
-                    if (/^\s*#{1,6}\s/.test(line)) activeSource = '';
-                    return line.replace(/(?:([^\s`<>\[\]()]+\.md)\s*[·,:]\s*)?\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b/gi, function(all, source, word, start, end, offset) {
-                        if (!source && precedingPath && lineIndex === 0 && /^\s*[·,:]\s*$/.test(line.slice(0, offset))) source = precedingPath[1];
+                    if (/^\s*#{1,6}\s/.test(line) || /^\s*(?:\*\*|__)?(?:(?:edit|item|suggestion|finding|option)\s+)?\d+[.):]\s/i.test(line)) activeSource = '';
+                    return line.replace(/(?:([^\s`<>\[\]()]+\.md)\s*[·,:]\s*)?\b(lines?)\s+(\d+)(?:\s*(?:[\u2013\u2014-]|to)\s*(\d+))?\b|\b(ch0*\d+\/0*\d+)(?![-_./\w])/gi, function(all, source, word, start, end, shortRef, offset) {
+                        if (shortRef) {
+                            if (offset > 0 && /[A-Za-z0-9_/-]/.test(line[offset - 1])) return all;
+                            var st = resolveProsviewShorthandScene(shortRef);
+                            if (!st) return all;
+                            activeSource = st.path;
+                            return '[' + all + '](<' + st.path + '>)';
+                        }
+                        if (!source && precedingPath && lineIndex === 0 && /^\s*[·,:]\s*$/.test(line.slice(0, offset))) {
+                            var pt = resolveProsviewFileReference(precedingPath[1]);
+                            source = pt ? pt.path : precedingPath[1];
+                        }
                         if (!source) {
                             var naturalSource = line.slice(0, offset).match(/\b(?:in|from)\s+(?:the\s+)?([^,\n]+),\s*$/i);
                             if (naturalSource) {
@@ -4237,6 +4260,17 @@
             return _prosviewRepositoryRootCache;
         }
 
+        function resolveProsviewShorthandScene(value, line, endLine) {
+            var m = String(value || '').trim().match(/^(?:manuscript\/)?ch0*(\d+)\/0*(\d+)$/i);
+            if (!m || typeof paths === 'undefined' || !Array.isArray(paths)) return null;
+            var chNum = parseInt(m[1], 10), scNum = parseInt(m[2], 10);
+            var matches = paths.filter(function(p) {
+                var pm = String(p || '').match(/^ch0*(\d+)\/0*(\d+)(?:[-_.]|$)/i);
+                return pm && parseInt(pm[1], 10) === chNum && parseInt(pm[2], 10) === scNum;
+            });
+            return matches.length === 1 ? {kind: 'scene', path: matches[0], line: line || null, endLine: endLine || null} : null;
+        }
+
         function prosviewTargetForRepositoryPath(path, line, endLine) {
             var clean = normalizeProsviewRepositoryPath(path);
             if (!clean) return null;
@@ -4337,6 +4371,8 @@
 
             var direct = prosviewTargetForRepositoryPath(raw, line, endLine);
             if (direct) return direct;
+            var shorthand = resolveProsviewShorthandScene(raw, line, endLine);
+            if (shorthand) return shorthand;
             var current = currentProsviewRepositoryPath();
             if (!current) return null;
             var slash = current.lastIndexOf('/');
@@ -4344,7 +4380,31 @@
             return prosviewTargetForRepositoryPath(relative, line, endLine);
         }
 
+        function clearHeldFlashElements() {
+            var held = document.querySelectorAll('.para-flash-hold');
+            for (var i = 0; i < held.length; i++) {
+                held[i].classList.remove('para-flash-hold');
+            }
+        }
+
+        function holdFlashElements(elements) {
+            clearHeldFlashElements();
+            if (!elements) return;
+            var prev = document.querySelectorAll('.para-flash');
+            for (var k = 0; k < prev.length; k++) {
+                if (prev[k]._paraFlashTimer) clearTimeout(prev[k]._paraFlashTimer);
+                prev[k]._paraFlashTimer = null;
+                prev[k].classList.remove('para-flash');
+            }
+            var list = Array.isArray(elements) ? elements : [elements];
+            list.forEach(function(el) {
+                if (!el || !el.classList) return;
+                el.classList.add('para-flash-hold');
+            });
+        }
+
         function flashElements(elements) {
+            clearHeldFlashElements();
             if (!elements) return;
             var prev = document.querySelectorAll('.para-flash');
             for (var k = 0; k < prev.length; k++) {
@@ -4444,16 +4504,19 @@
             }
         }
 
-        function highlightQuoteRange(range) {
+        function highlightQuoteRange(range, options) {
             if (!range) return;
+            var persist = !!(options && options.persist);
+            var allowSelectionFallback = !(options && options.useSelectionFallback === false);
             clearDiscussQuoteHighlight();
 
             if (typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined') {
                 try {
                     var hl = new Highlight(range);
+                    hl.priority = 1;
                     CSS.highlights.set('proseview-quote-jump', hl);
                 } catch (e) {}
-            } else {
+            } else if (allowSelectionFallback) {
                 try {
                     var sel = window.getSelection ? window.getSelection() : null;
                     if (sel) {
@@ -4464,9 +4527,11 @@
                 } catch (e) {}
             }
 
-            _discussQuoteHighlightTimer = setTimeout(function() {
-                clearDiscussQuoteHighlight();
-            }, 2500);
+            if (!persist) {
+                _discussQuoteHighlightTimer = setTimeout(function() {
+                    clearDiscussQuoteHighlight();
+                }, 2500);
+            }
         }
 
         function normalizeDiscussSearchText(str) {
@@ -4687,7 +4752,7 @@
                     line: parseInt(a.dataset.prosviewLine || '', 10) || null,
                     endLine: parseInt(a.dataset.prosviewEndLine || '', 10) || null
                 };
-                var isLineOnlyText = /^\s*(?:lines?|l)\s+\d+/i.test((a.textContent || '').trim());
+                var isLineOnlyText = /^\s*(?:around\s+)?(?:lines?|l)\s+\d+/i.test((a.textContent || '').trim());
                 if (!isLineOnlyText || cand.kind === 'file' || (baseScenePath && cand.path !== baseScenePath)) {
                     if (!explicitTarget || (explicitTarget.kind === 'scene' && cand.kind === 'file') || (!explicitTarget.line && cand.line && cand.path === explicitTarget.path)) {
                         explicitTarget = cand;
@@ -4707,6 +4772,11 @@
                 var tm;
                 while ((tm = tokenRe.exec(rawText)) !== null) {
                     candidates.push(tm[1]);
+                }
+                var shortRe = /(?:^|[^A-Za-z0-9_/-])(ch0*\d+\/0*\d+)(?![-_./\w])/gi;
+                var sm;
+                while ((sm = shortRe.exec(rawText)) !== null) {
+                    candidates.push(sm[1]);
                 }
                 for (var t = 0; t < candidates.length; t++) {
                     var token = String(candidates[t] || '').replace(/[.,:;!?)'"`\]]+$/, '');
@@ -4794,9 +4864,20 @@
             } catch (e) { return null; }
         }
 
-        function focusRepoFilePreviewMatch(line, endLine, quoteText, sourceText) {
+        var _discussQuotePressCleanup = null;
+
+        function endDiscussQuotePressHighlight() {
+            clearHeldFlashElements();
+            if (_discussQuotePressCleanup) {
+                var cleanup = _discussQuotePressCleanup;
+                _discussQuotePressCleanup = null;
+                cleanup();
+            }
+        }
+
+        function findRepoFilePreviewMatch(line, endLine, quoteText, sourceText) {
             var body = document.getElementById('filePreviewBody');
-            if (!body) return false;
+            if (!body) return null;
             var normText = normalizeDiscussSearchText(quoteText || '');
             var pre = body.querySelector('pre');
             var blocks = pre
@@ -4831,6 +4912,17 @@
                 matchedRange = findPreLineRange(pre, line, endLine);
             }
 
+            if (!matchedRange && !matchedBlocks.length) return null;
+            return { blocks: matchedBlocks, range: matchedRange, pre: pre };
+        }
+
+        function focusRepoFilePreviewMatch(line, endLine, quoteText, sourceText) {
+            var match = findRepoFilePreviewMatch(line, endLine, quoteText, sourceText);
+            if (!match) return false;
+            var pre = match.pre;
+            var matchedBlocks = match.blocks;
+            var matchedRange = match.range;
+
             if (matchedRange) {
                 var targetEl = matchedBlocks[0] || pre;
                 var rect = matchedRange.getBoundingClientRect ? matchedRange.getBoundingClientRect() : null;
@@ -4854,6 +4946,64 @@
                 return true;
             }
             return false;
+        }
+
+        function findCurrentSceneQuoteMatch(line, endLine, quoteText) {
+            var blocks = Array.prototype.slice.call(document.querySelectorAll('#sceneProseHost .ProseMirror > [data-line]'));
+            if (!blocks.length) return null;
+
+            var matchedBlocks = [];
+            var normText = normalizeDiscussSearchText(quoteText);
+
+            if (normText.length >= 3) {
+                matchedBlocks = findBlocksByQuoteText(blocks, normText);
+            }
+
+            if (!matchedBlocks.length && Number.isInteger(line) && line >= 1) {
+                var startLine = line;
+                var stopLine = (Number.isInteger(endLine) && endLine >= line) ? endLine : line;
+                for (var i = 0; i < blocks.length; i++) {
+                    var bStart = parseInt(blocks[i].getAttribute('data-line') || '', 10);
+                    if (!Number.isInteger(bStart)) continue;
+                    var nextBlockLine = (i + 1 < blocks.length)
+                        ? parseInt(blocks[i + 1].getAttribute('data-line') || '', 10)
+                        : Infinity;
+                    var bEnd = (Number.isInteger(nextBlockLine) && nextBlockLine > bStart)
+                        ? nextBlockLine - 1
+                        : bStart;
+                    if (bStart <= stopLine && bEnd >= startLine) {
+                        matchedBlocks.push(blocks[i]);
+                    }
+                }
+                if (!matchedBlocks.length) {
+                    var targetBlock = null;
+                    for (var j = 0; j < blocks.length; j++) {
+                        var bl = parseInt(blocks[j].getAttribute('data-line') || '', 10);
+                        if (!Number.isInteger(bl)) continue;
+                        if (bl === line) { targetBlock = blocks[j]; break; }
+                        if (bl < line) targetBlock = blocks[j];
+                        else if (!targetBlock) { targetBlock = blocks[j]; break; }
+                    }
+                    if (targetBlock) matchedBlocks = [targetBlock];
+                }
+            }
+
+            if (!matchedBlocks.length) return null;
+
+            var matchedRange = null;
+            if (normText.length >= 3) {
+                matchedRange = findDomRangeInBlocks(matchedBlocks, normText);
+            }
+            if (!matchedRange) {
+                try {
+                    var r = document.createRange();
+                    r.setStartBefore(matchedBlocks[0]);
+                    r.setEndAfter(matchedBlocks[matchedBlocks.length - 1]);
+                    matchedRange = r;
+                } catch (e) {}
+            }
+
+            return { blocks: matchedBlocks, range: matchedRange };
         }
 
         function jumpAndHighlightDiscussQuote(targetPath, line, endLine, quoteText, targetKind, attempt) {
@@ -4926,61 +5076,15 @@
                 return;
             }
 
-            var matchedBlocks = [];
-            var normText = normalizeDiscussSearchText(quoteText);
-
-            if (normText.length >= 3) {
-                matchedBlocks = findBlocksByQuoteText(blocks, normText);
-            }
-
-            if (!matchedBlocks.length && Number.isInteger(line) && line >= 1) {
-                var startLine = line;
-                var stopLine = (Number.isInteger(endLine) && endLine >= line) ? endLine : line;
-                for (var i = 0; i < blocks.length; i++) {
-                    var bStart = parseInt(blocks[i].getAttribute('data-line') || '', 10);
-                    if (!Number.isInteger(bStart)) continue;
-                    var nextBlockLine = (i + 1 < blocks.length)
-                        ? parseInt(blocks[i + 1].getAttribute('data-line') || '', 10)
-                        : Infinity;
-                    var bEnd = (Number.isInteger(nextBlockLine) && nextBlockLine > bStart)
-                        ? nextBlockLine - 1
-                        : bStart;
-                    if (bStart <= stopLine && bEnd >= startLine) {
-                        matchedBlocks.push(blocks[i]);
-                    }
-                }
-                if (!matchedBlocks.length) {
-                    var targetBlock = null;
-                    for (var j = 0; j < blocks.length; j++) {
-                        var bl = parseInt(blocks[j].getAttribute('data-line') || '', 10);
-                        if (!Number.isInteger(bl)) continue;
-                        if (bl === line) { targetBlock = blocks[j]; break; }
-                        if (bl < line) targetBlock = blocks[j];
-                        else if (!targetBlock) { targetBlock = blocks[j]; break; }
-                    }
-                    if (targetBlock) matchedBlocks = [targetBlock];
-                }
-            }
-
-            if (!matchedBlocks.length) return;
+            var match = findCurrentSceneQuoteMatch(line, endLine, quoteText);
+            if (!match) return;
+            var matchedBlocks = match.blocks;
+            var matchedRange = match.range;
 
             if (typeof matchedBlocks[0].scrollIntoView === 'function') {
                 matchedBlocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             flashElements(matchedBlocks);
-
-            var matchedRange = null;
-            if (normText.length >= 3) {
-                matchedRange = findDomRangeInBlocks(matchedBlocks, normText);
-            }
-            if (!matchedRange) {
-                try {
-                    var r = document.createRange();
-                    r.setStartBefore(matchedBlocks[0]);
-                    r.setEndAfter(matchedBlocks[matchedBlocks.length - 1]);
-                    matchedRange = r;
-                } catch (e) {}
-            }
 
             if (matchedRange) {
                 highlightQuoteRange(matchedRange);
@@ -5015,21 +5119,7 @@
             return text.replace(/^From (?:scene|file):[^\r\n]*\r?\n?/m, '').trim();
         }
 
-        function handleDiscussQuoteClick(event, quoteEl, ctx) {
-            if (event) {
-                if (event.button !== 0 && event.type === 'click') return;
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                if (event.target && (event.target.closest('a') || event.target.closest('.md-copy-btn'))) return;
-                if (window.getSelection && !window.getSelection().isCollapsed) {
-                    var sel = window.getSelection();
-                    var selStr = (sel.toString() || '').trim();
-                    if (selStr.length > 0 && ((sel.anchorNode && quoteEl.contains(sel.anchorNode)) || (sel.focusNode && quoteEl.contains(sel.focusNode)))) {
-                        return;
-                    }
-                }
-                event.preventDefault();
-            }
-
+        function resolveDiscussQuoteTarget(quoteEl, ctx) {
             var cleanText = extractDiscussQuoteText(quoteEl);
             var targetKind = quoteEl.dataset.targetKind || '';
             var targetPath = quoteEl.dataset.targetPath || (ctx && ctx.scenePath) || _discussCurrentScenePath();
@@ -5046,8 +5136,111 @@
                     targetPath = resolvedSource.path;
                 }
             }
+            return {
+                cleanText: cleanText,
+                targetKind: targetKind,
+                targetPath: targetPath,
+                targetLine: targetLine,
+                targetEndLine: targetEndLine
+            };
+        }
 
-            jumpAndHighlightDiscussQuote(targetPath, targetLine, targetEndLine, cleanText, targetKind);
+        function startDiscussQuotePressHighlight(quoteEl, ctx) {
+            endDiscussQuotePressHighlight();
+            var target = resolveDiscussQuoteTarget(quoteEl, ctx);
+            var currentScene = document.documentElement.dataset.view === 'scene' && curIdx >= 0 ? paths[curIdx] : '';
+            var resolved = target.targetPath
+                ? (prosviewTargetForRepositoryPath(target.targetPath, target.targetLine, target.targetEndLine) || resolveProsviewFileReference(target.targetPath))
+                : null;
+            if (!resolved && target.targetPath) {
+                resolved = {kind: target.targetKind || 'scene', path: target.targetPath, line: target.targetLine, endLine: target.targetEndLine};
+            }
+            if (!resolved && currentScene) {
+                resolved = {kind: 'scene', path: currentScene, line: target.targetLine, endLine: target.targetEndLine};
+            }
+            if (!resolved) return;
+
+            var destKind = resolved.kind || target.targetKind || 'scene';
+            var destPath = resolved.path;
+            var match = null;
+
+            if (destKind === 'file') {
+                var currentFile = document.documentElement.dataset.view === 'file'
+                    ? String((document.getElementById('filePreviewTitle') || {}).textContent || '').trim()
+                    : '';
+                if (currentFile !== destPath) return;
+                var bodyText = (typeof repoFileByPath !== 'undefined' && repoFileByPath[destPath])
+                    ? (repoFileByPath[destPath].body || '')
+                    : '';
+                match = findRepoFilePreviewMatch(target.targetLine, target.targetEndLine, target.cleanText, bodyText);
+                if (match && !match.range && !match.pre && match.blocks && match.blocks.length) {
+                    try {
+                        var fileRange = document.createRange();
+                        fileRange.setStartBefore(match.blocks[0]);
+                        fileRange.setEndAfter(match.blocks[match.blocks.length - 1]);
+                        match.range = fileRange;
+                    } catch (e) {}
+                }
+            } else {
+                var targetScene = destPath || currentScene;
+                if (document.documentElement.dataset.view !== 'scene' || targetScene !== currentScene) return;
+                match = findCurrentSceneQuoteMatch(target.targetLine, target.targetEndLine, target.cleanText);
+            }
+
+            if (!match || (!match.range && !(match.blocks && match.blocks.length))) return;
+
+            var rect = match.range && match.range.getBoundingClientRect ? match.range.getBoundingClientRect() : null;
+            var inView = !!(rect && (rect.height || rect.width) && rect.bottom > 0 && rect.top < (window.innerHeight || 600));
+            if (!inView) {
+                if (destKind === 'file' && rect && (rect.height || rect.width) && typeof window.scrollTo === 'function') {
+                    window.scrollTo({
+                        top: Math.max(0, (window.scrollY || window.pageYOffset || 0) + rect.top - ((window.innerHeight || 600) / 2) + (rect.height / 2)),
+                        behavior: 'smooth'
+                    });
+                } else if (match.blocks && match.blocks.length && typeof match.blocks[0].scrollIntoView === 'function') {
+                    match.blocks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+
+            if (!match.pre && match.blocks && match.blocks.length) {
+                holdFlashElements(match.blocks);
+            }
+            if (match.range) {
+                highlightQuoteRange(match.range, { persist: true, useSelectionFallback: false });
+            }
+
+            var release = function() {
+                endDiscussQuotePressHighlight();
+                clearDiscussQuoteHighlight();
+            };
+            window.addEventListener('mouseup', release, true);
+            window.addEventListener('dragend', release, true);
+            window.addEventListener('blur', release);
+            _discussQuotePressCleanup = function() {
+                window.removeEventListener('mouseup', release, true);
+                window.removeEventListener('dragend', release, true);
+                window.removeEventListener('blur', release);
+            };
+        }
+
+        function handleDiscussQuoteClick(event, quoteEl, ctx) {
+            if (event) {
+                if (event.button !== 0 && event.type === 'click') return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                if (event.target && (event.target.closest('a') || event.target.closest('.md-copy-btn'))) return;
+                if (window.getSelection && !window.getSelection().isCollapsed) {
+                    var sel = window.getSelection();
+                    var selStr = (sel.toString() || '').trim();
+                    if (selStr.length > 0 && ((sel.anchorNode && quoteEl.contains(sel.anchorNode)) || (sel.focusNode && quoteEl.contains(sel.focusNode)))) {
+                        return;
+                    }
+                }
+                event.preventDefault();
+            }
+
+            endDiscussQuotePressHighlight();
+            var target = resolveDiscussQuoteTarget(quoteEl, ctx);
+            jumpAndHighlightDiscussQuote(target.targetPath, target.targetLine, target.targetEndLine, target.cleanText, target.targetKind);
         }
 
         // Whether the paragraph above a quote names that quote's source: it is
@@ -5057,8 +5250,10 @@
         // quoted before it.
         function _discussIntroducesQuote(prevEl, prevText) {
             if (/^[\s(\[]*(?:[^\s]+\.md\s*[·,:]\s*)?lines?\s+\d+(?:\s*[-–—]\s*\d+)?[\s)\].]*$/i.test(prevText)) return true;
+            if (prevText.split(/\s+/).length <= 8 && /(?:lines?|l)\s*\d+(?:\s*(?:[-–—]|to)\s*l?\d+)?[\s)\].:]*$/i.test(prevText)) return true;
             if (!/:$/.test(prevText)) return false;
             if (prevText.split(/\s+/).length <= 12) return true;
+            if (/\breplace\b[\s\S]+\bwith\s*:$/i.test(prevText)) return true;
             var links = prevEl.querySelectorAll ? prevEl.querySelectorAll('a[data-prosview-path]') : [];
             var lastRef = links.length ? (links[links.length - 1].textContent || '') : '';
             var at = lastRef ? prevText.lastIndexOf(lastRef) : -1;
@@ -5191,7 +5386,7 @@
             // A quote without a citation of its own is usually a suggested
             // rewrite of the passage quoted just before it. Point it there, not
             // at a scene the explanation in between happened to link.
-            var inherited = ctx && (ctx.lastQuoteTarget || ctx.lastLocalTarget);
+            var inherited = ctx && (ctx.lastQuoteTarget || ctx.lastLocalTarget || ctx.optionsTarget);
             if (!cited && inherited) {
                 if (!quoteEl.dataset.targetPath && inherited.path) {
                     quoteEl.dataset.targetKind = inherited.kind || 'scene';
@@ -5232,6 +5427,12 @@
                     : ('Click to jump to ' + lineLabel + ' in the scene');
             }
 
+            quoteEl.onmousedown = function(event) {
+                if (!event || event.button !== 0) return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                if (event.target && event.target.closest && event.target.closest('a, button, input, label, .md-copy-btn, .discuss-quote-actions, .edit-selection-control')) return;
+                startDiscussQuotePressHighlight(quoteEl, ctx);
+            };
             quoteEl.onclick = function(event) {
                 if (event.target && event.target.closest && event.target.closest('.md-copy-btn')) return;
                 try { quoteEl.blur(); } catch(e) {}
@@ -5819,9 +6020,13 @@
             parent.appendChild(card);
         }
 
+        var OPTIONS_HEADER_RE = /^(?:options?|alternatives?|versions?|variants?|rewrites?)(?:\s+for\b[^:\n]{0,60})?\s*:?$/i;
+        var OPTION_ITEM_RE = /^(?:(?:edit|item|suggestion|finding|option|version|alternative|variant)\s+)?(?:\d+|[a-z](?=[.):\s]))(?:[.):]\s|\s+[—–(-])/i;
+
         function appendMarkdownTokens(parent, tokens, ctx) {
             (tokens || []).forEach(function(token, tokenIndex) {
                 var node;
+                var isOptionsHeader = false;
                 if (token.type === 'space') return;
                 if (token.type === 'text' || token.type === 'escape') {
                     if (token.tokens && parent.tagName === 'LI') {
@@ -5839,9 +6044,28 @@
                     parent.appendChild(document.createTextNode(token.raw || token.text || ''));
                     return;
                 }
-                if (token.type === 'paragraph') node = document.createElement('p');
+                if (token.type === 'paragraph') {
+                    var pText = String(token.text || '').replace(/[*_`]/g, '').trim();
+                    isOptionsHeader = OPTIONS_HEADER_RE.test(pText);
+                    if (ctx && isOptionsHeader) {
+                        var priorP = ctx.lastLocalTarget || ctx.lastQuoteTarget;
+                        ctx.optionsTarget = priorP && priorP.line ? Object.assign({}, priorP) : null;
+                        ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
+                    } else if (ctx && OPTION_ITEM_RE.test(pText)) {
+                        ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
+                    } else if (ctx && !(parent && parent.closest && parent.closest('li, blockquote'))) {
+                        ctx.optionsTarget = null;
+                    }
+                    node = document.createElement('p');
+                }
                 else if (token.type === 'heading') {
-                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
+                    var hText = String(token.text || '').replace(/[*_`]/g, '').trim();
+                    isOptionsHeader = OPTIONS_HEADER_RE.test(hText);
+                    if (ctx) {
+                        var priorH = isOptionsHeader ? (ctx.lastLocalTarget || ctx.lastQuoteTarget) : null;
+                        ctx.optionsTarget = priorH && priorH.line ? Object.assign({}, priorH) : null;
+                        ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
+                    }
                     node = document.createElement('h' + Math.min(6, Math.max(1, token.depth || 3)));
                 }
                 else if (token.type === 'strong') node = document.createElement('strong');
@@ -5861,7 +6085,12 @@
                 }
                 else if (token.type === 'blockquote') node = document.createElement('blockquote');
                 else if (token.type === 'list') node = document.createElement(token.ordered ? 'ol' : 'ul');
-                else if (token.type === 'list_item') node = document.createElement('li');
+                else if (token.type === 'list_item') {
+                    if (ctx && parent && parent.tagName === 'OL') {
+                        ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.lastCompareQuote = null;
+                    }
+                    node = document.createElement('li');
+                }
                 else if (token.type === 'link') {
                     let localTarget = resolveProsviewFileReference(token.href || '');
                     if (localTarget) {
@@ -5921,7 +6150,7 @@
                     }
                 } else if (token.type === 'br') node = document.createElement('br');
                 else if (token.type === 'hr') {
-                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = null;
+                    if (ctx) ctx.lastLocalTarget = ctx.lastQuoteTarget = ctx.optionsTarget = null;
                     node = document.createElement('hr');
                 }
                 else if (token.type === 'image') {
@@ -5968,10 +6197,14 @@
                 if (token.type === 'list') {
                     if (token.ordered && token.start != null) node.start = token.start;
                     (token.items || []).forEach(function(item) { appendMarkdownTokens(node, [item], ctx); });
+                    if (ctx && token.ordered) ctx.optionsTarget = null;
                 } else if (token.type !== 'code' && token.type !== 'codespan'
                            && token.type !== 'br' && token.type !== 'hr') {
                     if (token.tokens) appendMarkdownTokens(node, token.tokens, ctx);
                     else if (token.text) node.textContent = decodeMarkdownText(token.text);
+                    if (ctx && isOptionsHeader && ctx.lastLocalTarget && ctx.lastLocalTarget.line) {
+                        ctx.optionsTarget = Object.assign({}, ctx.lastLocalTarget);
+                    }
                 }
                 if (token.type === 'blockquote') {
                     var prevSibling = parent.lastElementChild;
@@ -8469,11 +8702,18 @@ function loadDiscussDiffMode(mode) {
                 // Pointing at the chip lights up the passage it stands for.
                 selection.onmouseenter = function() { showDiscussSelectionInText(true); };
                 selection.onmouseleave = function() {
+                    if (_discussSelectionChipPressCleanup) return;
                     if (!goToDiscussSelection.timer || Date.now() - (goToDiscussSelection.at || 0) > 2000) showDiscussSelectionInText(false);
                 };
-                // A click goes there: lit, and brought to the middle of the view.
+                // Pressing holds the highlight until mouseup; clicking scrolls and keeps it lit briefly.
                 selectionText.setAttribute('role', 'button');
                 selectionText.tabIndex = 0;
+                selection.onmousedown = function(event) {
+                    if (!event || event.button !== 0) return;
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    if (event.target && event.target.closest && event.target.closest('button')) return;
+                    startDiscussSelectionChipPress();
+                };
                 selectionText.onclick = function() { goToDiscussSelection(); };
                 selectionText.onkeydown = function(event) {
                     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); goToDiscussSelection(); }
@@ -8482,6 +8722,8 @@ function loadDiscussDiffMode(mode) {
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
                 removeSelection.onclick = function() {
+                    endDiscussSelectionChipPress();
+                    showDiscussSelectionInText(false);
                     _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
                     _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
                     _discussPendingAction = null; _discussRetryOfTaskId = null;
@@ -8495,6 +8737,45 @@ function loadDiscussDiffMode(mode) {
         }
 
         var DISCUSS_SELECTION_HOVER_HL = 'proseview-selection-hover';
+        var _discussSelectionChipPressCleanup = null;
+
+        function endDiscussSelectionChipPress() {
+            if (_discussSelectionChipPressCleanup) {
+                var cleanup = _discussSelectionChipPressCleanup;
+                _discussSelectionChipPressCleanup = null;
+                cleanup();
+            }
+        }
+
+        function startDiscussSelectionChipPress() {
+            endDiscussSelectionChipPress();
+            showDiscussSelectionInText(true);
+            var range = discussSelectionDomRange();
+            if (range) {
+                var rect = range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+                var inView = !!(rect && (rect.height || rect.width) && rect.bottom > 0 && rect.top < (window.innerHeight || 600));
+                if (!inView) {
+                    var el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+                    if (el) el.scrollIntoView({block: 'center', behavior: 'smooth'});
+                }
+            }
+            var release = function() {
+                endDiscussSelectionChipPress();
+                var chip = document.getElementById('discussSelectionChip');
+                var recentlyClicked = !!(goToDiscussSelection.timer && Date.now() - (goToDiscussSelection.at || 0) <= 2000);
+                if (!recentlyClicked && (!chip || !chip.matches(':hover'))) {
+                    showDiscussSelectionInText(false);
+                }
+            };
+            window.addEventListener('mouseup', release, true);
+            window.addEventListener('dragend', release, true);
+            window.addEventListener('blur', release);
+            _discussSelectionChipPressCleanup = function() {
+                window.removeEventListener('mouseup', release, true);
+                window.removeEventListener('dragend', release, true);
+                window.removeEventListener('blur', release);
+            };
+        }
 
         // The DOM range of the attached selection in the scene or file on
         // screen: by its recorded offsets in a scene, else by its text.
@@ -8553,12 +8834,14 @@ function loadDiscussDiffMode(mode) {
             // Stays lit a moment after the pointer leaves, long enough to find.
             clearTimeout(goToDiscussSelection.timer);
             goToDiscussSelection.timer = setTimeout(function() {
+                if (_discussSelectionChipPressCleanup) return;
                 var chip = document.getElementById('discussSelectionChip');
                 if (!chip || !chip.matches(':hover')) showDiscussSelectionInText(false);
             }, 2000);
         }
 
         function showDiscussSelectionInText(on) {
+            if (!on) endDiscussSelectionChipPress();
             if (typeof CSS === 'undefined' || !CSS.highlights || typeof Highlight === 'undefined') return;
             CSS.highlights.delete(DISCUSS_SELECTION_HOVER_HL);
             if (!on) return;

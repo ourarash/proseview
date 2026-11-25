@@ -53,12 +53,13 @@ Three places where AI shows up, all opt-in:
    **Add note**, beside a selected heading, opens a small instruction field.
    Notes save as you type. Click a saved note's text to change it, or edit it
    from the selection review. Notes survive deselection, reloads, and transfer
-   to Group. **Prepare request** fills an empty composer with
-   a short “Apply items 1, 3, 5.” draft using the review's original numbers;
-   unnumbered suggestions use their titles. Notes appear as plain instructions
-   such as “For item 4: Use ‘my home’ instead of ‘my house’.” **Update request**
-   refreshes generated note lines while preserving other writing and note lines
-   you rewrote directly in the message. Sending also includes current notes.
+   to Group. Checking items immediately fills an empty composer with
+   a short “Apply items 1, 3, 5.” draft using the review's original numbers
+   (unnumbered suggestions use their titles), and updates it live as you check,
+   uncheck, or edit notes — preserving any custom wording or note lines you
+   rewrote directly in the message. If you already typed unrelated text before
+   checking items, **Add to draft** lets you append the apply line without
+   overwriting your text. Sending also includes current notes.
    When the review is already in the chat, Send passes your instruction without
    repeating its Before/After blocks. Earlier reviews get a short title reference
    when needed; proposal text is included only if the receiving chat lacks it.

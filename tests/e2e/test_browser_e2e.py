@@ -9375,3 +9375,85 @@ def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
     _wait_until(lambda: "genre: speculative" in yaml_text() and "_band" not in yaml_text(),
                 message="the preset did not replace the custom ranges")
     assert "Typical: 90\u2013120 (Fantasy / sci-fi)" in about()
+
+
+def test_discuss_quote_highlights_on_mousedown_until_mouseup(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    select_prose(page, quote)
+    page.keyboard.press("a")
+    page.wait_for_selector("#discussPanel", state="visible")
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+
+    page.fill("#discussInput", "Is this line working?")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector(".discuss-message.user blockquote.discuss-clickable-quote")
+
+    user_quote = page.locator(".discuss-message.user blockquote.discuss-clickable-quote").last
+    box = user_quote.bounding_box()
+    assert box is not None
+
+    # Highlight appears immediately on mousedown (both range highlight and paragraph highlight)
+    # and persists past the 2.5s click timeout while held.
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    lit = page.evaluate("""() => {
+        const h = CSS.highlights.get('proseview-quote-jump');
+        return h ? [...h][0].toString() : null;
+    }""")
+    assert lit == quote
+    assert page.evaluate("() => !!document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash-hold')") is True
+
+    page.wait_for_timeout(2700)
+    still_lit = page.evaluate("""() => {
+        const h = CSS.highlights.get('proseview-quote-jump');
+        return h ? [...h][0].toString() : null;
+    }""")
+    assert still_lit == quote
+    assert page.evaluate("() => !!document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash-hold')") is True
+
+    # Moving off the quote while still holding keeps it highlighted; releasing clears it.
+    page.mouse.move(5, 5)
+    assert page.evaluate("CSS.highlights.has('proseview-quote-jump')") is True
+    assert page.evaluate("() => !!document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash-hold')") is True
+    page.mouse.up()
+    assert page.evaluate("CSS.highlights.has('proseview-quote-jump')") is False
+    assert page.evaluate("() => !!document.querySelector('#sceneProseHost .para-flash-hold')") is False
+
+    # Clear any text selection created by dragging across the page, then verify normal click still works.
+    page.evaluate("() => window.getSelection().removeAllRanges()")
+    user_quote.click()
+    page.wait_for_function(
+        "() => document.querySelector('#sceneProseHost [data-line=\"18\"].para-flash')"
+    )
+    assert page.evaluate("CSS.highlights.has('proseview-quote-jump')") is True
+
+
+def test_selection_chip_holds_highlight_from_mousedown_until_mouseup(
+    page: Page, server: ProseviewServer
+):
+    quote = "the slow algebra of yesterday's receipts"
+    open_scene(page, server)
+    select_prose(page, quote)
+    page.keyboard.press("a")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
+
+    chip_text = page.locator("#discussSelectionChip .discuss-selection-chip-text")
+    box = chip_text.bounding_box()
+    assert box is not None
+
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    lit = page.evaluate("""() => {
+        const h = CSS.highlights.get('proseview-selection-hover');
+        return h ? [...h][0].toString() : null;
+    }""")
+    assert lit == quote
+
+    # Leaving the chip while holding mouse down keeps the passage highlighted until mouseup.
+    page.mouse.move(5, 5)
+    assert page.evaluate("CSS.highlights.has('proseview-selection-hover')") is True
+    page.mouse.up()
+    assert page.evaluate("CSS.highlights.has('proseview-selection-hover')") is False

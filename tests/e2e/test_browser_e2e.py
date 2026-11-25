@@ -9351,7 +9351,7 @@ def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
     page.click("#settingsSaveBtn")
     _wait_until(lambda: "genre: literary" in yaml_text(), message="the preset was not saved")
     assert "_band" not in yaml_text()
-    assert "Typical: 85\u2013110 (Literary)" in about()
+    _wait_until(lambda: "Typical: 85\u2013110 (Literary)" in about())
     assert "Typical: 85\u2013110 (Literary)" in pop.text_content(), "the ⓘ follows the saved ranges"
 
     # Custom: a range the wrong way round is not saved.
@@ -9366,7 +9366,7 @@ def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
     page.fill("#setting_mtld_high", "95")
     page.click("#settingsSaveBtn")
     _wait_until(lambda: "mtld_band" in yaml_text(), message="the custom range was not saved")
-    assert "Typical: 90\u201395 (your custom range)" in about()
+    _wait_until(lambda: "Typical: 90\u201395 (your custom range)" in about())
     assert picker.input_value() == "custom"
 
     # Back to a preset drops the custom ranges.
@@ -9374,7 +9374,8 @@ def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
     page.click("#settingsSaveBtn")
     _wait_until(lambda: "genre: speculative" in yaml_text() and "_band" not in yaml_text(),
                 message="the preset did not replace the custom ranges")
-    assert "Typical: 90\u2013120 (Fantasy / sci-fi)" in about()
+    # Saving the YAML finishes before the refreshed analysis reaches the page.
+    _wait_until(lambda: "Typical: 90\u2013120 (Fantasy / sci-fi)" in about())
 
 
 def test_discuss_quote_highlights_on_mousedown_until_mouseup(

@@ -189,7 +189,17 @@ def test_reading_mode_label_dropdown_writes_yaml_and_hides_in_edit_mode(
     page.locator('.scene-label-popover .scene-label-item', has_text="+ New").click()
     page.fill(".scene-label-new-input", "Flashback")
     page.click(".scene-label-new-submit")
-    expect(page.locator("#sceneFrontmatter .scene-label-picker-btn")).to_contain_text("Flashback")
+    try:
+        expect(page.locator("#sceneFrontmatter .scene-label-picker-btn")).to_contain_text("Flashback")
+    except AssertionError as exc:
+        # Fails on Linux CI only; say what the page and the file held.
+        state = page.evaluate("""() => ({
+            toast: document.getElementById('sidebarFileToast')?.textContent,
+            label: (meta['ch01/09-bare.md'] || {}).label,
+            open: paths[curIdx], view: document.documentElement.dataset.view,
+        })""")
+        on_disk = (labels_server.root / "manuscript" / "ch01" / "09-bare.md").read_text(encoding="utf-8")
+        raise AssertionError(f"{exc}\npage: {state}\nfile: {on_disk!r}") from None
 
     disk_bare = (labels_server.root / "manuscript" / "ch01" / "09-bare.md").read_text(encoding="utf-8")
     assert disk_bare.startswith("---\nlabel: Flashback\n---\n")

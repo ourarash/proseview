@@ -95,6 +95,8 @@ def _load_app_css() -> str:
     block always wins over the defaults it overrides.
     """
     parts = [_load_asset("assets/app.css")]
+    if (TEMPLATE_DIR / "assets" / "scene-image.css").is_file():
+        parts.append(_load_asset("assets/scene-image.css"))
     themes_dir = TEMPLATE_DIR / "assets" / "themes"
     if themes_dir.is_dir():
         for path in sorted(themes_dir.glob("*.css")):

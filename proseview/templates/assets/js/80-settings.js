@@ -104,6 +104,7 @@ async function saveSettings() {
         if (typeof saveSuggestionSettings === "function") await saveSuggestionSettings();
         if (typeof saveGroupSettings === "function") await saveGroupSettings();
         if (typeof saveBeatMapSettings === "function") await saveBeatMapSettings();
+        if (typeof saveSceneImageSettings === "function") await saveSceneImageSettings();
         if (typeof saveDiscussSettings === "function") await saveDiscussSettings();
 
         btn.innerText = "Saved";

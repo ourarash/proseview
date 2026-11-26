@@ -83,6 +83,7 @@ proseview = [
     "templates/*.j2",
     "templates/assets/*",
     "templates/assets/js/*",
+    "templates/assets/scene-styles/*",
     "templates/assets/themes/*",
     "templates/vendor/*",
     "templates/vendor/pm/*",

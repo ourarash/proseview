@@ -2009,6 +2009,34 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _handle_scene_style_thumb(self) -> None:
+        """Serve built-in scene illustration style thumbnails at ``/assets/scene-styles/*``."""
+        rel = urlparse(self.path).path[len("/assets/scene-styles/"):]
+        if not rel or "/" in rel or "\\" in rel or ".." in rel:
+            self.send_response(404)
+            self.end_headers()
+            return
+        styles_root = (TEMPLATE_DIR / "assets" / "scene-styles").resolve()
+        target = (styles_root / rel).resolve()
+        mime = self._ASSET_MIME.get(target.suffix.lower())
+        if not mime or not target.is_relative_to(styles_root) or not target.is_file():
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            data = target.read_bytes()
+        except OSError:
+            self.send_response(500)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle_vendor(self) -> None:
         """Serve files under ``proseview/templates/vendor/`` at ``/vendor/*``.
 
@@ -2557,6 +2585,13 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_discuss_error(exc)
             return
+        if discuss_path == "/api/discuss/scene-image-settings":
+            try:
+                settings = self.discuss_manager.scene_image_settings()
+                self._send_json({"ok": True, "settings": settings})
+            except Exception as exc:
+                self._send_discuss_error(exc)
+            return
         if discuss_path == "/api/discuss/discuss-settings":
             try:
                 settings = self.discuss_manager.discuss_settings()
@@ -2605,12 +2640,13 @@ class _Handler(BaseHTTPRequestHandler):
             return
             
         elif self.path == "/assets/app.css":
+            css = _load_app_css().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Content-Length", str(len(css)))
             self.end_headers()
-            with open(Path(__file__).parent / "templates" / "assets" / "app.css", "rb") as f:
-                self.wfile.write(f.read())
+            self.wfile.write(css)
             return
         if urlparse(self.path).path == "/api/what-changed":
             # Reads and refreshes the daily record, so it is gated like a write.
@@ -2745,6 +2781,65 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, "mattr": lex.mattr, "mtld": lex.mtld})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if discuss_path == "/api/scene/image/status":
+            query = parse_qs(urlparse(self.path).query)
+            rel = query.get("path", [""])[0]
+            if not rel:
+                self._send_json({"ok": False, "error": "missing path"}, 400)
+                return
+            try:
+                from .scene_image import get_scene_image_status
+                self._send_json(get_scene_image_status(Path(self.repo_root), rel))
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if discuss_path == "/api/scene/image/preview":
+            query = parse_qs(urlparse(self.path).query)
+            rel = query.get("path", [""])[0]
+            take_id = query.get("take", [""])[0]
+            if not rel:
+                self.send_response(400)
+                self.end_headers()
+                return
+            from .scene_image import load_preview_image_bytes
+            loaded = load_preview_image_bytes(Path(self.repo_root), rel, take_id=take_id)
+            if loaded is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            data, mime = loaded
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if discuss_path == "/api/scene/image/chat":
+            query = parse_qs(urlparse(self.path).query)
+            img_id = query.get("id", [""])[0]
+            if not img_id:
+                self.send_response(400)
+                self.end_headers()
+                return
+            from .scene_image import load_chat_image_bytes
+            loaded = load_chat_image_bytes(Path(self.repo_root), img_id)
+            if loaded is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            data, mime = loaded
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'")
+            self.send_header("Cache-Control", "private, max-age=300")
+            self.end_headers()
+            self.wfile.write(data)
             return
         if discuss_path == "/api/scene/beatmap/status":
             query = parse_qs(urlparse(self.path).query)
@@ -2894,6 +2989,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(css)
             return
+        if self.path.startswith("/assets/scene-styles/"):
+            self._handle_scene_style_thumb()
+            return
         if self.path.startswith("/vendor/"):
             self._handle_vendor()
             return
@@ -2967,6 +3065,153 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/export/"):
             self._handle_export_post(path)
+            return
+        if path == "/api/scene/image/generate":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                agent = str(body.get("agent") or "").strip().lower()
+                model = str(body.get("model") or "").strip()
+                style_id = str(body.get("style_id") or "").strip().lower()
+                style_text = str(body.get("style_text") or "").strip()
+                aspect_ratio = str(body.get("aspect_ratio") or "").strip()
+                note = str(body.get("note") or "").strip()
+                refine = bool(body.get("refine"))
+                if body.get("sync"):
+                    from .scene_image import generate_scene_image
+                    res = generate_scene_image(
+                        Path(self.repo_root),
+                        rel,
+                        agent=agent,
+                        model=model,
+                        style_id=style_id,
+                        style_text=style_text,
+                        aspect_ratio=aspect_ratio,
+                        note=note,
+                        refine=refine,
+                        discuss_manager=getattr(self, "discuss_manager", None),
+                    )
+                else:
+                    from .scene_image import start_scene_image_job
+                    res = start_scene_image_job(
+                        Path(self.repo_root),
+                        rel,
+                        agent=agent,
+                        model=model,
+                        style_id=style_id,
+                        style_text=style_text,
+                        aspect_ratio=aspect_ratio,
+                        note=note,
+                        refine=refine,
+                        discuss_manager=getattr(self, "discuss_manager", None),
+                    )
+                self._send_json(res)
+            except FileNotFoundError:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/cancel":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .scene_image import cancel_scene_image_job
+                self._send_json(cancel_scene_image_job(Path(self.repo_root), rel))
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/insert":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .scene_image import insert_scene_image
+                res = insert_scene_image(
+                    Path(self.repo_root),
+                    rel,
+                    chat_image_id=str(body.get("chat_image_id") or "").strip(),
+                    take_id=str(body.get("take_id") or "").strip(),
+                    alt=str(body.get("alt") or "").strip(),
+                    replace_existing=bool(body.get("replace_existing", True)),
+                )
+                self.invalidate()
+                self._send_json(res)
+            except FileNotFoundError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 404)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/remove":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .scene_image import remove_scene_image_from_scene
+                res = remove_scene_image_from_scene(Path(self.repo_root), rel)
+                self.invalidate()
+                self._send_json(res)
+            except FileNotFoundError:
+                self._send_json({"ok": False, "error": "scene not found"}, 404)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/dismiss":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                if not rel:
+                    self._send_json({"ok": False, "error": "missing path"}, 400)
+                    return
+                from .scene_image import dismiss_scene_image_preview
+                dismissed = dismiss_scene_image_preview(Path(self.repo_root), rel)
+                self._send_json({"ok": True, "dismissed": dismissed})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/select":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                take_id = str(body.get("take_id") or "").strip()
+                if not rel or not take_id:
+                    self._send_json({"ok": False, "error": "missing path or take_id"}, 400)
+                    return
+                from .scene_image import select_scene_image_take
+                self._send_json(select_scene_image_take(Path(self.repo_root), rel, take_id))
+            except FileNotFoundError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 404)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
+            return
+        if path == "/api/scene/image/promote":
+            try:
+                body = self._read_json_limited()
+                rel = str(body.get("path") or body.get("scene_path") or "").strip()
+                chat_image_id = str(body.get("chat_image_id") or body.get("image_id") or "").strip()
+                if not rel or not chat_image_id:
+                    self._send_json({"ok": False, "error": "missing path or chat_image_id"}, 400)
+                    return
+                from .scene_image import promote_chat_image_to_preview
+                res = promote_chat_image_to_preview(Path(self.repo_root), rel, chat_image_id)
+                self._send_json(res)
+            except FileNotFoundError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 404)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 500)
             return
         if path == "/api/scene/beatmap/generate":
             try:
@@ -3117,6 +3362,13 @@ class _Handler(BaseHTTPRequestHandler):
                         settings = self.discuss_manager.save_beatmap_settings(body)
                     else:
                         settings = self.discuss_manager.beatmap_settings()
+                    self._send_json({"ok": True, "settings": settings})
+                    return
+                if path == "/api/discuss/scene-image-settings":
+                    if body.get("save"):
+                        settings = self.discuss_manager.save_scene_image_settings(body)
+                    else:
+                        settings = self.discuss_manager.scene_image_settings()
                     self._send_json({"ok": True, "settings": settings})
                     return
                 if path == "/api/discuss/discuss-settings":

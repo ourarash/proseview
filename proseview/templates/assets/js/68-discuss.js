@@ -6095,6 +6095,10 @@
                         renderDiscussBeatmapCard(token.lang, token.text, parent, ctx);
                         return;
                     }
+                    if (token.lang === 'proseview:scene-image' && typeof renderDiscussSceneImageCard === 'function') {
+                        renderDiscussSceneImageCard(token.text, parent, ctx);
+                        return;
+                    }
                     node = document.createElement('pre'); var code = document.createElement('code'); code.textContent = decodeMarkdownText(token.text || ''); node.appendChild(code);
                     if (ctx.agentOutput) {
                         var codeText = code.textContent;
@@ -6782,6 +6786,9 @@
             }
             if (kind === 'webSearch') {
                 return activity.query ? 'Searching the web for “' + activity.query + '”' : 'Searching the web';
+            }
+            if (kind === 'imageGeneration') {
+                return activity.status === 'completed' ? 'Generated scene illustration' : 'Generating scene illustration';
             }
             if (tool === 'Read' || tool === 'NotebookRead') {
                 return activity.path ? 'Reading ' + discussShortPath(activity.path) : 'Reading a file';

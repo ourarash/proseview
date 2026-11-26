@@ -1894,6 +1894,23 @@ def sanitize_agent_message(message: dict[str, Any]) -> list[dict[str, Any]]:
                 "phase": item.get("phase") or "final_answer",
                 "text": _bounded_text(item.get("text"), 524_288),
             }]
+        if item_type == "imageGeneration":
+            status = str(item.get("status") or ("completed" if method.endswith("completed") else "inProgress"))
+            failure = item.get("failure") if isinstance(item.get("failure"), dict) else None
+            ev: dict[str, Any] = {
+                "type": "image.generated",
+                **common,
+                "item_id": item.get("id"),
+                "status": status,
+                "saved_path": str(item.get("savedPath") or "").strip(),
+                "revised_prompt": _bounded_text(item.get("revisedPrompt") or "", 4000),
+                "file_id": str(item.get("fileId") or "").strip(),
+                "failure": failure,
+            }
+            raw_result = item.get("result")
+            if isinstance(raw_result, str) and raw_result and len(raw_result) <= 24_000_000:
+                ev["result"] = raw_result
+            return [ev]
         if item_type in {"commandExecution", "fileChange", "mcpToolCall", "webSearch", "dynamicToolCall"}:
             activity = {
                 "id": item.get("id"),
@@ -1938,6 +1955,14 @@ class _QueuedQuestion:
     #: report never should: Codex has every edit declined, and Claude is never
     #: offered a tool that writes.
     may_write: bool = False
+    #: Optional local image path for image-to-image refinement (Codex localImage).
+    local_image_path: str = ""
+    #: Optional non-edit tool names auto-approved for this turn (e.g. Agy image-generator).
+    auto_approve_tools: tuple[str, ...] = ()
+    #: Optional metadata & completion hook for one-click Scene Image jobs.
+    scene_image_job: dict[str, Any] | None = None
+    #: Optional explicit model override for this turn (e.g. scene_image.model).
+    model_override: str = ""
 
 
 def _selection_fingerprint(
@@ -2538,6 +2563,8 @@ class _OneOff:
         self.first_token = 0.0
         #: What the agent did on the way: files read, searches, MCP calls.
         self.activities: dict[str, dict[str, Any]] = {}
+        #: Generated raster images captured from native image tools (e.g. Codex).
+        self.generated_images: list[dict[str, Any]] = []
         #: What it says while it works, and its answer as it streams, for a
         #: caller that shows progress (the Group).
         self.progress = ""
@@ -2568,17 +2595,32 @@ class _OneOff:
             self.progress = (self.progress + str(event.get("text") or ""))[-4000:]
         elif kind == "response.delta":
             self.draft = (self.draft + str(event.get("text") or ""))[-262_144:]
+        elif kind == "image.generated":
+            self.generated_images.append(dict(event))
+            status = str(event.get("status") or "").lower()
+            if status in {"completed", "done"}:
+                self.progress = "Generated scene illustration"
+            else:
+                self.progress = "Generating scene illustration…"
         elif kind == "activity.updated":
             activity = event.get("activity") or {}
             target = activity.get("path") or activity.get("pattern") or ""
             title = (activity.get("title") or activity.get("command") or activity.get("query")
                      or " ".join(str(x) for x in (activity.get("tool"), target) if x))
             # A completion knows the outcome, not the tool: the start's title stays.
-            if activity.get("id") and title:
-                self.activities[str(activity["id"])] = {
-                    "kind": _bounded_text(activity.get("kind"), 40),
-                    "title": _bounded_text(title, 300),
+            aid = str(activity.get("id") or "")
+            if aid:
+                prev = self.activities.get(aid) or {}
+                entry = {
+                    "kind": _bounded_text(activity.get("kind") or prev.get("kind"), 40),
+                    "title": _bounded_text(title or prev.get("title"), 300),
                 }
+                if activity.get("output"):
+                    entry["output"] = _bounded_text(activity.get("output"), 4000)
+                elif prev.get("output"):
+                    entry["output"] = prev["output"]
+                if entry["title"] or entry.get("output"):
+                    self.activities[aid] = entry
         elif kind == "error":
             self.error = str(event.get("message") or "")
         elif kind == "turn.completed":
@@ -3042,6 +3084,12 @@ class DiscussManager:
                     except (ValueError, TypeError):
                         pass
 
+            turn_images: list[dict[str, Any]] = []
+            scene_rel_for_restore = (
+                str((conversation.document or {}).get("path") or "")
+                if (conversation.document or {}).get("kind") == "scene"
+                else ""
+            )
             for item in items:
                 if not isinstance(item, dict):
                     continue
@@ -3055,7 +3103,22 @@ class DiscussManager:
                         except (ValueError, TypeError):
                             pass
 
-                if item.get("type") == "userMessage":
+                if item.get("type") == "imageGeneration":
+                    try:
+                        from .scene_image import capture_chat_image_from_event
+                        det_key = f"restore:{conversation.thread_id}:{item.get('id') or item.get('savedPath') or ''}"
+                        captured_img = capture_chat_image_from_event(
+                            self.root,
+                            item,
+                            agent=conversation.agent,
+                            scene_path=scene_rel_for_restore,
+                            deterministic_key=det_key,
+                        )
+                        if captured_img is not None:
+                            turn_images.append(captured_img)
+                    except Exception:
+                        pass
+                elif item.get("type") == "userMessage":
                     text = "\n".join(
                         str(part.get("text") or "") for part in item.get("content") or []
                         if isinstance(part, dict) and part.get("type") == "text"
@@ -3081,12 +3144,50 @@ class DiscussManager:
                         request_text = next((
                             str(row.get("text") or "") for row in reversed(restored) if row.get("role") == "user"
                         ), "")
+                        raw_asst_text = verify_review_citations(
+                            self.root, request_text, _bounded_text(item.get("text"), 524_288),
+                            report_unfound=False,
+                        )
+                        try:
+                            from .scene_image import capture_chat_image_from_text, format_scene_image_reply_text
+                            if not turn_images:
+                                extra_img = capture_chat_image_from_text(
+                                    self.root,
+                                    raw_asst_text,
+                                    agent=conversation.agent,
+                                    scene_path=scene_rel_for_restore,
+                                    deterministic=True,
+                                )
+                                if extra_img is not None:
+                                    turn_images.append(extra_img)
+                            clean_text, parsed_alt, parsed_rev = format_scene_image_reply_text(
+                                raw_asst_text, has_images=bool(turn_images)
+                            )
+                            if turn_images:
+                                card_blocks = []
+                                for img_meta in turn_images:
+                                    card_payload = json.dumps({
+                                        "image_id": img_meta["image_id"],
+                                        "url": img_meta["url"],
+                                        "scene_path": img_meta.get("scene_path", scene_rel_for_restore),
+                                        "agent": img_meta.get("agent", conversation.agent),
+                                        "alt": img_meta.get("alt") or parsed_alt or "",
+                                        "revised_prompt": img_meta.get("revised_prompt") or parsed_rev or "",
+                                    }, ensure_ascii=False)
+                                    card_blocks.append(f"```proseview:scene-image\n{card_payload}\n```")
+                                raw_asst_text = (
+                                    (clean_text.rstrip() + "\n\n" + "\n\n".join(card_blocks)).strip()
+                                    if clean_text
+                                    else "\n\n".join(card_blocks)
+                                )
+                                turn_images = []
+                            elif clean_text:
+                                raw_asst_text = clean_text
+                        except Exception:
+                            pass
                         asst_msg: dict[str, Any] = {
                             "role": "assistant",
-                            "text": verify_review_citations(
-                                self.root, request_text, _bounded_text(item.get("text"), 524_288),
-                                report_unfound=False,
-                            ),
+                            "text": raw_asst_text,
                             "restored": True,
                         }
                         if item.get("stopped"):
@@ -5959,6 +6060,7 @@ class DiscussManager:
                 conversation.active_request_id = queued.request_id
                 conversation.active_task_id = queued.task_id
                 conversation.active_may_write = queued.may_write
+                conversation._active_scene_image_job = queued.scene_image_job
                 conversation.begin_turn()
                 if queued.task_id and queued.task_id in conversation.tasks:
                     conversation.tasks[queued.task_id]["status"] = "running"
@@ -5992,6 +6094,8 @@ class DiscussManager:
                         title=title, preview=preview, agent=conversation.agent,
                     )
                     turn_input: list[dict[str, Any]] = [{"type": "text", "text": carried_history + queued.bundle.prompt}]
+                    if queued.local_image_path and conversation.agent == "codex" and Path(queued.local_image_path).is_file():
+                        turn_input.append({"type": "localImage", "path": queued.local_image_path})
                     if queued.skill:
                         turn_input.append({"type": "skill", **queued.skill})
                     turn_params = {
@@ -6012,6 +6116,8 @@ class DiscussManager:
                         # takes the same decision as a tool allowlist.
                         "mayWrite": queued.may_write,
                     }
+                    if queued.auto_approve_tools:
+                        turn_params["autoApproveTools"] = list(queued.auto_approve_tools)
                     if queued.output_schema:
                         turn_params["outputSchema"] = queued.output_schema
                     if client.capabilities.get("reasoning_summary"):
@@ -6021,7 +6127,7 @@ class DiscussManager:
                     # an empty string here.
                     with conversation.lock:
                         selection = dict(conversation.model_selection)
-                    resolved_model = selection.get("model")
+                    resolved_model = queued.model_override or selection.get("model")
                     if not resolved_model:
                         try:
                             resolved_model = self.list_models(conversation.agent)["default"]["model"]
@@ -6030,7 +6136,9 @@ class DiscussManager:
                     conversation.active_model = resolved_model or f"{conversation.agent.title()} default"
                     if task is not None:
                         task["model"] = conversation.active_model
-                    if selection.get("model"):
+                    if queued.model_override:
+                        turn_params["model"] = queued.model_override
+                    elif selection.get("model"):
                         turn_params["model"] = selection["model"]
                     if selection.get("effort"):
                         turn_params["effort"] = selection["effort"]
@@ -6154,6 +6262,46 @@ class DiscussManager:
             if conversation is None:
                 continue
             event_type = str(event.pop("type"))
+            if event_type == "image.generated":
+                # Never forward raw base64 image payloads over SSE. Persist
+                # completed images to .proseview/scene-images/chat/ and attach
+                # a calm proseview:scene-image card when the reply finishes.
+                scene_rel = str((conversation.document or {}).get("path") or "") if (conversation.document or {}).get("kind") == "scene" else ""
+                img_item_id = str(event.get("item_id") or "")
+                img_status = str(event.get("status") or "in_progress")
+                if img_item_id:
+                    img_act = _merge_activity(
+                        conversation.activities.get(img_item_id),
+                        {
+                            "id": img_item_id,
+                            "kind": "imageGeneration",
+                            "tool": "image_generation",
+                            "status": "completed" if img_status == "completed" else "inProgress",
+                            "turn_id": event.get("turn_id") or conversation.active_turn_id or "",
+                        },
+                    )
+                    conversation.activities[img_item_id] = img_act
+                    conversation.publish("activity.updated", {"activity": img_act})
+                try:
+                    from .scene_image import capture_chat_image_from_event
+                    det_key = f"live:{thread_id}:{img_item_id}" if img_item_id else ""
+                    captured = capture_chat_image_from_event(
+                        self.root,
+                        event,
+                        agent=agent,
+                        scene_path=scene_rel,
+                        deterministic_key=det_key,
+                    )
+                except Exception:
+                    captured = None
+                if captured is not None:
+                    pending_imgs = getattr(conversation, "_pending_chat_images", None)
+                    if not isinstance(pending_imgs, list):
+                        pending_imgs = []
+                        conversation._pending_chat_images = pending_imgs
+                    if not any(x.get("image_id") == captured.get("image_id") for x in pending_imgs):
+                        pending_imgs.append(captured)
+                continue
             if event_type == "response.completed":
                 if event.get("phase") == "final_answer":
                     task = conversation.tasks.get(conversation.active_task_id or "")
@@ -6214,12 +6362,99 @@ class DiscussManager:
                         live_docs = conversation.live_documents_by_request.pop(
                             str(conversation.active_request_id or ""), None
                         )
+                        answer_text = verify_review_citations(
+                            self.root, request_text, event.get("text") or "",
+                            live_documents=live_docs,
+                        )
+                        pending_imgs = list(getattr(conversation, "_pending_chat_images", None) or [])
+                        if hasattr(conversation, "_pending_chat_images"):
+                            conversation._pending_chat_images = []
+                        si_job = getattr(conversation, "_active_scene_image_job", None)
+                        scene_rel = str((conversation.document or {}).get("path") or "") if (conversation.document or {}).get("kind") == "scene" else ""
+                        if not pending_imgs:
+                            try:
+                                from .scene_image import capture_chat_image_from_text
+                                captured_extra = capture_chat_image_from_text(
+                                    self.root,
+                                    answer_text,
+                                    agent=agent,
+                                    scene_path=scene_rel,
+                                    activities=conversation.activities,
+                                    force_signal=isinstance(si_job, dict),
+                                )
+                                if captured_extra is not None:
+                                    pending_imgs.append(captured_extra)
+                            except Exception:
+                                pass
+                        from .scene_image import format_scene_image_reply_text, load_chat_image_bytes, save_scene_image_preview
+                        clean_reply, parsed_alt, parsed_rev = format_scene_image_reply_text(
+                            answer_text, has_images=bool(pending_imgs)
+                        )
+                        if clean_reply and clean_reply != answer_text:
+                            answer_text = clean_reply
+                            event["text"] = answer_text
+                        if pending_imgs:
+                            blocks = []
+                            for img_meta in pending_imgs:
+                                if parsed_alt and not img_meta.get("alt"):
+                                    img_meta["alt"] = parsed_alt
+                                elif clean_reply and not img_meta.get("alt"):
+                                    img_meta["alt"] = clean_reply[:240]
+                                if parsed_rev and not img_meta.get("revised_prompt"):
+                                    img_meta["revised_prompt"] = parsed_rev
+                                card_payload = json.dumps({
+                                    "image_id": img_meta["image_id"],
+                                    "url": img_meta["url"],
+                                    "scene_path": img_meta.get("scene_path", "") or scene_rel,
+                                    "agent": img_meta.get("agent", agent),
+                                    "alt": img_meta.get("alt", ""),
+                                    "revised_prompt": img_meta.get("revised_prompt", ""),
+                                }, ensure_ascii=False)
+                                blocks.append(f"```proseview:scene-image\n{card_payload}\n```")
+                            answer_text = (
+                                (answer_text.rstrip() + "\n\n" + "\n\n".join(blocks)).strip()
+                                if answer_text
+                                else "\n\n".join(blocks)
+                            )
+                            event["text"] = answer_text
+                            latest_img = pending_imgs[-1]
+                            target_scene_path = str((si_job or {}).get("scene_path") or scene_rel or "")
+                            if target_scene_path:
+                                try:
+                                    loaded = load_chat_image_bytes(self.root, latest_img["image_id"])
+                                    if loaded is not None:
+                                        img_bytes, img_mime = loaded
+                                        preview = save_scene_image_preview(
+                                            self.root,
+                                            target_scene_path,
+                                            img_bytes,
+                                            str(latest_img.get("ext") or ".png"),
+                                            img_mime,
+                                            agent=agent,
+                                            model=str((si_job or {}).get("model") or conversation.active_model or ""),
+                                            style_id=str((si_job or {}).get("style_id") or "custom"),
+                                            style_name=str((si_job or {}).get("style_name") or "From Discuss chat"),
+                                            note=str((si_job or {}).get("note") or ""),
+                                            prompt_used=str((si_job or {}).get("prompt_used") or ""),
+                                            revised_prompt=str(latest_img.get("revised_prompt") or parsed_rev),
+                                            alt=str(latest_img.get("alt") or parsed_alt or (si_job or {}).get("scene_title") or ""),
+                                        )
+                                        if isinstance(si_job, dict):
+                                            conversation._active_scene_image_job = None
+                                            cb = si_job.get("on_complete")
+                                            if callable(cb):
+                                                cb(preview, "")
+                                except Exception as exc:
+                                    if isinstance(si_job, dict):
+                                        conversation._active_scene_image_job = None
+                                        cb = si_job.get("on_complete")
+                                        if callable(cb):
+                                            cb(None, str(exc))
+                            elif isinstance(si_job, dict):
+                                conversation._active_scene_image_job = None
                         answer = {
                             "role": "assistant",
-                            "text": verify_review_citations(
-                                self.root, request_text, event.get("text") or "",
-                                live_documents=live_docs,
-                            ),
+                            "text": answer_text,
                             "turn_id": event.get("turn_id"),
                             "client_request_id": conversation.active_request_id or "",
                             "created_at": time.time(),
@@ -6370,6 +6605,21 @@ class DiscussManager:
                         self._task_context.pop(task["id"], None)
                 if conversation.active_done is not None:
                     conversation.active_done.set()
+                si_job = getattr(conversation, "_active_scene_image_job", None)
+                if isinstance(si_job, dict):
+                    conversation._active_scene_image_job = None
+                    status = str(event.get("status") or "completed")
+                    err_msg = str(event.get("error") or "").strip()
+                    if status in {"interrupted", "cancelled"}:
+                        err_msg = ""
+                    elif not err_msg:
+                        err_msg = (
+                            "The agent finished without returning a raster image. "
+                            "Try Codex or Agy (both have native image generation), or check your image MCP server."
+                        )
+                    cb = si_job.get("on_complete")
+                    if callable(cb):
+                        cb(None, err_msg)
             elif event_type in {"warning", "error"}:
                 # A fix the writer can run (``claude /login``) travels with the
                 # notice so the browser can offer it to copy.
@@ -7022,6 +7272,88 @@ class DiscussManager:
                 )
             ).save(self.root)
         return self.beatmap_settings()
+
+    def scene_image_settings(self) -> dict[str, Any]:
+        """Everything Settings -> Scene Image and the scene image popover need."""
+        from .scene_image import scene_image_settings_payload
+        return scene_image_settings_payload(self.root)
+
+    def save_scene_image_settings(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Save scene image defaults into .proseview.yaml."""
+        from .scene_image import save_scene_image_settings_payload
+        try:
+            return save_scene_image_settings_payload(self.root, body)
+        except ValueError as exc:
+            raise ContextError(str(exc)) from exc
+
+    def submit_scene_image(
+        self,
+        scene_path: str,
+        *,
+        agent: str,
+        visible_question: str,
+        full_prompt: str,
+        refine_image_path: str = "",
+        model: str = "",
+        scene_image_job: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Queue a scene-image generation turn inside the scene's live Discuss conversation.
+
+        Running the request in the scene's Discuss chat makes the request, live
+        progress, and generated image card immediately visible in the chat tab,
+        so the writer can follow up conversationally in the exact same thread.
+        """
+        document = {"kind": "scene", "path": scene_path}
+        snap = self.open(document, agent=agent)
+        conversation = self._get(str(snap.get("conversation_id") or snap.get("id") or ""))
+        request_id = f"scene-img-{uuid.uuid4().hex[:12]}"
+        # Include the standard ``\n\nUSER QUESTION\n`` delimiter so restoring
+        # this thread from agent history recovers ``visible_question`` cleanly
+        # without marking the turn as unsafe.
+        enveloped_prompt = (
+            full_prompt
+            if "\n\nUSER QUESTION\n" in full_prompt
+            else f"{full_prompt}\n\nUSER QUESTION\n{visible_question}"
+        )
+        bundle = ContextBundle(
+            question=visible_question,
+            selection="",
+            items=(),
+            prompt=enveloped_prompt,
+        )
+        context_sent = {
+            "kind": "scene_image",
+            "agent": conversation.agent,
+            "full_prompt": full_prompt,
+            "documents": [scene_path],
+        }
+        auto_approve = ("invoke_subagent",) if conversation.agent == "agy" else ()
+        result = {
+            "accepted": True,
+            "conversation_id": conversation.id,
+            "client_request_id": request_id,
+            "status": "queued",
+        }
+        with conversation.lock:
+            if len(conversation.pending) >= 10:
+                raise ContextError("conversation queue is full")
+            conversation.document = dict(document)
+            queued_item = _QueuedQuestion(
+                request_id=request_id,
+                bundle=bundle,
+                document=dict(document),
+                may_write=False,
+                local_image_path=refine_image_path,
+                auto_approve_tools=auto_approve,
+                scene_image_job=scene_image_job,
+                model_override=model,
+            )
+            conversation.pending.append(queued_item)
+            conversation.request_ids[request_id] = result
+            self._insert_user_message(conversation, visible_question, request_id, context_sent=context_sent)
+            self._ensure_worker(conversation)
+        conversation.publish("turn.queued", result)
+        return result
 
     def run_group_turn(
         self,
@@ -7954,6 +8286,12 @@ class DiscussManager:
                 conversation.active_turn_id = None
                 if conversation.active_done is not None:
                     conversation.active_done.set()
+                si_job = getattr(conversation, "_active_scene_image_job", None)
+                if isinstance(si_job, dict):
+                    conversation._active_scene_image_job = None
+                    cb = si_job.get("on_complete")
+                    if callable(cb):
+                        cb(None, str(message or "Agent connection failed."))
             conversation.publish("connection", {"state": "Unavailable", "reason": message})
             conversation.add_notice("error", message)
 

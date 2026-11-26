@@ -266,6 +266,8 @@ def sanitize_agy_message(message: dict[str, Any]) -> list[dict[str, Any]]:
                 update.get("rawInput") if isinstance(update.get("rawInput"), dict) else {}
             )
             activity_kind = _acp_activity_kind(tool_name, acp_kind)
+            if tool_name == "invoke_subagent" and str(args.get("TypeName") or "").strip().lower() == "image-generator":
+                activity_kind = "imageGeneration"
             activity: dict[str, Any] = {
                 "id": update.get("toolCallId"),
                 "kind": activity_kind,
@@ -347,6 +349,7 @@ class _Session:
         self.model: str = ""
         self.effort: str = ""
         self.session_grants: set[str] = set()
+        self.auto_approve_tools: set[str] = set()
         self.text_parts: list[str] = []
         self.had_tool_since_text: bool = False
         self.expects_structured: bool = False
@@ -731,7 +734,9 @@ class AgyAcpClient:
         with self._state_lock:
             session = self._sessions.get(session_id)
             turn_id = session.turn_id if session else ""
-            if session and acp_kind != "edit" and tool_name not in WRITE_TOOLS and tool_name in session.session_grants:
+            if session and acp_kind != "edit" and tool_name not in WRITE_TOOLS and (
+                tool_name in session.session_grants or tool_name in session.auto_approve_tools
+            ):
                 try:
                     self._acp_respond(acp_id, {"outcome": {"outcome": "selected", "optionId": allow_id}})
                 except AgyError:
@@ -1031,10 +1036,14 @@ class AgyAcpClient:
                 f"{json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}"
             )
 
+        auto_approve = {
+            str(name).strip() for name in (params.get("autoApproveTools") or []) if str(name).strip()
+        }
         turn_id = uuid.uuid4().hex
         with self._state_lock:
             session.turn_id = turn_id
             session.may_write = bool(params.get("mayWrite"))
+            session.auto_approve_tools = auto_approve
             session.busy = True
             session.cancel_requested = False
             session.text_parts = []

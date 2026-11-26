@@ -146,6 +146,7 @@
             if (typeof revealSidebarItem === 'function') revealSidebarItem({ scenePath: p });
             if (typeof discussFollowActiveDocument === 'function') discussFollowActiveDocument();
             if (typeof loadSceneBeatMap === 'function') loadSceneBeatMap(p);
+            if (typeof loadSceneImageState === 'function') loadSceneImageState(p);
             // Deliberately does not open the dock. Forcing it open here made
             // `body.discuss-open` -- and its `margin-right` -- apply to every
             // scene, which silently narrowed the reading column, the file
@@ -305,6 +306,9 @@
             } else if (typeof renderSceneBeatMapPane === 'function'
                 && !(document.getElementById('sceneBeatMapPane') || {hidden: true}).hidden) {
                 renderSceneBeatMapPane();
+            }
+            if (typeof loadSceneImageState === 'function' && typeof paths !== 'undefined' && curIdx >= 0 && paths[curIdx]) {
+                loadSceneImageState(paths[curIdx]);
             }
             syncSceneDisclosureState(true);
         }
@@ -707,9 +711,10 @@
             // ProseMirror is the only renderer. If the module is still
             // loading, the inline ESM bootstrap at the bottom of the
             // template re-invokes render() once window._PM is ready.
-            b.innerHTML = '<div id="sceneFrontmatter"></div><div id="scenePrevTailHost"></div><div id="sceneProseHost"></div>';
+            b.innerHTML = '<div id="sceneFrontmatter"></div><div id="scenePrevTailHost"></div><div id="sceneImageHost"></div><div id="sceneProseHost"></div>';
             renderScenePrevTail(p);
             if (typeof renderSceneFrontmatter === 'function') renderSceneFrontmatter(p);
+            if (typeof renderSceneImageStage === 'function') renderSceneImageStage();
             if (window._PM) {
                 mountProseView(p);
                 if (window._externalChangeBefore && _pmView && typeof changedSceneBlocks === 'function') {

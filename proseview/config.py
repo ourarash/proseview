@@ -119,6 +119,35 @@ class BeatMapConfig:
     tension_rubric: str = ""
 
 
+SCENE_IMAGE_ASPECT_RATIOS: tuple[str, ...] = ("16:9", "3:2", "4:3", "1:1")
+SCENE_IMAGE_STYLE_PRESETS: tuple[str, ...] = (
+    "ink_watercolor",
+    "woodcut",
+    "film_still",
+    "charcoal",
+    "oil_painting",
+    "gouache",
+    "custom",
+)
+
+
+@dataclass(frozen=True)
+class SceneImageConfig:
+    """The ``scene_image:`` block in .proseview.yaml."""
+
+    agent: str = "codex"
+    model: str = ""
+    style_preset: str = "ink_watercolor"
+    style: str = ""
+    aspect_ratio: str = "16:9"
+    assets_dir: str = "assets"
+    width: int = 600
+    include_frontmatter: bool = True
+    include_characters: bool = True
+    instructions: bool = True
+    prompt: str = ""
+
+
 #: Agents Discuss can be pointed at.
 DISCUSS_AGENTS: tuple[str, ...] = ("codex", "claude", "agy")
 
@@ -326,6 +355,7 @@ class Config:
     #: Background colours per callout type (see :mod:`proseview.callouts`).
     callouts: CalloutColours = ()
     beatmap: BeatMapConfig = field(default_factory=BeatMapConfig)
+    scene_image: SceneImageConfig = field(default_factory=SceneImageConfig)
 
     @property
     def manuscript_subdir(self) -> str:
@@ -405,6 +435,7 @@ class Config:
             max_backups=_coerce_int(raw.get("max_backups", defaults.max_backups), "max_backups"),
             callouts=_coerce_callouts(raw.get("callouts")),
             beatmap=_coerce_beatmap(raw.get("beatmap")),
+            scene_image=_coerce_scene_image(raw.get("scene_image")),
         )
 
     def with_overrides(self, **kwargs: Any) -> "Config":
@@ -537,6 +568,29 @@ class Config:
             data["beatmap"] = beatmap
         elif "beatmap" in data:
             del data["beatmap"]
+
+        from ruamel.yaml.scalarstring import DoubleQuotedScalarString
+        scene_image = {
+            key: (DoubleQuotedScalarString(value) if key == "aspect_ratio" else value)
+            for key, value in (
+                ("agent", self.scene_image.agent),
+                ("model", self.scene_image.model),
+                ("style_preset", self.scene_image.style_preset),
+                ("style", self.scene_image.style),
+                ("aspect_ratio", self.scene_image.aspect_ratio),
+                ("assets_dir", self.scene_image.assets_dir),
+                ("width", self.scene_image.width),
+                ("include_frontmatter", self.scene_image.include_frontmatter),
+                ("include_characters", self.scene_image.include_characters),
+                ("instructions", self.scene_image.instructions),
+                ("prompt", self.scene_image.prompt),
+            )
+            if value != getattr(defaults.scene_image, key) and value != ""
+        }
+        if scene_image:
+            data["scene_image"] = scene_image
+        elif "scene_image" in data:
+            del data["scene_image"]
 
         if self.labels.palette:
             labels_block = data.get("labels")
@@ -676,6 +730,59 @@ def _config_field_names() -> tuple[str, ...]:
         "characters", "locations", "editor", "repo_tab", "story", "labels", "images",
         "discuss", "suggestions", "group", "export", "max_backups", "callouts",
         "beatmap",
+        "scene_image",
+    )
+
+
+def _coerce_scene_image(v: Any) -> SceneImageConfig:
+    if v is None:
+        return SceneImageConfig()
+    if not isinstance(v, dict):
+        raise ConfigError(f"'scene_image' must be a mapping, got {type(v).__name__}: {v!r}")
+    defaults = SceneImageConfig()
+    agent = str(v.get("agent", defaults.agent) or defaults.agent).strip().lower()
+    if agent not in DISCUSS_AGENTS:
+        agent = defaults.agent
+    model = str(v.get("model", "") or "").strip()
+    style_preset = str(v.get("style_preset", defaults.style_preset) or defaults.style_preset).strip().lower()
+    if style_preset not in SCENE_IMAGE_STYLE_PRESETS:
+        style_preset = defaults.style_preset
+    style = str(v.get("style", "") or "").strip()[:2000]
+    raw_aspect = v.get("aspect_ratio", defaults.aspect_ratio)
+    # YAML 1.1 parsers decode unquoted ratios like `3:2` as sexagesimal ints (3*60+2=182).
+    if isinstance(raw_aspect, int) and not isinstance(raw_aspect, bool):
+        sexagesimal_map = {969: "16:9", 182: "3:2", 243: "4:3", 61: "1:1"}
+        aspect_ratio = sexagesimal_map.get(raw_aspect, defaults.aspect_ratio)
+    else:
+        aspect_ratio = str(raw_aspect or defaults.aspect_ratio).strip()
+    if aspect_ratio not in SCENE_IMAGE_ASPECT_RATIOS:
+        aspect_ratio = defaults.aspect_ratio
+    raw_assets_dir = str(v.get("assets_dir", defaults.assets_dir) or defaults.assets_dir).strip().replace("\\", "/")
+    assets_dir = raw_assets_dir.rstrip("/") or defaults.assets_dir
+    if ".." in Path(assets_dir).parts:
+        assets_dir = defaults.assets_dir
+    raw_width = v.get("width", defaults.width)
+    try:
+        width = int(raw_width)
+    except (TypeError, ValueError):
+        width = defaults.width
+    width = max(120, min(1600, width))
+    include_frontmatter = bool(v.get("include_frontmatter", defaults.include_frontmatter)) if "include_frontmatter" in v else defaults.include_frontmatter
+    include_characters = bool(v.get("include_characters", defaults.include_characters)) if "include_characters" in v else defaults.include_characters
+    instructions = bool(v.get("instructions", defaults.instructions)) if "instructions" in v else defaults.instructions
+    prompt = str(v.get("prompt", "") or "").strip()[:SUGGESTION_PROMPT_MAX]
+    return SceneImageConfig(
+        agent=agent,
+        model=model,
+        style_preset=style_preset,
+        style=style,
+        aspect_ratio=aspect_ratio,
+        assets_dir=assets_dir,
+        width=width,
+        include_frontmatter=include_frontmatter,
+        include_characters=include_characters,
+        instructions=instructions,
+        prompt=prompt,
     )
 
 

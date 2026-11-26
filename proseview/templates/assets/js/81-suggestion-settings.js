@@ -264,8 +264,8 @@
             });
         }
 
-        // Settings has six tabs: General, Appearance, Suggestions, Group, Beat Map, and Discuss.
-        var SETTINGS_TABS = ['general', 'appearance', 'suggestions', 'group', 'beatmap', 'discuss'];
+        // Settings has seven tabs: General, Appearance, Suggestions, Group, Beat Map, Scene Image, and Discuss.
+        var SETTINGS_TABS = ['general', 'appearance', 'suggestions', 'group', 'beatmap', 'sceneimage', 'discuss'];
 
         function selectSettingsTab(name) {
             SETTINGS_TABS.forEach(function(tab) {
@@ -283,6 +283,7 @@
             if (name === 'suggestions' && !_sg) loadSuggestionSettings();
             if (name === 'group' && !_rm) loadGroupSettings();
             if (name === 'beatmap' && typeof loadBeatMapSettings === 'function' && !_bmSettings) loadBeatMapSettings();
+            if (name === 'sceneimage' && typeof loadSceneImageSettings === 'function' && !_siSettings) loadSceneImageSettings();
             if (name === 'discuss' && !_ds) loadDiscussSettings();
         }
 

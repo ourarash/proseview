@@ -7,6 +7,96 @@
             if (keys.length > 20) delete _pmUndoStates[keys[0]];
         }
 
+        function createSceneImageNodeView(node, view, getPos) {
+            var dom = document.createElement('span');
+            dom.className = 'pm-scene-image-wrap';
+            dom.contentEditable = 'false';
+
+            function renderNode(curNode) {
+                dom.replaceChildren();
+                var rawSrc = String((curNode.attrs && curNode.attrs.src) || '').trim();
+                var alt = String((curNode.attrs && curNode.attrs.alt) || '').trim();
+                var title = String((curNode.attrs && curNode.attrs.title) || '').trim();
+                var sceneRel = (typeof _pmViewPath === 'string' && _pmViewPath) || (paths && curIdx >= 0 ? paths[curIdx] : '');
+                var prefix = (typeof manuscriptSubdir === 'string' && manuscriptSubdir) ? manuscriptSubdir.replace(/\/+$/, '') : 'manuscript';
+                var basePath = sceneRel ? (prefix + '/' + sceneRel) : '';
+                var resolved = typeof resolveImageSrc === 'function'
+                    ? resolveImageSrc(rawSrc, {basePath: basePath})
+                    : rawSrc;
+
+                if (!resolved) {
+                    var ph = document.createElement('span');
+                    ph.className = 'md-image-placeholder';
+                    ph.textContent = alt || title || 'image';
+                    dom.appendChild(ph);
+                    return;
+                }
+                var img = document.createElement('img');
+                img.className = 'md-image pm-scene-image';
+                img.src = resolved;
+                img.alt = alt;
+                if (title) img.title = title;
+                img.loading = 'lazy';
+                img.referrerPolicy = 'no-referrer';
+                dom.appendChild(img);
+
+                // Whisper-quiet hover controls for local repo images in reading mode.
+                if (!window.PROSEVIEW_STATIC && /^\/repo-asset\//.test(resolved)) {
+                    var actions = document.createElement('span');
+                    actions.className = 'pm-scene-image-actions';
+                    actions.setAttribute('aria-label', 'Scene image actions');
+
+                    var regenBtn = document.createElement('button');
+                    regenBtn.type = 'button';
+                    regenBtn.className = 'pm-scene-image-action';
+                    regenBtn.textContent = 'Style / refine…';
+                    regenBtn.onclick = function(ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (typeof openSceneImagePopover === 'function') openSceneImagePopover();
+                    };
+
+                    var chatBtn = document.createElement('button');
+                    chatBtn.type = 'button';
+                    chatBtn.className = 'pm-scene-image-action';
+                    chatBtn.textContent = 'Iterate in chat';
+                    chatBtn.onclick = function(ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (typeof iterateSceneImageInChat === 'function') iterateSceneImageInChat(rawSrc);
+                    };
+
+                    var removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'pm-scene-image-action';
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.onclick = function(ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (typeof removeSceneImageFromScene === 'function') removeSceneImageFromScene();
+                    };
+
+                    actions.append(regenBtn, chatBtn, removeBtn);
+                    dom.appendChild(actions);
+                }
+            }
+
+            renderNode(node);
+            return {
+                dom: dom,
+                update: function(nextNode) {
+                    if (nextNode.type !== node.type) return false;
+                    node = nextNode;
+                    renderNode(nextNode);
+                    return true;
+                },
+                stopEvent: function(ev) {
+                    return !!(ev && ev.target && ev.target.closest && ev.target.closest('.pm-scene-image-actions'));
+                },
+                ignoreMutation: function() { return true; }
+            };
+        }
+
         function mountProseView(p) {
             if (_pmView) { stashSceneEditorState(); _pmView.destroy(); _pmView = null; }
             var PM = window._PM;
@@ -145,7 +235,8 @@
                 },
                 nodeViews: {
                     annotation: PM.createAnnotationNodeView,
-                    callout: createCalloutNodeView
+                    callout: createCalloutNodeView,
+                    image: createSceneImageNodeView
                 }
             });
 

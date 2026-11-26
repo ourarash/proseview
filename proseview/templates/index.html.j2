@@ -680,6 +680,7 @@
                 <button type="button" role="tab" id="settingsTabSuggestions" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSuggestions" tabindex="-1" onclick="selectSettingsTab('suggestions')">Suggestions</button>
                 <button type="button" role="tab" id="settingsTabGroup" class="settings-tab" aria-selected="false" aria-controls="settingsPanelGroup" tabindex="-1" onclick="selectSettingsTab('group')">Group</button>
                 <button type="button" role="tab" id="settingsTabBeatmap" class="settings-tab" aria-selected="false" aria-controls="settingsPanelBeatmap" tabindex="-1" onclick="selectSettingsTab('beatmap')">Beat Map</button>
+                <button type="button" role="tab" id="settingsTabSceneimage" class="settings-tab" aria-selected="false" aria-controls="settingsPanelSceneimage" tabindex="-1" onclick="selectSettingsTab('sceneimage')">Scene Image</button>
                 <button type="button" role="tab" id="settingsTabDiscuss" class="settings-tab" aria-selected="false" aria-controls="settingsPanelDiscuss" tabindex="-1" onclick="selectSettingsTab('discuss')">Discuss</button>
             </div>
             <div id="settingsPanelGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
@@ -823,6 +824,10 @@
                 <p class="settings-note">What Proseview asks Codex, Claude, or Agy when extracting or updating a scene's narrative progression map. Model choices are kept on this computer; prompts, pacing guidelines, and tension rubrics are saved in your book's <code>.proseview.yaml</code>.</p>
                 <div id="beatmapSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
             </div>
+            <div id="settingsPanelSceneimage" role="tabpanel" aria-labelledby="settingsTabSceneimage" hidden>
+                <p class="settings-note">Defaults for one-click scene illustrations. Choose a built-in book style, set the chapter asset folder, or customize the art direction and prompt saved in your book's <code>.proseview.yaml</code>.</p>
+                <div id="sceneImageSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
+            </div>
             <div id="settingsPanelDiscuss" role="tabpanel" aria-labelledby="settingsTabDiscuss" hidden>
                 <p class="settings-note">What Codex, Claude, or Agy receives in Discuss and Craft reviews: metadata toggles, developer instructions, and built-in skill prompts saved in your book's <code>.proseview.yaml</code>.</p>
                 <div id="discussSettingsBody" class="suggestion-settings-body"><p class="settings-unit">Loading…</p></div>
@@ -840,6 +845,7 @@
                 <div class="scene-toolbar-nav" aria-label="Scene navigation"><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(-1)" aria-label="Previous scene" title="Previous scene"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><button type="button" class="nav-btn scene-toolbar-button" onclick="navigateScene(1)" aria-label="Next scene" title="Next scene"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div>
                 <button type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="focusSearch()" aria-label="Search files" aria-keyshortcuts="Meta+K Control+K" title="Search scenes, notes, and files (⌘K / Ctrl+K)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
                 <button type="button" id="sceneBeatMapBtn" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleBeatMapPlacement()" aria-label="Show or hide scene beat map strip" title="Show or hide scene beat map strip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg></button>
+                <div id="sceneImageMenuWrap" class="scene-toolbar-menu-wrap scene-image-toolbar-wrap"><button type="button" id="sceneImageBtn" class="scene-toolbar-button scene-toolbar-icon-button" onclick="handleSceneImageToolbarClick()" aria-label="Generate scene illustration" title="Generate scene illustration (1 click)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.2"></rect><circle cx="8.5" cy="9.5" r="1.4"></circle><path d="m21 16-4.8-4.8a1.4 1.4 0 0 0-2 0L6 19.5"></path></svg><span id="sceneImageDot" class="scene-image-toolbar-dot" hidden></span></button><button type="button" id="sceneImageOptionsBtn" class="scene-toolbar-button scene-image-chevron-btn" onclick="toggleSceneImagePopover(this)" aria-label="Scene image styles and options" aria-haspopup="dialog" aria-controls="sceneImageMenu" aria-expanded="false" title="Scene image styles, agent, and optional direction"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><section id="sceneImageMenu" class="scene-toolbar-popover scene-image-popover" role="dialog" aria-label="Scene image options" hidden></section></div>
                 <button type="button" class="scene-toolbar-button scene-toolbar-icon-button discuss-open-btn" onclick="toggleScenePanel(this)" aria-label="Show or hide the scene panel" title="Show or hide side panel (Analysis, History, Discuss)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg></button>
                 <button id="sceneEditBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneEdit()" aria-label="Edit scene" aria-keyshortcuts="E" title="Edit scene in place (E)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
                 <div class="scene-toolbar-menu-wrap"><button id="sceneAppearanceBtn" type="button" class="scene-toolbar-button scene-toolbar-icon-button" onclick="toggleSceneToolbarMenu('sceneAppearanceMenu', this)" aria-label="Appearance and toolbar settings" aria-haspopup="dialog" aria-controls="sceneAppearanceMenu" aria-expanded="false" title="Reading appearance and toolbar settings (font, text size, theme)">Aa</button><section id="sceneAppearanceMenu" class="scene-toolbar-popover scene-appearance-menu" role="dialog" aria-label="Appearance and toolbar settings" hidden>
@@ -1089,6 +1095,7 @@
         const repositoryTree = {{ repository_tree_json | safe }};
         const repoPreviewMax = {{ repo_preview_max }};
         const imagesConfig = {{ images_config_json | safe }};
+        const manuscriptSubdir = {{ manuscript_path_text | tojson }};
         const discussSelectionPresets = {{ discuss_presets_json | safe }};
         const discussDefaultAgent = {{ discuss_default_agent_json | safe }};
         const pageSessionToken = {{ session_token_json | safe }};
@@ -1270,6 +1277,48 @@
                         event.stopPropagation();
                         this.startEdit(!window._pmEditMode);
                     };
+                    const onlyImg = !window.PROSEVIEW_STATIC && this.dom.children.length === 1 && this.dom.firstElementChild && this.dom.firstElementChild.tagName === 'IMG'
+                        ? this.dom.firstElementChild : null;
+                    const imgSrc = onlyImg ? String(onlyImg.getAttribute('src') || '') : '';
+                    if (onlyImg) {
+                        const frame = document.createElement('span');
+                        frame.className = 'pm-scene-image-wrap';
+                        onlyImg.classList.add('pm-scene-image');
+                        const actions = document.createElement('span');
+                        actions.className = 'pm-scene-image-actions';
+                        actions.setAttribute('aria-label', 'Image actions');
+                        const makeBtn = (label, fn) => {
+                            const b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = 'pm-scene-image-action';
+                            b.textContent = label;
+                            b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); fn(); };
+                            b.ondblclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+                            return b;
+                        };
+                        actions.append(
+                            makeBtn('Edit', () => { this.startEdit(!window._pmEditMode); })
+                        );
+                        if (/^\/repo-asset\//.test(imgSrc)) {
+                            actions.append(
+                                makeBtn('Style / refine…', () => { if (typeof window.openSceneImagePopover === 'function') window.openSceneImagePopover(); }),
+                                makeBtn('Iterate in chat', () => { if (typeof window.iterateSceneImageInChat === 'function') window.iterateSceneImageInChat(imgSrc); }),
+                                makeBtn('Remove', () => {
+                                    const wasReading = !window._pmEditMode;
+                                    if (wasReading && typeof window.toggleSceneEdit === 'function') {
+                                        window.toggleSceneEdit();
+                                    }
+                                    this.autoSave = wasReading;
+                                    this.deleteNode();
+                                    if (typeof window.loadSceneImageState === 'function' && typeof paths !== 'undefined' && curIdx >= 0 && paths[curIdx]) {
+                                        setTimeout(() => window.loadSceneImageState(paths[curIdx]), 250);
+                                    }
+                                })
+                            );
+                        }
+                        frame.append(onlyImg, actions);
+                        this.dom.replaceChildren(frame);
+                    }
                 } else {
                     const icon = document.createElement('span');
                     icon.className = 'pm-annotation-icon';
@@ -1303,9 +1352,326 @@
                 a.onclick = (event) => event.stopPropagation();
                 this.dom.append(a);
             }
+            parseSingleImgHtml(html) {
+                const probe = document.createElement('div');
+                probe.innerHTML = String(html || '').trim();
+                if (probe.children.length !== 1 || probe.firstElementChild.tagName !== 'IMG') return null;
+                for (const node of probe.childNodes) {
+                    if (node.nodeType === 3 && node.textContent.trim()) return null;
+                }
+                return probe.firstElementChild;
+            }
+            serializeImgTag(baseImg, { src, alt, width }) {
+                const clone = baseImg.cloneNode(false);
+                clone.removeAttribute('class');
+                if (src) clone.setAttribute('src', src);
+                else clone.removeAttribute('src');
+                clone.setAttribute('alt', alt);
+                const w = String(width || '').trim();
+                if (w) clone.setAttribute('width', w);
+                else clone.removeAttribute('width');
+                const attrs = [];
+                const order = ['src', 'alt', 'width', 'height', 'title'];
+                const seen = new Set();
+                const pushAttr = (name) => {
+                    if (seen.has(name) || !clone.hasAttribute(name)) return;
+                    seen.add(name);
+                    const val = clone.getAttribute(name) || '';
+                    const esc = val
+                        .replace(/&/g, '&amp;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                    attrs.push(`${name}="${esc}"`);
+                };
+                order.forEach(pushAttr);
+                Array.from(clone.attributes).forEach((a) => pushAttr(a.name));
+                return '<img ' + attrs.join(' ') + '>';
+            }
+            renderImageEdit(parsed, imgEl) {
+                this.dom.className = 'pm-image-editor';
+                this.dom.dataset.tag = 'image';
+                this.dom.title = '';
+                this.dom.replaceChildren();
+                this.dom.onclick = null;
+                this.dom.ondblclick = null;
+
+                let rawMode = false;
+                let baseImg = imgEl.cloneNode(false);
+                const originalRaw = String(parsed.body || '').trim();
+                let currentRaw = originalRaw;
+
+                const head = document.createElement('div');
+                head.className = 'pm-image-editor-head';
+                const badge = document.createElement('span');
+                badge.className = 'pm-image-editor-badge';
+                badge.textContent = 'Image';
+                const modeBtn = document.createElement('button');
+                modeBtn.type = 'button';
+                modeBtn.className = 'pm-image-editor-mode-btn';
+                modeBtn.textContent = '</> HTML';
+                modeBtn.title = 'Toggle between image fields and raw HTML tag';
+                head.append(badge, modeBtn);
+
+                const body = document.createElement('div');
+                body.className = 'pm-image-editor-body';
+
+                const thumbWrap = document.createElement('div');
+                thumbWrap.className = 'pm-image-editor-thumb';
+                const thumbImg = document.createElement('img');
+                thumbImg.src = baseImg.getAttribute('src') || '';
+                thumbImg.alt = baseImg.getAttribute('alt') || '';
+                thumbWrap.appendChild(thumbImg);
+
+                const fields = document.createElement('div');
+                fields.className = 'pm-image-editor-fields';
+
+                // Width row with quick presets + custom px
+                const widthRow = document.createElement('div');
+                widthRow.className = 'pm-image-editor-row';
+                const widthLabel = document.createElement('label');
+                widthLabel.className = 'pm-image-editor-label';
+                widthLabel.textContent = 'Width';
+                const widthCtrl = document.createElement('div');
+                widthCtrl.className = 'pm-image-editor-width-ctrl';
+
+                const widthInput = document.createElement('input');
+                widthInput.type = 'number';
+                widthInput.min = '80';
+                widthInput.max = '1600';
+                widthInput.step = '20';
+                widthInput.placeholder = 'auto';
+                widthInput.className = 'pm-image-editor-input pm-image-editor-width-input';
+                widthInput.setAttribute('aria-label', 'Image width in pixels');
+                widthInput.value = baseImg.getAttribute('width') || '';
+
+                const unit = document.createElement('span');
+                unit.className = 'pm-image-editor-unit';
+                unit.textContent = 'px';
+
+                const presetsWrap = document.createElement('div');
+                presetsWrap.className = 'pm-image-editor-presets';
+                const presetSpecs = [
+                    { label: '400', value: '400' },
+                    { label: '500', value: '500' },
+                    { label: '600', value: '600' },
+                    { label: '760', value: '760' },
+                    { label: 'Auto', value: '' },
+                ];
+                const presetBtns = presetSpecs.map((spec) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'pm-image-editor-preset';
+                    btn.textContent = spec.label;
+                    btn.dataset.width = spec.value;
+                    btn.onclick = (ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        widthInput.value = spec.value;
+                        syncPresetHighlight();
+                    };
+                    presetsWrap.appendChild(btn);
+                    return btn;
+                });
+                const syncPresetHighlight = () => {
+                    const cur = widthInput.value.trim();
+                    presetBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.width === cur));
+                };
+                widthInput.oninput = syncPresetHighlight;
+                syncPresetHighlight();
+                widthCtrl.append(widthInput, unit, presetsWrap);
+                widthRow.append(widthLabel, widthCtrl);
+
+                // Alt text row
+                const altRow = document.createElement('div');
+                altRow.className = 'pm-image-editor-row';
+                const altLabel = document.createElement('label');
+                altLabel.className = 'pm-image-editor-label';
+                altLabel.textContent = 'Alt text';
+                const altInput = document.createElement('input');
+                altInput.type = 'text';
+                altInput.className = 'pm-image-editor-input';
+                altInput.placeholder = 'Describe the image…';
+                altInput.setAttribute('aria-label', 'Image alt text');
+                altInput.value = baseImg.getAttribute('alt') || '';
+                altRow.append(altLabel, altInput);
+
+                // Source row
+                const srcRow = document.createElement('div');
+                srcRow.className = 'pm-image-editor-row';
+                const srcLabel = document.createElement('label');
+                srcLabel.className = 'pm-image-editor-label';
+                srcLabel.textContent = 'Source';
+                const srcInput = document.createElement('input');
+                srcInput.type = 'text';
+                srcInput.className = 'pm-image-editor-input pm-image-editor-mono';
+                srcInput.setAttribute('aria-label', 'Image source path');
+                srcInput.value = baseImg.getAttribute('src') || '';
+                srcInput.oninput = () => {
+                    thumbImg.src = srcInput.value.trim();
+                };
+                srcRow.append(srcLabel, srcInput);
+
+                fields.append(widthRow, altRow, srcRow);
+                body.append(thumbWrap, fields);
+
+                // Raw HTML editor (hidden until toggled)
+                const rawArea = document.createElement('textarea');
+                rawArea.className = 'pm-image-editor-raw pm-image-editor-mono';
+                rawArea.rows = 3;
+                rawArea.spellcheck = false;
+                rawArea.setAttribute('aria-label', 'Raw image HTML tag');
+                rawArea.value = originalRaw;
+                rawArea.hidden = true;
+
+                const getCurrentHtml = () => {
+                    if (rawMode) return rawArea.value.trim();
+                    const next = this.serializeImgTag(baseImg, {
+                        src: srcInput.value.trim(),
+                        alt: altInput.value,
+                        width: widthInput.value.trim(),
+                    });
+                    // Keep exact original markup if user didn't change any field
+                    if (
+                        srcInput.value.trim() === (baseImg.getAttribute('src') || '') &&
+                        altInput.value === (baseImg.getAttribute('alt') || '') &&
+                        widthInput.value.trim() === (baseImg.getAttribute('width') || '')
+                    ) {
+                        return currentRaw;
+                    }
+                    return next;
+                };
+
+                modeBtn.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (!rawMode) {
+                        currentRaw = getCurrentHtml();
+                        rawArea.value = currentRaw;
+                        rawMode = true;
+                        body.hidden = true;
+                        rawArea.hidden = false;
+                        modeBtn.classList.add('is-active');
+                        modeBtn.textContent = 'Fields';
+                        rawArea.focus();
+                    } else {
+                        currentRaw = rawArea.value.trim();
+                        const parsedAgain = this.parseSingleImgHtml(currentRaw);
+                        if (parsedAgain) {
+                            baseImg = parsedAgain.cloneNode(false);
+                            srcInput.value = baseImg.getAttribute('src') || '';
+                            altInput.value = baseImg.getAttribute('alt') || '';
+                            widthInput.value = baseImg.getAttribute('width') || '';
+                            thumbImg.src = srcInput.value.trim();
+                            syncPresetHighlight();
+                        }
+                        rawMode = false;
+                        rawArea.hidden = true;
+                        body.hidden = false;
+                        modeBtn.classList.remove('is-active');
+                        modeBtn.textContent = '</> HTML';
+                        widthInput.focus();
+                    }
+                };
+
+                const actions = document.createElement('div');
+                actions.className = 'pm-annotation-edit-actions';
+
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'pm-annotation-cancel';
+                cancel.textContent = 'Cancel';
+                cancel.onclick = (event) => {
+                    if (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                    this.cleanupDocClick();
+                    const shouldExitEdit = this.autoSave && !window._pmDirty && typeof window.cancelSceneEdit === 'function';
+                    this.autoSave = false;
+                    this.renderRead();
+                    if (shouldExitEdit) window.cancelSceneEdit();
+                };
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'pm-annotation-delete';
+                del.textContent = 'Delete';
+                del.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.deleteNode();
+                };
+
+                const commitImageEdit = () => {
+                    if (!rawMode && !srcInput.value.trim()) {
+                        srcInput.focus();
+                        return;
+                    }
+                    const nextHtml = getCurrentHtml();
+                    if (!nextHtml) {
+                        (rawMode ? rawArea : srcInput).focus();
+                        return;
+                    }
+                    this.save(nextHtml);
+                };
+
+                const save = document.createElement('button');
+                save.type = 'button';
+                save.className = 'pm-annotation-save';
+                save.textContent = 'Save';
+                save.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    commitImageEdit();
+                };
+
+                const onKey = (event) => {
+                    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        commitImageEdit();
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        cancel.click();
+                    } else if (event.key === 'Enter' && !event.shiftKey && event.target.tagName !== 'TEXTAREA') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        commitImageEdit();
+                    }
+                };
+                [widthInput, altInput, srcInput, rawArea].forEach((el) => { el.onkeydown = onKey; });
+
+                actions.append(cancel, del, save);
+                this.dom.append(head, body, rawArea, actions);
+
+                setTimeout(() => {
+                    try { altInput.focus({ preventScroll: true }); }
+                    catch (err) { altInput.focus(); }
+                    if (this.editing) {
+                        this.cleanupDocClick();
+                        this._onDocClick = (e) => {
+                            if (this.dom.contains(e.target)) return;
+                            if (getCurrentHtml() === originalRaw) {
+                                cancel.click();
+                            }
+                        };
+                        document.addEventListener('pointerdown', this._onDocClick, true);
+                        document.addEventListener('mousedown', this._onDocClick, true);
+                    }
+                }, 0);
+            }
             renderEdit() {
                 this.cleanupDocClick();
                 const parsed = this.parsed();
+                if (parsed.kind === 'html') {
+                    const imgEl = this.parseSingleImgHtml(parsed.body);
+                    if (imgEl) {
+                        this.renderImageEdit(parsed, imgEl);
+                        return;
+                    }
+                }
                 this.setBaseClass(parsed);
                 this.dom.replaceChildren();
                 this.dom.onclick = null;
@@ -1322,7 +1688,7 @@
                 editable.contentEditable = 'plaintext-only';
                 editable.role = 'textbox';
                 editable.ariaMultiLine = 'true';
-                editable.dataset.placeholder = parsed.kind === 'todo' ? 'TODO text' : 'Note text';
+                editable.dataset.placeholder = parsed.kind === 'todo' ? 'TODO text' : (parsed.kind === 'html' ? 'HTML markup' : 'Note text');
                 editable.textContent = parsed.body;
                 editable.onkeydown = (event) => {
                     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {

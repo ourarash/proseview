@@ -1,5 +1,7 @@
         // ── Selection pill ───────────────────────────────────────────────────
         let pillDragging = false;
+        // Dragged by hand: it stays where it was put until the selection changes.
+        let pillPlacedByHand = false;
         let pillPressed = false, pillJustDragged = false;
         let pillPressX = 0, pillPressY = 0;
         let pillDragStartX = 0, pillDragStartY = 0;
@@ -231,6 +233,11 @@
             const pill = document.getElementById('selectionPill');
             const trigger = document.getElementById('selectionPillBtn');
             if (!pill || !trigger || pill.style.display === 'none') return;
+            if (pillPlacedByHand) {
+                syncSelectionPillMode();
+                positionSelectionPillSurface(selectionViewportMetrics());
+                return;
+            }
             const anchor = currentSelectionAnchorRect();
             if (!anchor) return;
 
@@ -826,7 +833,10 @@
             // shut the menu; different text starts over.
             const sameSelection = pillIsVisible() && selectionPillShownFor === currentSelectionText;
             selectionPillShownFor = currentSelectionText;
-            if (!sameSelection) collapseSelectionPillMenu();
+            if (!sameSelection) {
+                collapseSelectionPillMenu();
+                pillPlacedByHand = false;
+            }
             selectionPillFallbackAnchor = {left: x, right: x, top: y, bottom: y};
             pill.style.display = 'flex';
             positionSelectionPill();
@@ -845,6 +855,7 @@
             const pill = document.getElementById('selectionPill');
             if (pill) pill.style.display = 'none';
             selectionPillShownFor = null;
+            pillPlacedByHand = false;
             collapseSelectionPillMenu();
             clearPinnedSelectionHighlight();
         }
@@ -1111,6 +1122,7 @@
                 pillPressed = false;
                 if (!pillDragging) return;
                 pillDragging = false;
+                pillPlacedByHand = true;
                 pillJustDragged = true;
                 setTimeout(function() { pillJustDragged = false; }, 0);
             });
@@ -1215,7 +1227,7 @@
         // when it moved follows it to its new place. Returns the moved
         // scenes' new paths: their text did not change.
         function refreshFileList(files) {
-            if (!Array.isArray(files.sidebar)) return [];
+            if (!Array.isArray(files.sidebar) || window._sidebarReloading) return [];
             var listed = {};
             var sceneOf = {};
             sidebarWalk(sidebarTree, function(node) {

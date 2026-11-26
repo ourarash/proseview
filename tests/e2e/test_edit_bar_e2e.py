@@ -148,6 +148,8 @@ def test_selection_pill_drags_from_its_button_and_still_opens(page: Page, server
 
     # Dragging by the ··· button moves the pill and leaves the menu shut.
     _drag(page, "#selectionPillBtn", 120, 80)
+    # It stays where it was put, after the frames that follow the drop.
+    page.wait_for_timeout(300)
     after = page.locator("#selectionPillBtn").bounding_box()
     assert abs(after["x"] - (before["x"] + 120)) < 3
     assert abs(after["y"] - (before["y"] + 80)) < 3

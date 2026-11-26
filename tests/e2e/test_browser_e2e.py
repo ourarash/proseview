@@ -35,7 +35,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
 
-from playwright.sync_api import Browser, Page  # noqa: E402
+from playwright.sync_api import Browser, Page, expect  # noqa: E402
 
 from .conftest import (
     ANNOTATED_SCENE_REL,
@@ -997,10 +997,12 @@ def test_discuss_send_times_out_and_recovers_from_a_stalled_request(
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.fill("#discussInput", "Why is the opening quiet?")
+    # Long enough to see "Sending…" before it times out: at 100ms a busy
+    # machine (a parallel run) could time out before the first check ran.
     page.evaluate(
         """
         () => {
-            window._discussRequestTimeoutMs = 100;
+            window._discussRequestTimeoutMs = 1000;
             window.__discussOriginalFetch = window.fetch;
             window.fetch = function(input, options) {
                 if (!String(input).includes('/questions')) {
@@ -1018,13 +1020,13 @@ def test_discuss_send_times_out_and_recovers_from_a_stalled_request(
 
     page.locator("#discussSend").click()
 
-    assert page.locator("#discussSend").is_disabled()
-    assert page.locator("#discussSend").inner_text() == "Sending…"
+    expect(page.locator("#discussSend")).to_be_disabled()
+    expect(page.locator("#discussSend")).to_have_text("Sending…")
     assert page.locator("#discussSend").evaluate("node => getComputedStyle(node).cursor") != "wait"
     page.wait_for_function(
         "() => !document.getElementById('discussSend').disabled "
         "&& document.getElementById('discussSend').innerText === 'Send'",
-        timeout=2_000,
+        timeout=5_000,
     )
     assert page.get_by_text(
         "Request timed out. Check the connection and try again.", exact=True
@@ -3620,7 +3622,9 @@ def test_file_explorer_keeps_open_folders_open_after_a_change(page: Page, server
     )
     assert not (server.root / "story-bible/characters/lowe.md").exists()
     characters = tree.locator(".dir-toggle").filter(has_text=re.compile(r"^characters$")).first
-    assert characters.get_attribute("aria-expanded") == "true"
+    # The reloaded page reopens it once its tree is drawn, which a busy
+    # machine (a parallel run) can take a moment over.
+    expect(characters).to_have_attribute("aria-expanded", "true")
     assert characters.locator("xpath=..").evaluate("li => li.classList.contains('expanded')")
 
 
@@ -6786,7 +6790,9 @@ def test_open_presets_survive_the_strip_being_redrawn(page: Page, server: Prosev
     page.keyboard.press("Escape")
     assert page.locator("#discussPresetsPopover").is_hidden()
     assert page.locator("#discussPanel").is_visible()
-    assert page.evaluate("document.activeElement?.getAttribute('aria-label')") == "More presets and recent instructions"
+    page.wait_for_function(
+        "() => document.activeElement?.getAttribute('aria-label') === 'More presets and recent instructions'"
+    )
     page.keyboard.press("Enter")
     assert page.locator("#discussPresetsPopover").is_visible()
     page.locator("#discussInput").click()

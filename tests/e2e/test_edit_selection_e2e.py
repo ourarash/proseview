@@ -1,4 +1,6 @@
 """Selections use the review's item numbers without repeating available proposals."""
+import time
+
 import pytest
 
 expect = pytest.importorskip('playwright.sync_api').expect
@@ -138,6 +140,11 @@ def test_requested_is_separate_from_a_verified_applied_replacement(page, server)
     assert CHANGED_SENTENCE in server.scene_path().read_text()
     pane.locator('.group-tool-review').get_by_role('button', name='Undo all', exact=True).click()
     expect(pane.locator('.edit-selection-item-heading').first).to_contain_text('Requested')
+    # The heading can turn before the undo's write lands; on a busy machine
+    # (a parallel run) a single read came too soon.
+    deadline = time.monotonic() + 5
+    while OPENED_SENTENCE not in server.scene_path().read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert OPENED_SENTENCE in server.scene_path().read_text()
 
 

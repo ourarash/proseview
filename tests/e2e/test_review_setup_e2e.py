@@ -590,6 +590,11 @@ def test_a_review_in_a_chat_with_messages_can_start_a_new_conversation(page: Pag
     page.wait_for_function('t => _discussSnapshot && _discussSnapshot.thread_id && _discussSnapshot.thread_id !== t', arg=first_thread)
     wait_for_discuss_answer(page, 'Fake answer')
     expect(page.locator('.discuss-message.user')).to_have_count(1)
+    # Request events reach the test as it waits; give a busy run a moment.
+    for _ in range(50):
+        if len(requests) >= 2:
+            break
+        page.wait_for_timeout(100)
     assert [req['action_id'] for req in requests] == ['quick_critique', 'comedy_review']
 
 

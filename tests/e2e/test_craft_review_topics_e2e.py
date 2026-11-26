@@ -75,7 +75,7 @@ def test_optional_story_context_survives_render_lens_switch_and_reload(page: Pag
     open_discuss(page)
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
     page.get_by_role('button', name='Customize Craft review', exact=True).click()
-    page.wait_for_function('value => document.querySelector("#discussCraftContext").value === value', arg=context)
+    page.wait_for_function('value => document.querySelector("#discussCraftContext")?.value === value', arg=context)
     assert page.locator('#discussCraftContext').input_value() == context
     assert page.locator('#discussCraftContext').is_visible()
     page.locator('.discuss-craft-note-toggle', has_text='Scene frontmatter').locator('input').uncheck()
@@ -141,6 +141,9 @@ def test_focus_chips_and_result_lane_links_open_the_matching_guide(page: Page, s
 def test_quote_uses_its_following_citation_instead_of_the_previous_quote(page: Page, server: ProseviewServer, line_suffix: str):
     open_scene(page, server)
     open_discuss(page)
+    # A late redraw of the chat log would take the check's quotes with it.
+    wait_for_discuss_idle(page)
+    wait_for_discuss_quiet(page)
     source = (server.root / 'manuscript/ch01/01-opening.md').read_text().splitlines()
     first, second = source[19], source[25]
     markdown = f'> {first}\n\n[Line 20](manuscript/ch01/01-opening.md#L20)\n\n> {second}\n\n[Line 26](manuscript/ch01/01-opening.md{line_suffix})'

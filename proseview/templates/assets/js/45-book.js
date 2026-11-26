@@ -11,6 +11,7 @@
         var _bookPages = null;         // the print layout viewer, once made
         var _bookPagesScroll = null;   // where the text was when print layout opened
         var _bookOrigin = null;        // {scene, top}: the scene the book was opened from
+        var _bookLanding = 0;          // counts openings; a move by the reader ends the current one
         var BOOK_LAYOUT_KEY = 'proseview-book-layout';
         var BOOK_PRINT_ANCHOR_KEY = 'proseview-book-print-anchor';
         var BOOK_INTRO_KEY = 'proseview-book-intro-seen';
@@ -289,6 +290,7 @@
         // In the print layout the same moves jump to where the scene or
         // chapter starts on its page.
         function bookGoScene(delta) {
+            _bookLanding++;
             var index = _bookSections.indexOf(_bookCurrentSection());
             var next = _bookSections[Math.max(0, Math.min(_bookSections.length - 1, index + delta))];
             if (!next) return;
@@ -314,6 +316,7 @@
         }
 
         function bookGoToChapter(index) {
+            _bookLanding++;
             var first = _bookSections[_bookChapterStarts[index]];
             if (!first) return;
             if (_bookPagesScroll !== null) {
@@ -495,9 +498,11 @@
             document.documentElement.dataset.view = 'book';
             _bookCurrent = null;
             if (options.route !== false) routeToHash(hash, true);
+            var landing = ++_bookLanding;
             var land = function() {
                 // Opened in the print layout, the page is the pages' to scroll.
-                if (_bookPagesScroll !== null) return;
+                // Once the reader has moved on, the opening place is theirs too.
+                if (_bookPagesScroll !== null || landing !== _bookLanding) return;
                 if (p) _bookScrollTo(p);
                 else window.scrollTo({top: 0, left: 0, behavior: 'instant'});
                 _bookTrack();

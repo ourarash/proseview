@@ -488,6 +488,10 @@
                 sidebarStoreFlash('Moved ' + data.path + ' to Proseview Trash.');
             }
             sidebarRememberExpanded(data);
+            // The watcher's news of this change can still arrive before the
+            // page goes; redrawing the tree then would use up the folders
+            // just remembered (see refreshFileList).
+            window._sidebarReloading = true;
             history.replaceState(history.state, '', hash || '#/tab/overview');
             location.reload();
         }

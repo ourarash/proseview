@@ -585,7 +585,9 @@ def test_a_review_in_a_chat_with_messages_can_start_a_new_conversation(page: Pag
     page.locator('#discussCraftButton').click()
     page.get_by_role('button', name='Run Comedy review with defaults', exact=True).click()
     choose_review_chat(page, 'Start new conversation')
-    page.wait_for_function('t => _discussSnapshot && _discussSnapshot.thread_id !== t', arg=first_thread)
+    # Resetting briefly clears the thread ID while the old answer is still
+    # rendered. Wait for the replacement thread before looking for its answer.
+    page.wait_for_function('t => _discussSnapshot && _discussSnapshot.thread_id && _discussSnapshot.thread_id !== t', arg=first_thread)
     wait_for_discuss_answer(page, 'Fake answer')
     expect(page.locator('.discuss-message.user')).to_have_count(1)
     assert [req['action_id'] for req in requests] == ['quick_critique', 'comedy_review']

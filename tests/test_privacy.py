@@ -271,3 +271,20 @@ def test_browser_mode_has_no_password_route():
     )
     assert reply["status"] == 404
     assert privacy.get_idle_minutes() == 10
+
+
+def test_an_idle_cover_waits_while_another_page_is_in_use(monkeypatch):
+    from proseview import privacy as privacy_mod
+    from proseview.privacy import PrivacyLock
+
+    now = [1000.0]
+    monkeypatch.setattr(privacy_mod.time, "monotonic", lambda: now[0])
+    lock = PrivacyLock()
+    now[0] += 50
+    lock.touch()  # the phone, in use
+    now[0] += 30
+    state = lock.idle_lock(60)
+    assert state["busy"] and not state["locked"] and state["idle_seconds"] == 30
+    now[0] += 31
+    state = lock.idle_lock(60)
+    assert state["locked"] and "busy" not in state

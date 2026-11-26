@@ -21049,3 +21049,9 @@
         html.pv-phone .settings-remote-section,
         html.pv-phone .settings-variety { display: none !important; }
         html.pv-phone #settingsDialog .settings-row { flex-wrap: wrap; row-gap: 8px; }
+        .pv-unlock { display: none; }
+        html.pv-phone #privacyPassword:not([hidden]) + .pv-unlock { display: inline-flex; margin-left: 8px; }
+        /* Mac-only controls on the phone. */
+        html[data-remote="phone"] #filePreviewEditorBtn,
+        html[data-remote="phone"] #privacySettingsRow,
+        html[data-remote="phone"] #privacyPasswordForm { display: none !important; }

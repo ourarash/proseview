@@ -247,3 +247,49 @@ def test_todo_anchors_on_a_paragraph_that_opens_with_markdown(tmp_path: Path, ra
     insert_todo(str(path), rendered, OFFSET, "tighten")
     lines = path.read_text(encoding="utf-8").splitlines()
     assert lines[lines.index(raw) - 2] == "<!-- TODO: tighten -->"
+
+
+SHARED = "Alice counted the cards upon the table with careful attention, "
+TWINS = f"""---
+title: Cards
+---
+
+# Cards
+
+{SHARED}and found one missing.
+
+The Queen frowned.
+
+{SHARED}and this time they were all there.
+
+The Queen frowned.
+"""
+
+
+def test_the_whole_selection_picks_between_paragraphs_that_start_alike(tmp_path: Path):
+    path = tmp_path / "cards.md"
+    path.write_text(TWINS, encoding="utf-8")
+    insert_todo(str(path), SHARED + "and this time they were all there.", OFFSET, "second")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[lines.index(SHARED + "and this time they were all there.") - 2] == "<!-- TODO: second -->"
+
+
+def test_the_paragraph_line_picks_between_identical_paragraphs(tmp_path: Path):
+    path = tmp_path / "cards.md"
+    path.write_text(TWINS, encoding="utf-8")
+    second_frown = [i for i, ln in enumerate(TWINS.splitlines()) if ln == "The Queen frowned."][1] + 1
+    add_note(str(path), "The Queen frowned.", OFFSET, "which frown?", "note", paragraph_line=second_frown)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    frowns = [i for i, ln in enumerate(lines) if ln == "The Queen frowned."]
+    assert lines[frowns[1] - 2] == "<!-- NOTE: which frown? -->"
+    assert lines[frowns[0] - 2] != "<!-- NOTE: which frown? -->"
+
+
+def test_a_paragraph_line_that_no_longer_matches_is_refused(tmp_path: Path):
+    from proseview.server import _AnnotationAnchorError
+
+    path = tmp_path / "cards.md"
+    path.write_text(TWINS, encoding="utf-8")
+    with pytest.raises(_AnnotationAnchorError, match="moved"):
+        insert_todo(str(path), "The Queen frowned.", OFFSET, "x", paragraph_line=1)
+    assert path.read_text(encoding="utf-8") == TWINS

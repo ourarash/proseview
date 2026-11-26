@@ -1337,6 +1337,7 @@
                 if (pathListContains(changedPaths, p)) _scenesChangedOnDisk[p] = true;
             });
             refreshContent(changedPaths || null);
+            if (typeof window !== 'undefined' && typeof window.pvDataChanged === 'function') window.pvDataChanged(changedPaths || null);
         }
 
         function scheduleContentRefresh(delay) {

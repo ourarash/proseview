@@ -146,11 +146,18 @@
                     // Reconnect and catch up in place: a reload would take the
                     // text in Quick edit or the chat box with it.
                     if (typeof window.pvReconnectEvents === 'function') window.pvReconnectEvents();
+                    reconnectChat();
                     if (typeof refreshContent === 'function') {
                         try { refreshContent(null); } catch (err) { /* the next change refreshes */ }
                     }
                     return true;
                 });
+            }
+
+            // The chat's own stream, closed while the Mac was away.
+            function reconnectChat() {
+                if (typeof connectDiscussEvents !== 'function' || typeof _discussConversationId === 'undefined') return;
+                if (_discussConversationId && !_discussEventSource) connectDiscussEvents();
             }
 
             function buildOfflineBanner() {
@@ -339,6 +346,11 @@
                                   onclick: function() { cover(); }}),
                 ]);
                 document.body.appendChild(bar);
+                var bookControls = document.querySelector('#book-panel .file-preview-controls');
+                if (bookControls && !document.getElementById('pvCoverBook')) {
+                    bookControls.appendChild(el('button', {type: 'button', id: 'pvCoverBook', className: 'back-btn pv-cover-top', text: 'Cover',
+                                                           'aria-label': 'Cover the screen', onclick: function() { cover(); }}));
+                }
                 var actions = document.querySelector('.toolbar-actions');
                 if (actions && !document.getElementById('pvCoverTop')) {
                     actions.appendChild(el('button', {type: 'button', id: 'pvCoverTop', className: 'theme-toggle pv-cover-top', text: 'Cover',
@@ -352,11 +364,16 @@
                 var edit = document.getElementById('pvEditBtn');
                 if (read) read.hidden = !t || t.kind !== 'scene';
                 if (edit) {
-                    var yaml = t && /\.ya?ml$/i.test(t.path);
-                    edit.disabled = !!yaml;
-                    edit.title = yaml ? 'YAML files are read-only on the phone' : '';
+                    var editable = !t || quickEditable(t);
+                    edit.disabled = !editable;
+                    edit.title = editable ? '' : 'Only scenes and Markdown notes can be edited on the phone';
                 }
                 if (t && t.kind === 'scene') rememberScene(t.path);
+            }
+
+            // Scenes and Markdown notes; YAML and other text stay read-only here.
+            function quickEditable(target) {
+                return !!target && (target.kind === 'scene' || /\.(md|markdown)$/i.test(target.path));
             }
 
             function openAsk(trigger) {
@@ -375,33 +392,28 @@
                 privacyToggle();
             }
 
-            // The second tap's click would land on whatever the cover hid.
-            function swallowNextClick() {
-                var swallow = function(event) {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                    document.removeEventListener('click', swallow, true);
-                };
-                document.addEventListener('click', swallow, true);
-                setTimeout(function() { document.removeEventListener('click', swallow, true); }, 600);
-            }
-
+            // Double taps are read from clicks, so the tap that uncovers is
+            // the last event and nothing lands on what the cover hid.
             function watchCoverTaps() {
                 var screen = document.getElementById('privacyScreen');
                 if (!screen) return;
+                var box = document.getElementById('privacyPassword');
+                if (box && !document.getElementById('pvUnlock')) {
+                    box.setAttribute('enterkeyhint', 'go');
+                    box.insertAdjacentElement('afterend', el('button', {type: 'button', id: 'pvUnlock', className: 'pv-btn pv-btn-small pv-unlock',
+                        text: 'Unlock', onclick: function() { if (typeof privacySubmit === 'function') privacySubmit(); }}));
+                }
                 var last = -Infinity;
-                screen.addEventListener('pointerup', function(event) {
-                    if (!root.classList.contains('pv-phone') || event.target.id === 'privacyPassword') return;
-                    if (event.timeStamp - last <= 400) {
-                        last = -Infinity;
-                        var box = document.getElementById('privacyPassword');
-                        if (box && !box.hidden) return;
-                        if (typeof privacyToggle !== 'function') return;
-                        privacyToggle();
-                        if (typeof _privacyShown === 'undefined' || !_privacyShown) swallowNextClick();
-                    } else {
+                screen.addEventListener('click', function(event) {
+                    if (!root.classList.contains('pv-phone')) return;
+                    if (event.target.closest('#privacyPassword, #pvUnlock')) return;
+                    if (event.timeStamp - last > 400) {
                         last = event.timeStamp;
+                        return;
                     }
+                    last = -Infinity;
+                    // Uncovers, or opens the password box, or closes it again.
+                    if (typeof privacyToggle === 'function') privacyToggle();
                 });
             }
 
@@ -473,6 +485,7 @@
                 if (!e || !area) return;
                 clearTimeout(keepEditDraft.timer);
                 keepEditDraft.timer = setTimeout(function() {
+                    if (state.edit !== e) return;  // saved, closed or another file since
                     if (area.value === e.original) {
                         clearDraft('edit', e.path);
                         editStatus('');
@@ -485,13 +498,19 @@
 
             function openQuickEdit() {
                 var target = currentTarget();
-                if (!target || /\.ya?ml$/i.test(target.path)) return;
+                if (!quickEditable(target)) return;
                 buildEditSheet();
                 var sheet = document.getElementById('pvEditSheet');
                 var area = document.getElementById('pvEditText');
                 document.getElementById('pvEditTitle').textContent = target.title;
                 var draft = readDraft('edit', target.path);
+                // A later Cancel or another Edit makes this opening stale.
+                var generation = ++editGeneration;
+                var save = document.getElementById('pvEditSave');
                 var show = function(text, mtime, absPath, original, message) {
+                    if (generation !== editGeneration) return;
+                    area.disabled = false;
+                    save.disabled = false;
                     state.edit = {kind: target.kind, path: target.path, absPath: absPath, title: target.title,
                                   mtime: mtime, original: original};
                     area.value = text;
@@ -502,7 +521,10 @@
                 };
                 editStatus('Opening…');
                 sheet.hidden = false;
+                root.classList.add('pv-sheet-open');
                 area.value = '';
+                area.disabled = true;
+                save.disabled = true;
                 loadFresh(target).then(function(fresh) {
                     if (draft) {
                         // The draft's own mtime stays the baseline, so a change
@@ -512,6 +534,7 @@
                         show(fresh.text, fresh.mtime, fresh.absPath, fresh.text, '');
                     }
                 }).catch(function(err) {
+                    if (generation !== editGeneration) return;
                     if (draft) {
                         show(draft.text, draft.mtime, target.absPath || '', null,
                              'Your unsaved draft is back. The Mac cannot be reached, so it can be saved once it is.');
@@ -523,7 +546,10 @@
                 });
             }
 
+            var editGeneration = 0;
+
             function closeEditSheet() {
+                editGeneration++;
                 var sheet = document.getElementById('pvEditSheet');
                 if (sheet) sheet.hidden = true;
                 closeConflict();
@@ -534,7 +560,8 @@
             function cancelQuickEdit() {
                 var e = state.edit;
                 var area = document.getElementById('pvEditText');
-                if (e && area && e.original !== null && area.value !== e.original) {
+                clearTimeout(keepEditDraft.timer);
+                if (e && area && (e.original === null || area.value !== e.original)) {
                     // Cancel only closes: the draft stays, and Edit brings it
                     // back. Discard is in the conflict sheet and after a save.
                     writeDraft('edit', e.path, {text: area.value, mtime: e.mtime, kind: e.kind, savedAt: Date.now()});
@@ -548,9 +575,13 @@
                 var area = document.getElementById('pvEditText');
                 var button = document.getElementById('pvEditSave');
                 if (!e || !area) return;
+                clearTimeout(keepEditDraft.timer);
                 var text = area.value;
                 writeDraft('edit', e.path, {text: text, mtime: e.mtime, kind: e.kind, savedAt: Date.now()});
+                // Read-only while saving, so nothing typed meanwhile is lost
+                // when the sheet closes on success.
                 button.disabled = true;
+                area.readOnly = true;
                 editStatus('Saving…');
                 var request = e.kind === 'scene'
                     ? {url: '/save-scene', body: {abs_path: e.absPath, content: text, open_mtime: e.mtime, overwrite: !!overwrite}}
@@ -563,6 +594,8 @@
                     })
                     .then(function(result) {
                         button.disabled = false;
+                        area.readOnly = false;
+                        if (state.edit !== e) return;
                         if (result.status === 409 || (result.data && result.data.conflict)) {
                             editStatus('');
                             openConflict();
@@ -575,14 +608,22 @@
                         clearDraft('edit', e.path);
                         closeEditSheet();
                         if (typeof sidebarShowToast === 'function') sidebarShowToast('Saved');
-                        if (e.kind === 'scene' && typeof refreshSceneIfChangedOnDisk === 'function') refreshSceneIfChangedOnDisk(e.path);
-                        else if (typeof refreshFilePreview === 'function') refreshFilePreview({silent: true});
+                        refreshNow(e.path);
                     })
                     .catch(function() {
                         button.disabled = false;
+                        area.readOnly = false;
+                        if (state.edit !== e) return;
                         editStatus('Not saved: the Mac cannot be reached. Your text is kept on this phone.', true);
                         showOffline();
                     });
+            }
+
+            // Take the saved file in now, without waiting for the change event:
+            // a second TODO right after the first needs the new mtime.
+            function refreshNow(path) {
+                if (typeof refreshContent !== 'function') return;
+                try { refreshContent([path]); } catch (err) { /* the change event refreshes */ }
             }
 
             function openConflict() {
@@ -629,12 +670,10 @@
             function discardAndReload() {
                 var e = state.edit;
                 if (!e) return;
+                clearTimeout(keepEditDraft.timer);
                 clearDraft('edit', e.path);
                 closeEditSheet();
-                if (e.kind === 'scene' && typeof refreshSceneIfChangedOnDisk === 'function') refreshSceneIfChangedOnDisk(e.path);
-                if (typeof refreshContent === 'function') {
-                    try { refreshContent([e.path]); } catch (err) { /* next change refreshes */ }
-                }
+                refreshNow(e.path);
             }
 
             // ── + TODO / Note ───────────────────────────────────────────────────
@@ -671,6 +710,7 @@
                                          onclick: function(e) { e.stopPropagation(); openNoteSheet(); }});
                 }
                 pill.dataset.text = text;
+                pill.dataset.line = p.dataset.line || '';
                 p.insertAdjacentElement('afterend', pill);
                 pill.hidden = false;
             }
@@ -722,7 +762,8 @@
                 buildNoteSheet();
                 var draft = readDraft('note', t.path);
                 var anchor = (draft && draft.anchor === pill.dataset.text) ? draft : null;
-                state.note = {path: t.path, absPath: t.absPath, text: pill.dataset.text, kind: anchor ? anchor.kind : 'todo'};
+                state.note = {path: t.path, absPath: t.absPath, text: pill.dataset.text, line: parseInt(pill.dataset.line, 10) || null,
+                              kind: anchor ? anchor.kind : 'todo'};
                 var quote = state.note.text;
                 document.getElementById('pvNoteQuote').textContent = quote.length > 140 ? quote.slice(0, 140) + '…' : quote;
                 document.getElementById('pvNoteText').value = anchor ? anchor.text : '';
@@ -750,6 +791,7 @@
                 if (!text) { status.textContent = 'Type or dictate the ' + (n.kind === 'todo' ? 'TODO' : 'note') + ' first.'; return; }
                 var m = meta[n.path] || {};
                 var body = {abs_path: n.absPath, selection_text: n.text, txt_line_offset: m.txt_line_offset || 0, open_mtime: m.mtime};
+                if (n.line) body.paragraph_line = n.line;
                 var url = n.kind === 'todo' ? '/insert-todo' : '/add-note';
                 if (n.kind === 'todo') body.todo_text = text;
                 else { body.note_text = text; body.tag = 'note'; }
@@ -761,18 +803,22 @@
                     .then(function(data) {
                         button.disabled = false;
                         if (!data || !data.ok) {
+                            if (data && data.conflict) refreshNow(n.path);
                             var why = data && data.conflict
-                                ? 'The scene changed on the Mac. Your text is kept; close and tap the paragraph again.'
+                                ? 'The scene changed on the Mac and has been refreshed. Tap Add to try again.'
                                 : ((data && data.error) || 'Could not add it. Your text is kept on this phone.');
                             status.textContent = why;
                             status.classList.add('pv-error');
                             return;
                         }
+                        // The new baseline at once, so another TODO right away
+                        // does not conflict with this one.
+                        if (typeof data.mtime === 'number' && meta[n.path]) meta[n.path].mtime = data.mtime;
                         clearDraft('note', n.path);
                         closeNoteSheet();
                         clearTapped();
                         if (typeof sidebarShowToast === 'function') sidebarShowToast(n.kind === 'todo' ? 'TODO added' : 'Note added');
-                        if (typeof refreshSceneIfChangedOnDisk === 'function') refreshSceneIfChangedOnDisk(n.path);
+                        refreshNow(n.path);
                     })
                     .catch(function() {
                         button.disabled = false;
@@ -790,6 +836,21 @@
                 if (event.key !== 'Enter' || event.target.id !== 'discussInput') return;
                 if (event.isComposing) return;
                 event.stopImmediatePropagation();
+            }
+
+            // ── Home stays current ──────────────────────────────────────────────
+            // The dashboard itself does not re-read scenes on a change, so the
+            // phone home fetches the scene data and redraws its lists.
+            function dataChanged() {
+                if (!root.classList.contains('pv-phone') || root.dataset.view) return;
+                clearTimeout(dataChanged.timer);
+                dataChanged.timer = setTimeout(function() {
+                    fetch('/data.json', {cache: 'no-store'}).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+                        if (!data || !data.meta) return;
+                        Object.keys(data.meta).forEach(function(p) { if (paths.indexOf(p) >= 0) meta[p] = data.meta[p]; });
+                        if (!root.dataset.view) renderHome();
+                    }).catch(function() { /* the next change tries again */ });
+                }, 300);
             }
 
             // ── Laptop: the QR code and the phone dot ───────────────────────────
@@ -846,7 +907,10 @@
                         ping().then(function(ok) {
                             if (ok) {
                                 if (state.offline) retry();
-                                else if (typeof window.pvReconnectEvents === 'function') window.pvReconnectEvents();
+                                else {
+                                    if (typeof window.pvReconnectEvents === 'function') window.pvReconnectEvents();
+                                    reconnectChat();
+                                }
                             } else {
                                 showOffline();
                             }
@@ -860,6 +924,7 @@
             window.pvConnectionDown = connectionDown;
             window.pvConnectionUp = connectionUp;
             window.pvRemotePhones = remotePhones;
+            window.pvDataChanged = dataChanged;
 
             return {
                 init: init,

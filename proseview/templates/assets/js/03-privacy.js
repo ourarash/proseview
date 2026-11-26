@@ -72,6 +72,31 @@
             try {
                 localStorage.setItem(PRIVACY_ACTIVITY_KEY, String(now));
             } catch (err) { /* storage refused */ }
+            // Tabs on other origins (the phone) share activity only through
+            // the server, which an idle cover asks first.
+            if (!_privacyLocal && _privacyIdleMinutes > 0) privacyPost('/api/privacy/activity');
+        }
+
+        // Idle here: cover, unless the server has heard from another page
+        // (the phone, say) more recently. Then wait out the rest from there.
+        function privacyIdleCover() {
+            if (_privacyLocal || window.PROSEVIEW_STATIC) {
+                privacyCover(false);
+                return;
+            }
+            privacyPost('/api/privacy/lock', {idle: true, idle_ms: _privacyIdleMinutes * PRIVACY_MINUTE_MS}).then(function(state) {
+                if (_privacyShown) return;
+                if (state && state.busy) {
+                    _privacyLastActivity = Date.now() - Math.round((state.idle_seconds || 0) * 1000);
+                    privacyCheckIdle();
+                    return;
+                }
+                if (state && state.locked) {
+                    privacyCover(true);
+                    return;
+                }
+                privacyCover(false);
+            });
         }
 
         function privacyClearIdleTimer() {
@@ -88,7 +113,7 @@
             var last = privacyReadLastActivity();
             var elapsed = Date.now() - last;
             if (elapsed >= timeoutMs) {
-                privacyCover(false);
+                privacyIdleCover();
                 return true;
             }
             var remaining = Math.max(100, timeoutMs - elapsed);
@@ -102,7 +127,7 @@
             if (_privacyIdleMinutes > 0) {
                 var timeoutMs = _privacyIdleMinutes * PRIVACY_MINUTE_MS;
                 if (now - _privacyLastActivity >= timeoutMs && now - privacyReadLastActivity() >= timeoutMs) {
-                    privacyCover(false);
+                    privacyIdleCover();
                     return;
                 }
             }

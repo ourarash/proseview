@@ -19,6 +19,7 @@ import json
 import os
 import secrets
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +161,9 @@ class PrivacyLock:
     def __init__(self, available: bool = True) -> None:
         self.available = available
         self._lock = threading.Lock()
+        # The last time any open page (the laptop's or the phone's) was used,
+        # so one idle page does not cover another that is in use.
+        self._last_activity = time.monotonic()
 
     def _covered(self) -> bool:
         return self.available and covered_path().is_file()
@@ -182,6 +186,18 @@ class PrivacyLock:
             with self._lock:
                 set_idle_minutes(clean)
         return self.state()
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last_activity = time.monotonic()
+
+    def idle_lock(self, seconds: float) -> dict[str, Any]:
+        """Cover for idleness only if no page has been used for *seconds*."""
+        with self._lock:
+            idle = time.monotonic() - self._last_activity
+        if seconds > 0 and idle < seconds:
+            return {**self.state(), "busy": True, "idle_seconds": idle}
+        return self.lock()
 
     def lock(self) -> dict[str, Any]:
         if self.available:

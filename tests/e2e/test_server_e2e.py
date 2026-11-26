@@ -961,7 +961,7 @@ def test_todo_lifecycle_round_trips_the_file(server: ProseviewServer):
         "selection_text": "It is sticking again",
         "txt_line_offset": meta["txt_line_offset"],
         "todo_text": "Sharpen Lowe's entrance",
-    }).json() == {"ok": True}
+    }).json() == {"ok": True, "mtime": path.stat().st_mtime}
 
     with_todo = path.read_text(encoding="utf-8")
     assert "<!-- TODO: Sharpen Lowe's entrance -->" in with_todo
@@ -994,7 +994,7 @@ def test_note_lifecycle_preserves_its_tag(server: ProseviewServer):
         "txt_line_offset": meta["txt_line_offset"],
         "note_text": "Safe brand must match chapter three",
         "tag": "continuity",
-    }).json() == {"ok": True}
+    }).json() == {"ok": True, "mtime": path.stat().st_mtime}
     assert "<!-- NOTE[continuity]: Safe brand must match chapter three -->" in path.read_text(encoding="utf-8")
 
     assert server.post_json("/edit-note", {

@@ -307,7 +307,9 @@
             }
             // A snapshot has no server, and the browser version no computer
             // of the writer's to open things on.
-            if (!window.PROSEVIEW_STATIC && sidebarHostPlatform() && sidebarHostPlatform() !== 'emscripten') {
+            // Nor does the phone (proseview --remote): these act on the Mac.
+            if (!window.PROSEVIEW_STATIC && sidebarHostPlatform() && sidebarHostPlatform() !== 'emscripten'
+                && document.documentElement.dataset.remote !== 'phone') {
                 menu.appendChild(sidebarMenuButton('Open in ' + editorLabel, 'open-in-editor', function() {
                     window.location.href = buildEditorUrl(sidebarAbsolutePath(node.path));
                 }));

@@ -279,3 +279,163 @@ def test_read_the_book_hides_todo_and_note_comments(phone: Page, book_server: Pr
     expect(phone.locator("#bookBody")).to_contain_text("Right under the note.")
     text = phone.locator("#bookBody").inner_text()
     assert "<!--" not in text and "hugging the paragraph" not in text
+
+
+def test_cancel_while_quick_edit_is_opening_keeps_it_closed(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    open_scene(phone)
+    held = []
+    phone.route("**/scene-data?*", lambda route: held.append(route))
+    phone.locator("#pvEditBtn").tap()
+    expect(phone.locator("#pvEditText")).to_be_disabled()
+    expect(phone.locator("#pvEditSave")).to_be_disabled()
+    phone.get_by_role("button", name="Cancel").tap()
+    for route in held:
+        route.continue_()
+    phone.wait_for_timeout(500)
+    expect(phone.locator("#pvEditSheet")).to_be_hidden()
+
+
+@pytest.mark.allow_js_errors("Failed to fetch")
+def test_cancel_right_after_typing_offline_keeps_the_latest_words(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    open_scene(phone)
+    phone.locator("#pvEditBtn").tap()
+    phone.wait_for_function("document.getElementById('pvEditText').value.length > 100")
+    phone.locator("#pvEditText").press("End")
+    phone.locator("#pvEditText").type(" First.")
+    expect(phone.locator("#pvEditStatus")).to_have_text("Draft saved on this phone")
+    phone.get_by_role("button", name="Cancel").tap()
+    phone.context.set_offline(True)
+    phone.locator("#pvEditBtn").tap()
+    expect(phone.locator("#pvEditStatus")).to_contain_text("cannot be reached")
+    phone.locator("#pvEditText").press("End")
+    phone.locator("#pvEditText").type(" Second.")
+    phone.get_by_role("button", name="Cancel").tap()  # within the draft's 400 ms wait
+    stored = phone.evaluate(
+        "JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('proseview-phone-draft:'))))"
+    )
+    assert stored["text"].endswith(" First. Second.")
+    phone.context.set_offline(False)
+
+
+def test_a_second_todo_right_after_the_first_does_not_conflict(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    open_scene(phone)
+    for text, needle in (("First", "she counted the boats again"), ("Second", "Alice was beginning")):
+        paragraph = phone.locator("#sceneProseHost p", has_text=needle)
+        paragraph.scroll_into_view_if_needed()
+        paragraph.tap()
+        phone.locator("#pvNotePill").tap()
+        phone.locator("#pvNoteText").fill(text)
+        phone.locator("#pvNoteAdd").tap()
+        expect(phone.locator("#pvNoteSheet")).to_be_hidden()
+    raw = (book_server.root / "manuscript" / SCENE).read_text(encoding="utf-8")
+    assert "<!-- TODO: First -->" in raw and "<!-- TODO: Second -->" in raw
+
+
+def test_the_chat_comes_back_after_the_mac_was_away(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    open_scene(phone)
+    phone.locator("#pvAskBtn").tap()
+    expect(phone.locator("#discussPanel")).to_be_visible()
+    phone.wait_for_function("typeof _discussEventSource !== 'undefined' && !!_discussEventSource")
+    # The Mac sleeps: serve answers 502, and nothing else gets through.
+    phone.route("**/api/discuss/conversations/*/events*", lambda route: route.fulfill(status=502, body=""))
+    phone.route("**/api/privacy", lambda route: route.abort())
+    phone.evaluate("_discussEventSource.close(); connectDiscussEvents()")
+    expect(phone.locator("#pvOfflineBanner")).to_be_visible()
+    expect(phone.locator("#discussSend")).not_to_have_text("Reload")
+    phone.unroute("**/api/discuss/conversations/*/events*")
+    phone.unroute("**/api/privacy")
+    phone.locator("#pvOfflineRetry").tap()
+    expect(phone.locator("#pvOfflineBanner")).to_be_hidden()
+    phone.wait_for_function("!!_discussEventSource && _discussEventSource.readyState !== 2")
+    expect(phone.locator("#discussSend")).not_to_have_text("Reload")
+
+
+def test_the_password_box_has_unlock_and_a_double_tap_closes_it(phone: Page, book_server: ProseviewServer, fake_home: Path):
+    open_home(phone, book_server)
+    phone.locator("#pvCoverTop").tap()
+    expect(phone.locator("#privacyScreen")).to_be_visible()
+    phone.evaluate("_privacyPassword = true")  # as if a password were set
+    screen = phone.locator("#privacyScreen")
+    screen.tap(position={"x": 200, "y": 400})
+    screen.tap(position={"x": 200, "y": 400})
+    expect(phone.locator("#privacyPassword")).to_be_visible()
+    expect(phone.locator("#pvUnlock")).to_be_visible()
+    screen.tap(position={"x": 200, "y": 500})
+    screen.tap(position={"x": 200, "y": 500})
+    expect(phone.locator("#privacyPassword")).to_be_hidden()
+    phone.evaluate("_privacyPassword = false; privacyToggle()")
+    expect(screen).to_be_hidden()
+
+
+def test_read_the_book_has_a_cover_button(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    phone.locator("#phoneHome").get_by_role("button", name="Read the book").tap()
+    phone.locator("#pvCoverBook").tap()
+    expect(phone.locator("#privacyScreen")).to_be_visible()
+    phone.evaluate("privacyToggle()")
+    expect(phone.locator("#privacyScreen")).to_be_hidden()
+
+
+def test_the_home_todo_list_follows_a_change_on_the_mac(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    scene = book_server.root / "manuscript" / SCENE
+    scene.write_text(scene.read_text(encoding="utf-8") + "\n<!-- TODO: Added on the Mac -->\n\nMore.\n", encoding="utf-8")
+    expect(phone.locator(".pv-todos")).to_contain_text("Added on the Mac", timeout=15000)
+
+
+def test_an_idle_laptop_does_not_cover_a_phone_in_use(phone: Page, browser: Browser, book_server: ProseviewServer):
+    assert book_server.post_json("/api/privacy/idle", {"idle_minutes": 1}).json()["ok"]
+    laptop_context = browser.new_context(viewport={"width": 1280, "height": 800}, service_workers="block")
+    try:
+        laptop = laptop_context.new_page()
+        _install_esm_cache(laptop)
+        laptop.goto(book_server.url("/"))
+        laptop.wait_for_function("typeof _privacyIdleMinutes !== 'undefined' && _privacyIdleMinutes === 1")
+        open_home(phone, book_server)
+        phone.wait_for_function("_privacyIdleMinutes === 1")
+        with phone.expect_response("**/api/privacy/activity"):
+            phone.evaluate("privacyWriteLastActivity(Date.now(), true)")
+        # The laptop has been idle for two minutes by its own clock.
+        laptop.evaluate("_privacyLastActivity = Date.now() - 120000; localStorage.removeItem(PRIVACY_ACTIVITY_KEY)")
+        with laptop.expect_response("**/api/privacy/lock"):
+            laptop.evaluate("privacyCheckIdle()")
+        laptop.wait_for_timeout(500)
+        expect(laptop.locator("#privacyScreen")).to_be_hidden()
+        expect(phone.locator("#privacyScreen")).to_be_hidden()
+    finally:
+        laptop_context.close()
+        book_server.post_json("/api/privacy/idle", {"idle_minutes": 0})
+
+
+def test_quick_edit_is_only_offered_for_markdown(phone: Page, book_server: ProseviewServer):
+    (book_server.root / "story-bible" / "loose.txt").write_text("Plain text.\n", encoding="utf-8")
+    open_home(phone, book_server)
+    phone.goto(book_server.url("/#/file/story-bible%2Floose.txt"))
+    expect(phone.locator("#pvEditBtn")).to_be_disabled()
+    phone.goto(book_server.url("/#/file/" + NOTE.replace("/", "%2F")))
+    expect(phone.locator("#pvEditBtn")).to_be_enabled()
+
+
+def test_typing_while_save_is_pending_is_not_lost(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    open_scene(phone)
+    phone.locator("#pvEditBtn").tap()
+    phone.wait_for_function("document.getElementById('pvEditText').value.length > 100")
+    held = []
+    phone.route("**/save-scene", lambda route: held.append(route))
+    phone.locator("#pvEditText").press("End")
+    phone.locator("#pvEditText").type(" Saved words.")
+    phone.locator("#pvEditSave").tap()
+    expect(phone.locator("#pvEditText")).to_have_attribute("readonly", "")
+    phone.locator("#pvEditText").type(" Lost words?")
+    assert not phone.locator("#pvEditText").input_value().endswith("Lost words?")
+    phone.wait_for_function("1")
+    for route in held:
+        route.continue_()
+    expect(phone.locator("#pvEditSheet")).to_be_hidden()
+    phone.wait_for_timeout(600)  # past the draft wait: no stale draft comes back
+    assert phone.evaluate("Object.keys(localStorage).filter(k => k.startsWith('proseview-phone-draft:')).length") == 0

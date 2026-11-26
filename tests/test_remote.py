@@ -190,8 +190,12 @@ def test_laptop_only_routes_are_refused_from_the_phone(listeners, path):
     headers = [*GOOD, ("X-Proseview-Session", "token"), ("Content-Type", "application/json")]
     code, data = listeners("phone", "POST", path, headers, body)
     assert code == 403 and b"only works on the Mac" in data
-    code, data = listeners("laptop", "POST", path, [("Host", "localhost"), *headers[2:]], body)
-    assert b"only works on the Mac" not in data
+    # On the laptop the remote check does not apply. A stale session token
+    # stops the request just after it, so nothing really opens on the Mac
+    # (a real call here once opened Terminal with `claude auth login`).
+    stale = [("Host", "localhost"), ("X-Proseview-Session", "stale"), ("Content-Type", "application/json")]
+    code, data = listeners("laptop", "POST", path, stale, body)
+    assert code == 403 and b"Reload the page" in data and b"only works on the Mac" not in data
 
 
 def test_writes_from_the_phone_still_need_the_page_session(listeners):
@@ -270,3 +274,58 @@ def test_start_names_another_serve_holding_443(tmp_path: Path):
     fake.chmod(0o755)
     with pytest.raises(RemoteError, match="already serving port 443"):
         RemoteSession(str(fake), Identity(DNS, LOGIN)).start(1234)
+
+
+def test_serve_log_is_drained_so_a_chatty_serve_never_stalls(tmp_path: Path):
+    fake = tmp_path / "tailscale"
+    # 200 KB of log, far past a pipe's buffer, then stay up until stopped.
+    fake.write_text(
+        "#!/bin/sh\ni=0\nwhile [ $i -lt 2000 ]; do\n"
+        "  echo 'proxy warning: connection reset by peer, padding padding padding padding padding' >&2\n"
+        "  i=$((i+1))\ndone\necho done > \"$0.finished\"\nexec sleep 30\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    session = RemoteSession(str(fake), Identity(DNS, LOGIN))
+    session.start(1234)
+    try:
+        import time
+        deadline = time.time() + 10
+        while not (tmp_path / "tailscale.finished").exists() and time.time() < deadline:
+            time.sleep(0.1)
+        assert (tmp_path / "tailscale.finished").exists(), "serve blocked writing its log"
+        assert "connection reset" in session.last_log
+    finally:
+        session.stop()
+
+
+def test_forwarded_host_counts_only_behind_a_loopback_host():
+    gate = RemoteGate(Identity(DNS, LOGIN))
+    assert not gate.allows(Headers([("Host", "evil.example"), ("X-Forwarded-Host", DNS), ("Tailscale-User-Login", LOGIN)]))
+
+
+def test_a_setup_error_prints_its_message_and_exits(tmp_path: Path, monkeypatch, capsys):
+    from proseview import server as server_mod
+
+    def refuse():
+        raise RemoteError("Tailscale is not installed: install it.")
+
+    monkeypatch.setattr(server_mod.RemoteSession, "prepare", staticmethod(refuse))
+    with pytest.raises(SystemExit) as exit_info:
+        server_mod.serve(tmp_path, port=0, open_browser=False, remote=True)
+    assert exit_info.value.code == 1
+    assert "proseview --remote: Tailscale is not installed" in capsys.readouterr().err
+
+
+def test_only_a_dead_proseviews_serve_counts_as_orphaned():
+    from proseview.remote import orphaned_serves
+
+    ps = "\n".join([
+        "  101     1 /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --https=443 http://127.0.0.1:5001",
+        "  102  4000 /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --https=443 http://127.0.0.1:5002",
+        "  103     1 /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --https=443 http://127.0.0.1:5003",
+        "  104     1 tailscale serve --bg 3000",
+        "  105     1 /usr/local/bin/python my_server.py serve --https=443 http://127.0.0.1:5005",
+    ])
+    listening = {5003}
+    assert orphaned_serves(ps, port_open=lambda port: port in listening) == [101]

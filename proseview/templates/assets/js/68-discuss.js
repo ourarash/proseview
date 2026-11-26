@@ -4070,6 +4070,14 @@
             source.onerror = function() {
                 if (_discussConversationId !== cid || _discussEventSource !== source) return;
                 if (source.readyState === EventSource.CLOSED) {
+                    // On the phone a sleeping Mac closes the stream too; the phone
+                    // module tells that from a restart and reconnects on Retry.
+                    if (typeof window.pvConnectionDown === 'function' && window.pvConnectionDown('closed')) {
+                        source.close();
+                        _discussEventSource = null;
+                        setDiscussConnection('Reconnecting', 'Your Mac cannot be reached');
+                        return;
+                    }
                     showDiscussReloadRequired(source);
                     return;
                 }

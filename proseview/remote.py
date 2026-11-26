@@ -14,11 +14,15 @@ mapping. It never runs ``tailscale serve reset`` or ``--bg``.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import signal
 import subprocess
 import sys
 import threading
+import time
+import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -161,12 +165,60 @@ class RemoteGate:
             return False
         host = headers.get("Host", "")
         if not self._names_laptop(host, scheme_required=False):
-            # Serve may pass its own backend Host and the real one in X-Forwarded-Host.
+            # Serve may pass its own loopback backend Host and the real one in
+            # X-Forwarded-Host; trust that only in that case.
+            loopback = (_authority_host(host) or ("", None))[0] in {"127.0.0.1", "localhost", "::1"}
             forwarded = headers.get("X-Forwarded-Host", "")
-            if not forwarded or not self._names_laptop(forwarded, scheme_required=False):
+            if not loopback or not forwarded or not self._names_laptop(forwarded, scheme_required=False):
                 return False
         origin = headers.get("Origin", "")
         return not origin or self._names_laptop(origin, scheme_required=True)
+
+
+_SERVE_COMMAND = re.compile(r"\bserve --https=443 http://127\.0\.0\.1:(\d+)$")
+
+
+def _port_open(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def orphaned_serves(ps_output: str, port_open: Callable[[int], bool] = _port_open) -> list[int]:
+    """Process ids of serves a dead proseview --remote left behind.
+
+    Only the exact command Proseview runs counts, adopted by init (its
+    proseview is gone) and pointing at a port nothing listens on any more.
+    """
+    found = []
+    for line in ps_output.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit() or not parts[1].isdigit():
+            continue
+        pid, ppid, command = int(parts[0]), int(parts[1]), parts[2].strip()
+        match = _SERVE_COMMAND.search(command)
+        if match and ppid == 1 and "ailscale" in command and not port_open(int(match.group(1))):
+            found.append(pid)
+    return found
+
+
+def stop_orphaned_serves(cli: str) -> bool:
+    """Stop serves left behind by a dead proseview --remote; whether any were."""
+    try:
+        ps = subprocess.run(["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    pids = orphaned_serves(ps.stdout)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGINT)
+        except OSError:
+            continue
+    if pids:
+        time.sleep(2)
+    return bool(pids)
 
 
 class RemoteSession:
@@ -179,6 +231,7 @@ class RemoteSession:
         self._serve: subprocess.Popen[bytes] | None = None
         self._awake: subprocess.Popen[bytes] | None = None
         self.phones = 0
+        self.last_log = ""
         self._lock = threading.Lock()
 
     @classmethod
@@ -194,6 +247,16 @@ class RemoteSession:
         return cls(cli, identity)
 
     def start(self, backend_port: int) -> None:
+        try:
+            self._start(backend_port)
+        except RemoteError as exc:
+            # A proseview --remote that crashed leaves its serve running and
+            # holding 443. Stop such an orphan, and only that, then try once more.
+            if "already serving port 443" not in str(exc) or not stop_orphaned_serves(self.cli):
+                raise
+            self._start(backend_port)
+
+    def _start(self, backend_port: int) -> None:
         self._serve = subprocess.Popen(
             [self.cli, "serve", "--https=443", f"http://127.0.0.1:{backend_port}"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -202,6 +265,9 @@ class RemoteSession:
             code = self._serve.wait(timeout=2)
         except subprocess.TimeoutExpired:
             code = None
+        if code is None:
+            # Keep reading serve's log: an unread pipe fills up and stalls serve.
+            threading.Thread(target=self._drain, args=(self._serve,), daemon=True).start()
         if code is not None:
             err = (self._serve.stderr.read().decode("utf-8", "replace") if self._serve.stderr else "").strip()
             self._serve = None
@@ -215,11 +281,17 @@ class RemoteSession:
             raise RemoteError(f"tailscale serve stopped at once: {err.splitlines()[-1] if err else code}.")
         caffeinate = shutil.which("caffeinate") if sys.platform == "darwin" else None
         if caffeinate:
-            import os
             self._awake = subprocess.Popen(
                 [caffeinate, "-i", "-w", str(os.getpid())],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
+
+    def _drain(self, proc: "subprocess.Popen[bytes]") -> None:
+        stream = proc.stderr
+        if stream is None:
+            return
+        for line in iter(stream.readline, b""):
+            self.last_log = line.decode("utf-8", "replace").strip()
 
     def stop(self) -> None:
         serve, self._serve = self._serve, None

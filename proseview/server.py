@@ -1325,13 +1325,19 @@ def _resolve_annotation_target(
 
 
 def _annotation_insert_line(
-    path: Path, lines: list[str], selection_text: str, txt_line_offset: int
+    path: Path, lines: list[str], selection_text: str, txt_line_offset: int,
+    paragraph_line: int | None = None,
 ) -> int:
     """Return the 0-based line where an annotation anchored to *selection_text* goes.
 
     Raises rather than guessing. The previous behaviour silently fell back to the
     first paragraph, so a selection that had shifted since the page loaded put the
     comment at the top of the scene with no indication anything had gone wrong.
+
+    Several paragraphs can share the selection's opening. The whole selection
+    then narrows them, and *paragraph_line* (the 1-based line the page shows the
+    paragraph starting on, which the phone sends for a tapped paragraph) picks
+    the one meant; without it the first of the remaining matches is used.
     """
     extracted = "".join(lines[txt_line_offset:])
     paras = paragraph_blocks(extracted)
@@ -1344,29 +1350,69 @@ def _annotation_insert_line(
             "No selected text to anchor to; select a passage and try again"
         )
 
-    para_idx = next((i for i, para in enumerate(paras) if needle in para), -1)
-    if para_idx < 0:
+    # Where each paragraph starts, found in order so a repeated paragraph gets
+    # its own position rather than the first copy's.
+    starts: list[int] = []
+    cursor = 0
+    for para in paras:
+        pos = extracted.find(para, cursor)
+        starts.append(pos)
+        cursor = pos + len(para) if pos >= 0 else cursor
+
+    def plain(text: str) -> str:
+        return " ".join(strip_markdown_for_offsets(text).split())
+
+    candidates = [i for i, para in enumerate(paras) if needle in para]
+    if not candidates:
         # The page sends rendered text, so a paragraph that opens with *italics*,
         # **bold** or a link only matches once its Markdown is stripped too.
         plain_needle = " ".join(needle.split())
-        para_idx = next(
-            (i for i, para in enumerate(paras)
-             if plain_needle and plain_needle in " ".join(strip_markdown_for_offsets(para).split())),
-            -1,
-        )
-    if para_idx < 0:
+        candidates = [i for i, para in enumerate(paras) if plain_needle and plain_needle in plain(para)]
+    if not candidates:
         raise _AnnotationAnchorError(
             f"Could not find the selected passage in {path.name}; it may have changed "
             "since the page loaded. Reload and try again"
         )
 
-    para_start = paras[para_idx].lstrip("\n")[:60]
-    para_pos = extracted.find(para_start)
-    if para_pos < 0:
+    whole = " ".join(selection_text.split())
+    if len(candidates) > 1:
+        narrowed = [i for i in candidates if whole in " ".join(paras[i].split()) or whole in plain(paras[i])]
+        candidates = narrowed or candidates
+
+    def line_of(i: int) -> int:
+        return txt_line_offset + extracted[:starts[i]].count("\n")
+
+    if paragraph_line is not None:
+        chosen = [i for i in candidates if starts[i] >= 0 and line_of(i) == paragraph_line - 1]
+        if not chosen:
+            raise _AnnotationAnchorError(
+                f"The paragraph has moved in {path.name} since the page loaded. Reload and try again"
+            )
+        para_idx = chosen[0]
+    else:
+        para_idx = candidates[0]
+
+    if starts[para_idx] < 0:
         raise _AnnotationAnchorError(f"Cannot locate paragraph {para_idx} in {path.name}")
 
     # Absolute 0-based line in the full file where the target paragraph begins
-    return txt_line_offset + extracted[:para_pos].count("\n")
+    return line_of(para_idx)
+
+
+def _paragraph_line(body: dict[str, Any]) -> int | None:
+    """The tapped paragraph's 1-based start line, when the page sent one."""
+    value = body.get("paragraph_line")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _saved_mtime(abs_path: str) -> float | None:
+    """The file's mtime after a write, so the page can keep its baseline current."""
+    try:
+        return Path(abs_path).stat().st_mtime
+    except OSError:
+        return None
 
 
 def _splice_annotation(lines: list[str], insert_at: int, comment: str) -> str:
@@ -1385,7 +1431,7 @@ def _splice_annotation(lines: list[str], insert_at: int, comment: str) -> str:
 
 
 def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_text: str,
-                open_mtime: float | None = None) -> None:
+                open_mtime: float | None = None, paragraph_line: int | None = None) -> None:
     """Insert ``<!-- TODO: todo_text -->`` before the paragraph that contains *selection_text*.
 
     Uses *txt_line_offset* (frontmatter + heading line count) to locate the
@@ -1393,7 +1439,7 @@ def insert_todo(abs_path: str, selection_text: str, txt_line_offset: int, todo_t
     first block that contains the selection text and inserts the comment above it.
     """
     path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
-    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
+    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset, paragraph_line)
 
     _atomic_write_text(path, _splice_annotation(lines, insert_at, f"<!-- TODO: {todo_text} -->"))
     stamp = datetime.now().strftime("%H:%M:%S")
@@ -1474,10 +1520,10 @@ def _note_comment(note_text: str, tag: str) -> str:
 
 
 def add_note(abs_path: str, selection_text: str, txt_line_offset: int, note_text: str, tag: str,
-             open_mtime: float | None = None) -> None:
+             open_mtime: float | None = None, paragraph_line: int | None = None) -> None:
     """Insert <!-- NOTE[tag]: note_text --> before the paragraph containing *selection_text*."""
     path, _raw, lines = _resolve_annotation_target(abs_path, open_mtime)
-    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset)
+    insert_at = _annotation_insert_line(path, lines, selection_text, txt_line_offset, paragraph_line)
 
     _atomic_write_text(path, _splice_annotation(lines, insert_at, _note_comment(note_text, tag)))
     stamp = datetime.now().strftime("%H:%M:%S")
@@ -1634,8 +1680,29 @@ class _Handler(BaseHTTPRequestHandler):
         The password is checked here so its hash never reaches the page.
         Every open tab follows, through the event stream.
         """
+        if path == "/api/privacy/activity":
+            self.privacy.touch()
+            self._send_json({"ok": True})
+            return
         if path == "/api/privacy/lock":
-            state = self.privacy.lock()
+            body: dict[str, Any] = {}
+            if int(self.headers.get("Content-Length", "0") or 0) > 0:
+                try:
+                    body = self._read_json_limited(limit=4096)
+                except ContextError:
+                    body = {}
+            if body.get("idle"):
+                # The page's own timeout (any page may cover outright anyway).
+                try:
+                    seconds = max(0.0, float(body.get("idle_ms", 0)) / 1000)
+                except (TypeError, ValueError):
+                    seconds = 0.0
+                state = self.privacy.idle_lock(seconds or self.privacy.idle_minutes() * 60)
+                if state.get("busy"):
+                    self._send_json({"ok": True, **state})
+                    return
+            else:
+                state = self.privacy.lock()
             if state["locked"]:
                 self.publish_event({"type": "privacy", "locked": True, "password": state["password"]})
             self._send_json({"ok": True, **state})
@@ -3116,7 +3183,8 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/files/reveal":
             self._handle_file_reveal()
             return
-        if path in {"/api/privacy/lock", "/api/privacy/unlock", "/api/privacy/password", "/api/privacy/idle"}:
+        if path in {"/api/privacy/lock", "/api/privacy/unlock", "/api/privacy/password", "/api/privacy/idle",
+                    "/api/privacy/activity"}:
             self._handle_privacy(path)
             return
         if path.startswith("/api/export/"):
@@ -3852,9 +3920,10 @@ class _Handler(BaseHTTPRequestHandler):
                     int(body.get("txt_line_offset", 0)),
                     body["todo_text"],
                     _annotation_open_mtime(body),
+                    _paragraph_line(body),
                 )
                 self.invalidate()
-                self._send_json({"ok": True})
+                self._send_json({"ok": True, "mtime": _saved_mtime(body["abs_path"])})
             except _FileConflictError as exc:
                 self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
@@ -3896,9 +3965,10 @@ class _Handler(BaseHTTPRequestHandler):
                     body["note_text"],
                     body.get("tag", "note"),
                     _annotation_open_mtime(body),
+                    _paragraph_line(body),
                 )
                 self.invalidate()
-                self._send_json({"ok": True})
+                self._send_json({"ok": True, "mtime": _saved_mtime(body["abs_path"])})
             except _FileConflictError as exc:
                 self._send_json({"ok": False, "error": str(exc), "conflict": True}, 409)
             except Exception as exc:
@@ -4295,7 +4365,6 @@ def serve(
                 return  # normal on browser reload / SSE disconnect
             super().handle_error(request, client_address)
 
-    import sys
     original_port = port
     max_port = port + 20
     
@@ -4354,12 +4423,19 @@ def serve(
     # Windows has no SIGINT for another process; Ctrl-Break is what a caller
     # can actually deliver. Route it into the same unwind so the runtime file
     # is still removed rather than left pointing at a dead port.
-    if hasattr(signal, "SIGBREAK"):
-        def _break(_signum, _frame):
-            raise KeyboardInterrupt
+    def _break(_signum, _frame):
+        raise KeyboardInterrupt
 
+    if hasattr(signal, "SIGBREAK"):
         try:
             signal.signal(signal.SIGBREAK, _break)
+        except (ValueError, OSError):
+            pass
+    # A plain kill (SIGTERM) unwinds the same way, so --remote still stops its
+    # tailscale serve; left running, serve would keep port 443.
+    if remote_session is not None and hasattr(signal, "SIGTERM"):
+        try:
+            signal.signal(signal.SIGTERM, _break)
         except (ValueError, OSError):
             pass
 

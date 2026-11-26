@@ -359,3 +359,65 @@ def test_group_send_now_interrupts_claude_active_turn_and_runs_both_tagged_seats
         assert done["error"] == ""
     finally:
         manager.close()
+
+
+def test_codex_promote_queued_steers_active_turn_and_reorders_messages(tmp_path: Path):
+    manager, clients = _controllable_manager(_repo(tmp_path))
+    try:
+        opened = manager.open({"kind": "scene", "path": "one.md"}, agent="codex")
+        cid = opened["conversation_id"]
+        doc = {"kind": "scene", "path": "one.md"}
+
+        manager.submit(cid, client_request_id="q1", question="HOLD_TURN First question", document=doc)
+        wait_for(lambda: "codex" in clients and clients["codex"].first_turn_started.is_set())
+        wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] == "turn-1")
+
+        manager.submit(cid, client_request_id="q2", question="Queued stays second", document=doc)
+        manager.submit(cid, client_request_id="q3", question="Queued promoted now", document=doc)
+
+        res = manager.promote_queued(cid, "q3")
+        assert res["status"] == "steered"
+        codex = clients["codex"]
+        assert len(codex.steers) == 1
+        assert "Queued promoted now" in codex.steers[0]["input"][0]["text"]
+        assert codex.interrupts == []
+
+        snap = manager.get_snapshot(cid)
+        assert [item["client_request_id"] for item in snap["queue"]] == ["q2"]
+        user_ids = [m["client_request_id"] for m in snap["messages"] if m["role"] == "user"]
+        assert user_ids == ["q1", "q3", "q2"]
+
+        codex.first_turn_release.set()
+        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None
+                 and s["active_request_id"] is None and not s["queue"])
+    finally:
+        manager.close()
+
+
+def test_claude_promote_queued_interrupts_active_turn_and_runs_ahead_of_queue(tmp_path: Path):
+    manager, clients = _controllable_manager(_repo(tmp_path))
+    try:
+        opened = manager.open({"kind": "scene", "path": "one.md"}, agent="claude")
+        cid = opened["conversation_id"]
+        doc = {"kind": "scene", "path": "one.md"}
+
+        manager.submit(cid, client_request_id="c1", question="HOLD_TURN Claude first", document=doc)
+        wait_for(lambda: "claude" in clients and clients["claude"].first_turn_started.is_set())
+        wait_for(lambda: manager.get_snapshot(cid)["active_turn_id"] == "claude-turn-1")
+
+        manager.submit(cid, client_request_id="c2", question="Claude stays queued", document=doc)
+        manager.submit(cid, client_request_id="c3", question="Claude promoted urgent", document=doc)
+
+        res = manager.promote_queued(cid, "c3")
+        assert res["status"] == "queued"
+        claude = clients["claude"]
+        assert len(claude.interrupts) == 1
+
+        wait_for(lambda: (s := manager.get_snapshot(cid))["active_turn_id"] is None
+                 and s["active_request_id"] is None and not s["queue"])
+        start_prompts = [payload for kind, payload in claude.event_log if kind == "start"]
+        assert "Claude first" in start_prompts[0]
+        assert "Claude promoted urgent" in start_prompts[1]
+        assert "Claude stays queued" in start_prompts[2]
+    finally:
+        manager.close()

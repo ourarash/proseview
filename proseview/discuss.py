@@ -5506,6 +5506,134 @@ class DiscussManager:
         conversation.publish("turn.cancelled", result)
         return result
 
+    def promote_queued(self, conversation_id: str, client_request_id: str) -> dict[str, Any]:
+        """Send one already-queued user question now (steer Codex or move to front + interrupt)."""
+        conversation = self._get(conversation_id)
+        request_id = str(client_request_id or "").strip()
+        steer_target: tuple[Any, str, str] | None = None
+        with conversation.lock:
+            promoted: _QueuedQuestion | None = None
+            retained: deque[_QueuedQuestion] = deque()
+            while conversation.pending:
+                item = conversation.pending.popleft()
+                if promoted is None and item.request_id == request_id:
+                    promoted = item
+                else:
+                    retained.append(item)
+            if promoted is None:
+                conversation.pending = retained
+                raise ContextError("queued request was not found or has already started")
+            if promoted.task_id:
+                retained.appendleft(promoted)
+                conversation.pending = retained
+                raise ContextError("only queued questions can be sent now")
+            conversation.pending = retained
+            if (
+                conversation.agent == "codex"
+                and not conversation.active_task_id
+                and conversation.active_turn_id
+                and conversation.thread_id
+            ):
+                steer_client = self._clients.get(conversation.agent)
+                if steer_client is not None:
+                    steer_target = (steer_client, conversation.thread_id, conversation.active_turn_id)
+
+        if steer_target is not None:
+            steer_client, steer_thread_id, steer_turn_id = steer_target
+            steer_input: list[dict[str, Any]] = [{"type": "text", "text": promoted.bundle.prompt}]
+            if promoted.skill:
+                steer_input.append({"type": "skill", **promoted.skill})
+            steer_params = {
+                "threadId": steer_thread_id,
+                "expectedTurnId": steer_turn_id,
+                "input": steer_input,
+                "clientUserMessageId": request_id,
+            }
+            try:
+                steer_response = steer_client.request("turn/steer", steer_params)
+            except Exception as exc:
+                from .claude_agent_client import ClaudeError
+                from .codex_app_server import CodexError
+
+                if not isinstance(exc, (CodexError, ClaudeError)):
+                    with conversation.lock:
+                        conversation.pending.appendleft(promoted)
+                    raise
+            else:
+                steered_id = str(steer_response.get("turnId") or steer_turn_id)
+                steer_payload = {
+                    "accepted": True,
+                    "client_request_id": request_id,
+                    "status": "steered",
+                    "turn_id": steered_id,
+                }
+                with conversation.lock:
+                    conversation.document = dict(promoted.document)
+                    if promoted.may_write:
+                        conversation.active_may_write = True
+                    self._reposition_user_message_front(
+                        conversation, request_id, steered_turn_id=steer_turn_id
+                    )
+                    conversation.request_ids[request_id] = steer_payload
+                conversation.publish("turn.steered", steer_payload)
+                return steer_payload
+
+        stop_target: tuple[Any, str, str, threading.Event | None] | None = None
+        result = {"accepted": True, "client_request_id": request_id, "status": "queued"}
+        with conversation.lock:
+            conversation.pending.appendleft(promoted)
+            conversation.document = dict(promoted.document)
+            self._reposition_user_message_front(conversation, request_id)
+            conversation.request_ids[request_id] = result
+            if conversation.active_turn_id and conversation.thread_id:
+                stop_client = self._clients.get(conversation.agent)
+                if stop_client is not None:
+                    stop_target = (
+                        stop_client,
+                        conversation.thread_id,
+                        conversation.active_turn_id,
+                        conversation.active_done,
+                    )
+            self._ensure_worker(conversation)
+        conversation.publish("turn.queued", {**result, "immediate": True})
+        if stop_target is not None:
+            self._interrupt_active_turn(conversation, *stop_target)
+        return result
+
+    @staticmethod
+    def _reposition_user_message_front(
+        conversation: _Conversation,
+        request_id: str,
+        *,
+        steered_turn_id: str | None = None,
+    ) -> None:
+        existing_entry: dict[str, Any] | None = None
+        remaining: list[dict[str, Any]] = []
+        for message in conversation.messages:
+            if existing_entry is None and message.get("role") == "user" and message.get("client_request_id") == request_id:
+                existing_entry = message
+            else:
+                remaining.append(message)
+        if existing_entry is None:
+            return
+        pending_ids = {item.request_id for item in conversation.pending if item.request_id != request_id}
+        insert_at = len(remaining)
+        for index, message in enumerate(remaining):
+            if message.get("role") == "user" and message.get("client_request_id") in pending_ids:
+                insert_at = index
+                break
+            if (
+                steered_turn_id
+                and conversation.active_turn_id != steered_turn_id
+                and message.get("role") == "assistant"
+                and message.get("turn_id") == steered_turn_id
+                and message.get("phase") == "final_answer"
+            ):
+                insert_at = index
+                break
+        remaining.insert(insert_at, existing_entry)
+        conversation.messages = remaining
+
     def _ensure_worker(self, conversation: _Conversation) -> None:
         with conversation.lock:
             if conversation.worker is not None and conversation.worker.is_alive():

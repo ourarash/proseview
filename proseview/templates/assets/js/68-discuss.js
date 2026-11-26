@@ -7325,6 +7325,14 @@
                 appendNoticesForRequest(group.latest.client_request_id);
             });
             var messages = snapshot.messages || [];
+            var queueItems = snapshot.queue || [];
+            var queuedByRequestId = {};
+            var renderedQueuedIds = {};
+            queueItems.forEach(function(item, qIdx) {
+                if (item && item.client_request_id) {
+                    queuedByRequestId[item.client_request_id] = {item: item, index: qIdx};
+                }
+            });
             var lastAssistantIndexByTurn = {};
             messages.forEach(function(m, idx) {
                 if (m.role === 'assistant' && m.turn_id) {
@@ -7334,6 +7342,7 @@
             var resultCraftLens = null;
             messages.forEach(function(message, mIdx) {
                 var isUser = message.role === 'user';
+                var queuedEntry = (isUser && message.client_request_id) ? queuedByRequestId[message.client_request_id] : null;
                 if (isUser) {
                     var skillName = (message.context_sent || {}).skill_name;
                     resultCraftLens = DISCUSS_CRAFT_LENSES.concat(DISCUSS_REVIEW_GUIDES).find(function(lens) {
@@ -7358,7 +7367,7 @@
                         }
                     }
                 }
-                var wrap = elementWith('discuss-message chat-message-card ' + (isUser ? 'user' : ('assistant' + (isThought ? ' is-thought' : ''))));
+                var wrap = elementWith('discuss-message chat-message-card ' + (isUser ? ('user' + (queuedEntry ? ' is-queued' : '')) : ('assistant' + (isThought ? ' is-thought' : ''))));
                 var head = elementWith('discuss-message-label chat-message-header');
                 var agentName = discussAgentLabel();
                 var label = elementWith('chat-message-name', isUser ? 'Me' : (isThought ? (agentName + ' \u00b7 Thought') : agentName));
@@ -7381,10 +7390,12 @@
                 }
                 wrap.appendChild(head);
                 var messageKey = String(message.client_request_id || message.id || mIdx);
+                var isPlainEditableUserMessage = false;
                 if (isUser && editSelectionRenderReceipt(wrap, message.text, (message.document || snapshot.document || {}).path)) {
                     // The full Markdown stays in history; its passages are collapsed here.
                 } else if (!isUser || !renderDiscussCraftRequest(wrap, message.text, messageKey, expandedCraftPrompts.has(messageKey))) {
                     renderDiscussMarkdown(wrap, message.text);
+                    if (isUser) isPlainEditableUserMessage = true;
                 }
                 if (!isUser && !isThought) editSelectionRegisterMessage(wrap, {scope: editSelectionChatScope(), speaker: agentName, source: message.turn_id || messageKey, reviewText: message.text});
                 if (wasStopped) {
@@ -7398,6 +7409,11 @@
                 if (!isUser && !isThought) linkDiscussCraftLanes(wrap, resultCraftLens);
                 highlightChatMentions(wrap, []);
                 var sent = String(message.text || '');
+                if (queuedEntry) {
+                    renderedQueuedIds[message.client_request_id] = true;
+                    wrap.dataset.queuedRequestId = message.client_request_id;
+                    wrap.appendChild(_buildQueuedMessageBar(queuedEntry.item, queuedEntry.index, queueItems.length, sent, isPlainEditableUserMessage));
+                }
                 addCopyButton(wrap, function() { return sent; }, 'Copy message');
                 log.appendChild(wrap);
                 if (message.role === 'user') appendNoticesForRequest(message.client_request_id);
@@ -7483,10 +7499,13 @@
                 renderDiscussReviewCardPicker(log);
             }
             appendDiscussLocalError(log);
-            if ((snapshot.queue || []).length) {
+            var unattachedQueue = queueItems.filter(function(item) {
+                return !item || !item.client_request_id || !renderedQueuedIds[item.client_request_id];
+            });
+            if (unattachedQueue.length) {
                 var queueCard = elementWith('discuss-queue');
-                var queueTitle = document.createElement('strong'); queueTitle.textContent = snapshot.queue.length + ' item' + (snapshot.queue.length === 1 ? '' : 's') + ' queued'; queueCard.appendChild(queueTitle);
-                snapshot.queue.forEach(function(item) {
+                var queueTitle = document.createElement('strong'); queueTitle.textContent = unattachedQueue.length + ' item' + (unattachedQueue.length === 1 ? '' : 's') + ' queued'; queueCard.appendChild(queueTitle);
+                unattachedQueue.forEach(function(item) {
                     var row = elementWith('discuss-queue-item', item.label || 'Question');
                     var remove = document.createElement('button');
                     remove.type = 'button'; remove.className = 'discuss-queue-remove';
@@ -8869,6 +8888,132 @@ function loadDiscussDiffMode(mode) {
             }
             pop.style.left = Math.round(left) + 'px';
             pop.style.top = Math.round(top) + 'px';
+        }
+
+        function _buildQueuedMessageBar(item, queueIndex, totalQueued, messageText, canEdit) {
+            var bar = elementWith('discuss-message-queue-bar');
+            bar.setAttribute('role', 'status');
+            var status = elementWith('discuss-message-queue-status');
+            var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            icon.setAttribute('width', '11');
+            icon.setAttribute('height', '11');
+            icon.setAttribute('viewBox', '0 0 16 16');
+            icon.setAttribute('fill', 'none');
+            icon.setAttribute('stroke', 'currentColor');
+            icon.setAttribute('stroke-width', '1.6');
+            icon.setAttribute('stroke-linecap', 'round');
+            icon.setAttribute('stroke-linejoin', 'round');
+            icon.setAttribute('aria-hidden', 'true');
+            var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', '8');
+            circle.setAttribute('cy', '8');
+            circle.setAttribute('r', '6.25');
+            var hand = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            hand.setAttribute('d', 'M8 4.6v3.6l2.3 1.3');
+            icon.append(circle, hand);
+            var statusLabel = document.createElement('span');
+            if (queueIndex === 0) {
+                statusLabel.textContent = totalQueued > 1 ? 'Queued \u00b7 Next' : 'Queued';
+            } else {
+                statusLabel.textContent = 'Queued \u00b7 #' + (queueIndex + 1);
+            }
+            status.append(icon, statusLabel);
+            bar.appendChild(status);
+
+            var actions = elementWith('discuss-message-queue-actions');
+            var buttons = [];
+            function setBusy(disabled) {
+                buttons.forEach(function(btn) { btn.disabled = disabled; });
+            }
+
+            if (!item.task_id) {
+                var promote = document.createElement('button');
+                promote.type = 'button';
+                promote.className = 'discuss-queue-action discuss-queue-promote';
+                promote.textContent = 'Send now';
+                promote.title = 'Steer or run this queued message immediately';
+                promote.setAttribute('aria-label', 'Send queued ' + (item.label || 'question') + ' now');
+                promote.onclick = function() {
+                    setBusy(true);
+                    promote.textContent = 'Sending\u2026';
+                    discussApi(
+                        '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                        + '/queue/' + encodeURIComponent(item.client_request_id) + '/send-now',
+                        {}
+                    ).then(function(data) {
+                        document.getElementById('discussAnnouncement').textContent = data && data.status === 'steered'
+                            ? 'Sent now.'
+                            : 'Sending now.';
+                        scheduleDiscussSnapshot();
+                    }).catch(function(error) {
+                        setBusy(false);
+                        promote.textContent = 'Send now';
+                        renderDiscussError(error.message);
+                    });
+                };
+                buttons.push(promote);
+                actions.appendChild(promote);
+            }
+
+            if (canEdit && !item.task_id) {
+                var editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'discuss-queue-action discuss-queue-edit';
+                editBtn.textContent = 'Edit';
+                editBtn.title = 'Move this queued message back to the composer';
+                editBtn.setAttribute('aria-label', 'Edit queued ' + (item.label || 'question'));
+                editBtn.onclick = function() {
+                    setBusy(true);
+                    discussApi(
+                        '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                        + '/queue/' + encodeURIComponent(item.client_request_id) + '/cancel',
+                        {}
+                    ).then(function() {
+                        var input = document.getElementById('discussInput');
+                        if (input) {
+                            var existing = input.value.trim();
+                            var restored = String(messageText || '').trim();
+                            input.value = existing ? (restored + '\n\n' + existing) : restored;
+                            saveDiscussDraft();
+                            syncDiscussSendEmpty();
+                            input.focus();
+                            try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+                        }
+                        document.getElementById('discussAnnouncement').textContent = 'Queued message moved to composer';
+                        scheduleDiscussSnapshot();
+                    }).catch(function(error) {
+                        setBusy(false);
+                        renderDiscussError(error.message);
+                    });
+                };
+                buttons.push(editBtn);
+                actions.appendChild(editBtn);
+            }
+
+            var remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'discuss-queue-action discuss-queue-remove';
+            remove.textContent = 'Remove';
+            remove.setAttribute('aria-label', 'Remove ' + (item.label || 'question') + ' from queue');
+            remove.onclick = function() {
+                setBusy(true);
+                discussApi(
+                    '/api/discuss/conversations/' + encodeURIComponent(_discussConversationId)
+                    + '/queue/' + encodeURIComponent(item.client_request_id) + '/cancel',
+                    {}
+                ).then(function() {
+                    document.getElementById('discussAnnouncement').textContent = (item.label || 'Question') + ' removed from queue';
+                    scheduleDiscussSnapshot();
+                }).catch(function(error) {
+                    setBusy(false);
+                    renderDiscussError(error.message);
+                });
+            };
+            buttons.push(remove);
+            actions.appendChild(remove);
+
+            bar.appendChild(actions);
+            return bar;
         }
 
         function _buildMessageUsageChip(message, isUser, isThought, snapshot) {

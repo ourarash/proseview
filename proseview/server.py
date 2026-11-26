@@ -3202,6 +3202,7 @@ class _Handler(BaseHTTPRequestHandler):
                 )
                 task_status_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/tasks/([^/]+)/status", path)
                 cancel_queue_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/queue/([^/]+)/cancel", path)
+                send_now_queue_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/queue/([^/]+)/send-now", path)
                 history_list_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/history/list", path)
                 history_action_match = re.fullmatch(
                     r"/api/discuss/conversations/([^/]+)/history/([^/]+)/(open|rename|remove|export)", path
@@ -3416,6 +3417,12 @@ class _Handler(BaseHTTPRequestHandler):
                 if cancel_queue_match:
                     result = self.discuss_manager.cancel_queued(
                         cancel_queue_match.group(1), cancel_queue_match.group(2)
+                    )
+                    self._send_json({"ok": True, **result})
+                    return
+                if send_now_queue_match:
+                    result = self.discuss_manager.promote_queued(
+                        send_now_queue_match.group(1), send_now_queue_match.group(2)
                     )
                     self._send_json({"ok": True, **result})
                     return

@@ -1836,7 +1836,8 @@ def test_discuss_queues_stops_and_continues(page: Page, server: ProseviewServer)
 
     page.fill("#discussInput", "Continue after the stopped turn")
     page.press("#discussInput", "Enter")
-    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('item queued')")
+    page.wait_for_selector(".discuss-message.user.is-queued .discuss-message-queue-bar", state="visible")
+    assert page.locator("#discussLog .discuss-queue").count() == 0
 
     page.reload(wait_until="load")
     page.wait_for_function("() => !!window._PM")
@@ -1916,7 +1917,7 @@ def test_discuss_stop_recovers_when_codex_unloads_thread(page: Page, server: Pro
 
     page.fill("#discussInput", "Continue in a fresh conversation")
     page.press("#discussInput", "Enter")
-    page.wait_for_function("() => document.querySelector('#discussLog').innerText.includes('item queued')")
+    page.wait_for_selector(".discuss-message.user.is-queued .discuss-message-queue-bar", state="visible")
     page.click("#discussStop")
 
     wait_for_discuss_answer(page, "Fake answer")
@@ -1935,12 +1936,57 @@ def test_discuss_pending_queue_item_can_be_removed(page: Page, server: Proseview
     page.wait_for_selector("#discussStop", state="visible")
     page.fill("#discussInput", "Remove this queued request")
     page.press("#discussInput", "Enter")
-    remove = page.get_by_role("button", name="Remove Question from queue")
+    queued_card = page.locator(".discuss-message.user.is-queued")
+    queued_card.wait_for(state="visible")
+    assert queued_card.locator(".discuss-message-queue-status").inner_text().strip() == "Queued"
+    assert page.locator("#discussLog .discuss-queue").count() == 0
+    remove = queued_card.get_by_role("button", name="Remove Question from queue")
     remove.wait_for(state="visible")
     remove.click()
     page.wait_for_function("() => !document.querySelector('.discuss-queue-remove')")
     assert page.locator(".discuss-message.user").count() == 1
     page.click("#discussStop")
+    page.wait_for_selector("#discussStop", state="hidden")
+
+
+def test_discuss_queued_messages_show_rank_edit_and_send_now_on_message(page: Page, server: ProseviewServer):
+    open_scene(page, server)
+    open_discuss(page)
+    page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    page.fill("#discussInput", "HOLD_FOR_STOP")
+    page.press("#discussInput", "Enter")
+    page.wait_for_selector("#discussStop", state="visible")
+
+    page.fill("#discussInput", "First queued follow-up")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelector('#discussInput').value === ''")
+    page.fill("#discussInput", "Second queued follow-up")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelector('#discussInput').value === ''")
+
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user.is-queued').length === 2")
+    assert page.locator("#discussLog .discuss-queue").count() == 0
+    statuses = [
+        el.inner_text().strip()
+        for el in page.locator(".discuss-message.user.is-queued .discuss-message-queue-status").all()
+    ]
+    assert statuses == ["Queued · Next", "Queued · #2"]
+
+    # Edit pulls the queued message back into the composer and removes it from the queue.
+    second_card = page.locator(".discuss-message.user.is-queued").nth(1)
+    second_card.get_by_role("button", name="Edit queued Question").click()
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user.is-queued').length === 1")
+    assert page.locator("#discussInput").input_value() == "Second queued follow-up"
+    assert (
+        page.locator(".discuss-message.user.is-queued .discuss-message-queue-status").inner_text().strip()
+        == "Queued"
+    )
+
+    # Clear composer and promote the remaining queued message via its inline Send now button.
+    page.fill("#discussInput", "")
+    page.locator(".discuss-message.user.is-queued").get_by_role("button", name="Send queued Question now").click()
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user.is-queued').length === 0")
+    wait_for_discuss_answer(page, "Steered answer")
     page.wait_for_selector("#discussStop", state="hidden")
 
 

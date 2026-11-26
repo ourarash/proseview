@@ -5,6 +5,46 @@ section here becomes the release notes on GitHub.
 
 ## Unreleased
 
+### Added
+
+- **Scene labels.** Give a scene one label in its frontmatter (`label: Main
+  Plot`), or pick it from the dropdown while reading. Labels show as a
+  colour in the sidebar, Overview, Read the book and the timeline, and can
+  be added, recoloured, renamed or removed under **Settings → Appearance →
+  Labels**; renaming or removing one updates every scene that uses it.
+  `story.label_field` points labels at a field you already use, such as
+  `pov`. YAML files in the book can now be edited in the dashboard too,
+  checked before they are saved.
+- **Scene illustrations.** The picture button in the scene toolbar asks
+  Codex, Agy or Claude (with an image tool connected) for an illustration of
+  the scene in one of six styles. Takes wait in a preview above the scene
+  until you insert one; it is then saved in the chapter's `assets` folder,
+  linked from the scene with a relative path (so Obsidian, VS Code and GitHub
+  show it too), and its source, alt text and width can be edited in place. Ask for changes in
+  the chat that made it.
+- **Cover when idle.** The privacy screen can cover the page by itself after
+  a set time with no activity, chosen in Settings (off by default).
+- **Prompt context.** Click the open file's name under the chat box to send
+  the scene's beat map, full text, story notes or neighbouring excerpts with
+  your questions in that conversation (all off by default). Each message
+  shows roughly how much it sent, and each reply the tokens used and how
+  full the conversation is.
+- **Queued messages can be edited, removed or sent now** from the message
+  itself, which shows its place in the queue.
+- **Rewrite options can be picked.** When a reply offers several rewrites,
+  each can be selected and sent back as a request, keeping its scene and
+  line.
+
+### Changed
+
+- **Send to Group** moved into the menu beside **Send**.
+- A selection attached to a message is cleared once the message is sent.
+
+### Fixed
+
+- Agy turns are no longer cut short by opening the chat's history or
+  exporting it while the agent works.
+
 ## 0.5.1 — 2026-11-19
 
 ### Added

@@ -368,11 +368,6 @@ def test_cli_refuses_one_output_for_every_format(tmp_path: Path, book: Path):
         cli.main(["export", "--root", str(book), "--format", "all", "--output", str(tmp_path / "x.pdf")])
 
 
-def test_cli_pandoc_engine_is_epub_only(tmp_path: Path, book: Path):
-    with pytest.raises(SystemExit, match="only makes EPUBs"):
-        cli.main(["export", "--root", str(book), "--format", "pdf-print", "--engine", "pandoc"])
-
-
 def test_titles_and_headings_are_never_hyphenated():
     """A title page reading "Wonder-land" looks like a mistake, not a style."""
     template = (REPO_ROOT / "proseview" / "book_styles" / "classic" / "pdf.typ").read_text(encoding="utf-8")

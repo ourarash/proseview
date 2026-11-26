@@ -186,8 +186,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "export", help="Compile the whole manuscript, or chosen chapters and scenes, into an EPUB, PDF or Word document.",
         description=(
             "Compile the manuscript, or a selection of it, into an EPUB, a print-ready "
-            "PDF, a PDF to share, or a Word document. Nothing else needs installing; --engine pandoc "
-            "keeps the old pandoc path for EPUBs for one more release."
+            "PDF, a PDF to share, or a Word document. Nothing else needs installing."
         ),
     )
     export_p.add_argument(
@@ -294,14 +293,6 @@ def _build_parser() -> argparse.ArgumentParser:
     export_p.add_argument(
         "--epub-version", choices=["epub3", "epub2"], default="",
         help="Try epub2 for older readers (default: export.epub_version, else epub3).",
-    )
-    export_p.add_argument(
-        "--engine", choices=["builtin", "pandoc"], default="builtin",
-        help=(
-            "builtin needs nothing installed (default). pandoc uses an installed "
-            "pandoc as before; it ignores --style and --scene-titles, and will be "
-            "removed in a later release."
-        ),
     )
     export_p.add_argument(
         "--appendix", action="append", default=None, metavar="FOLDER",
@@ -737,7 +728,6 @@ def export_manuscript(args: argparse.Namespace) -> int:
                 language=args.language,
                 identifier=identifier,
                 epub_version=args.epub_version,
-                engine=args.engine,
                 style=args.style,
                 scene_titles=args.scene_titles,
                 cover_image=args.cover_image,

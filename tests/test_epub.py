@@ -418,12 +418,6 @@ def test_cli_rejects_bad_requests_without_writing_anything(tmp_path: Path, argv:
     assert not (root / "exports").exists()
 
 
-def test_cli_pandoc_engine_is_still_available(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("proseview.export.shutil.which", lambda _name: None)
-    with pytest.raises(SystemExit, match="pandoc is required"):
-        cli.main(["export", "--root", str(_git_novel(tmp_path)), "--engine", "pandoc"])
-
-
 # -- EPUBCheck, when available ------------------------------------------------------------
 
 

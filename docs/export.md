@@ -408,13 +408,4 @@ repeatable `--css`, repeatable `--appendix`, `--chapters`, `--scenes`,
 `--order`, `--selection`, `--save-selection`, `--list-selections`, `--style`,
 `--scene-titles` / `--no-scene-titles`, `--format` (`epub`, `pdf-print`,
 `pdf-share` or `all`), `--trim`, `--paper`, `--recto-chapters` /
-`--no-recto-chapters`, `--watermark`, `--contact`, and `--engine`.
-
-### The pandoc engine
-
-`--engine pandoc` builds the EPUB with [pandoc](https://pandoc.org/installing.html)
-the way earlier versions did, for one more release while the built-in writer
-settles. It makes EPUBs only. It honours selections, the identifier and every option above except
-`--style` and `--scene-titles`, and it needs pandoc installed
-(`brew install pandoc` or `apt install pandoc`). It will be removed in a later
-release.
+`--no-recto-chapters`, `--watermark`, and `--contact`.

@@ -5,9 +5,6 @@ Scene discovery, frontmatter parsing, and body extraction all come from
 counts, in the same order. :mod:`proseview.book` narrows that to a selection
 and shapes it into a book; :mod:`proseview.epub` writes the EPUB,
 :mod:`proseview.pdf` the PDFs and :mod:`proseview.docx` the Word document.
-
-pandoc is still supported for one release behind ``engine="pandoc"``. It is
-looked up at call time and never at import time, so nothing else needs it.
 """
 
 from __future__ import annotations
@@ -15,9 +12,6 @@ from __future__ import annotations
 import datetime as _dt
 import io
 import re
-import shutil
-import subprocess
-import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,16 +44,12 @@ from .scenes import (
 )
 
 __all__ = [
-    "AppendixSection", "Book", "EPUB_VERSIONS", "ENGINES", "ExportError", "ExportResult",
-    "SceneDocument", "Selection", "build_manuscript_markdown", "candidate_appendix_folders",
+    "AppendixSection", "Book", "EPUB_VERSIONS", "ExportError", "ExportResult",
+    "SceneDocument", "Selection", "candidate_appendix_folders",
     "collect_appendix_documents", "collect_scene_documents", "default_output_path",
-    "ensure_gitignored", "ensure_pandoc", "export_book",
+    "ensure_gitignored", "export_book",
     "export_epub", "new_book_identifier", "save_book_identifier", "save_selection", "scene_count_summary",
 ]
-
-#: How the EPUB is made. ``builtin`` needs nothing installed; ``pandoc`` is
-#: today's path, kept for one release so existing scripts keep working.
-ENGINES: tuple[str, ...] = ("builtin", "pandoc")
 
 #: Where exports land by default, inside the novel's folder.
 EXPORTS_DIR = "exports"
@@ -143,80 +133,6 @@ def collect_scene_documents(
     return resolve_selection(number_documents(documents), selection)
 
 
-def _quote_yaml(text: str) -> str:
-    escaped = str(text).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def _anchor(text: str) -> str:
-    """Pandoc-style heading anchor, for the per-appendix contents list."""
-    slug = re.sub(r"[^\w\s-]", "", text.lower().strip())
-    return re.sub(r"\s+", "-", slug)
-
-
-def build_manuscript_markdown(
-    documents: list[SceneDocument],
-    *,
-    title: str,
-    author: str = "",
-    language: str = "en-US",
-    identifier: str = "",
-    appendices: list[AppendixSection] | None = None,
-) -> str:
-    """Assemble scenes into one Markdown document with a metadata block.
-
-    Chapters become ``#`` headings and scenes ``##``, which is what gives
-    pandoc a table of contents and one EPUB file per chapter. Appendices
-    follow the manuscript with the same two-level shape.
-    """
-    parts = [
-        "---",
-        f"title: {_quote_yaml(title)}",
-        f"lang: {_quote_yaml(language)}",
-        f"identifier: {_quote_yaml(identifier or uuid.uuid4().urn)}",
-    ]
-    if author:
-        parts.append(f"author: {_quote_yaml(author)}")
-    parts += ["---", ""]
-
-    current_chapter: str | None = None
-    for scene in documents:
-        if scene.chapter != current_chapter:
-            current_chapter = scene.chapter
-            parts += [f"# {scene.chapter}", ""]
-        parts += [f"## {scene.title}", ""]
-        if scene.markdown:
-            parts += [scene.markdown, ""]
-
-    for section in appendices or []:
-        parts += [f"# Appendix: {section.label}", ""]
-        if len(section.documents) > 1:
-            for doc_title, _ in section.documents:
-                parts.append(f"- [{doc_title}](#{_anchor(doc_title)})")
-            parts.append("")
-        for doc_title, content in section.documents:
-            # Drop the document's own H1 (the folder-derived title replaces it)
-            # and push every remaining heading down two levels, so appendix
-            # sub-headings stay below the table-of-contents depth.
-            body = re.sub(r"^# [^\n]*\n*", "", content, count=1).strip()
-            body = re.sub(r"^(#+)", r"##\1", body, flags=re.MULTILINE)
-            parts += [f"## {doc_title}", "", body, ""]
-
-    return "\n".join(parts).rstrip() + "\n"
-
-
-def ensure_pandoc() -> str:
-    """Return the pandoc executable, or explain how to get one."""
-    pandoc = shutil.which("pandoc")
-    if not pandoc:
-        raise ExportError(
-            "pandoc is required for export and was not found on PATH. "
-            "Install it with `brew install pandoc` or `apt install pandoc`, "
-            "or see https://pandoc.org/installing.html"
-        )
-    return pandoc
-
-
 @dataclass(frozen=True)
 class ExportResult:
     path: Path
@@ -280,12 +196,10 @@ def export_book(
     language: str = "",
     identifier: str = "",
     epub_version: str = "",
-    engine: str = "builtin",
     style: str = "",
     scene_titles: bool | None = None,
     cover_image: Path | None = None,
     css: list[Path] | None = None,
-    toc_depth: int = 2,
     appendix_folders: list[str] | None = None,
     progress: Callable[[str, float], None] | None = None,
     fmt: str = "epub",
@@ -323,13 +237,8 @@ def export_book(
         cover_image = saved_cover_path(root, saved.cover_image)
     if epub_version not in EPUB_VERSIONS:
         raise ExportError(f"Unknown EPUB version {epub_version!r}; expected one of {', '.join(EPUB_VERSIONS)}")
-    if engine not in ENGINES:
-        raise ExportError(f"Unknown export engine {engine!r}; expected one of {', '.join(ENGINES)}")
     if fmt not in EXPORT_FORMATS:
         raise ExportError(f"Unknown format {fmt!r}; expected one of {', '.join(EXPORT_FORMATS)}")
-    if engine == "pandoc" and fmt != "epub":
-        raise ExportError("The pandoc engine only makes EPUBs; leave out --engine for a PDF or a Word document")
-    pandoc = ensure_pandoc() if engine == "pandoc" else ""
 
     if progress:
         progress("Gathering your scenes", 0.0)
@@ -340,27 +249,20 @@ def export_book(
     )
 
     try:
-        book_style = load_style(style or saved.style, base=root) if engine == "builtin" else None
+        book_style = load_style(style or saved.style, base=root)
     except StyleError as exc:
         raise ExportError(str(exc)) from exc
-    if book_style is not None and fmt not in book_style.formats:
+    if fmt not in book_style.formats:
         offered = ", ".join(FORMAT_LABELS[f] for f in book_style.formats) or "nothing"
         raise ExportError(f"The {book_style.name} style makes {offered}, not {FORMAT_LABELS[fmt]}. Choose another style.")
 
     output = (output or default_output_path(
         root, book, selection_name=selection.name if selection else "", fmt=fmt,
-        style=book_style.path.name if book_style else "",
+        style=book_style.path.name,
     )).resolve()
     if output.is_dir():
         raise ExportError(f"Output path {output} is a directory; pass a file path")
     output.parent.mkdir(parents=True, exist_ok=True)
-
-    if engine == "pandoc":
-        _export_with_pandoc(
-            pandoc, book, output,
-            epub_version=epub_version, cover_image=cover_image, css=css, toc_depth=toc_depth,
-        )
-        return ExportResult(output, book)
 
     if scene_titles is None:
         scene_titles = cfg.export.scene_titles
@@ -588,52 +490,6 @@ def export_epub(root: Path, cfg: Config, output: Path, **options) -> Path:
     options and also returns the book that was written.
     """
     return export_book(root, cfg, output, **options).path
-
-
-def _export_with_pandoc(
-    pandoc: str,
-    book: Book,
-    output: Path,
-    *,
-    epub_version: str,
-    cover_image: Path | None,
-    css: list[Path] | None,
-    toc_depth: int,
-) -> None:
-    markdown = build_manuscript_markdown(
-        book.scenes,
-        title=book.title,
-        author=book.author,
-        language=book.language,
-        identifier=book.identifier,
-        appendices=list(book.appendices),
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        source = Path(tmp) / "manuscript.md"
-        source.write_text(markdown, encoding="utf-8")
-        command = [
-            pandoc, str(source),
-            "--standalone",
-            "--from", "markdown+yaml_metadata_block",
-            "--to", epub_version,
-            "--output", str(output),
-            "--toc", "--toc-depth", str(toc_depth),
-            "--split-level", "1",
-        ]
-        for sheet in css or []:
-            command += ["--css", str(sheet)]
-        if cover_image:
-            command += ["--epub-cover-image", str(cover_image)]
-        try:
-            result = subprocess.run(
-                command, capture_output=True, text=True, encoding="utf-8", timeout=300
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ExportError("pandoc timed out after 5 minutes") from exc
-    if result.returncode != 0:
-        detail = (result.stderr or "").strip().splitlines()
-        tail = detail[-1] if detail else f"exit code {result.returncode}"
-        raise ExportError(f"pandoc failed: {tail}")
 
 
 # --------------------------------------------------------------------------

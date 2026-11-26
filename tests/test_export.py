@@ -2,9 +2,7 @@
 
 Covers:
 - scenes are collected in reading order, with dashboard title/chapter fallbacks
-- the compiled Markdown groups chapters as ``#`` and scenes as ``##``
-- a missing pandoc fails with an actionable message, but only on the pandoc engine
-- a real EPUB is produced by the built-in writer, and by pandoc when installed
+- a real EPUB is produced by the built-in writer
 
 The built-in EPUB writer's markup, selections, and the CLI flags have their
 own tests in ``test_epub.py`` and ``test_book.py``.
@@ -12,7 +10,6 @@ own tests in ``test_epub.py`` and ``test_book.py``.
 
 from __future__ import annotations
 
-import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -26,7 +23,6 @@ if str(REPO_ROOT) not in sys.path:
 from proseview.config import Config  # noqa: E402
 from proseview.export import (  # noqa: E402
     ExportError,
-    build_manuscript_markdown,
     candidate_appendix_folders,
     collect_appendix_documents,
     collect_scene_documents,
@@ -35,7 +31,6 @@ from proseview.export import (  # noqa: E402
 )
 
 FIXTURE = REPO_ROOT / "fixtures" / "demo-repo"
-HAS_PANDOC = shutil.which("pandoc") is not None
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -69,24 +64,6 @@ def test_scenes_are_collected_in_reading_order_with_dashboard_fallbacks(tmp_path
     assert documents[0].markdown == "Rena opened the shop."
 
 
-def test_compiled_markdown_nests_scenes_under_chapter_headings(tmp_path: Path):
-    documents = collect_scene_documents(_repo(tmp_path), Config())
-
-    markdown = build_manuscript_markdown(
-        documents, title="A Novel", author="Ari", language="en-GB", identifier="urn:test",
-    )
-
-    assert markdown.startswith("---\n")
-    assert 'title: "A Novel"' in markdown
-    assert 'author: "Ari"' in markdown
-    assert 'lang: "en-GB"' in markdown
-    # Chapter headings appear once each, in order, above their scenes.
-    assert markdown.count("# Chapter One") == 1
-    assert markdown.index("# Chapter One") < markdown.index("## The Opening") < markdown.index("# Chapter Two")
-    assert "## After" in markdown
-    assert "The ledger balanced." in markdown
-
-
 def test_a_folder_with_no_markdown_fails_clearly(tmp_path: Path):
     """Without a manuscript folder the error says how to name one."""
     with pytest.raises(ExportError, match="There is no manuscript folder .* manuscript_path"):
@@ -103,21 +80,6 @@ def test_export_reads_a_flat_folder_that_is_its_own_manuscript(tmp_path: Path):
     documents = collect_scene_documents(tmp_path, Config(manuscript_path="./"))
 
     assert [d.title for d in documents] == ["One"]
-
-
-def test_missing_pandoc_explains_how_to_install_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("proseview.export.shutil.which", lambda _name: None)
-
-    with pytest.raises(ExportError, match="pandoc is required"):
-        export_epub(_repo(tmp_path), Config(), tmp_path / "out.epub", engine="pandoc")
-
-
-def test_the_builtin_engine_needs_no_pandoc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("proseview.export.shutil.which", lambda _name: None)
-
-    output = export_epub(_repo(tmp_path), Config(), tmp_path / "out.epub")
-
-    assert output.is_file()
 
 
 def test_files_marked_not_a_scene_are_left_out_as_the_dashboard_leaves_them(tmp_path: Path):
@@ -198,26 +160,6 @@ def test_appendix_rejects_unusable_folders(tmp_path: Path, folder: str, message:
         collect_appendix_documents(_with_plans(tmp_path), folder, Config())
 
 
-def test_appendix_is_appended_after_the_manuscript_with_demoted_headings(tmp_path: Path):
-    root = _with_plans(tmp_path)
-    documents = collect_scene_documents(root, Config())
-    section = collect_appendix_documents(root, "plans", Config())
-
-    markdown = build_manuscript_markdown(documents, title="A Novel", appendices=[section])
-
-    assert markdown.index("## After") < markdown.index("# Appendix: Plans")
-    # Two documents, so a contents list is emitted.
-    assert "- [Book Plan](#book-plan)" in markdown
-    # Compare whole lines: "## Book Plan" contains "# Book Plan" as a substring.
-    lines = markdown.splitlines()
-    assert "## Book Plan" in lines
-    # The document's own H1 is dropped and its H2 pushed to H4, keeping the
-    # appendix below the table-of-contents depth.
-    assert "# Book Plan" not in lines
-    assert "#### Beats" in lines
-    assert "## Beats" not in lines
-
-
 def test_candidate_appendix_folders_lists_what_you_can_append(tmp_path: Path):
     root = _with_plans(tmp_path)
     (root / ".hidden").mkdir()
@@ -230,16 +172,9 @@ def test_candidate_appendix_folders_lists_what_you_can_append(tmp_path: Path):
     assert all(name not in {"manuscript", ".hidden", "empty-dir"} for name, _ in folders)
 
 
-ENGINES = [
-    "builtin",
-    pytest.param("pandoc", marks=pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")),
-]
-
-
-@pytest.mark.parametrize("engine", ENGINES)
-def test_appendix_reaches_the_epub(tmp_path: Path, engine: str):
+def test_appendix_reaches_the_epub(tmp_path: Path):
     root = _with_plans(tmp_path)
-    output = export_epub(root, Config(), tmp_path / "out.epub", appendix_folders=["plans"], engine=engine)
+    output = export_epub(root, Config(), tmp_path / "out.epub", appendix_folders=["plans"])
 
     with zipfile.ZipFile(output) as book:
         text = b"".join(
@@ -249,11 +184,10 @@ def test_appendix_reaches_the_epub(tmp_path: Path, engine: str):
     assert "Appendix: Plans" in text
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-def test_epub_export_produces_a_readable_book(tmp_path: Path, engine: str):
+def test_epub_export_produces_a_readable_book(tmp_path: Path):
     output = export_epub(
         _repo(tmp_path), Config(), tmp_path / "out" / "book.epub",
-        title="A Novel", author="Ari", engine=engine,
+        title="A Novel", author="Ari",
     )
 
     assert output.is_file() and output.stat().st_size > 0
@@ -266,12 +200,11 @@ def test_epub_export_produces_a_readable_book(tmp_path: Path, engine: str):
     assert "Rena opened the shop." in text
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-def test_a_selection_reaches_both_engines(tmp_path: Path, engine: str):
+def test_a_selection_reaches_the_epub(tmp_path: Path):
     from proseview.config import ExportSelection
 
     output = export_epub(
-        _repo(tmp_path), Config(), tmp_path / "part.epub", engine=engine,
+        _repo(tmp_path), Config(), tmp_path / "part.epub",
         selection=ExportSelection(picks=(("chapter", "3"),)),
     )
 
@@ -281,7 +214,6 @@ def test_a_selection_reaches_both_engines(tmp_path: Path, engine: str):
     assert "Rena opened the shop." not in text
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-def test_demo_fixture_exports_end_to_end(tmp_path: Path, engine: str):
-    output = export_epub(FIXTURE, Config.load(FIXTURE), tmp_path / "demo.epub", engine=engine)
+def test_demo_fixture_exports_end_to_end(tmp_path: Path):
+    output = export_epub(FIXTURE, Config.load(FIXTURE), tmp_path / "demo.epub")
     assert output.is_file() and output.stat().st_size > 0

@@ -368,10 +368,16 @@
             if (!(options && options.fromBtwInput) && !reuseExchange && input) {
                 // Deliberately skip recordChatMessageHistory and rememberDiscussInstruction:
                 // /btw side questions stay out of Up/Down history and main draft memory.
+                if (_discussSelection && typeof clearDiscussSelection === 'function') {
+                    clearDiscussSelection();
+                    _discussIncludeCurrentDocument = false;
+                    if (!_discussPendingAction && !_discussRepositoryAction) _discussDraftDocument = null;
+                }
                 input.value = '';
                 saveDiscussDraft();
                 closeDiscussContextPicker();
-                syncDiscussSendEmpty();
+                renderDiscussContext();
+                renderDiscussTaskMode();
             }
             renderBtwSplit();
             _saveBtwState(cid);

@@ -314,10 +314,16 @@ def test_discuss_scene_streams_safe_document_aware_conversation(page: Page, serv
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')", timeout=15_000)
 
     conversation_id = page.evaluate("() => window._discussConversationId")
+    assert page.locator("#discussSelectionChip").is_hidden()
     page.locator("#sceneModal .nav-btn").nth(1).click()
     page.wait_for_function("previous => !location.hash.includes(previous)", arg=SCENE_REL)
-    # The selection is still attached, so the question is still about its scene.
-    assert SCENE_REL in page.locator("#discussSees .discuss-sees").text_content()
+    next_path = page.evaluate("() => paths[curIdx]")
+    # The selection cleared when the question was sent, so the composer follows the newly opened scene.
+    page.wait_for_function(
+        "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
+        arg=next_path,
+    )
+    assert next_path in page.locator("#discussSees .discuss-sees").text_content()
     assert page.evaluate("() => window._discussConversationId") == conversation_id
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
 
@@ -443,20 +449,20 @@ def test_discuss_names_the_open_file_and_draft_follows_unless_pinned(
     assert question_requests[-1]["document"] == {"kind": "scene", "path": SCENE_REL}
     assert question_requests[-1]["include_current_document"] is True
 
-    # After sending a free-form selection question, the selection stays attached
-    # for follow-ups until dismissed; once dismissed (even with typed text), the
-    # composer immediately follows the open scene.
-    assert SCENE_REL in sees.inner_text()
-    page.fill("#discussInput", "And this one?")
-    page.click('#discussSelectionChip button[aria-label^="Remove selected text"]')
+    # After sending a free-form selection question, the selection clears
+    # automatically so the composer immediately follows the open scene and
+    # follow-up messages do not accidentally re-send the selection.
+    assert page.locator("#discussSelectionChip").is_hidden()
     page.wait_for_function(
         "next => document.querySelector('#discussSees .discuss-sees').textContent.includes(next)",
         arg=next_path,
     )
+    page.fill("#discussInput", "And this one?")
     page.click("#discussSend")
     wait_for_discuss_idle(page)
     assert question_requests[-1]["document"] == {"kind": "scene", "path": next_path}
     assert question_requests[-1]["include_current_document"] is False
+    assert question_requests[-1]["selection"] == ""
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
@@ -6546,7 +6552,7 @@ def test_managed_skills_come_from_app_server(page: Page, server: ProseviewServer
     assert "Tighten Prose" in listed
 
 
-def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
+def test_ask_about_selection_is_normal_chat_and_clears_selection_after_send(
     page: Page, server: ProseviewServer
 ):
     quote = "the slow algebra of yesterday's receipts"
@@ -6570,14 +6576,15 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
     page.fill("#discussInput", "Explain how this image affects the voice")
     page.click("#discussSend")
     wait_for_discuss_answer(page)
-    assert quote in page.locator("#discussSelectionChip").inner_text()
+    assert page.locator("#discussSelectionChip").is_hidden()
+    assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about your story…"
     assert page.locator(".discuss-task").count() == 0
     assert page.locator(".ai-proposal-panel:visible").count() == 0
 
     page.fill("#discussInput", "What does it reveal about the narrator?")
     page.click("#discussSend")
     page.wait_for_function("() => document.querySelectorAll('.discuss-message.assistant').length === 2")
-    assert quote in page.locator("#discussSelectionChip").inner_text()
+    assert page.locator("#discussSelectionChip").is_hidden()
 
     records = [
         json.loads(line)
@@ -6591,8 +6598,15 @@ def test_ask_about_selection_is_normal_chat_and_keeps_context_for_followups(
         and any(question in record["params"]["input"][0]["text"] for question in questions)
     ]
     assert len(prompts) == 2
-    assert all(f"Selected text in the open file:\n{quote}" in prompt for prompt in prompts)
+    assert f"Selected text in the open file:\n{quote}" in prompts[0]
+    assert f"Selected text in the open file:\n{quote}" not in prompts[1]
+    assert quote not in prompts[1]
 
+    # An unsent selection can still be dismissed explicitly with its cross button.
+    page.locator("#sceneProseHost").click()
+    select_prose(page, quote)
+    page.keyboard.press("a")
+    page.wait_for_selector("#discussSelectionChip", state="visible")
     page.locator("#discussSelectionChip button").click()
     assert page.locator("#discussSelectionChip").is_hidden()
     assert page.locator("#discussInput").get_attribute("placeholder") == "Ask anything about your story…"
@@ -8256,6 +8270,16 @@ def test_discuss_selection_shortcuts_p_and_a_include_selected_passage_in_prompt(
     assert re.search(r"Selected passage \(lines? \d+(?:–\d+)?\):", second_text)
     assert "The loft smelled of cold coffee" in second_text
 
+    # After asking, the selection chip disappears so the next message does not re-send it.
+    page.wait_for_selector("#discussSelectionChip", state="hidden")
+    page.fill("#discussInput", "What happens next?")
+    page.press("#discussInput", "Enter")
+    page.wait_for_function("() => document.querySelectorAll('.discuss-message.user').length >= 3")
+    third_text = page.locator(".discuss-message.user").nth(2).inner_text()
+    assert "What happens next?" in third_text
+    assert "Selected passage" not in third_text
+    assert "The loft smelled of cold coffee" not in third_text
+
 
 OPENED_SENTENCE = "She had used the same four digits since spring."
 CHANGED_SENTENCE = "She had changed the four digits at the start of spring."
@@ -8471,19 +8495,20 @@ def test_an_edit_to_the_selected_file_drops_the_stale_selection(page: Page, serv
     assert page.locator("#discussSelectionChip").is_hidden()
 
 
-def test_a_turn_that_edits_nothing_keeps_the_selection(page: Page, server: ProseviewServer) -> None:
-    """A plain answer leaves the passage as it was, so the follow-up still has it."""
+def test_a_plain_question_clears_the_selection_after_send(page: Page, server: ProseviewServer) -> None:
+    """Sending a question consumes the selection chip so follow-ups do not re-send it."""
     open_scene(page, server)
     assert select_prose(page, "ledger") == "ledger"
     page.evaluate("openDiscuss(document.querySelector('#utilityTabCodex'))")
     page.wait_for_selector("#discussPanel", state="visible")
     page.wait_for_function("() => document.querySelector('#discussConnection').innerText.startsWith('Live')")
+    assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
     page.fill("#discussInput", "Explain this scene")
     page.locator("#discussSend").click()
+    page.wait_for_selector("#discussSelectionChip", state="hidden")
     page.wait_for_function("() => document.querySelector('#discussPanel').innerText.includes('Answered in')")
     wait_for_discuss_idle(page)
-    page.wait_for_timeout(400)
-    assert "Selection · 1 words" in page.locator("#discussSelectionChip").inner_text()
+    assert page.locator("#discussSelectionChip").is_hidden()
 
 
 def test_undo_all_puts_the_whole_edit_back_without_unticking(page: Page, server: ProseviewServer) -> None:

@@ -1330,7 +1330,8 @@ def test_group_composer_has_context_skills_models_quick_send_and_saved_drafts(pa
     _group_idle(page)
     assert pane.locator(".is-user").count() == 1
     assert pane.locator(".is-critic-2").count() == 1
-    assert pane.locator("#groupSelectionChip").is_visible(), "selection stays attached for follow-up questions"
+    assert pane.locator("#groupSelectionChip").count() == 0, "selection clears once sent so follow-ups do not re-send it"
+    assert pane.locator("#groupInput").get_attribute("placeholder") == "Message the group…"
 
 
 def test_group_composer_models_apply_to_this_group_without_changing_profiles_or_single_chat(page: Page, server: ProseviewServer):

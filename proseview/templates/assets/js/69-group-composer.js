@@ -333,7 +333,11 @@ function createGroupComposer(session) {
         var words = _groupPendingSelection.trim().split(/\s+/).length;
         var excerpt = elementWith('discuss-selection-chip-text', 'Selection · ' + words + ' words · “' + _groupPendingSelection.replace(/\s+/g, ' ').slice(0, 72) + '”'); excerpt.title = _groupPendingSelection;
         var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'group-selection-clear'; remove.setAttribute('aria-label', 'Remove selection'); remove.textContent = '×';
-        remove.onclick = function() { _groupPendingSelection = ''; _groupPendingSelectionScene = ''; _groupSaveDraft(session.scene); renderSceneGroupPane(); };
+        remove.onclick = function() {
+            _groupPendingSelection = ''; _groupPendingSelectionScene = '';
+            if (typeof clearPinnedSelectionHighlight === 'function') clearPinnedSelectionHighlight();
+            _groupSaveDraft(session.scene); renderSceneGroupPane();
+        };
         selection.append(excerpt, remove); composer.appendChild(selection);
     }
     var quick = elementWith('group-quick-send'); quick.id = 'groupQuickSend'; composer.appendChild(quick);

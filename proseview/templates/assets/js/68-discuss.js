@@ -8427,11 +8427,9 @@ function loadDiscussDiffMode(mode) {
                 return target && target.kind === doc.kind && target.path === doc.path;
             });
             if (!edited) return;
-            _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
-            _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+            clearDiscussSelection();
             if (!_discussPendingAction) _discussIncludeCurrentDocument = false;
             if (!_discussIncludeCurrentDocument && !_discussPendingAction && !_discussRepositoryAction) _discussDraftDocument = null;
-            showDiscussSelectionInText(false);
             saveDiscussDraft(); renderDiscussContext(); renderDiscussTaskMode();
         }
 
@@ -9447,10 +9445,7 @@ function loadDiscussDiffMode(mode) {
                 removeSelection.type = 'button'; removeSelection.textContent = '×';
                 removeSelection.setAttribute('aria-label', 'Remove selected text from ' + discussAgentLabel() + ' context');
                 removeSelection.onclick = function() {
-                    endDiscussSelectionChipPress();
-                    showDiscussSelectionInText(false);
-                    _discussSelection = ''; _discussSelectionRange = null; _discussSelectionSnapshot = null;
-                    _discussSelectionSourceTaskId = null; _discussLiveDocument = null;
+                    clearDiscussSelection();
                     _discussPendingAction = null; _discussRetryOfTaskId = null;
                     _discussIncludeCurrentDocument = false;
                     if (!_discussRepositoryAction) _discussDraftDocument = null;
@@ -9459,6 +9454,17 @@ function loadDiscussDiffMode(mode) {
                 };
                 selection.appendChild(removeSelection);
             }
+        }
+
+        function clearDiscussSelection() {
+            endDiscussSelectionChipPress();
+            showDiscussSelectionInText(false);
+            if (typeof clearPinnedSelectionHighlight === 'function') clearPinnedSelectionHighlight();
+            _discussSelection = '';
+            _discussSelectionRange = null;
+            _discussSelectionSnapshot = null;
+            _discussSelectionSourceTaskId = null;
+            _discussLiveDocument = null;
         }
 
         var DISCUSS_SELECTION_HOVER_HL = 'proseview-selection-hover';
@@ -10810,6 +10816,8 @@ function loadDiscussDiffMode(mode) {
             var selectedRequest = editSelectionOutgoing(selectedScope, authored);
             if (!selectedRequest) { button.disabled = false; if (sendNow) sendNow.disabled = false; renderDiscussTaskMode(); return; }
             authored = selectedRequest.authored;
+            var sentSelection = _discussSelection;
+            var sentSelectionRange = _discussSelectionRange;
             var fullQuestion = _discussWithSelection(selectedRequest.text);
             editSelectionQueue(selectedScope, requestId, selectedRequest.edits);
             discussApi('/api/discuss/conversations/' + encodeURIComponent(_discussConversationId) + '/questions', {
@@ -10837,7 +10845,8 @@ function loadDiscussDiffMode(mode) {
                 rememberDiscussInstruction(authored);
                 recordChatMessageHistory(_discussAgent, authored);
                 input.value = '';
-                if (!_discussSelection) {
+                if (_discussSelection === sentSelection && _discussSelectionRange === sentSelectionRange) {
+                    if (_discussSelection) clearDiscussSelection();
                     _discussIncludeCurrentDocument = false;
                     _discussDraftDocument = null;
                 }
@@ -10850,8 +10859,6 @@ function loadDiscussDiffMode(mode) {
                 var verb = data && data.status === 'steered' ? 'Sent now.' : immediate ? 'Sending now.' : 'Question queued.';
                 document.getElementById('discussAnnouncement').textContent = restoredLegacyDraft
                     ? verb + ' Restored another saved draft for this file.'
-                    : _discussSelection
-                    ? verb + ' Selection remains attached for follow-up questions.'
                     : verb;
             }).catch(function(error) {
                 renderDiscussError(error.message, {kind: error.name === 'NetworkError' ? 'transport' : 'request'});

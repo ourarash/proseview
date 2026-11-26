@@ -216,6 +216,10 @@ function submitManagedGroupMessage(options) {
     rememberDiscussInstruction(text);
     if (typeof recordChatMessageHistory === 'function') recordChatMessageHistory('group', text);
     _groupDraftInput = ''; if (input) input.value = '';
+    if (_groupPendingSelection) {
+        _groupPendingSelection = ''; _groupPendingSelectionScene = '';
+        if (typeof clearPinnedSelectionHighlight === 'function') clearPinnedSelectionHighlight();
+    }
     _groupTargetChoice = 'auto';
     session.busy = true; session.statusText = 'Sending message…';
     groupFollowLatest(session);

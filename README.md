@@ -47,10 +47,10 @@ Proseview reads scenes from `manuscript/` (one folder per chapter, one `.md` per
 
 ### Write & organize
 - **Read like a book, edit in place:** Press `E` to edit directly in the same typography and `Mod-S` to save, with a side-by-side conflict guard if edited externally.
-- **Read the book & Print layout:** Read the whole manuscript continuously, or preview facing typeset pages with running heads and chapter drops.
+- **Read the book & Print layout:** Read the whole manuscript continuously (it follows edits made on disk), or preview facing typeset pages with running heads and chapter drops.
 - **Notes, YAML & callouts:** Edit story-bible `.md` files and `.yaml` configs (including `.proseview.yaml`) in place with syntax highlighting, callout boxes (`> [!letter]`), inline `<!-- TODO -->` / `<!-- NOTE -->`, and automatic backups.
-- **Scene labels & colors:** Tag scenes in frontmatter (`label:`), customize colors in **Settings → Appearance**, and filter by label across Overview, Cards, Sidebar, and Timeline.
-- **Search & privacy:** `Mod-K` searches titles, metadata, notes, and prose; `Mod-J J` covers the screen with a decoy spreadsheet ([optional password →](docs/configuration.md#privacy-screen-password)).
+- **Scene labels & colors:** Tag scenes in frontmatter (`label:`) or from the reading view, customize colors in **Settings → Appearance**, and see them across Overview, Sidebar, Read the book, and Timeline.
+- **Search & privacy:** `Mod-K` searches titles, metadata, notes, and prose; `Mod-J J` covers the screen with a decoy spreadsheet, by hand or after a set idle time ([optional password →](docs/configuration.md#privacy-screen-password)).
 
 ![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
@@ -58,7 +58,7 @@ Proseview reads scenes from `manuscript/` (one folder per chapter, one `.md` per
 - **13 Editorial passes & highlight cards:** Quiet underlines for sticky sentences, echoes, repeated words/openings, passive voice, filter verbs, crutch words, dialogue tags, POV slips, and more.
 - **Word variety (MATTR & MTLD):** Tracks vocabulary richness against genre ranges ([what the numbers mean →](docs/analytics.md)).
 - **Timeline, storylines & characters:** Compare chapter proportions, parallel storyline lanes, reading order vs. story chronology, and character co-occurrence.
-- **Progress, What changed & File history:** Track goals, daily pace, streaks, word deltas by period or Git commit, and diff/restore previous backups.
+- **Progress, What changed & File history:** Track goals, daily pace, streaks, a running word total per scene, word deltas by period or Git commit, and diff/restore previous backups.
 
 ![The Analysis panel open beside a scene, with four highlight passes switched on from their rows and the matching words marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-highlights.gif)
 
@@ -67,7 +67,11 @@ Proseview has no model of its own and needs no API keys—it uses the Codex, Cla
 
 - **The Group:** Two or three editors (**Story**, **Voice**, **Continuity**) on different agents debate the same scene, respond to each other, and summarize agreements and edits.
 - **Scene reviews & Beat Map:** Run **Quick critique**, **Deepen & layer**, **Craft review** (McKee, Coyne, Cron, Snyder, King, Lamott), **Comedy review**, or map beats along a tension curve.
-- **Compare & reversible edits:** Inspect suggestions side by side, apply selected findings, and review agent edits with **Undo all** / **Looks good**.
+- **Compare & reversible edits:** Inspect suggestions side by side, apply selected findings or pick one of several rewrites, and review agent edits with **Undo all** / **Looks good**.
+- **Scene illustrations:** One click asks Codex, Agy, or Claude for a picture of the scene in one of six styles; insert the one you like and it is saved beside the chapter as a plain image link.
+- **Prompt context & token use:** Choose what each conversation sends with your questions (beat map, full scene, story notes, neighbouring scenes) and see the tokens each reply used. Queued messages can be edited, removed, or sent now.
+
+![A scene illustration: choosing the Woodcut & Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-illustration.gif)
 
 ![The Group tab: the Story Editor on Codex, the Voice Editor on Claude and the Continuity Editor on Agy debating whether a passage in the opening scene should stay](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
 
@@ -159,7 +163,7 @@ In Chrome or Edge, click the install icon in the address bar to open `http://loc
 
 ## Status & Development
 
-Proseview is alpha (see [plans/roadmap.md](plans/roadmap.md)). Known gaps: the `$` skill picker on the Claude tab lists only Codex's skills, and *Read the book* does not yet live-reload prose edited externally on disk.
+Proseview is alpha (see [plans/roadmap.md](plans/roadmap.md)). Known gap: the `$` skill picker on the Claude tab lists only Codex's skills.
 
 ```bash
 pip install -e ".[dev]"

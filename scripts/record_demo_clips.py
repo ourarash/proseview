@@ -524,6 +524,47 @@ def flow_room(page, base, docs):
 ROOM_MARKS: dict[str, float] = {}
 
 
+def flow_illustration(page, base, docs):
+    """A scene illustration: pick a style, Codex draws it, Insert puts it in the scene.
+
+    A real Codex image generation (about a minute); main() plays the wait fast.
+    """
+    fold_frontmatter = """() => {
+        const fm = document.querySelector('#sceneProseHost .fm, #sceneModal .fm');
+        if (fm && !fm.classList.contains('is-collapsed')) fm.querySelector('.fm-toggle').click();
+    }"""
+    open_scene(page, base, SCENE)
+    page.evaluate(fold_frontmatter)
+    beat(page, 1000)
+    page.click("#sceneImageOptionsBtn")
+    page.wait_for_selector("#sceneImageMenu .scene-image-style-card")
+    beat(page, 1400)
+    page.click('#sceneImageMenu .scene-image-style-card[data-style-id="woodcut"]')
+    beat(page, 1000)
+    page.click("#sceneImagePopGenBtn")
+    ILLUSTRATION_MARKS["send"] = time.monotonic() - ROOM_MARKS["start"]
+    page.wait_for_selector("#sceneImageInsertBtn", timeout=300_000)
+    ILLUSTRATION_MARKS["done"] = time.monotonic() - ROOM_MARKS["start"]
+    beat(page, 2600)
+    page.hover("#sceneImageInsertBtn")
+    beat(page, 500)
+    page.click("#sceneImageInsertBtn")
+    page.wait_for_selector("#sceneProseHost img")
+    page.evaluate(fold_frontmatter)
+    beat(page, 700)
+    # The inserted picture sits above the opening paragraphs, as it will in
+    # the book.
+    page.evaluate("""() => {
+        const img = document.querySelector('#sceneProseHost img');
+        img.scrollIntoView({block: 'start'});
+    }""")
+    beat(page, 3000)
+
+
+#: Times in the illustration clip, in seconds from the start of the recording.
+ILLUSTRATION_MARKS: dict[str, float] = {}
+
+
 FLOWS = {
     "demo-highlights": flow_highlights,
     "demo-writing": flow_writing,
@@ -533,9 +574,10 @@ FLOWS = {
     "demo-beatmap": flow_beatmap,
     "demo-room": flow_room,
     "demo-review": flow_review,
+    "demo-illustration": flow_illustration,
 }
 #: Clips that need a signed-in agent, left out of a plain run.
-AGENT_CLIPS = {"demo-agents", "demo-room", "demo-review"}
+AGENT_CLIPS = {"demo-agents", "demo-room", "demo-review", "demo-illustration"}
 
 
 def speed_up(webm: Path, start: float, end: float, factor: int = 12,
@@ -603,6 +645,9 @@ def main(argv: list[str]) -> int:
             # A review takes minutes; show only that it is working.
             more = ((REVIEW_MARKS["apply"] + 3, REVIEW_MARKS["applied"] - 1),) if "applied" in REVIEW_MARKS else ()
             webm = speed_up(webm, REVIEW_MARKS["send"] + 3, REVIEW_MARKS["done"] - 1, factor=60, more=more)
+        if name == "demo-illustration" and "done" in ILLUSTRATION_MARKS:
+            # Codex takes about a minute to draw; show only that it is working.
+            webm = speed_up(webm, ILLUSTRATION_MARKS["send"] + 2.5, ILLUSTRATION_MARKS["done"] - 1, factor=20)
         to_gif(webm, dest / f"{name}.gif")
     return 0
 

@@ -7,6 +7,17 @@ section here becomes the release notes on GitHub.
 
 ### Added
 
+- **Proseview on your phone.** `proseview --remote` publishes Proseview to
+  your phone over Tailscale (`tailscale serve`), letting in only your own
+  Tailscale login. On the phone: a short home with Continue reading and the
+  chapters, Read the book, scenes and notes full width, a plain-text Quick
+  edit that works with dictation, tap a paragraph to add a TODO or note,
+  and the chat with Codex, Claude and Agy. Anything typed is kept on the
+  phone until it is saved, a change made on the Mac meanwhile is never
+  overwritten without asking, and a banner says when the Mac is asleep.
+  Settings shows the address as a QR code, and the Mac stays awake while
+  it runs.
+
 - **Scene labels.** Give a scene one label in its frontmatter (`label: Main
   Plot`), or pick it from the dropdown while reading. Labels show as a
   colour in the sidebar, Overview, Read the book and the timeline, and can
@@ -51,6 +62,9 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- Saving a note no longer adds a blank line after its frontmatter.
+- A TODO or note added to a paragraph that starts with italics, bold or a
+  link no longer fails to find the paragraph.
 - Agy turns are no longer cut short by opening the chat's history or
   exporting it while the agent works.
 - Claude uses your installed Claude Code even when Proseview is started

@@ -148,6 +148,9 @@ Proseview has no model of its own and needs no API keys—it uses the Codex, Cla
 | `proseview privacy-password` | Set or change the privacy screen password |
 | `proseview init` | Create a starter `.proseview.yaml` |
 
+### On your phone
+`proseview --remote` also opens Proseview on your phone over [Tailscale](https://tailscale.com): read the book and scenes, make quick plain-text edits (dictation works), add a TODO or note to a paragraph, and chat with Codex, Claude or Agy. Install Tailscale on the Mac and the phone with the same login and turn on HTTPS Certificates in its admin console; Proseview prints a private `https://….ts.net` address, and **Settings** shows it as a QR code. Only your own login gets in. The Mac stays awake while it runs, as long as the lid is open; to cut off a lost phone, remove it in the Tailscale admin console.
+
 ### Open as a desktop app
 In Chrome or Edge, click the install icon in the address bar to open `http://localhost:7842` in its own Dock/taskbar window (start `proseview` first).
 

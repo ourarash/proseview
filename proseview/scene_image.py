@@ -712,8 +712,13 @@ def capture_chat_image_from_text(
     activities: dict[str, Any] | None = None,
     deterministic: bool = False,
     force_signal: bool = False,
+    explicit_only: bool = False,
 ) -> dict[str, Any] | None:
-    """Best-effort capture of a generated image path returned in Discuss chat text or activities."""
+    """Best-effort capture of a generated image path returned in Discuss chat text or activities.
+
+    With *explicit_only*, only the JSON reply an illustration prompt asks for
+    counts; image paths and links in ordinary replies are left alone.
+    """
     raw_text = str(text or "")
     # 1. Explicit JSON payload (Agy `image-generator` / Claude MCP):
     #    {"image_path": "/abs/path/to/file.jpg", "alt": "...", "revised_prompt": "..."}
@@ -758,6 +763,8 @@ def capture_chat_image_from_text(
                         image_id=det_id,
                     )
 
+    if explicit_only:
+        return None
     sources = [raw_text]
     low = raw_text.lower()
     has_image_signal = (
@@ -1111,6 +1118,12 @@ def _collect_character_context(repo_root: Path, cfg: Config, fm: Any, prose: str
         if budget <= 200 or len(snippets) >= 4:
             break
     return "\n\n".join(snippets)
+
+
+def is_scene_image_prompt(prompt: str) -> bool:
+    """True for the prompt of an illustration request (see :func:`start_scene_image_job`)."""
+    question = str(prompt or "").rsplit("\n\nUSER QUESTION\n", 1)[-1]
+    return question.startswith(("Generate a scene illustration (", "Refine the scene illustration ("))
 
 
 def build_scene_image_prompt(

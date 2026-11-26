@@ -773,3 +773,45 @@ def test_agy_chat_image_capture_and_thread_restore(tmp_path: Path) -> None:
         assert '"image_path"' not in asst[0]["text"]
     finally:
         mgr.close()
+
+
+def test_ordinary_chat_reply_linking_an_image_is_not_taken_as_an_illustration(tmp_path: Path) -> None:
+    """Only an illustration request turns image paths in a reply into a generated image."""
+    from proseview.scene_image import capture_chat_image_from_text, is_scene_image_prompt
+
+    book = _make_book(tmp_path)
+    rel = "ch01/01-opening-at-the-bar.md"
+    cover = book / "cover.png"
+    cover.write_bytes(_TINY_PNG)
+    reply = f"Your cover is here: [cover]({cover})"
+
+    assert capture_chat_image_from_text(book, reply, agent="claude", scene_path=rel, explicit_only=True) is None
+    # The JSON reply an illustration prompt asks for still counts.
+    as_json = json.dumps({"image_path": str(cover), "alt": "Cover"})
+    assert capture_chat_image_from_text(book, as_json, agent="claude", scene_path=rel, explicit_only=True) is not None
+
+    assert is_scene_image_prompt("PROMPT\n\nUSER QUESTION\nGenerate a scene illustration (Woodcut, 16:9).")
+    assert is_scene_image_prompt("PROMPT\n\nUSER QUESTION\nRefine the scene illustration (Woodcut, 16:9): warmer")
+    assert not is_scene_image_prompt("CTX\n\nUSER QUESTION\nWhere is the cover image?")
+
+    mgr = DiscussManager(book)
+    try:
+        opened = mgr.open({"kind": "scene", "path": rel}, agent="claude")
+        conv = mgr._get(opened["conversation_id"])
+        conv.thread_id = "th-plain-1"
+        mgr._restore_thread(conv, {
+            "id": "th-plain-1",
+            "turns": [{
+                "id": "turn-1",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": "CTX\n\nUSER QUESTION\nWhere is the cover image?"}]},
+                    {"type": "agentMessage", "phase": "final_answer", "text": reply},
+                ],
+            }],
+        }, source_document=dict(conv.document))
+        asst = [m for m in conv.messages if m.get("role") == "assistant"]
+        assert len(asst) == 1
+        assert "proseview:scene-image" not in asst[0]["text"]
+        assert get_scene_image_status(book, rel)["has_preview"] is False
+    finally:
+        mgr.close()

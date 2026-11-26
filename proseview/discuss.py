@@ -3085,6 +3085,8 @@ class DiscussManager:
                         pass
 
             turn_images: list[dict[str, Any]] = []
+            from .scene_image import is_scene_image_prompt
+            is_scene_image_turn = any(is_scene_image_prompt(prompt) for prompt in prompts)
             scene_rel_for_restore = (
                 str((conversation.document or {}).get("path") or "")
                 if (conversation.document or {}).get("kind") == "scene"
@@ -3157,6 +3159,7 @@ class DiscussManager:
                                     agent=conversation.agent,
                                     scene_path=scene_rel_for_restore,
                                     deterministic=True,
+                                    explicit_only=not is_scene_image_turn,
                                 )
                                 if extra_img is not None:
                                     turn_images.append(extra_img)
@@ -6381,6 +6384,9 @@ class DiscussManager:
                                     scene_path=scene_rel,
                                     activities=conversation.activities,
                                     force_signal=isinstance(si_job, dict),
+                                    # Outside an illustration request, an ordinary reply
+                                    # that links an existing picture stays a reply.
+                                    explicit_only=not isinstance(si_job, dict),
                                 )
                                 if captured_extra is not None:
                                     pending_imgs.append(captured_extra)

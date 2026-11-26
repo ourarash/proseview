@@ -857,6 +857,34 @@
             return JSON.stringify(s);
         }
 
+        // Items of a flow list's inside ("a, \"b, c\"") split on commas outside quotes.
+        function _splitYamlFlowItems(inner) {
+            var items = [];
+            var cur = '';
+            var quote = '';
+            for (var i = 0; i < inner.length; i++) {
+                var ch = inner[i];
+                if (quote) {
+                    cur += ch;
+                    if (quote === '"' && ch === '\\') { cur += inner[++i] || ''; continue; }
+                    if (ch === quote) quote = '';
+                } else if (ch === '"' || ch === "'") {
+                    quote = ch;
+                    cur += ch;
+                } else if (ch === ',') {
+                    items.push(cur);
+                    cur = '';
+                } else {
+                    cur += ch;
+                }
+            }
+            items.push(cur);
+            return items.map(_stripInlineYamlComment).filter(function(item) { return item; });
+        }
+
+        // Set or clear a scalar field in frontmatter text. When the field is a
+        // list, only its first item (the one Proseview reads) changes; the rest
+        // are kept. Mirrors update_frontmatter_scalar in scenes.py.
         function updateYamlScalarField(fmText, fieldName, newValue) {
             var clean = String(newValue || '').trim();
             var formatted = clean ? fieldName + ': ' + _formatYamlScalar(clean) : '';
@@ -864,18 +892,43 @@
                 return formatted;
             }
             var escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var keyRe = new RegExp('^' + escaped + '\\s*:');
+            var keyRe = new RegExp('^' + escaped + '\\s*:(.*)$');
             var lines = String(fmText).split('\n');
             var out = [];
             var found = false;
             for (var i = 0; i < lines.length; i++) {
-                if (keyRe.test(lines[i])) {
-                    found = true;
-                    if (formatted) out.push(formatted);
-                    while (i + 1 < lines.length && /^\s+-\s+/.test(lines[i + 1])) i++;
-                    continue;
+                var km = keyRe.exec(lines[i]);
+                if (!km) { out.push(lines[i]); continue; }
+                found = true;
+                var inlineVal = km[1].replace(/\s+#.*$/, '').trim();
+                // The value runs until the next top-level key: indented lines
+                // (block lists, folded text) and unindented "- item" lines.
+                var valueLines = [];
+                while (i + 1 < lines.length && /^(\s+\S|-(\s|$))/.test(lines[i + 1])) valueLines.push(lines[++i]);
+                var listItems = null;
+                var flow = inlineVal.charAt(0) === '[';
+                if (flow) {
+                    var close = inlineVal.lastIndexOf(']');
+                    listItems = _splitYamlFlowItems(inlineVal.slice(1, close >= 0 ? close : inlineVal.length));
+                } else if (!inlineVal && valueLines.length && valueLines.every(function(l) { return /^\s*-(\s|$)/.test(l) || /^\s*#/.test(l); })) {
+                    listItems = valueLines.filter(function(l) { return /^\s*-(\s|$)/.test(l); })
+                        .map(function(l) { return _stripInlineYamlComment(l.replace(/^\s*-\s*/, '')); })
+                        .filter(function(item) { return item; });
                 }
-                out.push(lines[i]);
+                if (listItems) {
+                    var items = (clean ? [clean] : []).concat(listItems.slice(1)).map(_formatYamlScalar);
+                    if (!items.length) continue;
+                    if (flow) {
+                        out.push(fieldName + ': [' + items.join(', ') + ']');
+                    } else {
+                        var first = valueLines.filter(function(l) { return /^\s*-/.test(l); })[0] || '';
+                        var indent = first.slice(0, first.length - first.replace(/^\s+/, '').length);
+                        out.push(fieldName + ':');
+                        items.forEach(function(item) { out.push(indent + '- ' + item); });
+                    }
+                } else if (formatted) {
+                    out.push(formatted);
+                }
             }
             if (!found && formatted) out.push(formatted);
             return out.join('\n').replace(/^\n+|\n+$/g, '');
@@ -910,8 +963,8 @@
                     return _stripInlineYamlComment(inner.split(',')[0] || '');
                 }
                 var val = _stripInlineYamlComment(rawVal);
-                if (!val && i + 1 < lines.length && /^\s+-\s+(.*)$/.test(lines[i + 1])) {
-                    val = _stripInlineYamlComment(lines[i + 1].replace(/^\s+-\s+/, ''));
+                if (!val && i + 1 < lines.length && /^\s*-\s+(.*)$/.test(lines[i + 1])) {
+                    val = _stripInlineYamlComment(lines[i + 1].replace(/^\s*-\s+/, ''));
                 }
                 return val;
             }

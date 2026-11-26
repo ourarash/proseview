@@ -290,13 +290,22 @@ def update_frontmatter_scalar(raw: str, field_name: str, new_value: str) -> str:
 
     Preserves existing frontmatter comments, key order, and unrelated fields.
     When *new_value* is blank, removes *field_name* (and drops the ``---``
-    block if nothing remains).
+    block if nothing remains). When the field is a list, only its first item
+    (the one Proseview reads) is replaced or removed; the rest are kept.
     """
+    import yaml
+
     clean = str(new_value or "").strip()
     formatted = f"{field_name}: {_format_yaml_scalar(clean)}" if clean else ""
     existing = frontmatter_text(raw)
     if existing is None or not existing.strip():
         return replace_frontmatter(raw, formatted)
+
+    try:
+        parsed = yaml.safe_load(existing)
+    except yaml.YAMLError:
+        parsed = None
+    current = parsed.get(field_name) if isinstance(parsed, dict) else None
 
     key_re = re.compile(rf"^{re.escape(field_name)}\s*:")
     lines = existing.splitlines()
@@ -306,11 +315,28 @@ def update_frontmatter_scalar(raw: str, field_name: str, new_value: str) -> str:
     while i < len(lines):
         if key_re.match(lines[i]):
             found = True
-            if formatted:
-                out.append(formatted)
+            key_line = lines[i]
             i += 1
-            while i < len(lines) and re.match(r"^\s+-\s+", lines[i]):
+            # The field's value goes on until the next top-level key: indented
+            # lines (block lists, folded text) and unindented "- item" lines.
+            value_lines: list[str] = []
+            while i < len(lines) and re.match(r"^(\s+\S|-(\s|$))", lines[i]):
+                value_lines.append(lines[i])
                 i += 1
+            if isinstance(current, list):
+                rest = [str(item).strip() for item in current[1:] if item is not None and str(item).strip()]
+                items = ([clean] if clean else []) + rest
+                if items:
+                    quoted = [_format_yaml_scalar(item) for item in items]
+                    if key_line.split(":", 1)[1].strip().startswith("["):
+                        out.append(f"{field_name}: [{', '.join(quoted)}]")
+                    else:
+                        first = next((line for line in value_lines if line.lstrip().startswith("-")), "- ")
+                        indent = first[: len(first) - len(first.lstrip())]
+                        out.append(f"{field_name}:")
+                        out.extend(f"{indent}- {item}" for item in quoted)
+            elif formatted:
+                out.append(formatted)
             continue
         out.append(lines[i])
         i += 1
@@ -423,6 +449,14 @@ def _extract_scene_label(fm: object, label_field: str) -> tuple[str, bool]:
     if not isinstance(fm, dict):
         return "", False
     raw_val = fm.get(label_field)
+    if isinstance(raw_val, str) and raw_val.strip().startswith("["):
+        # parse_simple_yaml keeps a flow list (``label: [a, b]``) as text.
+        import yaml
+
+        try:
+            raw_val = yaml.safe_load(raw_val)
+        except yaml.YAMLError:
+            pass
     if raw_val is None or isinstance(raw_val, bool):
         return "", False
     if isinstance(raw_val, (list, tuple)):

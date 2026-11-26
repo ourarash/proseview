@@ -246,9 +246,12 @@ def test_update_frontmatter_scalar_renames_and_clears_cleanly():
     cleared = update_frontmatter_scalar(raw, "label", "")
     assert cleared == "---\ntitle: Scene One\nstatus: draft\n---\n\nBody text.\n"
 
+    # A list keeps its other items: only the first (the label shown) changes.
     only_label = "---\nlabel:\n  - Flashback\n  - Mara\n---\n\nBody text.\n"
-    assert update_frontmatter_scalar(only_label, "label", "Main") == "---\nlabel: Main\n---\n\nBody text.\n"
-    assert update_frontmatter_scalar(only_label, "label", "") == "Body text.\n"
+    assert update_frontmatter_scalar(only_label, "label", "Main") == "---\nlabel:\n  - Main\n  - Mara\n---\n\nBody text.\n"
+    assert update_frontmatter_scalar(only_label, "label", "") == "---\nlabel:\n  - Mara\n---\n\nBody text.\n"
+    single = "---\nlabel: [Flashback]\n---\n\nBody text.\n"
+    assert update_frontmatter_scalar(single, "label", "") == "Body text.\n"
 
     # Nested indented subkeys with the same name are left untouched.
     nested = "---\nmeta:\n  label: Nested\nlabel: Top\n---\n\nBody text.\n"
@@ -272,6 +275,32 @@ def test_rewrite_manuscript_label_updates_only_matching_scenes(tmp_path: Path):
     assert _rewrite_manuscript_label(tmp_path, cfg, "A-Plot", "") == 2
     assert p1.read_text(encoding="utf-8") == "---\npov: Mara\n---\n\nQuiet water against the pilings.\n"
     assert p3.read_text(encoding="utf-8") == "Quiet water against the pilings.\n"
+
+
+def test_label_writes_keep_the_other_items_of_a_list():
+    flow = "---\nlabel: [draft, \"pov, Mara\"]\ntitle: X\n---\n\nBody.\n"
+    assert update_frontmatter_scalar(flow, "label", "revised") == '---\nlabel: [revised, "pov, Mara"]\ntitle: X\n---\n\nBody.\n'
+    assert update_frontmatter_scalar(flow, "label", "") == '---\nlabel: ["pov, Mara"]\ntitle: X\n---\n\nBody.\n'
+
+    # An unindented block list is valid YAML and used to stop a rename partway.
+    flush = "---\nlabel:\n- draft\n- pov\ntitle: X\n---\n\nBody.\n"
+    assert update_frontmatter_scalar(flush, "label", "revised") == "---\nlabel:\n- revised\n- pov\ntitle: X\n---\n\nBody.\n"
+
+    # Folded text is replaced whole, not left behind as continuation lines.
+    folded = "---\nlabel: >\n  long\n  text\nother: 1\n---\n\nBody.\n"
+    assert update_frontmatter_scalar(folded, "label", "x") == "---\nlabel: x\nother: 1\n---\n\nBody.\n"
+
+
+def test_rename_label_keeps_other_list_items_in_every_scene(tmp_path: Path):
+    p1 = _write_scene(tmp_path, "ch01", "01-a.md", fm="label: [Main, Mara]\n")
+    p2 = _write_scene(tmp_path, "ch01", "02-b.md", fm="label:\n- Main\n- Flashback\n")
+    p3 = _write_scene(tmp_path, "ch01", "03-c.md", fm="label: Main\n")
+
+    cfg = Config.load(tmp_path)
+    assert _rewrite_manuscript_label(tmp_path, cfg, "Main", "A-Plot") == 3
+    assert "label: [A-Plot, Mara]" in p1.read_text(encoding="utf-8")
+    assert "label:\n- A-Plot\n- Flashback" in p2.read_text(encoding="utf-8")
+    assert "label: A-Plot" in p3.read_text(encoding="utf-8")
 
 
 def _patch_settings(port: int, token: str, payload: dict) -> tuple[int, dict]:

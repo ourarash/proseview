@@ -98,7 +98,7 @@ configured manuscript directory is required.
 Each scene can carry one label in its YAML frontmatter (by default `label: Main Plot`).
 Your Markdown files only store the label name, never color codes:
 
-- **`label:`** — sets a single label for the scene (or pick it from the dropdown in reading mode). If written as a YAML list, Proseview uses the first item and adds a note in **Analysis → What stands out**.
+- **`label:`** — sets a single label for the scene (or pick it from the dropdown in reading mode). If written as a YAML list, Proseview uses the first item and adds a note in **Analysis → What stands out**; picking, renaming or removing a label changes only that first item.
 - **`story.label_field`** — defaults to `label`. Point it at an existing key such as `pov` or `thread` if you already track labels there.
 - **`labels.palette`** — optionally maps label names to one of the 8 Story theme colors (`blue`, `orange`, `teal`, `amber`, `pink`, `green`, `purple`, `red` — legacy `c0`–`c7` aliases also work) or a custom `#hex` color (such as `"#4f7cac"`), editable from **Settings → Appearance → Labels** or directly here. You can also add, rename, or remove labels in **Settings → Appearance → Labels** (renaming or removing updates matching scene `.md` frontmatter and `.proseview.yaml`). Any invalid color raises a configuration error. Labels omitted from `palette` take the next unused color in the order they first appear in the manuscript (and any labels past eight fall back to neutral gray).
 - **Display toggle** — **Settings → Appearance → Label colors** switches between **Subtle** (default: tinted sidebar icons, table dots, 3px card edges, and *Read the book* dots), **Soft sidebar rows** (adds a muted row wash in the file tree), and **Off**.

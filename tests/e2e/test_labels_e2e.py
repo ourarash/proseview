@@ -347,3 +347,22 @@ def test_settings_label_add_rename_and_remove_syncs_disk_and_ui(
     expect(
         page.locator('#settingsLabelPaletteList .settings-label-palette-item[data-label-name="Hero Arc"]')
     ).to_have_count(0)
+
+
+def test_label_picker_yaml_update_keeps_other_list_items(page: Page, labels_server: ProseviewServer):
+    page.goto(labels_server.url(f"/#/scene/{SCENE_A.replace('/', '%2F')}"), wait_until="load")
+    page.wait_for_function("() => typeof updateYamlScalarField === 'function'")
+    results = page.evaluate("""() => [
+        updateYamlScalarField('label: [draft, "pov, Mara"]\\ntitle: X', 'label', 'revised'),
+        updateYamlScalarField('label:\\n- draft\\n- pov\\ntitle: X', 'label', 'revised'),
+        updateYamlScalarField('label:\\n  - draft\\n  - pov', 'label', ''),
+        updateYamlScalarField('label: [draft]', 'label', ''),
+        updateYamlScalarField('# c\\nlabel: draft\\nx: 1', 'label', 'Next'),
+    ]""")
+    assert results == [
+        'label: [revised, "pov, Mara"]\ntitle: X',
+        "label:\n- revised\n- pov\ntitle: X",
+        "label:\n  - pov",
+        "",
+        "# c\nlabel: Next\nx: 1",
+    ]

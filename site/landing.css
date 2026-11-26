@@ -165,6 +165,7 @@ main > section {
   box-shadow: var(--shadow);
 }
 .hero-shot { margin-top: 56px; }
+.shot-phone img { max-width: 300px; margin: 0 auto; }
 .shot figcaption { margin-top: 14px; color: var(--muted); font-size: 15px; font-family: var(--serif); font-style: italic; }
 
 /* Free numbers */

@@ -32,7 +32,7 @@ NOT_IN_BROWSER = {"typst"}
 LANDING_IMAGES = (
     "dashboard.png", "write-a-scene.png", "demo-writing.gif", "demo-highlights.gif",
     "demo-timeline.gif", "demo-room.gif", "demo-review.gif", "demo-agents.gif", "export-preview.png", "storylines.png", "beat-map.png",
-    "demo-illustration.gif",
+    "demo-illustration.gif", "demo-phone.gif",
 )
 
 

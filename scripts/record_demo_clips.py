@@ -28,6 +28,10 @@ THEME = "graphite-dark"
 #: The Claude model the agents clip asks, independent of local Claude settings.
 CLIP_CLAUDE_MODEL = "opus"
 VIEWPORT = {"width": 1280, "height": 760}
+#: Clips of the phone layout (proseview --remote), recorded at phone size
+#: with touch, which is what turns the phone layout on.
+PHONE_VIEWPORT = {"width": 390, "height": 760}
+PHONE_CLIPS = {"demo-phone"}
 
 SELECT_JS = """(needle) => {
     const host = document.getElementById('sceneProseHost');
@@ -124,8 +128,11 @@ def record(name: str, flow, port: int = 7860) -> Path:
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
+            phone = name in PHONE_CLIPS
+            size = PHONE_VIEWPORT if phone else VIEWPORT
+            extra = {"is_mobile": True, "has_touch": True} if phone else {}
             ctx = browser.new_context(
-                viewport=VIEWPORT, record_video_dir=str(out), record_video_size=VIEWPORT
+                viewport=size, record_video_dir=str(out), record_video_size=size, **extra
             )
             ctx.add_init_script(f"localStorage.setItem('proseview-theme','{THEME}')")
             page = ctx.new_page()
@@ -561,6 +568,43 @@ def flow_illustration(page, base, docs):
     beat(page, 3000)
 
 
+def flow_phone(page, base, docs):
+    """On the phone: continue reading, a TODO on a tapped paragraph, a Quick edit."""
+    page.goto(base, wait_until="load")
+    page.wait_for_selector("#phoneHome .pv-continue")
+    beat(page, 1600)
+    page.locator(".pv-continue").tap()
+    page.wait_for_selector("#sceneProseHost .ProseMirror p")
+    beat(page, 1400)
+    paragraph = page.locator("#sceneProseHost p", has_text="So she was considering")
+    paragraph.scroll_into_view_if_needed()
+    page.evaluate("document.querySelector('#sceneModal .modal-content').scrollBy(0, -120)")
+    beat(page, 900)
+    paragraph.tap()
+    beat(page, 1100)
+    page.locator("#pvNotePill").tap()
+    page.wait_for_selector("#pvNoteSheet:not([hidden])")
+    beat(page, 700)
+    page.locator("#pvNoteText").type("Show the rabbit's pink eyes earlier?", delay=55)
+    beat(page, 900)
+    page.locator("#pvNoteAdd").tap()
+    beat(page, 1600)
+    page.locator("#pvEditBtn").tap()
+    page.wait_for_function("document.getElementById('pvEditText').value.length > 100")
+    beat(page, 900)
+    page.evaluate("""() => {
+        const box = document.getElementById('pvEditText');
+        const at = box.value.indexOf('pictures or conversations?\u201d') + 'pictures or conversations?\u201d'.length;
+        box.focus(); box.setSelectionRange(at, at); box.blur(); box.focus();
+        box.scrollTop = 0; }""")
+    page.keyboard.type(" She yawned.", delay=70)
+    beat(page, 1200)
+    page.locator("#pvEditSave").tap()
+    beat(page, 1800)
+    page.locator("#pvAskBtn").tap()
+    beat(page, 2200)
+
+
 #: Times in the illustration clip, in seconds from the start of the recording.
 ILLUSTRATION_MARKS: dict[str, float] = {}
 
@@ -575,6 +619,7 @@ FLOWS = {
     "demo-room": flow_room,
     "demo-review": flow_review,
     "demo-illustration": flow_illustration,
+    "demo-phone": flow_phone,
 }
 #: Clips that need a signed-in agent, left out of a plain run.
 AGENT_CLIPS = {"demo-agents", "demo-room", "demo-review", "demo-illustration"}
@@ -648,7 +693,10 @@ def main(argv: list[str]) -> int:
         if name == "demo-illustration" and "done" in ILLUSTRATION_MARKS:
             # Codex takes about a minute to draw; show only that it is working.
             webm = speed_up(webm, ILLUSTRATION_MARKS["send"] + 2.5, ILLUSTRATION_MARKS["done"] - 1, factor=20)
-        to_gif(webm, dest / f"{name}.gif")
+        if name in PHONE_CLIPS:
+            to_gif(webm, dest / f"{name}.gif", fps=6, width=360)
+        else:
+            to_gif(webm, dest / f"{name}.gif")
     return 0
 
 

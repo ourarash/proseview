@@ -56,8 +56,9 @@ daily_target: 500
 # genres keep introducing distinct nouns and score higher.
 genre: contemporary
 
-# Healthy band for local lexical variety (MATTR).
-mattr_band: [0.74, 0.77]
+# Typical range for local lexical variety (MATTR). Scenes under it are
+# flagged. Uncomment to override the default.
+# mattr_band: [0.66, 0.72]
 
 # Healthy band for whole-scene lexical variety (MTLD). Uncomment to override
 # the genre range above -- worth doing if you have measured your own corpus.

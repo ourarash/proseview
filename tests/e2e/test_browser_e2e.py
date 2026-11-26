@@ -9398,7 +9398,7 @@ def test_settings_edit_the_typical_variety_ranges_the_analysis_line_uses(
     picker = page.locator("#setting_variety")
     assert picker.input_value() == "contemporary"
     options = picker.locator("option").all_inner_texts()
-    assert "Literary \u00b7 Variety 0.74\u20130.77 \u00b7 MTLD 85\u2013110" in options
+    assert "Literary \u00b7 Variety 0.66\u20130.72 \u00b7 MTLD 85\u2013110" in options
     assert options[-1] == "Custom\u2026"
     assert page.locator("#settingVarietyCustom").is_hidden(), "only Custom shows the numbers"
     assert "mattr" not in page.locator("#settingsPanelGeneral").inner_text().lower()

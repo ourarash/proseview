@@ -326,6 +326,17 @@ class ExportConfig:
         return None
 
 
+#: The MATTR default before 0.66, which ``proseview init`` wrote into every
+#: new book. A book still carrying it gets today's default instead.
+_OLD_MATTR_DEFAULT = (0.74, 0.77)
+
+
+def _current_mattr_band(value: Any) -> Any:
+    if isinstance(value, (list, tuple)) and tuple(value) == _OLD_MATTR_DEFAULT:
+        return Config.mattr_band
+    return value
+
+
 @dataclass(frozen=True)
 class Config:
     manuscript_path: str = "manuscript/"
@@ -334,7 +345,10 @@ class Config:
     target_words: int = 80000
     daily_target: int = 500
     genre: str = DEFAULT_GENRE
-    mattr_band: tuple[float, float] = (0.74, 0.77)
+    # A floor, read per scene: MATTR over 100-word runs. The old (0.74, 0.77)
+    # flagged 38 of the 39 scenes of Alice in Wonderland; 0.66 flags the few
+    # that really do repeat words close together, in any genre.
+    mattr_band: tuple[float, float] = (0.66, 0.72)
     # Derived from ``genre`` unless the file sets it explicitly. The old default
     # was (105, 130), a pair of numbers with nothing behind them: it badged most
     # of Alice in Wonderland as too repetitive.
@@ -413,7 +427,7 @@ class Config:
             daily_target=_coerce_int(raw.get("daily_target", defaults.daily_target),
                                      "daily_target"),
             genre=genre,
-            mattr_band=_coerce_band(raw.get("mattr_band", defaults.mattr_band),
+            mattr_band=_coerce_band(_current_mattr_band(raw.get("mattr_band", defaults.mattr_band)),
                                     "mattr_band"),
             # An explicit mtld_band still wins: someone who has measured their
             # own corpus should not be overruled by a genre label.
@@ -710,7 +724,7 @@ def lexical_bands(cfg: Config, repo_root: Path) -> dict[str, Any]:
     return {
         "mattr": list(cfg.mattr_band),
         "mtld": list(cfg.mtld_band),
-        "mattrSource": "book" if "mattr_band" in keys else "default",
+        "mattrSource": "book" if "mattr_band" in keys and cfg.mattr_band != mattr_default else "default",
         "mtldSource": "book" if "mtld_band" in keys else "genre",
         "genre": GENRE_LABELS.get(cfg.genre, cfg.genre),
         "preset": preset,

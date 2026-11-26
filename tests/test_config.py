@@ -32,7 +32,7 @@ def test_defaults_when_file_missing(tmp_path: Path):
     assert cfg == Config()
     assert cfg.manuscript_path == "manuscript/"
     assert cfg.target_words == 80000
-    assert cfg.mattr_band == (0.74, 0.77)
+    assert cfg.mattr_band == (0.66, 0.72)
     assert cfg.editor.scheme == "vscode"
 
 
@@ -324,13 +324,21 @@ def test_a_band_from_settings_is_two_numbers_low_first_within_limits():
             validated_band(key, bad)
 
 
+def test_a_book_still_carrying_the_old_mattr_default_gets_the_new_one(tmp_path: Path):
+    """`proseview init` used to write 0.74-0.77, which flagged nearly every scene."""
+    (tmp_path / ".proseview.yaml").write_text("mattr_band: [0.74, 0.77]\n")
+    assert Config.load(tmp_path).mattr_band == Config().mattr_band
+    (tmp_path / ".proseview.yaml").write_text("mattr_band: [0.70, 0.75]\n")
+    assert Config.load(tmp_path).mattr_band == (0.70, 0.75)
+
+
 def test_lexical_bands_say_where_each_range_comes_from(tmp_path: Path):
     from proseview.config import lexical_bands
 
     (tmp_path / ".proseview.yaml").write_text("genre: literary\n")
     bands = lexical_bands(Config.load(tmp_path), tmp_path)
     assert {k: bands[k] for k in ("mattr", "mtld", "mattrSource", "mtldSource", "genre", "preset")} == {
-        "mattr": [0.74, 0.77], "mtld": [85.0, 110.0], "mattrSource": "default",
+        "mattr": [0.66, 0.72], "mtld": [85.0, 110.0], "mattrSource": "default",
         "mtldSource": "genre", "genre": "Historical & literary", "preset": "literary"}
     assert bands["label"] == "Literary"
     assert [p["label"] for p in bands["presets"]] == ["Children's", "Contemporary", "Literary", "Fantasy / sci-fi"]

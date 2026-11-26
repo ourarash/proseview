@@ -40,8 +40,9 @@ daily_target: 500
 # literary 85–110, speculative 90–120. Default: contemporary.
 genre: literary
 
-# Typical range for word variety nearby (Variety, MATTR). Default: 0.74–0.77.
-mattr_band: [0.74, 0.77]
+# Typical range for word variety nearby (Variety, MATTR). Default: 0.66–0.72.
+# Scenes under the lower number are flagged.
+mattr_band: [0.66, 0.72]
 
 # Typical range for word variety across a scene (MTLD). Wins over the genre's.
 mtld_band: [85, 110]

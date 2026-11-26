@@ -267,6 +267,48 @@
                     chaptersBox.appendChild(details);
                 });
                 home.appendChild(chaptersBox);
+                renderTodos(home);
+            }
+
+            // Every TODO in the book, each opening its scene at the TODO.
+            function renderTodos(home) {
+                var todos = [];
+                paths.forEach(function(p) {
+                    ((meta[p] && meta[p].todos) || []).forEach(function(todo) {
+                        if (todo && todo.text) todos.push({path: p, text: todo.text});
+                    });
+                });
+                if (!todos.length) return;
+                var details = el('details', {className: 'pv-chapters pv-todos'});
+                details.appendChild(el('summary', {}, [
+                    el('span', {className: 'pv-chapter-name', text: 'TODOs'}),
+                    el('span', {className: 'pv-count', text: String(todos.length)}),
+                ]));
+                todos.forEach(function(todo) {
+                    details.appendChild(el('button', {type: 'button', className: 'pv-row pv-todo-row', onclick: function() { openTodo(todo); }}, [
+                        el('span', {className: 'pv-row-title'}, [
+                            el('span', {className: 'pv-todo-text', text: todo.text}),
+                            el('span', {className: 'pv-muted pv-todo-scene', text: sceneTitle(todo.path)}),
+                        ]),
+                    ]));
+                });
+                home.appendChild(details);
+            }
+
+            function openTodo(todo) {
+                if (openSceneModal(todo.path) === false) return;
+                var tries = 0;
+                (function reveal() {
+                    var marks = document.querySelectorAll('#sceneProseHost .pm-annotation-todo');
+                    var match = Array.prototype.find.call(marks, function(mark) {
+                        return mark.textContent.indexOf(todo.text.slice(0, 60)) >= 0;
+                    });
+                    if (match) {
+                        match.scrollIntoView({block: 'center'});
+                        return;
+                    }
+                    if (++tries < 20) setTimeout(reveal, 100);
+                })();
             }
 
             // ── Scene / file bar ────────────────────────────────────────────────

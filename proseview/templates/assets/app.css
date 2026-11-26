@@ -21011,3 +21011,10 @@
         .settings-remote-qr svg { width: 148px; height: 148px; background: #fff; padding: 8px; border-radius: 8px; flex-shrink: 0; }
         .settings-remote-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; }
         html.pv-phone[data-view] .sidebar-file-toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+        .pv-todos summary { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; cursor: pointer; font-weight: 600; list-style: none; }
+        .pv-todos summary::-webkit-details-marker { display: none; }
+        .pv-todos summary::before { content: '›'; color: var(--text-muted); transition: transform .15s; }
+        .pv-todos[open] summary::before { transform: rotate(90deg); }
+        .pv-todo-row { padding: 10px 16px 10px 40px; }
+        .pv-todo-row .pv-row-title { display: flex; flex-direction: column; gap: 2px; }
+        .pv-todo-scene { font-size: 13px; }

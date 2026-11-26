@@ -227,3 +227,15 @@ def test_ask_opens_the_chat_with_the_agent_tabs_and_return_adds_a_line(phone: Pa
     box.type("second line")
     assert box.input_value() == "First line\nsecond line"
     assert json.loads(phone.evaluate("JSON.stringify(document.querySelectorAll('#discussLog .discuss-message-user').length)")) == 0
+
+
+def test_the_home_lists_every_todo_and_opens_its_scene_at_it(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    todos = phone.locator(".pv-todos")
+    expect(todos).to_be_visible()
+    todos.locator("summary").tap()
+    row = todos.locator(".pv-todo-row", has_text="riddle stays unanswered")
+    expect(row).to_contain_text("A Mad Tea-Party")
+    row.tap()
+    expect(phone.locator("html")).to_have_attribute("data-view", "scene")
+    expect(phone.locator("#sceneProseHost .pm-annotation-todo", has_text="riddle stays unanswered")).to_be_in_viewport()

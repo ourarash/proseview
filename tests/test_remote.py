@@ -259,3 +259,14 @@ def test_qr_refuses_text_it_cannot_hold():
 
     with pytest.raises(ValueError):
         encode("z" * 300)
+
+
+def test_start_names_another_serve_holding_443(tmp_path: Path):
+    fake = tmp_path / "tailscale"
+    fake.write_text(
+        "#!/bin/sh\necho 'sending serve config: listener already exists for port 443' >&2\nexit 1\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    with pytest.raises(RemoteError, match="already serving port 443"):
+        RemoteSession(str(fake), Identity(DNS, LOGIN)).start(1234)

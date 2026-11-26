@@ -4324,11 +4324,6 @@ def serve(
             print(f"Default ports {original_port}-{port-1} are in use (likely by other Proseview sessions).")
         print(f"Started on fallback port {port}.")
 
-    url = f"http://localhost:{port}"
-    print(f"proseview serving at {url}")
-    print("Press Ctrl-C to stop.")
-    _write_runtime_file(root, port, session_token)
-
     phone_httpd = None
     if remote_session is not None:
         handler_cls.remote_session = remote_session
@@ -4343,11 +4338,15 @@ def serve(
         except RemoteError as exc:
             phone_httpd.shutdown()
             httpd.server_close()
-            _remove_runtime_file(root, port)
             sys.stderr.write(f"proseview --remote: {exc}\n")
             sys.exit(1)
         print(f"On your phone (same Tailscale login): {remote_session.identity.url}")
         print("This Mac stays awake while Proseview runs (with the lid open).")
+
+    url = f"http://localhost:{port}"
+    print(f"proseview serving at {url}")
+    print("Press Ctrl-C to stop.")
+    _write_runtime_file(root, port, session_token)
 
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()

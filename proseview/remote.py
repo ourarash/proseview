@@ -205,7 +205,14 @@ class RemoteSession:
         if code is not None:
             err = (self._serve.stderr.read().decode("utf-8", "replace") if self._serve.stderr else "").strip()
             self._serve = None
-            raise RemoteError(f"tailscale serve stopped at once: {err.splitlines()[0] if err else code}.")
+            if "already exists" in err:
+                # Foreground serves do not show in `serve status`, so this is
+                # where another proseview --remote is usually caught.
+                raise RemoteError(
+                    "Tailscale is already serving port 443 on this Mac (maybe another "
+                    "proseview --remote): stop that one first."
+                )
+            raise RemoteError(f"tailscale serve stopped at once: {err.splitlines()[-1] if err else code}.")
         caffeinate = shutil.which("caffeinate") if sys.platform == "darwin" else None
         if caffeinate:
             import os

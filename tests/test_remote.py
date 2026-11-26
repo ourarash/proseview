@@ -228,3 +228,34 @@ def test_start_reports_a_serve_that_exits_at_once(tmp_path: Path, monkeypatch):
     session = RemoteSession(str(fake), Identity(DNS, LOGIN))
     with pytest.raises(RemoteError, match="serve config denied"):
         session.start(1234)
+
+
+def test_the_laptop_gets_the_phone_address_as_a_qr_code(listeners):
+    code, data = listeners("laptop", "GET", "/api/remote", [("Host", "localhost")])
+    payload = json.loads(data)
+    assert code == 200 and payload["url"] == f"https://{DNS}" and payload["phones"] == 0
+    assert payload["qr"].startswith("<svg") and f"QR code for https://{DNS}" in payload["qr"]
+
+
+# -- the QR encoder -------------------------------------------------------------------
+
+
+def test_qr_codes_grow_with_the_text_and_keep_their_finder_patterns():
+    from proseview.qr import encode
+
+    small, url, long = encode("hi"), encode(f"https://{DNS}"), encode("y" * 200)
+    assert (len(small), len(url), len(long)) == (21, 29, 57)  # versions 1, 3 and 10
+    for modules in (small, url, long):
+        n = len(modules)
+        for x0, y0 in ((0, 0), (n - 7, 0), (0, n - 7)):
+            ring = [modules[y0][x0 + i] for i in range(7)] + [modules[y0 + 6][x0 + i] for i in range(7)]
+            assert all(ring) and modules[y0 + 3][x0 + 3] and not modules[y0 + 1][x0 + 1]
+        assert modules[n - 8][8], "the dark module"
+    assert encode(f"https://{DNS}") == url
+
+
+def test_qr_refuses_text_it_cannot_hold():
+    from proseview.qr import encode
+
+    with pytest.raises(ValueError):
+        encode("z" * 300)

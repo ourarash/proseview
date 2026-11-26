@@ -20837,3 +20837,177 @@
             border-left-width: 1px;
             border-left-color: var(--border);
         }
+
+        /* ── Phone (proseview --remote) ─────────────────────────────────────
+           html.pv-phone is set by 90-phone.js on a phone-sized touch screen. */
+        #phoneHome, #pvSceneBar, .pv-sheet, .pv-offline-banner, .pv-note-pill { display: none; }
+        .remote-dot { display: none; }
+        html[data-remote-phones]:not([data-remote-phones="0"]) .remote-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            background: var(--success); margin-left: 6px; vertical-align: middle;
+        }
+        /* Things that act on the Mac itself are not offered on the phone. */
+        html[data-remote="phone"] #exportOpenBtn,
+        html[data-remote="phone"] #modalEditorBtn,
+        html[data-remote="phone"] #modalExportSceneBtn,
+        html[data-remote="phone"] #modalExportChapterBtn,
+        html[data-remote="phone"] #modalFullscreenBtn,
+        html[data-remote="phone"] .settings-remote-section,
+        html[data-remote="phone"] .remote-dot { display: none !important; }
+
+        html.pv-phone body { overflow-x: hidden; }
+        html.pv-phone .tab-nav,
+        html.pv-phone #exportOpenBtn,
+        html.pv-phone .export-open-btn,
+        html.pv-phone #tab-overview .scene-list-card,
+        html.pv-phone #tab-overview .progress-card .progress-stats,
+        html.pv-phone #sceneBeatMapBtn,
+        html.pv-phone #sceneImageMenuWrap,
+        html.pv-phone .discuss-open-btn,
+        html.pv-phone #sceneEditBtn,
+        html.pv-phone .scene-toolbar-nav,
+        html.pv-phone #sceneBeatMapStripContainer,
+        html.pv-phone #sceneFrontmatter .fm-head-actions,
+        html.pv-phone #modalExportSceneBtn,
+        html.pv-phone #modalExportChapterBtn,
+        html.pv-phone #modalFullscreenBtn,
+        html.pv-phone #modalFocusBtn,
+        html.pv-phone #modalLineNumbersBtn,
+        html.pv-phone .scene-toolbar-mode-field,
+        html.pv-phone #filePreviewEditBtn,
+        html.pv-phone #utilityTabAnalysis,
+        html.pv-phone #utilityTabHistory,
+        html.pv-phone #utilityTabBeats,
+        html.pv-phone #utilityTabGroup,
+        html.pv-phone .discuss-resize-handle { display: none !important; }
+        html.pv-phone #tab-overview { display: block; }
+        html.pv-phone #tab-analysis,
+        html.pv-phone #tab-timeline,
+        html.pv-phone #tab-tasks { display: none !important; }
+
+        html.pv-phone #phoneHome { display: flex; flex-direction: column; gap: 12px; margin: 0 0 16px; }
+        .pv-continue {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;
+            padding: 16px; border: 1px solid var(--border); border-radius: 14px;
+            background: var(--surface-card); color: var(--text-main); font: inherit; text-align: left; cursor: pointer;
+            box-shadow: var(--shadow-card);
+        }
+        .pv-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--primary); }
+        .pv-continue-title { font-family: var(--font-reading); font-size: 22px; line-height: 1.25; }
+        .pv-muted { color: var(--text-muted); font-size: 14px; }
+        .pv-home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .pv-section-title { margin: 12px 0 0; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+        .pv-chapters { border: 1px solid var(--border); border-radius: 14px; background: var(--surface-card); overflow: hidden; }
+        .pv-chapter + .pv-chapter { border-top: 1px solid var(--border); }
+        .pv-chapter summary {
+            display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px;
+            cursor: pointer; font-weight: 600; list-style: none;
+        }
+        .pv-chapter summary::-webkit-details-marker { display: none; }
+        .pv-chapter summary::before { content: '›'; color: var(--text-muted); transition: transform .15s; }
+        .pv-chapter[open] summary::before { transform: rotate(90deg); }
+        .pv-chapter-name { flex: 1; min-width: 0; }
+        .pv-count { color: var(--text-muted); font-weight: 400; font-size: 14px; }
+        .pv-row {
+            display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 16px 0 40px;
+            border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text-main);
+            font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+        }
+        .pv-row-title { flex: 1; min-width: 0; }
+        .pv-pill { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--surface-muted); color: var(--text-muted); font-size: 12.5px; }
+
+        .pv-btn {
+            min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--surface-card); color: var(--text-main); font: inherit; font-size: 15px; font-weight: 600;
+            cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .pv-btn:disabled { opacity: .5; }
+        .pv-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--text-inverse); }
+        .pv-btn-quiet { border-color: transparent; background: transparent; font-weight: 500; }
+        .pv-btn-danger { color: var(--text-danger); }
+        .pv-btn-small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+        .pv-files-btn { width: 100%; justify-content: flex-start; font-weight: 500; }
+
+        /* Scenes and notes read full width, with Read / Edit / Ask below. */
+        html.pv-phone[data-view="scene"] #pvSceneBar,
+        html.pv-phone[data-view="file"] #pvSceneBar {
+            display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 900; gap: 8px;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card);
+            border-top: 1px solid var(--border);
+        }
+        html.pv-phone.pv-sheet-open #pvSceneBar,
+        html.pv-phone:has(#discussPanel:not([hidden])) #pvSceneBar { display: none; }
+        .pv-bar-btn {
+            flex: 1; min-height: 44px; border: 0; border-radius: 10px; background: var(--surface-muted);
+            color: var(--text-main); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        .pv-bar-btn[hidden] { display: none; }
+        .pv-bar-btn:disabled { opacity: .45; }
+        html.pv-phone[data-view="scene"] #sceneModal .modal-content,
+        html.pv-phone[data-view="file"] #filePreviewBody { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+        html.pv-phone #sceneProseHost p.pv-tapped { background: var(--surface-selection); border-radius: 6px; box-shadow: 0 0 0 6px var(--surface-selection); }
+        html.pv-phone .pv-note-pill:not([hidden]) {
+            display: inline-flex; align-items: center; margin: 4px 0 12px; min-height: 40px; padding: 0 16px;
+            border: 1px solid var(--primary); border-radius: 20px; background: var(--surface-card); color: var(--primary);
+            font: 600 15px/1 system-ui, -apple-system, sans-serif; cursor: pointer;
+        }
+
+        /* Sheets fill the visible part of the screen, above the keyboard. */
+        html.pv-phone .pv-sheet:not([hidden]) {
+            display: flex; flex-direction: column; position: fixed; left: 0; right: 0; z-index: 1200;
+            top: var(--pv-vvtop, 0px); height: var(--pv-vvh, 100dvh); background: var(--surface-card);
+        }
+        html.pv-phone .pv-small-sheet:not([hidden]) {
+            top: auto; bottom: 0; height: auto; gap: 12px; padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+            border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .18); z-index: 1300;
+        }
+        .pv-sheet-bar {
+            display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-height: 56px;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .pv-sheet-title { flex: 1; min-width: 0; margin: 0; font-size: 16px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pv-sheet-heading { margin: 0; font-size: 18px; }
+        .pv-stack { display: flex; flex-direction: column; gap: 8px; }
+        .pv-status { margin: 0; padding: 6px 16px; min-height: 18px; font-size: 13px; color: var(--text-muted); flex-shrink: 0; }
+        .pv-status:empty { display: none; }
+        .pv-error { color: var(--text-danger); }
+        /* 16px or more, or mobile browsers zoom in on focus. */
+        .pv-textarea {
+            flex: 1; min-height: 0; width: 100%; box-sizing: border-box; padding: 12px 16px; border: 0; resize: none;
+            background: var(--surface-card); color: var(--text-main); font-family: var(--font-reading); font-size: 17px; line-height: 1.55;
+        }
+        .pv-textarea:focus { outline: none; }
+        .pv-note-sheet .pv-textarea { font-family: inherit; }
+        .pv-quote {
+            margin: 12px 16px 0; padding: 8px 12px; border-left: 3px solid var(--border-strong); color: var(--text-muted);
+            font-family: var(--font-reading); font-size: 15px; flex-shrink: 0;
+        }
+        .pv-segmented { flex: 1; display: flex; justify-content: center; gap: 4px; }
+        .pv-seg {
+            min-height: 36px; padding: 0 16px; border: 1px solid var(--border); border-radius: 18px;
+            background: transparent; color: var(--text-main); font: inherit; font-size: 15px; cursor: pointer;
+        }
+        .pv-seg[aria-pressed="true"] { background: var(--text-main); border-color: var(--text-main); color: var(--surface-card); }
+
+        /* The chat panel as a full-screen sheet with the agent tabs only. */
+        html.pv-phone #discussPanel:not([hidden]) {
+            position: fixed; left: 0; right: 0; width: auto !important; max-width: none;
+            top: var(--pv-vvtop, 0px); height: var(--pv-vvh, 100dvh); z-index: 1100;
+        }
+        html.pv-phone #discussInput { font-size: 16px; }
+
+        /* The Mac cannot be reached: a banner, so what you were doing stays usable. */
+        html.pv-phone .pv-offline-banner:not([hidden]),
+        html[data-remote="phone"] .pv-offline-banner:not([hidden]) {
+            display: flex; align-items: center; gap: 12px; position: fixed; left: 8px; right: 8px; z-index: 1400;
+            top: calc(var(--pv-vvtop, 0px) + 8px + env(safe-area-inset-top)); padding: 10px 12px;
+            border-radius: 12px; background: var(--text-main); color: var(--surface-card); font-size: 14px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
+        }
+        .pv-offline-text { flex: 1; }
+
+        /* Settings: the phone's address as a QR code. */
+        .settings-remote-qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .settings-remote-qr svg { width: 148px; height: 148px; background: #fff; padding: 8px; border-radius: 8px; flex-shrink: 0; }
+        .settings-remote-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; }
+        html.pv-phone[data-view] .sidebar-file-toast { bottom: calc(76px + env(safe-area-inset-bottom)); }

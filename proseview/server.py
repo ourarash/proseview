@@ -43,6 +43,7 @@ from .highlights import strip_markdown_for_offsets
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import Block, changed_blocks, classify_whitespace_change, split_lines
 from .patches import Hunk, parse_hunks
+from .qr import svg as qr_svg
 from .remote import LAPTOP_ONLY_PATHS, RemoteError, RemoteSession
 from .privacy import PrivacyLock, parse_idle_minutes
 from .generator import (
@@ -2608,6 +2609,16 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if discuss_path.startswith("/api/export/"):
             self._handle_export_get(discuss_path)
+            return
+        if discuss_path == "/api/remote":
+            session = self.remote_session
+            if session is None:
+                self._send_json({"ok": False, "error": "remote mode is off"}, 404)
+                return
+            self._send_json({
+                "ok": True, "url": session.identity.url, "phones": session.phones,
+                "qr": qr_svg(session.identity.url, label=f"QR code for {session.identity.url}"),
+            })
             return
         if discuss_path == "/api/privacy":
             self._send_json({"ok": True, **self.privacy.state()})

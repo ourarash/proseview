@@ -173,6 +173,19 @@ function openSettings() {
     if (typeof renderSettingsLabelColors === 'function') renderSettingsLabelColors();
     dialog.showModal();
     updateBackupStats();
+    showRemoteAddress();
+}
+
+// `proseview --remote`: the phone's address as a QR code the camera opens.
+function showRemoteAddress() {
+    const section = document.getElementById('settingsRemote');
+    if (!section || !document.documentElement.dataset.remoteUrl || document.documentElement.dataset.remote === 'phone') return;
+    fetch('/api/remote', {cache: 'no-store'}).then(r => r.json()).then(data => {
+        if (!data || !data.ok) return;
+        document.getElementById('settingsRemoteQr').innerHTML = data.qr;
+        document.getElementById('settingsRemoteUrl').textContent = data.url;
+        section.hidden = false;
+    }).catch(() => {});
 }
 
 function closeSettings() {

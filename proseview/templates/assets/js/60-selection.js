@@ -1483,7 +1483,15 @@
         window.showAssetReloadBanner = showAssetReloadBanner;
 
         (function connectSSE() {
+            if (connectSSE.current) connectSSE.current.close();
+            clearTimeout(connectSSE.retryTimer);
             const es = new EventSource(pvEventSourceUrl('/events'));
+            connectSSE.current = es;
+            // The phone's "Mac asleep" banner reconnects through this.
+            window.pvReconnectEvents = connectSSE;
+            es.onopen = function() {
+                if (typeof window.pvConnectionUp === 'function') window.pvConnectionUp();
+            };
             es.onmessage = function(e) {
                 if (!e.data) return;
                 var payload = null;
@@ -1494,6 +1502,8 @@
                     handleAiProposalEvent(payload);
                 } else if (payload && payload.type === 'privacy') {
                     privacyFollowServer(payload);
+                } else if (payload && payload.type === 'remote') {
+                    if (typeof window.pvRemotePhones === 'function') window.pvRemotePhones(payload.phones);
                 } else if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
                     e.data === 'reload' || e.data === 'reload:content') {
                     reloadOrDefer(
@@ -1508,10 +1518,14 @@
             };
             es.onerror = function() {
                 if (es.readyState === EventSource.CLOSED) {
+                    // On the phone a sleeping Mac also closes the stream (serve
+                    // answers 502); the phone module tells the two apart.
+                    if (typeof window.pvConnectionDown === 'function' && window.pvConnectionDown('closed')) return;
                     showAssetReloadBanner('Proseview was restarted. Reload the page to continue.');
                     return;
                 }
                 es.close();
-                setTimeout(connectSSE, 3000);
+                if (typeof window.pvConnectionDown === 'function') window.pvConnectionDown();
+                connectSSE.retryTimer = setTimeout(connectSSE, 3000);
             };
         })();

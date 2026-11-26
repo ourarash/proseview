@@ -45,11 +45,12 @@ def test_parse_args_overrides(tmp_path: Path):
 def test_main_invokes_serve_with_resolved_root(tmp_path: Path, monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_serve(root: Path, *, port: int, watch_interval: float, open_browser: bool) -> None:
+    def fake_serve(root: Path, *, port: int, watch_interval: float, open_browser: bool, remote: bool) -> None:
         captured["root"] = root
         captured["port"] = port
         captured["watch_interval"] = watch_interval
         captured["open_browser"] = open_browser
+        captured["remote"] = remote
 
     monkeypatch.setattr(cli, "serve", fake_serve)
 
@@ -61,13 +62,16 @@ def test_main_invokes_serve_with_resolved_root(tmp_path: Path, monkeypatch):
         "port": 9000,
         "watch_interval": 2.0,
         "open_browser": False,
+        "remote": False,
     }
+    assert cli.main(["--root", str(tmp_path), "--remote", "--no-open"]) == 0
+    assert captured["remote"] is True
 
 
 def test_main_strips_serve_subcommand(tmp_path: Path, monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_serve(root: Path, *, port: int, watch_interval: float, open_browser: bool) -> None:
+    def fake_serve(root: Path, *, port: int, watch_interval: float, open_browser: bool, remote: bool = False) -> None:
         captured["port"] = port
 
     monkeypatch.setattr(cli, "serve", fake_serve)

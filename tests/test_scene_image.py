@@ -210,12 +210,13 @@ def test_preview_insert_into_per_scene_assets_and_remove(tmp_path: Path) -> None
     assert inserted["ok"] is True
     expected_repo_path = "manuscript/ch01/assets/01-opening-at-the-bar.png"
     assert inserted["asset_repo_path"] == expected_repo_path
-    assert inserted["markdown_src"] == f"/repo-asset/{expected_repo_path}"
+    assert inserted["markdown_src"] == "assets/01-opening-at-the-bar.png"
     assert inserted["width"] == 600
     assert (book / expected_repo_path).read_bytes() == _TINY_PNG
 
     updated_md = scene_file.read_text(encoding="utf-8")
-    expected_tag = f'<img src="/repo-asset/{expected_repo_path}" alt="Opening at the Bar — Take 1" width="600">'
+    # Linked from the scene's folder, so Obsidian, VS Code and GitHub show it too.
+    expected_tag = '<img src="assets/01-opening-at-the-bar.png" alt="Opening at the Bar — Take 1" width="600">'
     assert expected_tag in updated_md
     assert updated_md.startswith("---\ntitle: Opening at the Bar")
     # Preview cleared after insert so image isn't duplicated
@@ -225,7 +226,7 @@ def test_preview_insert_into_per_scene_assets_and_remove(tmp_path: Path) -> None
     status = get_scene_image_status(book, rel)
     assert status["has_preview"] is False
     assert status["embedded"]["kind"] == "html"
-    assert status["embedded"]["src"] == f"/repo-asset/{expected_repo_path}"
+    assert status["embedded"]["src"] == "assets/01-opening-at-the-bar.png"
 
     # Re-inserting with custom width replaces the leading <img> line cleanly
     save_scene_image_settings_payload(book, {"book": {"width": 480}})
@@ -236,7 +237,10 @@ def test_preview_insert_into_per_scene_assets_and_remove(tmp_path: Path) -> None
     assert inserted2["width"] == 480
     updated_md2 = scene_file.read_text(encoding="utf-8")
     assert updated_md2.count("<img ") == 1
-    assert f'<img src="/repo-asset/{expected_repo_path2}" alt="Woodcut bar" width="480">' in updated_md2
+    assert '<img src="assets/01-opening-at-the-bar.jpg" alt="Woodcut bar" width="480">' in updated_md2
+    # The .png it replaced is gone, rather than left behind in assets/.
+    assert not (book / expected_repo_path).exists()
+    assert (book / expected_repo_path2).read_bytes() == _TINY_JPG
 
     # Removing restores clean prose without the image line
     removed = remove_scene_image_from_scene(book, rel)
@@ -815,3 +819,20 @@ def test_ordinary_chat_reply_linking_an_image_is_not_taken_as_an_illustration(tm
         assert get_scene_image_status(book, rel)["has_preview"] is False
     finally:
         mgr.close()
+
+
+def test_replacing_an_illustration_keeps_pictures_the_writer_placed(tmp_path: Path) -> None:
+    """Only the file Proseview wrote for this scene is removed when its type changes."""
+    book = _make_book(tmp_path)
+    rel = "ch01/01-opening-at-the-bar.md"
+    scene_file = book / "manuscript" / rel
+    own = book / "manuscript" / "ch01" / "map.png"
+    own.write_bytes(_TINY_PNG)
+    raw = scene_file.read_text(encoding="utf-8")
+    fm_end = raw.index("---", 3) + 4
+    scene_file.write_text(raw[:fm_end] + '\n<img src="map.png" alt="Map">\n\n' + raw[fm_end:].lstrip("\n"), encoding="utf-8")
+
+    save_scene_image_preview(book, rel, _TINY_JPG, ".jpg", "image/jpeg", agent="agy", style_id="woodcut", alt="Bar")
+    insert_scene_image(book, rel)
+    assert own.read_bytes() == _TINY_PNG
+    assert '<img src="assets/01-opening-at-the-bar.jpg"' in scene_file.read_text(encoding="utf-8")

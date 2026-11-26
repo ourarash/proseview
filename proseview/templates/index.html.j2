@@ -1262,6 +1262,12 @@
                     this._onDocClick = null;
                 }
             }
+            resolvedImgSrc(src) {
+                if (typeof resolveImageSrc !== 'function') return src || '';
+                const sceneRel = (typeof _pmViewPath === 'string' && _pmViewPath) || (typeof paths !== 'undefined' && curIdx >= 0 ? paths[curIdx] : '');
+                const prefix = (typeof manuscriptSubdir === 'string' && manuscriptSubdir) ? manuscriptSubdir.replace(/\/+$/, '') : 'manuscript';
+                return resolveImageSrc(src, {basePath: sceneRel ? (prefix + '/' + sceneRel) : ''}) || src || '';
+            }
             renderRead() {
                 this.cleanupDocClick();
                 const parsed = this.parsed();
@@ -1270,7 +1276,16 @@
                 this.dom.replaceChildren();
                 
                 if (parsed.kind === 'html') {
-                    this.dom.innerHTML = parsed.body;
+                    // Read an <img> src the way Markdown images are read: a
+                    // relative one from the scene's own folder. Parsed in an
+                    // inert template first so the page never requests the
+                    // unresolved address.
+                    const tpl = document.createElement('template');
+                    tpl.innerHTML = parsed.body;
+                    tpl.content.querySelectorAll('img[src]').forEach((img) => {
+                        img.setAttribute('src', this.resolvedImgSrc(img.getAttribute('src')));
+                    });
+                    this.dom.replaceChildren(tpl.content);
                     this.dom.onclick = null;
                     this.dom.ondblclick = (event) => {
                         event.preventDefault();
@@ -1353,8 +1368,10 @@
                 this.dom.append(a);
             }
             parseSingleImgHtml(html) {
-                const probe = document.createElement('div');
-                probe.innerHTML = String(html || '').trim();
+                // An inert template: the page does not fetch the image.
+                const tpl = document.createElement('template');
+                tpl.innerHTML = String(html || '').trim();
+                const probe = tpl.content;
                 if (probe.children.length !== 1 || probe.firstElementChild.tagName !== 'IMG') return null;
                 for (const node of probe.childNodes) {
                     if (node.nodeType === 3 && node.textContent.trim()) return null;
@@ -1419,7 +1436,7 @@
                 const thumbWrap = document.createElement('div');
                 thumbWrap.className = 'pm-image-editor-thumb';
                 const thumbImg = document.createElement('img');
-                thumbImg.src = baseImg.getAttribute('src') || '';
+                thumbImg.src = this.resolvedImgSrc(baseImg.getAttribute('src'));
                 thumbImg.alt = baseImg.getAttribute('alt') || '';
                 thumbWrap.appendChild(thumbImg);
 
@@ -1508,7 +1525,7 @@
                 srcInput.setAttribute('aria-label', 'Image source path');
                 srcInput.value = baseImg.getAttribute('src') || '';
                 srcInput.oninput = () => {
-                    thumbImg.src = srcInput.value.trim();
+                    thumbImg.src = this.resolvedImgSrc(srcInput.value.trim());
                 };
                 srcRow.append(srcLabel, srcInput);
 
@@ -1562,7 +1579,7 @@
                             srcInput.value = baseImg.getAttribute('src') || '';
                             altInput.value = baseImg.getAttribute('alt') || '';
                             widthInput.value = baseImg.getAttribute('width') || '';
-                            thumbImg.src = srcInput.value.trim();
+                            thumbImg.src = this.resolvedImgSrc(srcInput.value.trim());
                             syncPresetHighlight();
                         }
                         rawMode = false;

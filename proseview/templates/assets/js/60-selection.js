@@ -1379,8 +1379,10 @@
                 // The writer may have opened the editor while this was in
                 // flight; re-rendering now would replace the editor under
                 // them and drop what they typed. Their save's conflict check
-                // covers a real change on disk.
-                if ((_pmEditMode && _pmDirty) || paths[curIdx] !== scenePath) {
+                // covers a real change on disk. An image being edited in
+                // place (just inserted, say) is kept the same way.
+                var editingImage = !!document.querySelector('#sceneProseHost .pm-image-editor');
+                if ((_pmEditMode && _pmDirty) || editingImage || paths[curIdx] !== scenePath) {
                     if (data.meta && data.meta[scenePath] && !_pmEditMode) meta[scenePath] = data.meta[scenePath];
                     return;
                 }

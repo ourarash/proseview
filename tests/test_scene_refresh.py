@@ -20,7 +20,7 @@ const vm = require('node:vm');
 const timers = new Map(), requests = [], rendered = [];
 let timerId = 0;
 const c = {
-    document: {documentElement: {dataset: {view: 'scene'}}},
+    document: {documentElement: {dataset: {view: 'scene'}}, querySelector: () => null},
     paths: ['one.md', 'two.md'], curIdx: 0,
     contents: {'one.md': 'old one', 'two.md': 'old two'},
     meta: {}, highlightsByPath: {},

@@ -151,8 +151,13 @@ def test_scene_image_preview_switcher_insert_and_inline_editor(browser: Browser,
         page.locator("#sceneImageInsertBtn").click()
         page.wait_for_selector("#sceneProseHost .pm-scene-image", state="visible")
         saved_md = scene.read_text(encoding="utf-8")
-        assert '<img src="/repo-asset/manuscript/ch01/assets/01-opening.jpg" alt="Amber bar at dusk" width="600">' in saved_md
+        assert '<img src="assets/01-opening.jpg" alt="Amber bar at dusk" width="600">' in saved_md
         assert (root / "manuscript" / "ch01" / "assets" / "01-opening.jpg").is_file()
+        # The relative src still loads in the dashboard.
+        page.wait_for_function(
+            "() => { const i = document.querySelector('#sceneProseHost .pm-scene-image');"
+            " return i && i.complete && i.naturalWidth > 0 && i.getAttribute('src').startsWith('/repo-asset/'); }"
+        )
 
         # 5. Hover Edit -> opens calm IMAGE editor (never yellow NOTE), updates width to 500, toggles </> HTML
         page.locator("#sceneProseHost .pm-scene-image").hover()
@@ -164,6 +169,10 @@ def test_scene_image_preview_switcher_insert_and_inline_editor(browser: Browser,
         assert 'width="500"' in page.locator(".pm-image-editor-raw").input_value()
         page.locator(".pm-image-editor .pm-annotation-save").click()
         page.wait_for_selector(".pm-image-editor", state="hidden")
+        # The save lands a moment after the editor closes.
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and 'width="500"' not in scene.read_text(encoding="utf-8"):
+            time.sleep(0.1)
         assert 'width="500"' in scene.read_text(encoding="utf-8")
 
         # 6. Hover Remove deletes the embedded image cleanly and auto-saves

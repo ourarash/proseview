@@ -956,6 +956,35 @@ def _scene_asset_destination(
     return dest, md_src, repo_rel
 
 
+def _replaced_scene_image_file(repo_root: Path, scene_path: Path, leading: dict[str, Any], dest: Path) -> Path | None:
+    """The scene's previous illustration file, when a new one of another type replaces it.
+
+    Only the file Proseview itself would have written for this scene (same
+    folder and name as *dest*, another image extension) counts, so a picture
+    the writer placed and linked themselves is never removed.
+    """
+    raw = unquote(str(leading.get("src") or "").split("?", 1)[0].split("#", 1)[0])
+    if not raw or "://" in raw:
+        return None
+    root = repo_root.resolve()
+    if raw.startswith("/repo-asset/"):
+        old = (root / raw[len("/repo-asset/"):]).resolve()
+    elif raw.startswith("/"):
+        old = (root / raw.lstrip("/")).resolve()
+    else:
+        old = (scene_path.parent / raw).resolve()
+    if (
+        old == dest
+        or old.parent != dest.parent
+        or old.stem != dest.stem
+        or old.suffix.lower() not in _IMAGE_MIME_BY_EXT
+        or not old.is_relative_to(root)
+        or not old.is_file()
+    ):
+        return None
+    return old
+
+
 def _split_frontmatter_raw(raw_text: str) -> tuple[str, str]:
     """Split a scene file into exact raw YAML frontmatter prefix and body text."""
     if not raw_text.startswith("---"):
@@ -1004,10 +1033,14 @@ def insert_scene_image(
     _atomic_write_bytes(dest, image_bytes)
 
     asset_url = f"/repo-asset/{repo_rel}"
+    # Linked from the scene's own folder, so the picture also shows in
+    # Obsidian, VS Code and on GitHub, not only in Proseview.
+    src = Path(os.path.relpath(dest, scene_path.parent.resolve())).as_posix()
     escaped_alt = html.escape(clean_alt, quote=True)
-    image_line = f'<img src="{asset_url}" alt="{escaped_alt}" width="{eff_width}">'
+    image_line = f'<img src="{html.escape(src, quote=True)}" alt="{escaped_alt}" width="{eff_width}">'
     leading = _find_leading_scene_image(body)
     newline = "\r\n" if "\r\n" in raw_text else "\n"
+    replaced_file = _replaced_scene_image_file(repo_root, scene_path, leading, dest) if leading and replace_existing else None
 
     if leading and replace_existing:
         body_lines = body.splitlines()
@@ -1026,6 +1059,11 @@ def insert_scene_image(
     # Record backup so Proseview History and Undo always work.
     record_file_backup(repo_root, scene_path, raw_text, "scene-image")
     atomic_write_text(scene_path, new_text)
+    if replaced_file is not None:
+        try:
+            replaced_file.unlink()
+        except OSError:
+            pass
 
     dismiss_scene_image_preview(repo_root, clean)
 
@@ -1033,7 +1071,7 @@ def insert_scene_image(
         "ok": True,
         "scene_path": clean,
         "asset_repo_path": repo_rel,
-        "markdown_src": asset_url,
+        "markdown_src": src,
         "image_line": image_line,
         "alt": clean_alt,
         "width": eff_width,

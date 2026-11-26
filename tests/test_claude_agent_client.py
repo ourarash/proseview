@@ -1212,9 +1212,25 @@ def test_the_installed_cli_runs_only_when_it_is_newer_than_the_bundled_one(
 
     monkeypatch.setattr(module, "_CLI_PATH_PICKED", False)
     monkeypatch.setattr(module.shutil, "which", lambda name: which)
+    monkeypatch.setattr(module, "CLI_INSTALL_LOCATIONS", ())
     monkeypatch.setattr(module, "_installed_cli_version", lambda path: installed)
     monkeypatch.setattr(module, "_bundled_cli_version", lambda: bundled)
     assert module.pick_cli_path() == expected
+
+
+def test_an_installed_cli_off_path_is_found_in_its_install_location(monkeypatch, tmp_path):
+    """Started from the Dock, PATH lacks ~/.local/bin; the CLI there still runs."""
+    import proseview.claude_agent_client as module
+
+    cli = tmp_path / "claude"
+    cli.write_text("#!/bin/sh\n")
+    cli.chmod(0o755)
+    monkeypatch.setattr(module, "_CLI_PATH_PICKED", False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(module, "CLI_INSTALL_LOCATIONS", (str(tmp_path / "missing"), str(cli)))
+    monkeypatch.setattr(module, "_installed_cli_version", lambda path: "9.0.0")
+    monkeypatch.setattr(module, "_bundled_cli_version", lambda: "2.1.292")
+    assert module.pick_cli_path() == str(cli)
 
 
 def test_the_cli_choice_is_made_once_per_process(monkeypatch):

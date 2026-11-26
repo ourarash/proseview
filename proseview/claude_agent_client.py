@@ -138,6 +138,28 @@ def _bundled_cli_version() -> str:
     return __cli_version__
 
 
+#: Where Claude Code's installers put ``claude``. An app started from the Dock
+#: gets a short PATH without ``~/.local/bin``, so these are tried after PATH.
+CLI_INSTALL_LOCATIONS: tuple[str, ...] = (
+    "~/.local/bin/claude",
+    "~/.claude/local/claude",
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+)
+
+
+def find_installed_cli() -> str | None:
+    """The writer's ``claude``: on PATH, else in a standard install location."""
+    found = shutil.which("claude")
+    if found:
+        return found
+    for location in CLI_INSTALL_LOCATIONS:
+        path = os.path.expanduser(location)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def pick_cli_path() -> str | None:
     """The writer's installed ``claude`` when it is newer than the SDK's own copy.
 
@@ -150,7 +172,7 @@ def pick_cli_path() -> str | None:
         return _CLI_PATH
     _CLI_PATH_PICKED = True
     _CLI_PATH = None
-    installed = shutil.which("claude")
+    installed = find_installed_cli()
     if not installed:
         return None
     try:
@@ -602,7 +624,7 @@ class ClaudeAgentClient:
                 "pipx inject proseview claude-agent-sdk "
                 '(or install Proseview with pipx install "proseview[claude]")'
             ) from exc
-        if not shutil.which("claude"):
+        if not find_installed_cli():
             raise ClaudeUnavailableError("Claude Code CLI is not installed or is not on PATH")
 
         required = {

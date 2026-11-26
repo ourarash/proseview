@@ -6058,6 +6058,14 @@
                     return;
                 }
                 if (token.type === 'html') {
+                    // A reader never sees the writer's <!-- TODO --> or <!-- NOTE -->.
+                    // A comment on the line above a paragraph swallows it into
+                    // the same HTML block, so render what is left as Markdown.
+                    if (ctx && ctx.hideComments && (token.raw || '').indexOf('<!--') >= 0) {
+                        var rest = String(token.raw).replace(/<!--[\s\S]*?-->/g, '');
+                        if (rest.trim()) appendMarkdownTokens(parent, marked.lexer(rest.replace(/^\s*\n/, ''), {gfm: true}), ctx);
+                        return;
+                    }
                     var rawImg = rawImgNode(token.raw || token.text || '', ctx);
                     if (rawImg) { parent.appendChild(rawImg); return; }
                     parent.appendChild(document.createTextNode(token.raw || token.text || ''));

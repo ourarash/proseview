@@ -266,3 +266,16 @@ def test_read_the_book_and_settings_are_trimmed_for_the_phone(phone: Page, book_
     expect(phone.locator("#settingsTabAppearance")).to_be_visible()
     for tab in ("Suggestions", "Group", "Beatmap", "Sceneimage", "Discuss"):
         expect(phone.locator(f"#settingsTab{tab}")).to_be_hidden()
+
+
+def test_read_the_book_hides_todo_and_note_comments(phone: Page, book_server: ProseviewServer):
+    scene = book_server.root / "manuscript" / SCENE
+    scene.write_text(
+        scene.read_text(encoding="utf-8") + "\n<!-- NOTE: hugging the paragraph -->\nRight under the note.\n",
+        encoding="utf-8",
+    )
+    open_home(phone, book_server)
+    phone.locator("#phoneHome").get_by_role("button", name="Read the book").tap()
+    expect(phone.locator("#bookBody")).to_contain_text("Right under the note.")
+    text = phone.locator("#bookBody").inner_text()
+    assert "<!--" not in text and "hugging the paragraph" not in text

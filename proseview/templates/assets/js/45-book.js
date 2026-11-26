@@ -107,7 +107,7 @@
                     open.title = (canEdit ? 'Edit ' : 'Open ') + '“' + _bookSceneTitle(p) + '”';
                     var prose = document.createElement('div');
                     prose.className = 'book-prose';
-                    renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p)});
+                    renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p), hideComments: true});
                     var sceneMeta = (typeof meta === 'object' && meta) ? meta[p] : null;
                     var sceneLbl = sceneMeta && sceneMeta.label ? String(sceneMeta.label).trim() : '';
                     var labelColor = (sceneLbl && typeof labelColorCssExpr === 'function')
@@ -227,7 +227,7 @@
                     if (changed.indexOf(p) < 0) return;
                     var prose = document.createElement('div');
                     prose.className = 'book-prose';
-                    renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p)});
+                    renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p), hideComments: true});
                     section.querySelector('.book-prose').replaceWith(prose);
                     section.setAttribute('aria-label', _bookSceneTitle(p));
                 });

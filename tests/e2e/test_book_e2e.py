@@ -151,6 +151,41 @@ def test_edit_from_the_book_and_come_back_to_the_same_scene(page: Page, book_ser
     expect(page.locator(f'.book-scene[data-path="{scene}"]')).to_contain_text("The kettle ticked.")
 
 
+def test_the_book_takes_a_change_on_disk_without_moving_the_text(page: Page, book_server: ProseviewServer):
+    """An agent edits a scene above the one being read: the edit shows, and the reading stays put."""
+    reading = "ch05/01-advice-from-a-caterpillar.md"
+    above = book_server.root / "manuscript" / "ch02" / "01-curiouser-and-curiouser.md"
+    page.goto(book_server.url("/#/book/" + reading.replace("/", "%2F")), wait_until="load")
+    page.wait_for_function(f"() => bookCurrentScene() === {reading!r}")
+    # Into the scene a little, so a paragraph sits at the top of the view.
+    page.mouse.wheel(0, 400)
+    page.wait_for_timeout(300)
+    where = """() => {
+        const prose = document.querySelector('.book-scene[data-path="%s"] .book-prose');
+        const line = document.querySelector('#book-panel .book-header').getBoundingClientRect().bottom + 24;
+        const p = [...prose.children].find(el => el.getBoundingClientRect().bottom >= line);
+        return {text: p.textContent.slice(0, 40), top: Math.round(p.getBoundingClientRect().top)};
+    }""" % reading
+    before = page.evaluate(where)
+
+    added = "\n\n".join(["The hall grew longer while nobody watched it."] * 12)
+    above.write_text(above.read_text(encoding="utf-8").rstrip() + "\n\n" + added + "\n", encoding="utf-8")
+
+    expect(page.locator(f'.book-scene[data-path="ch02/01-curiouser-and-curiouser.md"]')).to_contain_text(
+        "The hall grew longer while nobody watched it.")
+    page.wait_for_timeout(200)
+    after = page.evaluate(where)
+    assert after["text"] == before["text"]
+    assert abs(after["top"] - before["top"]) <= 2, (before, after)
+    assert page.evaluate("bookCurrentScene()") == reading
+
+    # The scene being read takes its own change too.
+    path = book_server.root / "manuscript" / reading
+    path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n\nThe caterpillar yawned.\n", encoding="utf-8")
+    expect(page.locator(f'.book-scene[data-path="{reading}"]')).to_contain_text("The caterpillar yawned.")
+    assert page.evaluate("document.documentElement.dataset.view") == "book"
+
+
 def test_read_the_book_from_a_scene(page: Page, book_server: ProseviewServer):
     scene = "ch03/01-a-queer-looking-party.md"
     page.goto(book_server.url("/#/scene/" + scene.replace("/", "%2F")), wait_until="load")

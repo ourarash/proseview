@@ -1349,6 +1349,10 @@
                 }
                 return;
             }
+            if (view === 'book') {
+                if (typeof bookRefreshChanged === 'function') bookRefreshChanged();
+                return;
+            }
             // An open editor with nothing unsaved takes the change too (an
             // agent's edit, say); one with unsaved work keeps it, and its
             // save's conflict check covers the change on disk.

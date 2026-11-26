@@ -163,6 +163,88 @@
             });
         }
 
+        // Scenes changed on disk while the book is open (an agent's edit, say)
+        // are fetched again and redrawn in place, as the scene view does. The
+        // paragraph being read stays where it is on screen, even when a scene
+        // above it grew or shrank.
+        var _bookRefreshing = false;
+        var _bookRefreshAgain = false;
+        function bookRefreshChanged() {
+            if (typeof _scenesChangedOnDisk !== 'object') return;
+            if (_bookRefreshing) { _bookRefreshAgain = true; return; }
+            var changed = paths.filter(function(p) { return _scenesChangedOnDisk[p]; });
+            if (!changed.length) return;
+            _bookRefreshing = true;
+            Promise.all(changed.map(function(p) {
+                return fetch('/scene-data?path=' + encodeURIComponent(p), {cache: 'no-store'})
+                    .then(function(r) { return r.ok ? r.json() : null; })
+                    .then(function(data) {
+                        if (!data || !data.contents || data.contents[p] === undefined) return null;
+                        contents[p] = data.contents[p];
+                        if (data.meta && data.meta[p]) meta[p] = data.meta[p];
+                        if (data.highlightsByPath && data.highlightsByPath[p]) highlightsByPath[p] = data.highlightsByPath[p];
+                        delete _scenesChangedOnDisk[p];
+                        return p;
+                    })
+                    // Still marked changed: the next change, or opening it, tries again.
+                    .catch(function() { return null; });
+            })).then(function(done) {
+                _bookRefreshing = false;
+                done = done.filter(Boolean);
+                if (done.length && document.documentElement.dataset.view === 'book') _bookRedraw(done);
+                if (_bookRefreshAgain) {
+                    _bookRefreshAgain = false;
+                    bookRefreshChanged();
+                }
+            });
+        }
+
+        function _bookRedraw(changed) {
+            var body = document.getElementById('bookBody');
+            if (!body) return;
+            // Where the reader is: the first block of the scene at the top
+            // that is still on screen.
+            var line = _bookHeaderBottom() + 24;
+            var reading = _bookPagesScroll === null ? _bookCurrentSection() : null;
+            var mark = null;
+            if (reading) {
+                var blocks = reading.querySelector('.book-prose').children;
+                var index = 0;
+                while (index < blocks.length - 1 && blocks[index].getBoundingClientRect().bottom < line) index++;
+                var target = blocks[index] || reading;
+                mark = {path: reading.dataset.path, index: index, top: target.getBoundingClientRect().top};
+            }
+            var html = document.documentElement;
+            html.style.overflowAnchor = 'none';
+            var rendered = _bookSections.map(function(s) { return s.dataset.path; });
+            if (rendered.join('\n') !== paths.join('\n')) {
+                // Scenes came or went: lay the book out again.
+                renderBook();
+            } else {
+                _bookSections.forEach(function(section) {
+                    var p = section.dataset.path;
+                    if (changed.indexOf(p) < 0) return;
+                    var prose = document.createElement('div');
+                    prose.className = 'book-prose';
+                    renderSafeMarkdown(prose, contents[p] || '', {basePath: _bookBasePath(p)});
+                    section.querySelector('.book-prose').replaceWith(prose);
+                    section.setAttribute('aria-label', _bookSceneTitle(p));
+                });
+                syncBookLabels();
+            }
+            if (mark) {
+                var section = _bookSections.filter(function(s) { return s.dataset.path === mark.path; })[0];
+                if (section) {
+                    var after = section.querySelector('.book-prose').children;
+                    var el = after[Math.min(mark.index, after.length - 1)] || section;
+                    window.scrollBy({top: el.getBoundingClientRect().top - mark.top, left: 0, behavior: 'instant'});
+                }
+            }
+            html.style.overflowAnchor = '';
+            _bookCurrent = null;
+            _bookTrack();
+        }
+
         // The chapter list behind the middle of the navigator.
         function _bookRenderToc(chapters) {
             var toc = document.getElementById('bookToc');
@@ -433,6 +515,8 @@
             }
             setBookLayout(layout === 'print');
             if (!options.returning && layout !== 'print') _bookShowIntro();
+            // Scenes changed on disk while the book was closed.
+            bookRefreshChanged();
             return true;
         }
 

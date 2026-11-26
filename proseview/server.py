@@ -43,6 +43,7 @@ from .highlights import strip_markdown_for_offsets
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import Block, changed_blocks, classify_whitespace_change, split_lines
 from .patches import Hunk, parse_hunks
+from .remote import LAPTOP_ONLY_PATHS, RemoteError, RemoteSession
 from .privacy import PrivacyLock, parse_idle_minutes
 from .generator import (
     TEMPLATE_DIR, _load_app_css, _load_asset, build_analysis_payload, build_dashboard,
@@ -1594,6 +1595,10 @@ class _Handler(BaseHTTPRequestHandler):
     export_previews: PreviewCache
     pdf_pages: PdfPages
     privacy: PrivacyLock
+    #: Set on the phone listener's handler only; see :mod:`proseview.remote`.
+    remote: "RemoteSession | None" = None
+    #: The running remote session, on both listeners (for Settings' QR code).
+    remote_session: "RemoteSession | None" = None
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # silence default access log
@@ -1820,6 +1825,9 @@ class _Handler(BaseHTTPRequestHandler):
         own: a DNS-rebinding page resolves its own hostname to 127.0.0.1 and
         then talks to us with its origin intact. Pinning Host closes that.
         """
+        if self.remote is not None:
+            # The phone listener: only the laptop's own Tailscale login.
+            return self.remote.gate.allows(self.headers)
         host = self.headers.get("Host", "")
         origin = self.headers.get("Origin", "")
         if not self._is_loopback_authority(host):
@@ -1858,6 +1866,9 @@ class _Handler(BaseHTTPRequestHandler):
         """
         if not self._is_local_request():
             self._send_json({"ok": False, "error": "request must come from this local Proseview server"}, 403)
+            return False
+        if self.remote is not None and urlparse(self.path).path in LAPTOP_ONLY_PATHS:
+            self._send_json({"ok": False, "error": "This only works on the Mac."}, 403)
             return False
         supplied = self.headers.get("X-Proseview-Session", "")
         if not self.session_token or not compare_digest(supplied, self.session_token):
@@ -2579,6 +2590,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": "request must come from this local Proseview server"}, 403)
             return
         discuss_path = urlparse(self.path).path
+        if self.remote is not None and discuss_path in LAPTOP_ONLY_PATHS:
+            self._send_json({"ok": False, "error": "This only works on the Mac."}, 403)
+            return
         discuss_match = re.fullmatch(r"/api/discuss/conversations/([^/]+)/(snapshot|events)", discuss_path)
         if discuss_match:
             conversation_id, action = discuss_match.groups()
@@ -2623,6 +2637,9 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._authorize_event_stream_generation():
                 return
             q: queue.Queue[str] = self.subscribe()
+            if self.remote is not None:
+                # The laptop shows a small dot while a phone is connected.
+                self.publish_event({"type": "remote", "phones": self.remote.phone_connected(1)})
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -2643,6 +2660,8 @@ class _Handler(BaseHTTPRequestHandler):
                 pass
             finally:
                 self.unsubscribe(q)
+                if self.remote is not None:
+                    self.publish_event({"type": "remote", "phones": self.remote.phone_connected(-1)})
             return
         elif self.path == "/assets/app.js":
             self.send_response(200)
@@ -3032,6 +3051,12 @@ class _Handler(BaseHTTPRequestHandler):
                 # Covered before first paint, so a reload shows no prose.
                 mark = ' data-privacy-password="1"' if privacy["password"] else ""
                 html = html.replace("<html ", f'<html data-privacy="locked"{mark} ', 1)
+            if self.remote is not None:
+                html = html.replace("<html ", '<html data-remote="phone" ', 1)
+            if self.remote_session is not None:
+                phones = self.remote_session.phones
+                attrs = f'data-remote-url="{html_escape(self.remote_session.identity.url)}" data-remote-phones="{phones}"'
+                html = html.replace("<html ", f"<html {attrs} ", 1)
             html = html.encode("utf-8")
         except Exception as exc:
             self.send_response(500)
@@ -4029,8 +4054,21 @@ def serve(
     port: int = DEFAULT_PORT,
     watch_interval: float = 2.0,
     open_browser: bool = True,
+    remote: bool = False,
 ) -> None:
-    """Start the proseview HTTP server and block until interrupted."""
+    """Start the proseview HTTP server and block until interrupted.
+
+    With *remote*, also open a phone listener and publish it on the tailnet
+    with ``tailscale serve`` (see :mod:`proseview.remote`).
+    """
+    remote_session: RemoteSession | None = None
+    if remote:
+        # Checked before anything starts, so a missing Tailscale is one plain line.
+        try:
+            remote_session = RemoteSession.prepare()
+        except RemoteError as exc:
+            sys.stderr.write(f"proseview --remote: {exc}\n")
+            sys.exit(1)
     lock = threading.Lock()
     _cache: list[str] = []
     _stale = [True]
@@ -4280,6 +4318,26 @@ def serve(
     print("Press Ctrl-C to stop.")
     _write_runtime_file(root, port, session_token)
 
+    phone_httpd = None
+    if remote_session is not None:
+        handler_cls.remote_session = remote_session
+
+        class PhoneHandler(handler_cls):  # type: ignore[misc, valid-type]
+            pass
+        PhoneHandler.remote = remote_session
+        phone_httpd = _Server(("127.0.0.1", 0), PhoneHandler)
+        threading.Thread(target=phone_httpd.serve_forever, daemon=True).start()
+        try:
+            remote_session.start(phone_httpd.server_address[1])
+        except RemoteError as exc:
+            phone_httpd.shutdown()
+            httpd.server_close()
+            _remove_runtime_file(root, port)
+            sys.stderr.write(f"proseview --remote: {exc}\n")
+            sys.exit(1)
+        print(f"On your phone (same Tailscale login): {remote_session.identity.url}")
+        print("This Mac stays awake while Proseview runs (with the lid open).")
+
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
@@ -4300,6 +4358,10 @@ def serve(
     except KeyboardInterrupt:
         pass
     finally:
+        if remote_session is not None:
+            remote_session.stop()
+        if phone_httpd is not None:
+            phone_httpd.shutdown()
         httpd.shutdown()
         discuss_manager.close()
         _remove_runtime_file(root, port)

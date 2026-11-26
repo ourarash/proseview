@@ -111,6 +111,10 @@ def _add_serve_args(parser: argparse.ArgumentParser, *, root: bool = True) -> No
         "--no-open", dest="open_browser", action="store_false", default=True,
         help="Do not auto-open the browser.",
     )
+    parser.add_argument(
+        "--remote", action="store_true", default=False,
+        help="Also open Proseview on your phone over Tailscale (tailscale serve).",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -886,6 +890,7 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             watch_interval=args.interval,
             open_browser=args.open_browser,
+            remote=getattr(args, "remote", False),
         )
     except KeyboardInterrupt:
         return 0

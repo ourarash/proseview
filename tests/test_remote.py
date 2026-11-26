@@ -207,6 +207,7 @@ def test_writes_from_the_phone_still_need_the_page_session(listeners):
 # -- supervising serve ----------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a POSIX shell stand-in for tailscale and SIGINT")
 def test_stop_sends_sigint_so_serve_removes_its_own_mapping(tmp_path: Path):
     marker = tmp_path / "stopped"
     script = tmp_path / "fake_serve.py"
@@ -225,6 +226,7 @@ def test_stop_sends_sigint_so_serve_removes_its_own_mapping(tmp_path: Path):
     assert marker.read_text() == "sigint"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a POSIX shell stand-in for tailscale and SIGINT")
 def test_start_reports_a_serve_that_exits_at_once(tmp_path: Path, monkeypatch):
     fake = tmp_path / "tailscale"
     fake.write_text("#!/bin/sh\necho 'serve config denied' >&2\nexit 1\n", encoding="utf-8")
@@ -265,6 +267,7 @@ def test_qr_refuses_text_it_cannot_hold():
         encode("z" * 300)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a POSIX shell stand-in for tailscale and SIGINT")
 def test_start_names_another_serve_holding_443(tmp_path: Path):
     fake = tmp_path / "tailscale"
     fake.write_text(
@@ -276,6 +279,7 @@ def test_start_names_another_serve_holding_443(tmp_path: Path):
         RemoteSession(str(fake), Identity(DNS, LOGIN)).start(1234)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a POSIX shell stand-in for tailscale and SIGINT")
 def test_serve_log_is_drained_so_a_chatty_serve_never_stalls(tmp_path: Path):
     fake = tmp_path / "tailscale"
     # 200 KB of log, far past a pipe's buffer, then stay up until stopped.

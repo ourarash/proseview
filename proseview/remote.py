@@ -297,7 +297,11 @@ class RemoteSession:
         serve, self._serve = self._serve, None
         if serve is not None and serve.poll() is None:
             # SIGINT lets serve remove its own mapping; kill only if it hangs.
-            serve.send_signal(signal.SIGINT)
+            # Windows has no SIGINT to send to another process.
+            if os.name == "nt":
+                serve.terminate()
+            else:
+                serve.send_signal(signal.SIGINT)
             try:
                 serve.wait(timeout=5)
             except subprocess.TimeoutExpired:

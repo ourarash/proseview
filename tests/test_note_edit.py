@@ -77,11 +77,14 @@ def test_a_save_keeps_the_frontmatter_and_backs_up_the_old_version(book: Path):
     "# No frontmatter\n\nText.\n\n",
 ])
 def test_saving_unchanged_text_leaves_the_file_byte_for_byte(book: Path, raw: str):
+    # Saves write the platform's line endings (a Windows checkout has CRLF),
+    # so the file starts out in them too.
+    on_disk = raw.replace("\n", os.linesep).encode("utf-8")
     path = book / NOTE
-    path.write_bytes(raw.encode("utf-8"))
+    path.write_bytes(on_disk)
     _, body = split_note_header(raw)
     save_note_content(NOTE, body, path.stat().st_mtime, str(book))
-    assert path.read_bytes() == raw.encode("utf-8")
+    assert path.read_bytes() == on_disk
 
 
 def test_a_file_changed_on_disk_is_not_overwritten_unless_asked(book: Path):

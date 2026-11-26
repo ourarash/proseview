@@ -15584,6 +15584,13 @@
             margin-left: 8px;
         }
 
+        /* Rows half as tall as other tables': a book's list of scenes runs long. */
+        #sceneTable th,
+        #sceneTable td {
+            padding-top: 6px;
+            padding-bottom: 6px;
+        }
+
         .scene-row td:first-child {
             padding-left: 28px;
         }

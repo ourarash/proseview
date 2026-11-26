@@ -39,11 +39,27 @@ section here becomes the release notes on GitHub.
 
 - **Send to Group** moved into the menu beside **Send**.
 - A selection attached to a message is cleared once the message is sent.
+- **Word variety** flags far fewer scenes: the nearby-words range is now
+  0.66–0.72 (was 0.74–0.77, which flagged 38 of Alice in Wonderland's 39
+  scenes; now 4). A book still carrying the old range from `proseview init`
+  gets the new one.
+- **Read the book** takes changes to scene files as they happen, as the
+  scene view does, without moving the text you are reading.
+- The Overview scene table is more compact.
+- The old pandoc export (`--engine pandoc`) is removed; the built-in writer
+  makes every format.
 
 ### Fixed
 
 - Agy turns are no longer cut short by opening the chat's history or
   exporting it while the agent works.
+- Claude uses your installed Claude Code even when Proseview is started
+  from the Dock, where `~/.local/bin` is not on PATH.
+- The selection menu stays where you drag it instead of jumping back.
+- Opening Read the book and moving straight on no longer jumps back to the
+  start.
+- Folders left open in the file browser stay open after deleting or
+  renaming a file there.
 
 ## 0.5.1 — 2026-11-19
 

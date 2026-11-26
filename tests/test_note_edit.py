@@ -71,6 +71,19 @@ def test_a_save_keeps_the_frontmatter_and_backs_up_the_old_version(book: Path):
     assert json.loads(backup.read_text(encoding="utf-8"))["content"] == before
 
 
+@pytest.mark.parametrize("raw", [
+    "---\nname: Alice\n---\n# Alice\n\nNo gap after the frontmatter.\n",
+    "---\nname: Alice\n---\n\n\n# Alice\n\nTwo blank lines and no final newline.",
+    "# No frontmatter\n\nText.\n\n",
+])
+def test_saving_unchanged_text_leaves_the_file_byte_for_byte(book: Path, raw: str):
+    path = book / NOTE
+    path.write_bytes(raw.encode("utf-8"))
+    _, body = split_note_header(raw)
+    save_note_content(NOTE, body, path.stat().st_mtime, str(book))
+    assert path.read_bytes() == raw.encode("utf-8")
+
+
 def test_a_file_changed_on_disk_is_not_overwritten_unless_asked(book: Path):
     path = book / NOTE
     opened = path.stat().st_mtime

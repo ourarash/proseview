@@ -235,3 +235,15 @@ def test_omitting_the_mtime_keeps_the_old_unguarded_behaviour(scene: Path):
     """The CLI does not track page state, so the guard stays opt-in."""
     insert_todo(str(scene), "counted the boats", OFFSET, "cli")
     assert "<!-- TODO: cli -->" in scene.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("raw, rendered", [
+    ("*Later,* she counted the boats again.", "Later, she counted the boats again."),
+    ("**Nobody** had told her about the [storm](notes.md) coming.", "Nobody had told her about the storm coming."),
+])
+def test_todo_anchors_on_a_paragraph_that_opens_with_markdown(tmp_path: Path, raw: str, rendered: str):
+    path = tmp_path / "02-later.md"
+    path.write_text(SCENE + "\n" + raw + "\n", encoding="utf-8")
+    insert_todo(str(path), rendered, OFFSET, "tighten")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[lines.index(raw) - 2] == "<!-- TODO: tighten -->"

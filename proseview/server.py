@@ -39,6 +39,7 @@ from .export_dashboard import (
     ExportJobs, PdfPages, PreviewCache, build_preview, exported_file, open_in_system, outline as export_outline,
     save_cover, save_reading_layout, selection_from_request,
 )
+from .highlights import strip_markdown_for_offsets
 from .history import is_git_repo as _is_git_repo, record_today, what_changed
 from .hunks import Block, changed_blocks, classify_whitespace_change, split_lines
 from .patches import Hunk, parse_hunks
@@ -1159,9 +1160,19 @@ def save_note_content(
         new_raw = content.rstrip("\n") + "\n" if content.strip() else ""
         _validate_yaml_content(resolved, Path(repo_root), new_raw)
     else:
-        header, _ = split_note_header(raw)
-        body = content.rstrip("\n") + "\n"
-        new_raw = f"{header}\n{body}" if header else body
+        header, old_body = split_note_header(raw)
+        # Keep the file's own spacing: the blank lines after the frontmatter and
+        # the newlines at the end, so saving unchanged text leaves the file as is.
+        stripped = old_body.rstrip("\n")
+        ending = old_body[len(stripped):] if old_body else "\n"
+        body = content.rstrip("\n") + ending if content.strip() else ""
+        if header:
+            gap = raw[len(header):len(raw) - len(old_body)] if old_body else "\n"
+            if not header.endswith("\n"):
+                header += "\n"
+            new_raw = header + gap + body if body else header
+        else:
+            new_raw = body or "\n"
         if frontmatter is not None:
             new_raw = replace_frontmatter(new_raw, frontmatter)
     _create_file_backup(resolved, raw, new_raw, "Manual Save", repo_root)
@@ -1332,6 +1343,15 @@ def _annotation_insert_line(
         )
 
     para_idx = next((i for i, para in enumerate(paras) if needle in para), -1)
+    if para_idx < 0:
+        # The page sends rendered text, so a paragraph that opens with *italics*,
+        # **bold** or a link only matches once its Markdown is stripped too.
+        plain_needle = " ".join(needle.split())
+        para_idx = next(
+            (i for i, para in enumerate(paras)
+             if plain_needle and plain_needle in " ".join(strip_markdown_for_offsets(para).split())),
+            -1,
+        )
     if para_idx < 0:
         raise _AnnotationAnchorError(
             f"Could not find the selected passage in {path.name}; it may have changed "

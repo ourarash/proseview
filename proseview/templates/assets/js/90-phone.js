@@ -335,8 +335,15 @@
                     }}),
                     el('button', {type: 'button', id: 'pvEditBtn', className: 'pv-bar-btn', text: 'Edit', onclick: function() { openQuickEdit(); }}),
                     el('button', {type: 'button', id: 'pvAskBtn', className: 'pv-bar-btn', text: 'Ask', onclick: function(event) { openAsk(event.currentTarget); }}),
+                    el('button', {type: 'button', className: 'pv-bar-btn pv-cover-btn', text: 'Cover', 'aria-label': 'Cover the screen',
+                                  onclick: function() { cover(); }}),
                 ]);
                 document.body.appendChild(bar);
+                var actions = document.querySelector('.toolbar-actions');
+                if (actions && !document.getElementById('pvCoverTop')) {
+                    actions.appendChild(el('button', {type: 'button', id: 'pvCoverTop', className: 'theme-toggle pv-cover-top', text: 'Cover',
+                                                      'aria-label': 'Cover the screen', onclick: function() { cover(); }}));
+                }
             }
 
             function syncBar() {
@@ -356,6 +363,46 @@
                 if (typeof showDiscussAgentTab !== 'function') return;
                 // The agent last used, as on the laptop.
                 showDiscussAgentTab(typeof _discussAgent === 'string' ? _discussAgent : 'codex', trigger);
+            }
+
+            // ── Privacy screen ──────────────────────────────────────────────────
+            // The laptop covers with Cmd+J J; the phone has a Cover button,
+            // and a double tap on the cover uncovers it (or asks for the
+            // password, when one is set).
+
+            function cover() {
+                if (typeof privacyToggle !== 'function' || (typeof _privacyShown !== 'undefined' && _privacyShown)) return;
+                privacyToggle();
+            }
+
+            // The second tap's click would land on whatever the cover hid.
+            function swallowNextClick() {
+                var swallow = function(event) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    document.removeEventListener('click', swallow, true);
+                };
+                document.addEventListener('click', swallow, true);
+                setTimeout(function() { document.removeEventListener('click', swallow, true); }, 600);
+            }
+
+            function watchCoverTaps() {
+                var screen = document.getElementById('privacyScreen');
+                if (!screen) return;
+                var last = -Infinity;
+                screen.addEventListener('pointerup', function(event) {
+                    if (!root.classList.contains('pv-phone') || event.target.id === 'privacyPassword') return;
+                    if (event.timeStamp - last <= 400) {
+                        last = -Infinity;
+                        var box = document.getElementById('privacyPassword');
+                        if (box && !box.hidden) return;
+                        if (typeof privacyToggle !== 'function') return;
+                        privacyToggle();
+                        if (typeof _privacyShown === 'undefined' || !_privacyShown) swallowNextClick();
+                    } else {
+                        last = event.timeStamp;
+                    }
+                });
             }
 
             // ── Quick edit ──────────────────────────────────────────────────────
@@ -791,6 +838,7 @@
                     syncBar();
                 });
                 document.addEventListener('click', onSceneTap);
+                watchCoverTaps();
                 document.addEventListener('keydown', guardComposerEnter, true);
                 document.addEventListener('visibilitychange', function() {
                     // Phones leave half-dead connections behind after sleep.

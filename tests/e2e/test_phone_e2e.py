@@ -239,3 +239,30 @@ def test_the_home_lists_every_todo_and_opens_its_scene_at_it(phone: Page, book_s
     row.tap()
     expect(phone.locator("html")).to_have_attribute("data-view", "scene")
     expect(phone.locator("#sceneProseHost .pm-annotation-todo", has_text="riddle stays unanswered")).to_be_in_viewport()
+
+
+def test_cover_hides_the_book_and_a_double_tap_uncovers_it(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    phone.locator("#pvCoverTop").tap()
+    expect(phone.locator("#privacyScreen")).to_be_visible()
+    screen = phone.locator("#privacyScreen")
+    screen.tap(position={"x": 200, "y": 400})
+    screen.tap(position={"x": 200, "y": 400})
+    expect(screen).to_be_hidden()
+    expect(phone.locator("#phoneHome")).to_be_visible()
+
+
+def test_read_the_book_and_settings_are_trimmed_for_the_phone(phone: Page, book_server: ProseviewServer):
+    open_home(phone, book_server)
+    phone.locator("#phoneHome").get_by_role("button", name="Read the book").tap()
+    expect(phone.locator("#bookWhere")).to_be_visible()
+    for hidden in ("#bookViewSwitch", "#bookTitle", "#phoneHome"):
+        expect(phone.locator(hidden)).to_be_hidden()
+    box = phone.locator("#bookNav .book-nav-btn").first.bounding_box()
+    assert box and box["height"] >= 44 and box["width"] >= 44
+    phone.locator("#bookBackBtn").tap()
+    phone.evaluate("openSettings()")
+    expect(phone.locator("#settingsTabGeneral")).to_be_visible()
+    expect(phone.locator("#settingsTabAppearance")).to_be_visible()
+    for tab in ("Suggestions", "Group", "Beatmap", "Sceneimage", "Discuss"):
+        expect(phone.locator(f"#settingsTab{tab}")).to_be_hidden()

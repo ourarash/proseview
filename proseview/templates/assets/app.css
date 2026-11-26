@@ -20880,7 +20880,6 @@
         html.pv-phone #utilityTabBeats,
         html.pv-phone #utilityTabGroup,
         html.pv-phone .discuss-resize-handle { display: none !important; }
-        html.pv-phone #tab-overview { display: block; }
         html.pv-phone #tab-analysis,
         html.pv-phone #tab-timeline,
         html.pv-phone #tab-tasks { display: none !important; }
@@ -21018,3 +21017,35 @@
         .pv-todo-row { padding: 10px 16px 10px 40px; }
         .pv-todo-row .pv-row-title { display: flex; flex-direction: column; gap: 2px; }
         .pv-todo-scene { font-size: 13px; }
+        .pv-cover-top { display: none; }
+        html.pv-phone .pv-cover-top { display: inline-flex; padding: 0 14px; font-weight: 600; }
+        html.pv-phone .pv-cover-btn { flex: 0 0 auto; padding: 0 14px; }
+        html.pv-phone #privacyPassword { font-size: 16px; }
+        /* Read the book on the phone: one line of where you are, Aa, and a
+           thumb-sized bar at the bottom with the progress line above it. */
+        html.pv-phone #bookViewSwitch,
+        html.pv-phone #bookFocusBtn,
+        html.pv-phone #bookEditBtn,
+        html.pv-phone #bookPrintFields,
+        html.pv-phone #book-panel .book-scene-open,
+        html.pv-phone #bookTitle { display: none !important; }
+        html.pv-phone #book-panel .book-header { flex-wrap: nowrap; gap: 8px; align-items: center; }
+        html.pv-phone #book-panel .book-heading { flex: 1; min-width: 0; }
+        html.pv-phone #bookWhere { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+        html.pv-phone #bookNav .book-nav-progress { height: 4px; background: var(--surface-muted); }
+        html.pv-phone #bookNav .book-nav-row { padding-bottom: env(safe-area-inset-bottom); }
+        html.pv-phone #bookNav .book-nav-btn { min-width: 48px; min-height: 48px; font-size: 22px; }
+        html.pv-phone #bookNav .book-nav-where { min-height: 48px; font-size: 15px; }
+        html.pv-phone #bookToc { max-height: 60vh; overflow-y: auto; }
+        html.pv-phone #bookToc button { min-height: 44px; }
+        /* Settings on the phone: General and Appearance only. */
+        html.pv-phone #settingsTabSuggestions,
+        html.pv-phone #settingsTabGroup,
+        html.pv-phone #settingsTabBeatmap,
+        html.pv-phone #settingsTabSceneimage,
+        html.pv-phone #settingsTabDiscuss,
+        html.pv-phone .settings-resize { display: none !important; }
+        html.pv-phone #settingsDialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; }
+        html.pv-phone .settings-remote-section,
+        html.pv-phone .settings-variety { display: none !important; }
+        html.pv-phone #settingsDialog .settings-row { flex-wrap: wrap; row-gap: 8px; }

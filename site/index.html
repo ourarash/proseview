@@ -47,10 +47,17 @@
     <a class="button" href="#get-started">Install Proseview</a>
   </div>
   <p class="fine">macOS, Windows &amp; Linux · or <a href="write/">start a book in your browser →</a></p>
-  <figure class="shot hero-shot">
-    <img src="images/write-a-scene-light.png" data-light-src="images/write-a-scene-light.png" data-dark-src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
-    <figcaption>Press E to edit right in the typeset page, and Cmd/Ctrl+S to return to reading. Every scene stays a plain Markdown file on your computer.</figcaption>
-  </figure>
+  <div class="hero-stage">
+    <figure class="shot hero-shot">
+      <img src="images/write-a-scene-light.png" data-light-src="images/write-a-scene-light.png" data-dark-src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
+    </figure>
+    <ul class="hero-callouts" aria-label="Editor highlights">
+      <li class="hero-callout c-left c-parchment"><b>Plain Markdown</b> scenes, one folder per chapter</li>
+      <li class="hero-callout c-left c-sage"><b>Story bibles &amp; notes</b> right beside your draft</li>
+      <li class="hero-callout c-right c-rose">Press E — edit right in <b>book typography</b></li>
+      <li class="hero-callout c-right c-slate"><b>Live word count,</b> timer &amp; inline TODOs</li>
+    </ul>
+  </div>
 </section>
 
 <section class="section-rule" id="write">
@@ -118,10 +125,7 @@
   <div class="studio-pair">
     <div class="studio-card">
       <figure class="shot">
-        <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-writing" aria-label="Typing a new closing line into a scene and saving it, with the word count updating">
-          <source src="images/demo-writing-light.webm" type="video/webm">
-          <source src="images/demo-writing-light.mp4" type="video/mp4">
-        </video>
+        <img src="images/search-palette-light.png" data-light-src="images/search-palette-light.png" data-dark-src="images/search-palette-dark.png" loading="lazy" alt="Cmd/Ctrl+K instant search palette open over the typeset scene, showing grouped file, story-bible, and scene matches for Queen">
       </figure>
       <h3>Edit in place, search everywhere</h3>
       <p>Press <kbd>E</kbd> to write in the same typography you read in, edit story bibles and YAML notes in place, and search the entire manuscript with <kbd>Cmd/Ctrl+K</kbd> across six themes and seven fonts.</p>
@@ -147,10 +151,7 @@
     </ul>
   </div>
   <figure class="shot">
-    <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-highlights" aria-label="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose">
-      <source src="images/demo-highlights-light.webm" type="video/webm">
-      <source src="images/demo-highlights-light.mp4" type="video/mp4">
-    </video>
+    <img src="images/highlights-final-light.png" data-light-src="images/highlights-final-light.png" data-dark-src="images/highlights-final-dark.png" loading="lazy" alt="Analysis panel open beside the opening scene of Alice's Adventures in Wonderland with Sensory, Filter Verbs, Repeats, and Passive Voice switched on and underlined in the prose">
   </figure>
 </section>
 
@@ -198,9 +199,13 @@
   <section class="section-rule spotlight" id="beat-map">
     <p class="eyebrow">Pacing &amp; tension</p>
     <h2>Beat Map: see how a scene moves.</h2>
-    <p class="prose">Plot an estimated tension curve across the top of your scene alongside every beat in order—dialogue, action, internal thought, and silent reaction—without touching your prose. Step through moments to highlight each passage in place; Proseview flags the map out of date whenever the scene changes.</p>
+    <p class="prose">Plot an estimated tension curve across the top of your scene or in the side panel alongside every beat in order—dialogue, action, internal thought, and silent reaction—without touching your prose. Step through moments to highlight each passage in place; Proseview flags the map out of date whenever the scene changes.</p>
+    <div class="view-toggle" role="group" aria-label="Beat Map layout">
+      <button type="button" data-beatmap-view="strip" aria-pressed="true">Top Strip</button>
+      <button type="button" data-beatmap-view="sidebar" aria-pressed="false">Side Panel</button>
+    </div>
     <figure class="shot">
-      <img src="images/beat-map-strip-light.png" data-light-src="images/beat-map-strip-light.png" data-dark-src="images/beat-map-strip-dark.png" loading="lazy" alt="Beat Map horizontal tension strip above the opening scene of Alice's Adventures in Wonderland, highlighting the White Rabbit moment directly in the prose">
+      <img id="beatMapImg" src="images/beat-map-strip-light.png" data-strip-light="images/beat-map-strip-light.png" data-strip-dark="images/beat-map-strip-dark.png" data-sidebar-light="images/beat-map-light.png" data-sidebar-dark="images/beat-map.png" loading="lazy" alt="Beat Map horizontal tension strip above the opening scene of Alice's Adventures in Wonderland, highlighting the White Rabbit moment directly in the prose">
     </figure>
   </section>
 
@@ -276,12 +281,16 @@
       <li><strong>Safe sync:</strong> Drafts stay on your phone until saved, with conflict protection so computer and phone edits never silently overwrite each other.</li>
     </ul>
   </div>
-  <figure class="shot shot-phone">
-    <video autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
-      <source src="images/demo-phone-light.webm" type="video/webm">
-      <source src="images/demo-phone-light.mp4" type="video/mp4">
-    </video>
-  </figure>
+  <div class="phone-mock">
+    <div class="phone-screen">
+      <div class="phone-status" aria-hidden="true"><span class="phone-island"></span></div>
+      <video autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
+        <source src="images/demo-phone-light.webm" type="video/webm">
+        <source src="images/demo-phone-light.mp4" type="video/mp4">
+      </video>
+      <div class="phone-home" aria-hidden="true"><span></span></div>
+    </div>
+  </div>
 </section>
 
 <section class="tools-band">
@@ -448,6 +457,14 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
 (function () {
   var reduceMq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
   var toggle = document.getElementById('themeToggle');
+  var beatImg = document.getElementById('beatMapImg');
+  var beatView = 'strip';
+  function syncBeatMap(dark) {
+    if (!beatImg) return;
+    var attr = 'data-' + beatView + '-' + (dark ? 'dark' : 'light');
+    var want = beatImg.getAttribute(attr);
+    if (want && beatImg.getAttribute('src') !== want) beatImg.setAttribute('src', want);
+  }
   function applyTheme(theme) {
     var dark = theme === 'dark';
     if (dark) document.documentElement.dataset.theme = 'dark';
@@ -460,6 +477,7 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       var want = img.getAttribute(dark ? 'data-dark-src' : 'data-light-src');
       if (want && img.getAttribute('src') !== want) img.setAttribute('src', want);
     });
+    syncBeatMap(dark);
     var reduce = !!(reduceMq && reduceMq.matches);
     document.querySelectorAll('video[data-theme-video]').forEach(function (video) {
       var base = video.getAttribute('data-theme-video');
@@ -489,6 +507,15 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       applyTheme(next);
     });
   }
+  document.querySelectorAll('[data-beatmap-view]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      beatView = btn.getAttribute('data-beatmap-view') || 'strip';
+      document.querySelectorAll('[data-beatmap-view]').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      syncBeatMap(document.documentElement.dataset.theme === 'dark');
+    });
+  });
 })();
 </script>
 </body>

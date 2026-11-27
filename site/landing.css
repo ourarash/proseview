@@ -1004,6 +1004,15 @@ kbd {
 #reviewCallout[data-step="3"] { top: 58%; }
 #reviewCallout[data-step="4"] { top: 68%; }
 
+#askCallout[data-step="0"] { top: 16%; }
+#askCallout[data-step="1"] { top: 26%; }
+#askCallout[data-step="2"] { top: 44%; }
+
+#roomCallout[data-step="0"] { top: 16%; }
+#roomCallout[data-step="1"] { top: 32%; }
+#roomCallout[data-step="2"] { top: 46%; }
+#roomCallout[data-step="3"] { top: 60%; }
+
 .callout-step {
   display: block;
   margin-bottom: 5px;
@@ -1663,13 +1672,17 @@ footer a:hover {
   .hero-callouts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 18px;
+    gap: 10px;
+    margin-top: 14px;
   }
 
   .hero-callout {
     position: static;
     width: auto;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.3;
+    border: 1px solid var(--line);
     transform: none !important;
     filter: none;
   }
@@ -1680,19 +1693,50 @@ footer a:hover {
     flex-direction: column;
     align-items: center;
     padding: 0;
-    gap: 16px;
+    gap: 12px;
   }
 
+  /* Compact bordered narration bar tucked right ABOVE the video/phone */
   .side-callout {
     position: static;
-    order: 2;
+    order: -1;
     width: 100%;
-    max-width: 420px;
+    max-width: 680px;
+    min-height: 58px;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    row-gap: 3px;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--pc-line) 28%, transparent);
     filter: none;
   }
 
+  .side-callout .callout-step {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+    font-size: 10px;
+  }
+
+  .side-callout .callout-text {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 14.5px;
+    line-height: 1.3;
+  }
+
+  .side-callout .callout-dots {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: 0;
+    align-self: center;
+  }
+
   .phone-stage .side-callout {
-    max-width: 312px;
+    max-width: 340px;
   }
 
   .side-connector {
@@ -1743,15 +1787,11 @@ footer a:hover {
   }
 
   .phone-mock {
-    width: 288px;
+    width: 264px;
   }
 
   .tools-surface {
     padding: 34px 20px;
-  }
-
-  .compare-swipe {
-    display: block;
   }
 
   .card {
@@ -1761,6 +1801,31 @@ footer a:hover {
 
 @media (max-width: 560px) {
   .hero-callouts {
-    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .hero-callout {
+    padding: 9px 10px;
+    font-size: 13px;
+    line-height: 1.28;
+  }
+
+  .side-callout {
+    padding: 9px 12px;
+    min-height: 54px;
+  }
+
+  .side-callout .callout-text {
+    font-size: 13.5px;
+  }
+
+  .phone-mock {
+    width: 244px;
+    padding: 9px;
+    border-radius: 38px;
+  }
+
+  .phone-screen {
+    border-radius: 30px;
   }
 }

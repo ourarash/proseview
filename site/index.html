@@ -281,72 +281,72 @@
     </figure>
   </section>
 
-  <section class="section-rule ai-trio">
-    <div class="ai-trio-grid">
-      <div class="ai-card" id="ask">
+  <section class="section-rule spotlight spotlight-review" id="ask">
+    <p class="eyebrow">Multiple agents</p>
+    <h2>Ask &amp; edit across the whole book.</h2>
+    <p class="prose">Three side-by-side agent tabs that search the entire manuscript, read your story notes, edit multiple files at once, and show exact context and token usage for every reply.</p>
+    <div class="review-stage">
+      <figure class="shot">
+        <video id="askVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-agents" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation">
+          <source src="images/demo-agents-light.webm" type="video/webm">
+          <source src="images/demo-agents-light.mp4" type="video/mp4">
+        </video>
+      </figure>
+      <div class="side-callout side-callout-right c-parchment" id="askCallout" data-step="0" aria-live="polite">
+        <span class="callout-step" id="askStepLabel">Step 1 of 3</span>
+        <p class="callout-text" id="askStepText"><b>Ask Codex</b> about the open scene</p>
+        <div class="callout-dots" role="tablist" aria-label="Ask agents moments">
+          <button type="button" role="tab" aria-selected="true" data-seek="6.5" aria-label="Step 1: Ask Codex"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="17.0" aria-label="Step 2: Switch to Claude"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="25.5" aria-label="Step 3: Compare independent replies"></button>
+        </div>
+        <span class="side-connector" aria-hidden="true"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-rule spotlight spotlight-review" id="group">
+    <p class="eyebrow">The Group</p>
+    <h2>Let your agents debate.</h2>
+    <p class="prose">Put two or three agents in one conversation—focused on story, voice, and continuity—to push back on each other and summarize agreed Before/After edits, or forward any chat for a second opinion.</p>
+    <div class="review-stage">
+      <figure class="shot">
+        <video id="roomVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-room" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay">
+          <source src="images/demo-room-light.webm" type="video/webm">
+          <source src="images/demo-room-light.mp4" type="video/mp4">
+        </video>
+      </figure>
+      <div class="side-callout side-callout-right c-parchment" id="roomCallout" data-step="0" aria-live="polite">
+        <span class="callout-step" id="roomStepLabel">Step 1 of 4</span>
+        <p class="callout-text" id="roomStepText"><b>Ask the room</b> — Codex, Claude &amp; Antigravity</p>
+        <div class="callout-dots" role="tablist" aria-label="The Group debate moments">
+          <button type="button" role="tab" aria-selected="true" data-seek="9.0" aria-label="Step 1: Ask the room"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="13.0" aria-label="Step 2: Codex pushes to cut"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="16.0" aria-label="Step 3: Claude pushes back"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="28.0" aria-label="Step 4: Antigravity checks continuity"></button>
+        </div>
+        <span class="side-connector" aria-hidden="true"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-rule ai-trio" id="illustrations">
+    <div class="ai-card-wide-inner">
+      <div>
+        <p class="eyebrow">Illustrations</p>
+        <h2 style="margin-top:0;font-size:clamp(26px,3vw,34px);">A picture for every scene.</h2>
+        <p class="prose" style="margin-bottom:0;">Ask Codex, Antigravity, or Claude for an illustration in six styles, from woodcut to oil painting. Previews wait above the scene until you insert them, then save beside the chapter as ordinary image links so Obsidian, VS Code, and GitHub show them too.</p>
+      </div>
+      <div class="illus-media">
+        <figure class="shot illus-menu">
+          <img src="images/scene-image-menu-light.png" data-light-src="images/scene-image-menu-light.png" data-dark-src="images/scene-image-menu-dark.png" loading="lazy" alt="Scene Image style picker showing six visual styles: Ink & Watercolor, Woodcut & Engraving, 35mm Film Still, Charcoal & Pencil, Oil Painting, and Minimalist Gouache">
+        </figure>
         <figure class="shot">
-          <video id="askVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-agents" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation">
-            <source src="images/demo-agents-light.webm" type="video/webm">
-            <source src="images/demo-agents-light.mp4" type="video/mp4">
+          <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-illustration" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening">
+            <source src="images/demo-illustration-light.webm" type="video/webm">
+            <source src="images/demo-illustration-light.mp4" type="video/mp4">
           </video>
         </figure>
-        <div class="bar-callout c-parchment" id="askCallout" data-step="0" aria-live="polite">
-          <div class="bar-callout-body">
-            <span class="callout-step" id="askStepLabel">Step 1 of 3</span>
-            <p class="callout-text" id="askStepText"><b>Ask Codex</b> about the open scene</p>
-          </div>
-          <div class="callout-dots" role="tablist" aria-label="Ask agents moments">
-            <button type="button" role="tab" aria-selected="true" data-seek="6.5" aria-label="Step 1: Ask Codex"></button>
-            <button type="button" role="tab" aria-selected="false" data-seek="17.0" aria-label="Step 2: Switch to Claude"></button>
-            <button type="button" role="tab" aria-selected="false" data-seek="25.5" aria-label="Step 3: Compare independent replies"></button>
-          </div>
-        </div>
-        <h3>Ask &amp; edit across the whole book</h3>
-        <p class="card-copy">Three side-by-side agent tabs that search the entire manuscript, read your story notes, edit multiple files at once, and show exact context and token usage for every reply.</p>
-      </div>
-
-      <div class="ai-card" id="group">
-        <figure class="shot">
-          <video id="roomVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-room" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay">
-            <source src="images/demo-room-light.webm" type="video/webm">
-            <source src="images/demo-room-light.mp4" type="video/mp4">
-          </video>
-        </figure>
-        <div class="bar-callout c-parchment" id="roomCallout" data-step="0" aria-live="polite">
-          <div class="bar-callout-body">
-            <span class="callout-step" id="roomStepLabel">Step 1 of 4</span>
-            <p class="callout-text" id="roomStepText"><b>Ask the room</b> — Codex, Claude &amp; Antigravity together</p>
-          </div>
-          <div class="callout-dots" role="tablist" aria-label="The Group debate moments">
-            <button type="button" role="tab" aria-selected="true" data-seek="9.0" aria-label="Step 1: Ask the room"></button>
-            <button type="button" role="tab" aria-selected="false" data-seek="13.0" aria-label="Step 2: Codex pushes to cut"></button>
-            <button type="button" role="tab" aria-selected="false" data-seek="16.0" aria-label="Step 3: Claude pushes back"></button>
-            <button type="button" role="tab" aria-selected="false" data-seek="28.0" aria-label="Step 4: Antigravity checks continuity"></button>
-          </div>
-        </div>
-        <h3>The Group: let your agents debate</h3>
-        <p class="card-copy">Put two or three agents in one conversation—focused on story, voice, and continuity—to push back on each other and summarize agreed Before/After edits, or forward any chat for a second opinion.</p>
-      </div>
-
-      <div class="ai-card ai-card-wide" id="illustrations">
-        <div class="ai-card-wide-inner">
-          <div>
-            <p class="eyebrow">Illustrations</p>
-            <h3 style="margin-top:0;font-size:28px;">A picture for every scene.</h3>
-            <p class="card-copy">Ask Codex, Antigravity, or Claude for an illustration in six styles, from woodcut to oil painting. Previews wait above the scene until you insert them, then save beside the chapter as ordinary image links so Obsidian, VS Code, and GitHub show them too.</p>
-          </div>
-          <div class="illus-media">
-            <figure class="shot illus-menu">
-              <img src="images/scene-image-menu-light.png" data-light-src="images/scene-image-menu-light.png" data-dark-src="images/scene-image-menu-dark.png" loading="lazy" alt="Scene Image style picker showing six visual styles: Ink & Watercolor, Woodcut & Engraving, 35mm Film Still, Charcoal & Pencil, Oil Painting, and Minimalist Gouache">
-            </figure>
-            <figure class="shot">
-              <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-illustration" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening">
-                <source src="images/demo-illustration-light.webm" type="video/webm">
-                <source src="images/demo-illustration-light.mp4" type="video/mp4">
-              </video>
-            </figure>
-          </div>
-        </div>
       </div>
     </div>
   </section>
@@ -687,22 +687,22 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
 
   wireVideoCallout({
     videoId: 'askVideo', boxId: 'askCallout', labelId: 'askStepLabel', textId: 'askStepText',
-    baseClass: 'bar-callout', rate: 0.9,
+    baseClass: 'side-callout side-callout-right', rate: 0.9,
     steps: [
       { at: 0,    cls: 'c-parchment', html: '<b>Ask Codex</b> about the open scene' },
-      { at: 11.5, cls: 'c-sage',      html: '<b>Switch to Claude</b> — ask the same question in its own tab' },
-      { at: 22.0, cls: 'c-slate',     html: '<b>Compare replies</b> — separate threads &amp; token counts' }
+      { at: 11.5, cls: 'c-sage',      html: '<b>Switch to Claude</b> — same question, own tab' },
+      { at: 22.0, cls: 'c-slate',     html: '<b>Compare replies</b> — separate threads &amp; tokens' }
     ]
   });
 
   wireVideoCallout({
     videoId: 'roomVideo', boxId: 'roomCallout', labelId: 'roomStepLabel', textId: 'roomStepText',
-    baseClass: 'bar-callout', rate: 0.85,
+    baseClass: 'side-callout side-callout-right', rate: 0.85,
     steps: [
-      { at: 0,    cls: 'c-parchment', html: '<b>Ask the room</b> — Codex, Claude &amp; Antigravity together' },
-      { at: 11.5, cls: 'c-rose',      html: '<b>Codex pushes to cut</b> — Story Editor flags a repeated beat' },
-      { at: 14.5, cls: 'c-sage',      html: '<b>Claude pushes back</b> — Voice Editor defends the joke' },
-      { at: 18.0, cls: 'c-lavender',  html: '<b>Antigravity checks continuity</b> — cites exact scene lines' }
+      { at: 0,    cls: 'c-parchment', html: '<b>Ask the room</b> — Codex, Claude &amp; Antigravity' },
+      { at: 11.5, cls: 'c-rose',      html: '<b>Codex pushes to cut</b> a repeated beat' },
+      { at: 14.5, cls: 'c-sage',      html: '<b>Claude pushes back</b> to defend the joke' },
+      { at: 18.0, cls: 'c-lavender',  html: '<b>Antigravity checks</b> exact scene lines' }
     ]
   });
 

@@ -18930,7 +18930,7 @@
         }
 
         .sidebar-moment-card {
-            background: var(--surface-top, #1e2122);
+            background: var(--surface-card);
             border: 1px solid var(--border);
             border-radius: 4px;
             padding: 6px 8px;
@@ -18939,8 +18939,8 @@
         }
 
         .sidebar-moment-card:hover {
-            border-color: var(--border-hover, #4a4f54);
-            background: var(--surface-card-hover, #2c3033);
+            border-color: var(--border-strong, var(--border));
+            background: var(--surface-muted);
         }
 
         .sidebar-moment-card.active-sidebar-moment {
@@ -18957,11 +18957,11 @@
         }
 
         .moment-active-highlight {
-            background: #543231 !important;
+            background: color-mix(in srgb, var(--primary, #dd635f) 18%, var(--surface-card)) !important;
             border-radius: 3px;
             padding: 1px 3px;
-            color: #ffffff !important;
-            box-shadow: 0 0 0 1px rgba(221, 99, 95, 0.4);
+            color: var(--text-main) !important;
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, #dd635f) 40%, transparent);
         }
 
         /* ── Beat Map Empty State Craft ───────────────────────────────────── */

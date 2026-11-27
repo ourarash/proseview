@@ -80,12 +80,19 @@
   /* Hero editorial margin-note callouts */
   --callout-parchment-bg: #f3e8d7;
   --callout-parchment-hl: #e6cfa9;
+  --callout-parchment-line: #b48543;
   --callout-sage-bg: #e1ece0;
   --callout-sage-hl: #c7dcc5;
+  --callout-sage-line: #5b8759;
   --callout-rose-bg: #f4dfdb;
   --callout-rose-hl: #e7c1ba;
+  --callout-rose-line: #bf5750;
   --callout-slate-bg: #e3e9ef;
   --callout-slate-hl: #cbd6e2;
+  --callout-slate-line: #5b7693;
+  --callout-lavender-bg: #ebe3f1;
+  --callout-lavender-hl: #d6c5e4;
+  --callout-lavender-line: #7c5c99;
   --callout-ink: #24211d;
   --callout-shadow: rgba(31, 26, 18, 0.10);
 }
@@ -115,12 +122,19 @@
 
   --callout-parchment-bg: #272119;
   --callout-parchment-hl: rgba(219, 174, 107, 0.24);
+  --callout-parchment-line: #d4a45e;
   --callout-sage-bg: #1a241c;
   --callout-sage-hl: rgba(132, 188, 138, 0.24);
+  --callout-sage-line: #7eb583;
   --callout-rose-bg: #291c1c;
   --callout-rose-hl: rgba(224, 100, 94, 0.26);
+  --callout-rose-line: #e06b65;
   --callout-slate-bg: #1b222a;
   --callout-slate-hl: rgba(136, 168, 204, 0.24);
+  --callout-slate-line: #86a7cb;
+  --callout-lavender-bg: #231d2a;
+  --callout-lavender-hl: rgba(178, 146, 212, 0.24);
+  --callout-lavender-line: #b292d4;
   --callout-ink: #eeeae3;
   --callout-shadow: rgba(0, 0, 0, 0.42);
 }
@@ -465,12 +479,50 @@ main > section,
 .hero-stage {
   position: relative;
   margin: 34px auto 0;
-  padding: 0 212px;
+  padding: 0 17.5%;
 }
 
 .hero-shot {
   margin: 0;
 }
+
+.hero-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+
+.hero-lines path {
+  fill: none;
+  stroke: var(--hl-color);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.hero-lines .hl-origin {
+  fill: var(--hl-color);
+}
+
+.hero-lines .hl-dot {
+  fill: var(--hl-color);
+  stroke: var(--card);
+  stroke-width: 1.6;
+}
+
+.hero-lines .hl-halo {
+  fill: var(--hl-color);
+  opacity: 0.20;
+}
+
+.hl-parchment { --hl-color: var(--callout-parchment-line); }
+.hl-sage      { --hl-color: var(--callout-sage-line); }
+.hl-rose      { --hl-color: var(--callout-rose-line); }
+.hl-slate     { --hl-color: var(--callout-slate-line); }
 
 .hero-callouts {
   list-style: none;
@@ -480,11 +532,11 @@ main > section,
 
 .hero-callout {
   position: absolute;
-  width: 194px;
-  padding: 12px 15px;
+  width: 15.8%;
+  padding: 12px 14px;
   border-radius: 10px;
   color: var(--callout-ink);
-  font: 400 15.5px/1.34 var(--serif);
+  font: 400 15px/1.34 var(--serif);
   text-align: center;
   text-wrap: balance;
   filter: drop-shadow(0 6px 14px var(--callout-shadow));
@@ -499,31 +551,11 @@ main > section,
   -webkit-box-decoration-break: clone;
 }
 
-.hero-callout::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 16px;
-  height: 15px;
-  background: inherit;
-  transform: translateY(-50%);
-}
-
-.hero-callout.c-left::after {
-  right: -14px;
-  clip-path: polygon(0 12%, 100% 50%, 0 88%);
-}
-
-.hero-callout.c-right::after {
-  left: -14px;
-  clip-path: polygon(100% 12%, 0 50%, 100% 88%);
-}
-
 .hero-callout.c-parchment {
-  top: 12%;
+  top: 11.5%;
   left: 0;
   background: var(--callout-parchment-bg);
-  transform: rotate(-1.7deg);
+  transform: rotate(-1.1deg);
 }
 
 .hero-callout.c-parchment b {
@@ -534,7 +566,7 @@ main > section,
   bottom: 9%;
   left: 0;
   background: var(--callout-sage-bg);
-  transform: rotate(1.4deg);
+  transform: rotate(1.0deg);
 }
 
 .hero-callout.c-sage b {
@@ -542,10 +574,10 @@ main > section,
 }
 
 .hero-callout.c-rose {
-  top: 19%;
+  top: 18%;
   right: 0;
   background: var(--callout-rose-bg);
-  transform: rotate(1.6deg);
+  transform: rotate(1.0deg);
 }
 
 .hero-callout.c-rose b {
@@ -553,10 +585,10 @@ main > section,
 }
 
 .hero-callout.c-slate {
-  bottom: 2%;
+  bottom: 3%;
   right: 0;
   background: var(--callout-slate-bg);
-  transform: rotate(-1.3deg);
+  transform: rotate(-0.9deg);
 }
 
 .hero-callout.c-slate b {
@@ -917,11 +949,135 @@ kbd {
   overflow-x: clip;
 }
 
+.phone-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-left: 248px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.phone-callout {
+  position: absolute;
+  left: 0;
+  top: 14%;
+  width: 204px;
+  padding: 13px 15px 12px;
+  border-radius: 11px;
+  color: var(--callout-ink);
+  text-align: left;
+  filter: drop-shadow(0 6px 14px var(--callout-shadow));
+  z-index: 3;
+  transition: top 380ms cubic-bezier(0.22, 1, 0.36, 1), background-color 260ms ease;
+}
+
+.phone-callout[data-step="0"] { top: 13%; }
+.phone-callout[data-step="1"] { top: 34%; }
+.phone-callout[data-step="2"] { top: 48%; }
+.phone-callout[data-step="3"] { top: 28%; }
+.phone-callout[data-step="4"] { top: 64%; }
+
+.phone-callout.c-parchment { background: var(--callout-parchment-bg); --pc-hl: var(--callout-parchment-hl); --pc-line: var(--callout-parchment-line); }
+.phone-callout.c-sage      { background: var(--callout-sage-bg);      --pc-hl: var(--callout-sage-hl);      --pc-line: var(--callout-sage-line); }
+.phone-callout.c-rose      { background: var(--callout-rose-bg);      --pc-hl: var(--callout-rose-hl);      --pc-line: var(--callout-rose-line); }
+.phone-callout.c-slate     { background: var(--callout-slate-bg);     --pc-hl: var(--callout-slate-hl);     --pc-line: var(--callout-slate-line); }
+.phone-callout.c-lavender  { background: var(--callout-lavender-bg);  --pc-hl: var(--callout-lavender-hl);  --pc-line: var(--callout-lavender-line); }
+
+.phone-callout-step {
+  display: block;
+  margin-bottom: 5px;
+  font: 600 10.5px/1 var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pc-line);
+}
+
+.phone-callout-text {
+  margin: 0;
+  font: 400 15.5px/1.36 var(--serif);
+  color: var(--callout-ink);
+  text-wrap: balance;
+}
+
+.phone-callout-text b {
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--pc-hl);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.phone-callout-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.phone-callout-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pc-line) 32%, transparent);
+  cursor: pointer;
+  transition: width 220ms ease, background-color 220ms ease;
+}
+
+.phone-callout-dots button[aria-selected="true"] {
+  width: 18px;
+  background: var(--pc-line);
+}
+
+/* Crisp leader line + target dot connecting the card to the phone screen */
+.phone-connector {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  width: 66px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--pc-line);
+  opacity: 0.85;
+  pointer-events: none;
+  transition: background-color 260ms ease;
+}
+
+.phone-connector::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pc-line);
+  transform: translateY(-50%);
+}
+
+.phone-connector::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pc-line);
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pc-line) 24%, transparent);
+  transform: translateY(-50%);
+}
+
 .phone-mock {
   position: relative;
-  width: 312px;
+  width: 300px;
   max-width: calc(100% - 14px);
-  margin: 0 auto;
+  margin: 0;
   padding: 11px;
   border-radius: 46px;
   background: linear-gradient(148deg, #32343a 0%, #16171b 46%, #292b31 100%);
@@ -1415,6 +1571,10 @@ footer a:hover {
     padding: 0;
   }
 
+  .hero-lines {
+    display: none;
+  }
+
   .hero-callouts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1429,7 +1589,22 @@ footer a:hover {
     filter: none;
   }
 
-  .hero-callout::after {
+  .phone-stage {
+    flex-direction: column;
+    align-items: center;
+    padding-left: 0;
+    gap: 18px;
+  }
+
+  .phone-callout {
+    position: static;
+    order: 2;
+    width: 100%;
+    max-width: 312px;
+    filter: none;
+  }
+
+  .phone-connector {
     display: none;
   }
 }

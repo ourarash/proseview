@@ -62,6 +62,32 @@
     <figure class="shot hero-shot">
       <img src="images/write-a-scene-light.png" data-light-src="images/write-a-scene-light.png" data-dark-src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
     </figure>
+    <svg class="hero-lines" viewBox="0 0 1200 463" aria-hidden="true">
+      <g class="hl hl-parchment">
+        <path d="M 190 92 C 210 92, 214 84, 236 84"/>
+        <circle class="hl-origin" cx="190" cy="92" r="2.6"/>
+        <circle class="hl-halo" cx="236" cy="84" r="7.5"/>
+        <circle class="hl-dot" cx="236" cy="84" r="3.6"/>
+      </g>
+      <g class="hl hl-sage">
+        <path d="M 190 384 C 210 384, 212 394, 232 394"/>
+        <circle class="hl-origin" cx="190" cy="384" r="2.6"/>
+        <circle class="hl-halo" cx="232" cy="394" r="7.5"/>
+        <circle class="hl-dot" cx="232" cy="394" r="3.6"/>
+      </g>
+      <g class="hl hl-rose">
+        <path d="M 1010 120 C 974 120, 962 117, 928 117"/>
+        <circle class="hl-origin" cx="1010" cy="120" r="2.6"/>
+        <circle class="hl-halo" cx="928" cy="117" r="7.5"/>
+        <circle class="hl-dot" cx="928" cy="117" r="3.6"/>
+      </g>
+      <g class="hl hl-slate">
+        <path d="M 1010 416 C 992 416, 990 440, 974 440"/>
+        <circle class="hl-origin" cx="1010" cy="416" r="2.6"/>
+        <circle class="hl-halo" cx="974" cy="440" r="7.5"/>
+        <circle class="hl-dot" cx="974" cy="440" r="3.6"/>
+      </g>
+    </svg>
     <ul class="hero-callouts" aria-label="Editor highlights">
       <li class="hero-callout c-left c-parchment"><b>Plain Markdown</b> scenes, one folder per chapter</li>
       <li class="hero-callout c-left c-sage"><b>Story bibles &amp; notes</b> right beside your draft</li>
@@ -313,14 +339,28 @@
       <li><strong>Safe sync:</strong> Drafts stay on your phone until saved, with conflict protection so computer and phone edits never silently overwrite each other.</li>
     </ul>
   </div>
-  <div class="phone-mock">
-    <div class="phone-screen">
-      <div class="phone-status" aria-hidden="true"><span class="phone-island"></span></div>
-      <video autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
-        <source src="images/demo-phone-light.webm" type="video/webm">
-        <source src="images/demo-phone-light.mp4" type="video/mp4">
-      </video>
-      <div class="phone-home" aria-hidden="true"><span></span></div>
+  <div class="phone-stage">
+    <div class="phone-callout c-parchment" id="phoneCallout" data-step="0" aria-live="polite">
+      <span class="phone-callout-step" id="phoneStepLabel">Step 1 of 5</span>
+      <p class="phone-callout-text" id="phoneStepText"><b>Open your book</b> and pick up right where you left off</p>
+      <div class="phone-callout-dots" role="tablist" aria-label="Phone demo moments">
+        <button type="button" role="tab" aria-selected="true" data-phone-seek="0.4" aria-label="Step 1: Open your book"></button>
+        <button type="button" role="tab" aria-selected="false" data-phone-seek="2.8" aria-label="Step 2: Read in book typography"></button>
+        <button type="button" role="tab" aria-selected="false" data-phone-seek="6.2" aria-label="Step 3: Tap a paragraph to leave a TODO"></button>
+        <button type="button" role="tab" aria-selected="false" data-phone-seek="13.2" aria-label="Step 4: Quick edit with safe sync"></button>
+        <button type="button" role="tab" aria-selected="false" data-phone-seek="19.0" aria-label="Step 5: Ask an agent"></button>
+      </div>
+      <span class="phone-connector" aria-hidden="true"></span>
+    </div>
+    <div class="phone-mock">
+      <div class="phone-screen">
+        <div class="phone-status" aria-hidden="true"><span class="phone-island"></span></div>
+        <video id="phoneVideo" autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
+          <source src="images/demo-phone-light.webm" type="video/webm">
+          <source src="images/demo-phone-light.mp4" type="video/mp4">
+        </video>
+        <div class="phone-home" aria-hidden="true"><span></span></div>
+      </div>
     </div>
   </div>
 </section>
@@ -543,6 +583,53 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       syncBeatMap(document.documentElement.dataset.theme === 'dark');
     });
   });
+
+  /* Live-synced explanation callout beside the Remote Mode phone mockup */
+  var phoneVideo = document.getElementById('phoneVideo');
+  var phoneCallout = document.getElementById('phoneCallout');
+  var phoneStepLabel = document.getElementById('phoneStepLabel');
+  var phoneStepText = document.getElementById('phoneStepText');
+  if (phoneVideo && phoneCallout && phoneStepLabel && phoneStepText) {
+    var phoneSteps = [
+      { at: 0,    cls: 'c-parchment', label: 'Step 1 of 5', html: '<b>Open your book</b> and pick up right where you left off' },
+      { at: 2.0,  cls: 'c-sage',      label: 'Step 2 of 5', html: '<b>Read in book type</b> — tap any paragraph to annotate' },
+      { at: 5.2,  cls: 'c-rose',      label: 'Step 3 of 5', html: '<b>Leave a TODO</b> pinned right above the paragraph' },
+      { at: 11.8, cls: 'c-slate',     label: 'Step 4 of 5', html: '<b>Quick edit</b> — draft stays on your phone until Save' },
+      { at: 16.5, cls: 'c-lavender',  label: 'Step 5 of 5', html: '<b>Ask an agent</b> — critique or chat right from your phone' }
+    ];
+    var phoneDots = Array.prototype.slice.call(phoneCallout.querySelectorAll('[data-phone-seek]'));
+    var lastStep = -1;
+    function setPhoneStep(idx) {
+      if (idx === lastStep) return;
+      lastStep = idx;
+      var s = phoneSteps[idx];
+      phoneCallout.className = 'phone-callout ' + s.cls;
+      phoneCallout.dataset.step = String(idx);
+      phoneStepLabel.textContent = s.label;
+      phoneStepText.innerHTML = s.html;
+      phoneDots.forEach(function (dot, i) {
+        dot.setAttribute('aria-selected', i === idx ? 'true' : 'false');
+      });
+    }
+    function syncPhoneStep() {
+      var t = phoneVideo.currentTime || 0;
+      var idx = 0;
+      for (var i = phoneSteps.length - 1; i >= 0; i--) {
+        if (t >= phoneSteps[i].at) { idx = i; break; }
+      }
+      setPhoneStep(idx);
+    }
+    phoneVideo.addEventListener('timeupdate', syncPhoneStep);
+    phoneVideo.addEventListener('seeked', syncPhoneStep);
+    phoneDots.forEach(function (dot, i) {
+      dot.addEventListener('click', function () {
+        var target = parseFloat(dot.dataset.phoneSeek || '0');
+        try { phoneVideo.currentTime = target; } catch (e) {}
+        setPhoneStep(i);
+      });
+    });
+    setPhoneStep(0);
+  }
 })();
 </script>
 </body>

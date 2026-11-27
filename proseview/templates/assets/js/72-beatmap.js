@@ -66,7 +66,7 @@
     var BEATMAP_AGENTS = [
         {value: 'claude', label: 'Claude CLI'},
         {value: 'codex', label: 'Codex CLI'},
-        {value: 'agy', label: 'Agy CLI'}
+        {value: 'agy', label: 'Antigravity CLI'}
     ];
     // A map needs an agent that can run. The sample book and shared
     // snapshots have none; installed, an agent the app did not detect is
@@ -83,8 +83,8 @@
     }
     function beatMapNoAgentText() {
         return window.PROSEVIEW_STATIC
-            ? 'Beat Map runs in the installed app with Codex, Claude or Agy. This copy of the book runs in your browser, where no agent was detected.'
-            : 'Beat Map needs Codex, Claude or Agy installed and signed in on this computer. None was detected.';
+            ? 'Beat Map uses an AI agent—Codex (OpenAI), Claude, or Antigravity (Google Gemini)—to map tension and beats in your scene. This copy of the book runs in your browser, where no agent was detected. Install Proseview on your computer to generate Beat Maps.'
+            : 'Beat Map needs Codex, Claude, or Antigravity installed and signed in on this computer. None was detected.';
     }
     function beatMapDisabledAttr(isGenerating) {
         return isGenerating || beatMapNoAgent() ? ' disabled' : '';
@@ -111,7 +111,7 @@
         }).join('');
     }
     function getGenerationStageInfo(elapsedSec, status, agent) {
-        var agentName = (agent === 'codex' ? 'Codex CLI' : (agent === 'agy' ? 'Agy CLI' : 'Claude CLI'));
+        var agentName = (agent === 'codex' ? 'Codex CLI' : (agent === 'agy' ? 'Antigravity CLI' : 'Claude CLI'));
         var wordCount = (status && status.word_count) ? status.word_count : 0;
         var totalParas = (status && status.total_paragraphs) ? status.total_paragraphs : 0;
         var draftLen = (status && typeof status.draft_length === 'number') ? status.draft_length : 0;

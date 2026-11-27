@@ -8830,6 +8830,12 @@ def test_the_demo_says_agents_run_in_the_installed_app(page: Page, demo_site: st
     assert "pipx install proseview" in state.inner_text()
     assert page.locator("#discussComposerArea").is_hidden()
 
+    page.click("#utilityTabAgy")
+    agy_state = page.locator("#discussLog .discuss-agents-unavailable")
+    agy_state.wait_for()
+    assert "Antigravity was not detected" in agy_state.inner_text()
+    assert "Gemini" in agy_state.inner_text()
+
     page.click("#utilityTabGroup")
     group = page.locator("#sceneGroupPane .discuss-agents-unavailable")
     group.wait_for()

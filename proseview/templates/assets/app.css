@@ -16338,8 +16338,8 @@
             border: 1px solid var(--border);
             border-left: 3px solid color-mix(in srgb, var(--primary) 55%, var(--border));
             border-radius: 6px;
-            background: color-mix(in srgb, var(--surface-muted, var(--bg-subtle)) 65%, transparent);
-            font-family: var(--font-sans);
+            background: color-mix(in srgb, var(--surface-muted) 65%, transparent);
+            font-family: Inter, system-ui, sans-serif;
         }
 
         .scene-prev-tail-summary {
@@ -16350,7 +16350,7 @@
             cursor: pointer;
             font-size: 12px;
             font-weight: 600;
-            color: var(--text-secondary, var(--text-muted));
+            color: var(--text-muted);
             user-select: none;
         }
 
@@ -16358,15 +16358,15 @@
             padding: 2px 8px;
             border: 1px solid var(--border);
             border-radius: 4px;
-            background: var(--bg-card);
-            color: var(--text-secondary, var(--text-muted));
+            background: var(--surface-card);
+            color: var(--text-muted);
             font: inherit;
             font-size: 11px;
             cursor: pointer;
         }
 
         .scene-prev-tail-jump:hover {
-            color: var(--text-primary, var(--text-main));
+            color: var(--text-main);
             border-color: var(--border-strong, var(--text-muted));
         }
 
@@ -16374,27 +16374,72 @@
             margin-top: 8px;
             padding-top: 8px;
             border-top: 1px dashed var(--border);
-            font-family: var(--reading-font, var(--font-serif));
+            font-family: var(--font-reading);
             font-size: 0.92em;
             line-height: 1.55;
-            color: var(--text-secondary, var(--text-muted));
+            color: var(--text-muted);
         }
 
         .scene-prev-tail-para {
-            margin: 0 0 6px;
+            margin: 0 0 0.95em;
         }
 
-        .scene-prev-tail-para:last-child {
+        .scene-prev-tail-para:last-child,
+        .scene-prev-tail-body > :last-child {
             margin-bottom: 0;
         }
 
+        .scene-prev-tail-body ul,
+        .scene-prev-tail-body ol {
+            margin: 0 0 0.95em;
+            padding-left: 1.4em;
+        }
+
+        .scene-prev-tail-body li {
+            margin: 0 0 0.3em;
+        }
+
+        .scene-prev-tail-body li:last-child {
+            margin-bottom: 0;
+        }
+
+        .scene-prev-tail-body li > p {
+            margin: 0 0 0.45em;
+        }
+
+        .scene-prev-tail-body li > p:last-child {
+            margin-bottom: 0;
+        }
+
+        .modal-body .scene-prev-tail-body .pv-callout {
+            margin: 0 0 0.95em;
+            padding: 0.65em 0.95em;
+            font-size: 0.96em;
+        }
+
+        .modal-body .scene-prev-tail-body .pv-callout:last-child {
+            margin-bottom: 0;
+        }
+
+        .modal-body .scene-prev-tail-body .pv-callout p {
+            margin: 0 0 0.55em;
+        }
+
+        .modal-body .scene-prev-tail-body .pv-callout p:last-child {
+            margin-bottom: 0;
+        }
+
+        .modal-body .scene-prev-tail-body .pv-callout .pv-callout-title {
+            margin: 0 0 0.3em;
+        }
+
         .modal-body .scene-prev-tail-body blockquote {
-            margin: 6px 0 8px 8px;
+            margin: 0 0 0.95em 8px;
             padding: 4px 10px;
             border-left: 2px solid color-mix(in srgb, var(--primary) 70%, var(--border));
-            background: color-mix(in srgb, var(--surface-card, var(--bg-card)) 70%, transparent);
+            background: color-mix(in srgb, var(--surface-card) 70%, transparent);
             border-radius: 0 4px 4px 0;
-            color: var(--text-secondary, var(--text-muted));
+            color: var(--text-muted);
             font-size: 0.95em;
         }
 
@@ -16403,7 +16448,7 @@
         }
 
         .modal-body .scene-prev-tail-body blockquote p {
-            margin: 0 0 4px;
+            margin: 0 0 0.6em;
         }
 
         .modal-body .scene-prev-tail-body blockquote p:last-child {

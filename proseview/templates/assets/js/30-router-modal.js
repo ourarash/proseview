@@ -582,23 +582,38 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        function _collectTailProseTokens(tokens, out) {
+            (tokens || []).forEach(function(tok) {
+                if (!tok || tok.type === 'space' || tok.type === 'heading' || tok.type === 'hr' || tok.type === 'def') return;
+                if (tok.type === 'html') {
+                    var raw = String(tok.raw || tok.text || '');
+                    if (raw.indexOf('<!--') >= 0) {
+                        var rest = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\n/, '').replace(/^[ \t]+/, '');
+                        if (rest.trim() && typeof marked !== 'undefined' && marked.lexer) {
+                            _collectTailProseTokens(marked.lexer(rest, {gfm: true}), out);
+                        }
+                        return;
+                    }
+                    if (!/<img\b/i.test(raw)) return;
+                }
+                if (tok.type === 'paragraph') {
+                    var stripped = String(tok.raw || tok.text || '').replace(/<!--[\s\S]*?-->/g, '').trim();
+                    if (!stripped) return;
+                }
+                var text = String(tok.raw || tok.text || '').trim();
+                if (text) out.push(text);
+            });
+        }
+
         function _extractProseTailParagraphs(rawMarkdown) {
             if (!rawMarkdown) return [];
-            var cleaned = String(rawMarkdown).replace(/^---[\s\S]*?\n---\s*/, '');
+            var cleaned = String(rawMarkdown).replace(/^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)\s*/, '');
             if (typeof marked !== 'undefined' && marked.lexer) {
                 try {
                     var tokens = marked.lexer(cleaned, {gfm: true});
-                    var proseTokens = tokens.filter(function(tok) {
-                        if (tok.type === 'space') return false;
-                        if (tok.type === 'heading' || tok.type === 'hr') return false;
-                        if (tok.type === 'html') {
-                            if (/^<!--[\s\S]*?-->$/.test((tok.raw || tok.text || '').trim())) return false;
-                        }
-                        return true;
-                    });
-                    return proseTokens.slice(-2).map(function(tok) {
-                        return (tok.raw || tok.text || '').trim();
-                    }).filter(Boolean);
+                    var proseBlocks = [];
+                    _collectTailProseTokens(tokens, proseBlocks);
+                    return proseBlocks.slice(-2);
                 } catch (e) {
                     // Fall back to line-based parser below
                 }
@@ -631,6 +646,12 @@
             return paras.filter(Boolean).slice(-2);
         }
 
+        function _scenePrevBasePath(p) {
+            var abs = (meta[p] && meta[p].abs_path) || '';
+            var root = typeof repoRoot !== 'undefined' ? String(repoRoot).replace(/\/+$/, '') + '/' : '';
+            return root && abs.indexOf(root) === 0 ? abs.slice(root.length) : '';
+        }
+
         function renderScenePrevTail(p) {
             var host = document.getElementById('scenePrevTailHost');
             if (!host) return;
@@ -640,6 +661,7 @@
             var prevParas = _extractProseTailParagraphs(contents[prevPath] || '');
             if (!prevParas.length) return;
             var prevMeta = meta[prevPath] || {};
+            var prevBasePath = _scenePrevBasePath(prevPath);
             var curWords = (meta[p] && typeof meta[p].words === 'number') ? meta[p].words : 999;
             var isStub = curWords < 50;
             var details = document.createElement('details');
@@ -678,16 +700,27 @@
             prevParas.forEach(function(para) {
                 if (typeof renderSafeMarkdown === 'function') {
                     var block = document.createElement('div');
-                    renderSafeMarkdown(block, para);
+                    renderSafeMarkdown(block, para, {basePath: prevBasePath, hideComments: true});
                     while (block.firstChild) {
                         var child = block.firstChild;
                         if (child.nodeType === 1) {
-                            if (child.tagName === 'P') child.classList.add('scene-prev-tail-para');
+                            if (child.tagName === 'P' && !child.classList.contains('pv-callout-title')) {
+                                child.classList.add('scene-prev-tail-para');
+                            }
                             child.querySelectorAll('p').forEach(function(pEl) {
-                                pEl.classList.add('scene-prev-tail-para');
+                                if (!pEl.classList.contains('pv-callout-title')) {
+                                    pEl.classList.add('scene-prev-tail-para');
+                                }
                             });
+                            body.appendChild(child);
+                        } else if (child.nodeType === 3 && child.textContent && child.textContent.trim()) {
+                            var wrapP = document.createElement('p');
+                            wrapP.className = 'scene-prev-tail-para';
+                            wrapP.appendChild(child);
+                            body.appendChild(wrapP);
+                        } else {
+                            block.removeChild(child);
                         }
-                        body.appendChild(child);
                     }
                 } else {
                     var pEl = document.createElement('p');

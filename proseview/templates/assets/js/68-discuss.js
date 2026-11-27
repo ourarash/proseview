@@ -6050,11 +6050,58 @@
         var OPTIONS_HEADER_RE = /^(?:options?|alternatives?|versions?|variants?|rewrites?)(?:\s+for\b[^:\n]{0,60})?\s*:?$/i;
         var OPTION_ITEM_RE = /^(?:(?:edit|item|suggestion|finding|option|version|alternative|variant)\s+)?(?:\d+|[a-z](?=[.):\s]))(?:[.):]\s|\s+[—–(-])/i;
 
+        function renderCalloutMarkdownToken(parent, token, ctx) {
+            if (!token || token.type !== 'blockquote' || typeof parseCalloutMarker !== 'function') return false;
+            var kids = token.tokens || [];
+            var firstIdx = -1;
+            for (var i = 0; i < kids.length; i++) {
+                if (kids[i] && kids[i].type !== 'space') { firstIdx = i; break; }
+            }
+            if (firstIdx < 0 || kids[firstIdx].type !== 'paragraph') return false;
+            var firstRaw = String(kids[firstIdx].raw || kids[firstIdx].text || '').replace(/\r\n/g, '\n');
+            var nl = firstRaw.indexOf('\n');
+            var firstLine = nl < 0 ? firstRaw : firstRaw.slice(0, nl);
+            var rest = nl < 0 ? '' : firstRaw.slice(nl + 1);
+            var marker = parseCalloutMarker(firstLine);
+            if (!marker) return false;
+            var box = document.createElement('div');
+            var kind = marker.type.toLowerCase();
+            box.className = 'pv-callout';
+            box.setAttribute('data-callout', kind);
+            box.setAttribute('data-callout-type', marker.type);
+            box.setAttribute('data-callout-fold', marker.fold || '');
+            if (marker.title) {
+                var titleEl = document.createElement('p');
+                titleEl.className = 'pv-callout-title';
+                var titleTokens = (typeof marked !== 'undefined' && marked.Lexer && marked.Lexer.lexInline)
+                    ? marked.Lexer.lexInline(marker.title, {gfm: true})
+                    : null;
+                if (titleTokens) appendMarkdownTokens(titleEl, titleTokens, ctx);
+                else titleEl.textContent = marker.title;
+                box.appendChild(titleEl);
+            }
+            if (rest.trim()) {
+                var restTokens = (typeof marked !== 'undefined' && marked.lexer)
+                    ? marked.lexer(rest, {gfm: true})
+                    : null;
+                if (restTokens) appendMarkdownTokens(box, restTokens, ctx);
+                else {
+                    var pEl = document.createElement('p');
+                    pEl.textContent = rest.trim();
+                    box.appendChild(pEl);
+                }
+            }
+            var remaining = kids.slice(firstIdx + 1);
+            if (remaining.length) appendMarkdownTokens(box, remaining, ctx);
+            parent.appendChild(box);
+            return true;
+        }
+
         function appendMarkdownTokens(parent, tokens, ctx) {
             (tokens || []).forEach(function(token, tokenIndex) {
                 var node;
                 var isOptionsHeader = false;
-                if (token.type === 'space') return;
+                if (token.type === 'space' || token.type === 'def') return;
                 if (token.type === 'text' || token.type === 'escape') {
                     if (token.tokens && parent.tagName === 'LI') {
                         // List paragraphs carry Before/After labels too. Keep
@@ -6070,8 +6117,8 @@
                     // A comment on the line above a paragraph swallows it into
                     // the same HTML block, so render what is left as Markdown.
                     if (ctx && ctx.hideComments && (token.raw || '').indexOf('<!--') >= 0) {
-                        var rest = String(token.raw).replace(/<!--[\s\S]*?-->/g, '');
-                        if (rest.trim()) appendMarkdownTokens(parent, marked.lexer(rest.replace(/^\s*\n/, ''), {gfm: true}), ctx);
+                        var rest = String(token.raw).replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\n/, '').replace(/^[ \t]+/, '');
+                        if (rest.trim()) appendMarkdownTokens(parent, marked.lexer(rest, {gfm: true}), ctx);
                         return;
                     }
                     var rawImg = rawImgNode(token.raw || token.text || '', ctx);
@@ -6122,7 +6169,10 @@
                         return;
                     }
                 }
-                else if (token.type === 'blockquote') node = document.createElement('blockquote');
+                else if (token.type === 'blockquote') {
+                    if (!(ctx && ctx.agentOutput) && renderCalloutMarkdownToken(parent, token, ctx)) return;
+                    node = document.createElement('blockquote');
+                }
                 else if (token.type === 'list') node = document.createElement(token.ordered ? 'ol' : 'ul');
                 else if (token.type === 'list_item') {
                     if (ctx && parent && parent.tagName === 'OL') {
@@ -6245,7 +6295,7 @@
                         ctx.optionsTarget = Object.assign({}, ctx.lastLocalTarget);
                     }
                 }
-                if (token.type === 'blockquote') {
+                if (token.type === 'blockquote' && ctx && ctx.agentOutput) {
                     var prevSibling = parent.lastElementChild;
                     var next = (tokens || []).slice(tokenIndex + 1).find(function(item) { return item.type !== 'space'; });
                     var citationParts = next && next.type === 'paragraph' ? (next.tokens || []) : [];
@@ -6269,13 +6319,11 @@
                         followingCitation = detectProsviewTargetInPrevEl(citationNode, ctx.scenePath);
                     }
                     decorateDiscussBlockquote(node, ctx, prevSibling, followingCitation);
-                    if (ctx.agentOutput) {
-                        var quote = node;
-                        var quoteWrap = withCopyButton(quote, function() { return extractDiscussQuoteText(quote); });
-                        decorateDiscussQuoteActions(quoteWrap, quote, ctx);
-                        parent.appendChild(quoteWrap);
-                        return;
-                    }
+                    var quote = node;
+                    var quoteWrap = withCopyButton(quote, function() { return extractDiscussQuoteText(quote); });
+                    decorateDiscussQuoteActions(quoteWrap, quote, ctx);
+                    parent.appendChild(quoteWrap);
+                    return;
                 }
                 parent.appendChild(node);
             });

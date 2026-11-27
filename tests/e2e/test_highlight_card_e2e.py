@@ -748,6 +748,95 @@ def test_where_you_left_off_renders_blockquote(page: Page, server: ProseviewServ
     assert result["endingQuoteIsRaw"] is True
 
 
+def test_where_you_left_off_formats_markdown_paragraphs_callouts_and_comments(page: Page, server: ProseviewServer):
+    open_scene(page, server, ANNOTATED_SCENE_REL)
+    result = page.evaluate("""() => {
+        const prevPath = paths[curIdx - 1];
+        const saved = contents[prevPath];
+        try {
+            // 1. Two Markdown paragraphs with inline formatting, comments, and trailing defs
+            contents[prevPath] = [
+                'Earlier line.',
+                '',
+                '<!-- NOTE: hugging comment --> She paused at the *threshold* with a **deep** breath.',
+                '',
+                'He answered softly. <!-- TODO: tighten beat --> *Not yet.*',
+                '',
+                '<!-- TODO: trailing comment -->',
+                '[unused]: https://example.com',
+            ].join('\\n');
+            renderScenePrevTail(paths[curIdx]);
+            const tail1 = document.getElementById('scenePrevTail');
+            tail1.open = true;
+            const body1 = tail1.querySelector('.scene-prev-tail-body');
+            const paras1 = [...body1.querySelectorAll(':scope > p.scene-prev-tail-para')];
+            const firstMarginBottom = paras1[0] ? parseFloat(getComputedStyle(paras1[0]).marginBottom) : 0;
+            const lastMarginBottom = paras1[1] ? parseFloat(getComputedStyle(paras1[1]).marginBottom) : 0;
+            const bodyFont = getComputedStyle(body1).fontFamily;
+            const emCount = body1.querySelectorAll('em').length;
+            const strongCount = body1.querySelectorAll('strong').length;
+            const text1 = body1.textContent;
+
+            // 2. Callout + blockquote should render cleanly without raw [!type] or Discuss click attrs
+            contents[prevPath] = [
+                'Opening line.',
+                '',
+                '> [!letter] A *letter*, undated',
+                '> Mara, the boat has gone.',
+                '>',
+                '> — T.',
+                '',
+                '> Every harbour keeps one ghost.',
+            ].join('\\n');
+            renderScenePrevTail(paths[curIdx]);
+            const tail2 = document.getElementById('scenePrevTail');
+            tail2.open = true;
+            const body2 = tail2.querySelector('.scene-prev-tail-body');
+            const callout = body2.querySelector('.pv-callout[data-callout="letter"]');
+            const calloutTitle = callout ? callout.querySelector('.pv-callout-title') : null;
+            const calloutParas = callout ? [...callout.querySelectorAll('p.scene-prev-tail-para')].map(p => p.textContent) : [];
+            const bq = body2.querySelector('blockquote');
+
+            return {
+                paraCount1: paras1.length,
+                firstMarginBottom,
+                lastMarginBottom,
+                bodyFont,
+                emCount,
+                strongCount,
+                hasCommentLeak: text1.includes('<!--') || text1.includes('TODO') || text1.includes('NOTE'),
+                hasDefLeak: text1.includes('[unused]'),
+                hasCallout: !!callout,
+                calloutTitleText: calloutTitle ? calloutTitle.textContent : '',
+                calloutTitleHasEm: !!(calloutTitle && calloutTitle.querySelector('em')),
+                calloutParas,
+                body2Text: body2.textContent,
+                hasBlockquote: !!bq,
+                bqHasDiscussClass: !!(bq && bq.classList.contains('discuss-clickable-quote')),
+                bqHasButtonRole: !!(bq && bq.getAttribute('role') === 'button'),
+            };
+        } finally {
+            contents[prevPath] = saved;
+            renderScenePrevTail(paths[curIdx]);
+        }
+    }""")
+    assert result["paraCount1"] == 2
+    assert result["firstMarginBottom"] >= 12
+    assert result["lastMarginBottom"] == 0
+    assert result["emCount"] == 2
+    assert result["strongCount"] == 1
+    assert result["hasCommentLeak"] is False
+    assert result["hasDefLeak"] is False
+    assert result["hasCallout"] is True
+    assert result["calloutTitleText"] == "A letter, undated"
+    assert result["calloutTitleHasEm"] is True
+    assert result["calloutParas"] == ["Mara, the boat has gone.", "— T."]
+    assert "[!letter]" not in result["body2Text"]
+    assert result["hasBlockquote"] is True
+    assert result["bqHasDiscussClass"] is False
+    assert result["bqHasButtonRole"] is False
+
+
 @pytest.fixture(autouse=True)
 def restore_group_library(request, server):
     if not (request.node.name.startswith("test_group_") or request.node.name.startswith("test_writers_group_")):

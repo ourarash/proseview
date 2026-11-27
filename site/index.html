@@ -237,16 +237,30 @@
     </ul>
   </section>
 
-  <section class="spotlight" id="reviews" style="padding-top: 40px;">
+  <section class="spotlight spotlight-review" id="reviews" style="padding-top: 40px;">
     <p class="eyebrow">Scene reviews</p>
     <h2>Review notes you can preview and apply.</h2>
     <p class="prose">Run a quick critique, deepen and layer, comedy review, or craft review through McKee's <cite>Story</cite>, <cite>The Story Grid</cite>, <cite>Story Genius</cite>, <cite>Save the Cat!</cite>, <cite>On Writing</cite>, or <cite>Bird by Bird</cite>. Every note quotes the passage, explains why it falters, and offers a rewrite in the scene's own voice.</p>
-    <figure class="shot">
-      <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-review" aria-label="A Quick critique in Proseview's side panel: notes that quote a passage, explain it and offer a replacement; Compare against the current scene; two notes ticked and applied by Codex, with the saved edit's Undo all and Looks good">
-        <source src="images/demo-review-light.webm" type="video/webm">
-        <source src="images/demo-review-light.mp4" type="video/mp4">
-      </video>
-    </figure>
+    <div class="review-stage">
+      <figure class="shot">
+        <video id="reviewVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-review" aria-label="A Quick critique in Proseview's side panel: notes that quote a passage, explain it and offer a replacement; Compare against the current scene; two notes ticked and applied by Codex, with the saved edit's Undo all and Looks good">
+          <source src="images/demo-review-light.webm" type="video/webm">
+          <source src="images/demo-review-light.mp4" type="video/mp4">
+        </video>
+      </figure>
+      <div class="side-callout side-callout-right c-parchment" id="reviewCallout" data-step="0" aria-live="polite">
+        <span class="callout-step" id="reviewStepLabel">Step 1 of 5</span>
+        <p class="callout-text" id="reviewStepText"><b>Pick a review lens</b> — Quick critique, Craft, or Comedy</p>
+        <div class="callout-dots" role="tablist" aria-label="Scene review moments">
+          <button type="button" role="tab" aria-selected="true" data-seek="3.5" aria-label="Step 1: Pick a review lens"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="15.0" aria-label="Step 2: Read quoted notes"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="21.0" aria-label="Step 3: Compare side by side"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="28.0" aria-label="Step 4: Pick and steer notes"></button>
+          <button type="button" role="tab" aria-selected="false" data-seek="38.5" aria-label="Step 5: Apply with Undo all"></button>
+        </div>
+        <span class="side-connector" aria-hidden="true"></span>
+      </div>
+    </div>
     <ul class="spotlight-notes">
       <li><strong>Compare side by side</strong>Inspect any suggestion against your current draft before changing a word.</li>
       <li><strong>Pick &amp; steer</strong>Check the notes you want, add your own guidance, and apply them together.</li>
@@ -271,22 +285,45 @@
     <div class="ai-trio-grid">
       <div class="ai-card" id="ask">
         <figure class="shot">
-          <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-agents" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation">
+          <video id="askVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-agents" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation">
             <source src="images/demo-agents-light.webm" type="video/webm">
             <source src="images/demo-agents-light.mp4" type="video/mp4">
           </video>
         </figure>
+        <div class="bar-callout c-parchment" id="askCallout" data-step="0" aria-live="polite">
+          <div class="bar-callout-body">
+            <span class="callout-step" id="askStepLabel">Step 1 of 3</span>
+            <p class="callout-text" id="askStepText"><b>Ask Codex</b> about the open scene</p>
+          </div>
+          <div class="callout-dots" role="tablist" aria-label="Ask agents moments">
+            <button type="button" role="tab" aria-selected="true" data-seek="6.5" aria-label="Step 1: Ask Codex"></button>
+            <button type="button" role="tab" aria-selected="false" data-seek="17.0" aria-label="Step 2: Switch to Claude"></button>
+            <button type="button" role="tab" aria-selected="false" data-seek="25.5" aria-label="Step 3: Compare independent replies"></button>
+          </div>
+        </div>
         <h3>Ask &amp; edit across the whole book</h3>
         <p class="card-copy">Three side-by-side agent tabs that search the entire manuscript, read your story notes, edit multiple files at once, and show exact context and token usage for every reply.</p>
       </div>
 
       <div class="ai-card" id="group">
         <figure class="shot">
-          <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-room" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay">
+          <video id="roomVideo" autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-room" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay">
             <source src="images/demo-room-light.webm" type="video/webm">
             <source src="images/demo-room-light.mp4" type="video/mp4">
           </video>
         </figure>
+        <div class="bar-callout c-parchment" id="roomCallout" data-step="0" aria-live="polite">
+          <div class="bar-callout-body">
+            <span class="callout-step" id="roomStepLabel">Step 1 of 4</span>
+            <p class="callout-text" id="roomStepText"><b>Ask the room</b> — Codex, Claude &amp; Antigravity together</p>
+          </div>
+          <div class="callout-dots" role="tablist" aria-label="The Group debate moments">
+            <button type="button" role="tab" aria-selected="true" data-seek="9.0" aria-label="Step 1: Ask the room"></button>
+            <button type="button" role="tab" aria-selected="false" data-seek="13.0" aria-label="Step 2: Codex pushes to cut"></button>
+            <button type="button" role="tab" aria-selected="false" data-seek="16.0" aria-label="Step 3: Claude pushes back"></button>
+            <button type="button" role="tab" aria-selected="false" data-seek="28.0" aria-label="Step 4: Antigravity checks continuity"></button>
+          </div>
+        </div>
         <h3>The Group: let your agents debate</h3>
         <p class="card-copy">Put two or three agents in one conversation—focused on story, voice, and continuity—to push back on each other and summarize agreed Before/After edits, or forward any chat for a second opinion.</p>
       </div>
@@ -340,17 +377,17 @@
     </ul>
   </div>
   <div class="phone-stage">
-    <div class="phone-callout c-parchment" id="phoneCallout" data-step="0" aria-live="polite">
-      <span class="phone-callout-step" id="phoneStepLabel">Step 1 of 5</span>
-      <p class="phone-callout-text" id="phoneStepText"><b>Open your book</b> and pick up right where you left off</p>
-      <div class="phone-callout-dots" role="tablist" aria-label="Phone demo moments">
-        <button type="button" role="tab" aria-selected="true" data-phone-seek="0.4" aria-label="Step 1: Open your book"></button>
-        <button type="button" role="tab" aria-selected="false" data-phone-seek="2.8" aria-label="Step 2: Read in book typography"></button>
-        <button type="button" role="tab" aria-selected="false" data-phone-seek="6.2" aria-label="Step 3: Tap a paragraph to leave a TODO"></button>
-        <button type="button" role="tab" aria-selected="false" data-phone-seek="13.2" aria-label="Step 4: Quick edit with safe sync"></button>
-        <button type="button" role="tab" aria-selected="false" data-phone-seek="19.0" aria-label="Step 5: Ask an agent"></button>
+    <div class="side-callout side-callout-left c-parchment" id="phoneCallout" data-step="0" aria-live="polite">
+      <span class="callout-step" id="phoneStepLabel">Step 1 of 5</span>
+      <p class="callout-text" id="phoneStepText"><b>Open your book</b> right where you left off</p>
+      <div class="callout-dots" role="tablist" aria-label="Phone demo moments">
+        <button type="button" role="tab" aria-selected="true" data-seek="0.4" aria-label="Step 1: Open your book"></button>
+        <button type="button" role="tab" aria-selected="false" data-seek="2.8" aria-label="Step 2: Read in book typography"></button>
+        <button type="button" role="tab" aria-selected="false" data-seek="6.2" aria-label="Step 3: Tap a paragraph to leave a TODO"></button>
+        <button type="button" role="tab" aria-selected="false" data-seek="13.2" aria-label="Step 4: Quick edit with safe sync"></button>
+        <button type="button" role="tab" aria-selected="false" data-seek="19.0" aria-label="Step 5: Ask an agent"></button>
       </div>
-      <span class="phone-connector" aria-hidden="true"></span>
+      <span class="side-connector" aria-hidden="true"></span>
     </div>
     <div class="phone-mock">
       <div class="phone-screen">
@@ -557,6 +594,10 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
         sources[1].setAttribute('src', mp4);
         video.load();
       }
+      if (video.dataset.rate) {
+        var r = parseFloat(video.dataset.rate);
+        if (r > 0) video.playbackRate = r;
+      }
       if (reduce) {
         video.removeAttribute('autoplay');
         video.pause();
@@ -584,52 +625,98 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     });
   });
 
-  /* Live-synced explanation callout beside the Remote Mode phone mockup */
-  var phoneVideo = document.getElementById('phoneVideo');
-  var phoneCallout = document.getElementById('phoneCallout');
-  var phoneStepLabel = document.getElementById('phoneStepLabel');
-  var phoneStepText = document.getElementById('phoneStepText');
-  if (phoneVideo && phoneCallout && phoneStepLabel && phoneStepText) {
-    var phoneSteps = [
-      { at: 0,    cls: 'c-parchment', label: 'Step 1 of 5', html: '<b>Open your book</b> and pick up right where you left off' },
-      { at: 2.0,  cls: 'c-sage',      label: 'Step 2 of 5', html: '<b>Read in book type</b> — tap any paragraph to annotate' },
-      { at: 5.2,  cls: 'c-rose',      label: 'Step 3 of 5', html: '<b>Leave a TODO</b> pinned right above the paragraph' },
-      { at: 11.8, cls: 'c-slate',     label: 'Step 4 of 5', html: '<b>Quick edit</b> — draft stays on your phone until Save' },
-      { at: 16.5, cls: 'c-lavender',  label: 'Step 5 of 5', html: '<b>Ask an agent</b> — critique or chat right from your phone' }
-    ];
-    var phoneDots = Array.prototype.slice.call(phoneCallout.querySelectorAll('[data-phone-seek]'));
-    var lastStep = -1;
-    function setPhoneStep(idx) {
-      if (idx === lastStep) return;
-      lastStep = idx;
-      var s = phoneSteps[idx];
-      phoneCallout.className = 'phone-callout ' + s.cls;
-      phoneCallout.dataset.step = String(idx);
-      phoneStepLabel.textContent = s.label;
-      phoneStepText.innerHTML = s.html;
-      phoneDots.forEach(function (dot, i) {
+  /* Live-synced editorial callout cards for Review, Ask, Group & Phone videos */
+  function wireVideoCallout(cfg) {
+    var video = document.getElementById(cfg.videoId);
+    var box = document.getElementById(cfg.boxId);
+    var labelEl = document.getElementById(cfg.labelId);
+    var textEl = document.getElementById(cfg.textId);
+    if (!video || !box || !labelEl || !textEl) return;
+    if (cfg.rate) {
+      video.dataset.rate = String(cfg.rate);
+      var applyRate = function () { video.playbackRate = cfg.rate; };
+      applyRate();
+      video.addEventListener('loadedmetadata', applyRate);
+      video.addEventListener('play', applyRate);
+    }
+    var dots = Array.prototype.slice.call(box.querySelectorAll('[data-seek]'));
+    var last = -1;
+    function setStep(idx) {
+      if (idx === last) return;
+      last = idx;
+      var s = cfg.steps[idx];
+      box.className = cfg.baseClass + ' ' + s.cls;
+      box.dataset.step = String(idx);
+      labelEl.textContent = 'Step ' + (idx + 1) + ' of ' + cfg.steps.length;
+      textEl.innerHTML = s.html;
+      dots.forEach(function (dot, i) {
         dot.setAttribute('aria-selected', i === idx ? 'true' : 'false');
       });
     }
-    function syncPhoneStep() {
-      var t = phoneVideo.currentTime || 0;
+    function sync() {
+      var t = video.currentTime || 0;
       var idx = 0;
-      for (var i = phoneSteps.length - 1; i >= 0; i--) {
-        if (t >= phoneSteps[i].at) { idx = i; break; }
+      for (var i = cfg.steps.length - 1; i >= 0; i--) {
+        if (t >= cfg.steps[i].at) { idx = i; break; }
       }
-      setPhoneStep(idx);
+      setStep(idx);
     }
-    phoneVideo.addEventListener('timeupdate', syncPhoneStep);
-    phoneVideo.addEventListener('seeked', syncPhoneStep);
-    phoneDots.forEach(function (dot, i) {
+    video.addEventListener('timeupdate', sync);
+    video.addEventListener('seeked', sync);
+    dots.forEach(function (dot, i) {
       dot.addEventListener('click', function () {
-        var target = parseFloat(dot.dataset.phoneSeek || '0');
-        try { phoneVideo.currentTime = target; } catch (e) {}
-        setPhoneStep(i);
+        var target = parseFloat(dot.dataset.seek || '0');
+        try { video.currentTime = target; } catch (e) {}
+        setStep(i);
       });
     });
-    setPhoneStep(0);
+    setStep(0);
   }
+
+  wireVideoCallout({
+    videoId: 'reviewVideo', boxId: 'reviewCallout', labelId: 'reviewStepLabel', textId: 'reviewStepText',
+    baseClass: 'side-callout side-callout-right', rate: 0.85,
+    steps: [
+      { at: 0,    cls: 'c-parchment', html: '<b>Pick a review lens</b> — Quick critique, Craft, or Comedy' },
+      { at: 11.0, cls: 'c-sage',      html: '<b>Read quoted notes</b> — Before, Why &amp; rewrite in voice' },
+      { at: 19.5, cls: 'c-rose',      html: '<b>Compare side by side</b> — word-level diff before editing' },
+      { at: 23.0, cls: 'c-slate',     html: '<b>Pick &amp; steer notes</b> — check items &amp; add guidance' },
+      { at: 35.5, cls: 'c-lavender',  html: '<b>Apply with Undo all</b> — one-click undo on saved edits' }
+    ]
+  });
+
+  wireVideoCallout({
+    videoId: 'askVideo', boxId: 'askCallout', labelId: 'askStepLabel', textId: 'askStepText',
+    baseClass: 'bar-callout', rate: 0.9,
+    steps: [
+      { at: 0,    cls: 'c-parchment', html: '<b>Ask Codex</b> about the open scene' },
+      { at: 11.5, cls: 'c-sage',      html: '<b>Switch to Claude</b> — ask the same question in its own tab' },
+      { at: 22.0, cls: 'c-slate',     html: '<b>Compare replies</b> — separate threads &amp; token counts' }
+    ]
+  });
+
+  wireVideoCallout({
+    videoId: 'roomVideo', boxId: 'roomCallout', labelId: 'roomStepLabel', textId: 'roomStepText',
+    baseClass: 'bar-callout', rate: 0.85,
+    steps: [
+      { at: 0,    cls: 'c-parchment', html: '<b>Ask the room</b> — Codex, Claude &amp; Antigravity together' },
+      { at: 11.5, cls: 'c-rose',      html: '<b>Codex pushes to cut</b> — Story Editor flags a repeated beat' },
+      { at: 14.5, cls: 'c-sage',      html: '<b>Claude pushes back</b> — Voice Editor defends the joke' },
+      { at: 18.0, cls: 'c-lavender',  html: '<b>Antigravity checks continuity</b> — cites exact scene lines' }
+    ]
+  });
+
+  wireVideoCallout({
+    videoId: 'phoneVideo', boxId: 'phoneCallout', labelId: 'phoneStepLabel', textId: 'phoneStepText',
+    baseClass: 'side-callout side-callout-left', rate: 0.68,
+    steps: [
+      { at: 0,    cls: 'c-parchment', html: '<b>Open your book</b> right where you left off' },
+      { at: 2.0,  cls: 'c-sage',      html: '<b>Read in book type</b> — tap any paragraph' },
+      { at: 5.2,  cls: 'c-rose',      html: '<b>Leave a TODO</b> pinned above the paragraph' },
+      { at: 11.8, cls: 'c-slate',     html: '<b>Quick edit</b> — saved locally until Save' },
+      { at: 16.5, cls: 'c-lavender',  html: '<b>Ask an agent</b> right from your phone' }
+    ]
+  });
 })();
 </script>
 </body>

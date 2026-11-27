@@ -41,12 +41,23 @@
   </div>
   <p class="eyebrow">Free, local &amp; open source</p>
   <h1>The page you read is the page you <em>write&nbsp;on.</em></h1>
-  <p class="lede">A free writing studio for novels in plain Markdown. Read your draft in clean book typography, revise locally with no account or server, and export a paperback or e-book.</p>
+  <p class="lede">A free writing studio for novels in plain Markdown—built for your Obsidian vault, Git repo, or any folder of chapters. Read and edit in clean book typography, revise locally with no account or server, and export a paperback or e-book.</p>
   <div class="actions">
     <a class="button primary" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
     <a class="button" href="#get-started">Install Proseview</a>
   </div>
-  <p class="fine">macOS, Windows &amp; Linux · or <a href="write/">start a book in your browser →</a></p>
+  <div class="hero-cli" aria-label="Quick install command">
+    <div class="hero-cli-tabs" role="tablist" aria-label="Install method">
+      <button type="button" role="tab" aria-selected="true" data-hero-cmd="curl -LsSf https://ourarash.github.io/proseview/install.sh | sh" data-hero-os="mac">Mac / Linux</button>
+      <button type="button" role="tab" aria-selected="false" data-hero-cmd="irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex" data-hero-os="win">Windows</button>
+      <button type="button" role="tab" aria-selected="false" data-hero-cmd='pipx install "proseview[claude]"' data-hero-os="pipx">pipx</button>
+    </div>
+    <div class="install hero-install">
+      <code id="heroInstallCmd">curl -LsSf https://ourarash.github.io/proseview/install.sh | sh</code>
+      <button type="button" data-copy="heroInstallCmd">Copy</button>
+    </div>
+  </div>
+  <p class="fine">macOS, Windows &amp; Linux · works with Obsidian, Git &amp; VS Code · or <a href="write/">start a book in your browser →</a></p>
   <div class="hero-stage">
     <figure class="shot hero-shot">
       <img src="images/write-a-scene-light.png" data-light-src="images/write-a-scene-light.png" data-dark-src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
@@ -136,6 +147,27 @@
       </figure>
       <h3>Progress, streaks, and what changed</h3>
       <p>See words written toward your goal, daily pace, streak, and the exact words added or cut in every scene—computed directly from your local files and Git history.</p>
+    </div>
+  </div>
+</section>
+
+<section class="tools-band" id="tools">
+  <div class="tools-surface">
+    <p class="eyebrow">Works with your tools</p>
+    <h2>Fits the way you already write.</h2>
+    <div class="tools">
+      <div>
+        <h3>Obsidian</h3>
+        <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts, and embeds stay exactly as you wrote them.</p>
+      </div>
+      <div>
+        <h3>Git, for backup</h3>
+        <p>Your book is plain text, so Git keeps every draft. Push it to a private GitHub repository for off-site backup, and Proseview reads your commits for goals and writing streaks.</p>
+      </div>
+      <div>
+        <h3>VS Code</h3>
+        <p>Open any scene in VS Code, Cursor, or Zed with one click and keep it beside Proseview. A change saved in either one appears live in the other.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -293,45 +325,25 @@
   </div>
 </section>
 
-<section class="tools-band">
-  <div class="tools-surface">
-    <p class="eyebrow">Works with your tools</p>
-    <h2>Fits the way you already write.</h2>
-    <div class="tools">
-      <div>
-        <h3>Obsidian</h3>
-        <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts, and embeds stay exactly as you wrote them.</p>
-      </div>
-      <div>
-        <h3>Git, for backup</h3>
-        <p>Your book is plain text, so Git keeps every draft. Push it to a private GitHub repository for off-site backup, and Proseview reads your commits for goals and writing streaks.</p>
-      </div>
-      <div>
-        <h3>VS Code</h3>
-        <p>Open any scene in VS Code, Cursor, or Zed with one click and keep it beside Proseview. A change saved in either one appears live in the other.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="compare" id="compare">
   <p class="eyebrow center">Comparison</p>
   <h2>How Proseview compares.</h2>
   <div class="compare-scroll">
     <table>
       <thead>
-        <tr><th scope="col"><span class="visually-hidden">Feature</span></th><th scope="col" class="us">Proseview</th><th scope="col">Scrivener</th><th scope="col">Google Docs</th><th scope="col">Novelcrafter</th><th scope="col">Sudowrite</th></tr>
+        <tr><th scope="col"><span class="visually-hidden">Feature</span></th><th scope="col" class="us">Proseview</th><th scope="col">Obsidian + plugins</th><th scope="col">VS Code</th><th scope="col">Scrivener</th><th scope="col">Google Docs</th><th scope="col">Novelcrafter</th><th scope="col">Sudowrite</th></tr>
       </thead>
       <tbody>
-        <tr><th scope="row">Price</th><td class="us">Free</td><td>$59.99 once (Mac)</td><td>Free</td><td>From $4 a month</td><td>From $10 a month</td></tr>
-        <tr><th scope="row">Where your book is kept</th><td class="us">Plain Markdown files on your computer</td><td>A Scrivener project on your computer</td><td>Online, in Google Drive</td><td>Online, in Novelcrafter</td><td>Online, in Sudowrite</td></tr>
-        <tr><th scope="row">Account needed</th><td class="us">No</td><td>No</td><td>Google account</td><td>Yes</td><td>Yes</td></tr>
-        <tr><th scope="row">Works offline</th><td class="us">Yes</td><td>Yes</td><td>With an extension</td><td>No</td><td>Writing only, in its phone app</td></tr>
-        <tr><th scope="row">On your phone</th><td class="us">Any phone browser over private Tailscale remote mode (free, iOS &amp; Android)</td><td>Paid iOS app ($23.99, synced via Dropbox); no Android app</td><td>iOS and Android apps (plus mobile web)</td><td>Mobile web browser</td><td>iOS and Android companion app</td></tr>
-        <tr><th scope="row">AI</th><td class="us">Your own Codex, Claude, or Antigravity, no API key; up to three debate in one chat</td><td>None</td><td>Gemini, on eligible Google plans</td><td>The model you connect, with your own API key</td><td>Built in, edits paid with credits</td></tr>
-        <tr><th scope="row">What the AI works with</th><td class="us">Searches the whole book itself, edits several files, and searches the web</td><td>None</td><td>The open document, plus Drive files, email, or the web if you pick them</td><td>The scenes and story-bible entries sent with your message, or the whole novel</td><td>Your Sudowrite documents and Story Bible; edits several after you approve a plan</td></tr>
-        <tr><th scope="row">Export</th><td class="us">EPUB, PDF, Word</td><td>EPUB, PDF, Word, and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
-        <tr><th scope="row">Open source</th><td class="us">Yes (MIT)</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
+        <tr><th scope="row">Price</th><td class="us">Free</td><td>Free for personal use (Sync from $4/mo)</td><td>Free</td><td>$59.99 once (Mac)</td><td>Free</td><td>From $4 a month</td><td>From $10 a month</td></tr>
+        <tr><th scope="row">Built for novels</th><td class="us">Book typography, 13 local prose checks, storyline lanes, Beat Map, paperback preview</td><td>General note app; relies on Longform, Pandoc, and CSS snippets</td><td>Code editor; no book typography, prose checks, storylines, or paperback layout</td><td>Binder, corkboard, outliner, and full compile engine</td><td>General word processor</td><td>Codex, scene planner, and novel-focused AI prompts</td><td>Story Bible and fiction-focused AI drafting tools</td></tr>
+        <tr><th scope="row">Where your book is kept</th><td class="us">Plain Markdown files on your computer</td><td>Plain Markdown files on your computer</td><td>Plain Markdown files on your computer</td><td>A Scrivener project on your computer</td><td>Online, in Google Drive</td><td>Online, in Novelcrafter</td><td>Online, in Sudowrite</td></tr>
+        <tr><th scope="row">Account needed</th><td class="us">No</td><td>No (only for Obsidian Sync)</td><td>No</td><td>No</td><td>Google account</td><td>Yes</td><td>Yes</td></tr>
+        <tr><th scope="row">Works offline</th><td class="us">Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>With an extension</td><td>No</td><td>Writing only, in its phone app</td></tr>
+        <tr><th scope="row">On your phone</th><td class="us">Any phone browser over private Tailscale remote mode (free, iOS &amp; Android)</td><td>Free iOS and Android apps (sync via Obsidian Sync, iCloud, or plugins)</td><td>No native phone editor (web via VS Code for the Web / tunnels)</td><td>Paid iOS app ($23.99, synced via Dropbox); no Android app</td><td>iOS and Android apps (plus mobile web)</td><td>Mobile web browser</td><td>iOS and Android companion app</td></tr>
+        <tr><th scope="row">AI</th><td class="us">Your own Codex, Claude, or Antigravity, no API key; up to three debate in one chat</td><td>Community plugins (your own API key or local model)</td><td>GitHub Copilot or extensions (Claude Code, Codex, etc.)</td><td>None</td><td>Gemini, on eligible Google plans</td><td>The model you connect, with your own API key</td><td>Built in, edits paid with credits</td></tr>
+        <tr><th scope="row">What the AI works with</th><td class="us">Searches the whole book itself, edits several files, and searches the web</td><td>Depends on plugin (active note, vault search, or linked notes)</td><td>Full workspace files and terminal, via agent extensions</td><td>None</td><td>The open document, plus Drive files, email, or the web if you pick them</td><td>The scenes and story-bible entries sent with your message, or the whole novel</td><td>Your Sudowrite documents and Story Bible; edits several after you approve a plan</td></tr>
+        <tr><th scope="row">Export</th><td class="us">EPUB, PDF, Word</td><td>PDF built in; EPUB and Word via Pandoc or community plugins</td><td>Via Pandoc or Markdown export extensions</td><td>EPUB, PDF, Word, and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
+        <tr><th scope="row">Open source</th><td class="us">Yes (MIT)</td><td>No (closed app; open community plugins)</td><td>Open-source core (MIT); Microsoft builds have a proprietary license</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
       </tbody>
     </table>
   </div>
@@ -444,6 +456,21 @@
     });
   });
   if (/Win/.test(navigator.platform || navigator.userAgent)) show('win');
+})();
+(function () {
+  var heroTabs = Array.prototype.slice.call(document.querySelectorAll('[data-hero-cmd]'));
+  var heroCode = document.getElementById('heroInstallCmd');
+  function pickHero(os) {
+    heroTabs.forEach(function (tab) {
+      var on = tab.dataset.heroOs === os;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on && heroCode) heroCode.textContent = tab.dataset.heroCmd;
+    });
+  }
+  heroTabs.forEach(function (tab) {
+    tab.addEventListener('click', function () { pickHero(tab.dataset.heroOs); });
+  });
+  if (/Win/.test(navigator.platform || navigator.userAgent)) pickHero('win');
 })();
 document.querySelectorAll('[data-copy]').forEach(function (button) {
   button.addEventListener('click', function () {

@@ -419,6 +419,49 @@ main > section,
   text-decoration-color: var(--accent);
 }
 
+.hero-cli {
+  max-width: 660px;
+  margin: 18px auto 0;
+  text-align: left;
+}
+
+.hero-cli-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0 0 6px 2px;
+}
+
+.hero-cli-tabs button {
+  font: 500 12px/1 var(--sans);
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.hero-cli-tabs button:hover {
+  color: var(--ink);
+}
+
+.hero-cli-tabs button[aria-selected="true"] {
+  background: var(--code-bg);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hero-install {
+  margin: 0;
+  padding: 8px 8px 8px 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.hero-install code {
+  font-size: 13px;
+}
+
 .hero-stage {
   position: relative;
   margin: 34px auto 0;
@@ -990,7 +1033,7 @@ kbd {
 
 .tools-band {
   text-align: center;
-  padding-top: 68px !important;
+  padding-top: 12px !important;
   padding-bottom: 68px !important;
 }
 
@@ -1027,6 +1070,10 @@ kbd {
 
 /* Comparison */
 
+.compare {
+  max-width: 1260px !important;
+}
+
 .compare h2 {
   text-align: center;
 }
@@ -1042,14 +1089,14 @@ kbd {
 
 .compare table {
   width: 100%;
-  min-width: 780px;
+  min-width: 1080px;
   border-collapse: collapse;
-  font: 400 14.5px/1.48 var(--sans);
+  font: 400 14px/1.46 var(--sans);
 }
 
 .compare th,
 .compare td {
-  padding: 15px 17px;
+  padding: 13px 14px;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--line);
@@ -1355,6 +1402,10 @@ footer a:hover {
 /* Responsive */
 
 @media (max-width: 1179px) {
+  .compare-swipe {
+    display: block;
+  }
+
   .hero-stage {
     padding: 0;
   }

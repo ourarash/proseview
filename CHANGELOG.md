@@ -3,58 +3,63 @@
 Notable changes in each Proseview release. When a version is tagged, its
 section here becomes the release notes on GitHub.
 
-## Unreleased
+## 0.6.0 — 2026-11-27
 
 ### Added
 
 - **Proseview on your phone.** `proseview --remote` publishes Proseview to
   your phone over Tailscale (`tailscale serve`), letting in only your own
-  Tailscale login. On the phone: a short home with Continue reading and the
-  chapters, Read the book, scenes and notes full width, a plain-text Quick
-  edit that works with dictation, tap a paragraph to add a TODO or note,
-  and the chat with Codex, Claude and Agy. Anything typed is kept on the
-  phone until it is saved, a change made on the Mac meanwhile is never
-  overwritten without asking, and a banner says when the Mac is asleep.
-  Settings shows the address as a QR code, and the Mac stays awake while
-  it runs.
-
-- **Scene labels.** Give a scene one label in its frontmatter (`label: Main
-  Plot`), or pick it from the dropdown while reading. Labels show as a
-  colour in the sidebar, Overview, Read the book and the timeline, and can
-  be added, recoloured, renamed or removed under **Settings → Appearance →
-  Labels**; renaming or removing one updates every scene that uses it.
-  `story.label_field` points labels at a field you already use, such as
-  `pov`. YAML files in the book can now be edited in the dashboard too,
-  checked before they are saved.
-- **Scene illustrations.** The picture button in the scene toolbar asks
-  Codex, Agy or Claude (with an image tool connected) for an illustration of
-  the scene in one of six styles. Takes wait in a preview above the scene
-  until you insert one; it is then saved in the chapter's `assets` folder,
-  linked from the scene with a relative path (so Obsidian, VS Code and GitHub
-  show it too), and its source, alt text and width can be edited in place. Ask for changes in
-  the chat that made it.
-- **Cover when idle.** The privacy screen can cover the page by itself after
-  a set time with no activity, chosen in Settings (off by default).
-- **Prompt context.** Click the open file's name under the chat box to send
-  the scene's beat map, full text, story notes or neighbouring excerpts with
-  your questions in that conversation (all off by default). Each message
-  shows roughly how much it sent, and each reply the tokens used and how
-  full the conversation is.
-- **Queued messages can be edited, removed or sent now** from the message
+  Tailscale login. On the phone: a focused home screen with Continue reading,
+  TODOs, and chapters, continuous reading, full-width scenes and notes, a
+  plain-text Quick edit that works with voice dictation, tap a paragraph to
+  add a TODO or note, and chat with Codex, Claude, and Antigravity. Drafts
+  stay on your phone until saved, edits made on your computer are never
+  silently overwritten, and a banner says when your computer is asleep.
+  Settings shows a scannable QR code, and your computer stays awake while
+  remote mode runs.
+- **Scene labels.** Give a scene a label in its frontmatter (`label: Main
+  Plot`), or pick one from the dropdown while reading. Labels show as a color
+  in the sidebar, Overview, Read the book, and the timeline, and can be added,
+  recolored, renamed, or removed under **Settings → Appearance → Labels**;
+  renaming or removing one updates every scene that uses it.
+  `story.label_field` points labels at a field you already use, such as `pov`.
+  YAML files in the book can now be edited in the dashboard too, with syntax
+  validation before saving.
+- **Scene illustrations.** The picture button in the scene toolbar asks Codex,
+  Antigravity, or Claude (with an image tool connected) for an illustration of
+  the scene in one of six styles. Previews wait above the scene until you
+  insert one; it then saves in the chapter's `assets` folder, linked from the
+  scene with a relative path (so Obsidian, VS Code, and GitHub show it too),
+  and its source, alt text, and width can be edited in place. Ask for changes
+  in the chat that made it.
+- **Cover when idle.** The privacy screen can cover the page automatically
+  after a set idle timeout configured in Settings (off by default).
+- **Prompt context & token usage.** Click the open file's name under the chat
+  box to send the scene's beat map, full text, story notes, or neighboring
+  excerpts with your questions in that conversation (all off by default). Each
+  message shows roughly how much it sent, and each reply shows token usage and
+  context fullness.
+- **Queued messages can be edited, removed, or sent now** from the message
   itself, which shows its place in the queue.
 - **Rewrite options can be picked.** When a reply offers several rewrites,
-  each can be selected and sent back as a request, keeping its scene and
-  line.
+  each can be selected and sent back as a request, keeping its scene and line.
 
 ### Changed
 
+- **One-line installer includes Claude support.** `install.sh` and
+  `install.ps1` now install `proseview[claude]` by default so the Claude tab
+  works out of the box when Claude Code is installed.
+- **Clearer onboarding & agent guidance.** When an AI agent is not detected or
+  Proseview runs in the browser demo, the sidebar explains what Codex
+  (OpenAI), Claude (Anthropic), and Antigravity (Google Gemini) are, what they
+  can do, and how to connect them.
 - **Send to Group** moved into the menu beside **Send**.
 - A selection attached to a message is cleared once the message is sent.
 - **Word variety** flags far fewer scenes: the nearby-words range is now
   0.66–0.72 (was 0.74–0.77, which flagged 38 of Alice in Wonderland's 39
   scenes; now 4). A book still carrying the old range from `proseview init`
   gets the new one.
-- **Read the book** takes changes to scene files as they happen, as the
+- **Read the book** live-reloads changes to scene files as they happen, as the
   scene view does, without moving the text you are reading.
 - The Overview scene table is more compact.
 - The old pandoc export (`--engine pandoc`) is removed; the built-in writer
@@ -62,18 +67,21 @@ section here becomes the release notes on GitHub.
 
 ### Fixed
 
+- Previous-scene tail previews render callouts, inline formatting, and
+  paragraph spacing cleanly without leaking HTML comments or reference links.
+- Saving a scene label no longer races with a concurrent scene refresh.
 - Saving a note no longer adds a blank line after its frontmatter.
-- A TODO or note added to a paragraph that starts with italics, bold or a
+- A TODO or note added to a paragraph that starts with italics, bold, or a
   link no longer fails to find the paragraph.
-- Agy turns are no longer cut short by opening the chat's history or
-  exporting it while the agent works.
-- Claude uses your installed Claude Code even when Proseview is started
-  from the Dock, where `~/.local/bin` is not on PATH.
+- Antigravity turns are no longer cut short by opening chat history or
+  exporting while the agent works.
+- Claude uses your installed Claude Code even when Proseview is started from
+  the Dock, where `~/.local/bin` is not on PATH.
 - The selection menu stays where you drag it instead of jumping back.
 - Opening Read the book and moving straight on no longer jumps back to the
   start.
-- Folders left open in the file browser stay open after deleting or
-  renaming a file there.
+- Folders left open in the file browser stay open after deleting or renaming a
+  file there.
 
 ## 0.5.1 — 2026-11-19
 

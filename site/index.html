@@ -389,14 +389,16 @@
       </div>
       <span class="side-connector" aria-hidden="true"></span>
     </div>
-    <div class="phone-mock">
-      <div class="phone-screen">
-        <div class="phone-status" aria-hidden="true"><span class="phone-island"></span></div>
-        <video id="phoneVideo" autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
-          <source src="images/demo-phone-light.webm" type="video/webm">
-          <source src="images/demo-phone-light.mp4" type="video/mp4">
-        </video>
-        <div class="phone-home" aria-hidden="true"><span></span></div>
+    <div class="phone-col">
+      <div class="phone-mock">
+        <div class="phone-screen">
+          <div class="phone-status" aria-hidden="true"><span class="phone-island"></span></div>
+          <video id="phoneVideo" autoplay loop muted playsinline preload="metadata" width="390" height="760" data-theme-video="demo-phone" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat">
+            <source src="images/demo-phone-light.webm" type="video/webm">
+            <source src="images/demo-phone-light.mp4" type="video/mp4">
+          </video>
+          <div class="phone-home" aria-hidden="true"><span></span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -589,20 +591,27 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       var webm = 'images/' + base + suffix + '.webm';
       var mp4 = 'images/' + base + suffix + '.mp4';
       var sources = video.querySelectorAll('source');
+      var wasPaused = video.dataset.userPaused === '1';
+      var prevTime = video.currentTime || 0;
       if (sources.length >= 2 && sources[0].getAttribute('src') !== webm) {
         sources[0].setAttribute('src', webm);
         sources[1].setAttribute('src', mp4);
         video.load();
+        if (prevTime > 0.2) {
+          video.addEventListener('loadedmetadata', function restoreT() {
+            video.removeEventListener('loadedmetadata', restoreT);
+            try { video.currentTime = Math.min(prevTime, video.duration || prevTime); } catch (e) {}
+          });
+        }
       }
       if (video.dataset.rate) {
         var r = parseFloat(video.dataset.rate);
         if (r > 0) video.playbackRate = r;
       }
-      if (reduce) {
+      if (reduce || wasPaused) {
         video.removeAttribute('autoplay');
         video.pause();
-        video.controls = true;
-      } else if (video.paused && !video.controls) {
+      } else if (video.paused) {
         video.play().catch(function () {});
       }
     });
@@ -625,6 +634,93 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     });
   });
 
+  /* Calm play/pause + hairline seek bar mounted cleanly beneath every demo video */
+  function fmtSec(s) {
+    if (!isFinite(s) || s < 0) return '0:00';
+    var m = Math.floor(s / 60);
+    var sec = Math.floor(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  var vctrlMap = {};
+  document.querySelectorAll('video[data-theme-video]').forEach(function (video) {
+    var host = video.closest('.phone-col') || video.parentElement;
+    if (!host) return;
+    var bar = document.createElement('div');
+    bar.className = 'vctrl' + (host.classList.contains('phone-col') ? ' vctrl-phone' : '');
+    bar.innerHTML =
+      '<button type="button" class="vctrl-btn" aria-label="Pause video">' +
+        '<svg class="vctrl-icon-pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.3" y="1.8" width="2.3" height="8.4" rx="0.7"/><rect x="7.4" y="1.8" width="2.3" height="8.4" rx="0.7"/></svg>' +
+        '<svg class="vctrl-icon-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.7l7.4 4.3L3 10.3z"/></svg>' +
+      '</button>' +
+      '<div class="vctrl-track">' +
+        '<div class="vctrl-rail"><div class="vctrl-fill"></div><div class="vctrl-thumb"></div></div>' +
+        '<input class="vctrl-range" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek video">' +
+      '</div>' +
+      '<span class="vctrl-time" aria-hidden="true">0:00 / 0:00</span>';
+    host.appendChild(bar);
+
+    var btn = bar.querySelector('.vctrl-btn');
+    var rail = bar.querySelector('.vctrl-rail');
+    var fill = bar.querySelector('.vctrl-fill');
+    var thumb = bar.querySelector('.vctrl-thumb');
+    var range = bar.querySelector('.vctrl-range');
+    var timeEl = bar.querySelector('.vctrl-time');
+    var scrubbing = false;
+
+    function syncPlayState() {
+      var paused = video.paused;
+      bar.dataset.paused = paused ? 'true' : 'false';
+      btn.setAttribute('aria-label', paused ? 'Play video' : 'Pause video');
+      btn.setAttribute('title', paused ? 'Play' : 'Pause');
+    }
+    function syncProgress() {
+      var dur = video.duration || 0;
+      var cur = video.currentTime || 0;
+      var pct = dur > 0 ? Math.max(0, Math.min(100, (cur / dur) * 100)) : 0;
+      fill.style.width = pct + '%';
+      thumb.style.left = pct + '%';
+      if (!scrubbing) range.value = String(Math.round(pct * 10));
+      timeEl.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
+    }
+    function togglePlay() {
+      if (video.paused) {
+        delete video.dataset.userPaused;
+        video.play().catch(function () {});
+      } else {
+        video.dataset.userPaused = '1';
+        video.pause();
+      }
+      syncPlayState();
+    }
+
+    btn.addEventListener('click', togglePlay);
+    video.style.cursor = 'pointer';
+    video.addEventListener('click', togglePlay);
+
+    range.addEventListener('pointerdown', function () { scrubbing = true; });
+    range.addEventListener('pointerup', function () { scrubbing = false; });
+    range.addEventListener('input', function () {
+      var dur = video.duration || 0;
+      if (dur > 0) {
+        var next = (parseFloat(range.value) / 1000) * dur;
+        try { video.currentTime = next; } catch (e) {}
+        fill.style.width = (parseFloat(range.value) / 10) + '%';
+        thumb.style.left = (parseFloat(range.value) / 10) + '%';
+        timeEl.textContent = fmtSec(next) + ' / ' + fmtSec(dur);
+      }
+    });
+
+    video.addEventListener('play', syncPlayState);
+    video.addEventListener('pause', syncPlayState);
+    video.addEventListener('loadedmetadata', syncProgress);
+    video.addEventListener('durationchange', syncProgress);
+    video.addEventListener('timeupdate', syncProgress);
+    video.addEventListener('seeked', syncProgress);
+    syncPlayState();
+    syncProgress();
+    if (video.id) vctrlMap[video.id] = { rail: rail, video: video };
+  });
+
   /* Live-synced editorial callout cards for Review, Ask, Group & Phone videos */
   function wireVideoCallout(cfg) {
     var video = document.getElementById(cfg.videoId);
@@ -638,6 +734,22 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       applyRate();
       video.addEventListener('loadedmetadata', applyRate);
       video.addEventListener('play', applyRate);
+    }
+    var ctrl = vctrlMap[cfg.videoId];
+    if (ctrl && cfg.steps.length > 1) {
+      var drawMarks = function () {
+        var dur = video.duration || 0;
+        if (!dur) return;
+        ctrl.rail.querySelectorAll('.vctrl-mark').forEach(function (m) { m.remove(); });
+        cfg.steps.slice(1).forEach(function (s) {
+          var mark = document.createElement('span');
+          mark.className = 'vctrl-mark';
+          mark.style.left = Math.min(99, Math.max(1, (s.at / dur) * 100)) + '%';
+          ctrl.rail.appendChild(mark);
+        });
+      };
+      drawMarks();
+      video.addEventListener('loadedmetadata', drawMarks);
     }
     var dots = Array.prototype.slice.call(box.querySelectorAll('[data-seek]'));
     var last = -1;

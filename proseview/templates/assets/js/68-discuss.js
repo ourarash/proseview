@@ -685,6 +685,16 @@
                 _discussIncludeCurrentDocument = !!requestedSelection;
             }
             renderDiscussContext();
+            if (window.PROSEVIEW_STATIC) {
+                _discussOpenFailed = true;
+                if (typeof syncDiscussGroupFork === 'function') syncDiscussGroupFork();
+                setDiscussConnection('Not available here', '');
+                var staticLogNow = document.getElementById('discussLog');
+                staticLogNow.replaceChildren(discussAgentsUnavailableState(discussAgentLabel()));
+                document.getElementById('discussComposerArea').hidden = true;
+                document.getElementById('discussAnnouncement').textContent = discussAgentLabel() + ' runs in the installed app.';
+                return;
+            }
             var openBody = {kind: doc.kind, path: doc.path, agent: _discussAgent};
             _discussOpeningKey = key;
             if (typeof syncDiscussGroupFork === 'function') syncDiscussGroupFork();

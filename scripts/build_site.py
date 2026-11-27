@@ -28,11 +28,11 @@ PACKAGE = REPO / "proseview"
 PYODIDE_FILES = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json")
 #: Dependencies the browser cannot run: Typst makes PDFs and is a native binary.
 NOT_IN_BROWSER = {"typst"}
-#: README images the landing page shows.
+#: README images and landing-page videos copied into the site.
 LANDING_IMAGES = (
-    "dashboard.png", "write-a-scene.png", "demo-writing.gif", "demo-highlights.gif",
-    "demo-timeline.gif", "demo-room.gif", "demo-review.gif", "demo-agents.gif", "export-preview.png", "storylines.png", "beat-map.png",
-    "demo-illustration.gif", "demo-phone.gif",
+    "dashboard.png", "write-a-scene.png", "export-preview.png", "storylines.png", "beat-map.png",
+    "demo-writing.mp4", "demo-highlights.mp4", "demo-room.mp4", "demo-review.mp4",
+    "demo-agents.mp4", "demo-illustration.mp4", "demo-phone.mp4",
 )
 
 

@@ -9,7 +9,7 @@
 # Proseview icon on the Desktop and opens the book. Run it again to update.
 set -eu
 
-PACKAGE="${PROSEVIEW_PACKAGE:-proseview}"  # A local path or wheel, for testing.
+PACKAGE="${PROSEVIEW_PACKAGE:-proseview[claude]}"  # A local path or wheel, for testing.
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'Proseview could not be installed: %s\n' "$*" >&2; exit 1; }

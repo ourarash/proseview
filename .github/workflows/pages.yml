@@ -16,7 +16,7 @@ on:
       - "fixtures/demo-book/**"
       - "site/**"
       - "scripts/build_site.py"
-      - "docs/images/demo-preview.png"
+      - "docs/images/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

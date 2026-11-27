@@ -11,7 +11,7 @@
 # Run it again to update.
 
 $ErrorActionPreference = 'Stop'
-$Package = if ($env:PROSEVIEW_PACKAGE) { $env:PROSEVIEW_PACKAGE } else { 'proseview' }
+$Package = if ($env:PROSEVIEW_PACKAGE) { $env:PROSEVIEW_PACKAGE } else { 'proseview[claude]' }
 
 function Fail($message) {
     Write-Host "Proseview could not be installed: $message" -ForegroundColor Red

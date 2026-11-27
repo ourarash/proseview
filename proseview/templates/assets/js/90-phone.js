@@ -855,9 +855,85 @@
 
             // ── Laptop: the QR code and the phone dot ───────────────────────────
 
-            function remotePhones(count) {
+            function remotePhones(count, payload) {
                 root.dataset.remotePhones = String(count || 0);
+                if (payload && typeof payload.last_seen === 'number') {
+                    root.dataset.remoteLastSeen = String(Math.round(payload.last_seen * 1000));
+                }
+                syncRemoteBadge();
             }
+
+            // "today at 5:42 PM", "yesterday at 9:10 AM" or "Nov 24 at 8:00 PM".
+            function visitTime(ms) {
+                var when = new Date(ms);
+                var time = when.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+                var today = new Date();
+                var yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+                if (when.toDateString() === today.toDateString()) return 'today at ' + time;
+                if (when.toDateString() === yesterday.toDateString()) return 'yesterday at ' + time;
+                return when.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' at ' + time;
+            }
+
+            function remoteStatusText() {
+                if (Number(root.dataset.remotePhones || 0) > 0) return 'Phone connected now';
+                var seen = Number(root.dataset.remoteLastSeen || 0);
+                return seen ? 'Last phone visit ' + visitTime(seen) : 'No phone yet';
+            }
+
+            function syncRemoteBadge() {
+                var badge = document.getElementById('remoteBadge');
+                if (!badge) return;
+                var url = root.dataset.remoteUrl || '';
+                badge.hidden = !url || isRemote();
+                if (badge.hidden) return;
+                var status = remoteStatusText();
+                badge.title = 'Shared to your phone. ' + status + '.';
+                var line = document.getElementById('remotePopoverStatus');
+                if (line) {
+                    line.textContent = status;
+                    line.classList.toggle('is-live', Number(root.dataset.remotePhones || 0) > 0);
+                }
+                var address = document.getElementById('remotePopoverUrl');
+                if (address) address.textContent = url.replace(/^https:\/\//, '');
+                var settingsLine = document.getElementById('settingsRemoteSeen');
+                if (settingsLine) settingsLine.textContent = status + '.';
+            }
+
+            function setRemotePopover(open) {
+                var badge = document.getElementById('remoteBadge');
+                var popover = document.getElementById('remotePopover');
+                if (!badge || !popover) return;
+                if (open) syncRemoteBadge();
+                popover.hidden = !open;
+                badge.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+
+            function wireRemoteBadge() {
+                var badge = document.getElementById('remoteBadge');
+                if (!badge) return;
+                badge.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                    setRemotePopover(document.getElementById('remotePopover').hidden);
+                });
+                document.addEventListener('click', function(event) {
+                    if (!event.target.closest || !event.target.closest('#remotePopover')) setRemotePopover(false);
+                });
+                document.addEventListener('keydown', function(event) {
+                    if (event.key === 'Escape' && !document.getElementById('remotePopover').hidden) {
+                        setRemotePopover(false);
+                        badge.focus();
+                    }
+                });
+                syncRemoteBadge();
+            }
+
+            window.openRemoteQr = function() {
+                setRemotePopover(false);
+                if (typeof openSettings === 'function') openSettings();
+                if (typeof selectSettingsTab === 'function') selectSettingsTab('general');
+                var section = document.getElementById('settingsRemote');
+                if (section) setTimeout(function() { section.scrollIntoView({block: 'nearest'}); }, 200);
+            };
 
             // ── Wiring ──────────────────────────────────────────────────────────
 
@@ -873,6 +949,7 @@
             }
 
             function init() {
+                wireRemoteBadge();
                 apply();
                 try {
                     window.matchMedia(NARROW_QUERY).addEventListener('change', apply);

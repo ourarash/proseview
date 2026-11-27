@@ -20841,11 +20841,32 @@
         /* ── Phone (proseview --remote) ─────────────────────────────────────
            html.pv-phone is set by 90-phone.js on a phone-sized touch screen. */
         #phoneHome, #pvSceneBar, .pv-sheet, .pv-offline-banner, .pv-note-pill { display: none; }
-        .remote-dot { display: none; }
-        html[data-remote-phones]:not([data-remote-phones="0"]) .remote-dot {
-            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-            background: var(--success); margin-left: 6px; vertical-align: middle;
+        /* The Mac's sign that the book is shared to the phone: a small phone
+           icon after the name, with a dot while a phone is connected. */
+        .remote-badge-wrap { position: relative; display: inline-flex; align-items: center; }
+        .remote-badge {
+            position: relative; display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; margin-left: 6px; padding: 0; border: 0; border-radius: 8px;
+            background: transparent; color: var(--text-soft); cursor: pointer;
         }
+        .remote-badge[hidden] { display: none; }
+        .remote-badge:hover, .remote-badge[aria-expanded="true"] { background: var(--button-hover); color: var(--text-muted); }
+        .remote-badge svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+        .remote-badge-dot { display: none; position: absolute; top: 4px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 2px var(--surface-card); }
+        html[data-remote-phones]:not([data-remote-phones="0"]) .remote-badge { color: var(--text-muted); }
+        html[data-remote-phones]:not([data-remote-phones="0"]) .remote-badge-dot { display: block; }
+        .remote-popover {
+            position: absolute; top: calc(100% + 8px); left: 0; z-index: 950; width: 280px; padding: 12px 14px;
+            border: 1px solid var(--border); border-radius: 12px; background: var(--surface-card); box-shadow: var(--shadow-card);
+            font-size: 13px; line-height: 1.5; color: var(--text-main);
+        }
+        .remote-popover[hidden] { display: none; }
+        .remote-popover p { margin: 0; }
+        .remote-popover-title { font-weight: 600; }
+        .remote-popover-status { color: var(--text-muted); }
+        .remote-popover-status.is-live { color: var(--text-success); }
+        .remote-popover-url { margin: 4px 0 8px !important; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-soft); word-break: break-all; }
+        .remote-popover-qr { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; cursor: pointer; }
         /* Things that act on the Mac itself are not offered on the phone. */
         html[data-remote="phone"] #exportOpenBtn,
         html[data-remote="phone"] #modalEditorBtn,
@@ -20853,7 +20874,7 @@
         html[data-remote="phone"] #modalExportChapterBtn,
         html[data-remote="phone"] #modalFullscreenBtn,
         html[data-remote="phone"] .settings-remote-section,
-        html[data-remote="phone"] .remote-dot { display: none !important; }
+        html[data-remote="phone"] .remote-badge-wrap { display: none !important; }
 
         html.pv-phone body { overflow-x: hidden; }
         html.pv-phone .tab-nav,

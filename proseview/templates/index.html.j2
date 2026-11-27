@@ -380,7 +380,7 @@
 
     <main id="mainContent">
     <header class="top-banner">
-        <div class="dashboard-identity"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Proseview</h1><span class="remote-dot" title="A phone is connected" aria-label="A phone is connected"></span></div>
+        <div class="dashboard-identity"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Proseview</h1><span class="remote-badge-wrap"><button type="button" id="remoteBadge" class="remote-badge" aria-haspopup="dialog" aria-expanded="false" aria-controls="remotePopover" aria-label="Shared to your phone" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="7" y="3" width="10" height="18" rx="2.2"></rect><path d="M11 18h2"></path></svg><span class="remote-badge-dot" aria-hidden="true"></span></button><div id="remotePopover" class="remote-popover" role="dialog" aria-label="Shared to your phone" hidden><p class="remote-popover-title">Shared to your phone</p><p id="remotePopoverStatus" class="remote-popover-status"></p><p id="remotePopoverUrl" class="remote-popover-url"></p><button type="button" class="remote-popover-qr" onclick="openRemoteQr()">Show QR code</button></div></span></div>
         <div class="app-toolbar">
         <nav class="tab-nav" aria-label="Dashboard sections">
             <button class="active" data-tab="overview" aria-current="page" onclick="showTab('overview')">Overview</button>
@@ -689,12 +689,13 @@
             {% endif %}
 
             <section id="settingsRemote" class="settings-remote-section" aria-labelledby="settingsRemoteTitle" hidden>
-                <h3 id="settingsRemoteTitle" class="settings-section">On your phone<span class="remote-dot" title="A phone is connected"></span></h3>
+                <h3 id="settingsRemoteTitle" class="settings-section">On your phone</h3>
                 <div class="settings-remote-qr">
                     <div id="settingsRemoteQr"></div>
                     <div>
                         <p class="settings-note">Scan this with your phone's camera while Tailscale is on, then add the page to the Home Screen. It only saves typing the address; it is not a login.</p>
                         <p id="settingsRemoteUrl" class="settings-remote-url"></p>
+                        <p id="settingsRemoteSeen" class="settings-note"></p>
                         <p class="settings-note">To cut off a lost phone, remove it in the <a href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener">Tailscale admin console</a>.</p>
                     </div>
                 </div>

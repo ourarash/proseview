@@ -439,3 +439,31 @@ def test_typing_while_save_is_pending_is_not_lost(phone: Page, book_server: Pros
     expect(phone.locator("#pvEditSheet")).to_be_hidden()
     phone.wait_for_timeout(600)  # past the draft wait: no stale draft comes back
     assert phone.evaluate("Object.keys(localStorage).filter(k => k.startsWith('proseview-phone-draft:')).length") == 0
+
+
+def test_the_mac_shows_a_quiet_phone_icon_with_the_last_visit(browser: Browser, book_server: ProseviewServer):
+    context = browser.new_context(viewport={"width": 1300, "height": 800}, service_workers="block")
+    try:
+        page = context.new_page()
+        _install_esm_cache(page)
+        page.goto(book_server.url("/"))
+        badge = page.locator("#remoteBadge")
+        expect(badge).to_be_hidden()  # not started with --remote
+        page.evaluate(
+            "document.documentElement.dataset.remoteUrl = 'https://mac.tail1234.ts.net';"
+            "pvRemotePhones(0, {last_seen: null})"
+        )
+        expect(badge).to_be_visible()
+        expect(page.locator(".remote-badge-dot")).to_be_hidden()
+        badge.click()
+        expect(page.locator("#remotePopoverStatus")).to_have_text("No phone yet")
+        expect(page.locator("#remotePopoverUrl")).to_have_text("mac.tail1234.ts.net")
+        page.evaluate("pvRemotePhones(1, {last_seen: Date.now() / 1000})")
+        expect(page.locator(".remote-badge-dot")).to_be_visible()
+        expect(page.locator("#remotePopoverStatus")).to_have_text("Phone connected now")
+        page.evaluate("pvRemotePhones(0, {last_seen: Date.now() / 1000})")
+        expect(page.locator("#remotePopoverStatus")).to_contain_text("Last phone visit today at")
+        page.keyboard.press("Escape")
+        expect(page.locator("#remotePopover")).to_be_hidden()
+    finally:
+        context.close()

@@ -1895,7 +1895,10 @@ class _Handler(BaseHTTPRequestHandler):
         """
         if self.remote is not None:
             # The phone listener: only the laptop's own Tailscale login.
-            return self.remote.gate.allows(self.headers)
+            allowed = self.remote.gate.allows(self.headers)
+            if allowed:
+                self.remote.seen()
+            return allowed
         host = self.headers.get("Host", "")
         origin = self.headers.get("Origin", "")
         if not self._is_loopback_authority(host):
@@ -2683,7 +2686,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "remote mode is off"}, 404)
                 return
             self._send_json({
-                "ok": True, "url": session.identity.url, "phones": session.phones,
+                "ok": True, "url": session.identity.url, **session.status(),
                 "qr": qr_svg(session.identity.url, label=f"QR code for {session.identity.url}"),
             })
             return
@@ -2717,7 +2720,8 @@ class _Handler(BaseHTTPRequestHandler):
             q: queue.Queue[str] = self.subscribe()
             if self.remote is not None:
                 # The laptop shows a small dot while a phone is connected.
-                self.publish_event({"type": "remote", "phones": self.remote.phone_connected(1)})
+                self.remote.phone_connected(1)
+                self.publish_event({"type": "remote", **self.remote.status()})
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -2739,7 +2743,8 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 self.unsubscribe(q)
                 if self.remote is not None:
-                    self.publish_event({"type": "remote", "phones": self.remote.phone_connected(-1)})
+                    self.remote.phone_connected(-1)
+                    self.publish_event({"type": "remote", **self.remote.status()})
             return
         elif self.path == "/assets/app.js":
             self.send_response(200)
@@ -3132,8 +3137,10 @@ class _Handler(BaseHTTPRequestHandler):
             if self.remote is not None:
                 html = html.replace("<html ", '<html data-remote="phone" ', 1)
             if self.remote_session is not None:
-                phones = self.remote_session.phones
-                attrs = f'data-remote-url="{html_escape(self.remote_session.identity.url)}" data-remote-phones="{phones}"'
+                status = self.remote_session.status()
+                seen = "" if status["last_seen"] is None else str(int(status["last_seen"] * 1000))
+                attrs = (f'data-remote-url="{html_escape(self.remote_session.identity.url)}" '
+                         f'data-remote-phones="{status["phones"]}" data-remote-last-seen="{seen}"')
                 html = html.replace("<html ", f"<html {attrs} ", 1)
             html = html.encode("utf-8")
         except Exception as exc:

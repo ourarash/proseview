@@ -231,6 +231,8 @@ class RemoteSession:
         self._serve: subprocess.Popen[bytes] | None = None
         self._awake: subprocess.Popen[bytes] | None = None
         self.phones = 0
+        #: When a phone last reached Proseview (epoch seconds), kept in memory.
+        self.last_seen: float | None = None
         self.last_log = ""
         self._lock = threading.Lock()
 
@@ -314,4 +316,12 @@ class RemoteSession:
     def phone_connected(self, delta: int) -> int:
         with self._lock:
             self.phones = max(0, self.phones + delta)
+            self.last_seen = time.time()
             return self.phones
+
+    def seen(self) -> None:
+        """A phone request got in: the time the Mac shows as the last visit."""
+        self.last_seen = time.time()
+
+    def status(self) -> dict[str, Any]:
+        return {"phones": self.phones, "last_seen": self.last_seen}

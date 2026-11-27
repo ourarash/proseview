@@ -1504,7 +1504,7 @@
                 } else if (payload && payload.type === 'privacy') {
                     privacyFollowServer(payload);
                 } else if (payload && payload.type === 'remote') {
-                    if (typeof window.pvRemotePhones === 'function') window.pvRemotePhones(payload.phones);
+                    if (typeof window.pvRemotePhones === 'function') window.pvRemotePhones(payload.phones, payload);
                 } else if ((payload && (payload.type === 'reload' || payload.type === 'reload:content')) ||
                     e.data === 'reload' || e.data === 'reload:content') {
                     reloadOrDefer(

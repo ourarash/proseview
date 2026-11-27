@@ -241,6 +241,21 @@ def test_the_laptop_gets_the_phone_address_as_a_qr_code(listeners):
     payload = json.loads(data)
     assert code == 200 and payload["url"] == f"https://{DNS}" and payload["phones"] == 0
     assert payload["qr"].startswith("<svg") and f"QR code for https://{DNS}" in payload["qr"]
+    assert payload["last_seen"] is None
+
+
+def test_the_laptop_learns_when_a_phone_last_visited(listeners):
+    import time
+
+    listeners("phone", "GET", "/", [("Host", DNS)])  # refused: not a visit
+    _, data = listeners("laptop", "GET", "/api/remote", [("Host", "localhost")])
+    assert json.loads(data)["last_seen"] is None
+    before = time.time()
+    listeners("phone", "GET", "/", GOOD)
+    _, data = listeners("laptop", "GET", "/api/remote", [("Host", "localhost")])
+    assert before <= json.loads(data)["last_seen"] <= time.time()
+    _, page = listeners("laptop", "GET", "/", [("Host", "localhost")])
+    assert b'data-remote-last-seen="' in page and b'data-remote-last-seen=""' not in page
 
 
 # -- the QR encoder -------------------------------------------------------------------

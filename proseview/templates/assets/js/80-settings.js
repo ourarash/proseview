@@ -184,6 +184,7 @@ function showRemoteAddress() {
         if (!data || !data.ok) return;
         document.getElementById('settingsRemoteQr').innerHTML = data.qr;
         document.getElementById('settingsRemoteUrl').textContent = data.url;
+        if (typeof window.pvRemotePhones === 'function') window.pvRemotePhones(data.phones, data);
         section.hidden = false;
     }).catch(() => {});
 }

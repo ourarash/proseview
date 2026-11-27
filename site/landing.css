@@ -73,30 +73,28 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --paper: #111215;
-    --paper-linen: #0a0b0e;
-    --card: #181a1f;
-    --card-subtle: #15171c;
-    --ink: #f1efe9;
-    --body-ink: #dad7d0;
-    --muted: #9da1ab;
-    --subtle: #767a84;
-    --line: rgba(255, 255, 255, 0.09);
-    --line-strong: rgba(255, 255, 255, 0.18);
-    --accent: #e0645e;
-    --accent-hover: #ea746e;
-    --accent-ink: #111215;
-    --accent-soft: rgba(224, 100, 94, 0.10);
-    --accent-border: rgba(224, 100, 94, 0.30);
-    --shot-bg: #1b1d22;
-    --code-bg: #181a20;
-    --code-ink: #eceae4;
-    --shadow: 0 28px 68px -18px rgba(0, 0, 0, 0.65), 0 4px 16px -4px rgba(0, 0, 0, 0.35);
-    --shadow-soft: 0 12px 30px -14px rgba(0, 0, 0, 0.45);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #111215;
+  --paper-linen: #0a0b0e;
+  --card: #181a1f;
+  --card-subtle: #15171c;
+  --ink: #f1efe9;
+  --body-ink: #dad7d0;
+  --muted: #9da1ab;
+  --subtle: #767a84;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --accent: #e0645e;
+  --accent-hover: #ea746e;
+  --accent-ink: #111215;
+  --accent-soft: rgba(224, 100, 94, 0.10);
+  --accent-border: rgba(224, 100, 94, 0.30);
+  --shot-bg: #1b1d22;
+  --code-bg: #181a20;
+  --code-ink: #eceae4;
+  --shadow: 0 28px 68px -18px rgba(0, 0, 0, 0.65), 0 4px 16px -4px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 12px 30px -14px rgba(0, 0, 0, 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -198,6 +196,25 @@ main > section,
   transition: background-color 140ms ease;
 }
 .top nav .top-cta:hover { background: var(--accent-hover); color: var(--accent-ink); }
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--line-strong); background: var(--card); }
+.theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 
 /* Buttons */
 

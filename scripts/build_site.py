@@ -30,12 +30,26 @@ PYODIDE_FILES = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_s
 NOT_IN_BROWSER = {"typst"}
 #: README images, editorial art, and landing-page videos copied into the site.
 LANDING_IMAGES = (
-    "hero-bookplate.png", "hero-bookplate-dark.png", "ai-salon-dark.png",
-    "dashboard.png", "write-a-scene.png", "export-preview.png", "storylines.png", "beat-map.png",
-    "demo-writing.webm", "demo-highlights.webm", "demo-room.webm", "demo-review.webm",
-    "demo-agents.webm", "demo-illustration.webm", "demo-phone.webm",
-    "demo-writing.mp4", "demo-highlights.mp4", "demo-room.mp4", "demo-review.mp4",
-    "demo-agents.mp4", "demo-illustration.mp4", "demo-phone.mp4",
+    "hero-bookplate.png", "hero-bookplate-dark.png", "ai-salon.png", "ai-salon-dark.png",
+    "dashboard.png", "dashboard-light.png",
+    "write-a-scene.png", "write-a-scene-light.png",
+    "export-preview.png", "export-preview-light.png",
+    "storylines.png", "storylines-light.png",
+    "beat-map.png", "beat-map-light.png",
+    "demo-writing.webm", "demo-writing-light.webm",
+    "demo-highlights.webm", "demo-highlights-light.webm",
+    "demo-room.webm", "demo-room-light.webm",
+    "demo-review.webm", "demo-review-light.webm",
+    "demo-agents.webm", "demo-agents-light.webm",
+    "demo-illustration.webm", "demo-illustration-light.webm",
+    "demo-phone.webm", "demo-phone-light.webm",
+    "demo-writing.mp4", "demo-writing-light.mp4",
+    "demo-highlights.mp4", "demo-highlights-light.mp4",
+    "demo-room.mp4", "demo-room-light.mp4",
+    "demo-review.mp4", "demo-review-light.mp4",
+    "demo-agents.mp4", "demo-agents-light.mp4",
+    "demo-illustration.mp4", "demo-illustration-light.mp4",
+    "demo-phone.mp4", "demo-phone-light.mp4",
 )
 
 

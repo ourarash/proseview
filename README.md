@@ -13,7 +13,7 @@
 [Start a book in your browser](https://ourarash.github.io/proseview/write/) ·
 [Quick start](#quick-start)
 
-Proseview turns a folder of Markdown scenes into a local studio to write, structure, revise, and publish a book. You read and edit in clean book typography while your files stay plain `.md` on disk—compatible with Obsidian, VS Code, Vim, and Git. Everything runs locally with no account, database, or telemetry; AI is optional and stays off until you ask.
+Proseview is a local web app that turns a folder of Markdown scenes into a writing studio in your browser. You read, edit, revise, and publish in clean book typography while your files stay plain `.md` on disk—compatible with Obsidian, VS Code, Vim, and Git. Everything runs locally on your machine with no account, database, or telemetry; AI is optional and stays off until you ask.
 
 ![The Proseview dashboard with the file sidebar open on chapter one's scenes: a Progress card with the words against the goal, today's words, words a day, the writing streak, words per chapter and days to finish, above the scene list](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/dashboard.png)
 
@@ -33,7 +33,7 @@ curl -LsSf https://ourarash.github.io/proseview/install.sh | sh
 irm https://raw.githubusercontent.com/ourarash/proseview/main/site/install.ps1 | iex
 ```
 
-No Python setup or admin password needed (installs via [uv](https://docs.astral.sh/uv/), asks for your book folder, and adds a **Proseview** launcher). Already use Python 3.11+? `pipx install proseview` (or `"proseview[claude]"` for Claude) also works. Run the install line again to update.
+No Python setup or admin password needed (installs via [uv](https://docs.astral.sh/uv/), asks for your book folder, and adds a **Proseview** launcher). Already use Python 3.11+? Install with `pipx install proseview` (use `pipx install "proseview[claude]"` if you want the optional Claude agent tab). Run the installer again to update.
 
 ```bash
 proseview                     # Open your last book (or the book in the current folder)
@@ -41,45 +41,56 @@ proseview open                # Pick another book folder
 proseview new                 # Start a new book with its first scene
 ```
 
-Proseview reads scenes from `manuscript/` (one folder per chapter, one `.md` per scene; frontmatter and `.proseview.yaml` are optional). Point it at any Markdown folder—such as an Obsidian vault—and it opens for reading, editing, and search right away. [Layout and frontmatter →](docs/manuscript.md)
+Full novel features (chapters, progress, timeline, export) read from `manuscript/` with one folder per chapter and one `.md` file per scene—frontmatter and `.proseview.yaml` are optional. You can also point Proseview at any Markdown folder (such as an Obsidian vault) to read, edit, and search right away. [Layout and frontmatter →](docs/manuscript.md)
 
 ## Features
 
 ### Write & organize
-- **Read like a book, edit in place:** Press `E` to edit directly in the same typography and `Mod-S` to save, with a side-by-side conflict guard if edited externally.
-- **Read the book & Print layout:** Read the whole manuscript continuously (it follows edits made on disk), or preview facing typeset pages with running heads and chapter drops.
-- **Notes, YAML & callouts:** Edit story-bible `.md` files and `.yaml` configs (including `.proseview.yaml`) in place with syntax highlighting, callout boxes (`> [!letter]`), inline `<!-- TODO -->` / `<!-- NOTE -->`, and automatic backups.
-- **Scene labels & colors:** Tag scenes in frontmatter (`label:`) or from the reading view, customize colors in **Settings → Appearance**, and see them across Overview, Sidebar, Read the book, and Timeline.
-- **Search & privacy:** `Mod-K` searches titles, metadata, notes, and prose; `Mod-J J` covers the screen with a decoy spreadsheet, by hand or after a set idle time ([optional password →](docs/configuration.md#privacy-screen-password)).
+- **Read like a book, edit in place:** Press `E` to edit directly in the same typography and `Cmd/Ctrl+S` to save, with a side-by-side conflict guard if the file changed in another editor.
+- **Continuous reading & Print layout:** Read the whole manuscript as one continuous book (live-reloading as files change on disk), or preview facing typeset pages with running heads and chapter drops.
+- **Story bible, YAML & notes:** Edit character bios, plans, and `.yaml` configs (including `.proseview.yaml`) in place with syntax highlighting, callout boxes (`> [!letter]`), inline `<!-- TODO -->` / `<!-- NOTE -->` markers, and automatic backups.
+- **Scene labels & colors:** Tag scenes in frontmatter (`label:`) or from the reading view, customize colors in **Settings → Appearance**, and see them across Overview, Sidebar, continuous reading, and Timeline.
+- **Instant search:** `Cmd/Ctrl+K` searches titles, metadata, notes, and prose across your whole project.
+- **Privacy screen:** `Cmd/Ctrl+J J` covers the window with a decoy spreadsheet, manually or after an idle timeout ([optional password →](docs/configuration.md#privacy-screen-password)).
 
-![Typing a new closing line into a scene and saving it with Mod-S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
+![Typing a new closing line into a scene and saving it with Cmd/Ctrl+S, with the word count updating](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-writing.gif)
 
 ### Structure & revise
-- **13 Editorial passes & highlight cards:** Quiet underlines for sticky sentences, echoes, repeated words/openings, passive voice, filter verbs, crutch words, dialogue tags, POV slips, and more.
-- **Word variety (MATTR & MTLD):** Tracks vocabulary richness against genre ranges ([what the numbers mean →](docs/analytics.md)).
-- **Timeline, storylines & characters:** Compare chapter proportions, parallel storyline lanes, reading order vs. story chronology, and character co-occurrence.
-- **Progress, What changed & File history:** Track goals, daily pace, streaks, a running word total per scene, word deltas by period or Git commit, and diff/restore previous backups.
+- **13 local prose checks (no AI):** Quiet inline underlines for sticky sentences, echoes, repeated words and openings, passive voice, filter verbs, crutch words, dialogue tags, POV slips, and more.
+- **Vocabulary richness (MATTR & MTLD):** Tracks lexical variety against genre ranges ([what the numbers mean →](docs/analytics.md)).
+- **Timeline, storylines & characters:** Compare chapter proportions, parallel storyline lanes, reading order vs. story chronology, and character co-occurrence across chapters.
+- **Progress & revision history:** Track word-count goals, daily pace, streaks, running word totals per scene, word deltas by period or Git commit, and diff/restore automatic file backups.
 
 ![The Analysis panel open beside a scene, with four highlight passes switched on from their rows and the matching words marked in the prose](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-highlights.gif)
 
 ### Working with an agent (optional)
-Proseview has no model of its own and needs no API keys—it uses the Codex, Claude, or Agy (Antigravity) CLI already signed in on your machine. Nothing runs until you ask. [How AI features work →](docs/ai.md)
+Proseview has no model of its own and needs no API keys—it connects to the local Codex, Claude, or Antigravity (Gemini) CLI already signed in on your machine, using your existing subscription. Nothing runs until you ask. [How AI features work →](docs/ai.md)
 
-- **The Group:** Two or three editors (**Story**, **Voice**, **Continuity**) on different agents debate the same scene, respond to each other, and summarize agreements and edits.
-- **Scene reviews & Beat Map:** Run **Quick critique**, **Deepen & layer**, **Craft review** (McKee, Coyne, Cron, Snyder, King, Lamott), **Comedy review**, or map beats along a tension curve.
-- **Compare & reversible edits:** Inspect suggestions side by side, apply selected findings or pick one of several rewrites, and review agent edits with **Undo all** / **Looks good**.
-- **Scene illustrations:** One click asks Codex, Agy, or Claude for a picture of the scene in one of six styles; insert the one you like and it is saved beside the chapter as a plain image link.
-- **Prompt context & token use:** Choose what each conversation sends with your questions (beat map, full scene, story notes, neighbouring scenes) and see the tokens each reply used. Queued messages can be edited, removed, or sent now.
+- **The Group:** Two or three AI agents (Codex, Claude, or Antigravity) debate the same scene—each focused on story, voice, or continuity—respond to each other, and summarize agreements and suggested edits.
+- **Scene reviews & Beat Map:** Run **Quick critique**, **Deepen & layer** (subtext and sensory detail), **Craft review** (McKee, Coyne, Cron, Snyder, King, Lamott), **Comedy review**, or map scene beats along a tension curve.
+- **Compare & reversible edits:** Preview suggestions side by side against your prose, apply selected findings or pick among rewrites, and review every agent edit with **Undo all** / **Looks good**.
+- **Scene illustrations:** Ask Codex, Antigravity, or Claude for an illustration of a scene in one of six styles; insert the one you like and it saves beside the chapter as a standard Markdown image link.
+- **Transparent context & token use:** Choose what each conversation sends with your questions (beat map, full scene, story notes, neighboring scenes) and inspect the tokens each reply used.
 
 ![A scene illustration: choosing the Woodcut & Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-illustration.gif)
 
-![The Group tab: the Story Editor on Codex, the Voice Editor on Claude and the Continuity Editor on Agy debating whether a passage in the opening scene should stay](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
+![The Group tab: three AI agents on Codex, Claude, and Antigravity debating whether a passage in the opening scene should stay](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-room.gif)
 
 ### Publish
-- **Print-ready PDF, EPUB3 & Word (`.docx`):** Typeset paperbacks via Typst (5×8 to 6×9 in or A5) with interactive facing-page preview, store-ready EPUB3, and submission-ready `.docx` ([export guide →](docs/export.md)).
+- **Print-ready PDF, EPUB3 & Word (`.docx`):** Typeset paperbacks via Typst (bundled—no Pandoc, LaTeX, or Calibre to install) in trim sizes from 5×8 to 6×9 in or A5 with interactive facing-page preview, store-ready EPUB3, and submission-ready `.docx` ([export guide →](docs/export.md)).
 - **Read-only web snapshots:** `proseview snapshot` compiles your dashboard into static HTML for beta readers or GitHub Pages.
 
 ![The Export dialog's third step: title, author and cover beside a preview of the print book showing two facing pages with running heads and page numbers](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/export-preview.png)
+
+### On your phone
+Run `proseview --remote` to keep writing from your phone while Proseview runs on your computer: read the book and scenes, tap a paragraph to add a TODO or note, make quick plain-text edits (voice dictation works), and ask Codex, Claude, or Antigravity about the scene. Drafts stay safe on your phone until you save, with conflict protection so edits made on your computer are never silently overwritten.
+
+1. Install [Tailscale](https://tailscale.com/download) on both devices with the same account, and enable **HTTPS Certificates** under DNS in the Tailscale admin console.
+2. Run `proseview --remote`. Proseview prints a private `https://….ts.net` address and shows a scannable QR code in **Settings**.
+
+Access is limited to your private Tailscale network—no extra accounts, passwords, or pairing. Your computer stays awake while remote mode is running (lid open). To revoke a lost phone, remove it in the Tailscale admin console.
+
+<img src="https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-phone.gif" width="300" alt="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO from the + TODO / Note sheet, Quick edit adds a sentence and saves it, and Ask opens the chat">
 
 <details>
 <summary>More screenshots (Read the book, Analysis, Timeline, Beat Map, Reviews, Agents, Search, Export)</summary>
@@ -116,16 +127,6 @@ Proseview has no model of its own and needs no API keys—it uses the Codex, Cla
 
 ![The Export dialog's second step: format cards for E-book, Print book, Shareable PDF and All formats, the print book's trim size and right-hand chapter option, and thumbnails of the Classic, Modern and Romance styles](https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/export-formats.png)
 
-### On your phone
-Run `proseview --remote` and keep writing from your phone while Proseview runs on your laptop: read the book and scenes, tap a paragraph to add a TODO or note, make quick plain-text edits (dictation works), and ask Codex, Claude or Agy about the scene. Anything you type is kept on the phone until it is saved, and a change made on the laptop meanwhile is never overwritten without asking.
-
-1. Install [Tailscale](https://tailscale.com/download) on the laptop and the phone, signed in with the same account, and turn on **HTTPS Certificates** under DNS in its admin console.
-2. Run `proseview --remote`. It prints a private `https://….ts.net` address, and **Settings** shows it as a QR code for the phone's camera.
-
-Only your own Tailscale login gets in; there is no password or pairing. The laptop stays awake while it runs (lid open). To cut off a lost phone, remove it in the Tailscale admin console.
-
-<img src="https://raw.githubusercontent.com/ourarash/proseview/main/docs/images/demo-phone.gif" width="300" alt="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO from the + TODO / Note sheet, Quick edit adds a sentence and saves it, and Ask opens the chat">
-
 *Screenshots use the bundled public-domain demo book ([fixtures/demo-book](fixtures/demo-book/README.md)).*
 
 </details>
@@ -138,12 +139,12 @@ Only your own Tailscale login gets in; there is no password or pairing. The lapt
 | Key | Action |
 | :--- | :--- |
 | `E` | Edit the open scene or file |
-| `Mod-S` | Save edits and return to reading |
-| `Mod-K` | Search scenes, notes, and prose |
-| `Mod-J J` | Cover / uncover with the privacy screen |
+| `Cmd/Ctrl+S` | Save edits and return to reading |
+| `Cmd/Ctrl+K` | Search scenes, notes, and prose |
+| `Cmd/Ctrl+J J` | Cover / uncover with the privacy screen |
 | `P` / `A` | Polish / ask an agent about selected prose |
 | `X` | Open Export |
-| `F` / `Shift-F` | Focus layout / Fullscreen |
+| `F` / `Shift+F` | Focus layout / Fullscreen |
 
 ### CLI commands
 

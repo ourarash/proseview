@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proseview · A free writing studio for novels</title>
-<meta name="description" content="Write your novel in plain Markdown and read it like a book. Proseview is free and open source: a typeset page to write on, the whole book in one scroll, analysis for pacing and prose, and EPUB, print-ready PDF and Word export.">
+<meta name="description" content="Write your novel in plain Markdown and read it like a book. Proseview is a free, open-source local web app: a typeset page to write on, the whole book in one scroll, local prose analysis, optional AI agents, and EPUB, print-ready PDF, and Word export.">
 <meta property="og:title" content="Proseview · A free writing studio for novels">
-<meta property="og:description" content="Write your novel in plain Markdown and read it like a book. Free, open source, no account.">
+<meta property="og:description" content="Write your novel in plain Markdown and read it like a book. Free, open source, runs locally in your browser, no account.">
 <meta property="og:url" content="https://ourarash.github.io/proseview/">
 <meta property="og:image" content="https://ourarash.github.io/proseview/images/write-a-scene.png">
 <link rel="stylesheet" href="landing.css">
@@ -20,7 +20,7 @@
     <a href="#write">Write</a>
     <a href="#revise">Revise</a>
     <a href="#plan">Plan</a>
-    <a href="#group">Group</a>
+    <a href="#ai">AI</a>
     <a href="#publish">Publish</a>
     <a href="#compare">Compare</a>
     <a href="#faq">FAQ</a>
@@ -34,15 +34,15 @@
 <section class="hero">
   <p class="eyebrow">Free and open source</p>
   <h1>Write your novel in plain&nbsp;Markdown.</h1>
-  <p class="lede">Proseview turns a folder of Markdown scenes into a writing studio. Read it like a book, revise it with an editor's eye, and export an e-book or paperback.</p>
+  <p class="lede">Proseview runs locally in your browser and turns a folder of Markdown scenes into a writing studio. Read it like a book, revise with an editor's eye, and export an e-book or paperback.</p>
   <div class="actions">
     <a class="button primary" href="#get-started">Install Proseview</a>
     <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
-  <p class="fine">One line in Terminal or PowerShell installs it. <a href="#get-started">How →</a></p>
+  <p class="fine">macOS, Windows &amp; Linux · or <a href="write/">start a book in your browser →</a></p>
   <ul class="badges" aria-label="Promises">
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
-    <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Every draft backed up with git</li>
+    <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Works seamlessly with Git</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>No account, no tracking</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/></svg>Open source (MIT)</li>
   </ul>
@@ -54,17 +54,17 @@
 
 <section class="numbers" aria-label="Free">
   <div><strong>100%</strong><span>free, with no paid version</span></div>
-  <div><strong>0</strong><span>new file formats. Just your Markdown files.</span></div>
-  <div><strong>0</strong><span>servers storing your book. It stays on your laptop or in your browser.</span></div>
+  <div><strong>0</strong><span>proprietary formats—just your Markdown files.</span></div>
+  <div><strong>0</strong><span>servers storing your book. It stays on your computer, or in your browser when you try the web writer.</span></div>
 </section>
 
 <section class="shape">
-  <h2>A book is a folder you already understand.</h2>
-  <p>Your manuscript folder holds one folder per chapter and one Markdown file per scene. Proseview reads that shape and builds everything else from it.</p>
+  <h2>Your book stays a plain folder on disk.</h2>
+  <p>Your manuscript folder holds one folder per chapter and one Markdown file per scene. Proseview reads that structure directly—no database, no import, and no lock-in.</p>
   <ol class="tiers">
-    <li><b>Book</b><span>The manuscript folder: word count, goal and pace.</span></li>
-    <li><b>Chapters</b><span>A folder each, in the order you name them.</span></li>
-    <li><b>Scenes</b><span>A Markdown file each, with optional notes on who, where and when.</span></li>
+    <li><b>Book</b><span>The manuscript folder: word count, goal, and pace.</span></li>
+    <li><b>Chapters</b><span>One folder per chapter, in the order you name them.</span></li>
+    <li><b>Scenes</b><span>One Markdown file per scene, with optional metadata (POV, setting, timeline) at the top.</span></li>
   </ol>
 <pre class="tree" aria-label="Example folder"><code>my-novel/
 └── manuscript/
@@ -81,9 +81,9 @@
     <p class="eyebrow">Write</p>
     <h2>The page you read is the page you write on.</h2>
     <ul>
-      <li>Press <kbd>E</kbd> and the typeset page becomes the editor. <kbd>Cmd-S</kbd> saves and takes you back to reading.</li>
-      <li>Story bibles, plans and any other Markdown file are editable too.</li>
-      <li>Search the whole book with <kbd>Cmd-K</kbd>, and choose from six themes and seven fonts.</li>
+      <li>Press <kbd>E</kbd> and the typeset page becomes the editor. <kbd>Cmd/Ctrl+S</kbd> saves and returns you to reading.</li>
+      <li>Story bibles, plans, and any other Markdown or YAML file are editable in place too.</li>
+      <li>Search the whole book with <kbd>Cmd/Ctrl+K</kbd>, and choose from six themes and seven fonts.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-writing.gif" width="780" height="463" loading="lazy" alt="Typing a new closing line into a scene and saving it, with the word count updating"></figure>
@@ -94,9 +94,9 @@
     <p class="eyebrow">Revise</p>
     <h2>An editor's eye, on your terms.</h2>
     <ul>
-      <li>13 prose passes marked on the page: repetition, filter verbs, passive voice, crutch words and more.</li>
-      <li>Analysis that says what stands out in plain sentences, and shows who is in each chapter.</li>
-      <li>Today's words, your pace and streak, and what changed: the words written and cut in each scene.</li>
+      <li>13 instant, local style checks (no AI): repetition, filter verbs, passive voice, crutch words, POV slips, and more.</li>
+      <li>Plain-English manuscript takeaways on pacing and vocabulary variety, plus a chapter-by-chapter character chart.</li>
+      <li>Track today's words, pace, and streak, and see exactly which words were added or cut in every scene.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-highlights.gif" width="780" height="463" loading="lazy" alt="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"></figure>
@@ -107,68 +107,68 @@
     <p class="eyebrow">Plan</p>
     <h2>See every storyline at once.</h2>
     <ul>
-      <li>Each storyline gets its own lane across the book, from a <code>thread:</code> line in a scene's frontmatter.</li>
-      <li>Chapter lengths and words per scene, to spot a chapter that runs long.</li>
-      <li>Give a scene a label, such as Main Plot or Flashback, and its colour shows in the sidebar, the scene list and the timeline.</li>
+      <li>Tag scenes with a storyline (<code>thread:</code> in the scene header) to see every plot thread as its own lane across the book.</li>
+      <li>Compare chapter proportions and scene lengths side by side to spot chapters that run long.</li>
+      <li>Give a scene a label, such as Main Plot or Flashback, and its color shows in the sidebar, the scene list, and the timeline.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/storylines.png" width="1956" height="1022" loading="lazy" alt="The Timeline tab for Alice's Adventures in Wonderland: each chapter's share of the book, a bar of words for every scene, and four storylines (rabbit, size, wonderland and court) as lanes showing which scenes belong to each"></figure>
 </section>
 
-<section class="feature flip" id="beat-map">
+<section class="feature flip" id="ai">
+  <div class="copy">
+    <p class="eyebrow">Optional AI</p>
+    <h2>Your own Codex, Claude, or Antigravity—only when you ask.</h2>
+    <ul>
+      <li>Connects to the local Codex, Claude, or Antigravity (Gemini) CLI already signed in on your computer—no API keys, no Proseview subscription, and no limits from us.</li>
+      <li>Three agent tabs side by side, each keeping its own conversation as you move between files.</li>
+      <li>A real agent, not a single-shot chat box: it searches the whole book, reads your story notes, edits multiple files at once, and looks things up on the web.</li>
+      <li>Completely optional and never runs on its own. Every edit shows a before-and-after diff with one-click <strong>Undo all</strong>.</li>
+      <li>Choose what each conversation sends with your question (full scene, beat map, story notes), and see the tokens each reply used.</li>
+    </ul>
+  </div>
+  <figure class="shot"><img src="images/demo-agents.gif" width="780" height="463" loading="lazy" alt="The Codex and Claude tabs answering the same question about a scene, each in its own conversation"></figure>
+</section>
+
+<section class="feature" id="beat-map">
   <div class="copy">
     <p class="eyebrow">Beat Map</p>
     <h2>See how a scene moves.</h2>
     <ul>
-      <li>An estimated tension curve for the scene, and its moments in order: dialogue, action, internal thought and silent reaction.</li>
-      <li>Click a moment to jump to that paragraph.</li>
-      <li>Made by your own Codex, Claude or Antigravity when you ask, without editing anything. It is saved with the book, and marked out of date when the scene changes.</li>
+      <li>Plots an estimated tension curve for the scene alongside its moments in order: dialogue, action, internal thought, and silent reaction.</li>
+      <li>Click any moment to jump straight to that paragraph.</li>
+      <li>Generated by Codex, Claude, or Antigravity when you ask—without touching your prose—saved with the book, and flagged out of date whenever the scene changes.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/beat-map.png" width="2560" height="1520" loading="lazy" alt="A scene open beside its Beat Map: a tension curve across the scene above its moments, each marked as dialogue, action, internal thought or silent reaction"></figure>
 </section>
 
-<section class="feature" id="reviews">
+<section class="feature flip" id="reviews">
   <div class="copy">
     <p class="eyebrow">Scene reviews</p>
-    <h2>Notes you can paste.</h2>
+    <h2>Review notes you can preview and apply.</h2>
     <ul>
-      <li>A quick critique, a pass to deepen and layer, a comedy review, or a craft review through McKee's <cite>Story</cite>, <cite>The Story Grid</cite>, <cite>Story Genius</cite>, <cite>Save the Cat!</cite>, <cite>On Writing</cite> or <cite>Bird by Bird</cite>.</li>
-      <li>Every note quotes the passage, says what goes wrong for the reader, and gives a replacement in the scene's own voice.</li>
-      <li>Compare a suggestion with the scene as it stands, tick the notes you want, add your own note, and the agent applies them. The edit is saved with a card that shows what changed, and Undo all puts it back.</li>
-      <li>Review one scene, its neighbors or a whole chapter, and choose what to look at and how many notes to get.</li>
+      <li>Run a quick critique, deepen and layer (subtext and sensory detail), comedy review, or craft review through McKee's <cite>Story</cite>, <cite>The Story Grid</cite>, <cite>Story Genius</cite>, <cite>Save the Cat!</cite>, <cite>On Writing</cite>, or <cite>Bird by Bird</cite>.</li>
+      <li>Every note quotes the passage, explains what isn't working for the reader, and offers a replacement in the scene's own voice.</li>
+      <li>Compare suggestions side by side with your prose, check the notes you want, add your own guidance, and apply them—every change shows a before-and-after diff with one-click <strong>Undo all</strong>.</li>
+      <li>Review one scene, its neighbors, or a whole chapter, and choose what to focus on and how many notes to get.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-review.gif" width="780" height="463" loading="lazy" alt="A Quick critique in Proseview's side panel: notes that quote a passage, explain it and offer a replacement; Compare against the current scene; two notes ticked and applied by Codex, with the saved edit's Undo all and Looks good"></figure>
 </section>
 
-<section class="feature flip" id="group">
+<section class="feature" id="group">
   <div class="copy">
     <p class="eyebrow">The Group</p>
     <h2>Let your agents debate.</h2>
     <ul>
-      <li>Two or three agents in one conversation, each on its own AI: Codex, Claude or Antigravity. They take the roles of a Story Editor and a Voice Editor, joined by a Continuity Editor when you want three.</li>
-      <li>They read the same scene and answer each other: agreeing, pushing back, or passing. Different models catch different things.</li>
-      <li>Ask them all, or <code>@mention</code> one. A recap lists what they agreed on, the choices left to you, and each edit as Before and After.</li>
-      <li>Send any finished chat to the Group for a second opinion: the others weigh in, the first agent answers them, and you get the recap.</li>
+      <li>Put two or three AI agents in one conversation—using Codex, Claude, or Antigravity—each focused on a different angle: story, voice, and (optionally) continuity.</li>
+      <li>They read the same scene and respond to each other—agreeing, pushing back, or passing. Different models catch different issues.</li>
+      <li>Ask them all, or <code>@mention</code> one. A recap summarizes what they agreed on, the decisions left to you, and each suggested edit as Before and After.</li>
+      <li>Send any one-on-one agent chat to the Group for a second opinion: the other agents weigh in, the first agent responds, and you get a combined recap.</li>
     </ul>
   </div>
-  <figure class="shot"><img src="images/demo-room.gif" width="780" height="463" loading="lazy" alt="The Group in Proseview's side panel: the Story Editor on Codex, the Voice Editor on Claude and the Continuity Editor on Antigravity debating whether a passage should stay"></figure>
-</section>
-
-<section class="feature" id="ai">
-  <div class="copy">
-    <p class="eyebrow">Ask, if you want to</p>
-    <h2>Your own Codex, Claude or Antigravity, when you ask.</h2>
-    <ul>
-      <li>Three agents side by side: Codex, Claude, and Antigravity, which brings Gemini models. Each tab keeps its own conversation when you open another file.</li>
-      <li>A real agent, not a single reply. It searches the whole book, opens the scenes it needs, edits several files at once, runs commands and looks things up on the web.</li>
-      <li>No new model, no API keys and no limits from Proseview. It uses the Codex, Claude or Antigravity you already sign in to.</li>
-      <li>Optional, and it never runs on its own. Every edit is saved with a small card that shows what changed, and Undo all puts it back.</li>
-      <li>You choose what each conversation sends with your questions, such as the full scene or your story notes, and each reply shows the tokens it used.</li>
-    </ul>
-  </div>
-  <figure class="shot"><img src="images/demo-agents.gif" width="780" height="463" loading="lazy" alt="The Codex and Claude tabs answering the same question about a scene, each in its own conversation"></figure>
+  <figure class="shot"><img src="images/demo-room.gif" width="780" height="463" loading="lazy" alt="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay"></figure>
 </section>
 
 <section class="feature flip" id="illustrations">
@@ -176,9 +176,9 @@
     <p class="eyebrow">Illustrations</p>
     <h2>A picture for every scene.</h2>
     <ul>
-      <li>One click asks Codex, Antigravity or Claude to illustrate the scene, in one of six styles from woodcut to oil painting.</li>
-      <li>The picture waits above the scene until you insert it. Ask for changes in the chat that made it.</li>
-      <li>It is saved beside the chapter as an ordinary image file, so Obsidian, VS Code and GitHub show it too.</li>
+      <li>One click asks Codex, Antigravity, or Claude to illustrate the scene in one of six styles, from woodcut to oil painting.</li>
+      <li>The image waits above the scene until you insert it, and you can ask for revisions right in the chat that made it.</li>
+      <li>Inserted images save beside the chapter as ordinary image files, so Obsidian, VS Code, and GitHub display them too.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/demo-illustration.gif" width="780" height="463" loading="lazy" alt="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening"></figure>
@@ -189,9 +189,9 @@
     <p class="eyebrow">Publish</p>
     <h2>From manuscript to the shelf.</h2>
     <ul>
-      <li>An EPUB for every e-reader, and a paperback interior from 5 × 8 to 6 × 9 inches or A5.</li>
-      <li>A Word document for your editor's tracked changes, and standard manuscript format for agents.</li>
-      <li>A plain-language check that the book is ready for the stores. Nothing else to install.</li>
+      <li>Export an EPUB for every e-reader, and a print-ready paperback PDF from 5 × 8 to 6 × 9 inches or A5.</li>
+      <li>Export a Word document for your editor's tracked changes, or standard manuscript format for literary agents.</li>
+      <li>Includes plain-language preflight checks for EPUB and print formatting—no Pandoc, LaTeX, or Calibre to install.</li>
     </ul>
   </div>
   <figure class="shot"><img src="images/export-preview.png" width="2560" height="1520" loading="lazy" alt="The Export dialog previewing the pages of a paperback interior"></figure>
@@ -202,9 +202,9 @@
     <p class="eyebrow">On your phone</p>
     <h2>Keep writing away from your desk.</h2>
     <ul>
-      <li>Run <code>proseview --remote</code> and open the book on your phone over Tailscale. Only your own login gets in, with no password or pairing.</li>
-      <li>Read on, tap a paragraph to add a TODO or note, make a quick edit by voice or thumb, or ask Codex, Claude or Antigravity about the scene.</li>
-      <li>What you type stays on the phone until it is saved, and an edit made on the laptop meanwhile is never overwritten without asking.</li>
+      <li>Run <code>proseview --remote</code> to open your book from your phone over your private Tailscale network—no extra accounts, passwords, or pairing.</li>
+      <li>Read on, tap a paragraph to add a TODO or note, make quick edits by thumb or voice dictation, or ask Codex, Claude, or Antigravity about the scene.</li>
+      <li>Drafts stay safe on your phone until you save, with conflict protection so phone and computer edits never silently overwrite each other.</li>
     </ul>
   </div>
   <figure class="shot shot-phone"><img src="images/demo-phone.gif" width="360" height="702" loading="lazy" alt="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat"></figure>
@@ -215,15 +215,15 @@
   <div class="tools">
     <div>
       <h3>Obsidian</h3>
-      <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts and embeds stay exactly as you wrote them.</p>
+      <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts, and embeds stay exactly as you wrote them.</p>
     </div>
     <div>
       <h3>Git, for backup</h3>
-      <p>Your book is plain text, so git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and Proseview reads your commits and saved scenes for your goals and writing streak.</p>
+      <p>Your book is plain text, so Git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and Proseview reads your commits and saved scenes for your goals and writing streak.</p>
     </div>
     <div>
       <h3>VS Code</h3>
-      <p>Open any scene in VS Code, Cursor or Zed with one click and keep it open beside Proseview. A change saved in either one shows up in the other.</p>
+      <p>Open any scene in VS Code, Cursor, or Zed with one click and keep it open beside Proseview. A change saved in either one shows up in the other.</p>
     </div>
   </div>
 </section>
@@ -240,14 +240,15 @@
         <tr><th scope="row">Where your book is kept</th><td class="us">Plain Markdown files on your computer</td><td>A Scrivener project on your computer</td><td>Online, in Google Drive</td><td>Online, in Novelcrafter</td><td>Online, in Sudowrite</td></tr>
         <tr><th scope="row">Account needed</th><td class="us">No</td><td>No</td><td>Google account</td><td>Yes</td><td>Yes</td></tr>
         <tr><th scope="row">Works offline</th><td class="us">Yes</td><td>Yes</td><td>With an extension</td><td>No</td><td>Writing only, in its phone app</td></tr>
-        <tr><th scope="row">AI</th><td class="us">Your own Codex, Claude or Antigravity, no API key; up to three debate in one chat</td><td>None</td><td>Gemini, on eligible Google plans</td><td>The model you connect, with your own API key</td><td>Built in, edits paid with credits</td></tr>
-        <tr><th scope="row">What the AI works with</th><td class="us">Searches the whole book itself, edits several files, runs commands and searches the web</td><td>None</td><td>The open document, plus Drive files, email or the web if you pick them</td><td>The scenes and story-bible entries sent with your message, or the whole novel</td><td>Your Sudowrite documents and Story Bible; edits several after you approve a plan</td></tr>
-        <tr><th scope="row">Export</th><td class="us">EPUB, PDF, Word</td><td>EPUB, PDF, Word and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
+        <tr><th scope="row">On your phone</th><td class="us">Any phone browser over private Tailscale remote mode (free, iOS &amp; Android)</td><td>Paid iOS app ($23.99, synced via Dropbox); no Android app</td><td>iOS and Android apps (plus mobile web)</td><td>Mobile web browser</td><td>iOS and Android companion app</td></tr>
+        <tr><th scope="row">AI</th><td class="us">Your own Codex, Claude, or Antigravity, no API key; up to three debate in one chat</td><td>None</td><td>Gemini, on eligible Google plans</td><td>The model you connect, with your own API key</td><td>Built in, edits paid with credits</td></tr>
+        <tr><th scope="row">What the AI works with</th><td class="us">Searches the whole book itself, edits several files, and searches the web</td><td>None</td><td>The open document, plus Drive files, email, or the web if you pick them</td><td>The scenes and story-bible entries sent with your message, or the whole novel</td><td>Your Sudowrite documents and Story Bible; edits several after you approve a plan</td></tr>
+        <tr><th scope="row">Export</th><td class="us">EPUB, PDF, Word</td><td>EPUB, PDF, Word, and more</td><td>EPUB, PDF, Word</td><td>Word, Markdown</td><td>Word</td></tr>
         <tr><th scope="row">Open source</th><td class="us">Yes (MIT)</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="compare-note">Checked against each product's own website in October 2026. Prices in US dollars. Proseview works offline once installed; the browser version needs a connection to open.</p>
+  <p class="compare-note">Checked against each product's own website in November 2026. Prices in US dollars. Proseview works offline once installed; the browser writer needs a connection to open, and remote phone mode connects to your computer over Tailscale.</p>
 </section>
 
 <section class="ways" id="get-started">
@@ -255,7 +256,7 @@
   <div class="cards single">
     <article class="card">
       <h3>On your computer</h3>
-      <p class="tag">macOS, Windows and Linux · nothing to install first</p>
+      <p class="tag">macOS, Windows, and Linux · nothing to install first</p>
       <div class="os-tabs" role="tablist" aria-label="Your computer">
         <button type="button" role="tab" id="osTabMac" aria-controls="osPanelMac" aria-selected="true" data-os="mac">Mac or Linux</button>
         <button type="button" role="tab" id="osTabWin" aria-controls="osPanelWin" aria-selected="false" data-os="win" tabindex="-1">Windows</button>
@@ -276,10 +277,10 @@
       </div>
       <ul>
         <li>It asks where your book is: press Enter to start a new one, or drag in your book's folder.</li>
-        <li>It puts a Proseview icon on your Desktop. Double-click it to open your book; your files stay on your computer.</li>
+        <li>It adds a Proseview launcher (on your Desktop on macOS and Windows, or in your apps menu on Linux). Open it anytime to launch your book; your files stay on your computer.</li>
         <li>Run the same line again to update.</li>
       </ul>
-      <p class="fine">Already use Python? <code>pipx install proseview</code>, then <code>proseview</code> in your book's folder.</p>
+      <p class="fine">Already use Python? <code>pipx install proseview</code> (or <code>pipx install "proseview[claude]"</code> for the Claude tab), then run <code>proseview</code> in your book's folder.</p>
       <a class="button" href="https://github.com/ourarash/proseview#quick-start">Read the quick start</a>
     </article>
   </div>
@@ -290,19 +291,19 @@
   <h2>Questions</h2>
   <details>
     <summary>Is it really free?</summary>
-    <p>Yes. Proseview is open source under the MIT licence, with no paid version, no subscription and no account. If you use the optional AI panel, Codex, Claude or Antigravity bill you under your own plan with them.</p>
+    <p>Yes. Proseview is open source under the MIT license, with no paid version, no subscription, and no account. If you use the optional AI panel, Codex, Claude, or Antigravity bill you under your own plan with them.</p>
   </details>
   <details>
     <summary>Where is my book stored?</summary>
-    <p>On your computer, as plain Markdown files in your own folder. If you start a book in the browser, it is kept in that browser's storage on your device, and clearing the site's data deletes it, so use <em>Download it</em> to keep a copy. Proseview has no server that receives your book. To back it up, keep the folder in git and push it to a private repository, on GitHub or anywhere else.</p>
+    <p>On your computer, as plain Markdown files in your own folder. If you start a book in the browser, it is kept in that browser's storage on your device, and clearing the site's data deletes it, so use <em>Download it</em> to keep a copy. Proseview has no server that receives your book. To back it up, keep the folder in Git and push it to a private repository, on GitHub or anywhere else.</p>
   </details>
   <details>
     <summary>Do I need Obsidian?</summary>
     <p>No. Any folder of Markdown files works, and Proseview can create the files for you. If you do use Obsidian, Proseview works on your vault without changing how it is written.</p>
   </details>
   <details>
-    <summary>Do I need git?</summary>
-    <p>No. Proseview works on any folder. Git is the easiest way to back the book up and keep every draft, and in a git folder Proseview also shows your goals: today's words, your pace, the writing streak and what changed.</p>
+    <summary>Do I need Git?</summary>
+    <p>No. Proseview works on any folder. Git is the easiest way to back the book up and keep every draft, and in a Git folder Proseview also shows your goals: today's words, your pace, the writing streak, and what changed.</p>
   </details>
   <details>
     <summary>Do I need AI?</summary>
@@ -314,7 +315,7 @@
   </details>
   <details>
     <summary>Can I move a book from the browser to my computer?</summary>
-    <p>Yes. <em>Download it</em> gives you the book as a zip of its folder. Unzip it and run <code>proseview --root</code> on that folder.</p>
+    <p>Yes. <em>Download it</em> gives you the book as a zip of its folder. Unzip it and run <code>proseview open path/to/folder</code>.</p>
   </details>
 </section>
 
@@ -330,7 +331,7 @@
 
 <footer>
   <p class="end">The End.</p>
-  <p><a href="https://github.com/ourarash/proseview">GitHub</a> · <a href="https://pypi.org/project/proseview/">PyPI</a> · <a href="https://github.com/ourarash/proseview/tree/main/docs">Docs</a> · MIT licence</p>
+  <p><a href="https://github.com/ourarash/proseview">GitHub</a> · <a href="https://pypi.org/project/proseview/">PyPI</a> · <a href="https://github.com/ourarash/proseview/tree/main/docs">Docs</a> · MIT license</p>
 </footer>
 
 <script>

@@ -1,270 +1,152 @@
 # Working with AI
 
-Every AI feature is opt-in and none of it runs on its own. Proseview has
-no model of its own and no API key of yours: it drives the agent CLIs
-already installed on your machine, under your login.
+Every AI feature in Proseview is optional and stays off until you ask.
+Proseview has no model of its own and needs no API keys: it connects to the
+local AI agent CLIs already installed and signed in on your computer—**Codex**
+(OpenAI), **Claude** (Anthropic), and **Antigravity** (Google Gemini)—using
+your existing plan.
 
 [← back to the README](../README.md)
 
-Three places where AI shows up, all opt-in:
+## Setup & prerequisites
 
-1. **Selection menu.** Highlight any text in a scene. The pill that
-   appears includes `Add TODO`, `Add Note`, and (if an agent is installed
-   locally) `Ask about selection` and `Skills`. Skills are
-   reusable prompts you keep in `.proseview/skills/<name>/SKILL.md`; they show up
-   automatically in the menu. In the question box, `$` picks one of the
-   skills Codex offers for the project; on the Claude tab that picker is
-   still empty, though Claude uses the skills in your Claude settings on its
-   own.
-2. **Discuss, on either agent.** The side dock has a **Codex** tab and a
-   **Claude** tab. Each has a separate project conversation, with its own queue,
-   history, and approvals — ask one, switch agents or open another file, and
-   both keep working. `discuss.agent` decides which tab opens first; both tabs
-   are always there, and one that cannot start explains why rather than
-   disappearing.
+Each agent tab runs on demand as a local process under your own login, model,
+and settings. A missing or failing agent never blocks the other tabs or the
+rest of Proseview.
 
-   **Send to Group** forks a finished chat into a conversation with two
-   assistants. Choose both providers and models in setup. **None — I’ll direct
-   it** starts no agent; **Second opinion & recap** asks the other assistant
-   to weigh in, the original to respond, then recaps their positions. The same
-   workflow is available in Group alongside its separate task presets.
-   Recaps stay in Markdown. Agreed edits appear as cards with italic Before
-   quotes, complete After replacements, and clickable file/line references.
-   Expand a card to read the full edit or copy its replacement. Unresolved
-   choices stay visible; withdrawn items and agent positions are collapsed.
-   Messages can be collapsed individually, with **Collapse earlier messages**,
-   **Expand all**, and **Latest recap** shortcuts. An edit verified against a
-   saved change shows **Applied · View changes**. Older recap formats remain
-   readable as ordinary Markdown.
-   Source-linked quotes also have **Compare**, beside Copy. It opens the
-   existing diff viewer for just that passage, comparing the current scene
-   (including unsaved edits) or file with the quoted suggestion. Split and
-   Inline views emphasize changed words. Matching quotes and missing or
-   ambiguous passages get an explanation. Comparing does not apply edits.
-   A checkbox beside each review-item heading selects the whole recommendation,
-   including connected replacements, moves, merges, cuts, or other instructions.
-   Quote blocks keep Compare and Copy. Instruction-only selections show their
-   quoted passage and suggested action in the selection review.
-   A compact tray lets you revisit your selections, compare their passages,
-   or prepare a message. Its count and first five chips refer to distinct
-   review items; **+N more** opens the full selection review. Connected edits
-   under one item share a number and a note; the expanded review also shows
-   the number of individual edits when it differs from the item count.
-   **Add note**, beside a selected heading, opens a small instruction field.
-   Notes save as you type. Click a saved note's text to change it, or edit it
-   from the selection review. Notes survive deselection, reloads, and transfer
-   to Group. Checking items immediately fills an empty composer with
-   a short “Apply items 1, 3, 5.” draft using the review's original numbers
-   (unnumbered suggestions use their titles), and updates it live as you check,
-   uncheck, or edit notes — preserving any custom wording or note lines you
-   rewrote directly in the message. If you already typed unrelated text before
-   checking items, **Add to draft** lets you append the apply line without
-   overwriting your text. Sending also includes current notes.
-   When the review is already in the chat, Send passes your instruction without
-   repeating its Before/After blocks. Earlier reviews get a short title reference
-   when needed; proposal text is included only if the receiving chat lacks it.
-   Group apply requests go to one editor. Selections survive
-   reloads and transfer with **Send to Group**. **Requested** means the request
-   was accepted; **Applied** is shown only when the saved replacement matches.
-   Overlapping replacements prompt a wording choice for the default apply
-   request; your own instructions can instead ask the editor to discuss or
-   combine them. Insertions can be selected alongside replacements at their
-   anchor. A missing source is marked **Check source** and is not included.
-   Group remembers your reading position per conversation across reloads,
-   history switches, and background updates. New replies follow the bottom
-   only when you were already reading there.
-   Conversation history, request instructions, structured results, and current
-   files transfer; available tool history accompanies them. Pending approvals
-   and apply actions stay in the source chat. Links connect both conversations.
-   The original uses an isolated native fork when possible; changing its
-   provider or model starts a fresh session with the transferred context.
-   Transfer information appears once in a collapsed **Context transferred**
-   entry at the start of the Group conversation. Session fallback details
-   stay inside it under **Technical details**; they do not occupy space above
-   the composer. Missing summaries and recovery actions remain visible.
+- **Codex (OpenAI):** Install the Codex CLI (`npm install -g @openai/codex`)
+  and sign in once (`codex`).
+- **Claude (Anthropic):** Install [Claude Code](https://claude.com/claude-code),
+  sign in once (`claude`), and make sure Proseview's `claude` extra
+  (`claude-agent-sdk`) is installed. The one-line installer includes it
+  automatically. If you installed with `pipx`, run:
+  ```bash
+  pipx install "proseview[claude]"
+  # or add it to an existing install:
+  pipx inject proseview claude-agent-sdk
+  ```
+  If you installed earlier with the one-line installer (`uv`), upgrade with:
+  ```bash
+  uv tool install --upgrade "proseview[claude]"
+  ```
+  Claude runs as it does in the Claude Code VS Code extension—loading your
+  `CLAUDE.md`, skills, permission rules, and MCP servers—with two Proseview
+  rules appended: only edit when asked, and surface every edit for review and
+  one-click undo.
+- **Antigravity (Google Gemini):** Install the Antigravity CLI (`agy`) and
+  sign in once in a terminal (`agy`).
 
-   Setup can also keep only the last 1–10 exchanges (default 3), with an
-   optional summary of earlier conversation. Both Group participants then
-   start fresh. The current scene stays numbered for citations. A summary is
-   made only when you fork; Cancel returns to setup with your choices intact.
-   If summarization fails, the Group opens with recent exchanges and a
-   **Summary missing** notice.
+## Where AI shows up
 
-   Every question tells the agent where you are, the way the editor
-   extensions do: which file is open, and your selection if it is in the
-   panel. Click the open filename in the composer footer to open **Prompt
-   context** and optionally attach the scene beat map, full scene text,
-   story notes & frontmatter, or ±1 neighboring excerpts (all off by default,
-   scoped to the current thread, and sent once per thread unless changed).
-   The agent reads the file from the project when it needs to; the text itself
-   goes along automatically only when it has unsaved edits, which are not on
-   disk to be read.
-   Press `@` to mention other files and folders: they stay in the question as
-   `@path` chips and send the path, not the file. Selection tasks and their
-   follow-ups stay anchored to the passage you selected.
-   Reading needs no answer. A command that would write, reach the network,
-   or type into a command already running waits on an approval you can see.
-   An edit is saved as it is made. After the turn a compact card shows the
-   file and "N changes · saved", with **Expand view** for the diff side by
-   side, **Undo all**, and **Looks good**; the card goes away when you send
-   the next question. A reading pass makes no edits.
+### 1. Selection menu
+Highlight any passage in a scene to see `Add TODO`, `Add Note`, and (when an
+agent is connected) `Ask about selection` and `Skills`.
 
-   A status strip between the conversation and the composer says what the
-   agent is doing: starting, working (with the current step and a running
-   clock), waiting on an approval, or finished, with how long the answer took.
-   **Details** opens the turn's trail — the files it read, the searches it ran,
-   the approvals you granted — in the order they happened. A turn that has
-   produced nothing for a minute says so rather than spinning. The **Stop**
-   button lives in that strip.
+- Custom skills live in `.proseview/skills/<name>/SKILL.md` (or your
+  configured `skills_path`) and appear automatically in the menu.
+- In the composer, `$` picks project skills (currently lists Codex skills;
+  Claude uses skills from your Claude settings automatically).
+- Up to three **Presets** appear above the composer from
+  `discuss.selection_presets` and your browser-local favorites, with extra
+  presets and recent prompts under **More**.
 
-   The same state reaches you when you are not looking at the dock: the agent's
-   tab carries a pulsing dot while it works and a steady amber one when it
-   needs a decision, and the browser tab title says which agent is working or
-   waiting whenever the dock is closed or the window is in the background.
+### 2. Agent tabs (Codex, Claude, Antigravity)
+The side dock gives each agent its own independent conversation, queue,
+history, and approvals. Switch agents or open another file and active runs
+keep going in the background—tab dots and the browser title let you know when
+an agent is working or waiting on approval.
 
-   Every button is a shortcut to a skill supplied by Proseview. Built-in prompts
-   stay with the app and receive its updates. Settings → Discuss lets you change
-   a prompt for this book; only your override is saved in `.proseview.yaml`.
-   You can also deliberately take over a skill by creating
-   `.proseview/skills/quick_critique/SKILL.md` (or using your configured skills
-   directory). Prompt precedence is YAML override, writer-owned skill file,
-   then Proseview's built-in prompt. A writer-owned file can also customize the
-   card's `description:` in its frontmatter.
+- **Context & mentions:** Every turn tells the agent which file is open (and
+  any selected passage). Click the filename in the composer footer to open
+  **Prompt context** and optionally attach the scene beat map, full scene text,
+  story notes & frontmatter, or ±1 neighboring excerpts (all off by default,
+  scoped to the thread). Type `@` to reference other files or folders as path
+  chips. Each reply shows token usage and context fullness.
+- **Approvals & reversible edits:** Reading files needs no confirmation;
+  commands that write, reach the network, or interact with a running process
+  wait for your approval. Every edit is saved with a review card showing the
+  change count, **Expand view** (side-by-side diff), **Undo all**, and
+  **Looks good**.
+- **Progress & history:** A status strip shows the current step, elapsed time,
+  **Details** (files read, searches, approvals), and **Stop**. Queued messages
+  can be edited, removed, or sent immediately. `History` lets you reopen,
+  rename, export, or delete past project conversations. Raw model reasoning is
+  never stored or shown.
 
-   On the first run after this change, Proseview removes recognized untouched
-   copies installed by older versions. Body-only edits are preserved as YAML
-   overrides. Skills with custom metadata or supporting files remain writer-owned.
+### 3. Scene reviews & Beat Map
+Opening the dock on a scene offers four review workflows—click a card to run
+with defaults, or **Customize** to choose the scope (this scene, neighbors,
+chapter, or selection), feedback lanes, and finding count (5 by default, up to
+20):
 
-   Reading passes — critiques from the selection pill, and the scene passes
-   below — are ordinary questions with ordinary answers. Nothing they return is
-   written to your manuscript, so none of them produces a card, a structured
-   result or anything that can go stale: the agent replies in the conversation
-   and the passage it read stays attached, so a follow-up needs no reselecting.
-   Rewrites are different, because their answer is prose that gets applied to
-   your draft; those keep their card and their exact target.
+- **Quick critique:** Evidence-linked findings quoting the passage (**Before**),
+  explaining the issue (**Why**), and offering a replacement (**After**).
+- **Deepen & layer:** Finds opportunities for stronger tension, subtext, and
+  sensory or emotional detail.
+- **Craft review:** Evaluates the scene through McKee's *Story*, *The Story
+  Grid*, *Story Genius*, *Save the Cat!*, *On Writing*, or *Bird by Bird*.
+- **Comedy review:** Ten comedy lanes (truth and pain, comic premise, status,
+  deadpan/subtext, setup/surprise, escalation/callbacks, specificity, timing,
+  tone/target, violation/distance) plus optional style lenses (**Dark comedy**,
+  **Sarcasm**, **Dry / deadpan**) and goals (**Strengthen existing humor**,
+  **Find comic opportunities**).
 
-   Opening the dock on a scene offers four review types. Click a card to run
-   with defaults, or choose Customize to select this scene, its neighbors, the chapter, or a custom selection;
-   then choose one or several feedback lanes. **Quick critique** returns evidence-linked findings, each quoting
-   the line it came from and suggesting a fix. **Deepen & layer** explores places
-   where a scene could carry more tension or emotional detail. **Craft review**
-   lets you choose a writing book and the principles to examine. **Comedy review**
-   examines the comic idea, character, delivery, and timing. Every lane has
-   a short description and an information button with explanations and before/after
-   examples. Lane labels in the feedback open the matching guide.
-   Review prompts send each selected lane's name and brief description. Craft
-   includes its book once above the lanes and keeps each lane's book principle;
-   Comedy includes each lane's sources. Detailed checklists and examples stay
-   in the guides.
+**Comparing and applying findings:**
+- Click **Compare** beside any quoted suggestion to open a word-level diff
+  against your current scene (including unsaved edits) without applying
+  anything.
+- Check the items you want—and optionally click **Add note** on any item to
+  steer the edit—and Proseview drafts an `"Apply items 1, 3, 5."` request in
+  the composer (or click **Add to draft** if you already typed custom text).
+- When a reply offers multiple rewrite options, you can select one directly to
+  send back as an apply request.
+- In a chat that already has messages, reviews ask whether to start fresh or
+  **Run in this chat** (remembered per preference).
+- **Beat Map** (in the **Beats** tab) plots an estimated tension curve and
+  scene moments (dialogue, action, internal thought, silent reaction) without
+  editing your prose, and flags itself out of date when the scene changes.
 
-   In a chat that already has messages, a review first asks whether to start
-   a new conversation: earlier reviews and requests in the chat would shape
-   what it finds. **Run in this chat** keeps them. **Remember my choice**
-   skips the question, and Customize's **If this chat already has messages**
-   setting changes it later.
+**Customizing prompts:**
+Built-in prompts stay with Proseview and update automatically. Override any
+prompt for the current book in **Settings → Discuss** (saved in
+`.proseview.yaml`), or take full ownership of a skill by creating
+`.proseview/skills/<name>/SKILL.md`. Precedence is YAML override → writer-owned
+skill file → built-in prompt.
 
-   Scene selection, context toggles, and one-time instructions carry across review
-   types. Lane choices are remembered separately for each review type and book.
-   Story facts and purpose are saved per scene and reused across review types and
-   providers. All selected scenes are supplied in full, with source line numbers;
-   neighboring excerpts are optional background for a single-scene review.
-   **Check my notes for planned beats** is off by default: notes provide background.
-   Turn it on to compare the draft with beats planned in frontmatter, beat maps,
-   or TODO notes. The request receipt and context inspector show that choice.
+### 4. The Group (multi-agent debate)
+Put two or three AI agents (**Codex**, **Claude**, and **Antigravity**) in one
+conversation—focused on **story**, **voice**, and (optionally) **continuity**.
 
-   Each finding shows **Before** (the quoted passage and its line), **Why** (the
-   weakness or missed opportunity and what the change improves), and **After**
-   (a replacement you can paste, or the passage as it reads after a cut).
-   Connected edits in several passages or scenes can share one finding, with
-   each edit written out and linked. A review starts with improvements to how
-   the scene, or the selection, works as a whole through the selected lanes.
-   Before returning feedback, the agent silently checks coverage, overlapping
-   findings, and complete edits. Customize sets how many findings a
-   review may give (5 by default, up to 20) and remembers it for that review
-   type or book; a card's Run now
-   uses 5. **Show what to keep**, off by default and also remembered, adds one or
-   two moments that already work. Bird by Bird keeps its single assignment.
+- Agents read the same scene and respond to each other—agreeing, pushing back,
+  or passing—then produce a Markdown recap of agreed edits (with Before/After
+  cards, clickable file/line links, and **Compare**), open decisions for you,
+  and collapsed agent positions.
+- **Send to Group** (in the menu beside **Send**) forks a finished one-on-one
+  chat into the Group for a second opinion. You can keep the last 1–10
+  exchanges (with an optional summary of earlier turns), let the other agent(s)
+  weigh in and recap, or direct the conversation yourself.
+- Checked review selections and notes transfer with **Send to Group** and
+  survive reloads.
 
-   Comedy review has ten lanes: truth and pain; comic premise and perspective;
-   character and status; deadpan and subtext; setup and surprise; escalation and
-   callbacks; specificity and detail; timing and wording; tone and target; and
-   violation and distance. The guides explain the techniques with original
-   before/after examples, another example, a short exercise, and context for
-   deciding when the technique helps. Book references are available in the
-   guide; benign violation is credited separately to McGraw and Warren.
+### 5. Scene illustrations
+Click the picture button in the scene toolbar to ask Codex, Antigravity, or
+Claude (when an image tool is available) for an illustration in one of six
+styles, from woodcut to oil painting. Previews appear above the scene until you
+insert one; inserted images save beside the chapter in its `assets/` folder
+with a standard relative Markdown link so Obsidian, VS Code, and GitHub show
+them too. Ask for revisions right in the chat that generated the image.
 
-   Combine **Dark comedy**, **Sarcasm**, and **Dry / deadpan**, or leave the styles
-   clear to follow the draft. Styles guide how the selected lanes are read;
-   they do not add extra lanes. Both goals are selected by default:
-   **Strengthen existing humor** preserves passages that need to stay serious,
-   while **Find comic opportunities** asks for optional additions that serve the
-   scene. Select either goal or both.
-   Combined reviews label each finding as strengthening existing humor or proposing
-   a comic opportunity, with one shared priority limit across both goals and the selection.
-   Findings include source quotes, lane labels,
-   explanations, and revisions you can paste. Comic options remain selected
-   when switching review types and are sent only with Comedy review.
+### 6. Continuity tools
+Under the collapsed **Continuity tools** section:
 
-   The collapsed **Continuity tools** section contains two occasional revision
-   actions. **Trace a canon
-   change** scans the configured manuscript and repository-tab folders,
-   separates direct contradictions from ambiguous and likely intentional
-   references, and cites the exact file, line, and passage for every finding.
-   Nothing is edited during the scan. You can preserve an intentional
-   exception, send one scene finding at a time through the existing proposal
-   review, then rescan to verify the result. **Check this scene's continuity**
-   runs the same guarded workflow with the active document as its focus.
+- **Trace a canon change** scans your manuscript and configured repository
+  folders (up to 200 supported text files / 4 MB, 50 displayed findings) and
+  separates direct contradictions from ambiguous or intentional references,
+  citing exact files and lines without editing anything.
+- **Check this scene's continuity** runs the same read-only workflow focused on
+  the open scene.
 
-   Repository continuity scans are bounded to 200 supported text files, 4 MB
-   of context, and 50 displayed findings. The impact report shows the actual
-   files and bytes scanned, and warns when the finding limit is reached. These
-   impact reports and their decisions are session-only in the current MVP.
-
-   Under the hood each tab starts its agent on demand — a local
-   `codex app-server`, or Claude through `claude-agent-sdk` — and uses the
-   login, model, and history you already have. Neither sees the other's
-   conversation, and a failure on one tab leaves the other running.
-
-   Proseview stores one bounded project history per agent in your state
-   directory, including which documents each thread discussed, and discards raw
-   reasoning: only progress summaries reach the browser, never unedited model
-   thinking. `History` lets you reopen, rename, export, or remove a previous
-   project conversation. `New conversation` starts a blank discussion while
-   keeping the previous one available there.
-
-   The Claude tab needs the Claude Code CLI and Proseview's `claude` extra,
-   which brings in `claude-agent-sdk`:
-
-   ```bash
-   pipx install "proseview[claude]"
-   ```
-
-   If Proseview is already installed with pipx, add the SDK to it instead:
-
-   ```bash
-   pipx inject proseview claude-agent-sdk
-   ```
-
-   If you installed Proseview with the one-line installer, add it with uv:
-
-   ```bash
-   uv tool install --upgrade "proseview[claude]"
-   ```
-
-   Claude runs here as it does in the Claude Code VS Code extension: it loads
-   your user, project, and local Claude settings (permission rules,
-   `CLAUDE.md`, skills, MCP servers), uses Claude Code's own system prompt
-   with Proseview's instructions appended, and asks you in the panel exactly
-   where the extension would ask. Proseview adds only two rules: an edit is
-   made only when you asked for a change, and every edit goes into the review
-   at the end of the turn, where you can undo it.
-
-   When selected prose is attached, the composer shows up to three **Presets**
-   from `discuss.selection_presets` and your browser-local favorites. Favorites
-   come first, duplicates are removed, and additional presets are available
-   under **More**. Recent instructions are kept out of the inline preset row;
-   open **More** to reuse or star one as a personal preset.
-3. **TODOs as Markdown.** Every TODO and Note is a plain
-   `<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` comment in the
-   scene file. Your AI assistant can see them through the file, your
-   repo can track them through git, and you can grep them.
+### 7. TODOs and Notes as plain Markdown
+Every inline TODO and Note is stored as a standard
+`<!-- TODO: ... -->` or `<!-- NOTE[tag]: ... -->` HTML comment in the scene
+file—visible to your AI agents, tracked in Git, and searchable with `grep`.

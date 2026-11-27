@@ -31,11 +31,12 @@ NOT_IN_BROWSER = {"typst"}
 #: README images, editorial art, and landing-page videos copied into the site.
 LANDING_IMAGES = (
     "hero-bookplate.png", "hero-bookplate-dark.png", "ai-salon.png", "ai-salon-dark.png",
-    "dashboard.png", "dashboard-light.png",
+    "dashboard-card-dark.png", "dashboard-card-light.png",
     "write-a-scene.png", "write-a-scene-light.png",
     "export-preview.png", "export-preview-light.png",
     "storylines.png", "storylines-light.png",
-    "beat-map.png", "beat-map-light.png",
+    "beat-map-strip-dark.png", "beat-map-strip-light.png",
+    "scene-image-menu-dark.png", "scene-image-menu-light.png",
     "demo-writing.webm", "demo-writing-light.webm",
     "demo-highlights.webm", "demo-highlights-light.webm",
     "demo-room.webm", "demo-room-light.webm",

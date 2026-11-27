@@ -59,19 +59,61 @@
     <h2>Your book stays a plain folder on disk.</h2>
     <p class="prose">Proseview is 100% free and MIT open source, with no paid tier, no account, and no server storing your manuscript. Point it at a folder of chapters and scenes—it reads your Markdown directly and leaves every file yours forever.</p>
   </div>
-  <div class="shape-grid">
-    <ol class="tiers">
-      <li><b>Book</b><span>The manuscript folder: word count, daily goal, writing streak, and days to finish.</span></li>
-      <li><b>Chapters</b><span>One folder per chapter, ordered cleanly by filename.</span></li>
-      <li><b>Scenes</b><span>One plain Markdown file per scene, with optional frontmatter for POV, setting, and timeline.</span></li>
-    </ol>
-<pre class="tree" aria-label="Example folder"><code>my-novel/
-└── manuscript/
-    ├── ch01/
-    │   ├── 01-the-letter.md
-    │   └── 02-the-station.md
-    └── ch02/
-        └── 01-aftermath.md</code></pre>
+  <div class="folder-diagram-card">
+    <svg class="folder-diagram" viewBox="0 0 980 286" role="img" aria-label="Folder structure diagram: manuscript/ maps to Book (word count, goal, streak), ch01/ maps to Chapters (one folder per chapter), and 01-the-letter.md maps to Scenes (plain Markdown with optional frontmatter)">
+      <defs>
+        <marker id="fdArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+          <path d="M1 1.5 L8.5 5 L1 8.5" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- Left: folder tree panel -->
+      <rect class="fd-tree-bg" x="2" y="14" width="356" height="258" rx="12"/>
+      <text class="fd-mono-dim" x="28" y="48">my-novel/</text>
+      <!-- Highlight pill behind manuscript/ -->
+      <rect class="fd-pill" x="50" y="64" width="128" height="28" rx="6"/>
+      <path class="fd-branch" d="M38 56 V78 H50"/>
+      <text class="fd-mono" x="60" y="83">manuscript/</text>
+      <!-- Highlight pill behind ch01/ -->
+      <rect class="fd-pill" x="82" y="108" width="70" height="28" rx="6"/>
+      <path class="fd-branch" d="M68 94 V212 H82 M68 122 H82"/>
+      <text class="fd-mono" x="92" y="127">ch01/</text>
+      <!-- Highlight pill behind 01-the-letter.md -->
+      <rect class="fd-pill" x="114" y="148" width="176" height="28" rx="6"/>
+      <path class="fd-branch" d="M100 138 V186 H114 M100 162 H114"/>
+      <text class="fd-mono" x="124" y="167">01-the-letter.md</text>
+      <text class="fd-mono-dim" x="124" y="191">02-the-station.md</text>
+      <text class="fd-mono-dim" x="92" y="217">ch02/</text>
+      <path class="fd-branch" d="M100 223 V243 H114"/>
+      <text class="fd-mono-dim" x="124" y="247">01-aftermath.md</text>
+
+      <!-- Connecting arrows from tree nodes to descriptions -->
+      <circle class="fd-dot" cx="182" cy="78" r="3.2"/>
+      <path class="fd-arrow" d="M186 78 C290 78, 360 52, 466 52" marker-end="url(#fdArrow)"/>
+
+      <circle class="fd-dot" cx="156" cy="122" r="3.2"/>
+      <path class="fd-arrow" d="M160 122 C280 122, 360 144, 466 144" marker-end="url(#fdArrow)"/>
+
+      <circle class="fd-dot" cx="294" cy="162" r="3.2"/>
+      <path class="fd-arrow" d="M298 162 C368 162, 392 234, 466 234" marker-end="url(#fdArrow)"/>
+
+      <!-- Right: 01 Book -->
+      <rect class="fd-node-bg" x="476" y="14" width="500" height="74" rx="10"/>
+      <text class="fd-num" x="498" y="39">01 ·</text>
+      <text class="fd-title" x="530" y="40">Book</text>
+      <text class="fd-desc" x="498" y="66">The manuscript folder: word count, daily goal, streak, and pace.</text>
+
+      <!-- Right: 02 Chapters -->
+      <rect class="fd-node-bg" x="476" y="106" width="500" height="74" rx="10"/>
+      <text class="fd-num" x="498" y="131">02 ·</text>
+      <text class="fd-title" x="530" y="132">Chapters</text>
+      <text class="fd-desc" x="498" y="158">One folder per chapter, ordered cleanly by filename.</text>
+
+      <!-- Right: 03 Scenes -->
+      <rect class="fd-node-bg" x="476" y="198" width="500" height="74" rx="10"/>
+      <text class="fd-num" x="498" y="223">03 ·</text>
+      <text class="fd-title" x="530" y="224">Scenes</text>
+      <text class="fd-desc" x="498" y="250">One plain Markdown file each, with optional POV &amp; timeline header.</text>
+    </svg>
   </div>
   <div class="studio-pair">
     <div class="studio-card">
@@ -86,7 +128,7 @@
     </div>
     <div class="studio-card">
       <figure class="shot">
-        <img src="images/dashboard-light.png" data-light-src="images/dashboard-light.png" data-dark-src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: a Progress card with words against the goal, today's words, words a day, writing streak, and days to finish, above the scenes worked on last">
+        <img src="images/dashboard-card-light.png" data-light-src="images/dashboard-card-light.png" data-dark-src="images/dashboard-card-dark.png" loading="lazy" alt="Cropped Proseview Progress card showing 26,477 of 30,000 words, daily pace, 3-day writing streak, and days to finish above recently edited scenes">
       </figure>
       <h3>Progress, streaks, and what changed</h3>
       <p>See words written toward your goal, daily pace, streak, and the exact words added or cut in every scene—computed directly from your local files and Git history.</p>
@@ -153,14 +195,12 @@
     </ul>
   </section>
 
-  <section class="section-rule feature flip" id="beat-map">
-    <div class="copy">
-      <p class="eyebrow">Beat Map</p>
-      <h2>See how a scene moves.</h2>
-      <p class="prose">Plot an estimated tension curve alongside every beat in order—dialogue, action, internal thought, and silent reaction—without touching your prose. Click any moment to jump straight to that paragraph; Proseview flags the map out of date whenever the scene changes.</p>
-    </div>
+  <section class="section-rule spotlight" id="beat-map">
+    <p class="eyebrow">Pacing &amp; tension</p>
+    <h2>Beat Map: see how a scene moves.</h2>
+    <p class="prose">Plot an estimated tension curve across the top of your scene alongside every beat in order—dialogue, action, internal thought, and silent reaction—without touching your prose. Step through moments to highlight each passage in place; Proseview flags the map out of date whenever the scene changes.</p>
     <figure class="shot">
-      <img src="images/beat-map-light.png" data-light-src="images/beat-map-light.png" data-dark-src="images/beat-map.png" width="2560" height="1520" loading="lazy" alt="A scene open beside its Beat Map: a tension curve across the scene above its moments, each marked as dialogue, action, internal thought or silent reaction">
+      <img src="images/beat-map-strip-light.png" data-light-src="images/beat-map-strip-light.png" data-dark-src="images/beat-map-strip-dark.png" loading="lazy" alt="Beat Map horizontal tension strip above the opening scene of Alice's Adventures in Wonderland, highlighting the White Rabbit moment directly in the prose">
     </figure>
   </section>
 
@@ -195,12 +235,17 @@
             <h3 style="margin-top:0;font-size:28px;">A picture for every scene.</h3>
             <p class="card-copy">Ask Codex, Antigravity, or Claude for an illustration in six styles, from woodcut to oil painting. Previews wait above the scene until you insert them, then save beside the chapter as ordinary image links so Obsidian, VS Code, and GitHub show them too.</p>
           </div>
-          <figure class="shot">
-            <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-illustration" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening">
-              <source src="images/demo-illustration-light.webm" type="video/webm">
-              <source src="images/demo-illustration-light.mp4" type="video/mp4">
-            </video>
-          </figure>
+          <div class="illus-media">
+            <figure class="shot illus-menu">
+              <img src="images/scene-image-menu-light.png" data-light-src="images/scene-image-menu-light.png" data-dark-src="images/scene-image-menu-dark.png" loading="lazy" alt="Scene Image style picker showing six visual styles: Ink & Watercolor, Woodcut & Engraving, 35mm Film Still, Charcoal & Pencil, Oil Painting, and Minimalist Gouache">
+            </figure>
+            <figure class="shot">
+              <video autoplay loop muted playsinline preload="metadata" width="1280" height="760" data-theme-video="demo-illustration" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening">
+                <source src="images/demo-illustration-light.webm" type="video/webm">
+                <source src="images/demo-illustration-light.mp4" type="video/mp4">
+              </video>
+            </figure>
+          </div>
         </div>
       </div>
     </div>

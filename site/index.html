@@ -15,41 +15,46 @@
 <body>
 
 <header class="top">
-  <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Proseview</a>
-  <nav aria-label="Sections">
-    <a href="#write">Write</a>
-    <a href="#revise">Revise</a>
-    <a href="#plan">Plan</a>
-    <a href="#ai">AI</a>
-    <a href="#publish">Publish</a>
-    <a href="#compare">Compare</a>
-    <a href="#faq">FAQ</a>
-    <a href="https://github.com/ourarash/proseview">GitHub</a>
-    <a class="top-cta" href="#get-started">Install</a>
-  </nav>
+  <div class="top-inner">
+    <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M5.5 14.2c3.4-1.1 6.8-.6 10 1.6v10.4c-3.2-2.1-6.6-2.6-10-1.6z" fill="#fff"/><path d="M26.5 14.2c-3.4-1.1-6.8-.6-10 1.6v10.4c3.2-2.1 6.6-2.6 10-1.6z" fill="#fff" fill-opacity=".86"/><path d="M14.5 9.2c1.3-1.5 2.9-1.6 4.3-.2 1.4-1.9 3.4-2.4 5.4-1.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Proseview</a>
+    <nav aria-label="Sections">
+      <a href="#write">Studio</a>
+      <a href="#ai">AI</a>
+      <a href="#compare">Compare</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/ourarash/proseview">GitHub</a>
+      <a class="top-cta" href="#get-started">Install</a>
+    </nav>
+  </div>
 </header>
 
 <main>
 
 <section class="hero">
+  <picture class="hero-art" aria-hidden="true">
+    <source media="(prefers-color-scheme: dark)" srcset="images/hero-bookplate-dark.png">
+    <img src="images/hero-bookplate.png" alt="">
+  </picture>
   <p class="eyebrow">Free and open source</p>
-  <h1>Write your novel in plain&nbsp;Markdown.</h1>
+  <h1>Write your novel in <em>plain&nbsp;Markdown.</em></h1>
   <p class="lede">Proseview runs locally in your browser and turns a folder of Markdown scenes into a writing studio. Read it like a book, revise with an editor's eye, and export an e-book or paperback.</p>
   <div class="actions">
     <a class="button primary" href="#get-started">Install Proseview</a>
     <a class="button" href="demo/#/scene/ch01%2F01-down-the-rabbit-hole.md">Try a sample book</a>
   </div>
   <p class="fine">macOS, Windows &amp; Linux · or <a href="write/">start a book in your browser →</a></p>
+  <figure class="shot hero-shot">
+    <div class="shot-frame">
+      <img src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
+    </div>
+    <figcaption>Press E and the page you read becomes the page you write on. Each scene is a plain Markdown file, in a folder per chapter.</figcaption>
+  </figure>
   <ul class="badges" aria-label="Promises">
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>Your files stay plain Markdown</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 5-12 3-12 7"/></svg>Works seamlessly with Git</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>No account, no tracking</li>
     <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/></svg>Open source (MIT)</li>
   </ul>
-  <figure class="shot hero-shot">
-    <img src="images/write-a-scene.png" width="2560" height="1520" alt="A scene of Alice's Adventures in Wonderland open in Proseview's editor, with the manuscript's chapter folders and scene files in the sidebar">
-    <figcaption>Press E and the page you read becomes the page you write on. Each scene is a plain Markdown file, in a folder per chapter.</figcaption>
-  </figure>
 </section>
 
 <section class="numbers" aria-label="Free">
@@ -59,13 +64,15 @@
 </section>
 
 <section class="shape">
+  <p class="eyebrow">Plain files, no lock-in</p>
   <h2>Your book stays a plain folder on disk.</h2>
   <p>Your manuscript folder holds one folder per chapter and one Markdown file per scene. Proseview reads that structure directly—no database, no import, and no lock-in.</p>
-  <ol class="tiers">
-    <li><b>Book</b><span>The manuscript folder: word count, goal, and pace.</span></li>
-    <li><b>Chapters</b><span>One folder per chapter, in the order you name them.</span></li>
-    <li><b>Scenes</b><span>One Markdown file per scene, with optional metadata (POV, setting, timeline) at the top.</span></li>
-  </ol>
+  <div class="shape-grid">
+    <ol class="tiers">
+      <li><b>Book</b><span>The manuscript folder: word count, goal, and pace.</span></li>
+      <li><b>Chapters</b><span>One folder per chapter, in the order you name them.</span></li>
+      <li><b>Scenes</b><span>One Markdown file per scene, with optional metadata (POV, setting, timeline) at the top.</span></li>
+    </ol>
 <pre class="tree" aria-label="Example folder"><code>my-novel/
 └── manuscript/
     ├── ch01/
@@ -73,7 +80,12 @@
     │   └── 02-the-station.md
     └── ch02/
         └── 01-aftermath.md</code></pre>
-  <figure class="shot"><img src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: a Progress card with the words against the goal, today's words, words a day, the writing streak and days to finish, above the scenes worked on last"></figure>
+  </div>
+  <figure class="shot">
+    <div class="shot-frame">
+      <img src="images/dashboard.png" width="2560" height="1520" loading="lazy" alt="The Proseview dashboard: a Progress card with the words against the goal, today's words, words a day, the writing streak and days to finish, above the scenes worked on last">
+    </div>
+  </figure>
 </section>
 
 <section class="feature" id="write">
@@ -81,12 +93,12 @@
     <p class="eyebrow">Write</p>
     <h2>The page you read is the page you write on.</h2>
     <ul>
-      <li>Press <kbd>E</kbd> and the typeset page becomes the editor. <kbd>Cmd/Ctrl+S</kbd> saves and returns you to reading.</li>
-      <li>Story bibles, plans, and any other Markdown or YAML file are editable in place too.</li>
-      <li>Search the whole book with <kbd>Cmd/Ctrl+K</kbd>, and choose from six themes and seven fonts.</li>
+      <li>Press <kbd>E</kbd> to edit directly in book typography; <kbd>Cmd/Ctrl+S</kbd> saves and returns to reading.</li>
+      <li>Edit story bibles, plans, and any other Markdown or YAML file in place.</li>
+      <li>Search the whole book with <kbd>Cmd/Ctrl+K</kbd>, with six themes and seven fonts.</li>
     </ul>
   </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="Typing a new closing line into a scene and saving it, with the word count updating"><source src="images/demo-writing.mp4" type="video/mp4"></video></figure>
+  <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="Typing a new closing line into a scene and saving it, with the word count updating"><source src="images/demo-writing.webm" type="video/webm"><source src="images/demo-writing.mp4" type="video/mp4"></video></div></figure>
 </section>
 
 <section class="feature flip" id="revise">
@@ -94,12 +106,12 @@
     <p class="eyebrow">Revise</p>
     <h2>Instant prose checks, with no AI required.</h2>
     <ul>
-      <li>13 instant, local style checks (no AI): repetition, filter verbs, passive voice, crutch words, POV slips, and more.</li>
-      <li>Plain-English manuscript takeaways on pacing and vocabulary variety, plus a chapter-by-chapter character chart.</li>
-      <li>Track today's words, pace, and streak, and see exactly which words were added or cut in every scene.</li>
+      <li>13 local style checks: repetition, filter verbs, passive voice, crutch words, POV slips, and more.</li>
+      <li>Plain-English pacing and vocabulary takeaways, plus a chapter-by-chapter character chart.</li>
+      <li>Track daily words, pace, and streak, and see exactly what was added or cut in each scene.</li>
     </ul>
   </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"><source src="images/demo-highlights.mp4" type="video/mp4"></video></figure>
+  <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Analysis panel beside a scene, with highlight passes switched on and the matching words marked in the prose"><source src="images/demo-highlights.webm" type="video/webm"><source src="images/demo-highlights.mp4" type="video/mp4"></video></div></figure>
 </section>
 
 <section class="feature" id="plan">
@@ -107,84 +119,99 @@
     <p class="eyebrow">Plan</p>
     <h2>See every storyline at once.</h2>
     <ul>
-      <li>Tag scenes with a storyline (<code>thread:</code> in the scene header) to see every plot thread as its own lane across the book.</li>
+      <li>Tag scenes with <code>thread:</code> in the header to trace every plotline as its own lane across the book.</li>
       <li>Compare chapter proportions and scene lengths side by side to spot chapters that run long.</li>
-      <li>Give a scene a label, such as Main Plot or Flashback, and its color shows in the sidebar, the scene list, and the timeline.</li>
+      <li>Add scene labels such as Main Plot or Flashback, color-coded across sidebar, overview, and timeline.</li>
     </ul>
   </div>
-  <figure class="shot"><img src="images/storylines.png" width="1956" height="1022" loading="lazy" alt="The Timeline tab for Alice's Adventures in Wonderland: each chapter's share of the book, a bar of words for every scene, and four storylines (rabbit, size, wonderland and court) as lanes showing which scenes belong to each"></figure>
+  <figure class="shot"><div class="shot-frame"><img src="images/storylines.png" width="1956" height="1022" loading="lazy" alt="The Timeline tab for Alice's Adventures in Wonderland: each chapter's share of the book, a bar of words for every scene, and four storylines (rabbit, size, wonderland and court) as lanes showing which scenes belong to each"></div></figure>
 </section>
 
-<section class="feature flip" id="ai">
-  <div class="copy">
-    <p class="eyebrow">Optional AI</p>
-    <h2>Your own Codex, Claude, or Antigravity—only when you ask.</h2>
-    <ul>
-      <li>Connects to the local Codex, Claude, or Antigravity (Gemini) CLI already signed in on your computer—no API keys, no Proseview subscription, and no limits from us.</li>
-      <li>Three agent tabs side by side, each keeping its own conversation as you move between files.</li>
-      <li>A real agent, not a single-shot chat box: it searches the whole book, reads your story notes, edits multiple files at once, and looks things up on the web.</li>
-      <li>Completely optional and never runs on its own. Every edit shows a before-and-after diff with one-click <strong>Undo all</strong>.</li>
-      <li>Choose what each conversation sends with your question (full scene, beat map, story notes), and see the tokens each reply used.</li>
+<div class="ai-band" id="ai">
+  <section class="ai-intro">
+    <div class="ai-art" aria-hidden="true">
+      <img src="images/ai-salon-dark.png" width="960" height="459" loading="lazy" alt="">
+    </div>
+    <p class="eyebrow">Optional AI agents</p>
+    <h2>Your own Codex, Claude, or Antigravity—<em>only when you ask.</em></h2>
+    <p class="ai-lede">Connect the Codex, Claude Code, or Antigravity you already use. Proseview adds no AI subscription or usage caps. Your provider's costs and limits still apply.</p>
+    <ul class="agent-pills" aria-label="Supported agents">
+      <li>Codex <span>· OpenAI</span></li>
+      <li>Claude <span>· Claude Code</span></li>
+      <li>Antigravity <span>· Google Gemini</span></li>
     </ul>
-  </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation"><source src="images/demo-agents.mp4" type="video/mp4"></video></figure>
-</section>
+  </section>
 
-<section class="feature" id="beat-map">
-  <div class="copy">
-    <p class="eyebrow">Beat Map</p>
-    <h2>See how a scene moves.</h2>
-    <ul>
-      <li>Plots an estimated tension curve for the scene alongside its moments in order: dialogue, action, internal thought, and silent reaction.</li>
-      <li>Click any moment to jump straight to that paragraph.</li>
-      <li>Generated by Codex, Claude, or Antigravity when you ask—without touching your prose—saved with the book, and flagged out of date whenever the scene changes.</li>
-    </ul>
-  </div>
-  <figure class="shot"><img src="images/beat-map.png" width="2560" height="1520" loading="lazy" alt="A scene open beside its Beat Map: a tension curve across the scene above its moments, each marked as dialogue, action, internal thought or silent reaction"></figure>
-</section>
+  <section class="feature" id="reviews">
+    <div class="copy">
+      <p class="eyebrow">Scene reviews</p>
+      <h2>Review notes you can preview and apply.</h2>
+      <ul>
+        <li>Run a quick critique, deepen and layer, comedy review, or craft review through McKee's <cite>Story</cite>, <cite>The Story Grid</cite>, <cite>Story Genius</cite>, <cite>Save the Cat!</cite>, <cite>On Writing</cite>, or <cite>Bird by Bird</cite>.</li>
+        <li>Every note quotes the passage, explains what isn't working for the reader, and suggests a rewrite in the scene's voice.</li>
+        <li>Compare suggestions side by side with your draft, check the notes you want, add guidance, and apply—every edit shows a diff with one-click <strong>Undo all</strong>.</li>
+        <li>Review one scene, its neighbors, or a whole chapter, choosing what to focus on and how many notes to receive.</li>
+      </ul>
+    </div>
+    <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="A Quick critique in Proseview's side panel: notes that quote a passage, explain it and offer a replacement; Compare against the current scene; two notes ticked and applied by Codex, with the saved edit's Undo all and Looks good"><source src="images/demo-review.webm" type="video/webm"><source src="images/demo-review.mp4" type="video/mp4"></video></div></figure>
+  </section>
 
-<section class="feature flip" id="reviews">
-  <div class="copy">
-    <p class="eyebrow">Scene reviews</p>
-    <h2>Review notes you can preview and apply.</h2>
-    <ul>
-      <li>Run a quick critique, deepen and layer (subtext and sensory detail), comedy review, or craft review through McKee's <cite>Story</cite>, <cite>The Story Grid</cite>, <cite>Story Genius</cite>, <cite>Save the Cat!</cite>, <cite>On Writing</cite>, or <cite>Bird by Bird</cite>.</li>
-      <li>Every note quotes the passage, explains what isn't working for the reader, and offers a replacement in the scene's own voice.</li>
-      <li>Compare suggestions side by side with your prose, check the notes you want, add your own guidance, and apply them—every change shows a before-and-after diff with one-click <strong>Undo all</strong>.</li>
-      <li>Review one scene, its neighbors, or a whole chapter, and choose what to focus on and how many notes to get.</li>
-    </ul>
-  </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="A Quick critique in Proseview's side panel: notes that quote a passage, explain it and offer a replacement; Compare against the current scene; two notes ticked and applied by Codex, with the saved edit's Undo all and Looks good"><source src="images/demo-review.mp4" type="video/mp4"></video></figure>
-</section>
+  <section class="feature flip" id="ask">
+    <div class="copy">
+      <p class="eyebrow">Ask &amp; edit</p>
+      <h2>Real agents that read the whole book.</h2>
+      <ul>
+        <li>Three agent tabs side by side, each keeping its own conversation as you move between files.</li>
+        <li>Searches the whole manuscript, reads your story notes, edits multiple files at once, and looks things up on the web.</li>
+        <li>Stays off until you ask; every edit shows a before-and-after diff with one-click <strong>Undo all</strong>.</li>
+        <li>Choose what each conversation sends (full scene, beat map, story notes) and inspect token usage per reply.</li>
+      </ul>
+    </div>
+    <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Codex and Claude tabs answering the same question about a scene, each in its own conversation"><source src="images/demo-agents.webm" type="video/webm"><source src="images/demo-agents.mp4" type="video/mp4"></video></div></figure>
+  </section>
 
-<section class="feature" id="group">
-  <div class="copy">
-    <p class="eyebrow">The Group</p>
-    <h2>Let your agents debate.</h2>
-    <ul>
-      <li>Put two or three AI agents in one conversation—using Codex, Claude, or Antigravity—each focused on a different angle: story, voice, and (optionally) continuity.</li>
-      <li>They read the same scene and respond to each other—agreeing, pushing back, or passing. Different models catch different issues.</li>
-      <li>Ask them all, or <code>@mention</code> one. A recap summarizes what they agreed on, the decisions left to you, and each suggested edit as Before and After.</li>
-      <li>Send any one-on-one agent chat to the Group for a second opinion: the other agents weigh in, the first agent responds, and you get a combined recap.</li>
-    </ul>
-  </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay"><source src="images/demo-room.mp4" type="video/mp4"></video></figure>
-</section>
+  <section class="feature" id="group">
+    <div class="copy">
+      <p class="eyebrow">The Group</p>
+      <h2>Let your agents debate.</h2>
+      <ul>
+        <li>Put two or three AI agents in one conversation—using Codex, Claude, or Antigravity—focused on story, voice, and (optionally) continuity.</li>
+        <li>They read the same scene and respond to each other—agreeing, pushing back, or passing.</li>
+        <li>Ask them all or <code>@mention</code> one, and get a recap of agreements, open decisions, and Before/After edits.</li>
+        <li>Send any one-on-one agent chat to the Group for a second opinion and a combined recap.</li>
+      </ul>
+    </div>
+    <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="The Group in Proseview's side panel: three AI agents on Codex, Claude, and Antigravity debating whether a passage should stay"><source src="images/demo-room.webm" type="video/webm"><source src="images/demo-room.mp4" type="video/mp4"></video></div></figure>
+  </section>
 
-<section class="feature flip" id="illustrations">
-  <div class="copy">
-    <p class="eyebrow">Illustrations</p>
-    <h2>A picture for every scene.</h2>
-    <ul>
-      <li>One click asks Codex, Antigravity, or Claude to illustrate the scene in one of six styles, from woodcut to oil painting.</li>
-      <li>The image waits above the scene until you insert it, and you can ask for revisions right in the chat that made it.</li>
-      <li>Inserted images save beside the chapter as ordinary image files, so Obsidian, VS Code, and GitHub display them too.</li>
-    </ul>
-  </div>
-  <figure class="shot"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening"><source src="images/demo-illustration.mp4" type="video/mp4"></video></figure>
-</section>
+  <section class="feature flip" id="beat-map">
+    <div class="copy">
+      <p class="eyebrow">Beat Map</p>
+      <h2>See how a scene moves.</h2>
+      <ul>
+        <li>Plots an estimated tension curve alongside each moment in order: dialogue, action, internal thought, and silent reaction.</li>
+        <li>Click any moment to jump straight to that paragraph.</li>
+        <li>Generated on demand without touching your prose, saved with the book, and flagged out of date when the scene changes.</li>
+      </ul>
+    </div>
+    <figure class="shot"><div class="shot-frame"><img src="images/beat-map.png" width="2560" height="1520" loading="lazy" alt="A scene open beside its Beat Map: a tension curve across the scene above its moments, each marked as dialogue, action, internal thought or silent reaction"></div></figure>
+  </section>
 
-<section class="feature" id="publish">
+  <section class="feature" id="illustrations">
+    <div class="copy">
+      <p class="eyebrow">Illustrations</p>
+      <h2>A picture for every scene.</h2>
+      <ul>
+        <li>One click asks Codex, Antigravity, or Claude to illustrate the scene in one of six styles, from woodcut to oil painting.</li>
+        <li>Previews wait above the scene until you insert them, and you can refine them in the same chat.</li>
+        <li>Inserted images save beside the chapter as ordinary image files, so Obsidian, VS Code, and GitHub display them too.</li>
+      </ul>
+    </div>
+    <figure class="shot"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="780" height="462" aria-label="Choosing the Woodcut and Engraving style, Codex drawing Alice at the rabbit-hole, and Insert into scene placing the picture above the chapter's opening"><source src="images/demo-illustration.webm" type="video/webm"><source src="images/demo-illustration.mp4" type="video/mp4"></video></div></figure>
+  </section>
+</div>
+
+<section class="feature flip" id="publish">
   <div class="copy">
     <p class="eyebrow">Publish</p>
     <h2>Export ready-to-publish books.</h2>
@@ -194,10 +221,10 @@
       <li>Includes plain-language preflight checks for EPUB and print formatting—no Pandoc, LaTeX, or Calibre to install.</li>
     </ul>
   </div>
-  <figure class="shot"><img src="images/export-preview.png" width="2560" height="1520" loading="lazy" alt="The Export dialog previewing the pages of a paperback interior"></figure>
+  <figure class="shot"><div class="shot-frame"><img src="images/export-preview.png" width="2560" height="1520" loading="lazy" alt="The Export dialog previewing the pages of a paperback interior"></div></figure>
 </section>
 
-<section class="feature flip" id="phone">
+<section class="feature" id="phone">
   <div class="copy">
     <p class="eyebrow">Remote mode</p>
     <h2>Read, edit, and dictate from your phone.</h2>
@@ -207,29 +234,33 @@
       <li>Drafts stay safe on your phone until you save, with conflict protection so phone and computer edits never silently overwrite each other.</li>
     </ul>
   </div>
-  <figure class="shot shot-phone"><video autoplay loop muted playsinline preload="metadata" width="360" height="702" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat"><source src="images/demo-phone.mp4" type="video/mp4"></video></figure>
+  <figure class="shot shot-phone"><div class="shot-frame"><video autoplay loop muted playsinline preload="metadata" width="360" height="702" aria-label="Proseview on a phone: Continue reading opens the first scene, a tapped paragraph gets a TODO, Quick edit adds a sentence and saves it, and Ask opens the chat"><source src="images/demo-phone.webm" type="video/webm"><source src="images/demo-phone.mp4" type="video/mp4"></video></div></figure>
 </section>
 
 <section class="band">
-  <h2>Fits the way you already write.</h2>
-  <div class="tools">
-    <div>
-      <h3>Obsidian</h3>
-      <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts, and embeds stay exactly as you wrote them.</p>
-    </div>
-    <div>
-      <h3>Git, for backup</h3>
-      <p>Your book is plain text, so Git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and Proseview reads your commits and saved scenes for your goals and writing streak.</p>
-    </div>
-    <div>
-      <h3>VS Code</h3>
-      <p>Open any scene in VS Code, Cursor, or Zed with one click and keep it open beside Proseview. A change saved in either one shows up in the other.</p>
+  <div class="band-surface">
+    <p class="eyebrow">Works with your tools</p>
+    <h2>Fits the way you already write.</h2>
+    <div class="tools">
+      <div>
+        <h3>Obsidian</h3>
+        <p>Point Proseview at your vault and nothing moves. Wikilinks, callouts, and embeds stay exactly as you wrote them.</p>
+      </div>
+      <div>
+        <h3>Git, for backup</h3>
+        <p>Your book is plain text, so Git keeps every draft. Push it to a private GitHub repository and it is backed up off your computer. Each commit shows exactly what you changed, and Proseview reads your commits and saved scenes for your goals and writing streak.</p>
+      </div>
+      <div>
+        <h3>VS Code</h3>
+        <p>Open any scene in VS Code, Cursor, or Zed with one click and keep it open beside Proseview. A change saved in either one shows up in the other.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="compare" id="compare">
-  <h2>How Proseview compares</h2>
+  <p class="eyebrow center">Comparison</p>
+  <h2>How Proseview compares.</h2>
   <div class="compare-scroll">
     <table>
       <thead>
@@ -252,7 +283,8 @@
 </section>
 
 <section class="ways" id="get-started">
-  <h2>Install Proseview</h2>
+  <p class="eyebrow center">Get started</p>
+  <h2>Install Proseview.</h2>
   <div class="cards single">
     <article class="card">
       <h3>On your computer</h3>
@@ -284,10 +316,11 @@
       <a class="button" href="https://github.com/ourarash/proseview#quick-start">Read the quick start</a>
     </article>
   </div>
-  <p class="ways-note">Just trying it? <a href="write/">Start a book in your browser</a>.</p>
+  <p class="ways-note">Just trying it? <a href="write/">Start a book in your browser →</a></p>
 </section>
 
 <section class="faq" id="faq">
+  <p class="eyebrow center">FAQ</p>
   <h2>Questions</h2>
   <details>
     <summary>Is it really free?</summary>
@@ -364,6 +397,13 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     });
   });
 });
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  document.querySelectorAll('video[autoplay]').forEach(function (video) {
+    video.removeAttribute('autoplay');
+    video.pause();
+    video.controls = true;
+  });
+}
 </script>
 </body>
 </html>

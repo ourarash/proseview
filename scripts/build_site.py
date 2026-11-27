@@ -28,9 +28,12 @@ PACKAGE = REPO / "proseview"
 PYODIDE_FILES = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json")
 #: Dependencies the browser cannot run: Typst makes PDFs and is a native binary.
 NOT_IN_BROWSER = {"typst"}
-#: README images and landing-page videos copied into the site.
+#: README images, editorial art, and landing-page videos copied into the site.
 LANDING_IMAGES = (
+    "hero-bookplate.png", "hero-bookplate-dark.png", "ai-salon-dark.png",
     "dashboard.png", "write-a-scene.png", "export-preview.png", "storylines.png", "beat-map.png",
+    "demo-writing.webm", "demo-highlights.webm", "demo-room.webm", "demo-review.webm",
+    "demo-agents.webm", "demo-illustration.webm", "demo-phone.webm",
     "demo-writing.mp4", "demo-highlights.mp4", "demo-room.mp4", "demo-review.mp4",
     "demo-agents.mp4", "demo-illustration.mp4", "demo-phone.mp4",
 )
@@ -101,6 +104,9 @@ def build_landing(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "landing.css", "install.sh"):
         shutil.copyfile(SITE / name, out / name)
+    fonts_src = SITE / "fonts"
+    if fonts_src.is_dir():
+        shutil.copytree(fonts_src, out / "fonts", dirs_exist_ok=True)
     (out / "images").mkdir(exist_ok=True)
     for name in LANDING_IMAGES:
         shutil.copyfile(REPO / "docs" / "images" / name, out / "images" / name)

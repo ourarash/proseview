@@ -7,7 +7,7 @@ pytest.importorskip("playwright.sync_api", reason="pip install -e '.[e2e]'")
 from playwright.sync_api import Page, expect  # noqa: E402
 
 from .conftest import ProseviewServer  # noqa: E402
-from .test_browser_e2e import wait_for_discuss_answer  # noqa: E402
+from .test_browser_e2e import wait_for_discuss_answer, wait_for_discuss_idle, wait_for_discuss_quiet  # noqa: E402
 from .test_review_setup_e2e import customize_review, open_review  # noqa: E402
 
 pytestmark = pytest.mark.e2e_browser
@@ -68,6 +68,9 @@ def test_comedy_styles_goal_and_lanes_survive_switching_and_reach_the_request(pa
     assert 'Review goals: Strengthen existing humor, Find comic opportunities' in receipt.inner_text()
     page.locator('.discuss-craft-prompt summary').click()
     assert 'Selected comic style: Dark comedy' in page.locator('.discuss-craft-prompt-body').inner_text()
+    # The answer can be on screen before the snapshot that holds it settles.
+    wait_for_discuss_idle(page)
+    wait_for_discuss_quiet(page)
     page.evaluate("""() => {
         const answer = [..._discussSnapshot.messages].reverse().find(m => m.role === 'assistant');
         answer.text = '### 1. Let the request reveal the contradiction\\n\\n**Lane: Truth & pain — the need for approval undercuts the claim of independence.**';

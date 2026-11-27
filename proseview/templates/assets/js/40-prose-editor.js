@@ -1023,13 +1023,19 @@
                 if (!data || !data.ok) {
                     throw new Error((data && data.error) || 'Could not update label.');
                 }
-                m.frontmatter_text = nextFm.trim() ? nextFm.trim() : null;
-                if (data.mtime) m.mtime = data.mtime;
-                if (data.revision) m.revision = data.revision;
-                m.label = clean;
-                m.fm = m.fm || {};
-                if (clean) m.fm[fieldName] = clean;
-                else delete m.fm[fieldName];
+                // A refresh that read the scene before this save can land
+                // while it runs and replace meta[p]; that copy takes the new
+                // label too, or the picker is redrawn from it as unlabelled
+                // (seen on Linux CI: file and toast right, button "+ Label").
+                [m, meta[p]].filter(function(entry, i, all) { return entry && all.indexOf(entry) === i; }).forEach(function(entry) {
+                    entry.frontmatter_text = nextFm.trim() ? nextFm.trim() : null;
+                    if (data.mtime) entry.mtime = data.mtime;
+                    if (data.revision) entry.revision = data.revision;
+                    entry.label = clean;
+                    entry.fm = entry.fm || {};
+                    if (clean) entry.fm[fieldName] = clean;
+                    else delete entry.fm[fieldName];
+                });
                 if (typeof recomputeClientLabelSlots === 'function') recomputeClientLabelSlots();
                 var openPath = (document.documentElement.dataset.view === 'scene'
                     && typeof paths !== 'undefined' && typeof curIdx === 'number' && curIdx >= 0)

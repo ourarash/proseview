@@ -110,6 +110,9 @@ def test_edit_bar_sits_above_a_selection_and_goes_back(page: Page, server: Prose
     )
 
     word_box = _select_word(page, word)
+    # The bar appears once the selection settles; a slow runner can take
+    # longer than a fixed pause.
+    page.wait_for_selector("#selectionPillBar", state="visible")
     page.wait_for_timeout(100)
     # The session dock (#sceneEditBar) stays calmly at its home corner.
     dock = page.locator("#sceneEditBar").bounding_box()

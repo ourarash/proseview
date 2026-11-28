@@ -114,6 +114,18 @@
         setTimeout(function () { URL.revokeObjectURL(save.href); }, 10000);
       }).catch(function (err) { console.error(err); });
     });
+    // Keep the side panel on Analysis/History (never a hidden AI/Group tab from /demo/).
+    try {
+      var savedTab = localStorage.getItem('proseview-scene-panel-tab');
+      if (savedTab && savedTab !== 'analysis' && savedTab !== 'history') {
+        localStorage.setItem('proseview-scene-panel-tab', 'analysis');
+      }
+    } catch (e) {}
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.discuss-open-btn').forEach(function (btn) {
+        btn.setAttribute('title', 'Show or hide side panel (Analysis, History)');
+      });
+    });
     // The page's address follows the dashboard's, so a refresh comes back to it.
     ['pushState', 'replaceState'].forEach(function (name) {
       var original = history[name];
@@ -125,14 +137,18 @@
   }
 
   var BROWSER_STYLE = '<style id="proseview-browser-css">'
-    // What needs the installed app: other editors, the agents, PDF, the computer's folders.
-    + '.editor-btn, #modalEditorBtn, #filePreviewEditorBtn, #utilityTabCodex, #utilityTabClaude,'
+    // What needs the installed app: other editors, local AI agents, Group chat, Beat Map, Scene Image, PDF, local folders.
+    + '.editor-btn, #modalEditorBtn, #filePreviewEditorBtn,'
+    + ' #utilityTabCodex, #utilityTabClaude, #utilityTabAgy, #utilityTabGroup, #utilityTabBeats,'
+    + ' #sceneBeatMapBtn, #sceneImageMenuWrap, #sceneBeatMapStripContainer,'
+    + ' #settingsTabSuggestions, #settingsTabGroup, #settingsTabBeatmap, #settingsTabSceneimage, #settingsTabDiscuss,'
+    + ' #selectionRewriteBtn, #selectionCritiqueBtn, #selectionCodexBtn, #selectionPolishBtn, #selectionSkillsBtn, #selectionEditorBtn, #selectionMenuRoot .selection-pill-separator,'
     + ' #modalPrintLayoutBtn, #bookViewSwitch, .export-format-card:has(input[value^="pdf"]), .export-format-card:has(input[value="all"]),'
     + ' .export-save-row, .export-style-more, .export-file-actions button { display: none !important; }'
     + '</style>';
   var NOTE = '<p class="static-snapshot-note" role="note">Your book is saved in this browser.'
     + ' <a href="/browser/book.zip" download="my-novel.zip">Download it</a>'
-    + ' · <a href="../#get-started" target="_blank" rel="noopener">Get Proseview</a> for PDF, AI and your own folders</p>';
+    + ' · <a href="../#get-started" target="_blank" rel="noopener">Get Proseview</a> for PDF, AI agents and your own folders</p>';
 
   function dressed(html) {
     return html
@@ -151,6 +167,7 @@
     });
   });
 
+  var firstLoad = true;
   frame.addEventListener('load', function () {
     var inner = frame.contentWindow;
     if (!inner.document.getElementById('repoSidebar')) {
@@ -162,6 +179,29 @@
     document.title = inner.document.title || document.title;
     inner.addEventListener('hashchange', function () { history.replaceState(null, '', inner.location.hash || '#'); });
     history.replaceState(null, '', inner.location.hash || '#');
+
+    if (firstLoad) {
+      firstLoad = false;
+      // Show the Files sidebar on desktop so the chapter/scene structure and '+' button are visible right away.
+      if (inner.innerWidth >= 900 && typeof inner.setSidebarOpen === 'function') {
+        try { inner.setSidebarOpen(true); } catch (e) {}
+      }
+      // If the user renamed the starter scene, open their first scene instead of an empty dashboard.
+      if (!inner.document.querySelector('#sceneModal.open') && Array.isArray(inner.paths) && inner.paths.length
+          && (!inner.location.hash || inner.location.hash === '#' || inner.location.hash.indexOf('#/scene/') === 0)) {
+        try { inner.openScene(0); } catch (e) {}
+      }
+      // On a brand-new untouched book, enter Edit mode automatically so the visitor can start typing right away.
+      setTimeout(function () {
+        try {
+          var host = inner.document.getElementById('sceneProseHost');
+          if (host && host.innerText.indexOf('This is the first scene of your book') >= 0
+              && inner._pmEditMode !== true && typeof inner.toggleSceneEdit === 'function') {
+            inner.toggleSceneEdit();
+          }
+        } catch (e) {}
+      }, 220);
+    }
   });
 
   navigator.serviceWorker.register('sw.js').then(function () {
@@ -170,7 +210,8 @@
       navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
     });
   }).then(function () {
-    frame.src = 'book' + location.hash;
+    var initialHash = (location.hash && location.hash !== '#') ? location.hash : '#/scene/ch01%2F01-first-scene.md';
+    frame.src = 'book' + initialHash;
   }).catch(function (err) {
     console.error(err);
     fail('Something went wrong while opening the book.');

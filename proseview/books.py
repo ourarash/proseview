@@ -20,13 +20,16 @@ from pathlib import Path
 FIRST_SCENE = """\
 ---
 title: First scene
+status: drafting
 ---
 
-This is the first scene of your book. Press **E** to write in it, and
-**Cmd-S** (Ctrl-S) to save.
+This is the first scene of your book—start typing right here, or select everything and replace it with your opening line. Press **Cmd/Ctrl+S** to save (and **E** anytime to switch between reading and writing).
 
-Add scenes and chapters with **+** in the Files sidebar: a folder inside
-`manuscript` is a chapter, and each Markdown file in it is a scene.
+A few things you can try right away:
+
+- **Add scenes and chapters** with **+** in the Files sidebar on the left (`manuscript/ch01/` is a chapter, and each Markdown file inside it is a scene).
+- **Check your prose locally** with the **Analysis** side panel (top-right) for repetition, filter verbs, passive voice, and sentence rhythm.
+- **Export anytime** from the **…** menu to EPUB or Word (`.docx`), or keep your full Markdown folder as plain files on your computer.
 """
 
 

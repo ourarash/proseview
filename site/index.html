@@ -305,7 +305,7 @@
     </ul>
   </section>
 
-  <section class="section-rule spotlight" id="beat-map">
+  <section class="section-rule spotlight spotlight-annotated" id="beat-map">
     <p class="eyebrow">Pacing &amp; tension</p>
     <h2>Beat Map: see how a scene moves.</h2>
     <p class="prose">Plot an estimated tension curve across the top of your scene or in the side panel alongside every beat in order—dialogue, action, internal thought, and silent reaction—without touching your prose. Step through moments to highlight each passage in place; Proseview flags the map out of date whenever the scene changes.</p>
@@ -313,9 +313,79 @@
       <button type="button" data-beatmap-view="strip" aria-pressed="true">Top Strip</button>
       <button type="button" data-beatmap-view="sidebar" aria-pressed="false">Side Panel</button>
     </div>
-    <figure class="shot">
-      <img id="beatMapImg" src="images/beat-map-strip-light.png" data-strip-light="images/beat-map-strip-light.png" data-strip-dark="images/beat-map-strip-dark.png" data-sidebar-light="images/beat-map-light.png" data-sidebar-dark="images/beat-map.png" loading="lazy" alt="Beat Map horizontal tension strip above the opening scene of Alice's Adventures in Wonderland, highlighting the White Rabbit moment directly in the prose">
-    </figure>
+    <div class="hero-stage bm-stage" id="beatMapStage" data-view="strip">
+      <figure class="shot hero-shot">
+        <img id="beatMapImg" src="images/beat-map-strip-light.png" data-strip-light="images/beat-map-strip-light.png" data-strip-dark="images/beat-map-strip-dark.png" data-sidebar-light="images/beat-map-light.png" data-sidebar-dark="images/beat-map.png" loading="lazy" alt="Beat Map horizontal tension strip above the opening scene of Alice's Adventures in Wonderland, highlighting the White Rabbit moment directly in the prose">
+      </figure>
+
+      <!-- Top Strip annotations (2400x1196 -> 780x389 inside 1200x389) -->
+      <svg class="hero-lines bm-for-strip" viewBox="0 0 1200 389" aria-hidden="true">
+        <g class="hl hl-parchment">
+          <path d="M 190 54 C 208 54, 214 48, 234 48"/>
+          <circle class="hl-origin" cx="190" cy="54" r="2.6"/>
+          <circle class="hl-halo" cx="234" cy="48" r="7.5"/>
+          <circle class="hl-dot" cx="234" cy="48" r="3.6"/>
+        </g>
+        <g class="hl hl-rose">
+          <path d="M 190 326 C 254 326, 294 316, 354 316"/>
+          <circle class="hl-origin" cx="190" cy="326" r="2.6"/>
+          <circle class="hl-halo" cx="354" cy="316" r="7.5"/>
+          <circle class="hl-dot" cx="354" cy="316" r="3.6"/>
+        </g>
+        <g class="hl hl-slate">
+          <path d="M 1010 42 C 986 42, 982 12, 954 12"/>
+          <circle class="hl-origin" cx="1010" cy="42" r="2.6"/>
+          <circle class="hl-halo" cx="954" cy="12" r="7.5"/>
+          <circle class="hl-dot" cx="954" cy="12" r="3.6"/>
+        </g>
+        <g class="hl hl-sage">
+          <path d="M 1010 156 C 992 156, 990 132, 974 132"/>
+          <circle class="hl-origin" cx="1010" cy="156" r="2.6"/>
+          <circle class="hl-halo" cx="974" cy="132" r="7.5"/>
+          <circle class="hl-dot" cx="974" cy="132" r="3.6"/>
+        </g>
+      </svg>
+      <ul class="hero-callouts bm-strip-callouts bm-for-strip" aria-label="Beat Map top strip highlights">
+        <li class="hero-callout c-left c-parchment"><b>Tension curve</b> plots pacing across every beat</li>
+        <li class="hero-callout c-left c-rose"><b>Live highlight</b> marks the active moment in your prose</li>
+        <li class="hero-callout c-right c-slate"><b>Step &amp; refresh</b> — move moment by moment or update</li>
+        <li class="hero-callout c-right c-sage"><b>Jump to moment</b> straight from any beat card</li>
+      </ul>
+
+      <!-- Side Panel annotations (2560x1520 -> 780x463 inside 1200x463) -->
+      <svg class="hero-lines bm-for-sidebar" viewBox="0 0 1200 463" aria-hidden="true">
+        <g class="hl hl-rose">
+          <path d="M 190 222 C 210 222, 224 221, 248 221"/>
+          <circle class="hl-origin" cx="190" cy="222" r="2.6"/>
+          <circle class="hl-halo" cx="248" cy="221" r="7.5"/>
+          <circle class="hl-dot" cx="248" cy="221" r="3.6"/>
+        </g>
+        <g class="hl hl-parchment">
+          <path d="M 1010 98 C 992 98, 988 100, 970 100"/>
+          <circle class="hl-origin" cx="1010" cy="98" r="2.6"/>
+          <circle class="hl-halo" cx="970" cy="100" r="7.5"/>
+          <circle class="hl-dot" cx="970" cy="100" r="3.6"/>
+        </g>
+        <g class="hl hl-sage">
+          <path d="M 1010 268 C 994 268, 992 271, 976 271"/>
+          <circle class="hl-origin" cx="1010" cy="268" r="2.6"/>
+          <circle class="hl-halo" cx="976" cy="271" r="7.5"/>
+          <circle class="hl-dot" cx="976" cy="271" r="3.6"/>
+        </g>
+        <g class="hl hl-slate">
+          <path d="M 1010 384 C 994 384, 992 375, 976 375"/>
+          <circle class="hl-origin" cx="1010" cy="384" r="2.6"/>
+          <circle class="hl-halo" cx="976" cy="375" r="7.5"/>
+          <circle class="hl-dot" cx="976" cy="375" r="3.6"/>
+        </g>
+      </svg>
+      <ul class="hero-callouts bm-sidebar-callouts bm-for-sidebar" aria-label="Beat Map side panel highlights">
+        <li class="hero-callout c-left c-rose"><b>Highlighted in place</b> right in your book typography</li>
+        <li class="hero-callout c-right c-parchment"><b>Tension arc &amp; peak</b> shows where the scene crests</li>
+        <li class="hero-callout c-right c-sage"><b>Every moment tagged</b> — interiority, action &amp; dialogue</li>
+        <li class="hero-callout c-right c-slate"><b>Turning points</b> flagged without touching prose</li>
+      </ul>
+    </div>
   </section>
 
   <section class="section-rule spotlight spotlight-review" id="ask">
@@ -601,8 +671,10 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
   var reduceMq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
   var toggle = document.getElementById('themeToggle');
   var beatImg = document.getElementById('beatMapImg');
+  var beatStage = document.getElementById('beatMapStage');
   var beatView = 'strip';
   function syncBeatMap(dark) {
+    if (beatStage) beatStage.dataset.view = beatView;
     if (!beatImg) return;
     var attr = 'data-' + beatView + '-' + (dark ? 'dark' : 'light');
     var want = beatImg.getAttribute(attr);

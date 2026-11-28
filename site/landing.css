@@ -830,6 +830,74 @@ main > section,
   bottom: auto;
 }
 
+/* Dual-view Beat Map annotations (Top Strip & Side Panel) */
+
+.bm-stage {
+  margin-top: 0;
+}
+
+.bm-stage[data-view="strip"] .bm-for-sidebar,
+.bm-stage[data-view="sidebar"] .bm-for-strip {
+  display: none !important;
+}
+
+.bm-strip-callouts .c-parchment {
+  top: 4%;
+  left: 0;
+}
+
+.bm-strip-callouts .c-rose {
+  top: auto;
+  bottom: 5%;
+  left: 0;
+  right: auto;
+  transform: rotate(1.0deg);
+}
+
+.bm-strip-callouts .c-slate {
+  top: 2%;
+  bottom: auto;
+  right: 0;
+  transform: rotate(0.9deg);
+}
+
+.bm-strip-callouts .c-sage {
+  top: 32%;
+  bottom: auto;
+  left: auto;
+  right: 0;
+  transform: rotate(-0.9deg);
+}
+
+.bm-sidebar-callouts .c-rose {
+  top: 40%;
+  left: 0;
+  right: auto;
+  transform: rotate(-1.0deg);
+}
+
+.bm-sidebar-callouts .c-parchment {
+  top: 13%;
+  left: auto;
+  right: 0;
+  transform: rotate(1.0deg);
+}
+
+.bm-sidebar-callouts .c-sage {
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  right: 0;
+  transform: rotate(-0.9deg);
+}
+
+.bm-sidebar-callouts .c-slate {
+  top: auto;
+  bottom: 9%;
+  right: 0;
+  transform: rotate(0.9deg);
+}
+
 .shot figcaption {
   margin-top: 14px;
   color: var(--muted);

@@ -423,13 +423,15 @@ main > section,
   font: 400 14px/1.5 var(--sans);
 }
 
-.fine a {
+.fine a,
+.notes a {
   color: var(--ink);
   text-underline-offset: 3px;
   text-decoration-color: var(--line-strong);
 }
 
-.fine a:hover {
+.fine a:hover,
+.notes a:hover {
   text-decoration-color: var(--accent);
 }
 

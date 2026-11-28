@@ -159,21 +159,58 @@
       <text class="fd-desc" x="498" y="250">One plain Markdown file each, with optional POV &amp; timeline header.</text>
     </svg>
   </div>
-  <div class="studio-pair">
-    <div class="studio-card">
-      <figure class="shot">
-        <img src="images/search-palette-light.png" data-light-src="images/search-palette-light.png" data-dark-src="images/search-palette-dark.png" loading="lazy" alt="Cmd/Ctrl+K instant search palette open over the typeset scene, showing grouped file, story-bible, and scene matches for Queen">
-      </figure>
-      <h3>Edit in place, search everywhere</h3>
-      <p>Press <kbd>E</kbd> to write in the same typography you read in, edit story bibles and YAML notes in place, and search the entire manuscript with <kbd>Cmd/Ctrl+K</kbd> across six themes and seven fonts.</p>
+  <div class="feature write-search">
+    <div class="copy">
+      <p class="eyebrow">Writing &amp; search</p>
+      <h3>Edit in place, search everywhere.</h3>
+      <p class="prose">Press <kbd>E</kbd> to write in the same typography you read in, edit story bibles and YAML notes in place, and search the entire manuscript with <kbd>Cmd/Ctrl+K</kbd> across six themes and seven fonts.</p>
     </div>
-    <div class="studio-card">
-      <figure class="shot">
-        <img src="images/dashboard-card-light.png" data-light-src="images/dashboard-card-light.png" data-dark-src="images/dashboard-card-dark.png" loading="lazy" alt="Cropped Proseview Progress card showing 26,477 of 30,000 words, daily pace, 3-day writing streak, and days to finish above recently edited scenes">
-      </figure>
-      <h3>Progress, streaks, and what changed</h3>
-      <p>See words written toward your goal, daily pace, streak, and the exact words added or cut in every scene—computed directly from your local files and Git history.</p>
-    </div>
+    <figure class="shot">
+      <img src="images/search-palette-light.png" data-light-src="images/search-palette-light.png" data-dark-src="images/search-palette-dark.png" loading="lazy" alt="Cmd/Ctrl+K instant search palette open over the typeset scene, showing grouped file, story-bible, and scene matches for Queen">
+    </figure>
+  </div>
+</section>
+
+<section class="section-rule spotlight spotlight-annotated" id="progress">
+  <p class="eyebrow">Dashboard &amp; Git history</p>
+  <h2>Progress, streaks, and what changed.</h2>
+  <p class="prose">See words written toward your goal, daily pace, writing streak, and the exact words added or cut in every scene—computed directly from your local files and Git history.</p>
+  <div class="hero-stage dash-stage">
+    <figure class="shot hero-shot">
+      <img src="images/dashboard-card-light.png" data-light-src="images/dashboard-card-light.png" data-dark-src="images/dashboard-card-dark.png" width="2304" height="1226" loading="lazy" alt="Cropped Proseview Progress card showing 26,477 of 30,000 words, daily pace, 3-day writing streak, and days to finish above recently edited scenes">
+    </figure>
+    <svg class="hero-lines" viewBox="0 0 1200 415" aria-hidden="true">
+      <g class="hl hl-parchment">
+        <path d="M 190 62 C 208 62, 214 66, 234 66"/>
+        <circle class="hl-origin" cx="190" cy="62" r="2.6"/>
+        <circle class="hl-halo" cx="234" cy="66" r="7.5"/>
+        <circle class="hl-dot" cx="234" cy="66" r="3.6"/>
+      </g>
+      <g class="hl hl-sage">
+        <path d="M 190 364 C 210 364, 214 382, 234 382"/>
+        <circle class="hl-origin" cx="190" cy="364" r="2.6"/>
+        <circle class="hl-halo" cx="234" cy="382" r="7.5"/>
+        <circle class="hl-dot" cx="234" cy="382" r="3.6"/>
+      </g>
+      <g class="hl hl-rose">
+        <path d="M 1010 48 C 990 48, 984 35, 964 35"/>
+        <circle class="hl-origin" cx="1010" cy="48" r="2.6"/>
+        <circle class="hl-halo" cx="964" cy="35" r="7.5"/>
+        <circle class="hl-dot" cx="964" cy="35" r="3.6"/>
+      </g>
+      <g class="hl hl-slate">
+        <path d="M 1010 204 C 964 204, 948 152, 912 152"/>
+        <circle class="hl-origin" cx="1010" cy="204" r="2.6"/>
+        <circle class="hl-halo" cx="912" cy="152" r="7.5"/>
+        <circle class="hl-dot" cx="912" cy="152" r="3.6"/>
+      </g>
+    </svg>
+    <ul class="hero-callouts dash-callouts" aria-label="Progress dashboard highlights">
+      <li class="hero-callout c-left c-parchment"><b>Word count &amp; goal</b> — click the target to adjust anytime</li>
+      <li class="hero-callout c-left c-sage"><b>Recent edits</b> — jump back in or list every file changed</li>
+      <li class="hero-callout c-right c-rose"><b>What changed</b> — exact words added or cut per scene</li>
+      <li class="hero-callout c-right c-slate"><b>Pace, streak &amp; ETA</b> computed straight from Git commits</li>
+    </ul>
   </div>
 </section>
 
@@ -642,6 +679,7 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     return m + ':' + (sec < 10 ? '0' : '') + sec;
   }
   var vctrlMap = {};
+  var openVideoLightbox = null;
   document.querySelectorAll('video[data-theme-video]').forEach(function (video) {
     var host = video.closest('.phone-col') || video.parentElement;
     if (!host) return;
@@ -656,10 +694,14 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
         '<div class="vctrl-rail"><div class="vctrl-fill"></div><div class="vctrl-thumb"></div></div>' +
         '<input class="vctrl-range" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek video">' +
       '</div>' +
-      '<span class="vctrl-time" aria-hidden="true">0:00 / 0:00</span>';
+      '<span class="vctrl-time" aria-hidden="true">0:00 / 0:00</span>' +
+      '<button type="button" class="vctrl-btn vctrl-expand" aria-label="Expand and zoom video" title="Expand &amp; zoom">' +
+        '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M7.3 1.8h2.9v2.9M4.7 10.2H1.8V7.3M10.2 1.8L6.8 5.2M1.8 10.2l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button>';
     host.appendChild(bar);
 
     var btn = bar.querySelector('.vctrl-btn');
+    var expandBtn = bar.querySelector('.vctrl-expand');
     var rail = bar.querySelector('.vctrl-rail');
     var fill = bar.querySelector('.vctrl-fill');
     var thumb = bar.querySelector('.vctrl-thumb');
@@ -694,6 +736,11 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     }
 
     btn.addEventListener('click', togglePlay);
+    if (expandBtn) {
+      expandBtn.addEventListener('click', function () {
+        if (openVideoLightbox) openVideoLightbox(video, expandBtn);
+      });
+    }
     video.style.cursor = 'pointer';
     video.addEventListener('click', togglePlay);
 
@@ -830,17 +877,16 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     ]
   });
 
-  /* Calm pan-and-zoom lightbox for product screenshots (.shot img) */
+  /* Calm pan-and-zoom lightbox for product screenshots (.shot img) & expanded videos */
   (function () {
     var imgs = Array.prototype.slice.call(document.querySelectorAll('.shot img'));
-    if (!imgs.length) return;
 
     var lb = document.createElement('div');
     lb.className = 'lightbox';
     lb.id = 'lightbox';
     lb.setAttribute('role', 'dialog');
     lb.setAttribute('aria-modal', 'true');
-    lb.setAttribute('aria-label', 'Zoomed screenshot viewer');
+    lb.setAttribute('aria-label', 'Zoomed media viewer');
     lb.hidden = true;
     lb.innerHTML =
       '<div class="lb-bar" role="toolbar" aria-label="Zoom controls">' +
@@ -852,12 +898,31 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       '</div>' +
       '<div class="lb-stage" id="lbStage">' +
         '<img class="lb-img" id="lbImg" draggable="false" alt="">' +
+        '<video class="lb-img lb-video" id="lbVideo" loop muted playsinline hidden></video>' +
+      '</div>' +
+      '<div class="vctrl lb-vctrl" id="lbVctrl" hidden>' +
+        '<button type="button" class="vctrl-btn" id="lbPlay" aria-label="Pause video">' +
+          '<svg class="vctrl-icon-pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.3" y="1.8" width="2.3" height="8.4" rx="0.7"/><rect x="7.4" y="1.8" width="2.3" height="8.4" rx="0.7"/></svg>' +
+          '<svg class="vctrl-icon-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.7l7.4 4.3L3 10.3z"/></svg>' +
+        '</button>' +
+        '<div class="vctrl-track">' +
+          '<div class="vctrl-rail"><div class="vctrl-fill" id="lbFill"></div><div class="vctrl-thumb" id="lbThumb"></div></div>' +
+          '<input class="vctrl-range" id="lbRange" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek video">' +
+        '</div>' +
+        '<span class="vctrl-time" id="lbTime" aria-hidden="true">0:00 / 0:00</span>' +
       '</div>' +
       '<p class="lb-hint" id="lbHint">Click or scroll to zoom · Drag to pan · Esc to close</p>';
     document.body.appendChild(lb);
 
     var stage = document.getElementById('lbStage');
     var lbImg = document.getElementById('lbImg');
+    var lbVideo = document.getElementById('lbVideo');
+    var lbVctrl = document.getElementById('lbVctrl');
+    var lbPlay = document.getElementById('lbPlay');
+    var lbFill = document.getElementById('lbFill');
+    var lbThumb = document.getElementById('lbThumb');
+    var lbRange = document.getElementById('lbRange');
+    var lbTime = document.getElementById('lbTime');
     var btnIn = document.getElementById('lbIn');
     var btnOut = document.getElementById('lbOut');
     var btnReset = document.getElementById('lbReset');
@@ -870,14 +935,17 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     var MIN_S = 1, MAX_S = 3.5;
     var scale = 1, tx = 0, ty = 0;
     var returnFocus = null;
+    var activeEl = lbImg;
+    var sourceVideo = null;
+    var lbScrubbing = false;
     var pointers = new Map();
     var pinchStartDist = 0, pinchStartScale = 1, pinchStartTx = 0, pinchStartTy = 0, pinchMidX = 0, pinchMidY = 0;
     var dragStartX = 0, dragStartY = 0, dragOrigTx = 0, dragOrigTy = 0, dragMoved = false;
 
     function clampPan() {
       if (scale <= 1.001) { tx = 0; ty = 0; return; }
-      var bw = lbImg.offsetWidth || 0;
-      var bh = lbImg.offsetHeight || 0;
+      var bw = activeEl.offsetWidth || 0;
+      var bh = activeEl.offsetHeight || 0;
       var sw = stage.clientWidth || window.innerWidth;
       var sh = stage.clientHeight || window.innerHeight;
       var maxX = Math.max(0, (bw * scale - sw) / 2 + 48);
@@ -888,8 +956,8 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
 
     function render(animate) {
       clampPan();
-      lbImg.classList.toggle('is-animating', !!animate);
-      lbImg.style.transform = 'translate3d(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px,0) scale(' + scale.toFixed(3) + ')';
+      activeEl.classList.toggle('is-animating', !!animate);
+      activeEl.style.transform = 'translate3d(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px,0) scale(' + scale.toFixed(3) + ')';
       lb.dataset.zoomed = scale > 1.02 ? 'true' : 'false';
       btnReset.textContent = Math.round(scale * 100) + '%';
       btnOut.disabled = scale <= MIN_S + 0.01;
@@ -919,8 +987,54 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       render(animate);
     }
 
+    function syncLbVideoUI() {
+      if (!sourceVideo) return;
+      var paused = lbVideo.paused;
+      lbVctrl.dataset.paused = paused ? 'true' : 'false';
+      lbPlay.setAttribute('aria-label', paused ? 'Play video' : 'Pause video');
+      var dur = lbVideo.duration || sourceVideo.duration || 0;
+      var cur = lbVideo.currentTime || 0;
+      var pct = dur > 0 ? Math.max(0, Math.min(100, (cur / dur) * 100)) : 0;
+      lbFill.style.width = pct + '%';
+      lbThumb.style.left = pct + '%';
+      if (!lbScrubbing) lbRange.value = String(Math.round(pct * 10));
+      lbTime.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
+    }
+
+    function toggleLbVideo() {
+      if (!sourceVideo) return;
+      if (lbVideo.paused) lbVideo.play().catch(function () {});
+      else lbVideo.pause();
+      syncLbVideoUI();
+    }
+
+    lbPlay.addEventListener('click', toggleLbVideo);
+    lbRange.addEventListener('pointerdown', function () { lbScrubbing = true; });
+    lbRange.addEventListener('pointerup', function () { lbScrubbing = false; });
+    lbRange.addEventListener('input', function () {
+      var dur = lbVideo.duration || 0;
+      if (dur > 0) {
+        var next = (parseFloat(lbRange.value) / 1000) * dur;
+        try { lbVideo.currentTime = next; } catch (e) {}
+        lbFill.style.width = (parseFloat(lbRange.value) / 10) + '%';
+        lbThumb.style.left = (parseFloat(lbRange.value) / 10) + '%';
+        lbTime.textContent = fmtSec(next) + ' / ' + fmtSec(dur);
+      }
+    });
+    lbVideo.addEventListener('play', syncLbVideoUI);
+    lbVideo.addEventListener('pause', syncLbVideoUI);
+    lbVideo.addEventListener('timeupdate', syncLbVideoUI);
+    lbVideo.addEventListener('loadedmetadata', syncLbVideoUI);
+
     function openLightbox(imgEl) {
       returnFocus = imgEl;
+      sourceVideo = null;
+      activeEl = lbImg;
+      lbVideo.pause();
+      lbVideo.hidden = true;
+      lbVctrl.hidden = true;
+      hint.hidden = false;
+      lbImg.hidden = false;
       lbImg.src = imgEl.currentSrc || imgEl.getAttribute('src') || '';
       lbImg.alt = imgEl.getAttribute('alt') || '';
       scale = 1; tx = 0; ty = 0;
@@ -931,8 +1045,64 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       btnClose.focus();
     }
 
+    openVideoLightbox = function (videoEl, triggerEl) {
+      returnFocus = triggerEl || videoEl;
+      sourceVideo = videoEl;
+      activeEl = lbVideo;
+      var wasPlaying = !videoEl.paused;
+      var startTime = videoEl.currentTime || 0;
+      var rate = videoEl.playbackRate || 1;
+      videoEl.pause();
+
+      lbImg.hidden = true;
+      hint.hidden = true;
+      lbVideo.hidden = false;
+      lbVctrl.hidden = false;
+
+      var src = videoEl.currentSrc;
+      if (!src) {
+        var firstSource = videoEl.querySelector('source');
+        src = firstSource ? firstSource.getAttribute('src') : '';
+      }
+      if (lbVideo.getAttribute('src') !== src) {
+        lbVideo.setAttribute('src', src);
+        lbVideo.load();
+      }
+      var syncStart = function () {
+        lbVideo.removeEventListener('loadedmetadata', syncStart);
+        lbVideo.playbackRate = rate;
+        try { lbVideo.currentTime = startTime; } catch (e) {}
+        if (wasPlaying) lbVideo.play().catch(function () {});
+        else lbVideo.pause();
+        syncLbVideoUI();
+      };
+      if (lbVideo.readyState >= 1) syncStart();
+      else lbVideo.addEventListener('loadedmetadata', syncStart);
+
+      scale = 1; tx = 0; ty = 0;
+      lb.hidden = false;
+      document.body.style.overflow = 'hidden';
+      render(false);
+      requestAnimationFrame(function () { lb.classList.add('is-open'); });
+      btnClose.focus();
+    };
+
     function closeLightbox() {
       if (lb.hidden) return;
+      if (sourceVideo) {
+        var wasPlaying = !lbVideo.paused;
+        var cur = lbVideo.currentTime || 0;
+        lbVideo.pause();
+        try { sourceVideo.currentTime = cur; } catch (e) {}
+        if (wasPlaying) {
+          delete sourceVideo.dataset.userPaused;
+          sourceVideo.play().catch(function () {});
+        } else {
+          sourceVideo.dataset.userPaused = '1';
+          sourceVideo.pause();
+        }
+        sourceVideo = null;
+      }
       lb.classList.remove('is-open');
       lb.hidden = true;
       document.body.style.overflow = '';
@@ -1021,7 +1191,7 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
       pointers.delete(e.pointerId);
       if (pointers.size === 0) lb.classList.remove('is-dragging');
       if (wasSingle && !dragMoved) {
-        if (e.target === lbImg) {
+        if (e.target === activeEl) {
           zoomTo(scale > 1.05 ? 1 : 1.9, e.clientX, e.clientY, true);
         } else if (e.target === stage) {
           closeLightbox();
@@ -1034,6 +1204,7 @@ document.querySelectorAll('[data-copy]').forEach(function (button) {
     document.addEventListener('keydown', function (e) {
       if (lb.hidden) return;
       if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+      else if (e.key === ' ' && sourceVideo) { e.preventDefault(); toggleLbVideo(); }
       else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomTo(scale + 0.5, null, null, true); }
       else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomTo(scale - 0.5, null, null, true); }
       else if (e.key === '0') { e.preventDefault(); zoomTo(1, null, null, true); }
